@@ -41,6 +41,7 @@ import gunbc.megarac_media_model {
 }
 import extdeps.external_authority { TranscribedUncited }
 import gunbc.machine_intake.megarac_media_row_reading {
+  BmcMediaRowUiAttestation,
   boot_run_40258937016_end_media_row, boot_run_40264233543_end_media_row,
   boot_run_41573858366_end_media_row,
   boot_run_40258937016_started_session_marker, mtcollins1_cd_row_ui_attestation,
@@ -68,7 +69,10 @@ import gunbc.runner.runner_host_medium { runner_host_medium_image_stem }
 import gunbc.machine_intake.megarac_media_attach {
   ConvergeStepDetachStale,
   MegaRacStatusZeroRowGuessedNotPresenting,
+  MegaRacStatusZeroRowAttestedNotPresenting,
   MegaRacStatusZeroRowNotGuessed,
+  ZeroRowAttestationDoesNotSayStoppedAndEjected,
+  ZeroRowAttestationNamesAnotherRow,
   ZeroRowWireIsNotZero,
   ZeroRowSessionIsActive,
   ZeroRowSessionWasNotRead,
@@ -96,6 +100,10 @@ import gunbc.machine_intake.megarac_media_attach {
   RedirectionUnreadCode,
   RedirectionUnreadFirmware,
   RedirectionUnreadInferred,
+  RedirectionUnreadAttestationRefused,
+  AttestationStateCellSays,
+  AttestationReadOfAnotherRow,
+  redirection_unread_wire,
   ConfigurationRowUncatalogued,
   ConfigurationRowUnreadable,
   ConfigurationRowIdle,
@@ -887,9 +895,11 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
 // presentation standing whose RedirectionKnownStopped is what licenses StartMedia answers Unknown for that
 // wire, and the exception that lets a stop through on an unread code is closed to the refusal it produces. The
 // fields pinned after that are the guard's own shape, so the bet cannot be drawn by a row nobody read. And the
-// corroboration code 16 has is stated as MISSING here rather than glossed: the operator's page reading names a
-// medium, so attestation_and_read_name_the_same_row refuses this row by construction, and until an operator
-// reads THIS row the bet stays a bet.
+// corroboration code 16 has is stated as MISSING here rather than glossed: the attestation on the corpus is
+// about the row that NAMED a medium, and the datum for this row
+// (gunbc.machine_intake.megarac_media_row_reading mtcollins1_cd_row_ui_attestation_status_zero) is a typed
+// `none`, so there is nothing to pair. Until an operator reads THIS row the bet stays a bet -- and the
+// promotion, with its shape pinned by the claims below, cannot arrive ahead of that datum.
 test fn w_the_row_that_named_no_medium_at_zero_is_a_bet_that_no_lane_acts_on() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
@@ -913,6 +923,7 @@ test fn w_the_row_that_named_no_medium_at_zero_is_a_bet_that_no_lane_acts_on() -
         media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
         session_index: Present { value: boot_run_41573858366_end_media_row.session_index },
         image_name: boot_run_41573858366_end_media_row.image_name,
+        attestation: none,
       ) {
         MegaRacStatusZeroRowGuessedNotPresenting { firmware: f, wire: w, session_index: s } =>
           w == 0 && s == megarac_no_redirection_session_index && bmc_firmware_release_identity_eq(a: f, b: read)
@@ -1008,23 +1019,23 @@ test fn w_code_0_is_refused_and_the_bet_is_drawn_only_for_the_row_that_was_read(
       }
       // AND THE GUARD IS OURS, ONE TYPED CAUSE PER SEPARATION -- the same fold the production gate calls, so
       // the gate and this claim cannot drift on the case that decides a boot.
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: boot_run_40258937016_started_session_marker.session_index }, image_name: Absent) {
+      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: boot_run_40258937016_started_session_marker.session_index }, image_name: Absent, attestation: none) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionIsActive { session_index: live } } => live == boot_run_40258937016_started_session_marker.session_index
         _ => false
       }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
+      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }, attestation: none) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowNamesAMedium { name: named } } => (named as String) == (boot6_leftover_iso as String)
         _ => false
       }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: none, image_name: Absent) {
+      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: none, image_name: Absent, attestation: none) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionWasNotRead } => true
         _ => false
       }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 16, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent) {
+      && match megarac_status_zero_row_inference(firmware: read, wire: 16, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent, attestation: none) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowWireIsNotZero { wire: other } } => other == 16
         _ => false
       }
-      && match megarac_status_zero_row_inference(firmware: mtcollins1_identity.firmware, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent) {
+      && match megarac_status_zero_row_inference(firmware: mtcollins1_identity.firmware, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent, attestation: none) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowReleaseWasNeverReadThatWay { firmware: other } } => bmc_firmware_release_identity_eq(a: other, b: mtcollins1_identity.firmware)
         _ => false
       }
@@ -1038,6 +1049,187 @@ test fn w_code_0_is_refused_and_the_bet_is_drawn_only_for_the_row_that_was_read(
         Present { value: named } => (named as String) == (boot6_leftover_iso as String)
         Absent => false
       }
+  }
+}
+
+// AN ATTESTATION DOES PROMOTE IT, AND IT IS THE ONLY THING THAT CAN. The attestation written below is
+// TEST DATA, composed here to exercise the promotion: the corpus's authority is the `none` datum in
+// gunbc.machine_intake.megarac_media_row_reading mtcollins1_cd_row_ui_attestation_status_zero, and no lane
+// reads this file. What is pinned is the SHAPE the operator's words must have for the row boot run
+// 41573858366 read -- the CD/DVD row label, both of the vendor's words in the state cell, and NO medium
+// named, absence matching absence -- and that the promotion carries that attestation with it rather than
+// dropping it, so a reader of the admitted row can see which reading admitted it.
+test fn w_an_attested_reading_of_the_row_that_names_no_medium_promotes_the_bet() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_status_zero_row_inference(
+        firmware: read,
+        wire: 0,
+        media_type: boot_run_41573858366_end_media_row.media_type,
+        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
+        session_index: Present { value: megarac_no_redirection_session_index },
+        image_name: none,
+        attestation: Present {
+          value: BmcMediaRowUiAttestation {
+            row_label: "CD/DVD 0" as NonEmptyStr,
+            image_name: none,
+            state_label: "Stopped - Device Ejected" as NonEmptyStr,
+            detail_label: "N/A" as NonEmptyStr,
+            read_on_day: "2026-11-03" as NonEmptyStr,
+            read_by: "witness test data, not a reading of the controller" as NonEmptyStr,
+          }
+        },
+      ) {
+        MegaRacStatusZeroRowAttestedNotPresenting { firmware: f, wire: w, session_index: s, attestation: attested } =>
+          w == 0
+            && s == megarac_no_redirection_session_index
+            && bmc_firmware_release_identity_eq(a: f, b: read)
+            && attestation_labels_a_stopped_and_ejected_row(attestation: attested)
+            && attestation_and_read_name_the_same_row(
+              attestation: attested,
+              read: boot_run_41573858366_end_media_row,
+            )
+        _ => false
+      }
+  }
+}
+
+// AND THREE WAYS IT DOES NOT. An operator who went to the page and came back with the wrong words, or with
+// the right words about the OTHER row, is refused with the cause named -- not with "no attestation", which
+// would hide that anyone looked. The middle arm is the one that matters most: code 16's attestation is real,
+// dated and correctly labelled, and it still cannot corroborate a row that names no medium, because the row
+// it describes has a medium.
+test fn w_an_attestation_that_does_not_establish_the_row_is_refused_with_its_own_cause() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      // THE STATE CELL LACKS ONE OF THE TWO WORDS. It keeps what the page actually said, so the finding can
+      // be reported rather than the fold bent.
+      match megarac_status_zero_row_inference(
+        firmware: read,
+        wire: 0,
+        media_type: boot_run_41573858366_end_media_row.media_type,
+        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
+        session_index: Present { value: megarac_no_redirection_session_index },
+        image_name: none,
+        attestation: Present {
+          value: BmcMediaRowUiAttestation {
+            row_label: "CD/DVD 0" as NonEmptyStr,
+            image_name: none,
+            state_label: "Stopped" as NonEmptyStr,
+            detail_label: "the page's state cell read Stopped only" as NonEmptyStr,
+            read_on_day: "2026-11-03" as NonEmptyStr,
+            read_by: "witness test data, not a reading of the controller" as NonEmptyStr,
+          }
+        },
+      ) {
+        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowAttestationDoesNotSayStoppedAndEjected { state_label: said } } =>
+          (said as String) == "Stopped"
+        _ => false
+      }
+      // THE RIGHT WORDS, THE WRONG ROW: code 16's attestation, which names a medium.
+      && match megarac_status_zero_row_inference(
+        firmware: read,
+        wire: 0,
+        media_type: boot_run_41573858366_end_media_row.media_type,
+        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
+        session_index: Present { value: megarac_no_redirection_session_index },
+        image_name: none,
+        attestation: Present { value: mtcollins1_cd_row_ui_attestation },
+      ) {
+        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowAttestationNamesAnotherRow } => true
+        _ => false
+      }
+      // AND NOTHING AT ALL STILL LEAVES THE BET, WHICH IS THE STATE OF THE CORPUS TODAY.
+      && match megarac_status_zero_row_inference(
+        firmware: read,
+        wire: 0,
+        media_type: boot_run_41573858366_end_media_row.media_type,
+        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
+        session_index: Present { value: megarac_no_redirection_session_index },
+        image_name: none,
+        attestation: none,
+      ) {
+        MegaRacStatusZeroRowGuessedNotPresenting { firmware: f, wire: w, session_index: s } =>
+          w == 0 && s == megarac_no_redirection_session_index && bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+  }
+}
+
+// THE PAIRING FOLD TAKES ABSENCE ON BOTH SIDES AND NOTHING MIXED. Both readings blank on the CD/DVD row is
+// the same row; a blank read against a page that named a medium is not, and neither is a blank pair on a row
+// the page labelled something other than the CD/DVD row. The last arm is the code-16 pairing, unchanged: a
+// named medium still matches the run that named it.
+test fn w_the_pairing_fold_matches_absence_on_both_sides_and_refuses_a_mixed_pair() -> Bool {
+  attestation_and_read_name_the_same_row(
+    attestation: BmcMediaRowUiAttestation {
+      row_label: "CD/DVD 0" as NonEmptyStr,
+      image_name: none,
+      state_label: "Stopped - Device Ejected" as NonEmptyStr,
+      detail_label: "N/A" as NonEmptyStr,
+      read_on_day: "2026-11-03" as NonEmptyStr,
+      read_by: "witness test data, not a reading of the controller" as NonEmptyStr,
+    },
+    read: boot_run_41573858366_end_media_row,
+  )
+    && !attestation_and_read_name_the_same_row(
+      attestation: BmcMediaRowUiAttestation {
+        row_label: "USB 1" as NonEmptyStr,
+        image_name: none,
+        state_label: "Stopped - Device Ejected" as NonEmptyStr,
+        detail_label: "N/A" as NonEmptyStr,
+        read_on_day: "2026-11-03" as NonEmptyStr,
+        read_by: "witness test data, not a reading of the controller" as NonEmptyStr,
+      },
+      read: boot_run_41573858366_end_media_row,
+    )
+    && !attestation_and_read_name_the_same_row(
+      attestation: mtcollins1_cd_row_ui_attestation,
+      read: boot_run_41573858366_end_media_row,
+    )
+    && attestation_and_read_name_the_same_row(
+      attestation: mtcollins1_cd_row_ui_attestation,
+      read: boot_run_40264233543_end_media_row,
+    )
+}
+
+// AN ATTESTATION THAT FAILED IS NOT A GROUNDED CODE EITHER. The lane refuses it through its own arm, and that
+// arm takes neither of the exceptions the grounded refusals get: no stop-on-unread, and the wire it reports is
+// the row's own code so the operator's line names the row they should go and look at.
+test fn w_an_attestation_that_failed_to_establish_the_row_takes_no_stop_exception() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      !unread_code_on_the_evidenced_release(
+        unread: RedirectionUnreadAttestationRefused {
+          firmware: read,
+          wire: 0,
+          finding: AttestationStateCellSays { state_label: "In Use" as NonEmptyStr },
+        }
+      )
+        && redirection_unread_wire(
+          unread: RedirectionUnreadAttestationRefused {
+            firmware: read,
+            wire: 0,
+            finding: AttestationReadOfAnotherRow,
+          }
+        ) == 0
+        && string_contains(
+          s: redirection_unread_text(unread: RedirectionUnreadAttestationRefused { firmware: read, wire: 0, finding: AttestationStateCellSays { state_label: "In Use" as NonEmptyStr } }),
+          pattern: "the state cell read In Use",
+        )
+        && string_contains(
+          s: redirection_unread_text(unread: RedirectionUnreadAttestationRefused { firmware: read, wire: 0, finding: AttestationStateCellSays { state_label: "In Use" as NonEmptyStr } }),
+          pattern: "does not carry both of the vendor's words",
+        )
+        && string_contains(
+          s: redirection_unread_text(unread: RedirectionUnreadAttestationRefused { firmware: read, wire: 0, finding: AttestationReadOfAnotherRow }),
+          pattern: "named a row other than the one that names no medium",
+        )
+        && redirection_unread_text(unread: RedirectionUnreadAttestationRefused { firmware: read, wire: 0, finding: AttestationReadOfAnotherRow })
+          != redirection_unread_text(unread: RedirectionUnreadAttestationRefused { firmware: read, wire: 0, finding: AttestationStateCellSays { state_label: "In Use" as NonEmptyStr } })
   }
 }
 
@@ -1225,6 +1417,7 @@ test fn w_the_guard_refuses_a_row_of_another_media_type() -> Bool {
         media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
         session_index: Present { value: megarac_no_redirection_session_index },
         image_name: Absent,
+        attestation: none,
       ) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheCdDvdRow { media_type: other } } => other == 2
         _ => false
@@ -1244,6 +1437,7 @@ test fn w_the_guard_refuses_a_row_at_another_image_list_index() -> Bool {
         media_index: Present { value: 1 },
         session_index: Present { value: megarac_no_redirection_session_index },
         image_name: Absent,
+        attestation: none,
       ) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheReadIndex { media_index: other } } => other == 1
         _ => false
@@ -1266,6 +1460,7 @@ test fn w_the_guard_refuses_a_row_whose_index_was_never_read() -> Bool {
         media_index: none,
         session_index: Present { value: megarac_no_redirection_session_index },
         image_name: Absent,
+        attestation: none,
       ) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIndexWasNotRead } => true
         _ => false
