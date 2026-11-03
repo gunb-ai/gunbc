@@ -508,3 +508,42 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     SwitchingRegulatorSpec { regulator: _ } => Absent
   }
 }
+
+// One position on one assembly, named the way the silkscreen names it. THE VERBATIM TEXT IS THE IDENTITY:
+// U1_2 and U12 are two components, U3_2 and U32 two components, U3_P3 and U3_3 two positions, U1_P1 and
+// U1_P5 two channels. This is not pedantry -- the atlas cleanup of 2026-11-03 normalised designators by
+// stripping underscores and so merged U1_2 into U12, U2_2 into U22 and U3_2 into U32: it minted positions
+// NVIDIA may never have placed, lost the parts that were really in the other footprint, and moved a
+// PCA9617A from U12 to U1_2 on nothing but a tidied string. The merged row looked exactly like a good row.
+//
+// So: normalisation may produce a field for SEARCHING -- a fold, a family prefix, a sort key, a grouping
+// for a zone -- and may never produce identity. Two designators that share a search key are still two
+// components, and no position is resolved by anything but the verbatim text. No search key is defined here,
+// because nothing groups by one yet; when the function zones want one it must be its own field, derived,
+// and never what a position is looked up by.
+//
+// It lives in the component vocabulary rather than the board layer because both layers need ONE rule and
+// the design-fact layer may not import the observation layer: NVIDIA's positions (extdeps.nvidia.p4261) and
+// our silkscreen readings (product.p4261) resolve against each other, and a rule about identity that two
+// sides share has to sit where both can reach it.
+type Designator {
+  verbatim: NonEmptyStr
+}
+
+// A designator as it was read. No case folding, no punctuation removal, no suffix-boundary rewriting, no
+// leading-zero stripping -- those are the operations that made the 2026-11-03 corruption invisible.
+fn designator_of(verbatim: NonEmptyStr) -> Designator {
+  Designator { verbatim: verbatim }
+}
+
+// What the silkscreen says, for printing and for a search key to be derived FROM. Not a comparison.
+fn designator_text(designator: Designator) -> NonEmptyStr {
+  designator.verbatim
+}
+
+// Identity: character for character, with nothing done to either side first. Every comparison of
+// designators in the model goes through this, so there is exactly one place a normalisation could creep
+// back in -- and `p4261_designator_identity_witness.dag` holds it to the five pairs the atlas broke.
+fn designator_eq(a: Designator, b: Designator) -> Bool {
+  (designator_text(designator: a) as String) == (designator_text(designator: b) as String)
+}
