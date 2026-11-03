@@ -1,15 +1,19 @@
 module test.claim.fleet.board_function_converge_witness
 
 import std.types { Bool, Int, List, String }
-import std.optional { Present, Absent }
+import extdeps.boards.types { FirmwareSetupSwitch }
+import extdeps.boards.asrock_altrad8ud_setup_varstore { ras_setup_checkbox_row }
+import extdeps.linux.efivarfs { EfiVariableReading, EfiVariableRead, EfiVariableUnread, efivarfs_decode }
+import std.optional { Optional, Present, Absent }
 import extdeps.boards.types { BmcGraphicsController, PcieErrorFirmwareFirstHandling }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.board_function_topology { PcieFunctionIdentity, PcieDetachRoute, asrock_altrad8ud_1l2t_bmc_graphics_route, asrock_altrad8ud_1l2t_x550_route }
 import gunbc.fleet.board_function_admission {
-  RemovedByHostAfterBoot, PlannedFunction, board_function_removal, fleet_board_function_plans,
+  RemovedByHostAfterBoot, RemovedAtBoard, PlannedFunction, board_function_removal, fleet_board_function_plans,
 }
 import gunbc.fleet.board_function_converge {
+  SetupSwitchReadback, SetupSwitchSet, SetupSwitchWrong, SetupSwitchUnrouted, setup_switch_readback,
   PcieFunctionReading, PcieFunctionEnumerated, PcieFunctionNotEnumerated, PcieFunctionUnread,
   LinkControlReading, LinkControlRead, LinkControlUnread,
   RouteFunctionReading, PcieDetachObservation, PcieDetachOutcome,
@@ -234,15 +238,113 @@ test fn the_plan_carries_the_route_the_converge_acts_on() -> Bool {
   }
 }
 
-// A plan the route does not act on is reported, never refused and never claimed set: srv1's firmware-first
-// setting is the operator's, and nothing here reads it back.
-test fn an_operator_switch_is_reported_not_claimed() -> Bool {
+// THE SETUP-SWITCH DECISION, over supplied bytes. The payload is srv2's RasIfrNVData as read on 2026-11-02:
+// 47 octets, the AER Firmware First octet (5) at 0.
+data aer_menu: String = "Advanced > RAS Configuration"
+data aer_item: String = "PCIe AER Firmware First"
+data srv2_ras_payload: List<Int> = [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 120, 0, 0, 0, 176, 4, 0, 0, 1, 0, 0, 0, 160, 5, 0, 0]
+
+fn readback_is_unrouted(r: SetupSwitchReadback) -> Bool {
+  match r {
+    SetupSwitchUnrouted { cause: _ } => true
+    _ => false
+  }
+}
+
+fn reading_is_unread(r: EfiVariableReading) -> Bool {
+  match r {
+    EfiVariableUnread { cause: _ } => true
+    EfiVariableRead { attributes: _, payload: _ } => false
+  }
+}
+
+fn is_present<T>(o: Optional<T>) -> Bool {
+  match o {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn aer_readback(bios: String?, payload: List<Int>) -> SetupSwitchReadback {
+  setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: bios, reading: EfiVariableRead { attributes: 7, payload: payload })
+}
+
+test fn a_switched_off_aer_item_reads_set() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: srv2_ras_payload) {
+    SetupSwitchSet { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn an_enabled_aer_item_refuses_with_the_observed_value() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: concat(take_prefix(xs: srv2_ras_payload, n: 5), concat([1], skip(xs: srv2_ras_payload, n: 6)))) {
+    SetupSwitchWrong { detail } => contains(detail, "reads 1")
+    _ => false
+  }
+}
+
+test fn a_payload_of_another_size_refuses() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: take_prefix(xs: srv2_ras_payload, n: 40)) {
+    SetupSwitchWrong { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn another_bios_version_or_none_is_unrouted_not_decoded() -> Bool {
+  readback_is_unrouted(r: aer_readback(bios: Present { value: "3.10" }, payload: srv2_ras_payload))
+    && readback_is_unrouted(r: aer_readback(bios: Absent, payload: srv2_ras_payload))
+}
+
+test fn an_unread_variable_refuses() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: Present { value: "2.06" }, reading: EfiVariableUnread { cause: "x" }) {
+    SetupSwitchWrong { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn another_setup_item_has_no_route() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: "An item with no varstore row", board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: Present { value: "2.06" }, reading: EfiVariableRead { attributes: 7, payload: srv2_ras_payload }) {
+    SetupSwitchUnrouted { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn another_board_is_unrouted_even_at_bios_2_06() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "OTHER" }, bios_version: Present { value: "2.06" }, reading: EfiVariableRead { attributes: 7, payload: srv2_ras_payload }) {
+    SetupSwitchUnrouted { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE INHABITANCE CLAIM for the route: srv1's real plan for the firmware-first handling is a RemovedAtBoard
+// FirmwareSetupSwitch whose real catalog menu and item resolve to a readback route and a varstore row. Breaking
+// the catalog strings, the route rows or the converge_plan arm's input shape turns this red. (The host read
+// itself is run by setup_switch_receipt_cli, as root on srv1 and srv2.)
+test fn the_real_srv1_aer_plan_resolves_to_a_readback_route() -> Bool {
   let plans = filter(fleet_board_function_plans(), p => (p.host as String) == (operator_host_srv1 as String)
     && p.subject == PlannedFunction { board_function: PcieErrorFirmwareFirstHandling })
-  length(plans) == 1 && all(plans, p => {
-    let line = converge_plan(plan: p, outcomes: [])
-    !line.refused && contains(line.text, "operator switch") && contains(line.text, "not claimed set")
-  })
+  length(plans) == 1 && all(plans, p =>
+    match p.removal {
+      RemovedAtBoard { switch: s } =>
+        match s {
+          FirmwareSetupSwitch { menu, item, off_meaning: _, citation: _ } =>
+            is_present(o: ras_setup_checkbox_row(menu: menu as String, item: item as String))
+          _ => false
+        }
+      _ => false
+    })
+}
+
+// THE DECODE: efivarfs od output for a 4-octet attribute word and two data octets.
+test fn the_efivarfs_decode_splits_attributes_from_payload() -> Bool {
+  match efivarfs_decode(stdout: "07 00 00 00 aa 01\n") {
+    EfiVariableRead { attributes, payload } => attributes == 7 && payload == [170, 1]
+    EfiVariableUnread { cause: _ } => false
+  }
+}
+
+test fn the_efivarfs_decode_refuses_short_or_non_hex_output() -> Bool {
+  reading_is_unread(r: efivarfs_decode(stdout: "07 00\n")) && reading_is_unread(r: efivarfs_decode(stdout: "zz 00 00 00\n"))
 }
 
 // THE LATCH FOLLOWS THE RESULT: any refused line removes it, so a refusing re-run closes admission even while

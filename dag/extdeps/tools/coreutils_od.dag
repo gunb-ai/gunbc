@@ -1,0 +1,49 @@
+module extdeps.tools.coreutils_od
+
+import std.types { Bool, NonEmptyStr, String, Unit }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/od-invocation.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.coreutils_od",
+      decl_name: "coreutils.Od",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A FILE'S BYTES AS HEX TEXT, for a file whose content is not text (an efivarfs variable: four attribute
+// bytes, then a payload that may hold any byte). `-An` suppresses the address column, `-v` forbids od's
+// collapsing of repeated lines into `*`, and `-tx1` prints one byte as two lowercase hex digits, sixteen
+// to a line, separated by spaces. `--` ends option parsing so a path beginning with a dash is a path. A
+// missing or unreadable path exits non-zero with od's diagnostic on stderr; what that means is its
+// consumer's decision.
+service coreutils.Od {
+  operation HexBytes {
+    requires none
+    input { path: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["od", "-An", "-v", "-tx1", "--", "{path}"] }
+    exit {
+      0 => Unit "The file's bytes were printed as hex"
+      nonzero => String "od could not read the file"
+    }
+  }
+}

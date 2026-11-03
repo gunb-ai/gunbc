@@ -1,0 +1,15 @@
+{
+  "placements": [
+    {
+      "id": "FIT-PLATE",
+      "rx": 0,
+      "ry": 0,
+      "rz": 0,
+      "x_um": 50000,
+      "y_um": 45000
+    }
+  ],
+  "support_free": [
+    "FIT-PLATE"
+  ]
+}
