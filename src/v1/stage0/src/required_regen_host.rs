@@ -423,6 +423,7 @@ pub fn run_required_regen_scoped(
         tree_digest_for_basenames(&formatter, &stage0_src, &selected_basenames, "committed")?;
     let candidate_digest = tree_digest_from_map(&formatter, &emitted, &selected_basenames)?;
     v1_rt::trace_mark("regen.digest.done".to_string());
+    report_cgroup_memory_diagnostic("child.after_digest");
 
     let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
     let changed_paths = sync.drifted_paths.clone();
@@ -432,6 +433,7 @@ pub fn run_required_regen_scoped(
         .collect::<Vec<_>>();
     let (basename_to_module, _, _, _, _, _) =
         convergence_surface_roles(&workspace, &convergence_roots)?;
+    report_cgroup_memory_diagnostic("child.after_surface_roles");
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
     // This is the writer's own exact artifact population, including non-Rust products such as
@@ -541,6 +543,7 @@ pub fn run_required_regen_scoped(
         eprintln!("{reasons}");
     }
 
+    report_cgroup_memory_diagnostic("child.end");
     Ok(RequiredRegenOutcome { receipt, failures })
 }
 
@@ -2255,6 +2258,53 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// The cgroup diagnostic reads the leaf and walks ancestors to the first level that binds, prints
+    /// a file that does not exist as `absent` and never as a number, and does not walk past the mount
+    /// root. The discriminator is the `absent` field: a default of `0` or `max` would turn it red.
+    #[test]
+    fn the_cgroup_diagnostic_prints_absent_files_and_stops_at_the_first_binding_ancestor() {
+        let root = temp_dir("cgroup-diag");
+        let slice = root.join("system.slice");
+        let unit = slice.join("unit.service");
+        fs::create_dir_all(&unit).expect("create cgroup tree");
+        fs::write(unit.join("memory.current"), "100\n").unwrap();
+        fs::write(unit.join("memory.peak"), "200\n").unwrap();
+        fs::write(unit.join("memory.max"), "300\n").unwrap();
+        fs::write(unit.join("memory.high"), "250\n").unwrap();
+        fs::write(
+            unit.join("memory.events"),
+            "low 0\nhigh 7\nmax 0\noom 0\noom_kill 0\n",
+        )
+        .unwrap();
+        fs::write(unit.join("memory.stat"), "anon 11\nfile 22\nswapcached 0\n").unwrap();
+        // memory.swap.current and memory.swap.max are deliberately NOT written on the leaf.
+        fs::write(slice.join("memory.max"), "max\n").unwrap();
+        fs::write(slice.join("memory.high"), "max\n").unwrap();
+        fs::write(slice.join("memory.swap.max"), "max\n").unwrap();
+        fs::write(root.join("memory.max"), "999\n").unwrap();
+        let line = cgroup_memory_diagnostic_line(&unit, &root, "test.phase", 42);
+        for needle in [
+            "phase=test.phase pid=42",
+            "memory.current=100 memory.peak=200",
+            "memory.swap.current=absent",
+            "memory.events=low 0 high 7 max 0 oom 0 oom_kill 0",
+            "anon=11 file=22",
+            "kernel=absent",
+            "[memory.max=300 memory.high=250 memory.swap.max=absent]",
+            "[memory.max=max memory.high=max memory.swap.max=max]",
+            "[memory.max=999 memory.high=absent memory.swap.max=absent]",
+        ] {
+            assert!(line.contains(needle), "missing `{needle}` in: {line}");
+        }
+        let above_root = cgroup_memory_diagnostic_line(&root, &root, "p", 1);
+        assert_eq!(
+            above_root.matches("memory.max=").count(),
+            1,
+            "the walk must stop at the mount root: {above_root}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
 
     fn temp_dir(prefix: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -5586,6 +5636,7 @@ fn run_built_seed_regen(
         ));
     }
     let receipt = read_first_generation_receipt(&receipt_path);
+    report_cgroup_memory_diagnostic("parent.readback");
     match receipt {
         Ok(value) => Ok(value),
         Err(reason) => Err(format!(
@@ -5813,6 +5864,120 @@ fn report_rebuilt_seed_regen_cgroup(phase: &str) {
     eprintln!(
         "required-regen: rebuilt-seed child {phase} cgroup={dir_label} memory.current={current} memory.max={max} memory.peak={peak} memory.events={events}"
     );
+}
+
+/// `memory.stat` keys the diagnostic prints: the anonymous/file split and the swap-relevant lines.
+/// A key the kernel does not report is printed `absent`, never defaulted.
+const CGROUP_DIAGNOSTIC_STAT_KEYS: &[&str] = &[
+    "anon",
+    "file",
+    "kernel",
+    "slab",
+    "shmem",
+    "file_mapped",
+    "file_dirty",
+    "file_writeback",
+    "swapcached",
+    "inactive_anon",
+    "active_anon",
+    "inactive_file",
+    "active_file",
+    "unevictable",
+];
+
+/// One cgroup control file as text: its trimmed content, `absent` when the file does not exist, and
+/// `unreadable(<kind>)` for any other failure. A missing file is never defaulted to a number.
+fn cgroup_file_or_absent(dir: &Path, file: &str) -> String {
+    match fs::read_to_string(dir.join(file)) {
+        Ok(body) => body.trim().to_string(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => "absent".to_string(),
+        Err(error) => format!("unreadable({:?})", error.kind()),
+    }
+}
+
+fn cgroup_stat_field(stat_body: &str, key: &str) -> String {
+    stat_body
+        .lines()
+        .find_map(|line| {
+            let mut parts = line.split_whitespace();
+            match (parts.next(), parts.next()) {
+                (Some(name), Some(value)) if name == key => Some(value.to_string()),
+                _ => None,
+            }
+        })
+        .unwrap_or_else(|| "absent".to_string())
+}
+
+/// The effective limits of one cgroup directory, as one bracketed group.
+fn cgroup_limits_group(dir: &Path) -> String {
+    format!(
+        "{}[memory.max={} memory.high={} memory.swap.max={}]",
+        dir.display(),
+        cgroup_file_or_absent(dir, "memory.max"),
+        cgroup_file_or_absent(dir, "memory.high"),
+        cgroup_file_or_absent(dir, "memory.swap.max"),
+    )
+}
+
+/// The diagnostic line for the cgroup at `dir`, under `mount_root`. Pure over the filesystem it is
+/// pointed at, so the fixture test drives it over a temporary tree. Limits are printed for `dir`
+/// and then for each ancestor up to and including the first one whose `memory.max` or `memory.high`
+/// is not `max` (the first level that can bind or throttle), or the mount root.
+fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid: u32) -> String {
+    let stat_body = cgroup_file_or_absent(dir, "memory.stat");
+    let stat = CGROUP_DIAGNOSTIC_STAT_KEYS
+        .iter()
+        .map(|key| format!("{key}={}", cgroup_stat_field(&stat_body, key)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let events = cgroup_file_or_absent(dir, "memory.events")
+        .lines()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut limits = vec![cgroup_limits_group(dir)];
+    let mut level = dir.parent();
+    while let Some(ancestor) = level {
+        if !ancestor.starts_with(mount_root) {
+            break;
+        }
+        limits.push(cgroup_limits_group(ancestor));
+        let binds = |file: &str| {
+            let value = cgroup_file_or_absent(ancestor, file);
+            value != "max" && value != "absent"
+        };
+        if binds("memory.max") || binds("memory.high") || ancestor == mount_root {
+            break;
+        }
+        level = ancestor.parent();
+    }
+    format!(
+        "required-regen: cgroup-diag phase={phase} pid={pid} cgroup={} memory.current={} memory.peak={} memory.swap.current={} memory.events={events} memory.stat[{stat}] limits={}",
+        dir.display(),
+        cgroup_file_or_absent(dir, "memory.current"),
+        cgroup_file_or_absent(dir, "memory.peak"),
+        cgroup_file_or_absent(dir, "memory.swap.current"),
+        limits.join(" > "),
+    )
+}
+
+/// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round. The
+/// parent and the rebuilt-seed child call it with their own `phase` labels; a child spawned without
+/// a cgroup move shares its parent's cgroup, so the two share a `cgroup=` value and the `pid=`
+/// field says which process read it. Nothing reads the line back, no cap moves, nothing refuses.
+fn report_cgroup_memory_diagnostic(phase: &str) {
+    let line = match crate::memory_governor::leaf_cgroup_dir() {
+        Some(dir) => cgroup_memory_diagnostic_line(
+            &dir,
+            Path::new("/sys/fs/cgroup"),
+            phase,
+            std::process::id(),
+        ),
+        None => format!(
+            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent",
+            std::process::id()
+        ),
+    };
+    eprintln!("{line}");
 }
 
 fn convergence_surface_roles(
@@ -7505,6 +7670,7 @@ pub fn run_regen_round_cost(
         generation_ordinal += 1;
         v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
         report_rebuilt_seed_regen_cgroup("begin");
+        report_cgroup_memory_diagnostic("parent.begin");
         let next = run_built_seed_regen(
             &workspace,
             candidate_dir_rel,
@@ -7514,6 +7680,7 @@ pub fn run_regen_round_cost(
             &current_seed_digest,
         );
         report_rebuilt_seed_regen_cgroup("end");
+        report_cgroup_memory_diagnostic("parent.end");
         v1_rt::trace_mark("round.built_seed_regen.done".to_string());
         match next {
             Ok(next) => {
