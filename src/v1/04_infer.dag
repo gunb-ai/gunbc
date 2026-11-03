@@ -3840,6 +3840,11 @@ fn equality_leaf_walk(peeled: Node, name: String, ident_key: String, scope: Infe
   if (resolved.connective != NoConnective) || resolved_identity != ident_key || (resolved.children |> count) != (peeled.children |> count) {
     if resolved_identity == ident_key {
       equality_resolved_declaration_structure(rt: resolved, peeled: peeled, name: name, identity: ident_key, scope: scope, visited: visited, depth: depth, at_root: at_root)
+    } else if ((resolved.connective == Conj) || (resolved.connective == Disj)) && equality_reference_applies_arguments(peeled: peeled) {
+      // A reference whose expansion is a DECLARATION (an imported generic is reached this way) keeps its applied arguments:
+      // walking the declaration as a fresh operand dropped them, so DkBox<Cell> over a function-valued Cell was admitted
+      // (gunbc#15175 srdk22-24: refused when the generic is declared in the same module, admitted when imported).
+      equality_resolved_declaration_structure(rt: resolved, peeled: peeled, name: name, identity: resolved_identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
     } else {
       equality_operand_walk(n: resolved, scope: scope, visited: visited, depth: depth + 1, at_root: at_root)
     }
@@ -3914,29 +3919,127 @@ fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: Str
 // AN APPLIED GENERIC IS JUDGED AT ITS ARGUMENTS TOO. A generic declaration's own members mention its parameters, which
 // compare by the target, so its structure alone reads as comparing by the target even when the type applied to it reaches a
 // routed declaration or a function (gunbc#15175: NativeDemandRun.engine is DemandEngine<NativeDemandValue>, and the derived
-// body emitted a raw `==` on a type no PartialEq covers, E0369). The walk therefore walks each applied argument: an
-// argument that refuses carries its refusal, and an argument that is not by the target refuses as a routed member inside a
-// generic application the plan does not model, the same cause a container whose shape is unmodeled gives.
+// body emitted a raw `==` on a type no PartialEq covers, E0369). Each applied argument is therefore read against the table
+// the env carries (TypeEnv.equality_by_target: one Bool per declaration identity, built once per module by
+// build_equality_by_target), never walked again: an argument that is not by the target refuses as a routed member inside a
+// generic application the plan does not model, the same cause a container whose shape is unmodeled gives. A declaration the
+// table does not name (a kernel type, an extensional container, an alias) is read from its own shape; one that resolves to
+// nothing refuses rather than comparing by the target.
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
   let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
-  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) {
+  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1) {
     w
   } else {
-    let args = fold(peeled.children, init: EqualityArmWalk { refusal: none, fields: [], plans: [] }, f: (acc, ch) =>
-      match acc.refusal {
-        Present { value: _ } => acc
-        Absent =>
-          let aw = if equality_operand_is_type_variable(n: ch, scope: scope) || equality_operand_is_type_variable(n: child_type_node(ch: ch), scope: scope) { equality_walk_by_target() } else { equality_operand_walk(n: child_type_node(ch: ch), scope: scope, visited: visited, depth: depth + 1, at_root: false) }
-          EqualityArmWalk { refusal: aw.refusal, fields: list_snoc_item(xs: acc.fields, item: EqualityPlanField { field: "", step: aw.step }), plans: concat(acc.plans, aw.plans) }
-      })
-    if args.refusal != none {
-      equality_walk_refused(r: args.refusal)
-    } else if args.fields |> all(f => equality_step_is_by_target(s: f.step)) {
-      w
+    equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+  }
+}
+
+// WHETHER AN APPLIED ARGUMENT COMPARES BY THE TARGET, read from the table and the argument's own shape in O(argument),
+// never from a walk of any declaration body. A type variable is instantiation-blind and compares by the target; a routed
+// declaration, a function, a declaration the table does not name and an unresolved spelling do not.
+fn equality_arguments_by_target(arguments: List<Node>, scope: InferScope, depth: Int) -> Bool {
+  arguments |> all(ch => equality_argument_by_target(n: ch, scope: scope, depth: depth))
+}
+
+fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
+  if depth > 64 {
+    false
+  } else if equality_operand_is_type_variable(n: n, scope: scope) || equality_operand_is_type_variable(n: child_type_node(ch: n), scope: scope) {
+    true
+  } else {
+    let peeled = normalize_access_type_node(n: n)
+    let source_indices = scope.type_env.source_indices
+    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) || ((peeled.children |> count) == 1 && peeled.connective != Conj && peeled.connective != Disj && node_is_std_optional(n: peeled, scope: scope)) {
+      equality_argument_by_target(n: extract_optional_inner_node(n: peeled), scope: scope, depth: depth + 1)
     } else {
-      equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+      let identity = type_reference_identity(n: peeled, source_indices: source_indices)
+      match equality_route_for(identity: identity) {
+        Present { value: _ } => false
+        Absent =>
+          match map_get(scope.type_env.equality_by_target, identity) {
+            Present { value: declaration_by_target } =>
+              declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1))
+            Absent =>
+              if peeled.connective == Arrow {
+                false
+              } else if (peeled.connective == Conj || peeled.connective == Disj) {
+                peeled.children |> all(k => equality_argument_by_target(n: child_type_node(ch: k), scope: scope, depth: depth + 1))
+              } else if is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))) {
+                equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1)
+              } else {
+                match map_get(equality_extensional_container_rows, qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))) {
+                  Present { value: extensional } => extensional && equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1)
+                  Absent =>
+                    let resolved = expand_nominal_alias_rhs(n: peeled, env: scope.type_env, module_name: scope.module_name)
+                    if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
+                      equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
+                    } else {
+                      false
+                    }
+                }
+              }
+          }
+      }
     }
   }
+}
+
+// THE PER-DECLARATION TABLE (TypeEnv.equality_by_target) is ONE table per closure, keyed by declaration identity (which names the
+// declaring file), so a lookup is direct and no module ever merges its parents' tables. A module is typechecked against the
+// table of the modules realized before it (the driver passes it in) and adds its own declarations to it
+// (equality_table_with_module). A declaration's entry is true exactly when its own equality walk, with its type parameters
+// comparing by the target, reaches no routed step and refuses nothing. The walks read applied generics through the table, so a
+// declaration is judged against the previous round's reading of the others; every local declaration starts true and an entry
+// only ever turns false, so the rounds stop when no entry changed (at most one round per local declaration) and a declaration
+// on its own cycle stays true unless a member that is not by the target is reached.
+
+// THE CLOSURE'S TABLE GAINS ONE MODULE'S OWN ENTRIES, and only those: the module was typechecked against the table of the modules
+// realized before it, so its env holds that table plus its own, and the closure keeps the old table with just the new
+// declarations inserted. Nothing is merged table into table; a lookup reads the one table by the target's declaration identity,
+// which names the declaring file.
+fn equality_table_with_module(table: Map<String, Bool>, typed: TypedModule, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  fold(typed.items |> filter(item => equality_declaration_is_walked(item: item)), init: table, f: (acc, d) =>
+    match map_get(typed.type_env.equality_by_target, node_declaration_identity(n: d, source_indices: source_indices)) {
+      Present { value: by_target } => map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), by_target)
+      Absent => map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), false)
+    })
+}
+
+fn equality_declaration_is_walked(item: Node) -> Bool {
+  (item.connective == Conj || item.connective == Disj) && item.transport == none
+}
+
+fn build_equality_by_target(items: List<Node>, env: TypeEnv, module_name: String) -> Map<String, Bool> {
+  let source_indices = env.source_indices
+  let declarations = items |> filter(item => equality_declaration_is_walked(item: item))
+  let seed = fold(declarations, init: env.equality_by_target, f: (acc, d) =>
+    map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), true))
+  equality_by_target_rounds(declarations: declarations, env: env, module_name: module_name, table: seed, fuel: (declarations |> count) + 1)
+}
+
+fn equality_by_target_rounds(declarations: List<Node>, env: TypeEnv, module_name: String, table: Map<String, Bool>, fuel: Int) -> Map<String, Bool> {
+  let scope = equality_synthesis_scope(env: type_env_with_equality_by_target(env: env, by_target: table), module_name: module_name)
+  let next = fold(declarations, init: table, f: (acc, d) =>
+    map_insert(acc, node_declaration_identity(n: d, source_indices: env.source_indices), equality_declaration_by_target(d: d, scope: scope)))
+  if equality_true_count(declarations: declarations, table: next, source_indices: env.source_indices) == equality_true_count(declarations: declarations, table: table, source_indices: env.source_indices) {
+    next
+  } else if fuel <= 0 {
+    // Entries only turn false, so decls+1 rounds always converge; running out is a defect in that argument. It answers false for
+    // every local declaration (no derived equality, fail-closed): each holder then refuses at its authored comparison, located.
+    fold(declarations, init: next, f: (acc, d) => map_insert(acc, node_declaration_identity(n: d, source_indices: env.source_indices), false))
+  } else {
+    equality_by_target_rounds(declarations: declarations, env: env, module_name: module_name, table: next, fuel: fuel - 1)
+  }
+}
+
+fn equality_true_count(declarations: List<Node>, table: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Int {
+  declarations |> filter(d => map_get(table, node_declaration_identity(n: d, source_indices: source_indices)) == Present { value: true }) |> count
+}
+
+fn equality_declaration_by_target(d: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let w = equality_declaration_walk(rt: d, peeled: d, name: authored_name_at(source_indices: source_indices, node: d), identity: node_declaration_identity(n: d, source_indices: source_indices), scope: scope, visited: empty_map(), depth: 0, at_root: false)
+  w.refusal == none && (match equality_plan_of_walk(w: w) { Absent => true Present { value: _ } => false })
 }
 
 fn equality_resolved_declaration_structure_core(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
@@ -16892,7 +16995,8 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
       source_visible_names: parent_env.source_visible_names, authored_import_names: parent_env.authored_import_names,
       symbol_index: parent_env.symbol_index,
       unit_variant_index: rebuilt_index,
-      unit_variant_index_observed: true
+      unit_variant_index_observed: true,
+      equality_by_target: parent_env.equality_by_target
     }
   } else { parent_env }
 }
@@ -16925,7 +17029,8 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
     source_visible_names: filtered.source_visible_names, authored_import_names: filtered.authored_import_names,
     symbol_index: filtered.symbol_index,
     unit_variant_index: rebuilt_index,
-    unit_variant_index_observed: true
+    unit_variant_index_observed: true,
+    equality_by_target: filtered.equality_by_target
   }
 }
 
@@ -16965,7 +17070,8 @@ fn interface_env_surface(env: TypeEnv) -> TypeEnv {
     source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names,
     symbol_index: env.symbol_index,
     unit_variant_index: rebuilt_index,
-    unit_variant_index_observed: true
+    unit_variant_index_observed: true,
+    equality_by_target: env.equality_by_target
   }
 }
 
@@ -18085,7 +18191,7 @@ fn kernel_optional_type_node() -> Node {
 // fires; witness test.claim.undeclared_bare_type_reference_class_witness
 // qualified_use_of_a_listed_import_charges_no_unlisted_import_use (RED pre-fix) beside
 // qualified_use_without_any_import_still_charges_unlisted_import_use (the gate still gates).
-fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> BuildTypeEnvResult {
+fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, equality_by_target: Map<String, Bool>) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
@@ -18116,7 +18222,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
-  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true }
+  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true, equality_by_target: empty_map() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
@@ -18240,7 +18346,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index, unit_variant_index: module_variant_index, unit_variant_index_observed: true, equality_by_target: empty_map() }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
@@ -18258,7 +18364,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     symbol_index: resolved_env_out.symbol_index,
     unit_variant_index: resolved_env_out.unit_variant_index,
     unit_variant_index_observed: resolved_env_out.unit_variant_index_observed,
+    equality_by_target: equality_by_target,
   }
+  let summarized_env = type_env_with_equality_by_target(env: final_env, by_target: build_equality_by_target(items: module_items(n: module.module), env: final_env, module_name: module_name_str))
   let cache_str_bindings = map_merge(final_env.ancestry_str_bindings, final_env.str_bindings)
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
@@ -18267,7 +18375,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     variant_locals: empty_map()
   }
   BuildTypeEnvResult {
-    env: final_env,
+    env: summarized_env,
     cache: type_env_cache,
     diagnostics: concat(concat(import_diags, namespace_alias_diags), resolved_diags),
     binding_forks: binding_forks
@@ -18287,7 +18395,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
   let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
-  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true }
+  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true, equality_by_target: empty_map() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
@@ -18359,7 +18467,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index, unit_variant_index_observed: true, equality_by_target: empty_map() }
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: visible_str_bindings,
@@ -20193,8 +20301,8 @@ fn equality_synthetic_fn(module_name: String, name: String, params: List<Node>, 
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemFunction, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
-  let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
+fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, equality_by_target: Map<String, Bool>) -> TypecheckModuleResult {
+  let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, equality_by_target: equality_by_target)
   let env = env_result.env
   let env_cache = env_result.cache
   let env_diags = env_result.diagnostics
@@ -20328,7 +20436,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 }
 
 fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
-  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index(), global_variant_base: empty_map())
+  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index(), global_variant_base: empty_map(), equality_by_target: empty_map())
 }
 
 type EnvResolveResult {
@@ -20416,7 +20524,7 @@ fn topo_resolve_types(
       }
     )
     return EnvResolveResult {
-      env: TypeEnv { module_path: env.module_path, bindings: stuck_accum.bindings, str_bindings: stuck_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names, symbol_index: env.symbol_index, unit_variant_index: stuck_accum.unit_variant_index, unit_variant_index_observed: env.unit_variant_index_observed },
+      env: TypeEnv { module_path: env.module_path, bindings: stuck_accum.bindings, str_bindings: stuck_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names, symbol_index: env.symbol_index, unit_variant_index: stuck_accum.unit_variant_index, unit_variant_index_observed: env.unit_variant_index_observed, equality_by_target: env.equality_by_target },
       diagnostics: concat(diagnostics, stuck_accum.diagnostics)
     }
   }
@@ -20440,7 +20548,7 @@ fn topo_resolve_types(
 
   topo_resolve_types(
     remaining: next_remaining,
-    env: TypeEnv { module_path: env.module_path, bindings: ready_accum.bindings, str_bindings: ready_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names, symbol_index: env.symbol_index, unit_variant_index: ready_accum.unit_variant_index, unit_variant_index_observed: env.unit_variant_index_observed },
+    env: TypeEnv { module_path: env.module_path, bindings: ready_accum.bindings, str_bindings: ready_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names, symbol_index: env.symbol_index, unit_variant_index: ready_accum.unit_variant_index, unit_variant_index_observed: env.unit_variant_index_observed, equality_by_target: env.equality_by_target },
     module_name: module_name,
     diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,
@@ -20654,6 +20762,7 @@ type RealizeState {
   item_registry: Map<String, ItemInfo>
   diags_by_name: Map<String, List<ErrorNode>>
   demands_by_name: Map<String, List<GeneratedProviderDemand>>
+  equality_by_target: Map<String, Bool>
 }
 
 // THE SEED'S ACQUISITION BOUNDARY, read from the checked closure. Whether a demanded module is in the
@@ -20756,7 +20865,8 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     variant_surfaces: empty_map(),
     item_registry: empty_map(),
     diags_by_name: empty_map(),
-    demands_by_name: empty_map()
+    demands_by_name: empty_map(),
+    equality_by_target: empty_map()
   }, f: (st, rm) =>
     realize_module(
       name: authored_name_at(source_indices: source_indices, node: rm.module),
@@ -20877,7 +20987,7 @@ fn realize_module(
             )
           )
           let parent_diagnostics = missing_parent_env_diagnostics(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base)
+          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base, equality_by_target: dep_state.equality_by_target)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
@@ -20889,7 +20999,8 @@ fn realize_module(
             ),
             item_registry: map_merge(dep_state.item_registry, typed.item_registry),
             diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_diagnostics, tc_result.diagnostics)),
-            demands_by_name: map_insert(dep_state.demands_by_name, typed_path, tc_result.provider_demands)
+            demands_by_name: map_insert(dep_state.demands_by_name, typed_path, tc_result.provider_demands),
+            equality_by_target: equality_table_with_module(table: dep_state.equality_by_target, typed: typed, source_indices: source_indices)
           }
       }
   }
@@ -20922,7 +21033,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
-  TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true }
+  TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true, equality_by_target: empty_map() }
 }
 
 fn rewire_type_env_parent_links(modules: List<TypedModule>, index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
@@ -20966,7 +21077,8 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, index: Map<String, T
         source_visible_names: m.type_env.source_visible_names, authored_import_names: m.type_env.authored_import_names,
         symbol_index: m.type_env.symbol_index,
         unit_variant_index: rewired_index,
-        unit_variant_index_observed: true
+        unit_variant_index_observed: true,
+        equality_by_target: m.type_env.equality_by_target
       },
       type_env_cache: m.type_env_cache,
       interface: m.interface,
