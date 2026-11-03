@@ -2,15 +2,17 @@ module test.claim.roadmap.attempt_state_unowned_entries_frontier_witness
 
 // The unowned-entries frontier: every unowned durable class beneath the attempt-state root carries its own
 // census row keyed by a unique PathSubject identity. THE ORACLE IS AN IDENTITY JOIN, NOT A COUNT.
-// Controls:
-//   (a) every expected class identity appears exactly once -- missing names the class;
-//   (b) no identity appears more than once -- duplicate names the class;
-//   (c) the group is a member of the census aggregate by identity.
-// The count is NEVER the sole oracle; it is a derived consequence of the identity join.
+// This entry holds the controls that read ONLY the group's own rows, so its closure stays small:
+//   (a) every expected class identity appears -- a miss names the class;
+//   (b) no expected identity appears twice -- a duplicate names the class;
+//   (c) every row carries an identity from the roster -- no unknown class.
+// BROKEN control (both directions at once, verified red then restored): delete the "handin" row and duplicate the
+// "job-<pid>.out" row -- (a) fails naming handin, (b) fails naming job-<pid>.out. The count is NEVER the oracle.
+// The census-AGGREGATE join (d)/(e) lives in attempt_state_unowned_entries_frontier_aggregate_witness.dag, split
+// out because the aggregate's closure does not resolve on current main (see that file's header).
 
 import std.types { Bool, String, Int, List }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.roadmap.roadmap_attempt_state_store { attempt_state_unowned_entries_frontier_rows }
 
 // The 9 class identities, keyed on the canonical entry-name pattern. This is the roster against which the
@@ -79,18 +81,4 @@ test fn every_row_identity_is_in_the_roster() -> Bool {
   any(attempt_state_unowned_entries_frontier_rows, r =>
     any(attempt_state_unowned_class_identity_roster, id => row_identity_key(row: r) == id)
   )
-}
-
-// (d) The group is present in the census aggregate (each identity found among all aggregate rows).
-test fn the_unowned_entries_frontier_group_is_in_the_census_aggregate() -> Bool {
-  let aggregate = census_closure_frontier_rows()
-  any(attempt_state_unowned_class_identity_roster, id =>
-    any(aggregate, r => row_identity_key(row: r) == id)
-  )
-}
-
-// (e) Identity join completeness: all roster identities present exactly once in the census aggregate.
-test fn unowned_entries_identity_join_complete_in_aggregate() -> Bool {
-  let aggregate = census_closure_frontier_rows()
-  first_missing_in(roster: attempt_state_unowned_class_identity_roster, rows: aggregate) == ""
 }
