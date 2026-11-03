@@ -370,15 +370,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "rfm-rung-census".to_string(),
-            },
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/rfm_rung_census.dag",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "native-app-attest".to_string(),
             },
             TargetProducer::NativeClaimProgram {
