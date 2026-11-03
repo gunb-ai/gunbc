@@ -96,6 +96,7 @@ import extdeps.debian.debconf {
   RefusedAtTheMint,
   debconf_answer_record,
   debconf_selection_answer,
+  debconf_selection_file,
   debconf_selection_kind,
   debconf_selection_kind_spelling,
   debconf_selection_label,
@@ -136,7 +137,11 @@ import extdeps.os.ubuntu_autoinstall {
 // be bound. Importing the fold rather than restating its output is what makes "the document the machine was
 // given" answerable — a local string that merely resembles the payload proves nothing about the document.
 import gunbc.os_install_emit { AutoinstallUserData, autoinstall_user_data }
-import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line }
+// The two callees below are spelled in the import lists that own them: the effect join refuses a
+// callee it can only reach by proximity ('no established callee identity'), which is what had been
+// refusing this corpus in the drift lane. See
+// gunbc.recurring_failure_mode.effect_summary_join_refuses_a_bare_name_whose_import_is_missing.
+import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line, ssh_ed25519_key_identity }
 import extdeps.storage.types {
   BareDevice,
   CachedMirror,
