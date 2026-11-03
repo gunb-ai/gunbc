@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   DoubleBallBearing,
   FanCatalogRow,
+  FreeAirFlowUnread,
   FanPublishedOperatingPoint,
   FanSpeedRangeUnpublished,
   FanStopBehaviorUnpublished,
@@ -56,6 +57,7 @@ data dynatron_df126025bu_pwmh_catalog: FanCatalogRow = FanCatalogRow {
   published_points: dynatron_df126025bu_pwmh_published_points,
   published_speed_range: FanSpeedRangeUnpublished,
   published_stop_behavior: FanStopBehaviorUnpublished,
+  free_air_flow: FreeAirFlowUnread { read_obligation: "Read the DF126025BU-PWMH free-air flow at its published duty points from Dynatron's datasheet and convert it to mL/s." },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

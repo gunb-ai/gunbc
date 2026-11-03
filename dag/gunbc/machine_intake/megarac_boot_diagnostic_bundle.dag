@@ -24,7 +24,11 @@ import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_t
 import std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
+  ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
+  ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear,
+}
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation, chassis_observation_text }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, post_power_fan_gate_text }
 import gunbc.machine_intake.oob_boot_handoff { BootReadbackConfirmed, boot_readback_verdict }
@@ -1301,9 +1305,9 @@ type BootParam5Clear
 // standings are the core's (one decision, one home); the readings ride beside them because a standing
 // nobody can re-check is exactly how the boot-5 pair became dead information: parameter 5 read
 // 'Boot parameter data: a014000000' before AND after the set, and the classification returned on the first
-// without ever looking at the second. A derived stdout is never in here -- the vendor's echo of the clear
-// is logged at most, never believed (extdeps.bmc.ipmitool_observed_output
-// ipmitool_bootdev_none_reply_standing).
+// without ever looking at the second. And there is no echo to believe either: the clear is a raw Set System
+// Boot Options, which prints nothing (extdeps.bmc.ipmi ChassisBootOptionsClear), so a write's own words
+// cannot become a verdict here even by accident.
 type BootOverrideClears {
   stale: StaleOverrideClearance
   stale_read: BootParam5Reading
@@ -2489,27 +2493,35 @@ fn megarac_boot_sensors(row: MegaRacBootRow, password_file: NonEmptyStr, sdr: Sd
   }
 }
 
-// CLEAR BOOT PARAMETER 5'S OVERRIDE AND READ IT BACK. The write is `ipmitool chassis bootdev none` --
-// extdeps.bmc.ipmi Tool.ChassisBootDev, the plain operation, whose only device this model carries is the
-// clear word (extdeps.bmc.ipmi_boot_selection ipmi_boot_device_none; gunbc.bmc_dry_realization
-// bmc_bootdev_clear_reply binds it to the world). The read is the SAME parameter-5 read every other
-// override standing in this module comes from, so the clear is judged by exactly the bytes the set was.
-// The write's own stdout is carried for the log and believed for nothing: on this firmware the vendor's
-// echo of the device word is a derived row and not a capture (extdeps.bmc.ipmitool_observed_output
-// ipmitool_bootdev_none_reply_standing), and the only thing that says a clear landed is the readback. Both
-// calls go out on every arm, including a refused write -- an attempt that leaves without knowing what
-// parameter 5 now says is precisely the exposure the release exists to close.
+// CLEAR BOOT PARAMETER 5'S OVERRIDE AND READ IT BACK. The write is Set System Boot Options, parameter 5,
+// with the valid bit clear -- `ipmitool raw 0x00 0x08 0x05 0x01 0x00 0x00 0x00 0x00 0x00`, extdeps.bmc.ipmi
+// Tool.ChassisBootOptionsClear, whose data bytes are the model's own (extdeps.bmc.ipmi_boot_selection
+// ipmi_boot_flag_data_*_clear, cited to the IPMI v2.0 rev 1.1 boot option parameter 5 table; the dry world
+// gunbc.bmc_dry_realization bmc_boot_options_clear_reply refuses any other). It REPLACES `chassis bootdev
+// none`: that command clears the SELECTOR and leaves the VALID bit set, and boot run 41573858366 read
+// precisely that state back -- 'Boot parameter data: 8000000000' beside 'Boot Device Selector : No override'
+// (extdeps.bmc.ipmitool_observed_output ipmitool_bootparam5_valid_after_bootdev_none) -- so the override a
+// previous attempt left stayed pending and the handoff was withheld for it. The read is the SAME
+// parameter-5 read every other override standing in this module comes from, so the clear is judged by
+// exactly the bytes the set was; `ipmitool raw` echoes nothing, so the write's stdout is carried for the log
+// and believed for nothing, and the only thing that says a clear landed is that readback. Both calls go out
+// on every arm, including a refused write -- an attempt that leaves without knowing what parameter 5 now
+// says is precisely the exposure the release exists to close.
 fn megarac_boot_param5_clear(row: MegaRacBootRow, username: NonEmptyStr, password_file: NonEmptyStr) -> BootParam5Clear
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_param5_clear_under_hold"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_param5_release"),
   ]
 {
-  let r = diagnostic.ipmi.Tool.ChassisBootDev(
+  let r = diagnostic.ipmi.Tool.ChassisBootOptionsClear(
     bmc_host: row.controller.host,
     username: username,
     password_file: password_file,
-    device: ipmi_boot_device_none,
+    boot_flag_data_1: ipmi_boot_flag_data_1_clear as String,
+    boot_flag_data_2: ipmi_boot_flag_data_2_clear as String,
+    boot_flag_data_3: ipmi_boot_flag_data_3_clear as String,
+    boot_flag_data_4: ipmi_boot_flag_data_4_clear as String,
+    boot_flag_data_5: ipmi_boot_flag_data_5_clear as String,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   BootParam5ClearIssued {
@@ -3081,9 +3093,10 @@ fn megarac_boot_hpm_check(row: MegaRacBootRow, username: NonEmptyStr, password_f
 // artifacts/bmc/ and names in a MegaRacVersionFromFirmwareRead standing. This reads that file BACK and runs
 // the catalogue's one derivation over it (gunbc.host.bmc_release_capability_catalog
 // megarac_version_establishment, component APP), so what the receipt reports is what those bytes establish,
-// not a second reading of the tool. It is evidence for the restoration trigger of
-// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation and changes no
-// admission: production still admits operations through the observed build until that cutover lands.
+// not a second reading of the tool. It was the evidence for the restoration trigger of
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation, and it changes no
+// admission by itself: the readback grounds the build the ledger names, and the transition that switched
+// production onto it is the cutover in gunbc#15591, which moved the observation and every caller together.
 // THE FILE IS NAMED BY THE RUN THAT READ IT. The runner's work tree outlives a run, so a fixed name could
 // hand this run's readback a previous run's bytes after a failed read; keyed by GITHUB_RUN_ID (the
 // run_attempt the boot passes, and the attempt identity the conclusion reads), a run reads back only what

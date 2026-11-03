@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { FreeMonoid, collection_concat_shape, is_prefix_of }
+import std.algebra { FreeMonoid, collection_concat_shape, is_prefix_of, list_reverse }
 import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, Int, String, SourceSpan, List, Map }
 
@@ -568,7 +568,7 @@ fn occurrence_containment_path_contains_ancestor(
 fn occurrence_containment_ancestors_as_list(
   ancestors: FreeMonoid<OccurrenceId>
 ) -> List<OccurrenceId> {
-  reverse(fold(
+  list_reverse(xs: fold(
     ancestors,
     init: [],
     f: (acc, id) => concat([id], acc),

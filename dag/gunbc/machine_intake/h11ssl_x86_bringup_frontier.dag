@@ -76,8 +76,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //    gunbc.host.host_primary_network_apply does FleetHostFileSubject core writes then netplan try
 //    in a transient unit with on-disk rollback and a readback from a host OTHER than the target) is
 //    DRAFT in PR gunbc#15100 and NOT on main as of 2026-10-25 -- citing it as existing would be
-//    fabrication. The route is not arch-bound, but the try wrapper renders a wait-online command
-//    from the row's renderer, so this host's row must state the renderer the hand install used --
+//    fabrication. The route is not arch-bound, but the owned netplan file renders the row's renderer
+//    (gunbc.host.host_primary_network), so this host's row must state the renderer the hand install used --
 //    which the receipt holds NotRelayed (network_config_report). For H11SSL unit 1: none exists --
 //    neither the observed NIC/netplan/lease receipt, nor a derived desired row, nor the LAN record.
 //

@@ -1,0 +1,127 @@
+module product.printed_chassis.card_end_interface
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { Micrometer, micrometer }
+
+// ═══ WHAT A DUCT MEETS AT A CARD'S END: THE SHARED INTERFACE AND THE FEATURES ONLY SOME CARDS HAVE ═══
+//
+// Every passive card a duct serves presents an end face with an air opening: its outer extent, the fin
+// opening at its tightest, where that opening sits, and how far the fins sit behind it. Those are what any
+// duct needs. What a duct can FASTEN to or must KEEP CLEAR of differs per card: the A16's end cap has two
+// threaded inserts and its 8-pin header on that face; the A2's intake end has neither. Those are features,
+// and each is in exactly one of three states, because "this card has none" and "nobody has looked" are
+// different facts and a duct may only rely on the first (2026-11-02, after the A2 was measured).
+//
+// The reading is this repository's observation of a held card, not the vendor's (product.printed_chassis
+// .duct_card_catalog says why); the frame is the one the A16 was read in. Lengths along the face are from
+// its TOP end; depths across it are from its BACK face.
+
+type EndFaceFeature<V>
+  = FeaturePresent { value: V }
+  | FeatureAbsentObserved
+  | FeatureNotObserved { read_obligation: NonEmptyStr }
+
+fn feature_value<V>(f: EndFaceFeature<V>) -> V? {
+  match f { FeaturePresent { value: v } => Present { value: v } FeatureAbsentObserved => Absent FeatureNotObserved { read_obligation: _ } => Absent }
+}
+
+// Two threaded inserts in the end cap, each read to its NEAR edge: top edge of the upper hole from the top
+// end, bottom edge of the lower hole from the bottom end, nearest edge from the back face.
+type EndCapInserts {
+  spacing: Micrometer
+  near_edge_from_back: Micrometer
+  upper_near_edge_from_top: Micrometer
+  lower_near_edge_from_bottom: Micrometer
+}
+
+// An auxiliary power header on the end face: its outer pin's distance from the top end.
+type FaceConnector { from_top: Micrometer }
+
+// The fin-free tapered bands at the two ends of the opening: the opening's measured length includes them,
+// and no fins sit behind them. Each band's section, cut along the face length, is a lip straight in from the
+// face, then a slope that runs `slope_depth` into the card while closing the band's whole length toward the
+// opening's middle, ending on a flat parallel to the card's top and bottom; the first fin sits `fin_gap`
+// beyond that flat. Read as one shape for both bands.
+type BandTaper { lip_depth: Micrometer, slope_depth: Micrometer, fin_gap: Micrometer }
+
+type FinFreeBands { top: Micrometer, bottom: Micrometer, taper: EndFaceFeature<BandTaper> }
+
+type CardEndInterface {
+  source: NonEmptyStr
+  face_length: Micrometer
+  face_thickness: Micrometer
+  window_length: Micrometer
+  window_depth: Micrometer
+  window_from_top: Micrometer
+  window_from_back: Micrometer
+  fin_setback: Micrometer
+  fin_free_bands: EndFaceFeature<FinFreeBands>
+  inserts: EndFaceFeature<EndCapInserts>
+  connector: EndFaceFeature<FaceConnector>
+}
+
+// The features a realization would need and this reading does not supply, each named with its state. A
+// realization that fastens into inserts or keeps clear of a header reads this before building anything.
+fn missing_feature<V>(name: String, f: EndFaceFeature<V>) -> List<String> {
+  match f {
+    FeaturePresent { value: _ } => []
+    FeatureAbsentObserved => [join([name, ": the card has none (observed)"], "")]
+    FeatureNotObserved { read_obligation: o } => [join([name, ": not observed; ", o as String], "")]
+  }
+}
+
+// ═══ THE A16, READ 2026-10-23 ═══
+// Caliper readings by the operator on an A16 PG171 in hand. The window sides are pitched and the window was
+// read at its tightest point; the taper's fin-free bands were not read separately, so they are NOT observed
+// rather than absent.
+data a16_end_cap_inserts: EndCapInserts = EndCapInserts {
+  spacing: micrometer(count: 27620),
+  near_edge_from_back: micrometer(count: 8860),
+  upper_near_edge_from_top: micrometer(count: 59720),
+  lower_near_edge_from_bottom: micrometer(count: 7540),
+}
+
+data a16_face_connector: FaceConnector = FaceConnector { from_top: micrometer(count: 2560) }
+
+data a16_card_end: CardEndInterface = CardEndInterface {
+  source: "Operator caliper readings on a held A16 PG171, 2026-10-23",
+  face_length: micrometer(count: 97840),
+  face_thickness: micrometer(count: 38600),
+  window_length: micrometer(count: 88030),
+  window_depth: micrometer(count: 23940),
+  window_from_top: micrometer(count: 5540),
+  window_from_back: micrometer(count: 13090),
+  fin_setback: micrometer(count: 6000),
+  fin_free_bands: FeatureNotObserved { read_obligation: "operator, on the held A16: the length of the fin-free tapered band at each end of the fin window, as read on the A2 on 2026-11-02" },
+  inserts: FeaturePresent { value: a16_end_cap_inserts },
+  connector: FeaturePresent { value: a16_face_connector },
+}
+
+// ═══ THE A2, READ 2026-11-02 ═══
+// Operator caliper readings on a held A2, intake end (opposite the bracket), with the bracket removed. The
+// face's TOP end is the end away from the slot; its BACK edge is the PCB side. The opening sits 2.2 mm below
+// the top and 2 mm in from the PCB-side edge, with 2 mm read on the other side too: the widths sum 0.42 mm
+// short of the face because the opening's sides are pitched and it was read at its tightest, as on the A16.
+// The bottom border (55.6 - 52.37 - 2.2 = 1.03 mm) was not read on its own. The fins sit about 1 mm behind
+// the face ("very close, like 1 mm"), and the top and bottom 4.9 mm of the opening are tapered and fin-free.
+// The taper was read after the first fit plate (operator, 2026-11-02): "a tiny lip, say about 1 mm, and then a
+// sharp right angle inward; the horizontal distance until the triangle terminates into a flat plane parallel
+// to the top and bottom of the card is 4 mm", and "between where that flat parallel plane sits and the first
+// fin is another 1 mm". So the band's section is a right triangle with legs 4.9 mm (along the face) and 4 mm
+// (into the card) behind a 1 mm lip.
+// The intake end has no threaded holes and no power header: the only holes are on the bracket end, and the
+// card is powered from the slot (extdeps.gpu.nvidia_a2 a2_card_row auxiliary_power is the cited empty list).
+data a2_card_end: CardEndInterface = CardEndInterface {
+  source: "Operator caliper readings on a held A2, intake end, 2026-11-02",
+  face_length: micrometer(count: 55600),
+  face_thickness: micrometer(count: 18620),
+  window_length: micrometer(count: 52370),
+  window_depth: micrometer(count: 14200),
+  window_from_top: micrometer(count: 2200),
+  window_from_back: micrometer(count: 2000),
+  fin_setback: micrometer(count: 1000),
+  fin_free_bands: FeaturePresent { value: FinFreeBands { top: micrometer(count: 4900), bottom: micrometer(count: 4900), taper: FeaturePresent { value: BandTaper { lip_depth: micrometer(count: 1000), slope_depth: micrometer(count: 4000), fin_gap: micrometer(count: 1000) } } } },
+  inserts: FeatureAbsentObserved,
+  connector: FeatureAbsentObserved,
+}

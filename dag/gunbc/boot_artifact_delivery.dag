@@ -71,6 +71,8 @@ import gunbc.machine_intake.access {
   AccessContextUnobserved,
   BootDeliveryTarget,
   BoundBmcAccessContext,
+  ControllerAddressedTarget,
+  NetworkAddressedTarget,
   BoundBmcAccessContextStanding,
   same_boot_delivery_target,
 }
@@ -363,6 +365,7 @@ type BootDeliveryCandidateIneligibility
   | CandidateStagingAbsent
   | CandidateStagedArtifactMismatch { offered: ContentHash, requested: ContentHash }
   | CandidateEvidenceForOtherTarget { evidence_target: BootDeliveryTarget }
+  | CandidateRequiresController
   | CandidateConfigfsUnestablished { missing: List<ConfigfsTransportRequirement> }
   | CandidateConfigfsRefused { observed_absent: List<ConfigfsTransportRequirement> }
   | CandidateUefiHttpUnestablished { missing: List<UefiHttpRequirement> }
@@ -461,7 +464,7 @@ type SelectedCandidateEvidence
 // manifest the intersection was judged against, the selected candidate's own
 // evidence, and every candidate's standing.
 type BootDeliveryEligibilityProvenance {
-  profile_provenance: BmcAccessProfileProvenance
+  profile_provenance: BmcAccessProfileProvenance?
   evidence_manifest: List<EvidenceRef>
   selected: SelectedCandidateEvidence
   considered: List<BootDeliveryPlanCandidateVerdict>
@@ -477,12 +480,26 @@ type BootDeliveryEligibilityProvenance {
 // manifest, the route named by the bound profile — never the route the catalog
 // prefers (2026-08-30 re-review, boot-control ruling). Control and delivery
 // keep independent eligibility; the plan exists only when both hold.
+// A network-addressed plan has no controller to have observed a route on: its boot control
+// is the firmware's own boot order, a BootControlObligation executed and read back later,
+// never an observation this solver holds. The sum names that rather than fabricating a route.
+type BootControlRouteBasis
+  = BootControlRouteOnController { observation: BmcBootControlRouteObservation }
+  | BootControlByFirmwareBootOrder
+
+fn plan_bmc_boot_control_observation(plan: BootDeliveryPlan) -> BmcBootControlRouteObservation? {
+  match plan.boot_control_route {
+    BootControlRouteOnController { observation: o } => Present { value: o }
+    BootControlByFirmwareBootOrder => none
+  }
+}
+
 type BootDeliveryPlan {
   target: BootDeliveryTarget
   artifact: BootArtifact
   delivery: BootArtifactDelivery
   boot_control: BootControlTarget
-  boot_control_route: BmcBootControlRouteObservation
+  boot_control_route: BootControlRouteBasis
   eligibility: BootDeliveryEligibilityProvenance
 }
 
@@ -497,6 +514,7 @@ type BootDeliveryRefusalCause
   | DeliveryBootControlRouteNotControlCapable { observed: BmcAccessRoute }
   | DeliveryBootControlRouteAmbiguous { observed: List<BmcAccessRoute> }
   | DeliveryNoEligibleTransport { firmware: BmcFirmwareReleaseIdentity, considered: List<BootDeliveryCandidateVerdict> }
+  | DeliveryNoEligibleNetworkTransport { considered: List<BootDeliveryCandidateVerdict> }
 
 type BootDeliverySolution
   = BootDeliveryPlanned { plan: BootDeliveryPlan }
@@ -511,10 +529,15 @@ type BoundBootDeliveryTargetContext
   | DeliveryTargetSubjectUnbound { requested: BootDeliveryTarget, bound_subject: MachineIntakeSubject }
   | DeliveryTargetControllerUnbound { requested: BootDeliveryTarget, bound_endpoint: BmcControllerEndpoint }
 
-fn bind_boot_delivery_target(target: BootDeliveryTarget, access: BoundBmcAccessContext) -> BoundBootDeliveryTargetContext {
-  if same_intake_subject(left: target.subject, right: access.subject) == false {
+fn bind_boot_delivery_target(
+  target: BootDeliveryTarget,
+  subject: MachineIntakeSubject,
+  endpoint: BmcControllerEndpoint,
+  access: BoundBmcAccessContext,
+) -> BoundBootDeliveryTargetContext {
+  if same_intake_subject(left: subject, right: access.subject) == false {
     DeliveryTargetSubjectUnbound { requested: target, bound_subject: access.subject }
-  } else if (target.endpoint == access.endpoint) == false {
+  } else if (endpoint == access.endpoint) == false {
     DeliveryTargetControllerUnbound { requested: target, bound_endpoint: access.endpoint }
   } else {
     DeliveryTargetContextBound { target: target, access: access }
@@ -739,6 +762,19 @@ fn boot_delivery_candidate_verdicts(
   ]
 }
 
+// A network-addressed target has no controller, so every controller-gated candidate is
+// ineligible with that cause and only the two network transports are judged on evidence.
+fn network_addressed_candidate_verdicts(ev: BoundBootDeliveryEvidence, request: BootDeliveryRequest) -> List<BootDeliveryCandidateVerdict> {
+  [
+    BootDeliveryCandidateVerdict { candidate: CandidateRedfishVirtualMedia, standing: CandidateIneligible { cause: CandidateRequiresController } },
+    BootDeliveryCandidateVerdict { candidate: CandidateMegaRacRestRemoteMedia, standing: CandidateIneligible { cause: CandidateRequiresController } },
+    BootDeliveryCandidateVerdict { candidate: CandidateOpenBmcNbdProxyWebsocket, standing: CandidateIneligible { cause: CandidateRequiresController } },
+    BootDeliveryCandidateVerdict { candidate: CandidateOpenBmcConfigfsUsbGadget, standing: CandidateIneligible { cause: CandidateRequiresController } },
+    BootDeliveryCandidateVerdict { candidate: CandidateUefiHttpBoot, standing: uefi_http_candidate(ev: ev, request: request) },
+    BootDeliveryCandidateVerdict { candidate: CandidatePxeChainBoot, standing: pxe_chain_candidate(ev: ev, request: request) },
+  ]
+}
+
 fn candidate_is_eligible(verdicts: List<BootDeliveryCandidateVerdict>, candidate: BootDeliveryCandidate) -> Bool {
   fold(
     verdicts,
@@ -751,7 +787,7 @@ fn candidate_is_eligible(verdicts: List<BootDeliveryCandidateVerdict>, candidate
 // read off the bound context (locator and protocol from the probe receipt, the
 // WebSocket path and the OEM redirection fact from the profile's routes) and
 // every staging-side parameter off the offer; none is supplied loose.
-fn build_boot_artifact_delivery(
+fn build_controller_addressed_delivery(
   ctx: BoundBmcAccessContext,
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
@@ -843,6 +879,19 @@ fn build_boot_artifact_delivery(
             ReinstallPathRefused { observed_absent: _ } => none
           }
       }
+    CandidateUefiHttpBoot => build_network_addressed_delivery(ev: ev, candidate: candidate)
+    CandidatePxeChainBoot => build_network_addressed_delivery(ev: ev, candidate: candidate)
+  }
+}
+
+// The two transports that rest on no controller. A controller-gated candidate cannot be
+// eligible without a context, so it builds nothing here.
+fn build_network_addressed_delivery(ev: BoundBootDeliveryEvidence, candidate: BootDeliveryCandidate) -> BuiltBootArtifactDelivery? {
+  match candidate {
+    CandidateRedfishVirtualMedia => none
+    CandidateMegaRacRestRemoteMedia => none
+    CandidateOpenBmcNbdProxyWebsocket => none
+    CandidateOpenBmcConfigfsUsbGadget => none
     CandidateUefiHttpBoot =>
       match ev.uefi_http {
         UefiHttpDeliveryEstablished { target: _, params: p, evidence: evs } =>
@@ -869,6 +918,18 @@ fn build_boot_artifact_delivery(
   }
 }
 
+fn build_boot_artifact_delivery(
+  ctx: BoundBmcAccessContext?,
+  ev: BoundBootDeliveryEvidence,
+  request: BootDeliveryRequest,
+  candidate: BootDeliveryCandidate,
+) -> BuiltBootArtifactDelivery? {
+  match ctx {
+    Present { value: c } => build_controller_addressed_delivery(ctx: c, ev: ev, request: request, candidate: candidate)
+    Absent => build_network_addressed_delivery(ev: ev, candidate: candidate)
+  }
+}
+
 // THE ONE TRANSPORT THE POLICY SELECTS, built. The policy's order is a total
 // ranking over a set already decided by evidence, so this walk RANKS -- it does
 // not search, and it never attempts. Every candidate's eligibility is settled
@@ -876,7 +937,7 @@ fn build_boot_artifact_delivery(
 // decision, and the plan records the rest as outranked rather than as
 // alternatives (NO-FALLBACK-0).
 fn selected_boot_artifact_delivery(
-  ctx: BoundBmcAccessContext,
+  ctx: BoundBmcAccessContext?,
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
   policy: BootDeliveryPolicy,
@@ -898,11 +959,11 @@ fn selected_boot_artifact_delivery(
 }
 
 fn select_boot_artifact_delivery(
-  ctx: BoundBmcAccessContext,
+  ctx: BoundBmcAccessContext?,
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
   policy: BootDeliveryPolicy,
-  control_route: BmcBootControlRouteObservation,
+  control_route: BootControlRouteBasis,
   verdicts: List<BootDeliveryCandidateVerdict>,
 ) -> BootDeliverySolution {
   match selected_boot_artifact_delivery(ctx: ctx, ev: ev, request: request, policy: policy, verdicts: verdicts) {
@@ -915,14 +976,24 @@ fn select_boot_artifact_delivery(
           boot_control: boot_artifact_delivery_boot_control(delivery: built.delivery),
           boot_control_route: control_route,
           eligibility: BootDeliveryEligibilityProvenance {
-            profile_provenance: ctx.profile_provenance,
-            evidence_manifest: ctx.evidence_manifest,
+            profile_provenance: match ctx {
+              Present { value: c } => Present { value: c.profile_provenance }
+              Absent => none
+            },
+            evidence_manifest: match ctx {
+              Present { value: c } => c.evidence_manifest
+              Absent => []
+            },
             selected: built.selected,
             considered: plan_candidate_verdicts(verdicts: verdicts, selected: built.candidate),
           },
         },
       }
-    Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ctx.capability_row.firmware, considered: verdicts } }
+    Absent =>
+      match ctx {
+        Present { value: c } => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: c.capability_row.firmware, considered: verdicts } }
+        Absent => BootDeliveryRefused { cause: DeliveryNoEligibleNetworkTransport { considered: verdicts } }
+      }
   }
 }
 
@@ -1022,11 +1093,11 @@ fn solve_bound_boot_artifact_delivery(
       BootControlRouteAmbiguous { observed: rs } => BootDeliveryRefused { cause: DeliveryBootControlRouteAmbiguous { observed: rs } }
       BootControlRouteObserved { observation: route } =>
         select_boot_artifact_delivery(
-          ctx: ctx,
+          ctx: Present { value: ctx },
           ev: ev,
           request: request,
           policy: policy,
-          control_route: route,
+          control_route: BootControlRouteOnController { observation: route },
           verdicts: boot_delivery_candidate_verdicts(ctx: ctx, ev: ev, request: request),
         )
     }
@@ -1043,9 +1114,30 @@ fn solve_boot_artifact_delivery(
   ev: BoundBootDeliveryEvidence,
   policy: BootDeliveryPolicy,
 ) -> BootDeliverySolution {
+  match request.target {
+    ControllerAddressedTarget { subject: s, endpoint: e } => solve_controller_addressed_delivery(request: request, ev: ev, policy: policy, subject: s, endpoint: e)
+    NetworkAddressedTarget { subject: _, mac: _ } =>
+      select_boot_artifact_delivery(
+        ctx: none,
+        ev: ev,
+        request: request,
+        policy: policy,
+        control_route: BootControlByFirmwareBootOrder,
+        verdicts: network_addressed_candidate_verdicts(ev: ev, request: request),
+      )
+  }
+}
+
+fn solve_controller_addressed_delivery(
+  request: BootDeliveryRequest,
+  ev: BoundBootDeliveryEvidence,
+  policy: BootDeliveryPolicy,
+  subject: MachineIntakeSubject,
+  endpoint: BmcControllerEndpoint,
+) -> BootDeliverySolution {
   match ev.access {
     AccessContextBound { context: ctx } =>
-      match bind_boot_delivery_target(target: request.target, access: ctx) {
+      match bind_boot_delivery_target(target: request.target, subject: subject, endpoint: endpoint, access: ctx) {
         DeliveryTargetContextBound { target: _, access: bound } => solve_bound_boot_artifact_delivery(ctx: bound, request: request, ev: ev, policy: policy)
         DeliveryTargetSubjectUnbound { requested: r, bound_subject: s } => BootDeliveryRefused { cause: DeliveryTargetSubjectMismatch { requested: r, bound_subject: s } }
         DeliveryTargetControllerUnbound { requested: r, bound_endpoint: e } => BootDeliveryRefused { cause: DeliveryTargetControllerMismatch { requested: r, bound_endpoint: e } }
