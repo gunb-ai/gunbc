@@ -5603,9 +5603,13 @@ pub fn equality_operand_walk(
         } else {
             {
                 let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
-                if ((peeled.return_cardinality.clone() == Cardinality::CardOptional)
+                if (((peeled.return_cardinality.clone() == Cardinality::CardOptional)
                     || ((peeled.name.clone() == "Optional".to_string())
                         && ((peeled.children.clone().len() as i64) == 1)))
+                    || (((((peeled.children.clone().len() as i64) == 1)
+                        && (peeled.connective.clone() != Connective::Conj))
+                        && (peeled.connective.clone() != Connective::Disj))
+                        && node_is_std_optional(peeled.clone(), scope.clone())))
                 {
                     equality_presence_walk(equality_operand_walk(
                         crate::v1_compiler_infer_types::extract_optional_inner_node(peeled.clone()),
@@ -6021,6 +6025,96 @@ pub fn equality_declaration_walk(
 }
 
 pub fn equality_resolved_declaration_structure(
+    rt: Rc<Node>,
+    peeled: Rc<Node>,
+    name: String,
+    identity: String,
+    scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
+    depth: i64,
+    at_root: bool,
+) -> Rc<EqualityWalk> {
+    {
+        let w = equality_resolved_declaration_structure_core(
+            rt,
+            peeled.clone(),
+            name.clone(),
+            identity,
+            scope.clone(),
+            visited.clone(),
+            depth.clone(),
+            at_root,
+        );
+        if ((w.refusal.clone() != std::option::Option::None)
+            || !equality_reference_applies_arguments(peeled.clone()))
+        {
+            w
+        } else {
+            {
+                let args = peeled.children.clone().iter().cloned().fold(
+                    Rc::new(EqualityArmWalk {
+                        refusal: std::option::Option::None,
+                        fields: Rc::new(vec![]),
+                        plans: Rc::new(vec![]),
+                    }),
+                    |acc: Rc<EqualityArmWalk>, ch: Rc<Node>| match acc.refusal.clone() {
+                        Some(_) => acc.clone(),
+                        std::option::Option::None => {
+                            let aw =
+                                if (equality_operand_is_type_variable(ch.clone(), scope.clone())
+                                    || equality_operand_is_type_variable(
+                                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                                        scope.clone(),
+                                    ))
+                                {
+                                    equality_walk_by_target()
+                                } else {
+                                    equality_operand_walk(
+                                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                                        scope.clone(),
+                                        visited.clone(),
+                                        v1_rt::int_add(depth.clone(), 1),
+                                        false,
+                                    )
+                                };
+                            Rc::new(EqualityArmWalk {
+                                refusal: aw.refusal.clone(),
+                                fields: crate::std_algebra::list_snoc_item(
+                                    acc.fields.clone(),
+                                    Rc::new(EqualityPlanField {
+                                        field: "".to_string(),
+                                        step: aw.step.clone(),
+                                    }),
+                                ),
+                                plans: v1_rt::concat(acc.plans.clone(), aw.plans.clone()),
+                            })
+                        }
+                    },
+                );
+                if (args.refusal.clone() != std::option::Option::None) {
+                    equality_walk_refused(args.refusal.clone())
+                } else {
+                    if {
+                        let mut __all = true;
+                        for f in args.fields.clone().iter().cloned() {
+                            if !(equality_step_is_by_target(f.step.clone())) {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    } {
+                        w
+                    } else {
+                        equality_walk_refused(equality_refused(name.clone(), "a routed member inside a generic application whose shape the equality plan does not model".to_string(), false))
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn equality_resolved_declaration_structure_core(
     rt: Rc<Node>,
     peeled: Rc<Node>,
     name: String,
@@ -36900,8 +36994,8 @@ pub fn equality_derived_declaration(
                             equality_synth_match(
                                 module_name.clone(),
                                 equality_synth_var(module_name.clone(), "b".to_string()),
-                                Rc::new(vec![
-                                    equality_synth_arm(
+                                v1_rt::concat(
+                                    Rc::new(vec![equality_synth_arm(
                                         module_name.clone(),
                                         equality_synth_variant_pattern(
                                             module_name.clone(),
@@ -36924,13 +37018,17 @@ pub fn equality_derived_declaration(
                                                 )
                                             },
                                         ),
-                                    ),
-                                    equality_synth_arm(
-                                        module_name.clone(),
-                                        Rc::new(MatchPattern::Wildcard),
-                                        equality_synth_bool(module_name.clone(), false),
-                                    ),
-                                ]),
+                                    )]),
+                                    if ((dp.arms.clone().len() as i64) > 1) {
+                                        Rc::new(vec![equality_synth_arm(
+                                            module_name.clone(),
+                                            Rc::new(MatchPattern::Wildcard),
+                                            equality_synth_bool(module_name.clone(), false),
+                                        )])
+                                    } else {
+                                        Rc::new(vec![])
+                                    },
+                                ),
                             ),
                         ));
                     }

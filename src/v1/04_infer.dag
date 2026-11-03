@@ -3779,7 +3779,7 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
     equality_walk_refused(r: equality_refused(carrier: authored_name_at(source_indices: source_indices, node: n), member: "type expansion depth exceeded", member_judged: false))
   } else {
     let peeled = normalize_access_type_node(n: n)
-    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) {
+    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) || ((peeled.children |> count) == 1 && peeled.connective != Conj && peeled.connective != Disj && node_is_std_optional(n: peeled, scope: scope)) {
       equality_presence_walk(inner: equality_operand_walk(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth, at_root: false))
     } else {
       let name = authored_name_at(source_indices: source_indices, node: peeled)
@@ -3911,7 +3911,35 @@ fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: Str
   equality_resolved_declaration_structure(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: if identity == "::" { visited } else { map_insert(visited, identity, true) }, depth: depth, at_root: at_root)
 }
 
+// AN APPLIED GENERIC IS JUDGED AT ITS ARGUMENTS TOO. A generic declaration's own members mention its parameters, which
+// compare by the target, so its structure alone reads as comparing by the target even when the type applied to it reaches a
+// routed declaration or a function (gunbc#15175: NativeDemandRun.engine is DemandEngine<NativeDemandValue>, and the derived
+// body emitted a raw `==` on a type no PartialEq covers, E0369). The walk therefore walks each applied argument: an
+// argument that refuses carries its refusal, and an argument that is not by the target refuses as a routed member inside a
+// generic application the plan does not model, the same cause a container whose shape is unmodeled gives.
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
+  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
+  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) {
+    w
+  } else {
+    let args = fold(peeled.children, init: EqualityArmWalk { refusal: none, fields: [], plans: [] }, f: (acc, ch) =>
+      match acc.refusal {
+        Present { value: _ } => acc
+        Absent =>
+          let aw = if equality_operand_is_type_variable(n: ch, scope: scope) || equality_operand_is_type_variable(n: child_type_node(ch: ch), scope: scope) { equality_walk_by_target() } else { equality_operand_walk(n: child_type_node(ch: ch), scope: scope, visited: visited, depth: depth + 1, at_root: false) }
+          EqualityArmWalk { refusal: aw.refusal, fields: list_snoc_item(xs: acc.fields, item: EqualityPlanField { field: "", step: aw.step }), plans: concat(acc.plans, aw.plans) }
+      })
+    if args.refusal != none {
+      equality_walk_refused(r: args.refusal)
+    } else if args.fields |> all(f => equality_step_is_by_target(s: f.step)) {
+      w
+    } else {
+      equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+    }
+  }
+}
+
+fn equality_resolved_declaration_structure_core(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
   if (rt.connective == Arrow) {
     equality_walk_refused(r: equality_refused(carrier: name, member: "function value", member_judged: true))
   } else if (rt.connective == Conj) {
@@ -20056,11 +20084,10 @@ fn equality_derived_declaration(module_name: String, decl_name: String, dp: Decl
     Absent =>
       equality_synth_match(m: module_name, scrutinee: equality_synth_var(m: module_name, name: "a"), arms: dp.arms |> map(arm =>
         equality_synth_arm(m: module_name, pattern: equality_synth_variant_pattern(m: module_name, arm: arm, prefix: "eqa_"),
-          body: equality_synth_match(m: module_name, scrutinee: equality_synth_var(m: module_name, name: "b"), arms: [
+          body: equality_synth_match(m: module_name, scrutinee: equality_synth_var(m: module_name, name: "b"), arms: concat([
             equality_synth_arm(m: module_name, pattern: equality_synth_variant_pattern(m: module_name, arm: arm, prefix: "eqb_"),
               body: equality_synth_fields(m: module_name, fields: arm.fields, a_of: f => equality_synth_var(m: module_name, name: concat("eqa_", f)), b_of: f => equality_synth_var(m: module_name, name: concat("eqb_", f)))),
-            equality_synth_arm(m: module_name, pattern: Wildcard, body: equality_synth_bool(m: module_name, value: false))
-          ]))))
+          ], if (dp.arms |> count) > 1 { [equality_synth_arm(m: module_name, pattern: Wildcard, body: equality_synth_bool(m: module_name, value: false))] } else { [] })))))
   }
   equality_synthetic_fn(module_name: module_name, name: equality_derived_name(decl_name: decl_name),
     params: [equality_synth_param(m: module_name, name: "a", type_name: decl_name), equality_synth_param(m: module_name, name: "b", type_name: decl_name)],
