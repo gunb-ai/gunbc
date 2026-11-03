@@ -1,7 +1,7 @@
 module test.claim.network_boot_actuation_witness
 
 import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliverySolution, BootFromNetworkPxe, BootFromRemovableMedia }
-import test.fixture.boot_delivery_plans { uefi_http_plan_serving, intake_artifact, pxe_plan, pxe_solution, refused_solution, removable_media_solution, intake_subject }
+import test.fixture.boot_delivery_plans { removable_media_plan, uefi_http_plan_serving, intake_artifact, pxe_plan, pxe_solution, refused_solution, removable_media_solution, intake_subject }
 import std.types { Bool, String, EpochMs, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { decl_ref }
@@ -22,6 +22,7 @@ import gunbc.provisioning.provisioning_arm {
   provisioning_arm_consumer_ref,
   AttemptBinding,
   ProvisioningArm,
+  ArmShape,
   VirtualMediaStanding,
   VirtualMediaAvailable,
   provisioning_arm_derive,
@@ -474,6 +475,34 @@ test fn a_pxe_arm_takes_its_control_from_the_admitted_plan() -> Bool {
   match actuate(solution: pxe_solution, evidence: full_evidence()) {
     ArmActuationPxe { attempt: _, boot_control: m, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } =>
       m == pxe_plan.boot_control
+    _ => false
+  }
+}
+
+fn arm_shape_of(solution: BootDeliverySolution) -> ArmShape {
+  arm_for(solution: solution, evidence: full_evidence()).shape
+}
+
+// A shape must be the admitted plan's own delivery family. Each RED pairs a plan with the OTHER family's
+// real shape (derived from the paired solution), and each has its correctly paired positive control.
+test fn a_pxe_plan_with_a_virtual_media_shape_is_withheld() -> Bool {
+  is_withheld(network_boot_arm_actuator_steps(arm: ProvisioningArm { plan: Present { value: pxe_plan }, shape: arm_shape_of(solution: removable_media_solution) }))
+}
+
+test fn a_removable_media_plan_with_a_network_shape_is_withheld() -> Bool {
+  is_withheld(network_boot_arm_actuator_steps(arm: ProvisioningArm { plan: Present { value: removable_media_plan }, shape: arm_shape_of(solution: pxe_solution) }))
+}
+
+test fn a_pxe_plan_with_its_own_shape_is_actuated_as_pxe() -> Bool {
+  match network_boot_arm_actuator_steps(arm: ProvisioningArm { plan: Present { value: pxe_plan }, shape: arm_shape_of(solution: pxe_solution) }) {
+    ArmActuationPxe { attempt: _, boot_control: _, boot_target: t, chain: _, firmware: _, origin: _, seed: _ } => t == BootTargetPxe
+    _ => false
+  }
+}
+
+test fn a_removable_media_plan_with_its_own_shape_is_actuated_as_media() -> Bool {
+  match network_boot_arm_actuator_steps(arm: ProvisioningArm { plan: Present { value: removable_media_plan }, shape: arm_shape_of(solution: removable_media_solution) }) {
+    ArmActuationVirtualMedia { attempt: _, boot_control: _, boot_target: t, media_observation: _, origin: _, seed: _ } => t == BootTargetCd
     _ => false
   }
 }
