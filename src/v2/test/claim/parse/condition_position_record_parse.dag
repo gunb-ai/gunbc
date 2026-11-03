@@ -24,13 +24,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (cc2-pp6, srv2 run.log dc759c24: BOTH executors, interpreted locus 151..152 = the tail). The
 // condition productions now carry the seed's separation declaratively: the record arm is admitted
 // only when its residue continues with a head the ORDINARY chain could continue with -- the
-// block brace, an infix class from dag_infix_operators, or a postfix suffix head (`.`, `as`,
-// `is`, `[` newline-guarded) -- so the braces fall to the block when a statement would start,
-// and every reading that was right keeps its parse. The postfix heads are a stated divergence
-// from the seed's retry condition (`{` or infix only): the corpus datum
-// test/claim/review_sheet_converge_witness.dag:1745 (`match R { ... }.totalUpdatedCells { ... }`,
-// green on main) proves a record in condition position must keep its postfix chain; the seed's
-// narrower retry set is the hole keen-heron flagged, not a behavior to copy.
+// block brace, an infix class folded from dag_infix_operators, or a postfix suffix head folded
+// from dag_postfix_suffix_rows plus dag_grammar_postfix_dot_head_expr -- so the braces fall to
+// the block when a statement would start, and every reading that was right keeps its parse. The
+// postfix heads are a stated divergence from the seed's retry condition (`{` or infix only): the
+// corpus datum in dag.test.claim.review_sheet_converge_witness, claim
+// sheets_published_mock_corpus_covers_get_batch_update_and_metadata (`match R { ...
+// }.totalUpdatedCells { ... }`, green on main) proves a record in condition position must keep
+// its postfix chain; the seed's narrower retry set is the hole keen-heron flagged, not a behavior
+// to copy.
 //
 // WHAT EACH ARM ESTABLISHES (the set is a pair per shape, never a lone RED):
 //   - elseless_if_with_tail is THE RED: refused before the fix (token remainder at the tail),
@@ -135,8 +137,10 @@ fn infix_record_condition_still_parses() -> Bool { g_parse_accepted(text: infix_
 fn record_match_scrutinee_still_parses() -> Bool { g_parse_accepted(text: record_match_scrutinee_source, file: ^record_scrutinee_probe) }
 
 // CORPUS-FIXED CONTROL (keen-koi-376, #15639 v2-bootstrap run 41546355118): a match scrutinee
-// that is a record literal followed by a FIELD ACCESS -- review_sheet_converge_witness.dag:1745
-// shape, green on main, refused when the head set omits `.`.
+// that is a record literal followed by a FIELD ACCESS -- the shape carried by the corpus text of
+// dag.test.claim.review_sheet_converge_witness
+// .sheets_published_mock_corpus_covers_get_batch_update_and_metadata, green on main, refused
+// when the head set omits `.`.
 data record_scrutinee_dot_source: String = "module probe.record_scrutinee_dot\n\nfn f(x: Int) -> Int {\n  match R { value: x }.value {\n    _ => x\n  }\n}\n"
 
 fn record_scrutinee_dot_still_parses() -> Bool { g_parse_accepted(text: record_scrutinee_dot_source, file: ^record_scrutinee_dot_probe) }
