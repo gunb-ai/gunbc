@@ -6373,7 +6373,6 @@ fn admit_generation_begin(
     ordinal: usize,
     resident_at_first: Option<u64>,
 ) -> Result<u64, String> {
-    use crate::v1_interpreter::{self, Value};
     let now = crate::memory_governor::self_resident_bytes().ok_or_else(|| {
         format!(
             "OrchestratorResidentUnobservable: /proc/self/status VmRSS could not be read before \
@@ -6381,7 +6380,28 @@ fn admit_generation_begin(
         )
     })?;
     let first = resident_at_first.unwrap_or(now);
+    eprintln!(
+        "required-regen: generation {ordinal} begins; orchestrator resident={now} \
+         (at generation 0: {first})"
+    );
+    admit_generation_begin_readings(model, ordinal, first, now).map(|()| now)
+}
+
+/// The bridge itself, over supplied readings, so a test drives the REAL model through both its
+/// admission and its refusal: the model's witnesses prove the rule, this proves the host calls it
+/// with the shape it declares (`resident_at_first` / `resident_now` as `std.measure` `ByteSize`).
+fn admit_generation_begin_readings(
+    model: &RegenConvergenceModel,
+    ordinal: usize,
+    resident_at_first: u64,
+    resident_now: u64,
+) -> Result<(), String> {
+    use crate::v1_interpreter::{self, Value};
     let ctx = model.context();
+    let byte_size = |count: u64| Value::Record {
+        type_name: ctx.sym("Measure"),
+        fields: Rc::new(vec![(ctx.sym("count"), Value::Int(count as i64))]),
+    };
     let admission = v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
             &ctx,
@@ -6389,13 +6409,10 @@ fn admit_generation_begin(
             &[
                 (Some("ordinal".to_string()), Value::Int(ordinal as i64)),
                 (
-                    Some("resident_at_first_bytes".to_string()),
-                    Value::Int(first as i64),
+                    Some("resident_at_first".to_string()),
+                    byte_size(resident_at_first),
                 ),
-                (
-                    Some("resident_now_bytes".to_string()),
-                    Value::Int(now as i64),
-                ),
+                (Some("resident_now".to_string()), byte_size(resident_now)),
             ],
             false,
         )
@@ -6410,12 +6427,8 @@ fn admit_generation_begin(
         )
     })
     .map_err(|e| format!("refusal: generation begin admission projection failed: {e}"))?;
-    eprintln!(
-        "required-regen: generation {ordinal} begins; orchestrator resident={now} \
-         (at generation 0: {first})"
-    );
     match label {
-        Value::Str(ref label) if label.as_ref() == "Admitted" => Ok(now),
+        Value::Str(ref label) if label.as_ref() == "Admitted" => Ok(()),
         Value::Str(ref label) => Err(format!("generation begin {label}")),
         other => Err(format!(
             "refusal: generation begin admission projection returned {}",
@@ -11175,6 +11188,34 @@ mod generation_supervisor_tests {
                 .unwrap_or_default(),
             memory_current: Some(22_000_000_000),
         })
+    }
+
+    /// THE HOST BRIDGE TO `regen_admit_generation_begin`, against the REAL convergence model: an
+    /// orchestrator that did not grow is admitted, and one still holding a generation (the srv4
+    /// reading) is refused with the model's own typed refusal. A stale argument name or a bare Int
+    /// where the model declares `ByteSize` fails both legs.
+    #[test]
+    fn the_generation_begin_bridge_admits_and_refuses_through_the_real_model() {
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|root| workspace_root().join(root).to_string_lossy().into_owned())
+            .collect();
+        let model = RegenConvergenceModel::load(&roots).expect("load the convergence model");
+        assert_eq!(
+            admit_generation_begin_readings(&model, 1, 900_000_000, 900_000_000),
+            Ok(())
+        );
+        assert_eq!(
+            admit_generation_begin_readings(&model, 1, 900_000_000, 400_000_000),
+            Ok(())
+        );
+        let refused = admit_generation_begin_readings(&model, 2, 900_000_000, 15_636_525_056)
+            .expect_err("an orchestrator holding a generation was admitted");
+        assert!(
+            refused.contains("GenerationStateRetainedByOrchestrator ordinal=2")
+                && refused.contains("orchestrator_resident_bytes_now=15636525056"),
+            "{refused}"
+        );
     }
 
     /// The srv3 ending, driven through the per-sample decision: a generation that stops marking
