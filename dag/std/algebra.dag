@@ -1483,6 +1483,48 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   map_insert_primitive_delegate(m: m, key: key, value: value)
 }
 
+// THE SET CLUSTER IS HOST REALIZED, AND THESE BODIES SAY SO. empty_set / set_insert / set_contains are
+// rostered in std.primitive_projection as HostRealizedSeam rows, so resolution routes a call to the
+// realization -- the seed's free_call.set_* interpreter arms and, on the Rust target, v1_rt::rc_empty_set,
+// rc_set_insert and set_contains over Rc<BTreeSet<T>> under a T: Ord bound
+// (src/v1/stage0/src/v1_rt.rs:1020, :1024, :1037) -- and never to these bodies, which are the self-call
+// that shape requires. They are deliberately NOT pure_dag_seam_unreachable(): that emits as ordinary code
+// carrying a fabricated value, which DESIGN section 5 forbids, and std.bytes records the same mistake at
+// its own head.
+//
+// CARRIER. Set<element> is std.types' alias for FinitePowerSet<element> (dag/std/types.dag:198); this
+// module declares FinitePowerSet itself (:144), so the alias is spelled directly instead of imported.
+//
+// TWO DISAGREEMENTS BETWEEN THE SURFACES ARE FILED, not hidden, and a caller must know both before
+// choosing an element kind: the kernel orders and dedupes by Ord while the template declares membership by
+// element equality (gunbc.recurring_failure_mode.set_membership_declared_by_equality_realized_by_ord), and
+// the interpreted route realizes String elements only while the kernel realizes any T: Ord
+// (gunbc.recurring_failure_mode.set_element_kind_interpreted_native_divergence). A Set<Int> membership test
+// therefore builds and runs emitted and is not answered interpreted. What the interpreted side RAISES is a
+// question this commit changes and so is left open rather than asserted: before these bodies existed the
+// builtin tier's Ok(None) fell through to a module free-function lookup that had nothing to find and raised
+// NoSuchFunction (v1_interpreter.rs:24301, :11571, :11576, :11589); with a std.algebra body now present
+// under those names, the answer depends on whether the calling module can resolve them at all, which is a
+// fact to establish by running a control, not by reading. Either way it is a refusal, not a wrong Bool.
+fn empty_set_primitive_delegate<element>() -> FinitePowerSet<element> {
+  empty_set_primitive_delegate()
+}
+fn empty_set<element>() -> FinitePowerSet<element> {
+  empty_set_primitive_delegate()
+}
+fn set_insert_primitive_delegate<element>(set: FinitePowerSet<element>, item: element) -> FinitePowerSet<element> {
+  set_insert_primitive_delegate(set: set, item: item)
+}
+fn set_insert<element>(set: FinitePowerSet<element>, item: element) -> FinitePowerSet<element> {
+  set_insert_primitive_delegate(set: set, item: item)
+}
+fn set_contains_primitive_delegate<element>(set: FinitePowerSet<element>, item: element) -> Bool {
+  set_contains_primitive_delegate(set: set, item: item)
+}
+fn set_contains<element>(set: FinitePowerSet<element>, item: element) -> Bool {
+  set_contains_primitive_delegate(set: set, item: item)
+}
+
 // LOOKUP IS TOTAL. A map either holds the key or does not, and both are answers — there is no
 // third state in which the map fails to say. So the total form is the primitive and the
 // Outcome-wrapped form below is a projection of it, not the other way round.
