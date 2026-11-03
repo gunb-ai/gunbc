@@ -3,8 +3,8 @@ module test.claim.attempt_append_log_host_create_wet_witness
 // THE HOST-SIDE CREATE OF AN APPEND-LOG MEMBER, RUN WET OVER A REAL ATTEMPT-STATE DIRECTORY THE TEST OWNS.
 // Under std.durable_append_log's HostCreatesThenSandboxWrites window the host's only write is this create, and
 // it is admitted only while the member does not exist; the window then passes to the sandbox by the member's
-// existence (no hold to acquire or release -- contract: std.durable_append_log append_write_admission, standing
-// WriterWindowReleased). The dedicated-account branch keeps the group-writable mode AT CREATION (the defect this
+// existence (no hold to acquire or release -- contract: std.durable_append_log append_host_create_admission,
+// which takes NO writer standing, so nothing here is fabricated). The dedicated-account branch keeps the group-writable mode AT CREATION (the defect this
 // witness guards: a create that drops the mode leaves the dedicated worker unable to append). The service-user
 // branch was historically a plain create with no mode and stays so; an existing member is a typed outcome
 // (AlreadyExists), never an overwrite. Business key only -- the path is derived from the sealed instance, never
@@ -31,8 +31,8 @@ import gunbc.roadmap.roadmap_attempt_state_store {
 }
 import gunbc.durable_append_log_store { LegacyFramingMismatch }
 import std.durable_append_log {
-  MemberWriterPolicy, HostCreatesThenSandboxWrites, HostWriter, IntentCreateEmpty,
-  AppendWriteAdmitted, AppendWriteRefused, WriterStandingUnknown, WriterStandingUnobserved, append_write_admission,
+  HostCreatesThenSandboxWrites, AppendWriteAdmitted, AppendWriteRefused, CreateOverExistingMember,
+  append_host_create_admission,
 }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -153,12 +153,15 @@ fn already_exists_cell(instance: HostDashboardInstance) -> Bool {
   }
 }
 
-// PURE (executed claim): the contract refuses a host create whose writer standing is unobserved -- the host cannot
-// mint its own standing to slip a create past the window.
-test fn the_unobserved_standing_refuses_a_host_create() -> Bool {
-  match append_write_admission(policy: HostCreatesThenSandboxWrites { principal: "attempt-worker-unit" as DurableHoldOwnerRef }, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterStandingUnobserved { cause: "no window observed" }, member_exists: false) {
-    AppendWriteRefused { refusal: r } => match r {
-      WriterStandingUnknown { cause: _ } => true
+// PURE (executed claim): a host create asks for ONE fact -- whether the member is already there -- and takes no
+// writer standing at all (review 90279). Production used to pass a fabricated `WriterWindowReleased` to the append
+// admission to satisfy its signature; that literal is gone, and the parameter cannot be re-added: the compile-fed
+// pair in test.claim.durable_append_log_witness (`a_standing_handed_to_the_host_create_admission_is_refused_at_compile`)
+// shows a planted `standing:` argument on this admission is a blocking diagnostic against a clean accepted twin.
+test fn the_host_create_admission_needs_only_membership() -> Bool {
+  match append_host_create_admission(policy: HostCreatesThenSandboxWrites { principal: "attempt-worker-unit" as DurableHoldOwnerRef }, member_exists: false) {
+    AppendWriteAdmitted => match append_host_create_admission(policy: HostCreatesThenSandboxWrites { principal: "attempt-worker-unit" as DurableHoldOwnerRef }, member_exists: true) {
+      AppendWriteRefused { refusal: CreateOverExistingMember } => true
       _ => false
     }
     _ => false

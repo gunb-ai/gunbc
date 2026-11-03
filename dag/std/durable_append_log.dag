@@ -194,6 +194,10 @@ fn append_stream_readback_at(observed: AppendStreamObservation, standing: Append
 // the member (create-new, group-writable under a dedicated worker account) and the sandboxed worker writes
 // it. The contract is therefore a SEQUENCE of exclusive windows, never two writers at once:
 //   HostCreatesThenSandboxWrites   host create-new (empty), then ONE sandbox window, then host reads only.
+// The create and the append are DIFFERENT admissions: append_write_admission judges (policy, writer, intent,
+// standing, existence) for appends, and the create goes through append_host_create_admission(policy, existence),
+// which has NO standing argument -- a create is exclusive through create-new, so a standing there could only ever
+// be fabricated by the caller.
 //   HostOnly                       the host is the only writer; the record shape is RecordPerGeneration.
 type MemberWriterPolicy
   = HostOnly
@@ -214,6 +218,10 @@ type AppendWriteRefusal
   | HostWriteDuringSandboxWindow { holder: DurableHoldOwnerRef }
   | WriterStandingUnknown { cause: NonEmptyStr }
   | CreateOverExistingMember
+  // A create handed to the APPEND admission. Not a policy judgement: the create route is a different fn
+  // (append_host_create_admission) that takes no standing at all, so a standing-carrying create call is the
+  // caller reaching for a route this module deliberately closed (review 90279).
+  | HostCreateRequiresCreateAdmission
 
 type AppendWriteAdmission
   = AppendWriteAdmitted
@@ -244,7 +252,7 @@ fn append_write_admission(
             WriterHoldsWindow { owner: o } => AppendWriteRefused { refusal: HostWriteDuringSandboxWindow { holder: o } }
             _ => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
           }
-          IntentCreateEmpty => if member_exists { AppendWriteRefused { refusal: CreateOverExistingMember } } else { AppendWriteAdmitted }
+          IntentCreateEmpty => AppendWriteRefused { refusal: HostCreateRequiresCreateAdmission }
         }
         SandboxWriter { principal: p } => append_sandbox_admission(allowed: allowed, principal: p, intent: intent, standing: standing, member_exists: member_exists)
       }
@@ -252,13 +260,30 @@ fn append_write_admission(
   }
 }
 
+// THE HOST APPEND ROUTE (HostOnly): appends are what a standing can speak about, so the standing is consulted
+// here -- a held window refuses the host (WriterWindowHeldByAnother). A CREATE is refused before the standing is
+// read, whatever the standing says: the standing never decides a create anywhere in this module (review 90279),
+// and create-new is what makes a create exclusive.
 fn append_host_admission(intent: AppendWriteIntent, standing: AppendWriterStanding, member_exists: Bool) -> AppendWriteAdmission {
-  match standing {
-    WriterHoldsWindow { owner: o } => AppendWriteRefused { refusal: WriterWindowHeldByAnother { holder: o } }
-    _ => match intent {
-      IntentCreateEmpty => if member_exists { AppendWriteRefused { refusal: CreateOverExistingMember } } else { AppendWriteAdmitted }
-      IntentAppendRecord => AppendWriteAdmitted
+  match intent {
+    IntentCreateEmpty => AppendWriteRefused { refusal: HostCreateRequiresCreateAdmission }
+    IntentAppendRecord => match standing {
+      WriterHoldsWindow { owner: o } => AppendWriteRefused { refusal: WriterWindowHeldByAnother { holder: o } }
+      _ => AppendWriteAdmitted
     }
+  }
+}
+
+// THE HOST CREATE ROUTE, STANDING-FREE BY CONSTRUCTION (review 90279, done in this PR). A create needs exactly
+// one fact -- whether the member is already there -- because the effect it authorizes is an EXCLUSIVE create
+// (Filesystem.WriteCreateNew / WriteCreateNewWithMode): a second create over an existing member fails at the
+// effect, so a writer-window standing cannot add a refusal here and a caller would have to FABRICATE one to
+// satisfy the old signature. There is no standing parameter to fabricate; policy still decides WHO may create,
+// and under HostCreatesThenSandboxWrites the host may create only while the member is absent.
+fn append_host_create_admission(policy: MemberWriterPolicy, member_exists: Bool) -> AppendWriteAdmission {
+  match policy {
+    HostOnly => if member_exists { AppendWriteRefused { refusal: CreateOverExistingMember } } else { AppendWriteAdmitted }
+    HostCreatesThenSandboxWrites { principal: _ } => if member_exists { AppendWriteRefused { refusal: CreateOverExistingMember } } else { AppendWriteAdmitted }
   }
 }
 
