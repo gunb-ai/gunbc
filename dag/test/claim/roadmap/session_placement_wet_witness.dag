@@ -1436,6 +1436,13 @@ test fn a_carry_that_refuses_one_reference_still_carries_the_others_and_names_th
 // the re-run, then answer AlreadyCarried exactly as it did. The labels are unchanged; the generation
 // goes up; this row is the only one red, and a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads
 // stays green beside it. That pair, green next to red, is the whole point of the row.
+//
+// MEASURED AS RUN: the stamp was injected on the same-identity arm as
+//   attempt_terminate(store: target, reference: reference, expected: <the generation just read>, verdict: AttemptRecovered, ...)
+// which IS that commit under ExpectSlotGeneration. attempt_advance cannot stamp it: the state machine
+// refuses to rewrite a slot back to the state it already holds ("advance will not rewrite a slot back to
+// Reserved"), so an attempt_advance-to-the-same-state mutant is a NO-OP and leaves this row green. Run
+// against the cutover on main: this row FAIL, every other row in this file PASS (27 PASS, 1 FAIL).
 test fn a_carry_re_run_writes_no_new_generation_into_the_store_it_owns() -> Bool {
   let dir = fresh_dir(tag: "cutoverregen")
   let seeded = orphan_launched(dir: dir)
