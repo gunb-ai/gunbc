@@ -4126,6 +4126,36 @@ fn resolve_record_field_edge(ctx: ResolveContext, e: Edge, record: Optional<Qual
 }
 
 fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName, field: Symbol) -> Optional<Node> {
+  match resolve_field_type_at_path(ctx: ctx, record: record, field: field) {
+    Present { value: declared } => optional_present(value: declared)
+    // THE ARM SITE THE TAG NAMES. A coproduct whose arm shares its type's spelling
+    // (`type Box = Box { behavior: Behavior }`, `type Wrapper = Wrapper { inner: Cell }`) files TWO rows
+    // at one path: the type declaration's own row and the arm's alias row (v2.compiler.symbol_index_fill
+    // binds the module-scoped alias at `<module>.<arm>`, which IS the type's path when the names
+    // coincide). `symbol_index_lookup` refuses a binding path with more than one declarings -- the
+    // contested guard -- so the read above never starts, and every field of such a record walks as an
+    // ordinary child: no expectation reaches the nested tag or atom, and an arm alias (which lives only
+    // in its declaring module's scope) then refuses resolve_reason_unbound_symbol. The arm's OWN row is
+    // sited one segment below, at `<containment path>.<arm>`, by that same fill. Reading it is not a
+    // widened fallback: the path is named by the tag the construct already resolved, and a contested or
+    // missing path there still answers Absent. Where the read above succeeded nothing here runs, so the
+    // existing authority stays first.
+    Absent =>
+      match qualified_name_last_segment(qn: record) {
+        Absent => optional_absent()
+        Present { value: arm } =>
+          resolve_field_type_at_path(
+            ctx: ctx,
+            record: qualified_name_snoc(qn: record, segment: arm),
+            field: field
+          )
+      }
+  }
+}
+
+// THE FIELD TYPE DECLARED AT ONE PATH: the record read there, and the field named in it (or, when the
+// entry there is a coproduct body, in the payload of the arm its own path names).
+fn resolve_field_type_at_path(ctx: ResolveContext, record: QualifiedName, field: Symbol) -> Optional<Node> {
   match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: record) {
     Absent => optional_absent()
     Present { value: decl } =>

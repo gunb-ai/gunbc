@@ -39,7 +39,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // their v2 counterparts import a type and never spell its arms). Each pair below therefore declares
 // the type in one module and uses it in another that imports only the type.
 
-data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\ntype Wrapper = Wrapper { inner: Cell }\ntype Cell = CellA { a: Int } | CellB { b: Int }\ntype Holder<T> = Holder { held: T }\n"
+data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\ntype Wrapper = Wrapper { inner: Cell }\ntype Cell = CellA { a: Int } | CellB { b: Int }\ntype Holder<T> = Holder { held: T }\ntype Opt<T> = None | Some { value: T }\n"
 
 // A record whose NAME coincides with an arm of Tree above. The spelling has two declarations, one of
 // them a record type in a different module: the expected type's set holds the ARM, and the name door
@@ -93,7 +93,7 @@ data ctee_alias_source: String = "module v2.test.ctee.alias_user\n\nimport v2.te
 // one of them, so the site that bound the record by name now refuses with the constructor-set cause.
 // Under explicit_present_is_the_authoring_policy that is the intended reading, but it is a refusal at a
 // declared-return site and is named here so the diff measures it.
-data ctee_optional_position_source: String = "module v2.test.ctee.optional_position\n\nimport v2.test.ctee.types { Box }\nimport std.optional { Optional }\nfn pack() -> Optional<Box> { Box { behavior: Call { name: 1 } } }\n"
+data ctee_optional_position_source: String = "module v2.test.ctee.optional_position\n\nimport v2.test.ctee.types { Box, Opt }\nfn pack() -> Opt<Box> { Box { behavior: Call { name: 1 } } }\n"
 
 // THE COINCIDING LABEL: the spelling resolves to a record type in another module, while the expected
 // type's set holds an ARM of that name. The set is the authority, so the record does not bind here.
@@ -132,10 +132,10 @@ data ctee_type_param_source: String = "module v2.test.ctee.type_param\n\nimport 
 // scrutinee value, so it refuses. `atom_unresolved_binder` is its pair: the same unreadable expectation
 // with a spelling that names no constructor, which binds exactly as today.
 data ctee_atom_field_source: String = "module v2.test.ctee.atom_field\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: Value } => 0\n    Box { behavior: Call { name: n } } => n\n  }\n}\n"
-data ctee_atom_binder_source: String = "module v2.test.ctee.atom_binder\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: picked } => 0\n  }\n}\n"
+data ctee_atom_binder_source: String = "module v2.test.ctee.atom_binder\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: picked } => picked\n  }\n}\n"
 data ctee_atom_misspelled_source: String = "module v2.test.ctee.atom_misspelled\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: Absnet } => 0\n  }\n}\n"
 data ctee_atom_unresolved_source: String = "module v2.test.ctee.atom_unresolved\n\nimport v2.test.ctee.types { Leaf, Tree }\nfn pick<T>(t: T) -> Int {\n  match t {\n    Leaf => 0\n  }\n}\n"
-data ctee_atom_unresolved_binder_source: String = "module v2.test.ctee.atom_unresolved_binder\n\nimport v2.test.ctee.types { Holder }\nfn pick<T>(h: Holder<T>) -> Int {\n  match h {\n    Holder { held: picked } => 0\n  }\n}\n"
+data ctee_atom_unresolved_binder_source: String = "module v2.test.ctee.atom_unresolved_binder\n\nimport v2.test.ctee.types { Holder }\nfn pick<T>(h: Holder<T>) -> T {\n  match h {\n    Holder { held: picked } => picked\n  }\n}\n"
 
 fn ctee_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -537,9 +537,9 @@ test fn a_fresh_lowercase_binder_in_a_field_pattern_stays_a_binder() -> Bool {
   match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.atom_binder) }
 }
 
-test fn an_atom_outside_the_expected_set_is_a_binder_and_the_unread_gate_refuses_it() -> Bool {
+test fn an_atom_outside_the_expected_set_refuses_as_an_unbound_name_not_a_binder() -> Bool {
   match ctee_verdicts() { Absent => false Present { value: vs } =>
-    ctee_refuses_with(v: vs.atom_misspelled, reason: ^resolve_reason_catch_all_binder_unread) }
+    ctee_refuses_with(v: vs.atom_misspelled, reason: ^resolve_reason_unbound_symbol) }
 }
 
 test fn an_atom_naming_a_visible_nullary_constructor_under_an_unreadable_expectation_refuses() -> Bool {
