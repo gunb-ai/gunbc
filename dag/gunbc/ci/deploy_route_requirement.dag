@@ -1,9 +1,6 @@
 module gunbc.ci.deploy_route_requirement
 
-import std.types { Bool, List, NonEmptyStr }
-import std.decl_ref { decl_ref }
-import std.dissolution { unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.types { Bool }
 import gunbc.auth.authorization_pattern_selection { MintedCredentialReach, MintsHostRootReach }
 
 // ── WHAT THE DEPLOY ROUTE MUST HOLD BEFORE ITS ROOT MAY SWITCH ─────────────────────────────────
@@ -30,10 +27,6 @@ data srv1_deploy_route_requirement: DeployRouteRequirement = DeployRouteRequirem
   required_tenancy: SoleTenantOfJobUid,
 }
 
-// What srv1 was observed to be on 2026-10-19: every slot unit's jobs run as ghrunner and take
-// same-repository pull request jobs.
-data srv1_observed_job_tenancy: DeployRouteJobTenancy = SharesJobUidWithPullRequestJobs
-
 fn deploy_route_tenancy_meets(required: DeployRouteJobTenancy, observed: DeployRouteJobTenancy) -> Bool {
   match required {
     SharesJobUidWithPullRequestJobs => true
@@ -46,19 +39,10 @@ fn deploy_route_tenancy_meets(required: DeployRouteJobTenancy, observed: DeployR
 }
 
 // THE GATE THE STAGE-2 TRANSITION OWES: the root of the deploy route is switched only when the
-// requirement holds of the observed tenancy.
+// requirement holds of the observed tenancy. The tenancy is a live read
+// (gunbc.ci.deploy_slot_tenancy deploy_slot_observed_tenancy), taken in the job that opens the
+// administrator edge, never a committed row: srv1 read shared on 2026-10-19 and its deploy slot's
+// host walls read as holding in L2 run 41175719485, and only a read made now says which it is now.
 fn deploy_route_switch_admitted(r: DeployRouteRequirement, observed: DeployRouteJobTenancy) -> Bool {
   deploy_route_tenancy_meets(required: r.required_tenancy, observed: observed)
 }
-
-// DECLARED FRONTIER, NOT IMPLEMENTATION. No runner label that takes no pull request jobs exists and
-// no observation of one is modeled, so srv1_observed_job_tenancy can only read as shared.
-data deploy_route_requirement_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.ci.deploy_route_requirement", decl_name: "srv1_observed_job_tenancy"),
-    reason: "srv1's job uid is shared between pull request jobs and dispatched deploy runs, so the deploy route cannot be switched to the administrator edge without leaving root reachable through the in-run key agent",
-    dissolution: unbound_dissolution(
-      description: "NAMED CAPABILITY: a runner label whose slots take only main-pinned dispatches, with the host readback of that group and uid (gunbc.ci.deploy_slot_tenancy DeploySlotReading) produced from the live org groups and the slot unit. SUFFICIENT FOR replacing srv1_observed_job_tenancy with deploy_slot_observed_tenancy over that read and deploy_route_switch_admitted answering true for srv1_deploy_route_requirement; a per-job microvm migration also retires it" as NonEmptyStr,
-    ),
-  ),
-]

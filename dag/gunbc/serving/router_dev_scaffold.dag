@@ -1,0 +1,141 @@
+module gunbc.serving.router_dev_scaffold
+
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+
+// THE SRV1 DEV DEPLOYMENT'S TRACKED DEBT. Authority (DESIGN section 5: operator approval outside the diff):
+// the operator's decision of 2026-10-25, option B, to serve the pool from the S1 OpenResty proxy on srv1
+// before S3 exists, relayed by calm-crab-645 (msg_9e44dfaa, msg_cb0938f9, msg_d9aa02e2), under the
+// standing ruling of 2026-10-24 ("its fine to hand write something as long as the debt is tracked").
+// Each row below is one debt, bound to the declaration that carries it, with the trigger that retires it.
+
+// 1. ROUTER POLICY IN THE PROXY, bound to router_dev_config, which renders every Lua carrier (init, access,
+// models, stats, response headers, log lines). gunbc.serving.router_dev_policy decides in OpenResty Lua what the S3
+// callout service is to decide. Against gunbc.serving.router_realization's forbidden list it is:
+//   - its own load score: owned-first priority, then spare active turns per upstream, counted in a lua_shared_dict;
+//   - direct host choice: the upstream is chosen in the proxy from upstreams.json, not taken from a grant;
+//   - its own binding ledger: session-to-upstream bindings, held six hours in the same dict;
+//   - invented placement: no product.fabric.selection select_supply, no turn_admission, no lease;
+//   - forwarding without a permit: admission is the client key and the cap, no front-door seat permit.
+// Also against the S1 contract that the proxy holds no policy (plan gunbc.plans.fabric_serving_router).
+// Dissolves when the S3 callout service (gunbc.serving.serving_router) lands and the dev site's proxy is
+// re-rendered from gunbc.serving.router_proxy_config. Trigger: router_dev_frontier_rows below.
+data router_dev_policy_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.serving.router_dev_policy",
+    decl_name: "router_dev_config",
+    field: WholeDeclaration
+  }
+}
+
+
+// 2. HAND-RUN DEPLOY. No live-deploy leg exists before S7, so the operator account on srv1 runs, in order:
+//   a. build gunbc at the deployed head and run gunbc.serving.router_dev_policy router_dev_srv1_write_candidate,
+//      validate nginx.candidate.conf, then copy it into the existing nginx.conf inode and reload gracefully;
+//   b. once: mint a client key into /home/briansrls/router/client_keys (mode 0600) and a self-signed
+//      listener certificate into /home/briansrls/router/tls/ (kept across restarts);
+//   c. write /home/briansrls/router/upstreams.json (mode 0600) from the upstream list (row 3) and the
+//      upstream keys: srv1 vLLM's ~/lil/pool_key, srv3 Strata's /home/ubuntu/strata-pool/api_key (over the
+//      fleet SSH key), the h11 Strata key and ctrl's dedicated pool-front client key;
+//   d. write /home/briansrls/router/upstream_ca.pem from each TLS upstream's leaf certificate, fetched once
+//      and admitted only when its sha256 equals the recorded pin (row 4), plus ctrl's verified mkcert root;
+//   e. docker run -d --restart unless-stopped --network host with the pinned image
+//      extdeps.proxy.openresty openresty_1_27_1_1_image, mounting /home/briansrls/router at /etc/router
+//      read-only and nginx.conf over the image's configuration path; a restart re-reads state.
+// Dissolves when the plan's S7 live-deploy leg emits and converges the proxy unit.
+data router_dev_hand_deploy_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.serving.router_dev_policy",
+    decl_name: "router_dev_srv1_write_config",
+    field: WholeDeclaration
+  }
+}
+
+
+// 3. HAND-MAINTAINED FIRST-PARTY LIST. upstreams.json names srv1 vLLM (cap 4), srv3 Strata
+// (cap 4), nine h11 Strata lanes (cap 2 each), and ctrl's /rented-pool overflow gateway. The gateway
+// deliberately bypasses ctrl's /pool router setting, so it cannot loop back here. ctrl discovers rented
+// cards and bids from distinct overflow conversations, subject to its existing budget and queue policy.
+// No rented card is copied into this router's list; replacements remain ctrl's responsibility. The
+// gateway has no GPU cap here. Owned lanes take priority on every request, including after overflow.
+// Dissolves when enrolment is durable state derived from gunbc.serving.rented_allocation (plan S5),
+// replacing the hand list gunbc.serving.rented_enrollment rented_cohort_enrollments.
+
+// 4. CERTIFICATE PINS AS A TRUST BUNDLE. nginx verifies an upstream against a CA file, not a fingerprint, so
+// each pinned leaf certificate is installed into upstream_ca.pem after its sha256 is compared by hand with
+// the recorded pin (trust on first use, as the ctrl router did). WHAT THIS DOES NOT ENFORCE (found on the
+// live srv1 deploy, calm-crab-645 2026-10-25): the pool certificates all carry CN=pool-card and no
+// subjectAltName, so inside one bundle any pinned card's certificate verifies as any other HTTPS upstream;
+// the check is membership in the pinned set, not this upstream's pin. Dissolves with row 2's deploy leg,
+// which renders one location per upstream with its own proxy_ssl_trusted_certificate, so each upstream
+// is verified against its own pin.
+
+data router_dev_upstream_rows_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.serving.router_dev_policy",
+    decl_name: "router_dev_first_party_upstreams",
+    field: WholeDeclaration
+  }
+}
+
+data router_dev_pin_bundle_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.serving.router_dev_policy",
+    decl_name: "router_dev_location",
+    field: WholeDeclaration
+  }
+}
+
+// 5. HAND-WRITTEN SHELL IN THE FALSIFIER'S CONTAINERS. gunbc.instruments.router_proxy_falsifier starts the
+// fixture and the dev router with `sh -c` command strings (fixture_command, dev_router_command, built with
+// self_signed): mkdir, two openssl certificate mints, then exec openresty in the foreground. The words are
+// fixed literals with no caller input, but the and-list is shell semantics written as a string rather than a
+// modeled command. Dissolves when an and-list of argv commands has a production in the bash grammar rows
+// (extdeps.languages.bash), so the container command is emitted from argv nodes.
+data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.instruments.router_proxy_falsifier",
+    decl_name: "self_signed",
+    field: WholeDeclaration
+  }
+}
+
+// THE FIVE DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
+// declaration that does not exist yet, so gunbc.census_closure_frontier (where these rows are enrolled)
+// reports each as pending until its replacement lands. The S3 trigger names the plan's callout module
+// (plan gunbc.plans.fabric_serving_router S3, gunbc.serving.serving_router) and a declaration only that
+// service will carry, not a generic entry-point name.
+data router_dev_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
+    reason: "Router policy in the proxy (row 1): key check, stickiness, active-turn caps, model routing and tallies decided in OpenResty Lua (router_dev_init_lines, router_dev_access_lines, router_dev_models_lines, router_dev_stats_lines, router_dev_header_lines, router_dev_log_lines, all rendered by router_dev_config).",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.serving_router", decl_name: "serving_router_authz_callout"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_srv1_write_config"),
+    reason: "Hand-run deploy (row 2): the operator account renders, writes state and starts the container on srv1.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party_upstreams"),
+    reason: "Hand-maintained upstream list (row 3): literal first-party rows and the ctrl rented-pool overflow gateway.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment", decl_name: "rented_cohort_enrollments_from_allocations"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_location"),
+    reason: "Pins as one trust bundle (row 4): verification checks membership in the pinned set, not each upstream's own pin.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "self_signed"),
+    reason: "Hand-written shell in the falsifier's container commands (row 5): mkdir, openssl and exec openresty joined as an sh -c and-list.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.languages.bash.grammar", decl_name: "bash_and_list_production"))
+  ),
+]

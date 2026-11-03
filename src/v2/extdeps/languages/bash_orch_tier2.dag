@@ -12,6 +12,7 @@ import std.algebra { empty_map, map_insert }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 import v2.extdeps.languages.bash {
+  bash_cmdsubst_body_spelling,
   bash_conj_emitted_from_tokens,
   bash_relation_translation_rules_node,
   bash_make_bound_tokens_target_model,
@@ -74,9 +75,12 @@ fn orch_call_target_model(callee: String, args_spelling: String) -> TargetModel 
 }
 
 fn orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel {
+  // The one space that keeps `$(` from meeting a body that opens with `(` -- the arithmetic opener -- is
+  // applied here too, so no spelling site for a bash substitution can emit the colliding bytes. Bodies that
+  // do not open with `(` are untouched: see bash_cmdsubst_body_spelling.
   bash_stmt_assign_target_model(
     name: name,
-    value: concat("\"$(", concat(body, ")\""))
+    value: concat("\"$(", concat(bash_cmdsubst_body_spelling(body: body), ")\""))
   )
 }
 

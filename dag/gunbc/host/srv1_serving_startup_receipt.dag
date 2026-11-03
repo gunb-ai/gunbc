@@ -100,6 +100,9 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // `docker inspect --format {{.Image}} lil-flash-next` — the digest the RUNNING container resolves
   // to, not the mutable tag. The tag the operator's launcher pulls is
   // karmic-kraken-beta-spark-20261007-d071fb3dde0ba979; the digest is the identity.
+  // 2026-10-31 08:02:26: relaunched by calm-moth-166 (operator ruling: relaunch with fans high, watch ECC) from the
+  // retained wrapper at the pool context cap; same recovery1 image; health 200 at 08:11, srv1-vllm re-added to the
+  // router at 08:12. The 2026-10-30 13:12 exit was a host reset (BMC SEL: undetermined system hardware failure).
   // 2026-10-30 12:28: local/eager-checkpoint-read-priority:recovery1 (gunbc-private#267 at d49433f, LMCache read
   // priority with copy-ownership quarantine and recovery), LMCACHE_L2_GB 150; it ran until the 13:12:33 host reboot
   // (exit 255) and was deliberately not relaunched. Read back off the exited container and its startup log on
@@ -126,7 +129,7 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   weight_load_format: "nvfp4" as NonEmptyStr,
   weight_quantization: "nvfp4_csf" as NonEmptyStr,
   served_model_name: "Qwen3.8-Flash-Next" as NonEmptyStr,
-  max_model_len: token_count(count: 262144),
+  max_model_len: token_count(count: 229376),
   max_num_batched_tokens: token_count(count: 6019),
   max_num_seqs: 16,
   gpu_memory_utilization_percent: 96,
@@ -156,8 +159,14 @@ data srv1_serving_startup_reading: Srv1ServingStartupReading = Srv1ServingStartu
   // max_num_batched_tokens, gpu_memory_utilization, block_size, kv_cache_dtype, MTP 3 and kv_connector from
   // the launch's own non-default-args and engine-config lines, all unchanged; the driver from its START event.
   // gdn_backend was not re-read: the log names the GDN decode kernel b12x on every launch since 10-29.
-  wrapper_sha256_hex: "15b2cefe221ee5e44d4f8152cf0e4f2988f7158f7e512a4147fe6387c2097bc3" as NonEmptyStr,
-  observed_on: "2026-10-30" as NonEmptyStr,
+  // RE-READ 2026-10-31 for the 08:02 relaunch at the pool context cap, by calm-crab-645 off the running
+  // container: image 2ad6245e (docker inspect), started 08:02:26Z; wrapper sha256 b8b73d18... (the live host
+  // file, unchanged since the cap edit); the launch's non-default args report max_model_len 229376 (was
+  // 262144), quantization and load_format nvfp4_csf, block_size 64, gpu_memory_utilization 0.96, fp8 KV,
+  // max_num_batched_tokens 6019, max_num_seqs 16; engine version 0.1.dev22105+g5009fa56b; driver 580.178.04.
+  // /v1/models reports max_model_len 229376 (calm-moth-166). The other fields were not re-read and carry over.
+  wrapper_sha256_hex: "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd" as NonEmptyStr,
+  observed_on: "2026-10-31" as NonEmptyStr,
   probes: [
     "docker inspect --format {{.Image}} lil-flash-next",
     "docker inspect --format {{.Config.Cmd}} lil-flash-next",

@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.an_anonymous_record_literal_skips_its_expected_roster
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data an_anonymous_record_literal_skips_its_expected_roster: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_anonymous_record_literal_skips_its_expected_roster" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of judging a record literal written without a type name against the roster of the record its expected type resolves to, by declaration identity, with the same missing-field, unknown-field and field-type refusals a named literal gets, and typing it as that record." } },
+
+  receipts: [
+    "**an anonymous record literal skips its expected roster** (a record literal written without a type name, at a position whose expected type is a record, is accepted with a missing, extra or mistyped field, and types as an anonymous product).",
+
+    "INVALID STATE: an Accepted program in which `data xs: List<Spec> = [{ a: 1 }]` (Spec declaring a and b), `[{ a: 1, b: 2, c: 3 }]` or `[{ a: 1, b: \"x\" }]` binds a value the declared record does not admit.",
+
+    "HARM: silent wrongness, and a typing defect downstream: the declared List<Spec> reads as List<anonymous product> to every later judgment, so a sound declared-position judgment over it either refuses correct code or must undecide it (measured on gunbc#15441: 10 correct corpus sites refused, heal run 41174225101).",
+
+    "DISTINGUISHING FACTS: the expected type reaches the literal intact (infer_item's data arm passes the annotation, the ExprListLit arm of infer_expr passes the element type, infer_record_lit forwards it). v1.compiler.infer infer_record_lit_structural then keyed presence_fields, construction_field_names and missing_field_diags on the literal's own name and resolved the expected roster only through record_lit_expanded_from_expected / record_lit_instantiated_fields, both of which answer none without a name; the anonymous arm minted a nameless product as the literal's type. This is class (3) of v1.compiler.infer declared_type_conformance_note.",
+
+    "RUNG: found BELOW the ladder -- accepted with no diagnostic.",
+
+    "CEILING 3, structurally guaranteed: the source can still write the defect, and the compiler refuses every one whose expected record resolves, because a record's roster is a finite, declared field set. An expected optional, coproduct, alias or uninstantiated generic keeps the anonymous reading and is not judged by this rule.",
+
+    "NEXT-RUNG TRIGGER: v1.compiler.infer anonymous_record_literal_expectation consumed at infer_record_lit_structural, with the REDs and paired controls in test.claim.anonymous_record_literal_roster_witness executed against a seed built from that change. The row is read at the ceiling only once those execute.",
+
+    "REVIEW TELL: a roster read keyed on the literal's spelled name (`if tn_str == \"\" { [] }`) where the expected type already names the record.",
+  ],
+
+  evidence: [],
+}

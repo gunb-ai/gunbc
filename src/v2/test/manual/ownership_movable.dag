@@ -20,7 +20,7 @@ fn proof_one(name: String, consumers: List<EdgeClassification>) -> OwnershipProo
 }
 
 fn edge(k: EdgeKind, s: String) -> EdgeClassification {
-  EdgeClassification { kind: k, site: s, span_start: 0 }
+  EdgeClassification { occurrence: Absent, kind: k, site: s, span_start: 0 }
 }
 
 fn movable_of(proof: OwnershipProof, name: String) -> Bool {

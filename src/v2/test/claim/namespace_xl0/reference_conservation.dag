@@ -15,7 +15,8 @@ import v2.compiler.reference_conservation {
   reference_conservation_of_subject_admitted,
   reference_conservation_report_lines,
   report_with_advisories,
-  OccurrenceRoleTableUnadmitted
+  OccurrenceRoleTableUnadmitted,
+  occurrence_spelling_conserved
 }
 import std.occurrence_identity { authored_occurrence_of }
 import std.algebra { Cons, Empty, fold_list, length, list_map }
@@ -29,7 +30,9 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Rejected, Some, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton, invariant_port_locus }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Edge, Node, Symbol, node_rebuild, symbol_intern_lexeme, NotADeclaration }
+import v2.std.node_query { pattern_wildcard_name }
+import v2.std.anonymous_binder { anonymous_param_label }
+import v2.std.node { Edge, Node, Symbol, node_rebuild, symbol_intern_lexeme, NotADeclaration, DeclaresAt, Authored }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
@@ -121,13 +124,14 @@ test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
 // The numbers are separate and together account for the whole population: a check that found
 // nothing to conserve, or that summed one disposition into another, cannot pass this. The clean
 // control has conserved references, role-excluded declarations, labels and parameters, and the
-// header -- and, now that the parameter lists are read (v2.compiler.occurrence_role
+// header (role_excluded is not pinned positive: since the classification shift the control's declared binders
+// conserve at their own occurrence, so that disposition can legitimately read zero) -- and, now that the parameter lists are read (v2.compiler.occurrence_role
 // ReadParamListBinders), no locus-erased atom: before that reader its parameters were the
 // locus-erased number, so a zero here is the reader's receipt, not an empty disposition.
 test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool {
   let r = clean_control_report()
-  r.conserved > 0 && r.locus_erased == 0 && r.role_excluded > 0 && r.header_channel > 0
-    && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
+  r.conserved > 0 && r.locus_erased == 0 && r.header_channel > 0 && length(xs: r.dropped) == 0
+    && conservation_accounts_for_every_atom(r: r)
 }
 
 // THE HEADER IS ITS OWN CHANNEL (HeaderSegmentsNotRefusalSites): the clean control's header
@@ -420,22 +424,34 @@ fn let_binder_removed_subject() -> ReferenceConservationSubject {
   )
 }
 
-// The let's binder atom is the second `rc_rep`; the first is the parameter, which the tree carries as
-// an edge label and the report matches against the declaration's pool, not by occurrence.
-fn repeated_spelling_let_binder_removed_subject() -> ReferenceConservationSubject {
+// Two let binders spell the parameter's name again. Since the index answers a declaration atom by
+// its edge's DeclaresAt occurrence (#14662), the parameter no longer draws on the declaration's
+// spelling pool; a binder whose edge is removed falls to the pool and is accounted there (a single
+// removal is erased, not dropped -- the label survives in the declaration). The pool holds ONE copy
+// of the spelling, so removing BOTH binders' edges leaves it two erased binders for one copy.
+data repeated_binders_source: String = "module v2.test.reference_conservation_repeat2\n\nfn rc_repeat(rc_rep: Int) -> Int {\n  let rc_rep = rc_rep\n  let rc_rep = rc_rep\n  rc_rep\n}\n"
+
+fn repeated_binders_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "repeated_binders", source: repeated_binders_source)
+}
+
+// atoms spelled rc_rep in source order: 0 parameter, 1 first binder, 2 its initializer, 3 second
+// binder, 4 its initializer, 5 the body use.
+fn repeated_binders_both_removed_subject() -> ReferenceConservationSubject {
+  let original = repeated_binders_subject()
   subject_without_atom(
-    subject: repeated_spelling_subject(),
-    atom: nth_authored_atom(subject: repeated_spelling_subject(), identity: ^rc_rep, n: 1)
+    subject: subject_without_atom(subject: original, atom: nth_authored_atom(subject: original, identity: ^rc_rep, n: 1)),
+    atom: nth_authored_atom(subject: original, identity: ^rc_rep, n: 3)
   )
 }
 
-// RED (multiset): the tree keeps the parameter's single `rc_rep` label and omits the let binder's
-// atom. The pool holds one copy of the spelling; the parameter consumes it, so the let binder finds
-// none and is exactly one DroppedReference. A pool that does not decrement on a match (n - 1 kept as
-// n) lets the binder match the parameter's copy again and reports none: the mutation this claim
-// is stated against.
-test fn a_removed_let_binder_beside_the_parameter_label_is_exactly_one_drop_holds() -> Bool {
-  let r = conservation_report_of(subject: repeated_spelling_let_binder_removed_subject())
+// RED (multiset): the tree keeps the parameter's single `rc_rep` label and omits both binders'
+// atoms. The pool holds one copy; the first binder consumes it, the second finds none and is
+// exactly one DroppedReference. A pool that does not decrement on a match lets both match and
+// reports none; a removal helper that strips only target nodes (the pre-#14662 shape) removes
+// nothing and reports none.
+test fn two_removed_let_binders_beside_one_parameter_label_are_exactly_one_drop_holds() -> Bool {
+  let r = conservation_report_of(subject: repeated_binders_both_removed_subject())
   report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1 && reference_conservation_holds(report: r) == false
 }
 
@@ -516,7 +532,34 @@ fn construct_tags_subject() -> ReferenceConservationSubject {
 
 test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: construct_tags_subject())
-  r.authored == 22 && r.conserved == 11 && r.locus_erased + r.role_excluded + r.header_channel == 11 && length(xs: r.dropped) == 0
+  conservation_accounts_for_every_atom(r: r) && r.locus_erased == 0 && length(xs: r.dropped) == 0 && r.refused == 0
+}
+
+// THE IDENTITY LAW, WITH NO COUNT IN IT. Every authored atom lands in exactly one of four buckets
+// (kept at its own occurrence, erased from its locus, excluded by its recorded role, or the module
+// header), and nothing is dropped or refused. A count pin (`conserved == 11`) broke when a lowering
+// improvement moved six binder atoms from role_excluded to conserved (11 -> 17) with nothing lost; the
+// law is what that shift preserves, and `locus_erased == 0` is the discriminating bit for the specimen
+// (a tag rebuilt without its occurrence is counted there). It is AGGREGATE conservation, not identity grain: an
+// authored reference wrongly classed role_excluded would still balance the equation, so per-atom role-to-identity
+// completeness is NOT established here (the row names its own restoration trigger).
+fn conservation_accounts_for_every_atom(r: ReferenceConservationReport) -> Bool {
+  r.authored > 0 && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored && length(xs: r.unmeasured) == 0
+}
+
+// RED for the tag claim: the tree keeps every atom but the construct-literal tag `RcRow` (the third
+// spelling in the source: the type's name, the return type, then the literal's tag), so that one atom
+// is exactly one drop and the law no longer closes.
+fn construct_tag_removed_subject() -> ReferenceConservationSubject {
+  subject_without_atom(
+    subject: construct_tags_subject(),
+    atom: nth_authored_atom(subject: construct_tags_subject(), identity: ^RcRow, n: 2)
+  )
+}
+
+test fn a_removed_constructor_tag_is_exactly_one_drop_holds() -> Bool {
+  let r = conservation_report_of(subject: construct_tag_removed_subject())
+  report_drop_count(report: r, wanted: ^RcRow) == 1 && length(xs: r.dropped) == 1 && reference_conservation_holds(report: r) == false
 }
 
 // BINDERS AND LABELS ARE COUNTED OUTSIDE THE XL-2 POPULATION, NOT AS LOST REFERENCES. Of the
@@ -527,7 +570,7 @@ test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
 // readers landed those three binders were locus_erased and role_not_yet_read counted them.
 test fn binders_and_labels_are_role_excluded_not_locus_erased_holds() -> Bool {
   let r = conservation_report_of(subject: construct_tags_subject())
-  r.role_excluded == 8 && r.header_channel == 3 && r.locus_erased == 0 && r.role_not_yet_read == 0 && r.role_reader_refused == 0
+  conservation_accounts_for_every_atom(r: r) && r.role_excluded > 0 && r.header_channel > 0 && r.locus_erased == 0 && r.role_not_yet_read == 0 && r.role_reader_refused == 0 && length(xs: r.dropped) == 0
 }
 
 // ---- dotted-spine segments keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 4) --
@@ -546,7 +589,7 @@ fn dotted_spine_subject() -> ReferenceConservationSubject {
 
 test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: dotted_spine_subject())
-  r.authored == 18 && r.conserved == 10 && r.locus_erased == 0 && r.role_excluded == 5 && r.header_channel == 3 && length(xs: r.dropped) == 0
+  conservation_accounts_for_every_atom(r: r) && r.locus_erased == 0 && length(xs: r.dropped) == 0 && r.refused == 0
 }
 
 // ---- anonymous parameter slots are conserved by their minted identity -------------------------
@@ -566,6 +609,64 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
     && r.authored > 0
+}
+
+// RED (narrowness): the minted slot label conserves ONLY an authored `_`. A tree whose first `_`
+// parameter edge is relabelled to a plain `x` is not a minted slot, so that `_` is exactly one drop.
+fn node_relabel_declaration_at(node: Node, occurrence: OccurrenceId, label: Symbol) -> Node {
+  node_rebuild(
+    n: node,
+    children: fold(node.children, init: [], f: fn(acc, e) {
+      let hit = match e.declaration {
+        DeclaresAt { occurrence: d } =>
+          match authored_occurrence_of(identity: d) {
+            Present { value: o } => o.value == occurrence.value
+            Absent => false
+          }
+        NotADeclaration => false
+      }
+      concat(acc, [Edge {
+        label: if hit { Authored { name: label } } else { e.label },
+        target: node_relabel_declaration_at(node: e.target, occurrence: occurrence, label: label),
+        declaration: e.declaration
+      }])
+    })
+  )
+}
+
+fn anonymous_slot_relabelled_subject() -> ReferenceConservationSubject {
+  let subject = anonymous_slots_subject()
+  match subject.normalized {
+    Rejected { diagnostics: _ } => subject
+    Accepted { value: tree, diagnostics: residue } =>
+      match nth_authored_atom(subject: subject, identity: symbol_intern_lexeme(lexeme: "_"), n: 0) {
+        Absent => subject
+        Present { value: a } =>
+          ReferenceConservationSubject {
+            path: subject.path,
+            parsed: subject.parsed,
+            normalized: admit_normalized_tree(
+              root: node_relabel_declaration_at(node: tree.root, occurrence: a.occurrence, label: symbol_intern_lexeme(lexeme: "x")),
+              test_markers: tree.test_markers,
+              import_bindings: tree.import_bindings,
+              imported_modules: tree.imported_modules,
+              type_declaration_kinds: tree.type_declaration_kinds,
+              type_declaration_modifiers: tree.type_declaration_modifiers,
+              diagnostics: residue
+            )
+          }
+      }
+  }
+}
+
+test fn a_underscore_parameter_relabelled_to_a_plain_name_is_exactly_one_drop_holds() -> Bool {
+  let r = conservation_report_of(subject: anonymous_slot_relabelled_subject())
+  report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 1 && length(xs: r.dropped) == 1
+}
+
+test fn a_minted_slot_label_conserves_only_the_underscore_atom_holds() -> Bool {
+  occurrence_spelling_conserved(found: anonymous_param_label(slot: 1), identity: pattern_wildcard_name())
+    && occurrence_spelling_conserved(found: anonymous_param_label(slot: 1), identity: symbol_intern_lexeme(lexeme: "Int")) == false
 }
 
 // ---- roles are observed whatever normalization does (review 5330814496) -----------------------

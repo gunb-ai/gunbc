@@ -1,5 +1,6 @@
 module gunbc.runner.runner_qualification_attempt_run
 
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Secret }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
@@ -283,11 +284,11 @@ fn qualification_attempt_held(
   match qualification_branch_name(attempt: attempt) {
     QualificationBranchNameRefused { attempt: _, cause: c } => exit_failure(reason: concat("qualification attempt: ", c as String))
     QualificationBranchNamed { name: n } =>
-      match host_unit_slot_for(host: control, purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: n.branch)) {
+      match host_unit_slot_for(host: control, purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: n.branch), receipt: runner_user_session_receipt_observed(host: host)) {
         HostUnitSlotRefused { refusal: _ } => exit_failure(reason: concat("qualification attempt: no attempt slot binds on ", host as String))
         HostUnitSlotBound { slot: slot } =>
           match anchored_host_transport_live(host: host, attempt_raw: attempt as String) {
-            AnchoredBindingBound { bound: b } => qualification_attempt_with_key(host: host, slot: slot, attempt: attempt, revision: revision, user: user, hold: hold, transport: b.transport, wif: wif, key_path: key_path)
+            AnchoredBindingBound { bound: b, anchor: _ } => qualification_attempt_with_key(host: host, slot: slot, attempt: attempt, revision: revision, user: user, hold: hold, transport: b.transport, wif: wif, key_path: key_path)
             other => exit_failure(reason: concat("qualification attempt: no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)))
           }
       }

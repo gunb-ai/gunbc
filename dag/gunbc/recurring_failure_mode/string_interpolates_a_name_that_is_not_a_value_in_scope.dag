@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.string_interpolates_a_name_that_is_not_a_value_in_scope
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data string_interpolates_a_name_that_is_not_a_value_in_scope: RecurringFailureMode = RecurringFailureMode {
+  identity: "string_interpolates_a_name_that_is_not_a_value_in_scope" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a string literal holding a brace followed by an identifier (prose naming a Rust import list) is an interpolation hole, and the hole names something that is not a value in scope. Observed on gunbc#15495 at 7a81e3b: two receipt strings of a recurring_failure_mode row carried the text of a Rust import list with a braced type name, the closure typechecked, and the failure appeared only when the heal stage0 check evaluated the failure-mode roster: NoSuchVariable with the type's name, in an instrument unrelated to the row.",
+    "HARM: a ledger row's prose broke an unrelated instrument, found by CI heal (non-required) after v2-bootstrap passed. EXECUTED: heal_stage0_overlap_refusal_wet exit 1 at 7a81e3b, exit 0 at its parent and with only the row removed (calm-crab-645, srv1); the escaped brace is the repair on the row (81ab4d6).",
+    "RUNG NOT TYPED: whether the seed typecheck or the native compile refuses an interpolation of an undefined name has not been executed; the log shows typecheck completing on the closure, so the seed route accepted it. NEXT TRIGGER: execute a one-string fixture through the seed check and through the native compile; a refusal located at the hole is the ceiling (structurally guaranteed).",
+    "RECOGNITION RULE: NoSuchVariable naming a type or a word that appears only inside a string literal; grep the string for a brace followed by an identifier."
+  ],
+
+  evidence: [],
+}

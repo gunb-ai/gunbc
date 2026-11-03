@@ -16,7 +16,7 @@ import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
-  harness_outcome_detail, harness_event_placement_waiting,
+  harness_outcome_detail, harness_event_placement_waiting, harness_events_append, HarnessEventsUnwritable, HarnessEventsWritten,
 }
 import gunbc.harness.harness_guidance {
   harness_worker_guidance_at, harness_guidance_prose, harness_probe_guidance,
@@ -407,16 +407,23 @@ fn harness_bind_seat_waiting(
 
 // Absent is "announced, and the interval elapsed"; Present is why the wait cannot continue.
 fn harness_seat_wait_announce_and_sleep(wait: Int, detail: String, events_path: String) -> String? {
-  let written = Filesystem.Write(
-    path: events_path,
-    content: concat(harness_event_placement_waiting(wait: wait, wait_cap: harness_seat_wait_cap as Int, reason: detail), "\n"),
-  )
-  if !written.success {
-    Present { value: join(["placement pending and the wait could not be announced on ", events_path, ": ", written.error, "; pending: ", detail], "") }
-  } else if !sleep_delay_seconds_second_carrier_projection(duration: harness_seat_wait_interval) {
-    Present { value: join(["placement pending and the wait interval did not elapse (sleep failed); pending: ", detail], "") }
-  } else {
-    none
+  match harness_seat_wait_announce(wait: wait, detail: detail, events_path: events_path) {
+    Present { value: refusal } => Present { value: refusal }
+    Absent =>
+      if !sleep_delay_seconds_second_carrier_projection(duration: harness_seat_wait_interval) {
+        Present { value: join(["placement pending and the wait interval did not elapse (sleep failed); pending: ", detail], "") }
+      } else {
+        none
+      }
+  }
+}
+
+// The announce half, split out so the wet witness exercises the real event writer without the 60s sleep.
+fn harness_seat_wait_announce(wait: Int, detail: String, events_path: String) -> String? {
+  match harness_events_append(path: events_path, lines: [harness_event_placement_waiting(wait: wait, wait_cap: harness_seat_wait_cap as Int, reason: detail)]) {
+    HarnessEventsUnwritable { detail: why } =>
+      Present { value: join(["placement pending and the wait could not be announced on ", events_path, ": ", why, "; pending: ", detail], "") }
+    HarnessEventsWritten => none
   }
 }
 

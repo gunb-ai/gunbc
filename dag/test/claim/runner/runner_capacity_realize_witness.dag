@@ -1,5 +1,7 @@
 module test.claim.runner.runner_capacity_realize_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+
 import std.logic { Bool }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_capacity_plan {
@@ -95,7 +97,7 @@ fn first_width_above_the_fabric_carve() -> Int {
 // apply_seam_preserves_sibling_host_receipt_when_one_refuses below, which still has one.
 test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool {
   let width = first_width_above_the_fabric_carve()
-  let plan = runner_capacity_plan(
+  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
     srv3_width: width,
     srv4_width: width,
     roster: incident_2026_08_06_managed_roster_fixture(),
@@ -133,7 +135,7 @@ test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() ->
 // cannot drift apart the way a hand-written pair of numbers can.
 test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
   let width = first_width_above_the_fabric_carve()
-  let plan = runner_capacity_plan(
+  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
     srv3_width: width,
     srv4_width: width,
     roster: organization_runner_roster_materialized_slots_online_evidence(),
@@ -176,7 +178,7 @@ test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
 // managed-pair slice, so the plan reaches apply instead of refusing on srv2 upstream of the seam.
 test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
   let outcome = runner_capacity_apply_plan(
-    plan: runner_capacity_plan(
+    plan: runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
       srv3_width: 6,
       srv4_width: 6,
       roster: incident_2026_08_06_managed_roster_fixture(),
@@ -248,7 +250,7 @@ test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
 // width. Minting converged_six_* beside it was a second name for one concept, which is the fork this
 // module's own authority note forbids -- caught by trying to make it green rather than by review.
 test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
-  let plan = runner_capacity_plan(
+  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
     srv3_width: 5,
     srv4_width: 5,
     roster: organization_runner_roster_materialized_slots_online_evidence(),

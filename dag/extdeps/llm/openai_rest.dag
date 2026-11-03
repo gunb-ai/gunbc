@@ -1,4 +1,5 @@
 module extdeps.llm.openai_rest
+import std.types { Bearer }
 
 import extdeps.ietf.http_semantics { POST }
 import extdeps.llm.openai {

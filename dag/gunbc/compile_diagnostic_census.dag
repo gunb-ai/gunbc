@@ -127,7 +127,7 @@ type CompileDiagnosticCensus
 // *_contract row ever admitted the name (it is only a builtin_registry_surface_names entry, which mirrors the
 // registry that still holds it), so there is no contract to retire. Consumers: the declared-home claims
 // (test.claim.compile_dag_diagnostic_census_declared_home) import it today; gunbc.compile_census_probe, whose
-// census_rows_for gunbc.namespace_cut.migration_kit calls, still calls the ambient spelling. TRIGGER for that
+// census_rows_for the (retired) namespace-cut migration kit called, still calls the ambient spelling. TRIGGER for that
 // caller: the namespace gate tip (branch gate/namespace-tip, owner wise-moth-707) imports this declaration at
 // census_rows_for through the roster_import_sweep row this change adds. The other bare callers (listed by
 // `gunbc test //gunbc/instruments:ambient-name-census`) move with a corpus-wide generated declared-import sweep

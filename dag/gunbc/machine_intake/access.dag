@@ -3,6 +3,7 @@ module gunbc.machine_intake.access
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_equal }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.network.mac { Eui48Address }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import extdeps.bmc.access_profile {
   AccessProfileAmbiguous,
@@ -47,13 +48,37 @@ import gunbc.machine_intake.receipt { EvidenceRef, same_intake_subject }
 // configfs qualification, the UEFI HTTP standing and the network-boot
 // establishment all carry this pair, and the solver refuses any of them whose
 // pair is not the request's (ruling 4 §1).
-type BootDeliveryTarget {
-  subject: MachineIntakeSubject
-  endpoint: BmcControllerEndpoint
+//
+// A target is addressed by exactly one of two things. A controller-addressed unit is
+// reached through a BMC and gets BMC-gated transports and a BMC boot-control route. A
+// network-addressed unit has no controller to name (a BMC-less host): it is reached only
+// by the MAC its firmware DHCPs from, so only the network transports can be eligible for
+// it and the controller-gated candidates are ineligible-with-cause rather than the whole
+// solve refusing.
+type BootDeliveryTarget
+  = ControllerAddressedTarget { subject: MachineIntakeSubject, endpoint: BmcControllerEndpoint }
+  | NetworkAddressedTarget { subject: MachineIntakeSubject, mac: Eui48Address }
+
+fn boot_delivery_target_subject(target: BootDeliveryTarget) -> MachineIntakeSubject {
+  match target {
+    ControllerAddressedTarget { subject: s, endpoint: _ } => s
+    NetworkAddressedTarget { subject: s, mac: _ } => s
+  }
 }
 
 fn same_boot_delivery_target(left: BootDeliveryTarget, right: BootDeliveryTarget) -> Bool {
-  same_intake_subject(left: left.subject, right: right.subject) && left.endpoint == right.endpoint
+  match left {
+    ControllerAddressedTarget { subject: ls, endpoint: le } =>
+      match right {
+        ControllerAddressedTarget { subject: rs, endpoint: re } => same_intake_subject(left: ls, right: rs) && le == re
+        NetworkAddressedTarget { subject: _, mac: _ } => false
+      }
+    NetworkAddressedTarget { subject: ls, mac: lm } =>
+      match right {
+        ControllerAddressedTarget { subject: _, endpoint: _ } => false
+        NetworkAddressedTarget { subject: rs, mac: rm } => same_intake_subject(left: ls, right: rs) && lm == rm
+      }
+  }
 }
 
 // A live observation as a receipt of THIS attempt: the subject it was taken

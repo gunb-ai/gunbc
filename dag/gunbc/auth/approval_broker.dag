@@ -3,7 +3,7 @@ module gunbc.auth.approval_broker
 import std.types { NonEmptyStr, String, Timestamp }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
-import gunbc.auth.approval_capability { ApprovalCapabilityClaims, CapabilityRefusal }
+import gunbc.auth.approval_capability { ApprovalCapabilityClaims }
 
 // ── What this module owns, and what it deliberately does not ─────────────────────────────────
 // THE LIFECYCLE IS SHARED; THE MEANING OF SUCCESS IS NOT.
@@ -22,40 +22,17 @@ import gunbc.auth.approval_capability { ApprovalCapabilityClaims, CapabilityRefu
 data broker_owns_lifecycle_not_meaning_note: NonEmptyStr = "One broker lifecycle; per-authority admission, execution and verification. The broker consumes an authority-produced completion bound to the request revision and executed intent, and never derives completion from a transport status. Adding an authority must not require editing this module."
 
 // ── Redemption lives with the enrolled device ───────────────────────────────────────────────
-// THE BROKER NO LONGER REDEEMS A BARE CAPABILITY. Its bearer route -- a MAC'd link delivered by
-// ntfy, redeemed by whoever held it, recorded as "bearer of capability ..." when the tailnet header
-// could not be attributed -- was deleted in the device cutover, once a real phone approval read back
-// with decided_by naming the enrolled login: escalation
-// gcp-iam-bootstrap-delta-b6408304fcc2908fa37769be958b1b6555902f00244b91d0b7a25994fb14f1e3-run-40767618826-attempt-1,
-// decided_by brian@gunb.ai at 2026-10-28T21:30:31Z, the record read back at
-// /var/lib/gunbc/approvals/<escalation_id>.2 on srv1 (ruling gunbc.design_ruling
+// THE BROKER HOLDS NO REDEMPTION TYPE. Its bearer route -- a MAC'd link delivered by the push
+// transport, redeemed by whoever held it -- was deleted in the device cutover, once a real phone
+// approval read back with decided_by naming the enrolled login (ruling gunbc.design_ruling
 // one_approval_route_for_every_privileged_action). The one redemption authority is
-// gunbc.auth.approval_device_redemption redeem_device_over_store: the same capability, verified by the
-// same verify_capability, admitted only under a verified device signature from an active enrolment,
-// so every admitted redemption names the enrolled Google login and a disclosed capability admits
-// nothing without the device. This module keeps what that redemption commits INTO, and the carrier
-// an authority adapter consumes.
-
-// THE REDEEMED-CONSENT CARRIER AN AUTHORITY ADAPTER CONSUMES: the authenticated claims and the
-// principal the consent record names. It outlived the bearer route because it is the adapter's
-// interface, not that route's: an admitted redemption names the enrolled device's Google login, and
-// the only refusal it carries is the capability's own. The bearer route's method and tailnet-header
-// refusals left with it. ITS FORMER ADAPTERS HAVE SINCE MOVED: gunbc.machine_intake
-// bmc_rotation_route, bmc_secure and arrival_converge now take std.scoped_authorization
-// ScopedAuthorization<BmcAccountWriteApproval> (main's 536a969f, the BMC rotation model), so this
-// carrier has no consumer left in the corpus. It is NOT re-minted for a new adapter: an authority
-// that needs consent takes the scoped authorization of its own purpose. It retires with the ntfy
-// retirement change (gunbc.auth.approval_ntfy_deployment approval_ntfy_retirement_frontier), which
-// is an actuation and so the operator's to approve.
-type RedemptionRefusal
-  = RedemptionCapabilityRefused { cause: CapabilityRefusal }
-
-type Redemption
-  = RedemptionAdmitted {
-      claims: ApprovalCapabilityClaims
-      decided_by: NonEmptyStr
-    }
-  | RedemptionRefused { cause: RedemptionRefusal }
+// gunbc.auth.approval_device_redemption redeem_device_over_store: the same capability, verified by
+// the same verify_capability, admitted only under a verified device signature from an active
+// enrolment, so every admitted redemption names the enrolled Google login. This module keeps only
+// what that redemption commits INTO. The carrier the bearer route used to hand an authority adapter
+// (Redemption / RedemptionRefusal) outlived that route by one ruling and its last adapters moved to
+// std.scoped_authorization; it went with the ntfy retirement change
+// (gunbc.fleet.approval_ntfy_retirement), which uninstalled the transport that delivered the link.
 
 // ── One decision slot, and what commits into it ──────────────────────────────────────────────
 // APPROVE AND DENY CONTEND ON THE SAME SLOT. Two slots -- one per verb -- would exclude nothing:

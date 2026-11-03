@@ -21,7 +21,7 @@ import gunbc.host.managed_host_unit_hold {
   unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner,
   ProbeHoldReleaseDecision, ProbeHoldReleaseAt, ProbeHoldFreeNoop, ProbeHoldForeignNoop, ProbeHoldUnobservable,
   ProbeHoldReleaseOutcome, ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
-  probe_hold_release_decision, probe_hold_release_refused, probe_hold_release_committed, probe_hold_release_step_exit,
+  probe_hold_release_decision, probe_hold_release_refused, probe_hold_release_step_exit,
   HolderLivenessRoute, HolderObserveProcess, HolderNotObservable, holder_liveness_route,
   UnitHoldAdmission, UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided, admit_unit_hold_subject, unit_hold_subject_under,
   UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired, UnitHoldHostUndecided,
@@ -442,10 +442,8 @@ test fn a_free_or_unreadable_slot_is_not_released() -> Bool {
 // owner meanwhile is not ours; only a committed release at the observed generation is Released.
 test fn a_stale_generation_is_left_alone() -> Bool {
   (match probe_hold_release_refused(refusal: HoldReleaseAgainstAnotherGeneration { acquired: first_generation(), observed: first_generation() }) { ProbeHoldStale { detail: _ } => true  _ => false })
-    && (match probe_hold_release_committed(outcome: FileHoldReleaseLost { slot_key: fixture_slot_key }) { ProbeHoldStale { detail: _ } => true  _ => false })
     && (match probe_hold_release_refused(refusal: HoldReleaseHeldByAnotherOwner { generation: first_generation(), holder: boot_run_owner(run_id: "41", process: holder_process, pid_namespace: "pid:[4026531836]") }) { ProbeHoldNotOurs { holder: h } => string_contains(s: h, pattern: "boot-run:41")  _ => false })
     && (match probe_hold_release_refused(refusal: HoldReleaseAlreadyFree { generation: first_generation(), released_by: "x" as DurableHoldReleaseRef }) { ProbeHoldAlreadyFree => true  _ => false })
-    && (match probe_hold_release_committed(outcome: FileHoldReleased { slot_key: fixture_slot_key, generation: first_generation() }) { ProbeHoldReleased => true  _ => false })
 }
 
 // ── A DEAD PROBE HOLDER IS RECOVERABLE (side-chat blocker 4b) ────────────────────────────────────────

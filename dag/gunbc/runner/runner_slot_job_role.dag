@@ -10,17 +10,12 @@ import std.nat { Nat }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, DeploySlotReading, deploy_slot_observed_tenancy, DeploySlotPrivacyNotYetObserved }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, DeploySlotReading, deploy_slot_observed_tenancy }
 import gunbc.ci.deploy_route_requirement { deploy_route_switch_admitted, srv1_deploy_route_requirement }
-import gunbc.runner.runner_host_deploy { srv1_runner_host_spec }
-import gunbc.runner.runner_group_restriction_observation { runner_group_restriction_not_yet_observed }
 import gunbc.runner.runner_slot_allocation {
   host_committed_identities_at,
   identity_in_list,
   identity_is_fabric_execution_member,
-  gunbc_runner_committed_width,
-  RunnerWidthDerived,
-  RunnerWidthUnresolved,
 }
 
 // WHO A SLOT'S JOBS RUN AS IS A FACT OF THE SLOT, NOT OF THE HOST.
@@ -145,13 +140,6 @@ fn host_committed_deploy_members(host: HostIdentity, committed: Int) -> List<Run
   )
 }
 
-fn host_committed_ci_job_members(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
-  filter(
-    host_committed_github_members(host: host, committed: committed),
-    id => !identity_in_list(identity: id, members: deploy_slot_identities)
-  )
-}
-
 // A MEMBER IS KEYED BY ITS INSTANCE NAME, so the account that owns its tree is selected from the name
 // by the same role the unit's drop-in reads: the slot directory, the sudoers install line that
 // creates it and the drop-in that runs it as that account cannot name different users.
@@ -167,25 +155,6 @@ fn runner_host_has_deploy_slot(host: HostIdentity) -> Bool {
   any(deploy_slot_identities, d => (d.host as String) == (host as String))
 }
 
-// WHAT srv1's MODEL SAYS A READ OF THE HOST WILL HOLD, WITH THE GROUP STILL UNOBSERVED. The deploy
-// user and every other slot's user are the model's (the deploy slot's role user; each committed CI
-// member's job user), but the group is runner_group_restriction_not_yet_observed, so
-// deploy_slot_observed_tenancy answers shared until a live org-group read replaces that one member.
-// A refused width leaves the CI population unknown, and unknown reads as one shared CI user.
-fn srv1_modeled_deploy_slot_reading() -> DeploySlotReading {
-  let ci_user = srv1_runner_host_spec.job_user
-  DeploySlotReading {
-    group: runner_group_restriction_not_yet_observed(name: deploy_slot_runner_group_name),
-    privacy: DeploySlotPrivacyNotYetObserved,
-    deploy_slot_job_user: runner_slot_job_user(role: runner_slot_job_role(slot: srv1_deploy_slot()), ci_job_user: ci_user),
-    other_slot_job_users: match gunbc_runner_committed_width(host: operator_host_srv1) {
-      RunnerWidthDerived { slots: n } =>
-        map(host_committed_ci_job_members(host: operator_host_srv1, committed: n), id => runner_slot_job_user(role: runner_slot_job_role(slot: id), ci_job_user: ci_user))
-      RunnerWidthUnresolved { cause: _ } => [ci_user]
-    },
-  }
-}
-
 // THE DEPLOY SLOT'S ACCOUNT, AS THE ONE OPERATION THAT CREATES IT. A runner job's account has a home
 // (the listener sets HOME from it) and a nologin shell (nothing logs in as it; the listener execs the
 // runner under setpriv). Its uid is host-assigned at first creation and read back, never authored.
@@ -197,14 +166,13 @@ fn deploy_slot_account_operation() -> ExecutorPrivilegedOperation {
   }
 }
 
-// WHETHER srv1's DEPLOY ROUTE MAY SWITCH, asked once: the fleet-converge workflow routes the root-mutation
-// jobs onto the deploy slot only when this holds (gunbc.fleet.fleet_converge_workflow
-// fleet_converge_host_pinned_runner_spec), and the microVM controller install refuses to send a leg to
-// the administrator edge unless it holds (gunbc.live_deploy.apply microvm_controller_install_wet), so the
-// routing and the refusal read one answer over one reading.
-fn srv1_deploy_route_switch_admitted() -> Bool {
+// WHETHER srv1's DEPLOY ROUTE MAY SWITCH, over a reading the caller took: the microVM controller
+// install takes it in-job, in its own step before the job loads the fleet key
+// (gunbc.live_deploy.apply microvm_controller_install_admission_wet), so the switch is admitted on what
+// the host and the org hold at that instant, not on a row.
+fn srv1_deploy_route_switch_admitted(reading: DeploySlotReading) -> Bool {
   deploy_route_switch_admitted(
     r: srv1_deploy_route_requirement,
-    observed: deploy_slot_observed_tenancy(reading: srv1_modeled_deploy_slot_reading()),
+    observed: deploy_slot_observed_tenancy(reading: reading),
   )
 }

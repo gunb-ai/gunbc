@@ -2,10 +2,14 @@ module test.claim.fleet.fleet_converge_cli_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// The fallback still does not refuse: it substitutes git's NULL id. What it removes is the widening --
+// the old arm cast ARBITRARY text into a nominal type, which has no declared conversion route (the
+// native emitter refuses the pair) and which admitted any string as an object id. The new arm can name
+// one id only, the one meaning "no such tree". A refusing fixture helper is a separate change.
 fn converge_cli_drift_fixture_oid(hex: String) -> GitObjectId {
   match git_object_id_from_untagged_hex(hex: hex) {
     Present { value: oid } => oid
-    Absent => "0000000000000000000000000000000000000000" as GitObjectId
+    Absent => git_null_sha1_object_id
   }
 }
 
