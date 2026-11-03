@@ -85,6 +85,14 @@ type AttemptExitHook
 // THE UNIT'S ROLE WITHIN ITS ATTEMPT, rendered as one '+'-free token.
 // A reviewer is launched per (criterion, head) and an auditor per head, so their roles carry the head:
 // a re-review of a new head is a new launch with its own record, not a second record for one launch.
+// THE TOKEN GRAMMAR, spelled ONCE. The renderer below and its inverse both read these constants, so a
+// prefix cannot be restated differently on the two sides, and no call site needs the length of a prefix.
+data attempt_worker_role_token: String = "worker"
+data attempt_obligation_role_token: String = "obligation"
+data attempt_reviewer_role_prefix: String = "review."
+data attempt_auditor_role_prefix: String = "audit."
+data attempt_supervisor_role_prefix: String = "supervise.t"
+
 type AttemptUnitRole
   = AttemptWorkerRole
   | AttemptReviewerRole { criterion_key: String, head_sha: String }
@@ -94,11 +102,61 @@ type AttemptUnitRole
 
 fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
   match role {
-    AttemptWorkerRole => "worker"
-    AttemptReviewerRole { criterion_key, head_sha } => join(["review.", criterion_key, ".", head_sha], "")
-    AttemptAuditorRole { head_sha } => join(["audit.", head_sha], "")
-    AttemptObligationRole => "obligation"
-    AttemptSupervisorRole { turn } => join(["supervise.t", to_string(value: turn)], "")
+    AttemptWorkerRole => attempt_worker_role_token
+    AttemptReviewerRole { criterion_key, head_sha } => join([attempt_reviewer_role_prefix, criterion_key, ".", head_sha], "")
+    AttemptAuditorRole { head_sha } => join([attempt_auditor_role_prefix, head_sha], "")
+    AttemptObligationRole => attempt_obligation_role_token
+    AttemptSupervisorRole { turn } => join([attempt_supervisor_role_prefix, to_string(value: turn)], "")
+  }
+}
+
+// THE INVERSE OF attempt_unit_role_token, declared BESIDE it and checked against it by a round-trip claim in
+// test/claim/roadmap/roadmap_attempt_exit_spool_witness: rendering a role and decoding it back yields that
+// role again, for every arm. A token is therefore named by ONE grammar read in both directions (DESIGN 4),
+// and a decoder that needs the role matches on its ARM instead of re-spelling prefixes and offsets (DESIGN
+// 6b: a new ordinary case is data, not control flow -- adding an arm edits the renderer, this function and
+// one witness row, and every match on the arm becomes non-exhaustive and points the author here).
+type AttemptUnitRoleDecode
+  = AttemptUnitRoleDecoded { role: AttemptUnitRole }
+  | AttemptUnitRoleUnknown { token: String }
+  | AttemptUnitRoleMalformed { token: String, detail: String }
+
+fn attempt_unit_role_of(token: String) -> AttemptUnitRoleDecode {
+  if token == attempt_worker_role_token {
+    AttemptUnitRoleDecoded { role: AttemptWorkerRole }
+  } else if token == attempt_obligation_role_token {
+    AttemptUnitRoleDecoded { role: AttemptObligationRole }
+  } else if starts_with(s: token, prefix: attempt_reviewer_role_prefix) {
+    let segments = token.split(delimiter: ".")
+    if count(segments) != 3 {
+      AttemptUnitRoleMalformed { token: token, detail: "a reviewer role is review.<criterion>.<head>; this token has some other number of segments" }
+    } else {
+      match segments.get(1) {
+        Present { value: criterion } =>
+          match segments.get(2) {
+            Present { value: head_sha } => AttemptUnitRoleDecoded { role: AttemptReviewerRole { criterion_key: criterion, head_sha: head_sha } }
+            Absent => AttemptUnitRoleMalformed { token: token, detail: "a reviewer role names no head" }
+          }
+        Absent => AttemptUnitRoleMalformed { token: token, detail: "a reviewer role names no criterion" }
+      }
+    }
+  } else if starts_with(s: token, prefix: attempt_auditor_role_prefix) {
+    let segments = token.split(delimiter: ".")
+    if count(segments) != 2 {
+      AttemptUnitRoleMalformed { token: token, detail: "an auditor role is audit.<head>; this token has some other number of segments" }
+    } else {
+      match segments.get(1) {
+        Present { value: head_sha } => AttemptUnitRoleDecoded { role: AttemptAuditorRole { head_sha: head_sha } }
+        Absent => AttemptUnitRoleMalformed { token: token, detail: "an auditor role names no head" }
+      }
+    }
+  } else if starts_with(s: token, prefix: attempt_supervisor_role_prefix) {
+    match parse_int(text: substring(s: token, start: string_length(s: attempt_supervisor_role_prefix), end: string_length(s: token))) {
+      Present { value: turn } => AttemptUnitRoleDecoded { role: AttemptSupervisorRole { turn: turn } }
+      Absent => AttemptUnitRoleMalformed { token: token, detail: "a supervisor role is supervise.t<turn> and this token's turn does not parse as a number" }
+    }
+  } else {
+    AttemptUnitRoleUnknown { token: token }
   }
 }
 
@@ -125,34 +183,39 @@ fn attempt_exit_unit_admission(derivation: SystemdUnitNameAdmission, role_token:
   }
 }
 
+// The unit a record was written for, derived by READING THE TOKEN with the declared inverse and then
+// dispatching on the ROLE ARM. There is no prefix matching and no offset here: an added AttemptUnitRole arm
+// makes this match non-exhaustive, which is how the grammar stays one piece (DESIGN 6b).
 fn attempt_exit_unit_of(node_id: String, attempt_key: String, role_token: String) -> AttemptExitUnitDerivation {
-  if role_token == "worker" {
-    attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token)
-  } else if role_token == "obligation" {
-    AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key) }
-  } else if starts_with(s: role_token, prefix: "review.") {
-    let segments = role_token.split(delimiter: ".")
-    if count(segments) != 3 {
-      AttemptExitUnitRefusedShape { role_token: role_token, detail: "a reviewer role is review.<criterion>.<head>; this token has some other number of '.'-separated segments" }
-    } else {
-      match segments.get(1) {
-        Present { value: criterion } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion) }
-        Absent => AttemptExitUnitRefusedShape { role_token: role_token, detail: "a reviewer role names no criterion" }
-      }
-    }
-  } else if starts_with(s: role_token, prefix: "audit.") {
-    if count(role_token.split(delimiter: ".")) != 2 {
-      AttemptExitUnitRefusedShape { role_token: role_token, detail: "an auditor role is audit.<head>; this token has some other number of '.'-separated segments" }
-    } else {
-      AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key) }
-    }
-  } else if starts_with(s: role_token, prefix: "supervise.t") {
-    match parse_int(text: substring(s: role_token, start: 11, end: string_length(s: role_token))) {
-      Present { value: turn } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key, turn: turn) }
-      Absent => AttemptExitUnitRefusedShape { role_token: role_token, detail: "a supervisor role is supervise.t<turn> and this token's turn is not a number" }
-    }
-  } else {
-    AttemptExitUnitUnclaimed { role_token: role_token }
+  match attempt_unit_role_of(token: role_token) {
+    AttemptUnitRoleDecoded { role } => attempt_exit_unit_for_role(node_id: node_id, attempt_key: attempt_key, role: role, role_token: role_token)
+    AttemptUnitRoleUnknown { token } => AttemptExitUnitUnclaimed { role_token: token }
+    AttemptUnitRoleMalformed { token, detail } => AttemptExitUnitRefusedShape { role_token: token, detail: detail }
+  }
+}
+
+// Each arm's unit comes from the DECLARED BUILDER that launcher calls -- never from a name this module
+// assembles itself (DESIGN 6b, one authority per fact). The worker arm is the only one whose builder
+// returns an admission verdict, so only it can be refused by systemd's own name grammar.
+fn attempt_exit_unit_for_role(node_id: String, attempt_key: String, role: AttemptUnitRole, role_token: String) -> AttemptExitUnitDerivation {
+  match role {
+    AttemptWorkerRole => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token)
+    AttemptObligationRole => AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key) }
+    AttemptReviewerRole { criterion_key: _, head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key) }
+    AttemptAuditorRole { head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key) }
+    AttemptSupervisorRole { turn: _ } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key) }
+  }
+}
+
+// The role a record was written for, as the CLOSED ARM rather than as a token a consumer would have to
+// parse. A subject whose token this grammar does not name decodes to Unknown or Malformed and is reported
+// as such -- it is not quietly treated as some role.
+fn attempt_exit_record_role(record: AttemptExitRecord) -> AttemptUnitRoleDecode {
+  match record.subject {
+    RoadmapAttemptExit { node_id: _, attempt_key: _, role } => attempt_unit_role_of(token: role)
+    // A compute seat record carries no role token at all, so there is nothing to decode: the refusal names
+    // the entry it came from rather than inventing an empty token.
+    ComputeAttemptExit { identity: _ } => AttemptUnitRoleUnknown { token: record.entry_name }
   }
 }
 

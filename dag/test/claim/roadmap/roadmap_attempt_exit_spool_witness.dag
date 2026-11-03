@@ -20,6 +20,8 @@ import extdeps.systemd {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole, AttemptReviewerRole,
+  attempt_unit_role_token, attempt_unit_role_of, AttemptUnitRoleDecoded, AttemptUnitRoleUnknown,
+  AttemptUnitRoleMalformed, AttemptObligationRole, AttemptSupervisorRole,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptProcessExitedWith, AttemptProcessSignaled,
   AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
@@ -396,4 +398,43 @@ test fn an_entry_that_is_neither_route_refuses_with_the_count_it_carried() -> Bo
     AttemptExitEntryMalformed { entry_name: _, reason } =>
       string_contains(s: reason, pattern: "seven") && string_contains(s: reason, pattern: "five") && string_contains(s: reason, pattern: "6")
   }
+}
+
+// ROUND TRIP OVER THE ROLE GRAMMAR (review 90324). attempt_unit_role_of is the declared inverse of
+// attempt_unit_role_token, and these rows are what keep the two from drifting: every arm renders, decodes
+// back to an arm, and re-renders to the SAME token. A token the grammar does not name is refused by name --
+// the inverse never guesses a role, and no consumer needs to re-spell a prefix or an offset.
+test fn a_role_token_decodes_back_to_the_role_that_rendered_it() -> Bool {
+  let roles = [
+    AttemptWorkerRole,
+    AttemptObligationRole,
+    AttemptReviewerRole { criterion_key: "ci-green", head_sha: "abc1234" },
+    AttemptAuditorRole { head_sha: "def9876" },
+    AttemptSupervisorRole { turn: 7 },
+  ]
+  all(roles, role =>
+    match attempt_unit_role_of(token: attempt_unit_role_token(role: role)) {
+      AttemptUnitRoleDecoded { role: back } => attempt_unit_role_token(role: back) == attempt_unit_role_token(role: role)
+      AttemptUnitRoleUnknown { token: _ } => false
+      AttemptUnitRoleMalformed { token: _, detail: _ } => false
+    })
+}
+
+test fn a_role_token_the_grammar_does_not_name_is_refused_not_guessed() -> Bool {
+  let worker = match attempt_unit_role_of(token: "worker") {
+    AttemptUnitRoleDecoded { role: AttemptWorkerRole } => true  _ => false
+  }
+  let reviewer_short = match attempt_unit_role_of(token: "review.ci") {
+    AttemptUnitRoleMalformed { token: t, detail: _ } => t == "review.ci"  _ => false
+  }
+  let auditor_missing_head = match attempt_unit_role_of(token: "audit.") {
+    AttemptUnitRoleDecoded { role: AttemptAuditorRole { head_sha } } => head_sha == ""  _ => false
+  }
+  let supervisor_not_a_turn = match attempt_unit_role_of(token: "supervise.tx") {
+    AttemptUnitRoleMalformed { token: _, detail: _ } => true  _ => false
+  }
+  let unclaimed = match attempt_unit_role_of(token: "gardener") {
+    AttemptUnitRoleUnknown { token: t } => t == "gardener"  _ => false
+  }
+  worker && reviewer_short && auditor_missing_head && supervisor_not_a_turn && unclaimed
 }
