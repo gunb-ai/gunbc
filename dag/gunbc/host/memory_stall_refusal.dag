@@ -3,7 +3,9 @@ module gunbc.host.memory_stall_refusal
 import std.types { Int, String, NonEmptyStr, Bool }
 import std.disposition { Disposition, Terminal }
 import extdeps.linux.procfs { ProcSelfStat, procfs_path_literal }
+import extdeps.linux.psi { PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable }
 import std.nat { Nat }
+import std.optional { Present, Absent }
 import std.measure {
   EventsPerMinute,
   events_per_minute,
@@ -14,6 +16,7 @@ import std.measure {
   BasisPoint,
   basis_point,
   basis_point_count,
+  microsecond_count,
 }
 
 data memory_stall_refusal_authority_disposition: Disposition = Terminal {
@@ -217,5 +220,233 @@ fn memory_stall_refusal_pressure_text(v: MemoryStallVerdict) -> String {
             "). The wall clock is being spent re-reading resident pages the kernel evicted, not computing: the machine underneath cannot deliver the admitted budget beside its own page cache, and with swap disabled this treadmill holds indefinitely instead of failing. Refusing rather than holding. Remedy: run where the admitted budget is genuinely available (a larger runner), or scope the compile with --entry to a smaller closure.",
           ], "")
       }
+  }
+}
+
+// ── THE SUPERVISED SUBJECT: THE SAME REFUSAL, OBSERVED FROM OUTSIDE THE SUBJECT ─────────────────
+//
+// WHY THERE IS A SECOND OBSERVATION POINT. The verdict above is armed INSIDE the process it judges,
+// at the boundaries that process chooses to stop at (the resolve's module loop). A subject that
+// stalls between two such boundaries -- or that has no such boundaries at all, like the heal
+// round's rebuilt-seed child -- is never asked, and the exit-time envelope verdict
+// (gunbc.host.memory_envelope memory_envelope_verdict) reads only the two endings a swapless slot
+// can produce at exit: an OOM kill and charged swap. A stall under memory.high produces neither --
+// the subject throttles below memory.max indefinitely and never exits on its own. A property whose
+// failure mode is "the subject stops making progress" therefore cannot be enforced by code running
+// inside the subject or by a verdict read at its exit; it needs an observer that outlives the
+// subject's progress and can end the subject. This is that observer's verdict. Its consumer is the
+// heal round's generation supervisor (v1_compiler.required_regen_host) today; any other subject
+// step that runs under the same slot contract enrolls by supplying the same window
+// (gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal names the exit-only consumers
+// that have not yet enrolled).
+//
+// THE EVIDENCE HIERARCHY. Semantic progress outranks every resource reading: a subject that emitted
+// a progress mark (a phase boundary it declares, never a byte of output) inside the window is
+// progressing, whatever the counters say, because the counters cannot tell slow work from no
+// work. Only a window with NO progress mark is judged on memory evidence, and then by two arms that
+// name two different kernel mechanisms for one refusal -- the admitted memory envelope is causing
+// non-progress:
+//   - the THROTTLE arm: the slot's own pressure-stall accounting (cgroup memory.pressure, the
+//     `full` total: wall during which every non-idle task in the slot was stalled on memory)
+//     covers at least the floor share of the window, AND the slot crossed its envelope (a
+//     memory.events high or max increment) inside the window. PSI is the reading that says tasks
+//     LOST WALL to memory; the event count says the envelope, rather than some other pressure
+//     source, is what they lost it to. Neither alone refuses: a healthy run crosses memory.high,
+//     reclaims cheaply and continues.
+//   - the PAGE-THRASH arm: memory_stall_verdict above, over the slot's major-fault and user-CPU
+//     counters for the same window -- the mechanism measured on swapless VMs that expose no PSI.
+// A window with no progress mark and neither arm is NOT refused here: a silent subject with no
+// memory evidence is some other failure (a hang, a deadlock), owned by the step's timeout.
+//
+// ATTRIBUTION IS THE SLOT'S, NOT THE SUBJECT'S. The counters are cgroup-wide and the subject shares
+// its cgroup with whatever spawned it, so every reading is a delta baselined at the window's start
+// and the refusal text says "the slot, while this subject made no progress" -- never that the
+// subject alone caused it.
+
+// THE NO-PROGRESS WINDOW. POLICY, grounded in the one population it governs today: four healthy
+// heal round-2 children on srv4 (gunbc runs 41638560225, 41632788144, 41632705008, 41630838008,
+// 2026-11-03) ran 813-836 s each, and the LONGEST interval between two of their phase marks was
+// 298-319 s (compile.emit); the post-digest tail ran 187-202 s with no mark. Fifteen minutes is
+// about three times the longest measured healthy gap, and a sixth of the 90-minute heal step budget
+// the measured stall consumed whole (srv3, 2026-11-02/03, silent from regen.digest to the timeout).
+// A phase that legitimately runs longer than this without a mark must emit one; this is not a
+// timeout, because a markless window with no memory evidence is admitted however long it runs.
+data supervised_subject_no_progress_window_minimum_wall: Millisecond = millisecond(count: 900000)
+
+// THE THROTTLE ARM'S FLOOR: half the window's wall with every non-idle task in the slot stalled on
+// memory. POLICY WITH NO MEASURED SPECIMEN YET, stated as such: the srv3 stalls that prompted this
+// arm were never read for PSI (no receipt is printed on a cancelled step, and the slots were not
+// reachable for a live read), so the arm is admitted on the kernel's documented semantics of
+// memory.high (Documentation/admin-guide/cgroup-v2.rst: above high the cgroup is throttled and put
+// under heavy reclaim pressure; it is never OOM-killed for it) rather than on a reproduction. The
+// first refusal this arm issues prints the full reading, and that receipt either grounds this
+// number or moves it -- it is filed here, beside this row.
+data supervised_subject_envelope_pressure_full_share_floor: BasisPoint = basis_point(count: 5000)
+
+// ONE WINDOW: the wall since the subject's last progress mark (or since it began), the slot's
+// major-fault and user-CPU deltas over that wall (carried as the observation the page-thrash
+// verdict above already reads, so the arm is that verdict and not a second copy of it), the slot's
+// PSI `full` interval over the same wall, and the slot's envelope-event increments (memory.events
+// high + max) over it.
+type SupervisedSubjectWindow = SupervisedSubjectWindow {
+  since_progress: MemoryStallObservation,
+  pressure: PsiStallInterval,
+  envelope_events_in_window: Int,
+}
+
+type SupervisedSubjectVerdict
+  = SupervisedSubjectProgressing { since_progress_wall: Millisecond, minimum_wall: Millisecond }
+  | SupervisedSubjectSilentWithoutEnvelopeEvidence {
+      since_progress_wall: Millisecond,
+      pressure: PsiStallInterval,
+      envelope_events_in_window: Int,
+      page_thrash: MemoryStallVerdict,
+    }
+  | SupervisedSubjectRefusedEnvelopeThrottle {
+      since_progress_wall: Millisecond,
+      pressure_full_share: BasisPoint,
+      pressure_full_share_floor: BasisPoint,
+      envelope_events_in_window: Int,
+    }
+  | SupervisedSubjectRefusedPageThrash { since_progress_wall: Millisecond, page_thrash: MemoryStallVerdict }
+
+fn supervised_subject_window_wall(w: SupervisedSubjectWindow) -> Millisecond {
+  match w {
+    SupervisedSubjectWindow { since_progress: o, pressure: _, envelope_events_in_window: _ } => match o {
+      MemoryStallObservation {
+        window_wall: wall,
+        major_faults_in_window: _,
+        self_user_cpu_in_window: _,
+        cache_evictions_in_window: _,
+        cache_readmissions_in_window: _,
+      } => wall
+    }
+  }
+}
+
+// The PSI share is stalled-over-window in basis points, the window the interval itself carries
+// (microseconds, as the kernel counts them), so the share never mixes two clocks.
+fn supervised_subject_pressure_full_share(p: PsiStallInterval) -> BasisPoint? {
+  match p {
+    PsiStallMeasured { stalled: stalled, window: window } =>
+      Present { value: basis_point(count: microsecond_count(m: stalled) * 10000 / microsecond_count(m: window)) }
+    PsiStallUnmeasurable { cause: _ } => Absent
+  }
+}
+
+fn supervised_subject_page_thrash_or_silent(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict {
+  match w {
+    SupervisedSubjectWindow { since_progress: o, pressure: p, envelope_events_in_window: e } => {
+      let thrash = memory_stall_verdict(o: o)
+      if memory_stall_verdict_refuses(v: thrash) {
+        SupervisedSubjectRefusedPageThrash { since_progress_wall: supervised_subject_window_wall(w: w), page_thrash: thrash }
+      } else {
+        SupervisedSubjectSilentWithoutEnvelopeEvidence {
+          since_progress_wall: supervised_subject_window_wall(w: w),
+          pressure: p,
+          envelope_events_in_window: e,
+          page_thrash: thrash,
+        }
+      }
+    }
+  }
+}
+
+fn supervised_subject_verdict(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict {
+  let wall = supervised_subject_window_wall(w: w)
+  if millisecond_count(m: wall) < millisecond_count(m: supervised_subject_no_progress_window_minimum_wall) {
+    SupervisedSubjectProgressing { since_progress_wall: wall, minimum_wall: supervised_subject_no_progress_window_minimum_wall }
+  } else {
+    match w {
+      SupervisedSubjectWindow { since_progress: _, pressure: p, envelope_events_in_window: e } =>
+        match supervised_subject_pressure_full_share(p: p) {
+          Present { value: share } =>
+            if basis_point_count(bp: share) >= basis_point_count(bp: supervised_subject_envelope_pressure_full_share_floor) && e > 0 {
+              SupervisedSubjectRefusedEnvelopeThrottle {
+                since_progress_wall: wall,
+                pressure_full_share: share,
+                pressure_full_share_floor: supervised_subject_envelope_pressure_full_share_floor,
+                envelope_events_in_window: e,
+              }
+            } else {
+              supervised_subject_page_thrash_or_silent(w: w)
+            }
+          Absent => supervised_subject_page_thrash_or_silent(w: w)
+        }
+    }
+  }
+}
+
+fn supervised_subject_verdict_refuses(v: SupervisedSubjectVerdict) -> Bool {
+  match v {
+    SupervisedSubjectProgressing { since_progress_wall: _, minimum_wall: _ } => false
+    SupervisedSubjectSilentWithoutEnvelopeEvidence { since_progress_wall: _, pressure: _, envelope_events_in_window: _, page_thrash: _ } => false
+    SupervisedSubjectRefusedEnvelopeThrottle { since_progress_wall: _, pressure_full_share: _, pressure_full_share_floor: _, envelope_events_in_window: _ } => true
+    SupervisedSubjectRefusedPageThrash { since_progress_wall: _, page_thrash: _ } => true
+  }
+}
+
+data supervised_subject_refusal_envelope_throttle_class_name: String = "MemoryStallRefusedEnvelopeThrottle"
+
+// The supervised refusal's text. It states what was OBSERVED (no progress mark for this long; the
+// slot's PSI share and envelope events, or its fault rate and CPU share) and attributes it to the
+// slot, because the counters are the slot's. It does not claim a mechanism the readings did not
+// show. The subject's name and the remedy that fits it are the consumer's to add.
+fn supervised_subject_refusal_text(v: SupervisedSubjectVerdict) -> String {
+  match v {
+    SupervisedSubjectProgressing { since_progress_wall: _, minimum_wall: _ } => ""
+    SupervisedSubjectSilentWithoutEnvelopeEvidence { since_progress_wall: _, pressure: _, envelope_events_in_window: _, page_thrash: _ } => ""
+    SupervisedSubjectRefusedEnvelopeThrottle {
+      since_progress_wall: wall,
+      pressure_full_share: share,
+      pressure_full_share_floor: floor,
+      envelope_events_in_window: e,
+    } =>
+      join([
+        supervised_subject_refusal_envelope_throttle_class_name,
+        ": the subject made no progress for ",
+        to_string(millisecond_count(m: wall)),
+        " ms while every non-idle task in its slot was stalled on memory for ",
+        to_string(basis_point_count(bp: share) / 100),
+        "% of that wall (cgroup memory.pressure full; floor ",
+        to_string(basis_point_count(bp: floor) / 100),
+        "%) and the slot crossed its memory envelope ",
+        to_string(e),
+        " time(s) (memory.events high + max). The slot is holding the subject under its memory.high throttle below memory.max: with swap refused there is no OOM kill and no swap to end the run, so it would hold until the step timeout. Refusing rather than holding.",
+      ], "")
+    SupervisedSubjectRefusedPageThrash { since_progress_wall: wall, page_thrash: thrash } =>
+      join([
+        memory_stall_refusal_page_thrash_class_name,
+        ": the subject made no progress for ",
+        to_string(millisecond_count(m: wall)),
+        " ms while its slot ",
+        supervised_subject_page_thrash_clause(v: thrash),
+        " Refusing rather than holding.",
+      ], "")
+  }
+}
+
+fn supervised_subject_page_thrash_clause(v: MemoryStallVerdict) -> String {
+  match v {
+    StallWindowOpen { window_wall: _, minimum_wall: _ } => ""
+    ProgressUnderMemoryAdmissible { major_fault_rate: _, self_cpu_share: _ } => ""
+    StallRefusedPageThrash {
+      major_fault_rate: rate,
+      rate_threshold: line,
+      self_cpu_share: cpu_share,
+      cpu_share_floor: cpu_floor,
+      observation: _,
+    } =>
+      join([
+        "refaulted at ",
+        to_string(events_per_minute_count(r: rate)),
+        " major faults/minute (line ",
+        to_string(events_per_minute_count(r: line)),
+        ") while computing for ",
+        to_string(basis_point_count(bp: cpu_share) / 100),
+        "% of the wall (floor ",
+        to_string(basis_point_count(bp: cpu_floor) / 100),
+        "%; cgroup memory.stat pgmajfault and cpu.stat user_usec).",
+      ], "")
   }
 }

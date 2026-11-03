@@ -2344,6 +2344,7 @@ mod tests {
                 stderr: stderr_path.clone(),
             },
             &temp,
+            GenerationSupervision::SlotStallVerdict { ordinal: 1 },
         )
         .expect("spawn the fixture child");
         let observed_at = observer
@@ -5523,6 +5524,7 @@ fn run_built_seed_regen(
     source_roots: &[String],
     affected_scope: bool,
     admitted_executable_digest: &str,
+    ordinal: usize,
 ) -> Result<FirstGenerationConvergenceObservation, String> {
     let receipt_path = workspace.join(receipt_rel);
     if receipt_path.exists() {
@@ -5576,6 +5578,7 @@ fn run_built_seed_regen(
         &argv,
         rebuilt_seed_regen_child_output_policy(),
         workspace,
+        GenerationSupervision::SlotStallVerdict { ordinal },
     )?;
     // Drift makes --required-regen exit one after it has written the candidate and receipt. The
     // receipt, not the process code, distinguishes ordinary drift from a production refusal.
@@ -5650,6 +5653,7 @@ fn spawn_rebuilt_seed_regen_child(
     argv: &[String],
     output_policy: RebuiltSeedChildOutput,
     working_dir: &Path,
+    supervision: GenerationSupervision,
 ) -> Result<RebuiltSeedChildRun, String> {
     let (stdout_sink, stderr_sink): (
         Box<dyn std::io::Write + Send>,
@@ -5677,11 +5681,20 @@ fn spawn_rebuilt_seed_regen_child(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    let mut child = command
-        .spawn()
+    // THE GENERATION IS ONE PROCESS GROUP, so a refusal ends the whole generation -- the child and
+    // every process it spawned -- in one signal, rather than the direct child alone with its
+    // descendants left holding the slot's memory (`crate::process_group`, the crate's one authority
+    // for group lifetime).
+    let mut child = crate::process_group::spawn_in_new_process_group(&mut command)
         .map_err(|error| format!("spawn rebuilt seed {}: {error}", program.display()))?;
     let stdout_pipe = child.stdout.take();
     let stderr_pipe = child.stderr.take();
+    let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let stderr_sink: Box<dyn std::io::Write + Send> = Box::new(ProgressMarkScanner {
+        sink: stderr_sink,
+        partial: Vec::new(),
+        marks: progress.clone(),
+    });
     // Drain on our side while the child runs: a pipe nobody reads would eventually block it, and
     // reading here is also what makes the forwarding live rather than post-mortem.
     let stdout_handle = stdout_pipe.map(|pipe| {
@@ -5706,9 +5719,35 @@ fn spawn_rebuilt_seed_regen_child(
             )
         })
     });
-    let status = child
-        .wait()
-        .map_err(|error| format!("wait for rebuilt seed {}: {error}", program.display()))?;
+    let supervised = supervise_generation(&mut child, &progress, supervision);
+    let status = match supervised {
+        GenerationEnding::Exited(status) => status,
+        GenerationEnding::WaitFailed(detail) => {
+            return Err(format!(
+                "wait for rebuilt seed {}: {detail}",
+                program.display()
+            ))
+        }
+        GenerationEnding::Refused {
+            refusal,
+            teardown,
+            settled,
+        } => {
+            // A SETTLED teardown means no member of the group survives, so both pipes are at EOF
+            // and the drains end. An UNSETTLED one may have left a descendant holding a pipe, and
+            // joining its drain would hang the orchestrator at exactly the moment it has a refusal
+            // to report -- so the drains are left behind and the refusal says the group may live.
+            if settled {
+                if let Some(handle) = stdout_handle {
+                    let _ = handle.join();
+                }
+                if let Some(handle) = stderr_handle {
+                    let _ = handle.join();
+                }
+            }
+            return Err(format!("{refusal} teardown={teardown}"));
+        }
+    };
     if let Some(handle) = stdout_handle {
         handle
             .join()
@@ -5729,6 +5768,297 @@ fn spawn_rebuilt_seed_regen_child(
         stderr_tail: rebuilt_seed_regen_stderr_tail(&observation),
         stderr_truncated: observation.truncated,
     })
+}
+
+/// HOW A GENERATION'S CHILD IS WATCHED WHILE IT RUNS.
+///
+/// The authority is `gunbc.host.memory_stall_refusal` `supervised_subject_verdict` (seed mirror in
+/// `memory_governor`): a generation that emits no progress mark for the declared window while its
+/// slot shows memory-envelope evidence is refused and its process group ended, instead of holding
+/// under memory.high until the step timeout -- the srv3 heal ending, where a swapless slot produced
+/// neither an OOM kill nor swap for the exit-time envelope verdict to read. The supervisor is named
+/// for the subject it watches (a generation), not for heal's round 2, so another subject step under
+/// the same slot contract enrolls by supplying the same window.
+pub(crate) enum GenerationSupervision {
+    /// Production: read the slot counters from this process's own cgroup (the child inherits it).
+    SlotStallVerdict { ordinal: usize },
+    /// Test seam: refuse after a fixed wall, so the teardown route is executed for real without a
+    /// memory-starved slot.
+    #[cfg(test)]
+    RefuseAfter { after: std::time::Duration },
+}
+
+/// How often the supervisor samples the slot, and how often it prints a heartbeat. The heartbeat
+/// is observability only: it is not progress, and the verdict never reads it.
+const GENERATION_SUPERVISOR_SAMPLE: std::time::Duration = std::time::Duration::from_secs(10);
+const GENERATION_SUPERVISOR_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(120);
+const GENERATION_TEARDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// A child stderr line is a PROGRESS MARK exactly when it is a phase-boundary line `trace_mark`
+/// renders -- recognised through the renderer mirrors themselves (`v1_rt`
+/// `render_phase_begin_line_mirror` / `render_phase_concluded_line_mirror`, authority
+/// `gunbc.observation_seed_render`), never through a second spelling of their glyphs. Ordinary
+/// output, cargo lines and the heartbeat are not progress: semantic advancement is a phase boundary.
+fn is_generation_progress_mark(line: &str) -> bool {
+    let line = line.trim_end_matches(['\r', '\n']);
+    let phase_shaped = |phase: &str| !phase.is_empty() && !phase.contains(char::is_whitespace);
+    for emoji in [true, false] {
+        let begin_prefix = v1_rt::render_phase_begin_line_mirror("", emoji);
+        if let Some(phase) = line.strip_prefix(begin_prefix.as_str()) {
+            if phase_shaped(phase) && v1_rt::render_phase_begin_line_mirror(phase, emoji) == line {
+                return true;
+            }
+        }
+        let probe = v1_rt::render_phase_concluded_line_mirror("\u{0}", 0, emoji);
+        let Some((head, tail)) = probe.split_once('\u{0}') else {
+            continue;
+        };
+        let Some(between) = tail.strip_suffix(v1_rt::obs_human_duration(0).as_str()) else {
+            continue;
+        };
+        if let Some(rest) = line.strip_prefix(head) {
+            if let Some((phase, _elapsed)) = rest.split_once(between) {
+                if phase_shaped(phase) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Forwards every byte to the job log untouched and counts the progress marks among the complete
+/// lines it carries. A line longer than the buffer is not a mark (marks are short), so the buffer
+/// is bounded and an overlong line is simply never matched.
+struct ProgressMarkScanner {
+    sink: Box<dyn std::io::Write + Send>,
+    partial: Vec<u8>,
+    marks: std::sync::Arc<std::sync::atomic::AtomicU64>,
+}
+
+const PROGRESS_MARK_LINE_LIMIT: usize = 4096;
+
+impl std::io::Write for ProgressMarkScanner {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = self.sink.write_all(buf);
+        for &byte in buf {
+            if byte == b'\n' {
+                if self.partial.len() <= PROGRESS_MARK_LINE_LIMIT
+                    && is_generation_progress_mark(&String::from_utf8_lossy(&self.partial))
+                {
+                    self.marks.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+                self.partial.clear();
+            } else if self.partial.len() <= PROGRESS_MARK_LINE_LIMIT {
+                self.partial.push(byte);
+            }
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.sink.flush()
+    }
+}
+
+/// The supervisor's decision per sample, pure over (time, mark count, slot reading) so the arms are
+/// driven by a test without a process or a slot.
+struct GenerationSupervisor {
+    ordinal: usize,
+    begun: Instant,
+    marks_seen: u64,
+    /// The slot reading the current window is measured from: taken when the last progress mark was
+    /// observed (or at the generation's start). Every counter is cumulative and slot-wide, so the
+    /// verdict reads differences from here, never absolute values.
+    baseline: Option<(Instant, crate::memory_governor::SlotStallCounters)>,
+    last_heartbeat: Instant,
+}
+
+enum SupervisorStep {
+    Continue { heartbeat: Option<String> },
+    Refuse { refusal: String },
+}
+
+impl GenerationSupervisor {
+    fn new(ordinal: usize, now: Instant) -> Self {
+        GenerationSupervisor {
+            ordinal,
+            begun: now,
+            marks_seen: 0,
+            baseline: None,
+            last_heartbeat: now,
+        }
+    }
+
+    fn observe(
+        &mut self,
+        now: Instant,
+        marks: u64,
+        reading: crate::memory_governor::SlotStallReading,
+    ) -> SupervisorStep {
+        use crate::memory_governor::{
+            supervised_subject_pressure_full_share_basis_points, supervised_subject_refusal_text,
+            supervised_subject_verdict, supervised_subject_verdict_refuses,
+            supervised_subject_window, SlotStallReading,
+        };
+        let heartbeat_due =
+            now.saturating_duration_since(self.last_heartbeat) >= GENERATION_SUPERVISOR_HEARTBEAT;
+        let elapsed_s = now.saturating_duration_since(self.begun).as_secs();
+        let counters = match reading {
+            SlotStallReading::Read(counters) => counters,
+            // NOT A ZERO. Without the slot's counters there is no memory evidence to judge, so the
+            // generation runs unsupervised and every heartbeat says so -- a typed, printed
+            // degradation, never a fabricated reading that admits.
+            SlotStallReading::Unreadable { cause } => {
+                self.baseline = None;
+                return SupervisorStep::Continue {
+                    heartbeat: heartbeat_due.then(|| {
+                        self.last_heartbeat = now;
+                        format!(
+                            "required-regen: generation {} supervisor elapsed_s={elapsed_s} \
+                             progress_marks={marks} supervision=unavailable cause={cause}",
+                            self.ordinal
+                        )
+                    }),
+                };
+            }
+        };
+        if marks != self.marks_seen || self.baseline.is_none() {
+            self.marks_seen = marks;
+            self.baseline = Some((now, counters.clone()));
+        }
+        let (since, base) = self.baseline.as_ref().expect("baseline set above");
+        let wall_ms = now.saturating_duration_since(*since).as_millis() as u64;
+        let window = supervised_subject_window(base, &counters, wall_ms);
+        let share = supervised_subject_pressure_full_share_basis_points(&window.pressure)
+            .map(|bp| bp.to_string())
+            .unwrap_or_else(|| "unmeasurable".to_string());
+        let receipt = format!(
+            "progress_marks={marks} since_progress_ms={wall_ms} slot_memory_current={} \
+             psi_full_share_bp={share} envelope_events_in_window={} major_faults_in_window={} \
+             user_cpu_ms_in_window={}",
+            counters
+                .memory_current
+                .map(|b| b.to_string())
+                .unwrap_or_else(|| "unreadable".to_string()),
+            window.envelope_events_in_window,
+            window.since_progress.major_faults_in_window,
+            window.since_progress.self_user_cpu_ms_in_window,
+        );
+        let verdict = supervised_subject_verdict(window);
+        if supervised_subject_verdict_refuses(&verdict) {
+            return SupervisorStep::Refuse {
+                refusal: format!(
+                    "{} [rebuilt-seed generation {} after {elapsed_s} s; {receipt}]",
+                    supervised_subject_refusal_text(&verdict),
+                    self.ordinal
+                ),
+            };
+        }
+        SupervisorStep::Continue {
+            heartbeat: heartbeat_due.then(|| {
+                self.last_heartbeat = now;
+                format!(
+                    "required-regen: generation {} supervisor elapsed_s={elapsed_s} {receipt}",
+                    self.ordinal
+                )
+            }),
+        }
+    }
+}
+
+enum GenerationEnding {
+    Exited(std::process::ExitStatus),
+    WaitFailed(String),
+    Refused {
+        refusal: String,
+        teardown: String,
+        settled: bool,
+    },
+}
+
+/// Wait for the generation, sampling the slot between polls. On a refusal the group is ended while
+/// the child is still unreaped -- `try_wait` returning `None` is what proves the pid, and so the
+/// group identity, is still ours -- through `process_group::terminate_process_group`, which signals
+/// before it reaps.
+fn supervise_generation(
+    child: &mut std::process::Child,
+    progress: &std::sync::atomic::AtomicU64,
+    supervision: GenerationSupervision,
+) -> GenerationEnding {
+    let begun = Instant::now();
+    let slot_dir = crate::memory_governor::leaf_cgroup_dir();
+    let mut supervisor = match &supervision {
+        GenerationSupervision::SlotStallVerdict { ordinal } => {
+            Some(GenerationSupervisor::new(*ordinal, begun))
+        }
+        #[cfg(test)]
+        GenerationSupervision::RefuseAfter { .. } => None,
+    };
+    let mut next_sample = begun;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return GenerationEnding::Exited(status),
+            Ok(None) => {}
+            Err(error) => return GenerationEnding::WaitFailed(error.to_string()),
+        }
+        let now = Instant::now();
+        let refusal = if now < next_sample {
+            None
+        } else {
+            next_sample = now + GENERATION_SUPERVISOR_SAMPLE;
+            match (&supervision, supervisor.as_mut()) {
+                (GenerationSupervision::SlotStallVerdict { .. }, Some(supervisor)) => {
+                    let reading = match slot_dir.as_deref() {
+                        Some(dir) => crate::memory_governor::read_slot_stall_counters(dir),
+                        None => crate::memory_governor::SlotStallReading::Unreadable {
+                            cause: "no cgroup v2 path in /proc/self/cgroup".to_string(),
+                        },
+                    };
+                    match supervisor.observe(
+                        now,
+                        progress.load(std::sync::atomic::Ordering::SeqCst),
+                        reading,
+                    ) {
+                        SupervisorStep::Continue { heartbeat } => {
+                            if let Some(line) = heartbeat {
+                                eprintln!("{line}");
+                            }
+                            None
+                        }
+                        SupervisorStep::Refuse { refusal } => Some(refusal),
+                    }
+                }
+                #[cfg(test)]
+                (GenerationSupervision::RefuseAfter { after }, _) => {
+                    (now.saturating_duration_since(begun) >= *after)
+                        .then(|| "fixture refusal".to_string())
+                }
+                #[allow(unreachable_patterns)]
+                _ => None,
+            }
+        };
+        if let Some(refusal) = refusal {
+            let (teardown, settled) =
+                match crate::process_group::pin_process_group_identity(child.id()) {
+                    Ok(identity) => {
+                        let terminal = crate::process_group::terminate_process_group(
+                            child,
+                            &identity,
+                            GENERATION_TEARDOWN_GRACE,
+                        );
+                        (terminal.state_debug(), terminal.is_settled())
+                    }
+                    Err(lost) => (format!("not signalled: {lost:?}"), false),
+                };
+            return GenerationEnding::Refused {
+                refusal,
+                teardown,
+                settled,
+            };
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
 }
 
 /// The bounded tail both refusal arms render, kept as ONE construction so a refusal reads the same
@@ -5900,6 +6230,67 @@ fn assembled_seed_modules(
         }
     }
     seed_binary_modules
+}
+
+/// THE ORCHESTRATOR'S SIDE OF GENERATION-STATE LIFETIME ISOLATION, asked before every generation
+/// begins. The rule is the model's (`v2.workflow.regen_convergence_transaction`
+/// `regen_admit_generation_begin`); this reads the one input only the host has -- this process's
+/// resident set -- and prints it at every transition, so the first rounds under the rule are also
+/// the measurement an absolute ceiling would be set from. Returns the resident set read.
+fn admit_generation_begin(
+    model: &RegenConvergenceModel,
+    ordinal: usize,
+    resident_at_first: Option<u64>,
+) -> Result<u64, String> {
+    use crate::v1_interpreter::{self, Value};
+    let now = crate::memory_governor::self_resident_bytes().ok_or_else(|| {
+        format!(
+            "OrchestratorResidentUnobservable: /proc/self/status VmRSS could not be read before \
+             generation {ordinal}; the lifetime-isolation check has no input and refuses"
+        )
+    })?;
+    let first = resident_at_first.unwrap_or(now);
+    let ctx = model.context();
+    let admission = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_admit_generation_begin",
+            &[
+                (Some("ordinal".to_string()), Value::Int(ordinal as i64)),
+                (
+                    Some("resident_at_first_bytes".to_string()),
+                    Value::Int(first as i64),
+                ),
+                (
+                    Some("resident_now_bytes".to_string()),
+                    Value::Int(now as i64),
+                ),
+            ],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: generation begin admission did not answer: {e}"))?;
+    let label = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_generation_begin_admission_label",
+            &[(Some("admission".to_string()), admission)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: generation begin admission projection failed: {e}"))?;
+    eprintln!(
+        "required-regen: generation {ordinal} begins; orchestrator resident={now} \
+         (at generation 0: {first})"
+    );
+    match label {
+        Value::Str(ref label) if label.as_ref() == "Admitted" => Ok(now),
+        Value::Str(ref label) => Err(format!("generation begin {label}")),
+        other => Err(format!(
+            "refusal: generation begin admission projection returned {}",
+            other.type_label_public()
+        )),
+    }
 }
 
 fn convergence_plan_from_model(
@@ -7255,35 +7646,50 @@ pub fn run_regen_round_cost(
     } else {
         RegenEmissionScope::WholePopulation
     };
-    let regen = run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)?;
-    let first = read_first_generation_receipt(&workspace.join(receipt_rel))?;
+    // GENERATION-STATE LIFETIME ISOLATION (`v2.workflow.regen_convergence_transaction`
+    // `regen_admit_generation_begin`): at most one generation's state is resident at a time. Every
+    // generation, THIS FIRST ONE INCLUDED, runs as its own rebuilt-seed child, and process exit is
+    // the destructor for what it loaded. Generation 0 used to run in this process
+    // (`run_required_regen_scoped`), so its corpus had the round's lifetime while every later
+    // generation's had its own, and the two composed: 15.6 GB still charged to the slot when
+    // generation 1 began (srv4), which a declared 22/21/0 slot cannot hold beside a second
+    // generation. The orchestration state -- the surface roles above and the convergence model
+    // below -- is loaded BEFORE generation 0, so the orchestrator's footprint at generation 0 is
+    // the baseline every later transition is held to.
+    let convergence_model = RegenConvergenceModel::load(source_roots)?;
+    let initial_seed_digest = current_exe_digest()?;
+    let orchestrator_resident_at_first = admit_generation_begin(&convergence_model, 0, None)?;
+    v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
+    report_rebuilt_seed_regen_cgroup("begin generation=0");
+    let first = run_built_seed_regen(
+        &workspace,
+        candidate_dir_rel,
+        receipt_rel,
+        source_roots,
+        affected_scope,
+        &initial_seed_digest,
+        0,
+    );
+    report_rebuilt_seed_regen_cgroup("end generation=0");
+    v1_rt::trace_mark("round.built_seed_regen.done".to_string());
+    let first = first?;
     let mut candidate_digest = first.manifest.candidate_tree_digest.clone();
     let starting_surface_digest = first.committed_digest;
     let mut candidate_tree_id = first.manifest.candidate_tree_id.clone();
     let mut drifted = first.drifted;
     let mut authority_digest = first.authority_digest;
     let mut candidate_manifest = first.manifest;
-    let initial_seed_digest = current_exe_digest()?;
     let mut current_seed_digest = initial_seed_digest.clone();
     let mut stages = Vec::new();
     let mut seen_states = BTreeSet::new();
     let mut generation_ordinal = 0usize;
-    let mut round_failures = Vec::new();
-    let convergence_model = RegenConvergenceModel::load(source_roots)?;
+    let round_failures: Vec<String> = Vec::new();
     // THE DENOMINATOR, ACCUMULATED RATHER THAN SAMPLED. Every generation's drifted population
     // joins this set, because installing generation inputs can make the NEXT generation emit a
     // surface the first one did not -- so the transaction's admitted population is the union, and
     // taking only the first generation's would refuse a correct run.
     let mut transaction_admitted: BTreeSet<String> = BTreeSet::new();
     let mut transaction_lineage: BTreeMap<String, ConvergenceDisposition> = BTreeMap::new();
-    if matches!(regen.receipt, RegenReceipt::Refused { .. }) {
-        round_failures.extend(
-            regen
-                .failures
-                .iter()
-                .map(|failure| format!("regen: {failure}")),
-        );
-    }
 
     let generation_bound = regen_convergence_generation_bound(source_roots)?;
     let mut partition_moved = false;
@@ -7329,6 +7735,16 @@ pub fn run_regen_round_cost(
                 }
             }
             generation_ordinal += 1;
+            if let Err(failure) = admit_generation_begin(
+                &convergence_model,
+                generation_ordinal,
+                Some(orchestrator_resident_at_first),
+            ) {
+                restore_regen_convergence_journal(&workspace)?;
+                return Err(format!(
+                    "next generation refused; checkpoint restored: {failure}"
+                ));
+            }
             match run_built_seed_regen(
                 &workspace,
                 candidate_dir_rel,
@@ -7336,6 +7752,7 @@ pub fn run_regen_round_cost(
                 source_roots,
                 affected_scope,
                 &current_seed_digest,
+                generation_ordinal,
             ) {
                 Ok(next) => {
                     candidate_digest = next.manifest.candidate_tree_digest.clone();
@@ -7503,8 +7920,18 @@ pub fn run_regen_round_cost(
         current_seed_digest = stage.output_seed_digest.clone();
         stages.push(stage);
         generation_ordinal += 1;
+        if let Err(failure) = admit_generation_begin(
+            &convergence_model,
+            generation_ordinal,
+            Some(orchestrator_resident_at_first),
+        ) {
+            restore_regen_convergence_journal(&workspace)?;
+            return Err(format!(
+                "next generation refused; checkpoint restored: {failure}"
+            ));
+        }
         v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
-        report_rebuilt_seed_regen_cgroup("begin");
+        report_rebuilt_seed_regen_cgroup(&format!("begin generation={generation_ordinal}"));
         let next = run_built_seed_regen(
             &workspace,
             candidate_dir_rel,
@@ -7512,8 +7939,9 @@ pub fn run_regen_round_cost(
             source_roots,
             affected_scope,
             &current_seed_digest,
+            generation_ordinal,
         );
-        report_rebuilt_seed_regen_cgroup("end");
+        report_rebuilt_seed_regen_cgroup(&format!("end generation={generation_ordinal}"));
         v1_rt::trace_mark("round.built_seed_regen.done".to_string());
         match next {
             Ok(next) => {
@@ -10540,5 +10968,249 @@ mod host_shell_scope_modules_tests {
             );
         }
         assert!(!modules.iter().any(|m| m == "stray"), "{modules:?}");
+    }
+}
+
+/// THE GENERATION SUPERVISOR (`gunbc.host.memory_stall_refusal` `supervised_subject_verdict`, seed
+/// mirror in `memory_governor`), exercised at its three host seams: which child lines count as
+/// progress, how the per-sample decision moves its window, and the real teardown of a whole
+/// generation's process group.
+#[cfg(test)]
+mod generation_supervisor_tests {
+    use super::*;
+    use crate::memory_governor::{SlotStallCounters, SlotStallReading};
+    use std::time::Duration;
+
+    #[test]
+    fn a_progress_mark_is_exactly_what_trace_mark_renders_for_a_phase_boundary() {
+        for emoji in [true, false] {
+            for phase in ["regen.digest", "compile.emit", "round.built_seed_regen"] {
+                assert!(is_generation_progress_mark(
+                    &v1_rt::render_phase_begin_line_mirror(phase, emoji)
+                ));
+                for ms in [0, 785, 68_000, 311_000] {
+                    assert!(is_generation_progress_mark(
+                        &v1_rt::render_phase_concluded_line_mirror(phase, ms, emoji)
+                    ));
+                }
+            }
+        }
+        for not_a_mark in [
+            "",
+            "required-regen: generation 1 supervisor elapsed_s=120 progress_marks=3",
+            "   Compiling v1_compiler v0.1.0",
+            "started regen.digest",
+            "regen.digest done in 5 minutes",
+            "required-regen: first_generation_equal=false because the generated surface moved",
+        ] {
+            assert!(
+                !is_generation_progress_mark(not_a_mark),
+                "{not_a_mark:?} was read as a progress mark; output is not progress"
+            );
+        }
+    }
+
+    fn counters(
+        faults: u64,
+        user_ms: u64,
+        events: u64,
+        psi_full_ms: Option<u64>,
+    ) -> SlotStallReading {
+        SlotStallReading::Read(SlotStallCounters {
+            major_faults: faults,
+            user_usec: user_ms * 1000,
+            envelope_events: events,
+            psi_full_total_us: psi_full_ms.map(|ms| ms * 1000),
+            memory_current: Some(22_000_000_000),
+        })
+    }
+
+    /// The srv3 ending, driven through the per-sample decision: a generation that stops marking
+    /// while its slot loses most of its wall to memory and crosses memory.high is refused once the
+    /// window has elapsed -- and not one sample before.
+    #[test]
+    fn a_silent_generation_under_the_envelope_throttle_is_refused_after_the_window() {
+        let t0 = Instant::now();
+        let mut supervisor = GenerationSupervisor::new(1, t0);
+        // A mark arrives at 60 s: the window is measured from here.
+        assert!(matches!(
+            supervisor.observe(t0, 0, counters(0, 0, 0, Some(0))),
+            SupervisorStep::Continue { .. }
+        ));
+        let mark_at = t0 + Duration::from_secs(60);
+        assert!(matches!(
+            supervisor.observe(mark_at, 1, counters(10, 50_000, 0, Some(1_000))),
+            SupervisorStep::Continue { .. }
+        ));
+        let window = Duration::from_millis(
+            crate::memory_governor::SUPERVISED_SUBJECT_NO_PROGRESS_WINDOW_MINIMUM_WALL_MS,
+        );
+        let wall_ms = window.as_millis() as u64;
+        // One second short of the window: still progressing, however bad the counters.
+        assert!(matches!(
+            supervisor.observe(
+                mark_at + window - Duration::from_secs(1),
+                1,
+                counters(10, 50_000, 900, Some(1_000 + wall_ms))
+            ),
+            SupervisorStep::Continue { .. }
+        ));
+        match supervisor.observe(
+            mark_at + window,
+            1,
+            counters(10, 50_000, 412, Some(1_000 + wall_ms * 8 / 10)),
+        ) {
+            SupervisorStep::Refuse { refusal } => {
+                assert!(
+                    refusal.starts_with("MemoryStallRefusedEnvelopeThrottle"),
+                    "{refusal}"
+                );
+                assert!(refusal.contains("rebuilt-seed generation 1"), "{refusal}");
+                assert!(refusal.contains("psi_full_share_bp=8000"), "{refusal}");
+                assert!(
+                    refusal.contains("envelope_events_in_window=412"),
+                    "{refusal}"
+                );
+            }
+            SupervisorStep::Continue { .. } => panic!("the throttle ending was admitted"),
+        }
+    }
+
+    /// A NEW MARK RESETS THE WINDOW: the same pressure over the same wall admits when the
+    /// generation kept marking, because semantic progress outranks every counter.
+    #[test]
+    fn a_generation_that_keeps_marking_is_never_judged_on_its_counters() {
+        let t0 = Instant::now();
+        let mut supervisor = GenerationSupervisor::new(2, t0);
+        let _ = supervisor.observe(t0, 0, counters(0, 0, 0, Some(0)));
+        for minute in 1..=40u64 {
+            let at = t0 + Duration::from_secs(minute * 60);
+            let step = supervisor.observe(
+                at,
+                minute / 5,
+                counters(minute * 100_000, 0, minute * 1000, Some(minute * 60_000)),
+            );
+            assert!(
+                matches!(step, SupervisorStep::Continue { .. }),
+                "refused at minute {minute} although a mark arrived every five minutes"
+            );
+        }
+    }
+
+    /// AN UNREADABLE SLOT IS NOT A ZERO: no refusal can be issued on readings that do not exist,
+    /// and the heartbeat says the generation is unsupervised rather than looking healthy.
+    #[test]
+    fn an_unreadable_slot_is_reported_unsupervised_not_admitted_as_healthy() {
+        let t0 = Instant::now();
+        let mut supervisor = GenerationSupervisor::new(1, t0);
+        let unreadable = || SlotStallReading::Unreadable {
+            cause: "read /sys/fs/cgroup/x/memory.stat: No such file or directory".to_string(),
+        };
+        assert!(matches!(
+            supervisor.observe(t0, 0, unreadable()),
+            SupervisorStep::Continue { heartbeat: None }
+        ));
+        match supervisor.observe(t0 + Duration::from_secs(3600), 0, unreadable()) {
+            SupervisorStep::Continue {
+                heartbeat: Some(line),
+            } => assert!(line.contains("supervision=unavailable"), "{line}"),
+            _ => panic!("an unreadable slot must heartbeat as unsupervised"),
+        }
+    }
+
+    /// THE REAL TEARDOWN, end to end through the production spawn: a generation whose leader has a
+    /// live descendant is refused, and NEITHER survives -- killing the direct child alone would
+    /// leave the descendant holding the slot.
+    #[test]
+    fn a_refused_generation_is_ended_as_a_whole_process_group() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp =
+            std::env::temp_dir().join(format!("gunbc-generation-teardown-{}", std::process::id()));
+        fs::create_dir_all(&temp).unwrap();
+        let pid_file = temp.join("descendant.pid");
+        let script = temp.join("generation.sh");
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nsleep 300 &\necho $! > {}\nwait\n",
+                pid_file.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        let started = Instant::now();
+        let result = spawn_rebuilt_seed_regen_child(
+            &script,
+            &[],
+            RebuiltSeedChildOutput::ForwardToFiles {
+                stdout: temp.join("stdout"),
+                stderr: temp.join("stderr"),
+            },
+            &temp,
+            GenerationSupervision::RefuseAfter {
+                after: Duration::from_secs(1),
+            },
+        );
+        // BOUNDED: the descendant sleeps 300 s and holds the stderr pipe, so a teardown that missed
+        // it returns only when it exits on its own -- and would then pass the liveness check below
+        // by waiting it out. The refusal must come back within the teardown's own grace.
+        let returned_after = started.elapsed();
+        assert!(
+            returned_after
+                < Duration::from_secs(1) + GENERATION_TEARDOWN_GRACE * 2 + Duration::from_secs(5),
+            "the refusal took {returned_after:?}: something outlived the teardown and held a pipe"
+        );
+        let refusal = match result {
+            Err(refusal) => refusal,
+            Ok(_) => panic!("the fixture generation was not refused"),
+        };
+        assert!(
+            refusal.starts_with("fixture refusal teardown=Settled"),
+            "{refusal}"
+        );
+        let descendant: i32 = fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let alive = std::path::Path::new(&format!("/proc/{descendant}")).exists()
+            && !fs::read_to_string(format!("/proc/{descendant}/stat"))
+                .unwrap_or_default()
+                .contains(") Z ");
+        assert!(
+            !alive,
+            "the generation's descendant {descendant} survived the refusal"
+        );
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    /// INHABITANCE: the production reader against this process's own cgroup. On a cgroup v2 host
+    /// whose leaf carries the memory controller's files the reading must be complete; anywhere
+    /// else it must say WHICH file it could not read rather than return numbers.
+    #[test]
+    fn the_slot_reader_inhabits_the_live_cgroup_or_names_what_it_could_not_read() {
+        let Some(dir) = crate::memory_governor::leaf_cgroup_dir() else {
+            return;
+        };
+        let reading = crate::memory_governor::read_slot_stall_counters(&dir);
+        let complete = dir.join("memory.stat").is_file()
+            && dir.join("cpu.stat").is_file()
+            && dir.join("memory.events").is_file();
+        match reading {
+            SlotStallReading::Read(c) => {
+                assert!(
+                    complete,
+                    "a reading was produced without the files it reads"
+                );
+                assert!(
+                    c.user_usec > 0,
+                    "this test process has run user code: {c:?}"
+                );
+            }
+            SlotStallReading::Unreadable { cause } => {
+                assert!(!complete, "the files exist but the reader refused: {cause}");
+                assert!(cause.contains(&dir.display().to_string()), "{cause}");
+            }
+        }
     }
 }

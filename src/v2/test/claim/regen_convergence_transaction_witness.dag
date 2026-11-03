@@ -67,6 +67,12 @@ import v2.workflow.regen_convergence_transaction {
   RegenGenerationProgressRefused,
   GenerationCycleDetected,
   GenerationBoundExceeded,
+  GenerationStateRetainedByOrchestrator,
+  RegenGenerationBeginAdmitted,
+  RegenGenerationBeginRefused,
+  regen_admit_generation_begin,
+  regen_generation_begin_admission_label,
+  regen_orchestrator_resident_growth_bound_bytes,
   regen_admit_stage_execution,
   regen_stage_execution_admission_label,
   regen_stage_execution_admission_detail,
@@ -152,6 +158,33 @@ test fn finite_generation_bound_refuses_separately_from_a_cycle() -> Bool {
     RegenGenerationProgressRefused { refusal: GenerationBoundExceeded { bound: 8 } } => true
     _ => false
   }
+}
+
+// GENERATION-STATE LIFETIME ISOLATION, at every transition. The RED is the defect's own shape: the
+// orchestrator holding a generation's worth of state when the next generation begins (srv4 receipt:
+// 15.6 GB still charged to the slot when generation 2 began, against a first-generation baseline
+// that held none of it). The control is an orchestrator whose footprint did not grow.
+test fn RED_an_orchestrator_holding_a_generation_refuses_the_next_generation() -> Bool {
+  match regen_admit_generation_begin(ordinal: 2, resident_at_first_bytes: 900000000, resident_now_bytes: 15636525056) {
+    RegenGenerationBeginRefused { refusal: GenerationStateRetainedByOrchestrator { ordinal: 2, resident_at_first_bytes: 900000000, resident_now_bytes: 15636525056, growth_bound_bytes: _ } } =>
+      string_contains(
+        s: regen_generation_begin_admission_label(admission: regen_admit_generation_begin(ordinal: 2, resident_at_first_bytes: 900000000, resident_now_bytes: 15636525056)),
+        pattern: "GenerationStateRetainedByOrchestrator ordinal=2"
+      )
+    _ => false
+  }
+}
+
+test fn an_orchestrator_that_did_not_grow_admits_every_transition_and_the_bound_is_tight() -> Bool {
+  let first = 900000000
+  let at_bound = regen_admit_generation_begin(ordinal: 3, resident_at_first_bytes: first, resident_now_bytes: first + regen_orchestrator_resident_growth_bound_bytes)
+  let over_bound = regen_admit_generation_begin(ordinal: 3, resident_at_first_bytes: first, resident_now_bytes: first + regen_orchestrator_resident_growth_bound_bytes + 1)
+  regen_generation_begin_admission_label(admission: regen_admit_generation_begin(ordinal: 1, resident_at_first_bytes: first, resident_now_bytes: first)) == "Admitted"
+    && regen_generation_begin_admission_label(admission: at_bound) == "Admitted"
+    && match over_bound {
+      RegenGenerationBeginRefused { refusal: _ } => true
+      RegenGenerationBeginAdmitted => false
+    }
 }
 
 test fn single_pass_producer_plus_old_dependent_refuses_the_seed_build() -> Bool {
