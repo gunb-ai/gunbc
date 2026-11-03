@@ -2,7 +2,7 @@ module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
 import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, ResourceItem, DataItem, OtherItem, item_kind }
-import std.types { is_kernel_type }
+import std.types { is_kernel_type, Map }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
   PrimitiveProjection, PrimitiveIdentity, primitive_identity_runtime_name,

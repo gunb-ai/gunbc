@@ -102,6 +102,7 @@ import v1.compiler.emit_core_support {
   is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item,
   extract_test_projections
 }
+import std.types { Map }
 
 
 

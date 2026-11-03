@@ -23,6 +23,7 @@ import v1.std.core {
 
 import v1.compiler.emit_core_support { to_string }
 import std.occurrence_identity { OccurrenceId, authored_occurrence_of }
+import std.types { Map }
 
 
 // Read is the ELSE OF in_tail, not a finding that the use borrows. walk_expr's ExprVar arm

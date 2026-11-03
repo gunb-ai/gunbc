@@ -2,7 +2,7 @@ module v1.compiler.infer_method
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, Map }
 
 import std.algebra {
   AlgebraProfile, FreeMonoidCollectionProfile, all_algebra_profiles,
