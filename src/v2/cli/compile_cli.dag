@@ -1,6 +1,10 @@
 module v2.cli.compile_cli
 
-import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
+import std.compiler_entry {
+  CompilerEntryDriver,
+  NativeCliDriver,
+  native_cli_working_root_argument
+}
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, collection_concat_shape }
@@ -277,6 +281,14 @@ type CliParseState
   | CliParseSeekRootValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekEntryValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekTargetValue { entry: String, roots: FreeMonoid<String> }
+  // THE POSITION AFTER THE NATIVE ENTRY'S DECLARED WORKING-ROOT ARGUMENT, where the next
+  // argument is that argument's VALUE and is DISCARDED: the emitted program's binding consumes
+  // the root (v1.compiler.emit_rust renders the startup parse from the same row), and this
+  // grammar only has to not reject it. The flag spelling is READ FROM std.compiler_entry
+  // native_cli_working_root_argument rather than repeated here, so the two readers of one argv
+  // cannot drift; the interpreted route has no modelled binding to feed, which is why it skips
+  // instead of binding.
+  | CliParseSeekNativeRootValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekRootsOption {
       kind: CliRootsVerb,
       roots: FreeMonoid<String>,
@@ -619,6 +631,16 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
             }
         }
       }
+    CliParseSeekNativeRootValue { entry: entry, roots: roots, target: target } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_native_root_missing_value,
+          detail: concat(native_cli_working_root_argument.flag, " takes a directory, and an option followed it")
+        }
+      } else {
+        // the value is consumed here and dropped; the plan under construction is unchanged
+        CliParseSeekOption { entry: entry, roots: roots, target: target }
+      }
     CliParseSeekOption { entry: entry, roots: roots, target: target } =>
       if arg == cli_option_source_root {
         CliParseSeekRootValue { entry: entry, roots: roots, target: target }
@@ -629,9 +651,17 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           if arg == cli_option_target {
             CliParseSeekTargetValue { entry: entry, roots: roots }
           } else {
-            CliParseFailed {
-              reason: ^cli_unknown_option,
-              detail: concat(concat("unknown option ", arg), concat(" -- ", cli_usage))
+            // THE NATIVE ENTRY'S WORKING-ROOT ARGUMENT IS SKIPPED, NOT REJECTED, and its spelling is
+            // READ FROM THE ROW the emitted parser reads (std.compiler_entry
+            // native_cli_working_root_argument) instead of being repeated here: one argv, two
+            // readers, one spelling authority (DESIGN section 3).
+            if arg == native_cli_working_root_argument.flag {
+              CliParseSeekNativeRootValue { entry: entry, roots: roots, target: target }
+            } else {
+              CliParseFailed {
+                reason: ^cli_unknown_option,
+                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_usage))
+              }
             }
           }
         }
@@ -647,6 +677,7 @@ fn cli_arg_is_option(arg: String) -> Bool {
     || (arg == cli_option_write_identity)
     || (arg == cli_option_receipts)
     || (arg == cli_option_reuse_from)
+    || (arg == native_cli_working_root_argument.flag)
 }
 
 fn cli_parse_finish(state: CliParseState) -> CliPlan {
@@ -669,6 +700,11 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
       CliPlanRefused {
         reason: ^cli_target_missing_value,
         detail: concat(cli_option_target, " takes a target name, and none followed it")
+      }
+    CliParseSeekNativeRootValue { entry: _, roots: _, target: _ } =>
+      CliPlanRefused {
+        reason: ^cli_native_root_missing_value,
+        detail: concat(native_cli_working_root_argument.flag, " takes a directory, and none followed it")
       }
     CliParseSeekReuseFromValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _ } =>
       CliPlanRefused {

@@ -1,0 +1,94 @@
+module test.claim.native_cli_working_root_witness
+
+// THE WITNESS FOR THE NATIVE CLI ENTRY'S DECLARED BINDING INPUTS.
+//
+// SUBJECT AND BOUNDARY (DESIGN section 3, one interface): std.compiler_entry
+// native_cli_effect_binding -- `declared root x declared mode -> binding`. It is the gate the emitted
+// native CLI main walks through before any handler is constructed
+// (v1.compiler.emit_rust native_cli_working_root_startup_block_rs renders exactly this call), so the
+// pair of refusals below is what stands between a compiler-route entry and a spawn at an ambient
+// directory.
+//
+// THE CLOSED SUM IS THE POINT. A missing declared input is a VALUE of type Refused, so a caller
+// cannot build a binding that quietly fills one in, and NativeCliExecutionMode is sole_constructor --
+// its field is unreadable outside std.compiler_entry and the only mode value in the corpus is the
+// declared row. RUNG, STATED RATHER THAN FAKED (DESIGN section 4b): "a binding with no declared mode"
+// is not constructible from the row set, so this module does not stage a RED that could not fail; the
+// executable RED is the sum's Refused arm, exercised here with one input absent. The executed
+// host-side controls (the emitted binary refusing before any binding line, then building under the
+// declared root, then returning a nonzero cargo exit) are recorded with the witness's measurement
+// rows in docs/measurements/native_cli_working_root/. They belong to the half of this cut that
+// lands after the compiler-route cut: they need a seed built at the head, and they need a shell
+// service behind the entry, which that cut is what puts there.
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.compiler_entry {
+  NativeCliEffectBinding,
+  NativeCliEffectBindingDeclared,
+  NativeCliEffectBindingRefused,
+  NativeCliExecutionMode,
+  native_cli_declared_execution_mode,
+  native_cli_effect_binding,
+  native_cli_execution_mode_is_dry_run,
+  native_cli_working_root_absent_cause,
+  native_cli_working_root_argument
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RED, FIRST HALF: no declared root means no binding. This is the arm the emitted program reaches
+// when argv carries no working-root argument, and it is the control that goes red if the route ever
+// falls back to the process directory -- the class filed as
+// gunbc.recurring_failure_mode admitted_shell_effect_spawned_at_an_ambient_working_root.
+test fn the_binding_refuses_when_the_working_root_is_undeclared_holds() -> Bool {
+  match native_cli_effect_binding(root: Absent, mode: Present { value: native_cli_declared_execution_mode() }) {
+    NativeCliEffectBindingRefused { missing: missing, cause: cause } =>
+      (missing == "working_root") && (cause == native_cli_working_root_absent_cause)
+    NativeCliEffectBindingDeclared { working_root: working_root, execution_mode: execution_mode } => false
+  }
+}
+
+// THE RED, SECOND HALF: an undeclared mode is refused too, so the route cannot reach the runtime
+// newtype's Default -- which is the non-executing mode, i.e. a compile child that spawns nothing and
+// reports success.
+test fn the_binding_refuses_when_the_execution_mode_is_undeclared_holds() -> Bool {
+  match native_cli_effect_binding(root: Present { value: "/srv/native-root" }, mode: Absent) {
+    NativeCliEffectBindingRefused { missing: missing, cause: cause } =>
+      (missing == "execution_mode") && string_contains(s: cause, pattern: "mode")
+    NativeCliEffectBindingDeclared { working_root: working_root, execution_mode: execution_mode } => false
+  }
+}
+
+// THE CONTROL: with both declared inputs the binding carries them VERBATIM -- the root exactly as
+// declared, and the mode the row declares, read back through the one projection the carrier allows.
+// Deleting the root from the binding, or substituting a Default mode, fails this row.
+test fn the_declared_inputs_build_a_binding_carrying_both_verbatim_holds() -> Bool {
+  match native_cli_effect_binding(
+    root: Present { value: "/srv/native-root" },
+    mode: Present { value: native_cli_declared_execution_mode() }
+  ) {
+    NativeCliEffectBindingDeclared { working_root: working_root, execution_mode: execution_mode } =>
+      (working_root == "/srv/native-root")
+        && (native_cli_execution_mode_is_dry_run(mode: execution_mode) == false)
+    NativeCliEffectBindingRefused { missing: missing, cause: cause } => false
+  }
+}
+
+// THE ROW IS THE SPELLING AUTHORITY, and both of its structural facts are what the two readers rely
+// on: it takes a value (so a skip consumes exactly two arguments), and it is required for the native
+// binding (so the emitted startup refuses rather than proceeding without a root). The interpreted
+// grammar's treatment of the same argument as optional is stated on the row itself.
+test fn the_declared_argument_takes_a_value_and_is_required_for_the_binding_holds() -> Bool {
+  native_cli_working_root_argument.takes_value
+    && native_cli_working_root_argument.required_for_native_binding
+    && string_contains(s: native_cli_working_root_argument.flag, pattern: "--")
+}
+
+// THE DECLARED MODE EXECUTES. A child that silently refused to spawn would produce no artifacts and
+// still exit zero, which is the failure this route must not be able to express; the row says false,
+// and a flipped row would be caught here rather than by an operator waiting for a build.
+test fn the_declared_execution_mode_is_not_a_dry_run_holds() -> Bool {
+  native_cli_execution_mode_is_dry_run(mode: native_cli_declared_execution_mode()) == false
+}

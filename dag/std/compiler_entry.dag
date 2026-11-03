@@ -531,3 +531,88 @@ fn native_driver_cost_row_standing(child: NativeDriverChildStanding) -> NativeDr
       }
   }
 }
+
+// THE NATIVE CLI ENTRY RECEIVES ITS WORKING ROOT AS A DECLARED ARGUMENT -- not as environment, not
+// as a constant path, and never as a fallback to the process directory. ONE ROW, TWO READERS
+// (DESIGN section 3): the emitted main renders its startup parse from this row, and the argv grammar
+// in src/v2/cli/compile_cli.dag reads the SAME row to accept and skip the argument, so the flag
+// spelling, whether it takes a value, and its required-ness cannot drift between the two readers.
+// There is ONE argv. It is handed to v2_cli_main in full: the binding consumes the root and the
+// grammar ignores the argument. Nothing is stripped, and no second parser is written.
+//
+// 'required_for_native_binding' carries ONE meaning: required FOR THE NATIVE BINDING, because a
+// binding with no root is a spawn at whatever directory the process happens to start in -- the
+// filed failure mode gunbc.recurring_failure_mode
+// admitted_shell_effect_spawned_at_an_ambient_working_root. The interpreted route accepts the same
+// argument as optional because that route has no modelled binding to feed. That divergence is
+// stated (DESIGN section 3b) rather than reconciled by weakening either reader.
+type NativeCliArgumentDeclaration {
+  flag: String
+  takes_value: Bool
+  required_for_native_binding: Bool
+}
+
+data native_cli_working_root_argument: NativeCliArgumentDeclaration = NativeCliArgumentDeclaration {
+  flag: "--work-root"
+  takes_value: true
+  required_for_native_binding: true
+}
+
+// THE REFUSAL CAUSE IS A DATA ROW AS WELL, so the line the emitted program prints and any
+// diagnostic that quotes it read one authority instead of two copies of a sentence.
+data native_cli_working_root_absent_cause: String = "the native CLI entry declares no working root: pass the declared working-root argument with an existing directory; the compiler route never falls back to the process directory"
+
+// THE DRY-RUN MODE IS MINTED FROM A DECLARED ROW, NEVER DEFAULTED. The runtime carrier is a newtype
+// over a Bool whose Default is the non-executing mode, so a binding that reaches for Default
+// silently changes what the program does -- which is the same ambient-default class as the working
+// root above, reached from the other side. sole_constructor keeps a call site from writing a Bool
+// into that position: the only mode value in the corpus is the declared row.
+type NativeCliExecutionMode sole_constructor { dry_run: Bool }
+
+// The compiler-route binding EXECUTES (dry_run false): a compile child that silently refused to
+// spawn would produce no artifacts and still report success. A different mode is a new declared row
+// with its own justification, not a literal at a call site.
+data native_cli_declared_execution_mode: NativeCliExecutionMode = NativeCliExecutionMode { dry_run: false }
+
+// THE BINDING CARRIER IS A CLOSED SUM IN THE SAME SHAPE AS
+// the CargoBuild program-word resolution sum (that module arrives with the compiler-route cut
+// that lands first): a missing declared input is a VALUE
+// of type Refused, so no caller can build a binding that quietly fills one in.
+//
+// RUNG, STATED PER DESIGN SECTION 4b RATHER THAN FAKED: for a compiler-route entry the rows above
+// are the only way to obtain a root argument and a mode, so 'a binding with no declared mode' is not
+// a value of this type at all -- that arm is structural, and the PR says so instead of staging a
+// RED that cannot fail. The executable RED is the sum's Refused arm, exercised with one input absent.
+type NativeCliEffectBinding
+  = NativeCliEffectBindingDeclared { working_root: String, execution_mode: NativeCliExecutionMode }
+  | NativeCliEffectBindingRefused { missing: String, cause: String }
+
+fn native_cli_effect_binding(
+  root: Optional<String>,
+  mode: Optional<NativeCliExecutionMode>
+) -> NativeCliEffectBinding {
+  match root {
+    Absent => NativeCliEffectBindingRefused {
+      missing: "working_root",
+      cause: native_cli_working_root_absent_cause
+    }
+    Present { value: declared_root } =>
+      match mode {
+        Absent => NativeCliEffectBindingRefused {
+          missing: "execution_mode",
+          cause: "the compiler-route binding declares no execution mode: the runtime newtype would choose the mode silently"
+        }
+        Present { value: declared_mode } => NativeCliEffectBindingDeclared {
+          working_root: declared_root,
+          execution_mode: declared_mode
+        }
+      }
+  }
+}
+
+// ACCESSOR, NOT A FIELD READ. NativeCliExecutionMode is sole_constructor, which makes its field
+// unreadable outside this module -- that is the point of the carrier -- so the emitted main reaches
+// the declared mode through this one projection instead of writing a Bool into that position.
+fn native_cli_execution_mode_is_dry_run(mode: NativeCliExecutionMode) -> Bool {
+  mode.dry_run
+}

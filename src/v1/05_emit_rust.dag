@@ -40,6 +40,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 import std.algebra { trim, AlgebraFieldTemplate }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core { Unmarked, expr_literal_int_optional,
+  TransportKind, ShellTransport,
   call_semantics_target,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -20352,13 +20353,109 @@ fn native_effect_binding_of(var: String, type_path: String, constructor: String)
   }
 }
 
-fn native_effect_binding_text(a: NativeEffectRealizationAdmission, crate_name: String) -> NativeEffectBindingText? {
+// THE COMPILER-ROUTE SHELL BINDING IS CONSTRUCTED FROM DECLARED INPUTS, NEVER FROM Default.
+//
+// WHY A STRUCT LITERAL AND NOT THE RUNTIME CONSTRUCTOR: the generated handler's `new` takes the
+// dry-run flag only and leaves `working_dir` at None, and its spawn reads that None as the process
+// directory -- the ambient-root class this route exists to close (gunbc.recurring_failure_mode
+// admitted_shell_effect_spawned_at_an_ambient_working_root). So the rendered text names both fields
+// explicitly, and `Default` appears nowhere in it.
+//
+// THE DECISION IS NOT MADE HERE. The rendered main parses the flag whose spelling it READS FROM THE
+// ROW at run time (it calls the compiled accessor for std.compiler_entry
+// native_cli_working_root_argument), hands the parsed value plus the declared mode to
+// std.compiler_entry native_cli_effect_binding, and refuses at startup with the row's own cause when
+// the argument is absent -- the closed sum's Refused arm, executed by the emitted program rather
+// than re-derived in the emitter. One argv, two readers, one row (DESIGN section 3): the argv
+// grammar in src/v2/cli/compile_cli.dag reads the same row to accept and skip the argument.
+//
+// THE PREDICATE IS THE ADMISSION'S OWN FACT, not a re-read of the service source: the denominator
+// walk already recorded which transports the service binds (v1.compiler.emit
+// admit_native_service_effect / NativeTransportHandler). No service is named here, and no second
+// registry is kept.
+fn native_effect_is_shell_service_admission(a: NativeEffectRealizationAdmission) -> Bool {
+  match a {
+    NativeEffectHandlerBound {
+      effect_contract: NativeServiceEffect { declaration: _ },
+      handler_identity: NativeTransportHandler { transports: transports }
+    } => transports |> any(k => k == ShellTransport)
+    _ => false
+  }
+}
+
+fn native_entry_reaches_shell_effect(effects: NativeEntryEffects?) -> Bool {
+  match effects {
+    Absent => false
+    Present { value: e } => e.admissions |> any(a => native_effect_is_shell_service_admission(a: a))
+  }
+}
+
+// THE TWO NAMES THE STARTUP BLOCK AND THE BINDING LINE SHARE live in this module, which renders
+// both halves, so the halves cannot name different variables. The block's private scratch names
+// (its index, its row read) appear only in the renderer below and name nothing outside it.
+data native_cli_working_root_binding_variable: String = "native_working_root"
+
+data native_cli_execution_mode_binding_variable: String = "native_dry_run"
+
+fn native_cli_working_root_startup_block_rs(crate_name: String) -> String {
+  concat(
+    "    let native_root_declaration = ", crate_name, "::std_compiler_entry::native_cli_working_root_argument();", "\n",
+    "    let mut native_working_root_argument_value: Option<String> = None;", "\n",
+    "    \{", "\n",
+    "        let mut native_root_index = 0usize;", "\n",
+    "        while native_root_index < argv.len() \{", "\n",
+    "            if argv[native_root_index].as_str() == native_root_declaration.flag.as_str() \{", "\n",
+    "                native_working_root_argument_value = argv.get(native_root_index + 1).cloned();", "\n",
+    "                native_root_index += 2;", "\n",
+    "            \} else \{", "\n",
+    "                native_root_index += 1;", "\n",
+    "            \}", "\n",
+    "        \}", "\n",
+    "    \}", "\n",
+    "    let native_binding_inputs = match ", crate_name, "::std_compiler_entry::native_cli_effect_binding(native_working_root_argument_value.clone(), Some(", crate_name, "::std_compiler_entry::native_cli_declared_execution_mode())) \{", "\n",
+    "        ", crate_name, "::std_compiler_entry::NativeCliEffectBinding::NativeCliEffectBindingDeclared \{ working_root: working_root, execution_mode: execution_mode \} => (working_root.clone(), ", crate_name, "::std_compiler_entry::native_cli_execution_mode_is_dry_run(execution_mode.clone())),", "\n",
+    "        ", crate_name, "::std_compiler_entry::NativeCliEffectBinding::NativeCliEffectBindingRefused \{ missing: missing, cause: cause \} => \{", "\n",
+    "            eprintln!(\"REFUSED: native effect binding: missing \{missing\}: \{cause\}\");", "\n",
+    "            std::process::exit(2);", "\n",
+    "        \}", "\n",
+    "    \};", "\n",
+    "    let ", native_cli_working_root_binding_variable, ": String = native_binding_inputs.0;", "\n",
+    "    let ", native_cli_execution_mode_binding_variable, ": bool = native_binding_inputs.1;", "\n"
+  )
+}
+
+fn native_cli_shell_effect_binding_constructor(crate_name: String, type_path: String) -> String {
+  concat(
+    type_path,
+    " \{ working_dir: Some(", native_cli_working_root_binding_variable, ".clone()), dry_run: ",
+    crate_name, "::dry_run::DryRunMode(", native_cli_execution_mode_binding_variable, ") \}"
+  )
+}
+
+fn native_effect_binding_text(
+  a: NativeEffectRealizationAdmission,
+  crate_name: String,
+  declared_root: Bool
+) -> NativeEffectBindingText? {
   match a {
     NativeEffectHandlerBound { effect_contract: c, handler_identity: _ } => match c {
       NativeServiceEffect { declaration: d } => {
         let sn = d.decl_name as String
         let path = concat(crate_name, "::", module_to_filename(name: d.module_path as String), "::", sanitize_service_name(name: sn))
-        Present { value: native_effect_binding_of(var: service_var_name(service_name: sn), type_path: path, constructor: concat(path, "::new(Default::default())")) }
+        if declared_root && native_effect_is_shell_service_admission(a: a) {
+          // THE COMPILER ROUTE DECLARES ITS ROOT AND ITS MODE; see the note above
+          // native_effect_is_shell_service_admission. The CLAIM and SERVE routes keep the existing
+          // constructor call -- they are separate scopes with their own filed gap
+          // (gunbc.recurring_failure_mode admitted_shell_effect_spawned_at_an_ambient_working_root),
+          // and this change does not touch them.
+          Present { value: native_effect_binding_of(
+            var: service_var_name(service_name: sn),
+            type_path: path,
+            constructor: native_cli_shell_effect_binding_constructor(crate_name: crate_name, type_path: path)
+          ) }
+        } else {
+          Present { value: native_effect_binding_of(var: service_var_name(service_name: sn), type_path: path, constructor: concat(path, "::new(Default::default())")) }
+        }
       }
       NativeResourceEffect { binding: b, declaration: d } => {
         let path = concat(crate_name, "::", module_to_filename(name: d.module_path as String), "::", d.decl_name as String)
@@ -20369,11 +20466,15 @@ fn native_effect_binding_text(a: NativeEffectRealizationAdmission, crate_name: S
   }
 }
 
-fn native_effect_bindings(effects: NativeEntryEffects?, crate_name: String) -> List<NativeEffectBindingText> {
+fn native_effect_bindings(
+  effects: NativeEntryEffects?,
+  crate_name: String,
+  declared_root: Bool
+) -> List<NativeEffectBindingText> {
   match effects {
     Absent => []
     Present { value: e } => e.admissions |> flat_map(a =>
-      match native_effect_binding_text(a: a, crate_name: crate_name) {
+      match native_effect_binding_text(a: a, crate_name: crate_name, declared_root: declared_root) {
         Present { value: t } => [t]
         Absent => []
       })
@@ -20399,13 +20500,21 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
     if compiler_pipeline_entry_is_native_cli(modules: modules) {
-      return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
+      // ONE PREDICATE DECIDES BOTH HALVES: whether the startup block is rendered, and whether a
+      // shell service's binding is constructed from the declared inputs.
+      let cli_declares_working_root = native_entry_reaches_shell_effect(effects: effects)
+      return emit_native_cli_driver_main_rs(
+        crate_name: crate_name,
+        pipeline_module: pipeline_module,
+        bindings: native_effect_bindings(effects: effects, crate_name: crate_name, declared_root: cli_declares_working_root),
+        declares_working_root: cli_declares_working_root
+      )
     }
     if compiler_pipeline_entry_is_native_claim(modules: modules) {
-      return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
+      return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name, declared_root: false))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module), startup_bound: native_serve_declares_startup_bound(modules: modules, pipeline_module: pipeline_module))
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name, declared_root: false), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module), startup_bound: native_serve_declares_startup_bound(modules: modules, pipeline_module: pipeline_module))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -21108,7 +21217,17 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
 // file transport, extdeps.filesystem.filesystem_io Filesystem) and nothing else. v2_cli_main owns
 // parse, acquisition and compilation; the host supplies argv and realizes output and ProcessExit,
 // with no source-root walk.
-fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>) -> TextFile {
+fn emit_native_cli_driver_main_rs(
+  crate_name: String,
+  pipeline_module: String,
+  bindings: List<NativeEffectBindingText>,
+  declares_working_root: Bool
+) -> TextFile {
+  let root_block = if declares_working_root {
+    native_cli_working_root_startup_block_rs(crate_name: crate_name)
+  } else {
+    ""
+  }
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
   let effect_args = bindings |> map(b => concat(", ", b.argument)) |> join(separator: "")
@@ -21129,6 +21248,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
       "#[tokio::main(flavor = \"current_thread\")]", "\n",
       "async fn main() \{", "\n",
       "    let argv: Vec<String> = std::env::args().skip(1).collect();", "\n",
+      root_block,
       binding_lines,
       "    let outcome = match v2_cli_main(Rc::new(argv.into())", effect_args, ").await {", "\n",
       "        Ok(outcome) => outcome,", "\n",
