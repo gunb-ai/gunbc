@@ -73,6 +73,9 @@ import gunbc.machine_intake.megarac_media_attach {
   ZeroRowSessionWasNotRead,
   ZeroRowNamesAMedium,
   ZeroRowReleaseWasNeverReadThatWay,
+  ZeroRowIsNotTheCdDvdRow,
+  ZeroRowIndexWasNotRead,
+  ZeroRowIsNotTheReadIndex,
   megarac_media_row_named_medium,
   megarac_status_zero_row_inference,
   ConvergeStepRefuse,
@@ -93,6 +96,7 @@ import gunbc.machine_intake.megarac_media_attach {
   RedirectionUnreadFirmware,
   RedirectionUnreadInferred,
   ConfigurationRowUncatalogued,
+  ConfigurationRowUnreadable,
   ConfigurationRowIdle,
   configuration_row_reading,
   unread_code_on_the_evidenced_release,
@@ -892,6 +896,8 @@ test fn w_the_row_that_named_no_medium_at_zero_is_a_bet_that_no_lane_acts_on() -
       match megarac_redirection_status_of_row(
         firmware: read,
         wire: boot_run_41573858366_end_media_row.redirection_status,
+        media_type: boot_run_41573858366_end_media_row.media_type,
+        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
         session_index: Present { value: boot_run_41573858366_end_media_row.session_index },
       ) {
         // AS FAR AS THE VENDOR GOES, THIS CODE IS SIMPLY NOT CATALOGUED.
@@ -1001,23 +1007,23 @@ test fn w_code_0_is_refused_and_the_bet_is_drawn_only_for_the_row_that_was_read(
       }
       // AND THE GUARD IS OURS, ONE TYPED CAUSE PER SEPARATION -- the same fold the production gate calls, so
       // the gate and this claim cannot drift on the case that decides a boot.
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, session_index: Present { value: boot_run_40258937016_started_session_marker.session_index }, image_name: Absent) {
+      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: boot_run_40258937016_started_session_marker.session_index }, image_name: Absent) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionIsActive { session_index: live } } => live == boot_run_40258937016_started_session_marker.session_index
         _ => false
       }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
+      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowNamesAMedium { name: named } } => (named as String) == (boot6_leftover_iso as String)
         _ => false
       }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 0, session_index: none, image_name: Absent) {
+      && match megarac_status_zero_row_inference(firmware: read, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: none, image_name: Absent) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionWasNotRead } => true
         _ => false
       }
-      && match megarac_status_zero_row_inference(firmware: read, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent) {
+      && match megarac_status_zero_row_inference(firmware: read, wire: 16, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowWireIsNotZero { wire: other } } => other == 16
         _ => false
       }
-      && match megarac_status_zero_row_inference(firmware: mtcollins1_identity.firmware, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent) {
+      && match megarac_status_zero_row_inference(firmware: mtcollins1_identity.firmware, wire: 0, media_type: boot_run_41573858366_end_media_row.media_type, media_index: Present { value: boot_run_41573858366_end_media_row.media_index }, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Absent) {
         MegaRacStatusZeroRowNotGuessed { reason: ZeroRowReleaseWasNeverReadThatWay { firmware: other } } => bmc_firmware_release_identity_eq(a: other, b: mtcollins1_identity.firmware)
         _ => false
       }
@@ -1198,5 +1204,138 @@ test fn w_the_0_32_interlude_code_would_refuse_at_this_build() -> Bool {
           n == (boot6_leftover_iso as String) && u == RedirectionUnreadCode { firmware: read, wire: 100 }
         _ => false
       }
+  }
+}
+
+// RED (P1): THE GUARD IS NOT WRITTEN WIDER THAN THE ROW THAT WAS READ. media_type and media_index come from
+// the parse, and the guess requires the values boot run 41573858366's row actually carried (1 and 0, taken
+// from the committed receipt rather than restated as literals here). Each claim below changes ONE dimension of
+// the read row and must answer with its own typed cause; were the guard written from the code alone -- status 0,
+// marker, no name -- a hard-disk row or a second image-list entry would be given an interpretation this
+// repository never observed, which is the §4d defect this closes.
+test fn w_the_guard_refuses_a_row_of_another_media_type() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_status_zero_row_inference(
+        firmware: read,
+        wire: 0,
+        media_type: 2,
+        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
+        session_index: Present { value: megarac_no_redirection_session_index },
+        image_name: Absent,
+      ) {
+        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheCdDvdRow { media_type: other } } => other == 2
+        _ => false
+      }
+      && boot_run_41573858366_end_media_row.media_type != 2
+  }
+}
+
+test fn w_the_guard_refuses_a_row_at_another_image_list_index() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_status_zero_row_inference(
+        firmware: read,
+        wire: 0,
+        media_type: boot_run_41573858366_end_media_row.media_type,
+        media_index: Present { value: 1 },
+        session_index: Present { value: megarac_no_redirection_session_index },
+        image_name: Absent,
+      ) {
+        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheReadIndex { media_index: other } } => other == 1
+        _ => false
+      }
+      && boot_run_41573858366_end_media_row.media_index != 1
+  }
+}
+
+// AN INDEX THE ROW NEVER CARRIED IS NOT INDEX 0. A row whose media_index member is absent or unparsable stays
+// unread -- 0 is the value the read row happened to carry, and promoting an absent member to it would be
+// inventing the position the guard is supposed to check.
+test fn w_the_guard_refuses_a_row_whose_index_was_never_read() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_status_zero_row_inference(
+        firmware: read,
+        wire: 0,
+        media_type: boot_run_41573858366_end_media_row.media_type,
+        media_index: none,
+        session_index: Present { value: megarac_no_redirection_session_index },
+        image_name: Absent,
+      ) {
+        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIndexWasNotRead } => true
+        _ => false
+      }
+  }
+}
+
+// THE SAME THREE NEGATIVES THROUGH THE PRODUCTION GATE, so no caller can reach the inferred cause with a row
+// the controller never described that way. A CD row at another image-list index, and a row whose index member
+// is missing, both answer the plain unread code -- never the inferred cause, never idle.
+test fn w_a_row_at_another_image_list_index_is_a_plain_unread_code_at_the_lane() -> Bool {
+  let row = json_object(members: [
+    json_kv(key: "id", value: JsonNumber { lexeme: "1" }),
+    json_kv(key: "media_type", value: JsonNumber { lexeme: "1" }),
+    json_kv(key: "media_index", value: JsonNumber { lexeme: "1" }),
+    json_kv(key: "session_index", value: JsonNumber { lexeme: "255" }),
+    json_kv(key: "image_name", value: JsonString { value: "" }),
+    json_kv(key: "redirection_status", value: JsonNumber { lexeme: "0" }),
+  ])
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) {
+        ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } } =>
+          name == "" && w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      && configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) != ConfigurationRowIdle
+  }
+}
+
+test fn w_a_row_with_no_image_list_index_is_a_plain_unread_code_at_the_lane() -> Bool {
+  let row = json_object(members: [
+    json_kv(key: "id", value: JsonNumber { lexeme: "1" }),
+    json_kv(key: "media_type", value: JsonNumber { lexeme: "1" }),
+    json_kv(key: "session_index", value: JsonNumber { lexeme: "255" }),
+    json_kv(key: "image_name", value: JsonString { value: "" }),
+    json_kv(key: "redirection_status", value: JsonNumber { lexeme: "0" }),
+  ])
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) {
+        ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } } =>
+          name == "" && w == 0
+        _ => false
+      }
+      && configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) != ConfigurationRowIdle
+  }
+}
+
+// AND THE MEDIA TYPE ITSELF NEVER REACHES THE INFERRED CAUSE. A hard-disk row that names the wanted image is
+// refused by the lane's own CD gate -- ConfigurationRowUnreadable, not the unread arm -- because this lane
+// publishes a CD image and a row of another media type is not the row the inference was drawn from. It is
+// never idle either, so it cannot be attached.
+test fn w_a_row_of_another_media_type_never_carries_the_inferred_reading_through_the_lane() -> Bool {
+  let row = json_object(members: [
+    json_kv(key: "id", value: JsonNumber { lexeme: "1" }),
+    json_kv(key: "media_type", value: JsonNumber { lexeme: "2" }),
+    json_kv(key: "media_index", value: JsonNumber { lexeme: "0" }),
+    json_kv(key: "session_index", value: JsonNumber { lexeme: "255" }),
+    json_kv(key: "image_name", value: JsonString { value: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" }),
+    json_kv(key: "redirection_status", value: JsonNumber { lexeme: "0" }),
+  ])
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) {
+        ConfigurationRowUnreadable { detail: d } => string_contains(s: d, pattern: "not CD media_type 1")
+        _ => false
+      }
+      && configuration_row_reading(row: row, image_name: boot6_leftover_iso, firmware: read) != ConfigurationRowIdle
   }
 }

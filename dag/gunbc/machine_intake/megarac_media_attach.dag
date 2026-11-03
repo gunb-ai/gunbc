@@ -1707,16 +1707,23 @@ type MegaRacStatusZeroRowRefusal
   = ZeroRowWireIsNotZero { wire: Int }
   | ZeroRowSessionIsActive { session_index: Int }
   | ZeroRowSessionWasNotRead
+  | ZeroRowIsNotTheCdDvdRow { media_type: Int }
+  | ZeroRowIndexWasNotRead
+  | ZeroRowIsNotTheReadIndex { media_index: Int }
   | ZeroRowNamesAMedium { name: NonEmptyStr }
   | ZeroRowReleaseWasNeverReadThatWay { firmware: BmcFirmwareReleaseIdentity }
 
-// THE GUARD IS THE EVIDENCE. The guess is drawn only on the exact combination that row was read in -- the
-// release the controller reports, code 0, the no-session marker, and a row naming no medium -- so it cannot
-// leak onto a row nobody read; everything else answers with the typed cause above and the caller falls back to
-// the vendor's own uncatalogued answer.
+// THE GUARD IS THE EVIDENCE. The guess is drawn only on the whole shape of the row that was read -- the
+// release the controller reports, code 0, the CD/DVD row type, the image-list index, the no-session marker,
+// and a row naming no medium -- so it cannot leak onto a row nobody read: the type and the index come from
+// the parse and are required to be the values the read row carried, taken from that reading rather than
+// written as literals here. Everything else answers with one of the typed causes above and the caller falls
+// back to the vendor's own uncatalogued answer.
 fn megarac_status_zero_row_inference(
   firmware: BmcFirmwareReleaseIdentity,
   wire: Int,
+  media_type: Int,
+  media_index: Int?,
   session_index: Int?,
   image_name: NonEmptyStr?,
 ) -> MegaRacStatusZeroRowInference {
@@ -1724,17 +1731,28 @@ fn megarac_status_zero_row_inference(
     MegaRacStatusZeroRowNotGuessed { reason: ZeroRowReleaseWasNeverReadThatWay { firmware: firmware } }
   } else if wire != 0 {
     MegaRacStatusZeroRowNotGuessed { reason: ZeroRowWireIsNotZero { wire: wire } }
+  } else if media_type != boot_run_41573858366_end_media_row.media_type {
+    MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheCdDvdRow { media_type: media_type } }
   } else {
-    match session_index {
-      Absent => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionWasNotRead }
-      Present { value: index } => if index != megarac_no_redirection_session_index {
-        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionIsActive { session_index: index } }
-      } else {
-        match image_name {
-          Present { value: named } => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowNamesAMedium { name: named } }
-          Absent => MegaRacStatusZeroRowGuessedNotPresenting { firmware: firmware, wire: wire, session_index: index }
+    match media_index {
+      Absent => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIndexWasNotRead }
+      Present { value: position } =>
+        if position != boot_run_41573858366_end_media_row.media_index {
+          MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheReadIndex { media_index: position } }
+        } else {
+          match session_index {
+            Absent => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionWasNotRead }
+            Present { value: index } =>
+              if index != megarac_no_redirection_session_index {
+                MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionIsActive { session_index: index } }
+              } else {
+                match image_name {
+                  Present { value: named } => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowNamesAMedium { name: named } }
+                  Absent => MegaRacStatusZeroRowGuessedNotPresenting { firmware: firmware, wire: wire, session_index: index }
+                }
+              }
+          }
         }
-      }
     }
   }
 }
@@ -1773,6 +1791,15 @@ fn configuration_row_reading(
                       Present { value: i } => Present { value: i }
                     }
                   }
+                  // The image-list position the ROW carries: absent or unparsable stays absent rather than
+                  // becoming 0, because 0 is the value the read row happened to carry, not a default.
+                  let media_index = match json_number_member(doc: row, key: "media_index") {
+                    Absent => none
+                    Present { value: m } => match parse_int(s: m) {
+                      Absent => none
+                      Present { value: i } => Present { value: i }
+                    }
+                  }
                   if mt != "1" {
                     if name == (image_name as String) {
                       ConfigurationRowUnreadable { detail: "a row names the image but is not CD media_type 1" }
@@ -1799,9 +1826,19 @@ fn configuration_row_reading(
                           // StartMedia over a row that may be presenting. A row nobody read keeps the plain
                           // uncatalogued refusal.
                           RedirectionWireUncatalogued { wire: w } =>
-                            match megarac_status_zero_row_inference(firmware: f, wire: w, session_index: session_index, image_name: named_medium) {
+                            match parse_int(s: mt) {
+                              Absent => ConfigurationRowUnreadable { detail: concat("media_type is not an integer: ", mt) }
+                              Present { value: media_type } => match megarac_status_zero_row_inference(
+                                firmware: f,
+                                wire: w,
+                                media_type: media_type,
+                                media_index: media_index,
+                                session_index: session_index,
+                                image_name: named_medium,
+                              ) {
                               MegaRacStatusZeroRowGuessedNotPresenting { firmware: g, wire: gw, session_index: _ } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadInferred { firmware: g, wire: gw } }
                               MegaRacStatusZeroRowNotGuessed { reason: _ } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } }
+                            }
                             }
                           RedirectionStartedConnectionAccepted => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
                           RedirectionConnecting => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
