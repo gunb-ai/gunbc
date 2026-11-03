@@ -4,7 +4,7 @@ import std.optional { Present, Absent }
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration, PeanoGroundingView, SignedGroundingView, KernelGroundingArm, UnboundedIntegers, UnboundedNaturals }
-import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase }
+import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase, InjectionPhase, InjectionSafety }
 import std.operator_realization { StructuralOrderingBinding }
 
 // THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
@@ -86,6 +86,14 @@ data conversion_plan_rows: List<ConversionPlan> = [
   ConversionPlan {
     route: decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_fold"),
     phase: InverseUnfoldPhase { row: unicode_scalar_literal_homomorphism }
+  },
+  ConversionPlan {
+    route: decl_ref(module_path: "std.integer", decl_name: "nat_to_int"),
+    phase: InjectionPhase {
+      source: decl_ref(module_path: "std.nat", decl_name: "Nat"),
+      target: decl_ref(module_path: "std.integer", decl_name: "Int"),
+      safety: InjectionSafety { total: true, exact: true, preserves: ["add", "mul", "compare"], pure: true, consent_free: true }
+    }
   }
 ]
 

@@ -4162,6 +4162,31 @@ pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
     }
 }
 
+pub fn refinement_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    match symbol_index_lookup(
+        env.symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+            item_ref.decl_name.clone(),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(item) => match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rhs, .. }) => {
+                if is_where_refinement_node(rhs.clone()) {
+                    Some(rhs.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            _ => std::option::Option::None,
+        },
+    }
+}
+
 pub fn alias_rhs_of_declaration(
     item_ref: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,

@@ -1,0 +1,22 @@
+module gunbc.guarantee_stall.injection_implicit_safety_is_declared_not_derived_stall
+
+import std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Q1e: an InjectionPhase row states total/exact/pure/consent_free as Bools and `preserves` as std.algebra template
+// names; nothing derives them from the route's function body, so a row can claim exactness for a lossy route.
+data injection_implicit_safety_is_declared_not_derived_stall: GuaranteeStall = GuaranteeStall {
+  subject: "std.coercion InjectionPhase safety claims (total, exact, pure, consent_free, preserves) asserted by the row rather than derived from its route",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: Cons {
+      head: "gunbc.structural_realization_bindings conversion_plan_rows nat_to_int",
+      tail: Empty {}
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "the compiler derives an injection's totality and exactness from its route's body (a single constructor application of its source) and its preserved operators from std.algebra template references, so a row asserts none of them")
+}
