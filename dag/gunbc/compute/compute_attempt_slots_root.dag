@@ -1,0 +1,144 @@
+module gunbc.compute.compute_attempt_slots_root
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.optional { Optional, Present, Absent }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused }
+import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, DirectInvocation, OwnerUnrecorded }
+import gunbc.compute.host_capacity { compute_root }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse, DeclaredDirectoryMode }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_listing_observation, filesystem_listing_entry_names,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+}
+
+// THE COMPUTE ATTEMPT SLOT STORES' ROOT (their consumers are gunbc.compute.work_provider_local, which opens,
+// launches and settles a compute attempt, and gunbc.compute.compute_seat_ensure, which discharges it).
+//
+// THE STORE IS A FAMILY, ONE PER SEAT. A dispatch-owned seat's slots live in a directory named by the dispatch
+// attempt's own key, so the attempt's terminal path reads ITS directory and the cost is proportional to the
+// attempt; a DirectInvocation or unrecorded owner has no dispatch attempt and keeps the attempts root itself.
+// So a seat is a typed identity (ComputeSeat), never a path, and every path below is derived here and nowhere
+// else. THE ONE DECLARATION is the member the family lives under in the instance's compute root and the mode
+// each seat directory is created with; the store (compute_seat_store) and the directory row
+// (compute_seat_directory) both read it.
+type ComputeAttemptSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data compute_attempt_slots: ComputeAttemptSlotsDeclaration = ComputeAttemptSlotsDeclaration {
+  member: "attempts" as NonEmptyStr,
+  mode: DirectoryOwnerAllEveryoneTraverse,
+}
+
+data compute_dispatch_seat_prefix: String = "dispatch-"
+
+type ComputeSeat
+  = ComputeFlatSeat
+  | ComputeDispatchSeat { attempt_key: String }
+
+fn compute_seat_of(owner: AttemptOwner) -> ComputeSeat {
+  match owner {
+    DispatchOwned { node_id: _, attempt_key: k } => ComputeDispatchSeat { attempt_key: k }
+    DirectInvocation { why: _ } => ComputeFlatSeat
+    OwnerUnrecorded { why: _ } => ComputeFlatSeat
+  }
+}
+
+fn compute_seat_wire(seat: ComputeSeat) -> String {
+  match seat {
+    ComputeFlatSeat => compute_attempt_slots.member as String
+    ComputeDispatchSeat { attempt_key: k } => join([compute_dispatch_seat_prefix, k], "")
+  }
+}
+
+fn compute_attempts_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([compute_root(instance: instance) as String, "/", compute_attempt_slots.member as String], "") as NonEmptyStr
+}
+
+fn compute_seat_path(instance: HostDashboardInstance, seat: ComputeSeat) -> NonEmptyStr {
+  match seat {
+    ComputeFlatSeat => compute_attempts_path(instance: instance)
+    ComputeDispatchSeat { attempt_key: k } => join([compute_attempts_path(instance: instance) as String, "/", compute_dispatch_seat_prefix, k], "") as NonEmptyStr
+  }
+}
+
+// THE SEAT STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as gunbc.roadmap.roadmap_attempt_worktree_claim_root
+// WorktreeClaimStore is: sole_constructor, built in one place (compute_seat_store), which takes the instance and
+// the typed seat and no path: the root is derived here from compute_attempt_slots (compute_seat_path), and only a
+// directory listed (Filesystem.List) yields a store. It carries the seat it was minted for, so a consumer
+// reads which seat it holds as a typed ComputeSeat; the root is a field of the SlotStore it holds and field reads are not
+// module-private, so a holder CAN read it (declared residual:
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+// The mint takes no path, but the instance it takes is buildable over any root
+// (gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance), so a chosen path DOES reach this store
+// through it: route 3 of the same residual (test.claim.attempt_store_seal_witness
+// a_compute_store_over_a_chosen_instance_root_is_accepted_today, expecting-red). Non-generic and
+// never a variant arm (test.claim.sole_constructor_completeness_audit_probe f13); the seat is a field of it,
+// not the other way round. NOT established, as for the claim store: that a store minted for instance A is
+// refused where B is required.
+type ComputeSeatStore sole_constructor {
+  instance: NonEmptyStr
+  seat: ComputeSeat
+  slots: SlotStore
+}
+
+type ComputeSeatStoreReading
+  = ComputeSeatStoreReady { store: ComputeSeatStore }
+  | ComputeSeatStoreUnready { detail: String }
+
+fn compute_seat_store(instance: HostDashboardInstance, seat: ComputeSeat) -> ComputeSeatStoreReading {
+  match listed_slot_store(member: compute_attempt_slots.member as String, root: compute_seat_path(instance: instance, seat: seat)) {
+    SlotStoreRefused { detail: d } => ComputeSeatStoreUnready { detail: d }
+    SlotStoreListed { root: r } => ComputeSeatStoreReady { store: ComputeSeatStore { instance: instance.instance_id, seat: seat, slots: file_slot_store(root: r) } }
+  }
+}
+
+// THE SEAT DIRECTORY IS A DEMANDED DIRECTORY, created by the provider before the seat's first slot is opened
+// (gunbc.compute.work_provider_local compute_reserve_and_run) rather than by the instance list, because a
+// dispatch seat exists per dispatch attempt and the list is static. Same owner, mode and posture as the compute
+// root it lives under (gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_shared_directory).
+fn compute_seat_directory(instance: HostDashboardInstance, seat: ComputeSeat) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: compute_attempt_slots.member,
+    path: compute_seat_path(instance: instance, seat: seat) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: compute_attempt_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// THE PRODUCER LEASE NAMES ITS HOLDER BY THE SEAT'S DIRECTORY, a text written into a lease file
+// (gunbc.compute.work_provider_local compute_provide_produce) and compared back by the discharge
+// (gunbc.compute.compute_seat_ensure seat_drop_lease_if_held_by). It is derived here so the spelling has one
+// home, and it stays byte-identical to what live leases already carry: changing it would make every lease taken
+// before the change read as another holder's and never drop. DECLARED RESIDUAL: the holder text contains the
+// seat's path, so a reader of a lease file can see where the seat lives; nothing mints a store from it (the
+// only mint is compute_seat_store). It dissolves when the producer lease moves onto a slot keyed by the seat
+// identity, the exclusion-store change gunbc.compute.compute_seat_ensure already names as outside its slice.
+fn compute_seat_holder_line(instance: HostDashboardInstance, seat: ComputeSeat) -> String {
+  join(["holder ", compute_seat_path(instance: instance, seat: seat) as String, "\n"], "")
+}
+
+// THE DISPATCH SEATS THAT EXIST, read from the attempts directory's own `dispatch-*` entries. A listing that
+// cannot be read is not an empty one; the attempts directory being absent is not "no seats" either, it is
+// unreadable, and the caller decides what that means.
+type ComputeSeatListing
+  = ComputeSeatsListed { seats: List<ComputeSeat> }
+  | ComputeSeatsUnreadable { reason: String }
+
+fn compute_dispatch_seats(instance: HostDashboardInstance) -> ComputeSeatListing {
+  let dir = compute_attempts_path(instance: instance) as String
+  let listed = Filesystem.List(path: dir)
+  match filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) =>
+      ComputeSeatsListed { seats: filesystem_listing_entry_names(listing: admitted)
+        |> filter(n => starts_with(s: n, prefix: compute_dispatch_seat_prefix))
+        |> map(n => ComputeDispatchSeat { attempt_key: substring(s: n, start: string_length(s: compute_dispatch_seat_prefix), end: string_length(s: n)) }) }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => ComputeSeatsUnreadable { reason: join(["the attempts directory could not be listed: ", e], "") }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ComputeSeatsUnreadable { reason: join(["the attempts directory could not be listed: ", c], "") }
+  }
+}
+
+fn compute_seat_listed(listing: List<ComputeSeat>, attempt_key: String) -> Bool {
+  any(listing, s => match s { ComputeDispatchSeat { attempt_key: k } => k == attempt_key  ComputeFlatSeat => false })
+}

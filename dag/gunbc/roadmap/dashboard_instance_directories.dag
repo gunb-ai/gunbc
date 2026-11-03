@@ -2,6 +2,7 @@ module gunbc.roadmap.dashboard_instance_directories
 
 import std.types { List }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_own_directory_demands, ProdRoleRealization }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory, session_reviewer_slots_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import gunbc.auth.session_store { session_store_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_directory }
@@ -48,6 +49,8 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     credential_acquisition_slots_directory(instance: instance),
     cursor_attempt_runtime_directory(instance: instance),
     worktree_claim_slots_directory(instance: instance),
+    session_attempt_slots_directory(instance: instance),
+    session_reviewer_slots_directory(instance: instance),
   // THE MATERIALIZATION STORE AND ITS STAGING SIBLING, demanded by the route that writes them
   // (gunbc.compute.compute_store_owned_directories compute_store_owned_directories) and empty unless
   // the instance declares a PersistentInstanceWorkspace store. Without this row the srv1 lab's
