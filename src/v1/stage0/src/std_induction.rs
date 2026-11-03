@@ -11,7 +11,7 @@ use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_algebra::{collection_concat_shape, CostShape, Ordering};
+pub use crate::std_algebra::{collection_concat_shape, list_head, CostShape, Ordering};
 pub use crate::std_checked_arithmetic::{
     checked_int_add, checked_int_multiply, checked_int_optional,
 };
@@ -529,7 +529,7 @@ pub enum CostBound {
 }
 
 pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
-    match terms.clone().first().cloned() {
+    match crate::std_algebra::list_head(terms.clone()) {
         std::option::Option::None => Rc::new(CostBound::ErrorBound),
         Some(_) => Rc::new(CostBound::SumBound {
             terms: terms.clone(),
@@ -970,7 +970,7 @@ pub fn cost_bound_to_shape(b: Rc<CostBound>) -> Option<CostShape> {
             }
         } else {
             if ((params.clone().len() as i64) == 1) {
-                match params.clone().first().cloned() {
+                match crate::std_algebra::list_head(params.clone()) {
                     std::option::Option::None => std::option::Option::None,
                     Some(only) => {
                         shape_for_param_growth(cost_bound_growth_in_param(b.clone(), only.clone()))
