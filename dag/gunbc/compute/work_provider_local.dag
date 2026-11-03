@@ -53,6 +53,7 @@ import extdeps.cache.sccache {
   sccache_installed_binary_path, sccache_server_uds_env_var,
 }
 import extdeps.linux.procfs { procfs_status_effective_uid }
+import extdeps.posix.signal { linux_standard_signal_wire_name }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
@@ -73,6 +74,17 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
+}
+// The seat's stop observation reads the SAME exit record the roadmap belt writes: the hook render, the
+// per-uid listing, the subject split and the decoded process end all live in that module. work_provider_local
+// named these declarations at :679-:905 without importing them; every one is used exactly once and none is
+// declared here (AttemptExitRecordAtStop at :656 IS local and is not imported).
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  compute_attempt_exit_hook, compute_attempt_exit_record_listing, attempt_exit_record_matching,
+  AttemptExitHookRendered, AttemptExitHookRefused,
+  RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject,
+  AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptExitRecordWriterUnsubstituted,
+  AttemptProcessEnd, AttemptProcessExitedWith, AttemptProcessSignaled,
 }
 import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count }
 import gunbc.compute.work_class_grant {
