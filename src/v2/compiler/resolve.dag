@@ -4125,119 +4125,40 @@ fn resolve_record_field_edge(ctx: ResolveContext, e: Edge, record: Optional<Qual
   }
 }
 
+// THE FIELD TYPE DECLARED AT A RECORD PATH: the record read there, and the field named in it. The entry
+// read there can BE the payload record itself instead of a type declaration -- that is how
+// v2.compiler.symbol_index_fill sites a coproduct arm (kind VariantArmPayload, at `<type path>.<arm>`) --
+// and a coproduct BODY declares no fields of its own, so a read that lands on a body answers Absent: an
+// arm's fields live one level in, at the arm's OWN row, which is where a construct tag admitted by the
+// expected type's constructor set points. Until that entry read, every field of such an arm walked as an
+// ordinary child: no expectation reached a nested authored tag or atom, and an arm alias -- sited only in
+// its declaring module's scope -- has no name-door answer for an importer, so the nested site refused
+// resolve_reason_unbound_symbol although the construct already named the type declaring it.
 fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName, field: Symbol) -> Optional<Node> {
-  match resolve_field_type_at_path(ctx: ctx, record: record, field: field) {
-    Present { value: declared } => optional_present(value: declared)
-    // THE ARM SITE THE TAG NAMES. A coproduct whose arm shares its type's spelling
-    // (`type Box = Box { behavior: Behavior }`, `type Wrapper = Wrapper { inner: Cell }`) files TWO rows
-    // at one path: the type declaration's own row and the arm's alias row (v2.compiler.symbol_index_fill
-    // binds the module-scoped alias at `<module>.<arm>`, which IS the type's path when the names
-    // coincide). `symbol_index_lookup` refuses a binding path with more than one declarings -- the
-    // contested guard -- so the read above never starts, and every field of such a record walks as an
-    // ordinary child: no expectation reaches the nested tag or atom, and an arm alias (which lives only
-    // in its declaring module's scope) then refuses resolve_reason_unbound_symbol. The arm's OWN row is
-    // sited one segment below, at `<containment path>.<arm>`, by that same fill. Reading it is not a
-    // widened fallback: the path is named by the tag the construct already resolved, and a contested or
-    // missing path there still answers Absent. Where the read above succeeded nothing here runs, so the
-    // existing authority stays first.
-    Absent =>
-      match qualified_name_last_segment(qn: record) {
-        Absent => optional_absent()
-        Present { value: arm } =>
-          resolve_field_type_at_path(
-            ctx: ctx,
-            record: qualified_name_snoc(qn: record, segment: arm),
-            field: field
-          )
-      }
-  }
-}
-
-// THE FIELD TYPE DECLARED AT ONE PATH: the record read there, and the field named in it (or, when the
-// entry there is a coproduct body, in the payload of the arm its own path names).
-fn resolve_field_type_at_path(ctx: ResolveContext, record: QualifiedName, field: Symbol) -> Optional<Node> {
   match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: record) {
     Absent => optional_absent()
     Present { value: decl } =>
-      match type_decl_member_node(target: decl) {
+      let member = match type_decl_view(target: decl) {
+        PlainTypeDecl { member: m } => optional_present(value: m)
+        GenericTypeDecl { binders: _, member: m } => optional_present(value: m)
+        NotATypeDecl =>
+          match decl.kind {
+            TypeNode { connective: Conj } => optional_present(value: decl)
+            _ => optional_absent()
+          }
+        _ => optional_absent()
+      }
+      match member {
         Absent => optional_absent()
-        Present { value: member } =>
-          match declared_field_named(payload: member, name: field) {
+        Present { value: m } =>
+          match declared_field_named(payload: m, name: field) {
             Present { value: binder } => optional_present(value: binder.type_node)
-            // THE ARM THE TAG NAMES. A coproduct body declares no fields of its own: the authored edge
-            // whose label is the tag's own spelling is the arm, and its target is the payload record
-            // where the field is declared. `type Box = Box { behavior: Behavior }` puts the tag and the
-            // type at the SAME path, so the entry read above is the body, not a payload, and the field
-            // is one level in. v2.std.node_query writes `match d.kind { ComputationNode { behavior:
-            // Value } => ... }` and `Box { behavior: Call { name: 1 } }` exactly this way: until the arm
-            // was read, the nested authored tag met no expectation and refused
-            // resolve_reason_unbound_symbol, even though the construct already named the type declaring
-            // it -- and an arm's alias row lives only in its declaring module's scope, so no importer's
-            // name door could reach it either.
-            Absent =>
-              match qualified_name_last_segment(qn: record) {
-                Absent => optional_absent()
-                Present { value: arm } =>
-                  match coproduct_arm_payload(body: member, arm: arm) {
-                    Absent => optional_absent()
-                    Present { value: payload } =>
-                      match declared_field_named(payload: payload, name: field) {
-                        Present { value: binder } => optional_present(value: binder.type_node)
-                        Absent => optional_absent()
-                      }
-                  }
-              }
+            Absent => optional_absent()
           }
       }
   }
 }
 
-// THE NODE A TYPE ENTRY CARRIES ITS FIELDS ON: the member of a record or generic record declaration;
-// the aliased body of a `type` declaration; the entry itself when it is already a payload record,
-// which is how v2.compiler.symbol_index_fill sites a coproduct arm (kind VariantArmPayload, at
-// `<type path>.<arm>`). An opaque declaration has no readable member, and an entry that is neither a
-// declaration nor a record (an arrow, an atom) is not a field holder.
-fn type_decl_member_node(target: Node) -> Optional<Node> {
-  match type_decl_view(target: target) {
-    PlainTypeDecl { member: m } => optional_present(value: m)
-    GenericTypeDecl { binders: _, member: m } => optional_present(value: m)
-    TypeAlias { binders: _, aliased: a } => optional_present(value: a)
-    NotATypeDecl =>
-      match target.kind {
-        TypeNode { connective: Conj } => optional_present(value: target)
-        _ => optional_absent()
-      }
-    OpaqueTypeDecl { binders: _ } => optional_absent()
-  }
-}
-
-// THE PAYLOAD AN AUTHORED COPRODUCT ARM DECLARES, selected by the arm's own spelling -- the same
-// authored edge v2.compiler.symbol_index_fill sites at `<type path>.<arm>`. A body that is not a
-// coproduct, or an arm the tag does not name, answers Absent: the arm is never guessed from position.
-fn coproduct_arm_payload(body: Node, arm: Symbol) -> Optional<Node> {
-  match body.kind {
-    TypeNode { connective: Disj } =>
-      fold(body.children, init: optional_absent(), f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            match e.label {
-              Authored { name: name } => if symbol_eq(a: name, b: arm) { optional_present(value: e.target) } else { optional_absent() }
-              StructuralLabel { label: _ } => optional_absent()
-              Positional => optional_absent()
-            }
-        }
-      })
-    _ => optional_absent()
-  }
-}
-
-// A LIST LITERAL UNDER AN ANNOTATED LIST TYPE passes its element type to each element. The list is
-// recognised by the ONE authority infer types list literals with (v2.std.list_introduction
-// list_introduction_head_path): the annotation's head must reach exactly that declaration, directly
-// or through pure-renaming aliases (resolve_expected_rename_chain; `List<R>` is one). A head that
-// reaches it only through any other alias passes no expectation, and a headless element then refuses
-// resolve_anonymous_record_no_expected_type.
 fn resolve_list_literal_expected(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
   match resolve_expected_head_path(ctx: ctx, x: x) {
     ExpectedHeadAliasCycle => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_alias_cycle)

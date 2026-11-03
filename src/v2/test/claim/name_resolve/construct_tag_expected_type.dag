@@ -39,7 +39,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // their v2 counterparts import a type and never spell its arms). Each pair below therefore declares
 // the type in one module and uses it in another that imports only the type.
 
-data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\ntype Wrapper = Wrapper { inner: Cell }\ntype Cell = CellA { a: Int } | CellB { b: Int }\ntype Holder<T> = Holder { held: T }\ntype Opt<T> = None | Some { value: T }\n"
+data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Boxed { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\ntype Wrapper { inner: Cell }\ntype Cell = CellA { a: Int } | CellB { b: Int }\ntype Holder<T> { held: T }\ntype Opt<T> = None | Some { value: T }\n"
 
 // A record whose NAME coincides with an arm of Tree above. The spelling has two declarations, one of
 // them a record type in a different module: the expected type's set holds the ARM, and the name door
@@ -55,12 +55,12 @@ data ctee_return_source: String = "module v2.test.ctee.return_user\n\nimport v2.
 
 // THE NESTED PATTERN ARM: the tag sits under a pattern field, and the field's declared type is what
 // the constructor must be read from. Before: resolve_reason_unbound_symbol at `Value`.
-data ctee_pattern_source: String = "module v2.test.ctee.pattern_user\n\nimport v2.test.ctee.types { Box }\nfn f(x: Box) -> Int {\n  match x {\n    Box { behavior: Call { name: n } } => n\n    Box { behavior: Call { name: 0 } } => 0\n  }\n}\n"
+data ctee_pattern_source: String = "module v2.test.ctee.pattern_user\n\nimport v2.test.ctee.types { Box }\nfn f(x: Box) -> Int {\n  match x {\n    Boxed { behavior: Call { name: n } } => n\n    Boxed { behavior: Call { name: p } } => p\n  }\n}\n"
 
 // THE RECORD-FIELD ARM: a value under a record field whose authored field type is the expected type.
 // This is the position rule that already existed (resolve_record_field_edge); what is new is that the
 // construct under it is gated by the field type's constructor set rather than by its spelling.
-data ctee_field_source: String = "module v2.test.ctee.field_user\n\nimport v2.test.ctee.types { Box, Behavior }\nfn f() -> Box { Box { behavior: Call { name: 1 } } }\n"
+data ctee_field_source: String = "module v2.test.ctee.field_user\n\nimport v2.test.ctee.types { Box, Behavior }\nfn f() -> Box { Boxed { behavior: Call { name: 1 } } }\n"
 
 // THE MISMATCH: the spelling binds a declaration -- an arm of a DIFFERENT coproduct -- and the expected
 // type does not declare it. That is the case the ruling named, and it refuses with the new cause
@@ -86,24 +86,27 @@ data ctee_qualified_source: String = "module v2.test.ctee.qualified\n\nimport v2
 
 // AN ALIAS AS THE DECLARED TYPE: the pure renaming (type BoxAlias = Box) is followed to Box's
 // constructor, exactly as resolve_expected_rename_chain follows List to FreeMonoid.
-data ctee_alias_source: String = "module v2.test.ctee.alias_user\n\nimport v2.test.ctee.types { Box }\ntype BoxAlias = Box\ndata first: BoxAlias = Box { behavior: Call { name: 1 } }\n"
+data ctee_alias_source: String = "module v2.test.ctee.alias_user\n\nimport v2.test.ctee.types { Box }\ntype BoxAlias = Box\ndata first: BoxAlias = Boxed { behavior: Call { name: 1 } }\n"
 
 // A NEW REFUSAL THE FLIP STATES RATHER THAN DISCOVERS: an authored record standing where the expected
-// type is Optional<Box>. The expected type declares Present and Absent; the record's own name is not
-// one of them, so the site that bound the record by name now refuses with the constructor-set cause.
-// Under explicit_present_is_the_authoring_policy that is the intended reading, but it is a refusal at a
-// declared-return site and is named here so the diff measures it.
-data ctee_optional_position_source: String = "module v2.test.ctee.optional_position\n\nimport v2.test.ctee.types { Box, Opt }\nfn pack() -> Opt<Box> { Box { behavior: Call { name: 1 } } }\n"
+// type is an optional-shaped coproduct, Opt<Box>. The expectation declares None and Some; the record's
+// own tag (Boxed) is not among them, so the site that bound the record by name now refuses with the
+// constructor-set cause. Under explicit_present_is_the_authoring_policy that is the intended reading, but
+// it is a refusal at a declared-return site and is named here so the diff measures it. The fixture
+// declares its own optional-shaped coproduct (as v2.test.claim.match_binder.kind_aware_binding does)
+// rather than importing std.optional: at 897d2a1c the version that imported it refused with a cause that
+// was NONE of the three constructor-set causes (its three elimination probes -- unbound, ambiguous,
+// new-cause -- were all red), so the ingested-fixture route to a std.* module is not settled here and is
+// kept out of this claim.
+data ctee_optional_position_source: String = "module v2.test.ctee.optional_position\n\nimport v2.test.ctee.types { Box, Opt }\nfn pack() -> Opt<Box> { Boxed { behavior: Call { name: 1 } } }\n"
 
-// THE COINCIDING LABEL: the spelling resolves to a record type in another module, while the expected
-// type's set holds an ARM of that name. The set is the authority, so the record does not bind here.
 // THE SCRUTINEE'S DECLARED TYPE, carried into the arm patterns. Three shapes, one per rung:
-// `w.inner` where w is a formal of the enclosing declaration (the field's declared type at Wrapper's
-// payload, then Cell's arm set); the same scrutinee with an arm the set does NOT declare, which is a
-// bound-to-refused move and is claimed as such; and a scrutinee typed by a type parameter, where no
-// constructor set is readable and the arm keeps the name door.
+// `w.inner` where w is a formal of the enclosing declaration (the field's declared type read at
+// Wrapper's declaration, then Cell's arm set); the same scrutinee with an arm the set does NOT declare,
+// which is a bound-to-refused move and is claimed as such; and a scrutinee typed by a type parameter,
+// where no constructor set is readable and the arm keeps the name door.
 data ctee_scrutinee_field_source: String = "module v2.test.ctee.scrutinee_field\n\nimport v2.test.ctee.types { Cell, Wrapper }\nfn read(w: Wrapper) -> Int {\n  match w.inner {\n    CellA { a: n } => n\n    CellB { b: m } => m\n  }\n}\n"
-data ctee_scrutinee_wrong_source: String = "module v2.test.ctee.scrutinee_wrong\n\nimport v2.test.ctee.types { Box, Cell, Wrapper }\nfn read(w: Wrapper) -> Int {\n  match w.inner {\n    Box { behavior: b } => 0\n  }\n}\n"
+data ctee_scrutinee_wrong_source: String = "module v2.test.ctee.scrutinee_wrong\n\nimport v2.test.ctee.types { Cell, Wrapper }\nimport v2.test.ctee.other { Payload }\nfn read(w: Wrapper) -> Int {\n  match w.inner {\n    Payload { flag: b } => b\n  }\n}\n"
 data ctee_scrutinee_param_source: String = "module v2.test.ctee.scrutinee_param\n\nimport v2.test.ctee.types { Cell }\nfn read<T>(v: T) -> Int {\n  match v {\n    CellA { a: n } => n\n    CellB { b: m } => m\n  }\n}\n"
 
 data ctee_coinciding_source: String = "module v2.test.ctee.coinciding\n\nimport v2.test.ctee.types { Tree }\nimport v2.test.ctee.node_record { Node }\nfn make() -> Tree { Node { child: 1 } }\n"
@@ -131,9 +134,9 @@ data ctee_type_param_source: String = "module v2.test.ctee.type_param\n\nimport 
 // type AND a nullary constructor visible in scope -- read as a binder it would silently swallow every
 // scrutinee value, so it refuses. `atom_unresolved_binder` is its pair: the same unreadable expectation
 // with a spelling that names no constructor, which binds exactly as today.
-data ctee_atom_field_source: String = "module v2.test.ctee.atom_field\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: Value } => 0\n    Box { behavior: Call { name: n } } => n\n  }\n}\n"
-data ctee_atom_binder_source: String = "module v2.test.ctee.atom_binder\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: picked } => picked\n  }\n}\n"
-data ctee_atom_misspelled_source: String = "module v2.test.ctee.atom_misspelled\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: Absnet } => 0\n  }\n}\n"
+data ctee_atom_field_source: String = "module v2.test.ctee.atom_field\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Boxed { behavior: Value } => 0\n    Boxed { behavior: Call { name: n } } => n\n  }\n}\n"
+data ctee_atom_binder_source: String = "module v2.test.ctee.atom_binder\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Boxed { behavior: picked } => picked\n  }\n}\n"
+data ctee_atom_misspelled_source: String = "module v2.test.ctee.atom_misspelled\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Boxed { behavior: Absnet } => 0\n  }\n}\n"
 data ctee_atom_unresolved_source: String = "module v2.test.ctee.atom_unresolved\n\nimport v2.test.ctee.types { Leaf, Tree }\nfn pick<T>(t: T) -> Int {\n  match t {\n    Leaf => 0\n  }\n}\n"
 data ctee_atom_unresolved_binder_source: String = "module v2.test.ctee.atom_unresolved_binder\n\nimport v2.test.ctee.types { Holder }\nfn pick<T>(h: Holder<T>) -> T {\n  match h {\n    Holder { held: picked } => picked\n  }\n}\n"
 
@@ -413,9 +416,10 @@ test fn an_arm_pattern_tag_of_the_scrutinee_type_resolves() -> Bool {
   }
 }
 
-// THE SAME MATCH WITH AN ARM THE SCRUTINEE'S TYPE DOES NOT DECLARE. `Box` is imported, so the name door
-// answers; the expected set (Cell's arms) does not declare it, so the site refuses with the
-// constructor-set cause instead of keeping the name door's binding. Today's verdict at such a site is
+// THE SAME MATCH WITH AN ARM THE SCRUTINEE'S TYPE DOES NOT DECLARE. `Payload` is an arm of ANOTHER
+// coproduct (Other) and is imported by name, so the name door answers -- with a different declaration
+// than the expected type's arms; the expected set (Cell's arms) does not declare it, so the site refuses
+// with the constructor-set cause instead of keeping the name door's binding. Today's verdict at such a site is
 // ACCEPTED on the name door, so every occurrence of this shape is a bound-to-refused move and is
 // reported per site in the bounded diff -- not a new deny invented here.
 test fn an_arm_pattern_tag_the_scrutinee_type_does_not_declare_refuses_with_the_new_cause() -> Bool {
