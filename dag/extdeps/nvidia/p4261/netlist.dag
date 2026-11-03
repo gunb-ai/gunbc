@@ -1,0 +1,59 @@
+module extdeps.nvidia.p4261.netlist
+
+import std.types { List, NonEmptyStr, String }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1 }
+import extdeps.nvidia.p4261.connectors { HousingRow, AwayFromLatchRow }
+import extdeps.nvidia.p4261.population { P4261Position, p4261_position }
+
+// HOW NVIDIA'S P4261 IS WIRED, AS FAR AS THIS REPOSITORY HAS RECONSTRUCTED IT, PER ASSEMBLY REVISION.
+// Board wiring is NVIDIA's design fact, whoever reads it. No NVIDIA schematic or netlist for the P4261
+// has been found, so every proposition here is RECONSTRUCTED from the boards this repository holds,
+// and TranscribedUncited. Whether a held board's readings support one -- on which board, in which of
+// its physical states -- is the observing layer's assessment (product.p4261.evidence), never authored
+// here.
+//
+// POSITION GRAIN, AND WEAK RELATIONS STATED AS WEAK. A proposition names design positions and, for a
+// connector, a latch-relative row; it names a manufacturer terminal only where one is known (none of
+// the relations below needs one). The relations are what the continuity model can establish:
+//   RowReachesPosition  every position of the connector's row is LOW-IMPEDANCE REACHABLE to one and
+//                       the same terminal of the component at the target position. Reachability, not
+//                       copper identity: a beep joins a pair at the meter's threshold under its
+//                       conditions; silence proves no open. This is not the input-polarity
+//                       proposition, which also asks the other row's return and an isolation reading.
+//   SpansInput          the two-terminal component at the position has one terminal in each of the
+//                       input connector's two row classes. Listing a component asks the question; it
+//                       asserts no answer.
+// The revision-level power contract (supply voltage, operating point) and the control wiring (enable,
+// gate paths) are not modeled here: no proposition with a defined relation has a consumer yet.
+type NetRelation
+  = RowReachesPosition { connector: P4261Position, row: HousingRow, target: P4261Position }
+  | SpansInput { component: P4261Position, input: P4261Position }
+
+type P4261NetProposition {
+  key: NonEmptyStr
+  relation: NetRelation
+  standing: CitedFigureStanding
+}
+
+fn net_obligation(revision: P4261AssemblyRevision) -> NonEmptyStr {
+  join(["an NVIDIA schematic or netlist for P4261 assembly ", revision.assembly_part_number as String, " revision ", revision.revision_code as String], "") as NonEmptyStr
+}
+
+fn reconstructed_relation(revision: P4261AssemblyRevision, key: NonEmptyStr, relation: NetRelation) -> P4261NetProposition {
+  P4261NetProposition { key: key, relation: relation, standing: TranscribedUncited { read_obligation: net_obligation(revision: revision) } }
+}
+
+fn e1_spans_input(key: NonEmptyStr, designator: NonEmptyStr) -> P4261NetProposition {
+  reconstructed_relation(revision: p4261_e1, key: key, relation: SpansInput { component: p4261_position(revision: p4261_e1, designator: designator), input: p4261_position(revision: p4261_e1, designator: "J20") })
+}
+
+// The E1's reconstructed propositions. The K1 has none: its J20 carries no admitted reading.
+data p4261_net_propositions: List<P4261NetProposition> = [
+  reconstructed_relation(revision: p4261_e1, key: "e1-j20-away-row-reaches-f1", relation: RowReachesPosition { connector: p4261_position(revision: p4261_e1, designator: "J20"), row: AwayFromLatchRow, target: p4261_position(revision: p4261_e1, designator: "F1") }),
+  e1_spans_input(key: "e1-d2-spans-j20-input", designator: "D2"),
+  e1_spans_input(key: "e1-d5-spans-j20-input", designator: "D5"),
+  e1_spans_input(key: "e1-c10-spans-j20-input", designator: "C10_P5"),
+  e1_spans_input(key: "e1-c12-spans-j20-input", designator: "C12_P5"),
+  e1_spans_input(key: "e1-f300-spans-j20-input", designator: "F300"),
+]

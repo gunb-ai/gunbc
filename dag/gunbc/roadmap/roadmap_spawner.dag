@@ -47,6 +47,7 @@ import extdeps.languages.json.emit {
   json_kv,
   json_str_list,
 }
+import gunbc.roadmap.roadmap_readiness { node_readiness }
 
 fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
   match e {

@@ -212,6 +212,7 @@ pub enum InferredNode {
 
 pub fn divergent_type() -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: no_span(),
@@ -233,7 +234,6 @@ pub fn divergent_type() -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -785,6 +785,20 @@ pub enum CompilerDiagnostic {
         position: String,
         span: Rc<SourceSpan>,
     },
+    ArithmeticWithoutCarrier {
+        operation: String,
+        operands: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
+    ArithmeticAmbiguousCarrier {
+        operation: String,
+        candidates: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
+    ArithmeticUndecidedCarrier {
+        operation: String,
+        span: Rc<SourceSpan>,
+    },
     UnlistedImportUse {
         name: String,
         span: Rc<SourceSpan>,
@@ -1075,6 +1089,9 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::DeclaredTypeNotInhabited { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ArithmeticWithoutCarrier { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { span: s, .. } => s.clone(),
@@ -1159,6 +1176,9 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
+    CompilerDiagnostic::ArithmeticWithoutCarrier { operation: op, operands: os, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no arithmetic carrier: no declared carrier defines ".to_string(), op.clone()), " for the operands (".to_string()), os.clone().join(&", ".to_string())), ") through the declared implicit injections".to_string()),
+    CompilerDiagnostic::ArithmeticAmbiguousCarrier { operation: op, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("arithmetic carrier is ambiguous for ".to_string(), op.clone()), ": ".to_string()), ((cs.clone().len() as i64)).to_string()), " incomparable carriers (".to_string()), cs.clone().join(&", ".to_string())), ") define it through the declared implicit injections; name the conversion".to_string()),
+    CompilerDiagnostic::ArithmeticUndecidedCarrier { operation: op, .. } => v1_rt::concat(v1_rt::concat("arithmetic carrier is undecided for ".to_string(), op.clone()), ": an operand's alias chain is longer than the carrier reader's bound, so its carrier was not read; no carrier is assumed".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position: pos, .. } => v1_rt::concat(v1_rt::concat("declared-type inhabitance is UNMODELED at the ".to_string(), pos.clone()), ": no arm of the relation judges this pair yet. This is not an undecidable fact but a gap in the relation's wiring, counted here instead of read as acceptance until the class is dispositioned and the terminal arm refuses".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no provider is present for '".to_string(), n.clone()), "', referenced by module '".to_string()), rm.clone()), "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply".to_string()),
@@ -1410,6 +1430,18 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ArithmeticUndecidedCarrier { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1674,6 +1706,7 @@ pub fn make_expr_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
@@ -1695,7 +1728,6 @@ pub fn make_expr_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -1709,6 +1741,7 @@ pub fn make_named_expr_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
@@ -1730,7 +1763,6 @@ pub fn make_named_expr_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -1757,6 +1789,7 @@ pub fn make_expr_error_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
@@ -1784,7 +1817,6 @@ pub fn make_expr_error_node(
             kind: kind.clone(),
             message: message.clone(),
         }),
-        ident: None,
     })
 }
 
@@ -1801,6 +1833,7 @@ pub fn make_arg_node(
             std::option::Option::None => "".to_string(),
         };
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: arg_name.clone(),
             span: span.clone(),
@@ -1822,7 +1855,6 @@ pub fn make_arg_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1840,6 +1872,7 @@ pub fn make_arm_node(
             std::option::Option::None => Rc::new(vec![body.clone()]),
         };
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: "".to_string(),
             span: span.clone(),
@@ -1861,7 +1894,6 @@ pub fn make_arm_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1874,6 +1906,7 @@ pub fn make_resource_use_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
@@ -1895,7 +1928,6 @@ pub fn make_resource_use_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1926,6 +1958,7 @@ pub fn make_field_init_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
@@ -1947,7 +1980,6 @@ pub fn make_field_init_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1959,6 +1991,7 @@ pub fn make_field_binding_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: field_name.clone(),
         span: span.clone(),
@@ -1980,7 +2013,6 @@ pub fn make_field_binding_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -2004,6 +2036,7 @@ pub fn make_text_part_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
@@ -2029,7 +2062,6 @@ pub fn make_text_part_node(
                 value: text.clone(),
             }),
         }),
-        ident: None,
     })
 }
 
@@ -2039,6 +2071,7 @@ pub fn make_interp_part_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
@@ -2060,7 +2093,6 @@ pub fn make_interp_part_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -2078,6 +2110,7 @@ pub fn make_param_node(
             std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
@@ -2099,7 +2132,6 @@ pub fn make_param_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -2119,6 +2151,7 @@ pub fn make_resolved_param_node(
             std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
@@ -2142,7 +2175,6 @@ pub fn make_resolved_param_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -2159,6 +2191,19 @@ pub fn generic_param_name_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices, n)
+}
+
+pub fn item_generic_param_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in item.params.clone().iter().cloned() {
+            __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
+        }
+        __result
+    })
 }
 
 pub fn authored_name_at(
@@ -2272,6 +2317,7 @@ pub fn make_field_node(
             std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
@@ -2293,7 +2339,6 @@ pub fn make_field_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -2364,6 +2409,7 @@ pub fn make_variant_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
@@ -2385,7 +2431,6 @@ pub fn make_variant_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -3217,6 +3262,7 @@ pub fn make_transport_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
@@ -3238,7 +3284,6 @@ pub fn make_transport_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -3367,6 +3412,7 @@ pub fn shell_transport_node(
 ) -> Rc<Node> {
     {
         let shell_marker = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: span.clone(),
@@ -3388,7 +3434,6 @@ pub fn shell_transport_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let zero_span = no_span();
         let stdin_props = match stdin.clone() {
@@ -3403,6 +3448,7 @@ pub fn shell_transport_node(
         };
         let all_props = v1_rt::concat(env.clone(), stdin_props.clone());
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: "".to_string(),
             span: span.clone(),
@@ -3424,7 +3470,6 @@ pub fn shell_transport_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -4370,6 +4415,7 @@ pub fn module_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
@@ -4391,7 +4437,6 @@ pub fn module_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -4406,6 +4451,7 @@ pub fn import_node(
     {
         let wildcard_marker = if is_all.clone() {
             Some(Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "".to_string(),
                 span: span.clone(),
@@ -4427,12 +4473,12 @@ pub fn import_node(
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }))
         } else {
             std::option::Option::None
         };
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
             name: module_path.clone(),
             span: span.clone(),
@@ -4454,7 +4500,6 @@ pub fn import_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -4490,6 +4535,7 @@ pub fn leaf_node_with_span(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
@@ -4511,7 +4557,6 @@ pub fn leaf_node_with_span(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -4672,6 +4717,7 @@ pub fn unit_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Unit".to_string(),
         span: kernel_span("Unit".to_string()),
@@ -4693,7 +4739,6 @@ pub fn unit_type() -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -4704,6 +4749,7 @@ pub fn bool_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Bool".to_string(),
         span: kernel_span("Bool".to_string()),
@@ -4725,7 +4771,6 @@ pub fn bool_type() -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -4736,6 +4781,7 @@ pub fn string_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "String".to_string(),
         span: kernel_span("String".to_string()),
@@ -4757,7 +4803,6 @@ pub fn string_type() -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -4768,6 +4813,7 @@ pub fn symbol_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Symbol".to_string(),
         span: kernel_span("Symbol".to_string()),
@@ -4789,7 +4835,6 @@ pub fn symbol_type() -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -4800,6 +4845,7 @@ pub fn int_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Int".to_string(),
         span: kernel_span("Int".to_string()),
@@ -4821,7 +4867,6 @@ pub fn int_type() -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -4832,6 +4877,7 @@ pub fn float_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Float".to_string(),
         span: kernel_span("Float".to_string()),
@@ -4853,7 +4899,6 @@ pub fn float_type() -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -4864,6 +4909,7 @@ pub fn none_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "None".to_string(),
         span: kernel_span("None".to_string()),
@@ -4885,7 +4931,6 @@ pub fn none_type() -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -4905,6 +4950,7 @@ pub fn error_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: no_span(),
@@ -4932,7 +4978,6 @@ pub fn error_type() -> Rc<Node> {
         kind: ExprErrorKind::SemanticExprError,
         message: "unresolved type".to_string(),
     }),
-        ident: None,
     })
             };
         }

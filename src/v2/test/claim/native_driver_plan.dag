@@ -204,7 +204,7 @@ test fn an_empty_command_line_refuses_with_the_usage_holds() -> Bool {
 
 test fn an_unknown_verb_refuses_and_names_the_word_holds() -> Bool {
   (refusal_detail(argv: ["adjudicat", "x"])
-    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier, demand-census, decl-ref-census")
+    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier, demand-census")
   && plan_exit_is_misuse(argv: ["adjudicat", "x"])
 }
 
@@ -223,7 +223,7 @@ test fn a_refused_plan_names_no_roots_and_no_facts_path_holds() -> Bool {
 // refusal is reported.
 test fn a_later_word_cannot_repair_an_unknown_verb_holds() -> Bool {
   refusal_detail(argv: ["nonsense", "census"])
-    == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier, demand-census, decl-ref-census"
+    == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier, demand-census"
 }
 
 // THE PATTERN OPTION: carried to the plan as the authority parsed it, and refused at the command
@@ -316,11 +316,11 @@ test fn demand_census_plans_its_own_verb_over_its_roots_holds() -> Bool {
 }
 
 // THE PREDICATE KEYS ON THE VERB ROW, not on the plan arm: every census verb plans the one
-// NativeDriverCensusVerb arm, so demand-census and decl-ref-census are told apart only by the word
+// NativeDriverCensusVerb arm, so demand-census and any other word are told apart only by the word
 // the row carries. An arm answering one constant for the whole row fails one side of this pair.
 test fn demand_census_is_not_another_census_verb_holds() -> Bool {
   parsed_verb_is_demand_census(argv: ["demand-census", "dag"])
-    && !parsed_verb_is_demand_census(argv: ["decl-ref-census", "dag"])
+    && !parsed_verb_is_demand_census(argv: ["census", "dag"])
 }
 
 // THE SCOPED VERB: its own word, a subject operand checked against the one label-to-module function

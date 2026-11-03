@@ -10,6 +10,7 @@ import extdeps.systemd.systemctl {
   systemctl_mask_now_argv,
   systemctl_unmask_argv,
   systemctl_stop_argv,
+  systemctl_start_argv,
 }
 import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,

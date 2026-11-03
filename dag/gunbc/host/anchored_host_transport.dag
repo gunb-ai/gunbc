@@ -246,8 +246,10 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
   // this module rather than in a registry that asserts a live residual.
 ]
 
+// A BOUND BINDING CARRIES THE ANCHOR ITS PRESENTED KEY MATCHED, so a consumer that states what the host was trusted
+// on (gunbc.host.initialized_host) reads it off the binding rather than looking the row up a second time.
 type AnchoredHostBinding
-  = AnchoredBindingBound { bound: HostBoundTransport }
+  = AnchoredBindingBound { bound: HostBoundTransport, anchor: KnownHostKeyRow }
   | AnchoredBindingNotTheAnchoredHost { cause: String }
   | AnchoredBindingAnchorNotForRow { cause: String }
   | AnchoredBindingAnchorAbsent { cause: String }
@@ -316,6 +318,7 @@ fn anchored_host_transport_against(
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_local_shell_refuses_before_any_key_is_read"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
+    decl_ref(module_path: "test.claim.host.initialized_host_witness", decl_name: "mtcollins1_binding"),
   ] {
   match host_bound_transport_of(transport: transport) {
     HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
@@ -335,7 +338,7 @@ fn anchored_host_transport_against(
         } else {
           let expected = known_hosts_line(k: anchor)
           if expected == presented_key_line {
-            AnchoredBindingBound { bound: bound }
+            AnchoredBindingBound { bound: bound, anchor: anchor }
           } else {
             AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: presented_key_line }
           }
@@ -354,7 +357,7 @@ fn anchored_host_transport_against(
 // the PRESENTED and EXPECTED PUBLIC lines OpenSSH would print anyway.
 fn anchored_host_binding_refusal_reason(b: AnchoredHostBinding) -> String {
   match b {
-    AnchoredBindingBound { bound: _ } => "bound; not a refusal"
+    AnchoredBindingBound { bound: _, anchor: _ } => "bound; not a refusal"
     AnchoredBindingNotTheAnchoredHost { cause: cause } => cause
     AnchoredBindingAnchorNotForRow { cause: cause } => cause
     AnchoredBindingAnchorAbsent { cause: cause } => cause
