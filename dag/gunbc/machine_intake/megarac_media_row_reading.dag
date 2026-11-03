@@ -34,7 +34,7 @@ type MegaRacMediaRowReceipt {
   // names no image, and this layer keeps that as `none` rather than a name that happens to be empty: a row
   // naming no medium is a different case from a row whose name is "", and `none` is what boot run
   // 41573858366 actually read. The reading of that answer is what the inference below -- and the refusal it
-// produces -- is keyed to; nothing promotes a code from a value a row carried.
+  // produces -- is keyed to; nothing promotes a code from a value a row carried.
   image_name: NonEmptyStr?
   redirection_status: Int
 }
