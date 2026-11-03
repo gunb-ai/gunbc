@@ -11,7 +11,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Instantiation, Atom, Arrow, ComputationNode, Conj, Disj, Edge, FirstPositionalAbsent, FirstPositionalFound, Authored, Node, Positional, Symbol, TypeNode, arrow_first_positional_target, node_subtree_nodes, StructuralLabel, label_sort_key }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
-import v2.std.symbol_index { RecordTypePayload, SymbolIndex, symbol_index_mark_namespace_body, VariantArmPayload, symbol_index_bind_at, symbol_index_mark_module_root, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_insert, symbol_index_lookup, symbol_index_mark_declared_payload, symbol_index_mark_declared_resource, symbol_index_mark_primitive_contract, symbol_index_mark_declared_type_params }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, symbol_index_mark_namespace_body, VariantArmPayload, symbol_index_bind_at, symbol_index_entry_at, symbol_index_mark_module_root, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_insert, symbol_index_lookup, symbol_index_mark_declared_payload, symbol_index_mark_declared_resource, symbol_index_mark_primitive_contract, symbol_index_mark_declared_type_params }
 import v2.std.namespace_alias { ModuleBindingSource, PendingBinding }
 import v2.extdeps.languages.dag { alias_binding_row_from_decl_node, namespace_graft_node_is_module_body, dag_surface_module_header_metadata_edge, dag_surface_where_refinement_clause_edge, namespace_graft_spine_body_optional, qualified_name_from_module_node }
 import v2.compiler.parse { parse_tree_projection_edge }
@@ -259,6 +259,20 @@ fn symbol_index_fill_containment_children(
   })
 }
 
+// THE ALIAS MARK IS A BINDING-PATH FACT, AND THE PAYLOAD MAP IS KEYED BY DECLARING PATH. An arm spelled like its
+// own type (`type X = X { .. }`) files its alias at the type's declaring path, so marking the alias
+// VariantArmPayload there wrote a constructor kind onto a path that declares a TYPE; the map holds one
+// kind per path, so the write was a silent kind loss (last write wins). The arm's own kind is already
+// marked at its declaring path (`<type path>.<arm>`), which is where candidates read it, so the alias mark
+// is skipped exactly when it would land on the declaring path of the type that owns the arm.
+fn symbol_index_mark_alias_payload(index: SymbolIndex, alias_path: QualifiedName, type_path: QualifiedName) -> SymbolIndex {
+  if alias_path == type_path {
+    index
+  } else {
+    symbol_index_mark_declared_payload(index: index, qualified_path: alias_path, kind: VariantArmPayload)
+  }
+}
+
 // AN ARROW'S DOMAIN IS A PARAMETER LIST, NEVER A NAMESPACE SPINE SEGMENT. The Arrow arm indexes the
 // domain's binders under the Arrow's path by label, directly, rather than handing the domain to the
 // Conj arm: there, namespace_graft_spine_segment_edge_optional read a one-binder domain whose binder is
@@ -308,15 +322,15 @@ fn symbol_index_fill_containment_node(
             if disj_variant_count_of(counts: counts, sym: sym) == 1 {
               let alias_path = qualified_name_snoc(qn: module_qn, segment: sym)
               symbol_index_fill_containment_node(
-                index: symbol_index_mark_declared_payload(
+                index: symbol_index_mark_alias_payload(
                   index: symbol_index_bind_at(
                     index: with_variant,
                     binding_path: alias_path,
                     declaring_path: variant_path,
                     resolved: edge.target
                   ),
-                  qualified_path: alias_path,
-                  kind: VariantArmPayload
+                  alias_path: alias_path,
+                  type_path: path
                 ),
                 path: variant_path,
                 node: edge.target,
@@ -476,6 +490,25 @@ type BindRound {
   deferred: FreeMonoid<PendingBinding>
 }
 
+// AN IMPORT OF A CONTESTED SPELLING BRINGS EVERY CLAIMANT, each under its own declaring path, so the reference
+// decides by the kind it requires (candidate eligibility runs before none/one/many). Deferring the row
+// instead left the import binding nothing, and a type name that a type and its same-spelled sole arm
+// both claim refused as unbound at the reference. Two same-kind claimants stay two candidates and the
+// reference still refuses as ambiguous; nothing is picked.
+fn symbol_index_bind_claimants(index: SymbolIndex, binding_path: QualifiedName, claimants: FreeMonoid<QualifiedName>) -> SymbolIndex {
+  fold_list(
+    xs: claimants,
+    empty: index,
+    cons: fn(acc, declaring) {
+      match symbol_index_entry_at(index: acc, qualified_path: declaring) {
+        Present { value: resolved } =>
+          symbol_index_bind_at(index: acc, binding_path: binding_path, declaring_path: declaring, resolved: resolved)
+        Absent => acc
+      }
+    }
+  )
+}
+
 fn symbol_index_bind_pending_round(
   index: SymbolIndex,
   pending: FreeMonoid<PendingBinding>
@@ -502,10 +535,14 @@ fn symbol_index_bind_pending_round(
                 index: acc.index,
                 deferred: list_snoc_item(xs: acc.deferred, item: p)
               }
-            MentionDeclaringContested { claimants: _ } =>
+            MentionDeclaringContested { claimants: claimants } =>
               BindRound {
-                index: acc.index,
-                deferred: list_snoc_item(xs: acc.deferred, item: p)
+                index: symbol_index_bind_claimants(
+                  index: acc.index,
+                  binding_path: qualified_name_snoc(qn: p.module_qn, segment: p.row.binding),
+                  claimants: claimants
+                ),
+                deferred: acc.deferred
               }
           }
         Absent =>
