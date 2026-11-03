@@ -42,7 +42,7 @@ pub use crate::std_decimal::{checked_decimal_pow10, ExactDecimal};
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
-pub use crate::std_nat::Nat;
+pub use crate::std_nat::{nat_ceil_div, Nat};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;
@@ -314,20 +314,16 @@ pub fn measure_scale_fraction_ceil<Q, S>(
     num: Nat,
     den: Nat,
 ) -> Rc<Measure<Q, S, i64>> {
-    Rc::new(Measure {
-        count: if (den.clone() == 0) {
-            v1_rt::int_mul(m.count.clone(), num.clone())
-        } else {
-            v1_rt::int_div(
-                v1_rt::int_add(
-                    v1_rt::int_mul(m.count.clone(), num.clone()),
-                    v1_rt::int_sub(den.clone(), 1),
-                ),
-                den.clone(),
-            )
-        },
-        _phantom: std::marker::PhantomData,
-    })
+    {
+        let scaled = v1_rt::int_mul(m.count.clone(), num.clone());
+        Rc::new(Measure {
+            count: match crate::std_nat::nat_ceil_div(scaled.clone(), den) {
+                Some(q) => q.clone(),
+                std::option::Option::None => scaled.clone(),
+            },
+            _phantom: std::marker::PhantomData,
+        })
+    }
 }
 
 pub fn measure_add<Q, S>(

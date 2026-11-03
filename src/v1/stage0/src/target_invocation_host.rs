@@ -524,15 +524,9 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::SelfHostBehavioralEquivalence,
         ),
         (
-            instrument_label("decl-ref-census"),
+            instrument_label("dependency-demand-census"),
             TargetProducer::NativeCensusVerb {
-                verb: "decl-ref-census",
-            },
-        ),
-        (
-            instrument_label("effect-pair-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "effect-pair-census",
+                verb: "demand-census",
             },
         ),
         (
@@ -586,6 +580,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("exit-return-ownership"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/exit_return_ownership_native.dag",
+            },
+        ),
+        (
             instrument_label("cons-tail-recursion"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag",
@@ -595,6 +595,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("member-home-cost"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/member_home_cost_native.dag",
+            },
+        ),
+        (
+            instrument_label("roster-rehome-controls"),
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_rehome.dag",
+                function: "rehome_controls_wire",
             },
         ),
         (
@@ -4612,6 +4619,12 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     }
 }
 
+/// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
+/// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
+/// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
+/// the exit are decided by `v2.compiler.source_root_eval` `native_demand_census_output`, so the host adds no
+/// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
+/// and 2 or a refused preparation is no observation.
 /// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the
 /// `v2.compiler.compile` closure are read from disk and handed to
 /// `v1.tests.claim.generic_identity_census` as `SourceFile` data. The standing line, each control,

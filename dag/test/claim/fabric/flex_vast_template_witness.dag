@@ -1,7 +1,7 @@
 module test.claim.fabric.flex_vast_template_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, List, Bool, Int, String, Secret }
+import std.types { NonEmptyStr, List, Bool, Int, String, Secret, list_length }
 import std.optional { Present, Absent }
 import std.render_repeat_string_bootstrap { repeat_string }
 import extdeps.cloud.vast_ai { VastAiTemplateRow }

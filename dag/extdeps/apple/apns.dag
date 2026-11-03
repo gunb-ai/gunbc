@@ -243,10 +243,11 @@ fn apns_refusal_class(status: Int) -> ApnsRefusalClass {
   if status == 400 { ApnsBadRequest } else { if status == 403 { ApnsAuthenticationRefused } else { if status == 404 { ApnsBadPath } else { if status == 405 { ApnsBadMethod } else { if status == 410 { ApnsTokenUnregistered } else { if status == 413 { ApnsPayloadTooLarge } else { if status == 429 { ApnsTooManyRequests } else { if status == 500 { ApnsServerError } else { if status == 503 { ApnsServiceUnavailable } else { ApnsStatusUnlisted { status: status } } } } } } } } } }
 }
 
-// The same four-way outcome extdeps.ntfy.ntfy NtfyPublishOutcome settled on, for the same reasons: a
-// transport refusal has no status and must not be given one, and an undecodable 200 is not a
-// refusal. The broker-level shape both fold into is the consumer's (gunbc.auth.approval_device_redemption
-// PushProviderOutcome), not this module's.
+// THE FOUR-WAY OUTCOME, settled here: an HTTP client can honestly report three things -- accepted,
+// refused-with-a-status, never-reached -- and a body it cannot decode is a fourth thing that is none
+// of them. A transport refusal has no status and must not be given one; an undecodable 200 is not a
+// refusal. The broker-level shape this folds into is the consumer's
+// (gunbc.auth.approval_device_redemption PushProviderOutcome), not this module's.
 type ApnsSendOutcome
   = ApnsAccepted { apns_id: NonEmptyStr }
   | ApnsRefused { status: Int, class: ApnsRefusalClass, reason: String }

@@ -1,0 +1,155 @@
+module gunbc.machine_intake.megarac_media_row_reading
+
+// WHAT ONE READ OF A MEGARAC CD/DVD MEDIA ROW SAID, KEPT AS A RECEIPT OF THAT READ. The boot lanes print
+// the rows they read; this module keeps the row a read carried, with the artifact the line lives in and
+// the digest that file is committed under, so a claim about what a status MEANS can point at the read
+// instead of at a sentence in a comment. These are receipts of reads THIS repository made (DESIGN.md §3):
+// the codes are recorded exactly as the controller answered them, and what they mean is established once,
+// in extdeps.bmc.megarac, keyed to these run ids.
+//
+// WHY THESE THREE AND NOT MORE. Code 16 is the state the mtcollins1 controller reports for the CD/DVD row
+// between attempts, and it is the reason the last two boots stopped at attach: boot run 40264233543
+// refused there on it. It was read as a ROW -- this status beside the no-session marker -- and never as a
+// bare code, so the row is what is retained, and the meaning follows only as far as the row was read.
+
+import std.algebra { string_contains }
+import std.types { Bool, Int, NonEmptyStr }
+
+type MegaRacMediaRowReceipt {
+  run_id: NonEmptyStr
+  observed_at: Int
+  artifact_path: NonEmptyStr
+  artifact_sha256: NonEmptyStr
+  artifact_lines: NonEmptyStr
+  media_type: Int
+  media_index: Int
+  session_index: Int
+  image_name: NonEmptyStr
+  redirection_status: Int
+}
+
+// THE ROW BOOT RUN 40258937016 LEFT AT THE END OF ITS ATTEMPT, read back at 1792983408184 and quoted
+// verbatim on the line named below: media_type 1, media_index 0, session_index 255, the runner medium,
+// redirection_status 16. That run's own hpm check committed the release it ran on (APP Active 0.45), so
+// this is a read ON that build -- not a reading of the page label "0.45.3", which no wire has ever
+// carried. The same line records cd_error_code 16; WHAT AN ERROR CODE 16 MEANS WAS NEVER ESTABLISHED, and
+// nothing here is read through it.
+data boot_run_40258937016_end_media_row: MegaRacMediaRowReceipt = MegaRacMediaRowReceipt {
+  run_id: "40258937016" as NonEmptyStr,
+  observed_at: 1792983408184,
+  artifact_path: "artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt" as NonEmptyStr,
+  artifact_sha256: "16a18fed0a9630d33194fef1a0a5efb80807f64b2363ad7e63f94cc44dec498f" as NonEmptyStr,
+  artifact_lines: "2055" as NonEmptyStr,
+  media_type: 1,
+  media_index: 0,
+  session_index: 255,
+  image_name: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" as NonEmptyStr,
+  redirection_status: 16,
+}
+
+// THE SAME ROW AS THE NEXT ATTEMPT MET IT: boot run 40264233543 read the identical triple and REFUSED at
+// media attach on it -- the refusal sentence and the end-of-attempt row are both in the file below (its
+// hpm check committed the same APP Active 0.45 build). One attempt's row could be an accident of that
+// attempt; the same triple across two attempts, one of which stopped on it, is what makes the state worth
+// naming.
+data boot_run_40264233543_end_media_row: MegaRacMediaRowReceipt = MegaRacMediaRowReceipt {
+  run_id: "40264233543" as NonEmptyStr,
+  observed_at: 1792996207072,
+  artifact_path: "artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-diagnostics.txt" as NonEmptyStr,
+  artifact_sha256: "e419f3fcc65dea77b6774ae037067c82a03acf3e3784ea4ef5f63be8d41b2822" as NonEmptyStr,
+  artifact_lines: "117, 2055" as NonEmptyStr,
+  media_type: 1,
+  media_index: 0,
+  session_index: 255,
+  image_name: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" as NonEmptyStr,
+  redirection_status: 16,
+}
+
+// THE SESSION MARKER OF A SESSION THAT WAS LIVE, from boot run 40258937016's handoff read at 1792983328762:
+// "row started, session_index 0". THE COUNTER-EVIDENCE, kept so the shape of the 16 claim cannot drift: a
+// session this build reports as STARTED carries index 0, not 255. So "16 beside an active index" is a
+// different observation from the one that was made, it has never been made here, and it stays unread.
+type MegaRacSessionMarkerReceipt {
+  run_id: NonEmptyStr
+  observed_at: Int
+  artifact_path: NonEmptyStr
+  artifact_sha256: NonEmptyStr
+  artifact_lines: NonEmptyStr
+  session_index: Int
+  row_state_as_read: NonEmptyStr
+}
+
+data boot_run_40258937016_started_session_marker: MegaRacSessionMarkerReceipt = MegaRacSessionMarkerReceipt {
+  run_id: "40258937016" as NonEmptyStr,
+  observed_at: 1792983328762,
+  artifact_path: "artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt" as NonEmptyStr,
+  artifact_sha256: "16a18fed0a9630d33194fef1a0a5efb80807f64b2363ad7e63f94cc44dec498f" as NonEmptyStr,
+  artifact_lines: "2054" as NonEmptyStr,
+  session_index: 0,
+  row_state_as_read: "row started" as NonEmptyStr,
+}
+
+// THE VENDOR'S OWN WORDS FOR THAT ROW, FROM A HUMAN READING THE CONTROLLER'S PAGE -- NOT A MACHINE READ.
+// On 2026-10-26 the operator opened mtcollins1's web UI and recorded how the vendor LABELS the row this
+// repository keeps meeting: the CD/DVD 0 entry naming the runner medium, shown as "Stopped - Device
+// Ejected", with no value in its detail column ("N/A"). It is typed as an attestation because no artifact
+// bytes stand behind it and no reader in this corpus produced it; it is dated because an undated UI
+// reading is unfalsifiable; and it is kept HERE, in the observing layer, because a person reading a vendor
+// page is an observation this repository makes, not a fact of the upstream product (DESIGN.md §3). What it
+// can do is corroborate: it says the vendor's own name for this row's state is stopped and ejected, i.e.
+// NOT PRESENTING. It cannot supply the code, the index, or the release -- those come only from the reads
+// above.
+type BmcMediaRowUiAttestation {
+  row_label: NonEmptyStr
+  image_name: NonEmptyStr
+  state_label: NonEmptyStr
+  detail_label: NonEmptyStr
+  read_on_day: NonEmptyStr
+  read_by: NonEmptyStr
+}
+
+data mtcollins1_cd_row_ui_attestation: BmcMediaRowUiAttestation = BmcMediaRowUiAttestation {
+  row_label: "CD/DVD 0" as NonEmptyStr,
+  image_name: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" as NonEmptyStr,
+  state_label: "Stopped - Device Ejected" as NonEmptyStr,
+  detail_label: "N/A" as NonEmptyStr,
+  read_on_day: "2026-10-26" as NonEmptyStr,
+  read_by: "operator" as NonEmptyStr,
+}
+
+// DOES THE VENDOR'S LABEL DESCRIBE A ROW THAT IS NOT PRESENTING? Only two of the page's own words are
+// accepted, and BOTH are required: a row the page calls Stopped AND Ejected. Any other label -- "Connected",
+// "In Use", an empty cell, or a label that says stopped without saying ejected -- fails this, so an
+// attestation of some other state cannot be pushed through it to license a boot.
+fn attestation_labels_a_stopped_and_ejected_row(attestation: BmcMediaRowUiAttestation) -> Bool {
+  string_contains(s: attestation.state_label as String, pattern: "Stopped")
+    && string_contains(s: attestation.state_label as String, pattern: "Ejected")
+}
+
+// DO THE ATTESTATION AND A MACHINE READ DESCRIBE THE SAME ROW? The medium name and the CD/DVD row, and
+// nothing more. This deliberately does NOT say "the label means code 16": it only records that the two
+// readings are about one row, which is what lets the vendor's words corroborate the read without becoming
+// the evidence for it.
+fn attestation_and_read_name_the_same_row(attestation: BmcMediaRowUiAttestation, read: MegaRacMediaRowReceipt) -> Bool {
+  (attestation.image_name as String) == (read.image_name as String)
+    && string_contains(s: attestation.row_label as String, pattern: "CD/DVD")
+}
+
+// THE TWO READS AGREE ON THE TRIPLE THAT CARRIES THE MEANING: same code, same no-session marker, same
+// medium, across two attempts. A claim about what 16 means stands on this conjunction, not on either read
+// alone.
+fn reads_agree_on_the_ejected_row(a: MegaRacMediaRowReceipt, b: MegaRacMediaRowReceipt) -> Bool {
+  a.redirection_status == b.redirection_status
+    && a.session_index == b.session_index
+    && (a.image_name as String) == (b.image_name as String)
+    && a.run_id != b.run_id
+}
+
+test fn w_the_build_reports_a_different_wire_for_a_non_presenting_cd_than_the_probe_did() -> Bool {
+  boot_run_40264233543_end_media_row.redirection_status == 16
+    && boot_run_40258937016_end_media_row.redirection_status == boot_run_40264233543_end_media_row.redirection_status
+    && boot_run_40258937016_end_media_row.session_index == boot_run_40264233543_end_media_row.session_index
+    && boot_run_40258937016_end_media_row.media_index == boot_run_40264233543_end_media_row.media_index
+    && boot_run_40258937016_end_media_row.observed_at != boot_run_40264233543_end_media_row.observed_at
+}
+

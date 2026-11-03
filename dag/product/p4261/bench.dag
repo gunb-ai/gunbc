@@ -1,0 +1,82 @@
+module product.p4261.bench
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { milliampere }
+import product.electrical.carrier_phase { CurrentRead, CurrentUnrecorded, SourceModeUnrecorded, SupplyReading }
+import product.electrical.continuity {
+  EvidenceRef,
+  OperatorStatement,
+  PointInferred,
+  PointRecorded,
+  ProbeRecord,
+}
+
+// WHAT ONE BENCH SESSION RECORDED ACROSS BOTH UNITS: statements and probe-point bases that the E1 board's
+// and the K1 board's records each cite, held here so neither unit's module imports the other's. Three
+// keep their e1_ names (e1_read_ma, e1_draw_unrecorded, e1_short_after_said): the K1 board's records
+// cite them too.
+
+data inductor_pad_unrecorded: NonEmptyStr = "pad read (which of the two unrecorded)"
+
+data inductor_pad_near_u4: NonEmptyStr = "pad closer to U4"
+
+data inductor_pad_far_u4: NonEmptyStr = "pad farther from U4"
+
+data e1_short_after_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-21", verbatim: "idk nothing is hot / 4R7 near U4 is showing both terminals at ground on 2k. On K1, that 4R7 is ~4k ohms / yeah they're all at 0 ohms" }
+
+data converter_said_1023_pads: EvidenceRef = OperatorStatement { stated_on: "2026-10-23", verbatim: "K1: red u100 left pins, black on the left pad- 4k, 4k, 12k, 12k / Right pins, right pad: 8k for all / E1 left pins left pad- 1k, 3k, 8k, 4k - right side, all baseline" }
+
+data converter_said_1031: EvidenceRef = OperatorStatement { stated_on: "2026-10-31", verbatim: "E1: T1: 0 ohm T2: 10-30 ohm (will not settle, jumps a lot) T3: 10ohm: T4: 9kohm / B1: 0 B2: 130k B3: 130Mohm B4: 50k ohm // K1: T1: 0, T2: 8k, T3: 5k, T4: 16k / B1: 134k, B2:134k B3: 50m B4: 50k" }
+
+data pad_on_the_left_1023: NonEmptyStr = "pad on the operator's left with U100's dot side to the right (2026-10-23; which of the two pads by U4 unrecorded)"
+
+data pad_on_the_right_1023: NonEmptyStr = "pad on the operator's right with U100's dot side to the right (2026-10-23; which of the two pads by U4 unrecorded)"
+
+data t1_basis: NonEmptyStr = "the operator's T1, first along the inductor-side row from the inductor end: pin 4 (GND) by the row's pin order, the lead at the return on both carriers"
+
+data t2_basis: NonEmptyStr = "the operator's T2, second along the inductor-side row from the inductor end: pin 3 (SW), the lead wired to the inductor's pad (converter_photo_1024)"
+
+data t3_basis: NonEmptyStr = "the operator's T3, third along the inductor-side row from the inductor end: pin 2 (VIN) by the row's pin order once T1 is GND and T2 SW"
+
+data t4_basis: NonEmptyStr = "the operator's T4, fourth along the inductor-side row from the inductor end: pin 1 (PG) by the same order"
+
+data b1_basis: NonEmptyStr = "the operator's B1, first along the far row from the inductor end, across from T1: pin 5 (BST), across from pin 4 in the package drawing"
+
+data b2_basis: NonEmptyStr = "the operator's B2, second along the far row from the inductor end: pin 6 (EN) by the same order"
+
+data b3_basis: NonEmptyStr = "the operator's B3, third along the far row from the inductor end: pin 7 (SS) by the same order"
+
+data b4_basis: NonEmptyStr = "the operator's B4, fourth along the far row from the inductor end: pin 8 (FB) by the same order"
+
+// THE FIVE PAIR READINGS OF THE SAME EVENING, from a numbered list the operator was given with the
+// labelled photographs: (1) K1 U10_P2 SW to the 4R7 terminal next to the chip, (2) E1 SW to the same
+// terminal, (3) E1 the 4R7's far terminal to the return, (4) E1 BST to SW, (5) E1 VIN to SW. The
+// terminal next to the chip is the 4R7's pad farther from U4: in the wide photograph the converter sits
+// on the side of the 4R7 away from U4's heatsink (k1_two_4r7_photo_1031), and the close-ups are that
+// view turned a quarter. (1) and (2) at 0 fix the pin map on the K1 and put the E1's SW lead
+// on its pad, so the 10-30 ohm read at that lead earlier was contact or settling, not the node. (3) at
+// 0 keeps the rail short after the cleaning. (4) open says the bootstrap capacitor is not shorted, and
+// an open to a node at the return cannot stand beside BST's earlier 0 to the return, so that earlier
+// reading is doubted and is to be re-read. (5) at 0 is the one no external part explains: the
+// datasheet's circuit has nothing from VIN to SW but the device's high-side switch, so the short is
+// that switch or a bridge between those two adjacent 0.5 mm leads.
+data converter_said_1031_pairs: EvidenceRef = OperatorStatement { stated_on: "2026-10-31", verbatim: "1. 0ohm 2. 0ohm 3. 0ohm 4. open 5. 0ohm" }
+
+data footprint_pad_basis: NonEmptyStr = "the pad is named by its position in the labelled close-up of the converter (the lead that sat on it, named from the MP2333CGTL row's pin order), the same inference as the lead readings'"
+
+fn second_point_inferred_first(basis: NonEmptyStr) -> ProbeRecord {
+  ProbeRecord { first: PointInferred { basis: basis }, second: PointRecorded }
+}
+
+data converter_said_1101_checks: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "1. reversing the probes, I see 8.4Mohm instead of open 2. 0hm both ways 3. 0-30ohm a little jumpy 5. 13kohm" }
+
+data pair_list_basis: NonEmptyStr = "the lead is named by the numbered list the operator was given with the labelled photographs (pin labels drawn from the MP2333CGTL row's pin order), the same inference as the lead readings'"
+
+data converter_side_terminal_basis: NonEmptyStr = "'the 4R7 terminal next to the chip': the pad farther from U4, since the converter sits on the side of the 4R7 away from U4's heatsink in the wide photograph (k1_two_4r7_photo_1031)"
+
+fn e1_read_ma(count: Nat) -> SupplyReading {
+  SupplyReading { voltage: Absent, current: CurrentRead { value: milliampere(count: count) }, mode: SourceModeUnrecorded }
+}
+
+data e1_draw_unrecorded: SupplyReading = SupplyReading { voltage: Absent, current: CurrentUnrecorded, mode: SourceModeUnrecorded }

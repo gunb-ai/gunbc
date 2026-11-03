@@ -24,7 +24,7 @@ import gunbc.instruments.compute_wrong_capture {
   compute_dependency_wrong_capture_exit,
 }
 
-import gunbc.native_census_verb { CensusVerbDeclRef }
+import gunbc.native_census_verb { CensusVerbDemand }
 import gunbc.target_binding {
   TargetBinding,
   TargetBindingIndex,
@@ -113,6 +113,7 @@ import gunbc.instrument_targets {
   primitive_egress_census_v2_label,
   required_lane_resolution_census_label,
   self_host_behavioral_equivalence_label,
+  dependency_demand_census_label,
   self_host_frontier_label,
   generic_identity_census_label,
   interpolation_hole_census_label,
@@ -925,6 +926,28 @@ test fn operands_outside_the_claim_universe_do_not_admit_to_it() -> Bool {
   })
 }
 
+// A REHOMED CLAIM CHANGES EXECUTOR BY CHANGING ITS MODULE NAME, AND NOTHING ELSE. H6's first member,
+// `wc_byte_count_verification_witness`, moved from `test.claim.*` to `v2.test.claim.*`: its exact label
+// now lies inside the native universe (supplied values at this boundary), while a claim still
+// authored under `test.claim.*` keeps the claim route. The inhabitance half -- that the real native
+// route emits a NativeTestVerdict row for the moved identity -- is the srv1 `gunbc test` receipt in
+// the PR, not this fold (DESIGN section 3, the pairing obligation). The OLD label of the moved claim
+// still lies inside the claim universe, so admission answers ClaimRoute for it; that it then selects
+// no discovered claim is the executor's answer, observed on the real route, not decidable here.
+test fn a_rehomed_claim_admits_native_and_an_unmigrated_one_keeps_the_claim_route() -> Bool {
+  (match admit_test_operand(
+    operand: "//v2/test/claim/wc_byte_count_verification_witness:witness_byte_count_verification_preserves_nonmatching_arms",
+    native_universe: native_universe(),
+    claim_universe: claim_universe()
+  ) {
+    TestOperandNativeRoute { pattern: _ } => true
+    _ => false
+  }) && admits_to_claim_route_as(
+    operand: "//test/claim/namespace_import_closure_witness:namespace_import_closure_receipt_holds",
+    rendered: "//test/claim/namespace_import_closure_witness:namespace_import_closure_receipt_holds"
+  )
+}
+
 // THE PRODUCTION UNIVERSE IS THE SUBTREE THE CENSUS'S OWN LABELS OCCUPY. A claim site labelled by
 // `site_label_text` must lie inside `claim_route_universe`, or the route would refuse the very
 // labels the census mints; and the universe must not reach the native one.
@@ -1064,13 +1087,25 @@ test fn the_self_host_behavioral_equivalence_operand_routes_to_its_own_producer(
   }
 }
 
+// D13's dependency-demand census is a label bound to its own producer, never a mode of another
+// instrument.
+test fn the_dependency_demand_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:dependency-demand-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: dependency_demand_census_label())
+        && (b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
+        && !(b.producer == SelfHostBehavioralEquivalenceProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
 // The derived self-host frontier is a label bound to its own producer, never a mode of the self-host label.
 test fn the_self_host_frontier_operand_routes_to_its_own_producer() -> Bool {
   match invoke_target(operand: "//gunbc/instruments:self-host-frontier") {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: self_host_frontier_label())
         && (b.producer == SelfHostFrontierProducer {})
-        && !(b.producer == NativeCensusVerbProducer { verb: CensusVerbDeclRef })
+        && !(b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -1081,7 +1116,7 @@ test fn the_generic_identity_census_operand_routes_to_its_own_producer() -> Bool
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: generic_identity_census_label())
         && (b.producer == GenericIdentityCensusProducer {})
-        && !(b.producer == NativeCensusVerbProducer { verb: CensusVerbDeclRef })
+        && !(b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }

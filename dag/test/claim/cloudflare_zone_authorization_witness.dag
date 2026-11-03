@@ -1,0 +1,101 @@
+module test.claim.cloudflare_zone_authorization_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { declaration_ref_eq }
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, PatternSelected,
+  select_authorization_pattern, pattern_identity,
+}
+import gunbc.cloudflare.zone_authorization {
+  zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect,
+  zone_routes_unrealized, zone_token_accessor_cell_landed,
+  zone_token_accessor_cell_in, cloudflare_zone_token_secret_ref,
+}
+import gunbc.cloudflare.zone { zone_route_gap, SelectedRouteUnrealized, CloudflareRecordListUnread }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster, FleetAccessorGrantRow }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn bindable() -> WorkloadIdentityStanding {
+  WorkloadIdentityBindable { member: "principal://fixture-fleet-principal" as NonEmptyStr }
+}
+
+fn unbindable() -> WorkloadIdentityStanding {
+  WorkloadIdentityUnbindable { cause: "fixture: no member can be bound" as NonEmptyStr }
+}
+
+fn selects_pattern(e: PrivilegedEffect, want: AuthorizationPattern) -> Bool {
+  match select_authorization_pattern(e: e) {
+    PatternSelected { pattern: p, receipt: _ } => declaration_ref_eq(a: pattern_identity(p: p), b: pattern_identity(p: want))
+    _ => false
+  }
+}
+
+// POSITIVE: with a bindable fleet identity the selection sends each zone effect to the federated grant.
+test fn the_dns_record_copy_selects_the_federated_grant() -> Bool {
+  selects_pattern(e: zone_dns_record_copy_effect(identity: bindable()), want: FederatedScopedGrant)
+}
+
+test fn the_custom_domain_bind_selects_the_federated_grant() -> Bool {
+  selects_pattern(e: zone_r2_custom_domain_bind_effect(identity: bindable()), want: FederatedScopedGrant)
+}
+
+// DISCRIMINATING: an unbindable identity moves the same effects to the operator-approved capability.
+test fn an_unbindable_identity_moves_the_dns_copy_to_operator_approval() -> Bool {
+  selects_pattern(e: zone_dns_record_copy_effect(identity: unbindable()), want: OperatorApprovedCapability)
+}
+
+test fn an_unbindable_identity_moves_the_bind_to_operator_approval() -> Bool {
+  selects_pattern(e: zone_r2_custom_domain_bind_effect(identity: unbindable()), want: OperatorApprovedCapability)
+}
+
+// THE ONE CHAIN, executed. The standing is a fold over the real roster: no row names the zone token today,
+// so the selected federated grant is unrealized and the zone carries SelectedRouteUnrealized. The control
+// below flips the standing's input.
+test fn no_roster_cell_names_the_zone_token_so_the_standing_is_unlanded() -> Bool {
+  !zone_token_accessor_cell_landed()
+}
+
+test fn the_unlanded_standing_surfaces_as_the_zones_selected_route_unrealized_gap() -> Bool {
+  match zone_routes_unrealized() {
+    Present { value: _ } => match zone_route_gap() {
+      SelectedRouteUnrealized { missing: _, basis: _ } => true
+      _ => false
+    }
+    Absent => match zone_route_gap() {
+      CloudflareRecordListUnread { missing: _, basis: _ } => true
+      _ => false
+    }
+  }
+}
+
+// DISCRIMINATING: the zone gap and the landed standing agree in both directions, so the gap cannot be
+// SelectedRouteUnrealized once the cell has landed.
+test fn the_gap_arm_follows_the_landed_standing() -> Bool {
+  zone_token_accessor_cell_landed() == match zone_route_gap() {
+    CloudflareRecordListUnread { missing: _, basis: _ } => true
+    _ => false
+  }
+}
+
+// THE TOKEN'S IDENTITY IS PROJECT AND SECRET TOGETHER. POSITIVE: a row on the fleet ref itself lands the cell.
+test fn a_row_on_the_fleet_zone_token_ref_lands_the_cell() -> Bool {
+  zone_token_accessor_cell_in(roster: [FleetAccessorGrantRow { lane: "fixture", target: cloudflare_zone_token_secret_ref }])
+}
+
+// DISCRIMINATING: the same secret id in another project is a different secret and must not read as realized.
+test fn the_same_secret_id_in_another_project_does_not_land_the_cell() -> Bool {
+  !zone_token_accessor_cell_in(roster: [FleetAccessorGrantRow {
+    lane: "fixture",
+    target: SecretRef {
+      project: "some-other-project",
+      secret: cloudflare_zone_token_secret_ref.secret,
+      version: cloudflare_zone_token_secret_ref.version,
+      hash_state: cloudflare_zone_token_secret_ref.hash_state,
+    },
+  }])
+}

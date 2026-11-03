@@ -101,6 +101,8 @@ fn a_read_region() -> ProviderRegionObservation {
 
 fn vast_offer_arch(gpus: Int, arch: String?) -> VastAiOffer {
   VastAiOffer {
+    cuda_max_good: Absent,
+    inet_down: Absent,
     id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: gpus,
     compute_cap: 1200, gpu_arch: arch,
     verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: Present { value: false },
@@ -120,6 +122,8 @@ fn vast_offer(gpus: Int) -> VastAiOffer {
 
 fn vast_offer_bid(bid: Bool?) -> VastAiOffer {
   VastAiOffer {
+    cuda_max_good: Absent,
+    inet_down: Absent,
     id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: 2,
     compute_cap: 1200, gpu_arch: Present { value: "nvidia" },
     verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: bid,

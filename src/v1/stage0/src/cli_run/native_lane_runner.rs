@@ -104,6 +104,12 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root/dag";
 const MALFORMED_MATERIALIZED_PATH: &str =
     "target/v2-native-lane/malformed-control-root/dag/gunbc/malformed_specimen.dag";
+/// The specimen's SOURCE IDENTITY as the driver names it in a refusal: the root-relative key
+/// (`<source root label>:<path under the root>`, v2.compiler.source_authority `module_file_key`), not
+/// the host path, so a refusal does not depend on where the control root is mounted. The control
+/// requires a refusal whose path IS that key, so a refusal naming any other file does not
+/// satisfy it.
+const MALFORMED_SPECIMEN_KEY: &str = "dag:gunbc/malformed_specimen.dag";
 
 /// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
 ///
@@ -136,11 +142,11 @@ const CLI_DOOR_ENTRY_MODULE: &str = "gunbc.native_cli_door_probe";
 /// two scratch trees the walk derives from it differ from it in that module alone.
 const NATIVE_PROJECTION_ROOT: &str = "fixtures/native_acquisition_projection/dag";
 const NATIVE_PROJECTION_SAME_NAMED_FILE: &str = "product/y.dag";
-const NATIVE_PROJECTION_PROJECTED_ENTRY: &str = "fixture.native_projection.projected";
+const NATIVE_PROJECTION_PROJECTED_ENTRY: &str = "test.fixture.native_projection_projected";
 /// The module the projection entry spells as a field access and the qualified entry names for real: the
 /// closure the door reports holds it for one entry and must not hold it for the other.
 const NATIVE_PROJECTION_SAME_NAMED_MODULE: &str = "product.y";
-const NATIVE_PROJECTION_QUALIFIED_ENTRY: &str = "fixture.native_projection.qualified";
+const NATIVE_PROJECTION_QUALIFIED_ENTRY: &str = "test.fixture.native_projection_qualified";
 /// The declaration the same-named module emits, present in the carrier's arm for that module when it is read.
 const NATIVE_PROJECTION_SAME_NAMED_WITNESS: &str = "projection_same_named_value";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
@@ -1942,11 +1948,11 @@ fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<String, Stri
     let Some(refusal) = poisoned
         .file_refusals
         .iter()
-        .find(|fr| fr.path.contains(MALFORMED_MATERIALIZED_PATH))
+        .find(|fr| fr.path == MALFORMED_SPECIMEN_KEY)
     else {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=EvalDriverAcceptedThePoisonSpecimen — the driver reported no \
-             per-file refusal naming {MALFORMED_MATERIALIZED_PATH}; a route that accepts a source \
+             per-file refusal naming {MALFORMED_SPECIMEN_KEY}; a route that accepts a source \
              whose string never terminates has a dead front-end refusal arm, and every refusal \
              verdict it reports elsewhere is then worthless"
         ));
@@ -2850,7 +2856,7 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
         &[
             "emit".into(),
             "--entry".into(),
-            "fixture.native_ingest.dag_entry".into(),
+            "test.fixture.native_ingest_two_roots_entry".into(),
             "--source-root".into(),
             two_dag.display().to_string(),
             "--source-root".into(),
@@ -2875,7 +2881,7 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
         &[
             "emit".into(),
             "--entry".into(),
-            "fixture.native_ingest.dag_entry".into(),
+            "test.fixture.native_ingest_two_roots_entry".into(),
             "--source-root".into(),
             two_dag.display().to_string(),
             "--source-root".into(),
@@ -4447,7 +4453,7 @@ fn run_required_v2_native_inner(
     let malformed_control = match control_output
         .file_refusals
         .iter()
-        .find(|fr| fr.path.contains(MALFORMED_MATERIALIZED_PATH))
+        .find(|fr| fr.path == MALFORMED_SPECIMEN_KEY)
     {
         Some(fr) => (fr.path.clone(), fr.fatal_reason.clone()),
         None => (String::new(), String::new()),
@@ -4555,6 +4561,7 @@ fn run_required_v2_native_inner(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     /// THE IDENTITY IS THE WORKSPACE'S FILES, NOT ITS MODULE DIRECTORY. Relocating identical files
     /// keeps it; changing only the binary's entry, or only a crate root outside the module
     /// directory, changes it. The last two are what an identity over the module directory alone
@@ -5719,7 +5726,7 @@ pub fn run_self_host_frontier(
     })
 }
 
-/// A CENSUS RUN BY THE EMITTED COMPILER (`decl-ref-census`, `effect-pair-census`: one relay, the verb is
+/// A CENSUS RUN BY THE EMITTED COMPILER (`demand-census`: one relay, the verb is
 /// the parameter). The seed's whole job is the preparation it shares with every native instrument;
 /// the census is the emitted binary's, which prints its own lines and decides its own exit. The
 /// child's stdout is relayed line for line and its status is returned unjudged.
