@@ -1,0 +1,87 @@
+module gunbc.fleet.board_function_topology
+
+import std.types { List, NonEmptyStr }
+import extdeps.pci.identity { PciAddress, PciVendorId, PciDeviceId }
+import extdeps.boards.types { BaseboardCatalogRow, BoardFunction, BmcGraphicsController }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+
+// WHERE A BOARD FUNCTION SITS ON THE PCIe TREE, FOR THE BOARDS WHOSE TREE HAS BEEN READ. A host-side
+// removal acts on concrete functions, so it needs their addresses and ids; the manual states neither, so
+// these are this repository's observations, not upstream facts (DESIGN §3: an observation is a receipt in
+// the observing layer). A row is held at board grain because the same board and firmware enumerate the
+// same tree, and the route that consumes it checks every id on the host before it acts and refuses on any
+// difference -- so a host whose tree differs refuses rather than having the wrong link disabled.
+type PcieFunctionIdentity {
+  address: PciAddress
+  vendor: PciVendorId
+  device: PciDeviceId
+}
+
+// THE ROUTE: detach every function the root port leads to -- a bridge the unwanted function sits behind, or
+// each function of a multi-function device -- which removes each of them and every function behind them
+// from the kernel, then Set Link Disable on the root port, so the link carries nothing until the next reset
+// brings it up again. `detached` is exactly the root port's children and `behind` is exactly what is
+// enumerated below them, so the link is disabled only when everything it served has been named and read.
+type PcieDetachRoute {
+  root_port: PcieFunctionIdentity
+  detached: List<PcieFunctionIdentity>
+  behind: List<PcieFunctionIdentity>
+  grounds: NonEmptyStr
+}
+
+type BoardFunctionTopologyRow {
+  catalog: BaseboardCatalogRow
+  board_function: BoardFunction
+  route: PcieDetachRoute
+}
+
+data asrock_altrad8ud_1l2t_bmc_graphics_route: PcieDetachRoute = PcieDetachRoute {
+  root_port: PcieFunctionIdentity { address: "0003:00:01.0", vendor: "1def", device: "e101" },
+  detached: [PcieFunctionIdentity { address: "0003:01:00.0", vendor: "1849", device: "1150" }],
+  behind: [PcieFunctionIdentity { address: "0003:02:00.0", vendor: "1a03", device: "2000" }],
+  grounds: "Read from sysfs on three ALTRAD8UD-1L2T hosts: srv1 on 2026-11-01, before its hand-installed removal ran, and srv2 and srv4 on 2026-11-02. On each, root port 0003:00:01.0 (1def:e101, driver pcieport) leads to the bridge 0003:01:00.0 (1849:1150), and behind it the VGA function 0003:02:00.0 (1a03:2000, class 030000, driver ast). The other hosts on this board have not been read; the route checks these ids on each host before acting.",
+}
+
+data board_function_topology_rows: List<BoardFunctionTopologyRow> = [
+  BoardFunctionTopologyRow {
+    catalog: asrock_altrad8ud_1l2t_catalog,
+    board_function: BmcGraphicsController,
+    route: asrock_altrad8ud_1l2t_bmc_graphics_route,
+  },
+]
+
+fn board_function_detach_route(catalog: BaseboardCatalogRow, f: BoardFunction) -> PcieDetachRoute? {
+  map(filter(board_function_topology_rows, r => r.catalog == catalog && r.board_function == f), r => r.route).first()
+}
+
+// AN ETHERNET CONTROLLER'S ROUTE IS HELD AT CONTROLLER GRAIN, keyed by the controller its board's port rows
+// name (extdeps.boards.types OnboardEthernetPortRow controller), because one root port serves every port the
+// controller carries: the route removes all of them or none, and gunbc.fleet.board_function_admission
+// licenses it only when no port on the controller is admitted on the host.
+type EthernetControllerTopologyRow {
+  catalog: BaseboardCatalogRow
+  controller: NonEmptyStr
+  route: PcieDetachRoute
+}
+
+data asrock_altrad8ud_1l2t_x550_route: PcieDetachRoute = PcieDetachRoute {
+  root_port: PcieFunctionIdentity { address: "0003:00:02.0", vendor: "1def", device: "e102" },
+  detached: [
+    PcieFunctionIdentity { address: "0003:03:00.0", vendor: "8086", device: "1563" },
+    PcieFunctionIdentity { address: "0003:03:00.1", vendor: "8086", device: "1563" },
+  ],
+  behind: [],
+  grounds: "Read from sysfs on srv1 (ALTRAD8UD-1L2T) on 2026-11-02: root port 0003:00:02.0 (1def:e102, class 060400, driver pcieport) lists exactly the two X550 functions 0003:03:00.0 and 0003:03:00.1 (8086:1563, class 020000, driver ixgbe), neither of which lists a child function; their interfaces enP3p3s0f0 and enP3p3s0f1 carry the MACs 48:21:0b:81:c6:e9 and 48:21:0b:81:c6:ea. The other hosts on this board have not been read; the route checks these ids on each host before acting.",
+}
+
+data ethernet_controller_topology_rows: List<EthernetControllerTopologyRow> = [
+  EthernetControllerTopologyRow {
+    catalog: asrock_altrad8ud_1l2t_catalog,
+    controller: "Intel X550",
+    route: asrock_altrad8ud_1l2t_x550_route,
+  },
+]
+
+fn ethernet_controller_detach_route(catalog: BaseboardCatalogRow, controller: NonEmptyStr) -> PcieDetachRoute? {
+  map(filter(ethernet_controller_topology_rows, r => r.catalog == catalog && (r.controller as String) == (controller as String)), r => r.route).first()
+}

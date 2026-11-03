@@ -33,7 +33,7 @@ import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generati
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.compute.host_capacity { compute_capacity_directories, ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, host_capacity_subject_in, AgentSessionPool, compute_reserve_against, compute_capacity_store, compute_release_on,
   compute_seat_acquisition_at, SeatAcquisitionRead, SeatAcquisitionNotHeld, SeatAcquisitionRefused,
@@ -135,11 +135,19 @@ fn slot_store_at(dir: String) -> SlotStore? {
   }
 }
 
+// THE LEDGER IS OBTAINED THROUGH THE ONE MINT (the standing the route's own mint returns): a store that is
+// not standing yields no stores record, and this witness then fails -- it is the inhabitance claim that the
+// real capacity ledger produces the shape the hermetic placement witness asserts.
 // THE FIXTURE INSTANCE IS A COMPLETE ONE. A real instance has its exit spool's five stage directories;
 // the production reader lists them, and a missing stage is an UNREADABLE listing, not an empty spool --
 // which is exactly the difference between "no exit record for this attempt" and "I could not look". The
 // fixture prepares the spool through the production route, so a witness never settles a seat on the
 // strength of a directory it forgot to create.
+// THE LEDGER'S AREAS ARE PROVISIONED THROUGH THE PRODUCTION ROWS (compute_capacity_directories); the mint only observes them.
+fn capacity_provisioned(dir: String) -> Bool {
+  all(compute_capacity_directories(instance: instance_at(dir: dir)), d => shell.Mkdir.Parents(path: owned_directory_path(t: d)).success)
+}
+
 // THE FIXTURE'S APPROPRIATION, spelled once: it is what the fixture ledger is minted with and what
 // reserve_real charges. The settlement's own fold ceiling is the production one, spelled in production.
 data fixture_appropriation: Kibibyte = kibibyte(count: 1048576)
@@ -147,17 +155,21 @@ data fixture_appropriation: Kibibyte = kibibyte(count: 1048576)
 fn stores_at(dir: String) -> SessionPlacementStores? {
   let _made = shell.Mkdir.Parents(path: slots_dir(dir: dir) as FilePath)
   let spool_ready = attempt_exit_spool_prepare(instance_root: dir)
-  if !spool_ready {
+  let capacity_ready = capacity_provisioned(dir: dir)
+  if !spool_ready || !capacity_ready {
     none
   } else {
   match session_attempt_slots_store(instance: instance_at(dir: dir)) {
     SessionAttemptSlotsStoreUnready { detail: _ } => none
-    SessionAttemptSlotsStoreReady { store } => Present { value: SessionPlacementStores {
-      slots: store,
-      records_dir: dir,
-      store: compute_capacity_store(subject: subject_at(dir: dir)),
-      partition: subject_at(dir: dir).partition,
-    } }
+    SessionAttemptSlotsStoreReady { store: slots } => match compute_capacity_store(subject: subject_at(dir: dir)) {
+      ComputeCapacityStoreUnready { area: _, detail: _ } => none
+      ComputeCapacityStoreReady { store: ledger } => Present { value: SessionPlacementStores {
+        slots: slots,
+        records_dir: dir,
+        store: ledger,
+        partition: subject_at(dir: dir).partition,
+      } }
+    }
   }
   }
 }
@@ -185,21 +197,26 @@ fn launched_without_a_ledger_seat(dir: String) -> Bool {
 }
 
 fn reserve_real(dir: String) -> LeaseGrant? {
+  if !capacity_provisioned(dir: dir) { none } else {
   match compute_reserve_against(subject: subject_at(dir: dir), appropriation: fixture_appropriation, request: kibibyte(count: 1024), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
     ComputeReserved { grant, partition: _, amount: _, store: _ } => Present { value: grant }
     ComputeCapacityFull { wire: _ } => none
     ComputeHostBelowFloor { requested: _, available: _ } => none
     ComputeReservationRefused { detail: _ } => none
   }
+  }
 }
 
 // THE LEDGER STILL HOLDS THE REFERENCE iff a release proposed now returns it. Destructive, so it is
 // each control's LAST read.
 fn ledger_still_holds(dir: String) -> Bool {
-  match compute_release_on(store: compute_capacity_store(subject: subject_at(dir: dir)), partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: unit_a() as NonEmptyStr, reason: "witness probe") {
-    ComputeReleased { partition: _, reference: _, reason: _ } => true
-    ComputeNothingToRelease { detail: _ } => false
-    ComputeReleaseRefused { detail: _ } => false
+  match compute_capacity_store(subject: subject_at(dir: dir)) {
+    ComputeCapacityStoreUnready { area: _, detail: _ } => false
+    ComputeCapacityStoreReady { store: ledger } => match compute_release_on(store: ledger, partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: unit_a() as NonEmptyStr, reason: "witness probe") {
+      ComputeReleased { partition: _, reference: _, reason: _ } => true
+      ComputeNothingToRelease { detail: _ } => false
+      ComputeReleaseRefused { detail: _ } => false
+    }
   }
 }
 
@@ -234,7 +251,6 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
     partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
     amount: kibibyte(count: 8388608),
     class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
     slot: slot,
     slot_generation: cas_generation_first(),
   }
@@ -245,7 +261,7 @@ fn real_grant(dir: String, lease: LeaseGrant, slot: AttemptRecord, generation: C
     node_id: node_a, attempt_key: key_a, unit: unit_a() as NonEmptyStr, lease: lease,
     partition: subject_at(dir: dir).partition, amount: kibibyte(count: 1024),
     class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 1024), reason: ClassUnmeasured },
-    store: compute_capacity_store(subject: subject_at(dir: dir)), slot: slot, slot_generation: generation,
+    slot: slot, slot_generation: generation,
   }
 }
 
