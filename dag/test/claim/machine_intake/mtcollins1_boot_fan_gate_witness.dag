@@ -274,10 +274,14 @@ test fn the_unrecognised_reading_refusal_text_carries_the_reading() -> Bool {
   string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalReadingUnrecognised { texts: ["46 kelvin"] }), pattern: "46 kelvin")
 }
 
-test fn the_thermal_refusal_text_names_each_standing() -> Bool {
+test fn the_thermal_refusal_text_names_each_standing_and_each_row_cause() -> Bool {
   string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalUnreadable), pattern: "temperature sensors were unreadable")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalNotPublished { publication: TemperatureSensorsSilent }), pattern: "published no decoded temperature")
-    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a", "b", "c"], r => SdrRowRefusedNoRecordNamed { row: r }) }), pattern: "3 undecoded row(s)") && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedThresholdTyped { row: r }) }), pattern: "typed a threshold sensor")
+    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a", "b", "c"], r => SdrRowRefusedNoRecordNamed { row: r }) }), pattern: "3 undecoded row(s)")
+    // THE CAUSE WORDS REACH THE RECEIPT, not just the count: a verdict that refused every row for one
+    // wrong reason, or printed every cause as the same sentence, would fail here while passing the count
+    // assertions above it.
+    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedThresholdTyped { row: r }) }), pattern: "typed a threshold sensor")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedUnlabelledRecord { row: r }) }), pattern: "printed neither ipmitool threshold label")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedAmbiguousTypingLine { row: r }) }), pattern: "more than one Sensor Type line")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["PSU2_Status      | EBh | ok  |  0.0 | ", "Watchdog2        | D7h | ok  | 33.0 | ", "EndOfPost        | E2h | ok  |  6.2 | "], r => SdrRowRefusedNoRecordNamed { row: r }) }), pattern: "PSU2_Status")
@@ -426,7 +430,8 @@ test fn a_threshold_record_does_not_admit_a_blank_reading_row() -> Bool {
 }
 
 // 4. THE MALFORMED-COMPETITOR RED. ipmitool prints EXACTLY ONE typing line per record
-//    (lib/ipmi_sdr.c:1888 / :1952), so a record carrying a valid ' Sensor Type (Discrete): ...' line
+//    (lib/ipmi_sdr.c:1888 / :1952 at be11d948), so a record carrying a valid
+//    ' Sensor Type (Discrete): ...' line
 //    AND a malformed competitor like ' Sensor Type (Threshold ) : ' was not written by ipmitool, and
 //    which label governs it would be a guess. The classifier used to SEARCH the detail lines, so the
 //    malformed line was invisible to the threshold test, the record typed not-threshold, and the row
