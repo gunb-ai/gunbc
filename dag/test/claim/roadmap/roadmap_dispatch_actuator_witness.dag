@@ -541,26 +541,56 @@ test fn witness_lab_instance_refuses_a_codex_spawn_at_the_custody_host() -> Bool
   }
 }
 
+// WRITTEN IN MAIN'S ACCESSOR IDIOM (this PR). Main c0e9e74cf2f2 (#15501, "Interpreter first/last/list-get return
+// the declared Optional; delete the bare/Null lift") moved every production and witness first()/last() consumer
+// to match Present/Absent, but it never touched this file (git show --name-only c0e9e74cf2f2 lists no
+// roadmap_dispatch_actuator_witness), so these two claims kept reading a FIELD THROUGH the Optional and now fail
+// closed. Attribution executed at 5d4584993185 with the same binary: the parse yields both panes (PASS), both
+// assertions hold through the Present/Absent match (PASS), and the bare field access alone returns false (FAIL).
+// Same fact asserted, no wildcard: every TmuxAttemptPaneStanding variant is named.
 test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
   match parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t0\t\t\tnode\ngunbc-dispatch-b\t1\t7\t\tnode\n",
   ) {
     AttemptPanesParsed { panes } =>
       count(panes) == 2
-        && (match panes.first().standing { TmuxAttemptPaneAlive => true  _ => false })
-        && (match panes.skip(n: 1).first().standing { TmuxAttemptPaneExited { status } => status == 7  _ => false })
+        && (match panes.first() {
+             Present { value: pane } =>
+               match pane.standing {
+                 TmuxAttemptPaneAlive => true
+                 TmuxAttemptPaneExited { status: _ } => false
+                 TmuxAttemptPaneSignaled { signal: _ } => false
+               }
+             Absent => false
+           })
+        && (match panes.skip(n: 1).first() {
+             Present { value: pane } =>
+               match pane.standing {
+                 TmuxAttemptPaneExited { status } => status == 7
+                 TmuxAttemptPaneAlive => false
+                 TmuxAttemptPaneSignaled { signal: _ } => false
+               }
+             Absent => false
+           })
     AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
+// Same accessor fix as the claim above (the header there carries the attribution); the dead arm is named by its
+// variant instead of a wildcard.
 test fn witness_tmux_attempt_panes_parse_signal_dead() -> Bool {
   match parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t1\t\t9\tsleep\n",
   ) {
     AttemptPanesParsed { panes } =>
-      match panes.first().standing {
-        TmuxAttemptPaneSignaled { signal } => signal == 9
-        _ => false
+      match panes.first() {
+        Present { value: pane } =>
+          match pane.standing {
+            TmuxAttemptPaneSignaled { signal } => signal == 9
+            TmuxAttemptPaneAlive => false
+            TmuxAttemptPaneExited { status: _ } => false
+          }
+        Absent => false
       }
     AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
   }
