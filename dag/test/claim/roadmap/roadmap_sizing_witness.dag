@@ -42,6 +42,8 @@ fn fixture_ticket() -> TicketFields {
 
 fn fixture_node() -> RoadmapNode {
   RoadmapNode {
+    parent: Absent,
+    centering: Absent,
     identity: "rnfx_SIZING000000000000000001" as RoadmapNodeIdentity,
     node: "sizing-fixture" as RoadmapNodeId,
     line: TicketLine { done: false, ticket: fixture_ticket() },
@@ -73,6 +75,8 @@ test fn witness_sizing_subject_is_the_task_and_not_the_lane() -> Bool {
 // could not tell from an authored blank.
 test fn witness_subject_without_an_exit_criterion_is_absent_not_empty() -> Bool {
   let n = RoadmapNode {
+    parent: Absent,
+    centering: Absent,
     identity: "rnfx_SIZING000000000000000002" as RoadmapNodeIdentity,
     node: "sizing-plain" as RoadmapNodeId,
     line: PlainLine { content: "a plain row" },

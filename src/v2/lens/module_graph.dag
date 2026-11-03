@@ -1052,3 +1052,56 @@ data reference_derived_parse_tree_site_oracle_frontier: DissolutionCondition = u
 
 data reference_derived_bare_field_type_frontier: DissolutionCondition = unbound_dissolution(description: "Bare field type spelling survives residual reconstruct (not a silent drop). Named skip of field_decl_block type_decl is gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_bare_field_type_site_is_present_holds, production_tree_field_fixture_wrapper_name_survives_today_holds, production_tree_field_fixture_field_name_survives_today_holds, production_tree_field_fixture_field_type_survives_today_holds. Positive controls: production_route_bare_param_type_in_field_fixture_is_present_holds, production_tree_field_fixture_param_type_atom_is_present_holds, production_route_bare_local_type_position_site_is_present_holds.")
 
+
+// THE FOUR CORPUS-FACT SEAMS (v2.compiler.primitive_execution_semantics relocation, M2V two-keyings). module_declaration_facts,
+// import_resolution_facts, reference_resolution_facts and dependency_resolution_facts are declared v1 builtins
+// (src/v1/04_method.dag builtin_function_registry) whose calls resolve to the builtin directly, so nothing in the
+// .dag corpus NAMES them as declarations: no DeclarationRef resolves to them, and a fact keyed by declaration path
+// could not reach them. These fns ARE those declarations -- self-call bodies, the HostRealizedSeam shape exactly
+// (reaching a body recurses to the evaluation-budget refusal), the decl_facts pattern at v2.std.decl_index. Each
+// signature matches its builtin registry row exactly, element types included (import_resolution_fact_elem serves
+// both import- and reference-resolution rows, module_dependency_edge_elem the dependency row,
+// module_declaration_fact_elem the declaration row). std.primitive_projection carries the paired HostRealizedSeam
+// rows: never a seam without a row (the symbol_lexeme note records what that omission emitted). They live HERE
+// because this module owns the element types and already hosts the *_live wrappers that call the builtins.
+fn module_declaration_facts(
+  pool_roots: List<String>
+) -> List<ModuleDeclarationFact> {
+  module_declaration_facts(pool_roots: pool_roots)
+}
+
+fn import_resolution_facts(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ImportResolutionFact> {
+  import_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+fn reference_resolution_facts(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ImportResolutionFact> {
+  reference_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+fn dependency_resolution_facts(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ModuleDependencyEdge> {
+  dependency_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}

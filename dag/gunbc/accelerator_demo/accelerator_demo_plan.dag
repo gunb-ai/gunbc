@@ -1,4 +1,10 @@
 module gunbc.accelerator_demo.accelerator_demo_plan
+import std.realization_schedule { cost_account_predicted_zero }
+import std.numerical_contract { float_contract, integer_exact_contract }
+import extdeps.languages.simd.kernel { witness_relu_mul_add_kernel_surface_shape }
+import std.realization_schedule { RunnableKernelWorkload }
+import extdeps.communication.medium { DecodeFidelity }
+import std.measure { Nano }
 
 import std.numerical_contract { FmaContractionRefused }
 import std.realization { LocalAccelerator }

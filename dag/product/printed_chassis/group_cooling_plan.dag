@@ -1,0 +1,318 @@
+module product.printed_chassis.group_cooling_plan
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.measure {
+  Watt, watt, watt_count, CelsiusDelta, celsius_delta, celsius_delta_count,
+  MillilitrePerSecond, millilitre_per_second, millilitre_per_second_count, Percent, percent, percent_count,
+}
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess }
+import extdeps.gpu.passive_card_row { row_field_value, AirflowBidirectional, AirflowBracketToFarEnd, AirflowFarEndToBracket }
+import extdeps.fans.types { FanCatalogRow, FreeAirFlowPublished, FreeAirFlowUnread }
+import extdeps.fans.noctua { noctua_nf_a9_pwm_catalog, noctua_nf_a9_hs_pwm_catalog }
+import extdeps.fans.arctic { arctic_p8_pwm_pst_catalog, arctic_p12_pro_reverse_catalog }
+import extdeps.fans.dynatron { dynatron_df126025bu_pwmh_catalog }
+import product.printed_chassis.card_cooling_route { required_flow, free_air_cfm_text }
+import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading, duct_card_dims, duct_card_unread_reason }
+import product.printed_chassis.card_installation {
+  CardInstallation, InstalledCard, CardGroup, group_members, group_ids, Partition, Partitioned, PartitionRefused,
+  partition_by_sizes, partition_refusal_text,
+  group_contiguity, group_contiguity_text, card_separation,
+  a2_altra_installation, a16_installation,
+}
+
+// ═══ A COOLING PLAN READING FOR AN INSTALLED GROUP OF CARDS ═══
+//
+// What a group needs, which fan arrangements are worth trying, and what is still unestablished -- read off
+// the installation, never decided by it. Grouping does not fix the fan count: a group may be served by one
+// fan, by one fan per card, or by another arrangement, and each is a CANDIDATE here. Choosing among them,
+// and placing the fans and the route, is a selection over these readings (std.decision), which this module
+// does not perform.
+//
+// THREE STATES THAT MUST NOT COLLAPSE INTO ONE. A screened candidate passed a rule of thumb on catalog
+// figures. A geometry-checked prototype has been built and fitted. A thermally qualified assembly has
+// observed air through EVERY card it serves meeting that card's demand, and has a declared response to a
+// stopped fan. This module produces the first and states what the third still owes; nothing here admits a
+// powered A2.
+
+// ═══ WHAT EACH CARD NEEDS ═══
+//
+// The heat balance (product.printed_chassis.card_cooling_route required_flow): the THROUGH-FLOW that carries
+// a card's cited board power away at an air-temperature rise the operator accepts. It is air through the
+// fins, not a fan's catalog free-air rating, and it is not the card vendor's required airflow, which the A2
+// brief does not publish. The rise is an AIR rise, not a permitted GPU temperature rise.
+type MemberDemand
+  = MemberDemandEstimated { instance: NonEmptyStr, heat: Watt, through_flow: MillilitrePerSecond }
+  | MemberPowerUnread { instance: NonEmptyStr }
+  | MemberAirflowDirectionRefused { instance: NonEmptyStr }
+  | MemberAirflowDirectionUnread { instance: NonEmptyStr }
+
+fn member_demand(m: InstalledCard, rise: CelsiusDelta) -> MemberDemand {
+  let id = m.instance.id
+  let row = m.instance.card.row
+  match row_field_value(field: row.airflow_direction) {
+    Absent => MemberAirflowDirectionUnread { instance: id }
+    Present { value: AirflowBracketToFarEnd } => MemberAirflowDirectionRefused { instance: id }
+    Present { value: _ } => match row_field_value(field: row.board_power) {
+      Absent => MemberPowerUnread { instance: id }
+      Present { value: w } => match required_flow(heat: w, rise: rise) {
+        Absent => MemberPowerUnread { instance: id }
+        Present { value: q } => MemberDemandEstimated { instance: id, heat: w, through_flow: q }
+      }
+    }
+  }
+}
+
+fn demand_flow(d: MemberDemand) -> MillilitrePerSecond? {
+  match d { MemberDemandEstimated { instance: _, heat: _, through_flow: q } => Present { value: q } _ => Absent }
+}
+
+fn ml_s(q: MillilitrePerSecond) -> Int { millilitre_per_second_count(f: q) as Int }
+
+// ═══ FAN ARRANGEMENTS, AND THE SCREEN ═══
+//
+// A fan serves a set of the group's cards. The screen asks whether a fan's PUBLISHED free-air flow, scaled by
+// an assumed delivery fraction, covers the summed through-flow of the cards it serves. 50 % is the "about
+// twice the required flow" allowance fan makers suggest when the system's impedance is unknown (SANYO DENKI's
+// selection guidance gives 1.5 to 2 times, and calls the result a rough target to be tested in the system).
+// Passing it puts a candidate on the shortlist. It does not establish the operating point, which is the fan's
+// pressure-flow curve against the duct and fin impedance, and it says nothing about how the air divides
+// between the cards one fan serves.
+type FanAssignment { fan: FanCatalogRow, serves: FreeSemigroup<NonEmptyStr> }
+
+fn assignment_ids(a: FanAssignment) -> List<NonEmptyStr> { concat([a.serves.head], a.serves.tail) }
+
+type FanArrangement { name: String, fans: List<FanAssignment> }
+
+fn one_fan_for_the_group(g: CardGroup, fan: FanCatalogRow) -> FanArrangement {
+  FanArrangement { name: join(["one ", fan.model as String, " for the group"], ""), fans: [FanAssignment { fan: fan, serves: FreeSemigroup { head: g.members.head.instance.id, tail: map(g.members.tail, m => m.instance.id) } }] }
+}
+
+fn one_fan_per_card(g: CardGroup, fan: FanCatalogRow) -> FanArrangement {
+  FanArrangement { name: join(["one ", fan.model as String, " per card"], ""), fans: map(group_members(g: g), m => FanAssignment { fan: fan, serves: FreeSemigroup { head: m.instance.id, tail: [] } }) }
+}
+
+fn candidate_arrangements(g: CardGroup, fans: List<FanCatalogRow>) -> List<FanArrangement> {
+  fold(fans, init: [], f: (acc, fan) =>
+    if length(list: group_members(g: g)) == 1 { concat(acc, [one_fan_for_the_group(g: g, fan: fan)]) }
+    else { concat(acc, [one_fan_for_the_group(g: g, fan: fan), one_fan_per_card(g: g, fan: fan)]) })
+}
+
+type AssignmentScreen
+  = AssignmentPassesScreen { fan: NonEmptyStr, serves: List<NonEmptyStr>, assumed_delivered: MillilitrePerSecond, needed: MillilitrePerSecond }
+  | AssignmentBelowScreen { fan: NonEmptyStr, serves: List<NonEmptyStr>, assumed_delivered: MillilitrePerSecond, needed: MillilitrePerSecond }
+  | AssignmentFanFlowUnread { fan: NonEmptyStr, read_obligation: NonEmptyStr }
+  | AssignmentDemandUnestablished { fan: NonEmptyStr, instance: NonEmptyStr }
+
+fn served_need(a: FanAssignment, demands: List<MemberDemand>) -> MemberDemand? {
+  fold(assignment_ids(a: a), init: Absent, f: (acc, id) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => fold(demands, init: Absent, f: (inner, d) => match inner {
+      Present { value: v } => Present { value: v }
+      Absent => match d {
+        MemberDemandEstimated { instance: _, heat: _, through_flow: _ } => Absent
+        MemberPowerUnread { instance: i } => if i == id { Present { value: d } } else { Absent }
+        MemberAirflowDirectionRefused { instance: i } => if i == id { Present { value: d } } else { Absent }
+        MemberAirflowDirectionUnread { instance: i } => if i == id { Present { value: d } } else { Absent }
+      }
+    })
+  })
+}
+
+fn demand_instance(d: MemberDemand) -> NonEmptyStr {
+  match d {
+    MemberDemandEstimated { instance: i, heat: _, through_flow: _ } => i
+    MemberPowerUnread { instance: i } => i
+    MemberAirflowDirectionRefused { instance: i } => i
+    MemberAirflowDirectionUnread { instance: i } => i
+  }
+}
+
+fn needed_by(ids: List<NonEmptyStr>, demands: List<MemberDemand>) -> MillilitrePerSecond {
+  millilitre_per_second(count: fold(demands, init: 0, f: (acc, d) => if any(ids, i => i == demand_instance(d: d)) { match demand_flow(d: d) { Present { value: q } => acc + ml_s(q: q) Absent => acc } } else { acc }))
+}
+
+fn screen_assignment(a: FanAssignment, demands: List<MemberDemand>, fraction: Percent) -> AssignmentScreen {
+  match served_need(a: a, demands: demands) {
+    Present { value: d } => AssignmentDemandUnestablished { fan: a.fan.model, instance: demand_instance(d: d) }
+    Absent => match a.fan.free_air_flow {
+      FreeAirFlowUnread { read_obligation: o } => AssignmentFanFlowUnread { fan: a.fan.model, read_obligation: o }
+      FreeAirFlowPublished { flow: f, standing: _ } => {
+        let delivered = millilitre_per_second(count: ml_s(q: f) * (percent_count(p: fraction) as Int) / 100)
+        let needed = needed_by(ids: assignment_ids(a: a), demands: demands)
+        if ml_s(q: delivered) >= ml_s(q: needed) {
+          AssignmentPassesScreen { fan: a.fan.model, serves: assignment_ids(a: a), assumed_delivered: delivered, needed: needed }
+        } else {
+          AssignmentBelowScreen { fan: a.fan.model, serves: assignment_ids(a: a), assumed_delivered: delivered, needed: needed }
+        }
+      }
+    }
+  }
+}
+
+type ArrangementStanding
+  = ShortlistedOnScreen
+  | ScreenedOut
+  | Unscreened
+
+fn arrangement_standing(screens: List<AssignmentScreen>) -> ArrangementStanding {
+  if any(screens, s => match s { AssignmentFanFlowUnread { fan: _, read_obligation: _ } => true AssignmentDemandUnestablished { fan: _, instance: _ } => true _ => false }) { Unscreened }
+  else { if all(screens, s => match s { AssignmentPassesScreen { fan: _, serves: _, assumed_delivered: _, needed: _ } => true _ => false }) { ShortlistedOnScreen } else { ScreenedOut } }
+}
+
+// ═══ WHAT QUALIFICATION STILL OWES ═══
+//
+// A group is not qualified by its total. Air through each card is observed per card, and a card below its
+// own demand fails the group however much the others receive. A stopped fan's consequence must be declared
+// before qualification: which cards lose air, and what the controller does. Fan supply and control from the
+// board's headers are a separate obligation again.
+type MemberFlowObservation { instance: NonEmptyStr, through_flow: MillilitrePerSecond, source: NonEmptyStr }
+
+type FanFailureResponse = FailureResponseDeclared { response: NonEmptyStr } | FailureResponseUndeclared
+
+type GroupQualification
+  = GroupQualified
+  | GroupNotQualified { obligations: List<String> }
+
+fn observation_for(observed: List<MemberFlowObservation>, id: NonEmptyStr) -> MemberFlowObservation? {
+  fold(observed, init: Absent, f: (o, x) => match o { Present { value: v } => Present { value: v } Absent => if x.instance == id { Present { value: x } } else { Absent } })
+}
+
+fn group_qualification(demands: List<MemberDemand>, observed: List<MemberFlowObservation>, failure: FanFailureResponse) -> GroupQualification {
+  let per_member = fold(demands, init: [], f: (acc, d) => {
+    let id = demand_instance(d: d)
+    match demand_flow(d: d) {
+      Absent => concat(acc, [join([id as String, ": its demand is not established"], "")])
+      Present { value: need } => match observation_for(observed: observed, id: id) {
+        Absent => concat(acc, [join([id as String, ": no observed through-flow (needs ", to_string(value: ml_s(q: need)), " mL/s)"], "")])
+        Present { value: x } => if ml_s(q: x.through_flow) >= ml_s(q: need) { acc } else { concat(acc, [join([id as String, ": observed ", to_string(value: ml_s(q: x.through_flow)), " mL/s, below its ", to_string(value: ml_s(q: need)), " mL/s"], "")]) }
+      }
+    }
+  })
+  let failure_owed = match failure { FailureResponseDeclared { response: _ } => [] FailureResponseUndeclared => ["the response to a stopped fan is not declared: which cards lose air and what the controller does"] }
+  let obligations = concat(per_member, failure_owed)
+  if length(list: obligations) == 0 { GroupQualified } else { GroupNotQualified { obligations: obligations } }
+}
+
+// ═══ WHETHER ANY REALIZATION CAN BE FABRICATED FOR THE GROUP YET ═══
+//
+// The existing ducts (product.printed_chassis.gpu_duct) serve ONE card that has a read end face with
+// end-cap inserts and an end-face header. A group of one such card has them. A larger group needs a shared
+// realization that does not exist yet, and every member's end face must be read first; neither is waved
+// through by the group admitting a larger count, and the existing ducts' own refusals stand.
+type GroupFabrication
+  = GroupFabricableByExistingDucts
+  | GroupFabricationBlocked { reasons: List<String> }
+
+fn add_unfit(acc: List<DuctCard>, m: InstalledCard) -> List<DuctCard> {
+  match duct_card_dims(card: m.instance.card) {
+    Present { value: _ } => acc
+    Absent => if any(acc, x => x.row.id == m.instance.card.row.id) { acc } else { concat(acc, [m.instance.card]) }
+  }
+}
+
+fn unfit_cards(ms: List<InstalledCard>) -> List<DuctCard> {
+  let start: List<DuctCard> = []
+  fold(ms, init: start, f: (acc, m) => add_unfit(acc: acc, m: m))
+}
+
+fn group_fabrication(inst: CardInstallation, g: CardGroup) -> GroupFabrication {
+  let ms = group_members(g: g)
+  let reasons_unread = map(unfit_cards(ms: ms), c => duct_card_unread_reason(card: c))
+  let shape = if length(list: ms) == 1 { [] } else { concat(match group_contiguity_text(c: group_contiguity(inst: inst, g: g)) {
+    Absent => []
+    Present { value: r } => [join(["members are not side by side: ", r], "")]
+  }, ["no shared multi-card realization exists yet"]) }
+  let reasons = concat(reasons_unread, shape)
+  if length(list: reasons) == 0 { GroupFabricableByExistingDucts } else { GroupFabricationBlocked { reasons: reasons } }
+}
+
+// ═══ POLICY THIS READING IS TAKEN UNDER ═══
+
+data group_fan_candidates: List<FanCatalogRow> = [
+  noctua_nf_a9_pwm_catalog, noctua_nf_a9_hs_pwm_catalog, arctic_p8_pwm_pst_catalog, arctic_p12_pro_reverse_catalog, dynatron_df126025bu_pwmh_catalog,
+]
+
+data screening_free_air_fraction: Percent = percent(50)
+
+// The air rise the screen is held to: 15 K was proposed on 2026-11-02 and is provisional until the operator
+// rules on it; the need is printed at 10, 15 and 20 K so no reading hides that choice.
+data screening_rise: CelsiusDelta = celsius_delta(count: 15)
+
+data reported_rises: List<CelsiusDelta> = [celsius_delta(count: 10), celsius_delta(count: 15), celsius_delta(count: 20)]
+
+// No through-flow has been observed on any installed card, and no stopped-fan response is declared.
+data recorded_member_flow_observations: List<MemberFlowObservation> = []
+
+data declared_fan_failure_response: FanFailureResponse = FailureResponseUndeclared
+
+// ═══ THE READING ═══
+
+fn flow_text(q: MillilitrePerSecond) -> String {
+  join([to_string(value: millilitre_per_second_count(f: q) as Int), " mL/s (", free_air_cfm_text(flow: q), ")"], "")
+}
+
+fn demand_text(d: MemberDemand) -> String {
+  match d {
+    MemberDemandEstimated { instance: i, heat: h, through_flow: _ } => join([i as String, " ", to_string(value: watt_count(w: h) as Int), " W"], "")
+    MemberPowerUnread { instance: i } => join([i as String, " power unread"], "")
+    MemberAirflowDirectionRefused { instance: i } => join([i as String, " does not take air at its far end"], "")
+    MemberAirflowDirectionUnread { instance: i } => join([i as String, " airflow direction unread"], "")
+  }
+}
+
+fn screen_text(s: AssignmentScreen) -> String {
+  match s {
+    AssignmentPassesScreen { fan: f, serves: ids, assumed_delivered: a, needed: n } => join(["      passes  ", f as String, " -> ", join(map(ids, i => i as String), ", "), ": assumed ", flow_text(q: a), " against ", flow_text(q: n)], "")
+    AssignmentBelowScreen { fan: f, serves: ids, assumed_delivered: a, needed: n } => join(["      below   ", f as String, " -> ", join(map(ids, i => i as String), ", "), ": assumed ", flow_text(q: a), " against ", flow_text(q: n)], "")
+    AssignmentFanFlowUnread { fan: f, read_obligation: _ } => join(["      unread  ", f as String, ": free-air flow not read"], "")
+    AssignmentDemandUnestablished { fan: f, instance: i } => join(["      unknown ", f as String, ": the demand of ", i as String, " is not established"], "")
+  }
+}
+
+fn arrangement_text(a: FanArrangement, demands: List<MemberDemand>) -> List<String> {
+  let screens = map(a.fans, x => screen_assignment(a: x, demands: demands, fraction: screening_free_air_fraction))
+  let standing = match arrangement_standing(screens: screens) { ShortlistedOnScreen => "shortlisted on the screen (provisional; not qualified)" ScreenedOut => "below the screen" Unscreened => "not screenable yet" }
+  concat([join(["    ", a.name, ": ", standing], "")], map(screens, s => screen_text(s: s)))
+}
+
+fn group_text(inst: CardInstallation, g: CardGroup) -> List<String> {
+  let ms = group_members(g: g)
+  let demands = map(ms, m => member_demand(m: m, rise: screening_rise))
+  let head = join(["  group: ", join(map(demands, d => demand_text(d: d)), "; ")], "")
+  let needs = map(reported_rises, r => {
+    let ds = map(ms, m => member_demand(m: m, rise: r))
+    join(["    through-flow at a ", to_string(value: celsius_delta_count(delta: r) as Int), " K air rise: ", to_string(value: ml_s(q: needed_by(ids: map(ms, m => m.instance.id), demands: ds))), " mL/s in all, ",
+      join(map(ds, d => match demand_flow(d: d) { Present { value: q } => to_string(value: ml_s(q: q)) Absent => "?" }), " + ")], "")
+  })
+  let fabrication = match group_fabrication(inst: inst, g: g) {
+    GroupFabricableByExistingDucts => ["    fabrication: the existing single-card ducts apply"]
+    GroupFabricationBlocked { reasons: rs } => [join(["    fabrication blocked: ", join(rs, "; ")], "")]
+  }
+  let qualification = match group_qualification(demands: demands, observed: recorded_member_flow_observations, failure: declared_fan_failure_response) {
+    GroupQualified => ["    qualified"]
+    GroupNotQualified { obligations: os } => concat(["    not qualified:"], map(os, o => join(["      ", o], "")))
+  }
+  let arrangements = fold(candidate_arrangements(g: g, fans: group_fan_candidates), init: [], f: (acc, a) => concat(acc, arrangement_text(a: a, demands: demands)))
+  concat(concat(concat(concat([head], needs), fabrication), [join(["    fan arrangements, screened at ", to_string(value: celsius_delta_count(delta: screening_rise) as Int), " K with ", to_string(value: percent_count(p: screening_free_air_fraction) as Int), " % of free air assumed delivered:"], "")]), concat(arrangements, qualification))
+}
+
+fn plan_text(inst: CardInstallation, sizes: List<Int>) -> List<String> {
+  let label = join(["== ", inst.name as String, ", grouped [", join(map(sizes, n => to_string(value: n)), ", "), "]"], "")
+  match partition_by_sizes(inst: inst, sizes: sizes) {
+    PartitionRefused { causes: cs } => [label, join(["  partition refused: ", join(map(cs, c => partition_refusal_text(r: c)), "; ")], "")]
+    Partitioned { groups: gs } => concat([label], fold(gs, init: [], f: (acc, g) => concat(acc, group_text(inst: inst, g: g))))
+  }
+}
+
+fn main() -> CliWireResponse {
+  let header = [
+    "Cooling plan readings: what each group needs, which fan arrangements pass the preliminary screen, and what qualification still owes.",
+    "Nothing here is a selection, a fabrication admission or a thermal qualification.",
+  ]
+  let a2 = fold([[4], [2, 2], [1, 3], [3, 1], [1, 1, 1, 1]], init: [], f: (acc, sizes) => concat(acc, plan_text(inst: a2_altra_installation, sizes: sizes)))
+  let a16 = plan_text(inst: a16_installation, sizes: [1])
+  CliWirePrintable { bytes: join(concat(concat(concat(header, a2), a16), [""]), "\n"), exit: ExitSuccess }
+}
