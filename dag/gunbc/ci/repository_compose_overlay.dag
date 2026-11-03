@@ -154,10 +154,12 @@ fn seed_gunbc_assign_stmt(seed: PublicSeed) -> Node {
 // substitution does not give, and the folded grammar gives a substitution an OPERAND -- one command -- not a
 // statement list: the sequenced body is refused as `grammar_relation_production_not_found`. `realpath ..`
 // is the same fact in one command: the canonical absolute pathname of the directory the runner is standing
-// in, taken from where it was put there. The refusal of the subshell-inside-a-substitution shape lives in
-// the renderer (v2.workflow.bash_command_fold_serialize::bash_fold_stmt_carries_cmdsubst_subshell), so no
-// call site can re-author it; the structural shape of the subshell carrier is a separate, already recorded
-// program row (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
+// in, taken from where it was put there. The sequenced spelling would also be legal now: the renderer puts
+// one space between a substitution's `$(` and a body that opens with `(` (v2.extdeps.languages.bash::
+// bash_cmdsubst_body_spelling), so `$((` is never emitted and the arithmetic reading cannot be produced by
+// any call site; v2.test.claim.bash_command_fold holds that at the substitution. The structural shape of
+// the subshell carrier is a separate, already recorded program row
+// (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
 fn private_root_assign_stmt() -> Node {
   bash_build_assign(
     name: "PRIVATE_ROOT",

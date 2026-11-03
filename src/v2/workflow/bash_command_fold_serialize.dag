@@ -7,7 +7,7 @@ import v2.extdeps.languages.bash { bash_stmt_andor_emitted, bash_stmt_andor_targ
 import v2.extdeps.languages.bash_build { bash_build_stmt_list_single, bash_build_subshell }
 import v2.extdeps.languages.bash_orch_if { bash_stmt_if_else_emitted, bash_stmt_if_else_target_model }
 import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused, bash_fold_relation_row_witness, bash_fold_target_model_for_row, bash_fold_translation_rules_budget_for_row, bash_fold_unsupported_variant_diagnostic }
-import std.algebra { fold_list, list_head, list_tail, list_at_optional }
+import std.algebra { list_head, list_tail, list_at_optional }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, None, Outcome, Rejected, Some, Unavailable, bind_outcome, diagnostics_singleton, node_locus }
 import v2.std.node { positional_child_target_nodes, Atom, Node, Symbol, TypeNode }
@@ -42,12 +42,88 @@ fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
 // ONE ROW PER LEAF. The row is derived from the emitted node once, the target model is spelled from
 // it, and the serializer is handed that row rather than asked to select it again from rules built
 // out of it (v2.compiler.target_serialize target_serialize_source_from_selected_row).
+// THE COLLISION BETWEEN A SUBSTITUTION'S OPENERS, REFUSED WHERE THE BYTES ARE MADE. `$(` immediately
+// followed by a body that opens with `(` is read by bash as an ARITHMETIC expansion: `$(('cd' '..'; 'pwd'))`
+// dies at run time with `syntax error: operand expected`, while `$( ('cd' '..'; 'pwd'))` prints what the
+// caller asked for -- both checked against bash, not reasoned about. Where a substitution's own text is
+// spelled, the language module separates the openers (v2.extdeps.languages.bash::
+// bash_cmdsubst_body_spelling). This module spells a node's bytes from its GRAMMAR ROW, where `$(` and the
+// body are separate tokens and every arm of TokenClassEmitTransform is unconditional
+// (v2.std.compilers.target_model::apply_emit_spelling_transform), so no spacing rule can reach that pair.
+// The row render is therefore the place to stop it -- and it is taken as the ONE choke point every row
+// render passes through (bash_fold_serialize_leaf_node), rather than as a list of constructs to remember:
+// a command, a concatenation, a redirection and any future row-rendered form all pass this way, so the
+// invariant is structural and not a hand-kept enumeration. The walk stops at the first collision and runs
+// once per row render, over the same subtree the row serializer itself walks to spell the node.
+fn bash_fold_cmdsubst_subshell_operand_refused() -> Outcome<String> {
+  bash_fold_serialize_refused(variant: ^bash_fold_serialize_cmdsubst_subshell_operand_refused)
+}
+
+// IS THIS NODE THE SUBSHELL PRODUCTION? Asked of the SAME relation-row authority the dispatcher uses, so
+// the guard cannot disagree with what the serializer itself would render.
+fn bash_fold_node_is_fold_subshell(node: Node) -> Bool {
+  match bash_fold_relation_row_witness(emitted: node, lhs: ^bash_production_fold_subshell) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// IS THIS WORD A SUBSTITUTION CARRYING A SUBSHELL? The word's kind tag and its body child, read the same way
+// the word speller reads them.
+fn bash_fold_word_is_cmdsubst_carrying_subshell(word: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: word), index: 0) {
+    Present { value: kind_node } =>
+      match node_atom_identity_optional(node: kind_node) {
+        Present { value: kind } =>
+          if kind == ^bash_fold_word_kind_cmdsubst {
+            match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
+              Present { value: body } => bash_fold_node_is_fold_subshell(node: body)
+              Absent => false
+            }
+          } else {
+            false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// DOES THIS SUBTREE REACH SUCH A WORD? Walked ONCE per command or concatenation -- the node about to be
+// rendered from its row -- which is the same subtree the row serializer itself walks to spell it. It is not
+// placed in bash_fold_serialize_node, which runs at every level of the recursion.
+fn bash_fold_subtree_reaches_cmdsubst_subshell(node: Node) -> Bool {
+  if bash_fold_word_is_cmdsubst_carrying_subshell(word: node) {
+    true
+  } else {
+    bash_fold_children_reach_cmdsubst_subshell(children: positional_child_target_nodes(node: node))
+  }
+}
+
+fn bash_fold_children_reach_cmdsubst_subshell(children: List<Node>) -> Bool {
+  match list_head(xs: children) {
+    Present { value: child } =>
+      if bash_fold_subtree_reaches_cmdsubst_subshell(node: child) {
+        true
+      } else {
+        match list_tail(xs: children) {
+          Present { value: rest } => bash_fold_children_reach_cmdsubst_subshell(children: rest)
+          Absent => false
+        }
+      }
+    Absent => false
+  }
+}
+
 fn bash_fold_serialize_leaf_node(
   emitted: Node,
   production_binding: Symbol,
   rule_name: Symbol
 ) -> Outcome<String> {
-  match bash_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
+  if bash_fold_subtree_reaches_cmdsubst_subshell(node: emitted) {
+    bash_fold_cmdsubst_subshell_operand_refused()
+  } else {
+    match bash_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
     Holds { value: row } =>
       match bash_fold_target_model_for_row(
         row: row,
@@ -60,7 +136,8 @@ fn bash_fold_serialize_leaf_node(
           bash_fold_serialize_selected_row(emitted: emitted, target: target, row: row)
         Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
-    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+      Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    }
   }
 }
 
@@ -103,14 +180,7 @@ fn bash_fold_serialize_stmts_semi_from(
 }
 
 fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
-  // AN ENTRY, not a step on the way: gunbc.shell_command_text and gunbc.fleet.fleet_converge_plan spell a
-  // statement list through here and never reach `bash_fold_serialize_program`. The rule is therefore asked
-  // here too -- once for the list -- and the recursion below stays free of it.
-  if bash_fold_any_stmt_carries_cmdsubst_subshell(stmts: stmts) {
-    bash_fold_serialize_refused(variant: ^bash_fold_serialize_cmdsubst_body_subshell_refused)
-  } else {
-    bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
-  }
+  bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
 }
 
 // Statement-list encoding is a nonempty cons spine: one statement child, or
@@ -298,15 +368,22 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
           } else if kind == ^bash_fold_word_kind_cmdsubst {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: body } =>
-                bind_outcome(
-                  o: bash_fold_serialize_node(stmt: body),
-                  f: fn(body_spelling) {
-                    bash_fold_serialize_emit_from_node(
-                      emitted: bash_word_cmdsubst_emitted,
-                      target: bash_word_cmdsubst_target_model(body: body_spelling)
-                    )
-                  }
-                )
+                if bash_fold_node_is_fold_subshell(node: body) {
+                  // The spaced bytes are available on THIS path (the substitution's own target model spells
+                  // them), but the shape is refused here too, so a substitution carries one operand shape on
+                  // every path: the command and concatenation doors cannot admit what this one refuses.
+                  bash_fold_cmdsubst_subshell_operand_refused()
+                } else {
+                  bind_outcome(
+                    o: bash_fold_serialize_node(stmt: body),
+                    f: fn(body_spelling) {
+                      bash_fold_serialize_emit_from_node(
+                        emitted: bash_word_cmdsubst_emitted,
+                        target: bash_word_cmdsubst_target_model(body: body_spelling)
+                      )
+                    }
+                  )
+                }
               Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
             }
           } else if kind == ^bash_build_refused_empty_word_list {
@@ -634,54 +711,6 @@ fn bash_fold_serialize_negation_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-// THE RENDERER, NOT A CALL SITE, OWNS THE `$((` SHAPE. `$(` immediately followed by `(`
-// is bash's arithmetic expansion, so a command substitution whose body is a SUBSHELL
-// statement renders bytes that cannot parse. gunbc-private's CI found exactly that on
-// 2026-11-03: the compose step emitted `PRIVATE_ROOT=$(('cd' '..'; 'pwd'))` and both of
-// its workflows died with `line 5: 'cd' '..'; 'pwd': syntax error: operand expected`
-// (runs 41593920495 and 41593920470) before the overlay was ever composed. No `gunbc`
-// emission could show it, because only a mirror repository reaches the compose step -- the
-// two-command body sits in the substitution's own parsing context and needs no carrier
-// subshell at all (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
-//
-// THE RULE IS ONE PREDICATE, ASKED AT THE RENDERER'S ENTRY POINTS -- never of a caller, and never of a
-// node on the way down. Three fns take a tree in: `bash_fold_serialize_program` (a whole script, the
-// entry `bash_emit_stmts` delegates to), `bash_fold_serialize_stmt` (one statement -- four call sites
-// serialize a single statement and never reach the program entry: gunbc.shell_command_text,
-// gunbc.dispatch_pipe_pane_emit, gunbc.live_deploy.emit, v2.workflow.effect_plan_bash_materialize) and
-// `bash_fold_serialize_word` (one word, for the same reason at word level). Each walks the tree it was
-// handed ONCE with `bash_fold_stmt_carries_cmdsubst_subshell` and refuses before a byte is produced, so a
-// caller that wants shell text has to come through an entry and every entry pays for the walk exactly
-// once. The serializers below carry no copy of the rule: kept in four places it is four chances to
-// disagree with the first (§3), and a shape could then still be spelled by whichever copy was edited last.
-//
-// COST. A tree of n nodes costs n: one walk per entry, never re-entered per node. Asking the same walk at
-// the top of `bash_fold_serialize_node` -- where it first lived -- re-walked every subtree at every level
-// of nesting, O(nodes x depth) on an `if` holding subshells or a substitution inside a substitution, and
-// DESIGN §6 fixes a proven quadratic cost shape instead of tolerating it because today's n is small. The
-// intermediate design -- per-word tests in the substitution's arm and over the words a command or an
-// assignment spells from its grammar row -- is deleted rather than kept beside the walk: the entries
-// already refuse every shape those tests refused, and a leaf-row statement is only ever spelled by a
-// serializer that an entry has already walked. Spacing tricks -- `$(( ` -- are deliberately not offered:
-// they would silence this one script while leaving the same bytes one call away from reappearing,
-// DESIGN §6b.
-fn bash_fold_subshell_sits_in_cmdsubst(node: Node) -> Bool {
-  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
-    Present { value: kind_node } =>
-      match node_atom_identity_optional(node: kind_node) {
-        Present { value: kind } =>
-          kind == ^bash_fold_word_kind_cmdsubst &&
-          match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
-            Present { value: body } =>
-              bash_fold_built_stmt_production_binding(stmt: body) == ^bash_production_fold_subshell
-            Absent => false
-          }
-        Absent => false
-      }
-    Absent => false
-  }
-}
-
 fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
   let binding = bash_fold_built_stmt_production_binding(stmt: stmt)
   if binding == ^bash_production_fold_command {
@@ -745,82 +774,15 @@ fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
   }
 }
 
-// A LIST of statements carries the shape if any member does. Both list entries ask this, so the walk is
-// written once and no entry can forget it.
-fn bash_fold_any_stmt_carries_cmdsubst_subshell(stmts: List<Node>) -> Bool {
-  fold_list(
-    xs: stmts,
-    empty: false,
-    cons: fn(acc, stmt) {
-      if acc {
-        true
+fn bash_fold_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String> {
+  bind_outcome(
+    o: bash_fold_serialize_body(stmts: stmts),
+    f: fn(body) {
+      if set_e {
+        Accepted { value: concat("set -e\n", body), diagnostics: None }
       } else {
-        bash_fold_stmt_carries_cmdsubst_subshell(node: stmt)
+        Accepted { value: body, diagnostics: None }
       }
     }
   )
-}
-
-fn bash_fold_stmt_carries_cmdsubst_subshell(node: Node) -> Bool {
-  if bash_fold_subshell_sits_in_cmdsubst(node: node) {
-    true
-  } else {
-    fold_list(
-      xs: positional_child_target_nodes(node: node),
-      empty: false,
-      cons: fn(acc, child) {
-        if acc {
-          true
-        } else {
-          bash_fold_stmt_carries_cmdsubst_subshell(node: child)
-        }
-      }
-    )
-  }
-}
-
-fn bash_fold_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String> {
-  // ONE whole-tree walk per emitted script, at the entry every emitter uses (`bash_emit_stmts`
-  // delegates here): whatever the statement kind, a word it spells from its row -- a condition, a
-  // redirection, a heredoc, a substitution buried in a concatenation -- is refused before a byte is
-  // produced. The per-word tests in the substitution arm and in the leaf statement builders stay
-  // one-word-cheap and protect callers that serialize a single statement directly. This walk is
-  // entered once per script and never re-entered per node, so a script of n nodes costs n: the
-  // quadratic shape of asking it at the top of `bash_fold_serialize_node` is exactly what DESIGN §6
-  // refuses to leave standing.
-  if bash_fold_any_stmt_carries_cmdsubst_subshell(stmts: stmts) {
-    bash_fold_serialize_refused(variant: ^bash_fold_serialize_cmdsubst_body_subshell_refused)
-  } else {
-    bind_outcome(
-      o: bash_fold_serialize_body(stmts: stmts),
-      f: fn(body) {
-        if set_e {
-          Accepted { value: concat("set -e\n", body), diagnostics: None }
-        } else {
-          Accepted { value: body, diagnostics: None }
-        }
-      }
-    )
-  }
-}
-
-// ONE STATEMENT IN. The four call sites named above serialize a single statement and never reach the
-// program entry, so the rule needs an entry of its own at this arity -- which is also the shape a future
-// caller is most likely to reach for. Same predicate, same walk, once.
-fn bash_fold_serialize_stmt(stmt: Node) -> Outcome<String> {
-  if bash_fold_stmt_carries_cmdsubst_subshell(node: stmt) {
-    bash_fold_serialize_refused(variant: ^bash_fold_serialize_cmdsubst_body_subshell_refused)
-  } else {
-    bash_fold_serialize_node(stmt: stmt)
-  }
-}
-
-// ONE WORD IN, for callers that serialize a word directly (a substitution body, a condition operand).
-// Same predicate, same walk, once.
-fn bash_fold_serialize_word(word: Node) -> Outcome<String> {
-  if bash_fold_stmt_carries_cmdsubst_subshell(node: word) {
-    bash_fold_serialize_refused(variant: ^bash_fold_serialize_cmdsubst_body_subshell_refused)
-  } else {
-    bash_fold_serialize_word_node(word: word)
-  }
 }

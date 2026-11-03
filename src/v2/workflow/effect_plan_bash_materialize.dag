@@ -15,7 +15,7 @@ import v2.workflow.effect_plan_bash_hex_ere { effect_plan_bash_sha256_line_ere }
 import std.content_hash { sha256_hex_digit_count }
 import extdeps.tools.grep { grep_program }
 import extdeps.tools.gnu_coreutils { coreutils_install_binary_name, coreutils_install_group_flag, coreutils_install_mode_flag, coreutils_install_owner_flag, printf_program }
-import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmt }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import extdeps.posix.shell_command_language { posix_name_ok }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 
@@ -1050,7 +1050,7 @@ fn effect_plan_bash_materialize(
         EffectPlanBashEmpty =>
           EffectPlanBashMaterialized { source: "" }
         EffectPlanBashEncoded { statement: statement } =>
-          match bash_fold_serialize_stmt(stmt: statement) {
+          match bash_fold_serialize_node(stmt: statement) {
             Accepted { value: source, diagnostics: _ } =>
               EffectPlanBashMaterialized { source: source }
             Rejected { diagnostics: diagnostics } =>

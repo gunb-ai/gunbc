@@ -2,7 +2,8 @@ module v2.extdeps.languages.bash
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_flat_map, list_map, empty_map, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_flat_map, list_map, empty_map, map_insert, list_starts_with }
+import v2.std.text { char_eq }
 import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
@@ -1634,8 +1635,29 @@ data bash_word_cmdsubst_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_word_cmdsubst_tokens_carried
 )
 
+// ONE RULE, HELD BY THE MODULE THAT OWNS BASH'S CONCRETE SYNTAX. A command substitution whose rendered body
+// opens with `(` must not have that `(` sit against the substitution's own opener: `$((` IS bash's arithmetic
+// opener, so `$(('cd' '..'; 'pwd'))` is read as an arithmetic expression and dies at run time
+// (`syntax error: invalid arithmetic operator`), while the same bytes with one space between the openers --
+// `$( ('cd' '..'; 'pwd') )` -- are the valid compound command the caller asked for (both verified against
+// bash: the spaced form prints, the adjacent form is the arithmetic error).
+//
+// THE REPAIR IS THEREFORE LEXICAL AND BELONGS TO THE SPELLING, not to the shape: adding the space here fixes
+// every caller at once, public and private, present and future, because the collision is between two tokens
+// the renderer places -- not between two meanings the caller chose. Refusing the shape instead would forbid
+// valid bash (DESIGN §4b/§4d: do not over-generalize a prohibition, the ladder's lower rungs are for states
+// the model cannot make unconstructible) and would still leave the bytes producible by any path that did not
+// come and ask (§5: making it unwritable beats catching it).
+fn bash_cmdsubst_body_spelling(body: String) -> String {
+  if list_starts_with(xs: body, prefix: "(", eq: char_eq) {
+    concat(" ", body)
+  } else {
+    body
+  }
+}
+
 fn bash_word_cmdsubst_source_text(body: String) -> String {
-  concat("$(", concat(body, ")"))
+  concat("$(", concat(bash_cmdsubst_body_spelling(body: body), ")"))
 }
 
 fn bash_word_cmdsubst_lex() -> LexRules {
@@ -1658,6 +1680,12 @@ fn bash_word_cmdsubst_translation_rules_node() -> Node {
 data bash_word_cmdsubst_translation_rules_node_carried: Node = bash_word_cmdsubst_translation_rules_node()
 
 
+// THE BODY IS BOUND RAW; ONLY THE SOURCE TEXT IS SPOKEN. One surface spells the substitution's bytes --
+// bash_word_cmdsubst_source_text, through bash_cmdsubst_body_spelling -- and the binding map carries the
+// body as given. That is not a second path for the colliding bytes: a body whose text opens with `(` is a
+// subshell, and the only renderer that composes bytes from the binding map is the grammar-row render, which
+// refuses that shape (v2.workflow.bash_command_fold_serialize::
+// bash_fold_subtree_reaches_cmdsubst_subshell).
 fn bash_word_cmdsubst_binding_spellings(body: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_word_cmdsubst_body, body)
 }

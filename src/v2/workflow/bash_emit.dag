@@ -16,7 +16,7 @@ import v2.extdeps.languages.bash {
 import v2.extdeps.languages.bash_build { bash_build_negation }
 import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_emit_from_node,
-  bash_fold_serialize_stmt,
+  bash_fold_serialize_node,
   bash_fold_serialize_program
 }
 import v2.std.text { CharAbsent, CharFound, CharResult, char_eq, string_head }
@@ -53,7 +53,7 @@ fn bash_emit_from_target(emitted: Node, target: TargetModel) -> Outcome<String> 
 }
 
 fn bash_emit_tagged(stmt: BashEmitStmt) -> Outcome<String> {
-  bash_fold_serialize_stmt(stmt: stmt.node)
+  bash_fold_serialize_node(stmt: stmt.node)
 }
 
 fn bash_emit_special_nodes(specials: List<BashEmitSpecial>) -> List<Node> {
@@ -81,7 +81,7 @@ fn bash_emit_stmts(statements: List<Node>, set_e: Bool) -> Outcome<String> {
 }
 
 fn bash_emit_matches_golden(stmt: BashEmitStmt, golden: String) -> Bool {
-  match bash_fold_serialize_stmt(stmt: stmt.node) {
+  match bash_fold_serialize_node(stmt: stmt.node) {
     Accepted { value: folded, diagnostics: _ } => folded == golden
     Rejected { diagnostics: _ } => false
   }
@@ -127,7 +127,7 @@ fn bash_emit_negation_spelling(inner_spelling: String) -> Outcome<String> {
 }
 
 fn bash_emit_negation(inner: Node) -> Outcome<String> {
-  bash_fold_serialize_stmt(stmt: bash_build_negation(inner: inner))
+  bash_fold_serialize_node(stmt: bash_build_negation(inner: inner))
 }
 
 fn bash_emit_env_prefixed(

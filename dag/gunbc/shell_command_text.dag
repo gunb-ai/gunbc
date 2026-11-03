@@ -5,7 +5,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_with_words,
   bash_build_word_lit,
 }
-import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmt, bash_fold_serialize_stmts_semi }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node, bash_fold_serialize_stmts_semi }
 import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected, None, Some, NonEmptyDiagnostics, diagnostics_reason_lexemes }
 import extdeps.sudo.elevation { sudo_elevate_argv }
@@ -84,7 +84,7 @@ fn shell_privileged_command_intent(argv: List<String>) -> Node {
 }
 
 fn shell_command_text_of_node(stmt: Node) -> String {
-  match bash_fold_serialize_stmt(stmt: stmt) {
+  match bash_fold_serialize_node(stmt: stmt) {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => source
