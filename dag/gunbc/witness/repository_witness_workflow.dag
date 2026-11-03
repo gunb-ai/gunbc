@@ -65,6 +65,10 @@ import gunbc.action_use_admission {
   admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
   workflow_checkout_refs_refusal_reason,
 }
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomeRefused, WorkflowToolchainHomesAdmitted,
+  toolchain_home_refusal_reason,
+}
 import gunbc.ci.repository_compose_overlay {
   composed_source_roots,
   compose_preamble_statements,
@@ -922,7 +926,14 @@ fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, program: Rost
               path: profile.roster.workflow_file as String,
               reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.witness.repository_witness_workflow", refusals: crs)
             }
-            WorkflowCheckoutRefsAdmitted => emit_yaml(v: project_workflow_to_yaml(workflow: workflow))
+            WorkflowCheckoutRefsAdmitted =>
+              match admit_workflow_toolchain_homes(workflow: workflow) {
+                WorkflowToolchainHomeRefused { job_id: j, refusal: r } => YamlEmitRefused {
+                  path: profile.roster.workflow_file as String,
+                  reason: toolchain_home_refusal_reason(job_id: j, refusal: r)
+                }
+                WorkflowToolchainHomesAdmitted => emit_yaml(v: project_workflow_to_yaml(workflow: workflow))
+              }
           }
         Rejected { diagnostics: _ } => YamlEmitRefused {
           path: profile.roster.workflow_file as String,
