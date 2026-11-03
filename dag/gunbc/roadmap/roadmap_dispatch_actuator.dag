@@ -2257,14 +2257,6 @@ fn attempt_state_prepare_argvs_for_instance(
   }
 }
 
-// THE EMPTY EVENT STREAM IS CREATED FOR ITS WRITER. The belt creates provider-events.jsonl empty before
-// launch (belt_attempt_state_initialize_for_instance), so a readable empty file proves event capture was
-// initialized; the harness worker then appends every round's events to it. Under WorkerIsServiceUser the
-// writer is the file's owner and the create is the plain write it always was. Under WorkerDedicatedAccount
-type DispatchAttemptEventsInitialization
-  = DispatchAttemptEventsInitialized
-  | DispatchAttemptEventsInitializationFailed { detail: String }
-
 fn attempt_current_pointer_argv_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
