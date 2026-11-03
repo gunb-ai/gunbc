@@ -14,9 +14,9 @@ import extdeps.languages.markdown { serialize_markdown_source }
 // document moves no ruling, and a deleted or renamed claim fails to resolve.
 // The RULE has exactly one home, the document: a row carries no copy of it, so the two cannot drift.
 // A row's `reference` is its own declaration as a DeclarationRef; the document cites a ruling by
-// passing the row (an import, so a renamed or deleted row fails to resolve), and
-// gunbc.documentary_refs takes its ruling references from design_rulings(), so that one roster is
-// the population the citation resolver, the render witness and the view below all read.
+// passing the row (an import, so a renamed or deleted row fails to resolve).
+// gunbc.design_document derives its cited references from the same typed blocks it renders;
+// design_rulings() supplies the full ruling roster for the on-demand view below.
 //
 // One row per ruling, each its own declaration, so a citation names one ruling and two lanes adding
 // two rulings touch two declarations. The on-demand view is
