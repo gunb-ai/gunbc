@@ -75,10 +75,16 @@ import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
 }
-// The seat's stop observation reads the SAME exit record the roadmap belt writes: the hook render, the
-// per-uid listing, the subject split and the decoded process end all live in that module. work_provider_local
-// named these declarations at :679-:905 without importing them; every one is used exactly once and none is
-// declared here (AttemptExitRecordAtStop at :656 IS local and is not imported).
+// The seat's stop observation reads the SAME exit record the roadmap belt writes, so the names it needs
+// come from the module that owns that record: the hook render (compute_attempt_exit_hook,
+// AttemptExitHookRendered, AttemptExitHookRefused), the per-uid listing
+// (compute_attempt_exit_record_listing), the subject split (attempt_exit_record_matching,
+// RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject), the record observation arms
+// (AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+// AttemptExitRecordWriterUnsubstituted) and the decoded process end (AttemptProcessEnd,
+// AttemptProcessExitedWith, AttemptProcessSignaled). This file named all of them without importing
+// either declaring module. The stop-observation arm ComputeUnitStopObservation's AttemptExitRecordAtStop
+// case is declared HERE and is not imported.
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   compute_attempt_exit_hook, compute_attempt_exit_record_listing, attempt_exit_record_matching,
   AttemptExitHookRendered, AttemptExitHookRefused,
@@ -676,6 +682,15 @@ type StopObservationRendering
   | StopObservationContributesNothing
   | StopObservationRefused { cause: String }
 
+// A stop observation either yields the unit properties it contributes, or it says WHY it cannot. The
+// refusal path carries the causes, never a constant: a launch that is refused because a stop hook
+// could not be rendered must tell the operator WHICH render failed and for what reason, or the
+// refusal is unfalsifiable. Every cause the batch produced is kept, so a seat with two broken
+// observations reports both.
+type StopObservationProperties
+  = StopObservationPropertiesOk { properties: List<SystemdRunProperty> }
+  | StopObservationPropertiesRefused { causes: List<String> }
+
 fn compute_stop_observation_rendering(observation: ComputeUnitStopObservation) -> StopObservationRendering {
   match observation {
     // NO OBSERVATION CONTRIBUTES NOTHING: it is not an empty ExecStop= line on the unit.
@@ -695,16 +710,22 @@ fn compute_stop_observation_rendering(observation: ComputeUnitStopObservation) -
   }
 }
 
-fn compute_stop_observation_properties(observations: List<ComputeUnitStopObservation>) -> List<SystemdRunProperty>? {
+fn compute_stop_observation_properties(observations: List<ComputeUnitStopObservation>) -> StopObservationProperties {
   let rendered = map(observations, o => compute_stop_observation_rendering(observation: o))
   if any(rendered, r => match r {
     StopObservationRefused { cause: _ } => true
     StopObservationProperty { property: _, value: _ } => false
     StopObservationContributesNothing => false
   }) {
-    none
+    StopObservationPropertiesRefused {
+      causes: flat_map(rendered, r => match r {
+        StopObservationRefused { cause } => [cause]
+        StopObservationProperty { property: _, value: _ } => [] as List<String>
+        StopObservationContributesNothing => [] as List<String>
+      }),
+    }
   } else {
-    Present { value: flat_map(rendered, r => match r {
+    StopObservationPropertiesOk { properties: flat_map(rendered, r => match r {
       StopObservationProperty { property, value } => [NamedUnitSetting { property: property, value: value }]
       StopObservationContributesNothing => [] as List<SystemdRunProperty>
       StopObservationRefused { cause: _ } => [] as List<SystemdRunProperty>
@@ -750,8 +771,10 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
     })
   match compute_stop_observation_properties(observations: stop_observations) {
-    Absent => ComputeUnitStopObservationRefused { cause: "a stop observation of this seat could not be rendered, and a seat started without an observable end is the defect this route exists to close" }
-    Present { value: stop_properties } =>
+    StopObservationPropertiesRefused { causes } => ComputeUnitStopObservationRefused {
+      cause: join(["a stop observation of this seat could not be rendered, and a seat started without an observable end is the defect this route exists to close; the renders that refused said: ", join(causes, " | ")], ""),
+    }
+    StopObservationPropertiesOk { properties: stop_properties } =>
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), stop_properties),
