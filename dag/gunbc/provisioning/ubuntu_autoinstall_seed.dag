@@ -2402,13 +2402,27 @@ fn build_ubuntu_autoinstall_seed(
       match admit_boot_delivery_plan(plan: unadmitted) {
         BootDeliveryPlanIncoherent { cause: _ } => Absent
         BootDeliveryPlanAdmitted { plan: planned } =>
+          if plan_artifact_serves_target(plan: planned, target: target) == false {
+            Absent
+          } else {
           build_seed_for_control(
           target: target, network: network, install_drivers: install_drivers, loadable_modules: loadable_modules,
           late_drivers: late_drivers, install_packages: install_packages, late_packages: late_packages, disk: disk,
           entry: entry, credential: credential, password_read: password_read, locale: locale,
           delivery: planned.boot_control, client_arch: plan_observed_client_arch(plan: planned), keyboard: keyboard,
           )
+          }
       }
+  }
+}
+
+// THE PLAN'S ARTIFACT AND THE TARGET ARE ONE ARCHITECTURE. The plan delivers an artifact built for one
+// architecture; a seed for a target of another would install a machine from media it cannot boot. A refused
+// target has no architecture to join and yields no seed through the builder's own refusal.
+fn plan_artifact_serves_target(plan: BootDeliveryPlan, target: ProvisioningTargetAdmission) -> Bool {
+  match target {
+    TargetAdmitted { standing: admitted } => admitted.architecture == plan.artifact.architecture
+    TargetRefused { reason: _ } => true
   }
 }
 
@@ -2422,6 +2436,9 @@ fn plan_observed_client_arch(plan: BootDeliveryPlan) -> DhcpProcessorArchitectur
   }
 }
 
+// SEALED TO THE ADMITTED-PLAN WRAPPER. delivery and client_arch are free values here, so only the wrapper that
+// derives them from an admitted plan, and the witness fixtures that sweep the control family as supplied
+// values, may call it; a production caller reaching this directly could name a route the plan contradicts.
 fn build_seed_for_control(
   target: ProvisioningTargetAdmission,
   network: SeedNetworkPosture,
@@ -2438,7 +2455,11 @@ fn build_seed_for_control(
   delivery: BootControlTarget,
   client_arch: DhcpProcessorArchitecture?,
   keyboard: CeremonialKeyboardLayout,
-) -> Optional<UbuntuAutoinstallSeed> {
+) -> Optional<UbuntuAutoinstallSeed> admit_callers: [
+  decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "build_ubuntu_autoinstall_seed"),
+  decl_ref(module_path: "test.claim.ubuntu_autoinstall_seed_witness", decl_name: "build_seed_fixture_with_modules"),
+  decl_ref(module_path: "test.claim.ubuntu_autoinstall_seed_witness", decl_name: "build_seed_fixture_under_rule"),
+] {
   match target {
     TargetRefused { reason: _ } => Absent
     TargetAdmitted { standing: admitted } =>
