@@ -896,8 +896,6 @@ test fn w_the_row_that_named_no_medium_at_zero_is_a_bet_that_no_lane_acts_on() -
       match megarac_redirection_status_of_row(
         firmware: read,
         wire: boot_run_41573858366_end_media_row.redirection_status,
-        media_type: boot_run_41573858366_end_media_row.media_type,
-        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
         session_index: Present { value: boot_run_41573858366_end_media_row.session_index },
       ) {
         // AS FAR AS THE VENDOR GOES, THIS CODE IS SIMPLY NOT CATALOGUED.
@@ -910,6 +908,8 @@ test fn w_the_row_that_named_no_medium_at_zero_is_a_bet_that_no_lane_acts_on() -
       && match megarac_status_zero_row_inference(
         firmware: read,
         wire: boot_run_41573858366_end_media_row.redirection_status,
+        media_type: boot_run_41573858366_end_media_row.media_type,
+        media_index: Present { value: boot_run_41573858366_end_media_row.media_index },
         session_index: Present { value: boot_run_41573858366_end_media_row.session_index },
         image_name: boot_run_41573858366_end_media_row.image_name,
       ) {
