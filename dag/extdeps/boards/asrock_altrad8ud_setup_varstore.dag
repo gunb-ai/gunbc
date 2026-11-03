@@ -1,0 +1,81 @@
+module extdeps.boards.asrock_altrad8ud_setup_varstore
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_find_first }
+import std.optional { Optional }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.linux.efivarfs { EfiVariableIdentity }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(2.06)ROM.zip"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boards.asrock_altrad8ud_setup_varstore",
+      decl_name: "ras_ifr_nv_data_variable",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// PROVENANCE. ASRock Rack ALTRAD8UD-1L2T BIOS 2.06, zip sha256 fbaf00f44288f8b14be4ea3496b6ab76abc8972115920c20af8c9f3d5e68bbf8
+// (5252563 bytes), holding ALTRAD8UD-1L2T_2.06.ROM sha256 290e969b008067e8d9e581770410ed0575df2482539f30b0145de8d750048c7c
+// (33554432 bytes). The setup page's driver is the DXE file 9973f38b-364e-4a8e-8701-eb9826042546, its PE32 body sha256
+// b448108ec545e508fc040ac5067b200ca4ce7743b19334e5348af0147e57f468 (54976 bytes), extracted with uefi_firmware 1.16.
+// The VarStore (GUID, VarStoreId 0x1234, size 0x2F, name RasIfrNVData) is read from the image's IFR with LongSoft
+// IFRExtractor-RS 1.6.1 (commit b1b9b36c00e3209ff0b1d2a76f10cb17e339473d).
+//
+// STANDING (§4d). The static IFR holds only the FormSet, the VarStore and two labels: the RAS page's items are
+// created at runtime by the driver. Each item's VarOffset, width and default below were therefore read from the
+// driver's aarch64 code (the HII checkbox and numeric helper arguments and the default-callback jump table), not
+// from an IFR opcode. They agree with the bytes read on srv2 (every default) and with srv1 on the offsets the
+// operator did not touch, which is a cross-check and not the authority. Upstream edk2-platforms' eight-UINT32
+// RasConfigNVDataStruct does not describe this 47-byte fork. Numeric min, max and step are not modeled.
+data setup_firmware_bios_version: NonEmptyStr = "2.06"
+
+// The layout is grounded for this board AND this BIOS: DMI board_name (read on srv1 as ALTRAD8UD-1L2T) must match too.
+data setup_firmware_board_name: NonEmptyStr = "ALTRAD8UD-1L2T"
+
+data ras_ifr_nv_data_variable: EfiVariableIdentity = EfiVariableIdentity {
+  name: "RasIfrNVData"
+  vendor_guid: "7f07fb39-004f-4071-a3e3-15c9fbd490ca"
+}
+
+// The variable's data length the IFR VarStore declares (0x2F).
+data ras_ifr_nv_data_octet_count: Int = 47
+
+type SetupVarstoreCheckbox {
+  menu: NonEmptyStr
+  item: NonEmptyStr
+  offset: Int
+  default_checked: Bool
+}
+
+// One octet: 0 is unchecked (Disabled), 1 is checked (Enabled). Offsets are into the variable's data, after the
+// four attribute octets of the efivarfs file.
+// The one spelling of the RAS page's menu and its AER item; the board catalog (extdeps.boards.asrock_rack) cites these.
+data ras_menu: NonEmptyStr = "Advanced > RAS Configuration"
+data ras_pcie_aer_firmware_first_item: NonEmptyStr = "PCIe AER Firmware First"
+
+data ras_setup_checkbox_rows: List<SetupVarstoreCheckbox> = [
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Hardware EINJ", offset: 0, default_checked: false },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "DRAM EINJ No Trigger", offset: 1, default_checked: false },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Enable BERT", offset: 2, default_checked: true },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Enable SDEI", offset: 3, default_checked: true },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Enable AGDI", offset: 4, default_checked: false },
+  SetupVarstoreCheckbox { menu: ras_menu, item: ras_pcie_aer_firmware_first_item, offset: 5, default_checked: false },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Processor OS-first", offset: 6, default_checked: false }
+]
+
+fn ras_setup_checkbox_row(menu: String, item: String) -> Optional<SetupVarstoreCheckbox> {
+  list_find_first(ras_setup_checkbox_rows, r => (r.menu as String) == menu && (r.item as String) == item)
+}
