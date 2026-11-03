@@ -42,7 +42,7 @@ fn one_body_read_as(text: NonEmptyStr) -> DesignatorReading {
 // board and not a bag of parts.
 fn board_read(readings: List<DesignatorReading>) -> CarrierLayoutObservation {
   let base = p4261_e1_layout
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: base.revision, markings: base.markings,
     module_receptacles: base.module_receptacles, backplane_connectors: base.backplane_connectors,
     j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
