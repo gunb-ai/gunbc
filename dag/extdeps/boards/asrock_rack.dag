@@ -10,6 +10,7 @@ import extdeps.boards.types { HeldManualRevision,
   BoardExpansionSlot, BoardExpansionSlots,
 }
 import extdeps.vendor.asrock_rack { asrock_rack }
+import extdeps.boards.asrock_altrad8ud_setup_varstore { ras_menu, ras_pcie_aer_firmware_first_item }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
 import extdeps.bmc.types {
   BmcRedfishSurfaceRow,
@@ -1143,8 +1144,8 @@ fn asrock_altrad8ud_function_switch(f: BoardFunction) -> BoardFunctionSwitch {
     BmcManagementFunction => JumperSwitch { designator: "BMC_DIS", off_position: "BMC Disabled (BMC Enabled is the default)", citation: "manual v1.20 section 2.6, layout item 22" }
     BmcGraphicsController => SwitchNotStated { coarser: Present { value: "BMC_DIS (section 2.6, layout item 22) disables the whole BMC" } }
     PcieErrorFirmwareFirstHandling => FirmwareSetupSwitch {
-      menu: "Advanced > RAS Configuration",
-      item: "PCIe AER Firmware First",
+      menu: ras_menu,
+      item: ras_pcie_aer_firmware_first_item,
       off_meaning: "Otherwise OS detects AER",
       citation: "manual v1.20 section 3.3.2",
     }

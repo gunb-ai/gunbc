@@ -58,6 +58,16 @@ import gunbc.ci.repository_ci_profile {
   profile_run_roster_step_name,
   profile_runs_roster_in_composed_root,
   repository_ci_profile_refusal,
+  seed_source_pin,
+  seed_source_refusal_reason,
+}
+import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
+  workflow_checkout_refs_refusal_reason,
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomeRefused, WorkflowToolchainHomesAdmitted,
+  toolchain_home_refusal_reason,
 }
 import gunbc.ci.repository_compose_overlay {
   composed_source_roots,
@@ -113,9 +123,13 @@ import gunbc.ci.ci_runner_target {
 }
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
-  seed_checkout_step,
+  SeedLaneSteps,
+  seed_lane_steps,
+  seed_pin_verifier_declared_expressions,
+  seed_pin_verifier_job,
+
   record_seed_revision_step,
-  toolchain_install_step,
+  SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps,
   seed_build_step,
   emit_run_step
 }
@@ -202,7 +216,7 @@ fn repository_witness_lane_refusal(profile: RepositoryCiProfile, program: Roster
 // DESIGN 4c compile. The record step is not decoration: a green run must be attributable to the exact
 // seed revision, or "the claims pass" silently means "the claims pass against whatever main was at
 // checkout time".
-fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> Outcome<List<Step>> {
+fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>, pin: String) -> Outcome<List<Step>> {
   bind_outcome(
     o: record_seed_revision_step(seed: seed),
     f: fn(record) {
@@ -215,20 +229,33 @@ fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, prog
               bind_outcome(
                 o: seed_build_step(seed: seed),
                 f: fn(build) {
-                  Accepted {
-                    value: concat(
-                      [
-                        repository_checkout_step(step_name: program.checkout_step_name),
-                        seed_checkout_step(seed: seed),
-                        record,
-                        toolchain_install_step(step_name: program.toolchain_step_name),
-                        build,
-                        roster
-                      ],
-                      annotation
-                    ),
-                    diagnostics: None
-                  }
+                  bind_outcome(
+                    o: seed_lane_steps(seed: seed, pin: pin),
+                    f: fn(seed_lane) {
+                      Accepted {
+                        value: concat(
+                          concat(
+                            [
+                              repository_checkout_step(step_name: program.checkout_step_name),
+                              // THE GUARD FIRST: the seed checkout's ref is a string the runner substitutes
+                              // at job start, and a producer that produced nothing substitutes nothing.
+                              seed_lane.guard,
+                              seed_lane.checkout,
+                              record
+                            ],
+                            // THE TOOLCHAIN LANE AS ONE UNIT: isolation, install, pin, in that order, owned
+                            // by gunbc.ci.repository_seed_steps. This lane runs on the repository's declared
+                            // fleet group -- a home that persists and is shared -- so an install taken on its
+                            // own would be refused by gunbc.toolchain_home_standing, which is exactly the
+                            // defect this composition removes at the source rather than per route.
+                            seed_toolchain_lane_steps(lane: seed_toolchain_lane(step_name: program.toolchain_step_name))
+                          ),
+                          concat([build, roster], annotation)
+                        ),
+                        diagnostics: None
+                      }
+                    }
+                  )
                 }
               )
             }
@@ -674,23 +701,40 @@ fn schedule_triggers(profile: RepositoryCiProfile) -> List<WorkflowTrigger> {
 // CI to another machine class is one row in one authority and every derivation - labels, memory regime,
 // RAM budget - follows instead of being remembered. Permissions are contents:read: the required gate
 // reads source and reports a verdict; anything more is a credential in the place that runs the most code.
-fn repository_witness_job(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> Outcome<Job> {
+fn repository_witness_job(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  program: RosterProgram,
+  compose_statements: List<Node>,
+  pin: String,
+  verifier_job_id: String
+) -> Outcome<Job> {
   bind_outcome(
-    o: repository_witness_steps(profile: profile, seed: seed, program: program, compose_statements: compose_statements),
+    o: repository_witness_steps(profile: profile, seed: seed, program: program, compose_statements: compose_statements, pin: pin),
     f: fn(steps) {
-      Accepted { value: repository_witness_job_from_steps(profile: profile, steps: steps), diagnostics: None }
+      Accepted {
+        value: repository_witness_job_from_steps(profile: profile, steps: steps, verifier_job_id: verifier_job_id),
+        diagnostics: None
+      }
     }
   )
 }
 
-fn repository_witness_job_from_steps(profile: RepositoryCiProfile, steps: List<Step>) -> Job {
+// THE REQUIRED GATE WAITS FOR THE PROOF. Its seed checkout names the verifier's declared output, so the
+// gate cannot judge a claim under a compiler that was never pinned. needs gives the ordering and requires
+// the verifier to have succeeded; it does NOT require the output to exist, and an absent output reaches
+// the checkout as the empty string, which actions/checkout resolves against the default branch. The guard
+// step at the head of the seed lane (gunbc.ci.repository_seed_steps seed_pin_consumer_guard_step) is what
+// closes that: it compares the value actually received against the row's pin and fails before the
+// checkout runs.
+fn repository_witness_job_from_steps(profile: RepositoryCiProfile, steps: List<Step>, verifier_job_id: String) -> Job {
   Job {
     id: profile.roster.job_id,
     name: none,
     runner: ci_runner_target_spec(target: profile.roster.runner),
     environment: none,
     steps: steps,
-    needs: [],
+    needs: [verifier_job_id],
     env: none,
     outputs: none,
     if_condition: none,
@@ -701,22 +745,43 @@ fn repository_witness_job_from_steps(profile: RepositoryCiProfile, steps: List<S
   }
 }
 
-fn repository_witness_workflow(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> Outcome<Workflow> {
+fn repository_witness_workflow(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  program: RosterProgram,
+  compose_statements: List<Node>,
+  pin: String,
+  verifier_job: Job
+) -> Outcome<Workflow> {
   bind_outcome(
-    o: repository_witness_job(profile: profile, seed: seed, program: program, compose_statements: compose_statements),
+    o: repository_witness_job(
+      profile: profile,
+      seed: seed,
+      program: program,
+      compose_statements: compose_statements,
+      pin: pin,
+      verifier_job_id: verifier_job.id
+    ),
     f: fn(job) {
-      Accepted { value: repository_witness_workflow_from_job(profile: profile, job: job), diagnostics: None }
+      Accepted {
+        value: repository_witness_workflow_from_jobs(profile: profile, jobs: [verifier_job, job]),
+        diagnostics: None
+      }
     }
   )
 }
 
 fn repository_witness_workflow_from_job(profile: RepositoryCiProfile, job: Job) -> Workflow {
+  repository_witness_workflow_from_jobs(profile: profile, jobs: [job])
+}
+
+fn repository_witness_workflow_from_jobs(profile: RepositoryCiProfile, jobs: List<Job>) -> Workflow {
   Workflow {
     name: profile.roster.workflow_name,
     run_name: none,
     on: repository_witness_triggers(profile: profile),
     concurrency: none,
-    jobs: [job],
+    jobs: jobs,
     env: none,
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead },
@@ -821,18 +886,62 @@ fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, program: Rost
     Present { value: seed } =>
   match lane_admission(profile: profile, program: program) {
     Present { value: reason } => YamlEmitRefused { path: profile.roster.workflow_file as String, reason: reason as String }
-    Absent => match repository_witness_workflow(
-      profile: profile,
-      seed: seed,
-      program: program,
-      compose_statements: mirror_compose_statements(profile: profile, seed: seed)
-    ) {
-      Accepted { value: workflow, diagnostics: _ } => emit_yaml(v: project_workflow_to_yaml(workflow: workflow))
-      Rejected { diagnostics: _ } => YamlEmitRefused {
-        path: profile.roster.workflow_file as String,
-        reason: "gunbc.witness.repository_witness_workflow: v2.workflow.bash_emit refused a run body of the gate, so no workflow is emitted rather than one whose required job lost a step"
+    Absent =>
+      // THE REQUIRED GATE JUDGES ITS CLAIMS UNDER A PIN, OR IT DOES NOT RUN. The seed checkout used to
+      // carry whatever string the row's `ref_name` held -- a branch, for every mirror -- and this emitter
+      // never asked the checkout-ref wall, so the gate could check out a different commit on every run
+      // and still be the check that branch protection trusts. Now the ref is the seed-pin verifier's
+      // declared output, the gate waits on that job, and the same wall the publisher calls admits or
+      // refuses the result. An owed or malformed pin refuses the whole workflow with the row's reason.
+      match seed_source_pin(source: seed.source) {
+        Absent {  } => YamlEmitRefused {
+          path: profile.roster.workflow_file as String,
+          reason: join(["REFUSED gunbc.witness.repository_witness_workflow: ", seed_source_refusal_reason(source: seed.source)], "")
+        }
+        Present { value: pin } =>
+      match seed_pin_verifier_job(
+        seed: seed,
+        pin: pin,
+        runner: ci_runner_target_spec(target: profile.roster.runner)
+      ) {
+        Rejected { diagnostics: _ } => YamlEmitRefused {
+          path: profile.roster.workflow_file as String,
+          reason: "gunbc.witness.repository_witness_workflow: the seed-pin verifier could not be built from this row, so the gate has no provenance for the compiler it judges by"
+        }
+        Accepted { value: verifier_job, diagnostics: _ } =>
+      match repository_witness_workflow(
+        profile: profile,
+        seed: seed,
+        program: program,
+        compose_statements: mirror_compose_statements(profile: profile, seed: seed),
+        pin: pin,
+        verifier_job: verifier_job
+      ) {
+        Accepted { value: workflow, diagnostics: _ } =>
+          match admit_workflow_checkout_refs(
+            workflow: workflow,
+            declared: seed_pin_verifier_declared_expressions(seed: seed)
+          ) {
+            WorkflowCheckoutRefsRefused { refusals: crs } => YamlEmitRefused {
+              path: profile.roster.workflow_file as String,
+              reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.witness.repository_witness_workflow", refusals: crs)
+            }
+            WorkflowCheckoutRefsAdmitted =>
+              match admit_workflow_toolchain_homes(workflow: workflow) {
+                WorkflowToolchainHomeRefused { job_id: j, refusal: r } => YamlEmitRefused {
+                  path: profile.roster.workflow_file as String,
+                  reason: toolchain_home_refusal_reason(job_id: j, refusal: r)
+                }
+                WorkflowToolchainHomesAdmitted => emit_yaml(v: project_workflow_to_yaml(workflow: workflow))
+              }
+          }
+        Rejected { diagnostics: _ } => YamlEmitRefused {
+          path: profile.roster.workflow_file as String,
+          reason: "gunbc.witness.repository_witness_workflow: v2.workflow.bash_emit refused a run body of the gate, so no workflow is emitted rather than one whose required job lost a step"
+        }
       }
-    }
+      }
+      }
   }
   }
 }

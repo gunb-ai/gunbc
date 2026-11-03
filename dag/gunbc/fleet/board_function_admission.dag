@@ -282,7 +282,7 @@ fn fleet_board_function_plans() -> List<HostBoardFunctionPlan> {
 data board_function_admission_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.fleet.board_function_admission", decl_name: "fleet_board_function_plans"),
-    reason: "The converge route reaches only a host whose live deployment holds the role singletons (srv1); every other machine's host-side removals have no delivery route, and setup-item switches are set by the operator with no readback.",
+    reason: "The converge route reaches only a host whose live deployment holds the role singletons (srv1); every other machine's host-side removals have no delivery route, and a setup-item switch is read back only where extdeps.boards.asrock_altrad8ud_setup_varstore has a route (PCIe AER Firmware First on BIOS 2.06); jumpers and other setup items are set by the operator with no readback.",
     dissolution: unbound_dissolution(description: "A fleet-wide host-converge release installs gunbc.live_deploy.board_function_converge_unit on every machine with a catalogued board, and a firmware behaviour removed in setup is read back by a route grounded for that board and firmware, never by the ACPI _OSC AER grant alone, which shows OS ownership of the AER registers and not the absence of a firmware-first handler."),
   ),
 ]
