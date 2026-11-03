@@ -30,7 +30,13 @@ import extdeps.electronic_component.ti_tmp275 { tmp275_dgk }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
-import extdeps.electronic_component.types { ElectronicComponentRow }
+import extdeps.electronic_component.types {
+  Designator,
+  ElectronicComponentRow,
+  designator_eq,
+  designator_of,
+  designator_text,
+}
 import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, TranscribedUncited, observed_receipt_ref }
 import extdeps.nvidia.p4261 { p4261_e1, p4261_k1 }
 import extdeps.nvidia.p4261.population {
@@ -43,6 +49,7 @@ import extdeps.nvidia.p4261.population {
   p4261_e1_positions,
   p4261_k1_positions,
   p4261_position,
+  p4261_position_at,
 }
 import product.p4261.carrier {
   CarrierLayoutObservation,
@@ -163,14 +170,14 @@ fn read(c: ComponentInstanceIdentity, d: NonEmptyStr) -> DesignatorReading {
 }
 
 fn e1_at(d: NonEmptyStr) -> P4261DesignPosition {
-  match (filter(p4261_e1_positions, p => (p.position.designator as String) == (d as String))).first() {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
     Present { value: p } => p
     Absent => P4261DesignPosition { position: p4261_position(revision: p4261_e1, designator: d), population: Absent }
   }
 }
 
 fn k1_at(d: NonEmptyStr) -> P4261DesignPosition {
-  match (filter(p4261_k1_positions, p => (p.position.designator as String) == (d as String))).first() {
+  match p4261_position_at(positions: p4261_k1_positions, verbatim: d) {
     Present { value: p } => p
     Absent => P4261DesignPosition { position: p4261_position(revision: p4261_k1, designator: d), population: Absent }
   }
@@ -256,11 +263,13 @@ fn uncited(s: CitedFigureStanding) -> Bool {
 }
 
 fn standing_at(ss: List<PositionStanding>, d: String) -> PositionStanding? {
-  (filter(ss, s => (s.assessment.position.position.designator as String) == d)).first()
+  (filter(ss, s =>
+    (designator_text(designator: s.assessment.position.position.designator) as String) == d
+  )).first()
 }
 
 fn compared_at(c: P4261Comparison, d: String) -> PositionComparison? {
-  (filter(c.positions, p => (p.designator as String) == d)).first()
+  (filter(c.positions, p => (designator_text(designator: p.designator) as String) == d)).first()
 }
 
 fn is_same_part(r: ObservedRelation) -> Bool {
@@ -492,8 +501,14 @@ test fn row_sets_are_compared_conservatively() -> Bool {
 // another part are contradicted on each board, and the comparison reports the agreement beside the
 // two contradictions without merging them.
 test fn observed_agreement_is_kept_apart_from_the_claims() -> Bool {
-  let e1_positions = map(p4261_e1_positions, x => if (x.position.designator as String) == "U1_P5" { claimed(p: x, part: PartRow { row: tmp275_dgk }) } else { x })
-  let k1_positions = map(p4261_k1_positions, x => if (x.position.designator as String) == "U1_P5" { claimed(p: x, part: PartRow { row: tmp275_dgk }) } else { x })
+  let e1_positions = map(p4261_e1_positions, x =>
+    if designator_eq(a: x.position.designator, b: designator_of(verbatim: "U1_P5"))
+    { claimed(p: x, part: PartRow { row: tmp275_dgk }) } else { x }
+  )
+  let k1_positions = map(p4261_k1_positions, x =>
+    if designator_eq(a: x.position.designator, b: designator_of(verbatim: "U1_P5"))
+    { claimed(p: x, part: PartRow { row: tmp275_dgk }) } else { x }
+  )
   match compared_at(c: compare_boards(e1_layout: p4261_e1_layout, k1_layout: p4261_k1_layout, e1_positions: e1_positions, k1_positions: k1_positions), d: "U1_P5") {
     Absent => false
     Present { value: p } => is_same_part(r: p.observed)

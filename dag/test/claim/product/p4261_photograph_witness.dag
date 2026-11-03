@@ -1,8 +1,8 @@
 module test.claim.product.p4261_photograph_witness
 
 // WHAT THIS WITNESS HOLDS. product.electrical.photograph says a claim about the board can cite the frame
-// it was read from, by the SHA-256 of that frame's bytes, and product.p4261.e1_photographs holds the 91
-// frames the 2026-11-03 E1 atlas produced. The claim worth defending is one sentence: A BOARD ROW IS
+// it was read from, by the SHA-256 of that frame's bytes, and product.p4261.e1_photographs holds the 201
+// records the 2026-11-03 E1 atlas produced: 192 frames somebody photographed and 9 views we drew. The claim worth defending is one sentence: A BOARD ROW IS
 // CHECKABLE AGAINST AN IMAGE ONLY IF THE STORE HOLDS THE BYTES IT NAMES. Everything below attacks the
 // ways that sentence gets faked -- a citation that resolves to nothing and still reads as evidence, a
 // digest somebody guessed, a file name used as an identity, an image we drew used to corroborate the
@@ -62,7 +62,15 @@ import product.electrical.photograph {
   photograph_in_store,
   sha256_digest_eq,
 }
-import std.measure { positive_byte_size_bytes, positive_byte_size_from_count, positive_measure_count }
+import std.measure {
+  PositiveByteSizeBuilt,
+  PositiveByteSizeRefused,
+  byte_size_count,
+  positive_byte_size,
+  positive_byte_size_bytes,
+  positive_byte_size_from_count,
+  positive_measure_count,
+}
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
@@ -75,19 +83,19 @@ import product.p4261.k1_a { p4261_k1_layout }
 // product.electrical.photograph: nothing in the product layer needs to count frames by origin, and a
 // function that only a test reads is test code, which belongs with the test (DESIGN §3c). The split still
 // matters -- the captured frames are the evidence and the generated views are our own drawings -- so the
-// census below keeps them apart rather than counting 91 rows as 91 pieces of evidence.
+// census below keeps them apart rather than counting 201 rows as 201 pieces of evidence.
 fn captured_frames(store: List<Photograph>) -> List<Photograph> {
-  filter(store, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false })
+  filter(store, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false })
 }
 
 fn generated_views(store: List<Photograph>) -> List<Photograph> {
-  filter(store, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => false GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => true })
+  filter(store, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => false GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => true })
 }
 
 fn frames_showing(store: List<Photograph>, shown: PhotographSurface) -> List<Photograph> {
   filter(captured_frames(store), p => match p.origin {
     CapturedFrame { surface, capture: _, taken_on: _ } => surface == shown
-    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
   })
 }
 
@@ -101,7 +109,7 @@ fn frames_without_a_named_face(store: List<Photograph>) -> List<Photograph> {
       TopSurface => false
       BottomSurface => false
     }
-    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
   })
 }
 
@@ -117,7 +125,7 @@ fn rows_for(board: PhysicalAssetIdentity) -> List<Photograph> {
 fn frames_captured_by(store: List<Photograph>, device: CaptureDevice) -> List<Photograph> {
   filter(captured_frames(store), p => match p.origin {
     CapturedFrame { surface: _, capture, taken_on: _ } => capture == device
-    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
   })
 }
 
@@ -135,7 +143,7 @@ fn device_is_silent(capture: CaptureDevice) -> Bool {
 fn frames_with_a_silent_device(store: List<Photograph>) -> List<Photograph> {
   filter(captured_frames(store), p => match p.origin {
     CapturedFrame { surface: _, capture, taken_on: _ } => device_is_silent(capture: capture)
-    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
   })
 }
 
@@ -191,11 +199,11 @@ fn reading_off_frame(designator: NonEmptyStr, citation: PhotographCitation) -> D
 }
 
 fn first_captured_frame() -> Photograph? {
-  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false })
+  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false })
 }
 
 fn first_generated_image() -> Photograph? {
-  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => false GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => true })
+  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => false GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => true })
 }
 
 // ── THE STORE ────────────────────────────────────────────────────────────────
@@ -226,7 +234,7 @@ test fn the_store_holds_the_atlas_receipts() -> Bool {
     && count(frames_captured_by(store: held, device: AndonstarSdCardSensor)) == 110
     && count(frames_with_a_silent_device(store: held)) == 55
     && match e1_photograph(manifest_first_top_frame) {
-      Present { value } => positive_byte_size_bytes(size: value.bytes) == 2108657
+      Present { value } => byte_size_count(positive_byte_size_bytes(size: value.bytes)) == 2108657
         && (value.store.folder_name as String) == "E1/photos_top"
       Absent => false
     }
@@ -236,6 +244,44 @@ test fn the_store_holds_the_atlas_receipts() -> Bool {
 // resolve separately; if the lookup read the folder path or the name, this goes red -- which is the
 // failure mode the store exists to prevent, since a re-export reuses names and a reading would then rest
 // on somebody else's pixels while citing a frame that looks correct.
+// A store row claims a FILE sits at a Drive path, so a length of nothing is a lie rather than a
+// measurement -- and after this change it is also unwritable: `PositiveByteSize` stores a
+// `PositiveMeasureCount`, whose single constructor is a successor, so no literal of it can say zero and the
+// red "a zero-sized frame was stored" CANNOT be authored. What can be authored, and is here, is the other
+// half of the claim: the path a receipt takes off a wire refuses a zero instead of storing one. Before the
+// change `PositiveByteSize { size: byte_size(count: 0) }` was a writable literal of a "positive" size, a
+// brand with no construction behind it (DESIGN §4b).
+test fn a_frame_cannot_claim_a_file_of_no_length() -> Bool {
+  // Zero has no constructor of its own: `PositiveByteSize` holds a `PositiveMeasureCount`, whose one
+  // constructor is a successor over a Nat, so no row can write `bytes: 0` at all. The only way to
+  // author the refusal is through the Int constructor, which must refuse.
+  match positive_byte_size(count: 0) {
+    PositiveByteSizeBuilt { size } => false
+    PositiveByteSizeRefused { cause } => cause.observed == 0
+  }
+    // and one byte is expressible and keeps its number, so the refusal above is about zero and not
+    // about the path being broken
+    && match positive_byte_size(count: 1) {
+      PositiveByteSizeBuilt { size } =>
+        byte_size_count(b: positive_byte_size_bytes(size: size)) == 1
+      PositiveByteSizeRefused { cause } => false
+    }
+}
+
+// A DRAWING OWES ITS LINEAGE. The operator's ruling: a derived overlay is review output, not evidence,
+// and it must say which atlas snapshot drew its annotations. `citation_verdict` already refuses one as
+// grounding; this pins the other half -- every drawn view in the store names the snapshot it came from,
+// and the nine of them are not silently counted among the 192 pieces of evidence.
+test fn a_drawing_names_the_snapshot_that_drew_it() -> Bool {
+  let views = generated_views(rows_for(board: p4261_e1_layout.asset))
+  length(views) == 9
+    && views.all(p => match p.origin {
+         GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision } =>
+           atlas_revision == "2026-11-03b"
+         CapturedFrame { surface: _, capture: _, taken_on: _ } => false
+       })
+}
+
 // Batch 5, the SD-card frames, keeps the two things that make it a different kind of evidence from the
 // screen captures: it says the ANDONSTAR WROTE IT FROM ITS OWN SENSOR (a screen capture and a sensor
 // capture are different grains, and a claim about legibility has to say which it read), and it carries the
@@ -254,7 +300,7 @@ test fn the_sd_batch_says_the_sensor_wrote_it_on_the_day_the_operator_gave() -> 
     && count(filter(sd, p => match p.origin {
       CapturedFrame { surface: _, capture: _, taken_on: CapturedOn { on } } => (on as String) == "2026-11-03"
       CapturedFrame { surface: _, capture: _, taken_on: CaptureDateUnrecorded { obligation: _ } } => false
-      GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false
+      GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
     })) == 110
     // Not one SD frame was filed under the screen, the phone, or a silent device.
     && count(frames_captured_by(store: sd, device: AndonstarMicroscopeScreen)) == 0
@@ -270,11 +316,11 @@ test fn identity_is_the_bytes_and_not_the_file_name() -> Bool {
     && count(distinct_by_key(frames, p => p.content.hex as String)) == 2
     && !sha256_digest_eq(a: a, b: b)
     && match photograph_in_store(store: frames, content: a) {
-      Present { value } => positive_byte_size_bytes(size: value.bytes) == 100000
+      Present { value } => byte_size_count(positive_byte_size_bytes(size: value.bytes)) == 100000
       Absent => false
     }
     && match photograph_in_store(store: frames, content: b) {
-      Present { value } => positive_byte_size_bytes(size: value.bytes) == 100200
+      Present { value } => byte_size_count(positive_byte_size_bytes(size: value.bytes)) == 100200
       Absent => false
     }
 }
@@ -305,7 +351,7 @@ test fn a_citation_to_bytes_the_store_holds_is_checkable() -> Bool {
     Present { value: frame } => match cite(store: e1_photographs, citation: InStore { content: frame.content, region: Absent }, judged: p4261_e1_layout.asset) {
       CheckableAgainstStoredBytes { surface, region: _ } => match frame.origin {
         CapturedFrame { surface: shot, capture: _, taken_on: _ } => surface == shot
-        GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false
+        GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
       }
       _ => false
     }

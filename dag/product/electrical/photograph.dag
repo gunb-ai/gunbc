@@ -28,6 +28,9 @@ import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity
 // what the board carries, because we drew them from the readings. `GeneratedImage` keeps them addressable
 // and `citation_verdict` refuses them as grounding: an image cannot corroborate what it was drawn
 // from. This is the atlas manifest's own caveat ("derived (not evidence on its own)") in the model.
+// Each one names the atlas snapshot whose annotations it carries, and keeps two dates apart: the day
+// the view was drawn, and the capture day of the pixels underneath it, which belongs to the raw
+// capture and is not this row's to invent.
 
 // WHICH FACE OF THE CARRIER A FRAME SHOWS. Said of the frame, not of a part: which face a component sits
 // on is product.p4261.carrier's BoardSide, judged from the board. This is what the camera was pointed at.
@@ -65,7 +68,12 @@ type CaptureDevice
 // ground one.
 type PhotographOrigin
   = CapturedFrame { surface: PhotographSurface, capture: CaptureDevice, taken_on: PhotographDate }
-  | GeneratedImage { depicts: NonEmptyStr, drawn_by: NonEmptyStr, drawn_on: NonEmptyStr }
+  | GeneratedImage {
+      depicts: NonEmptyStr,
+      drawn_by: NonEmptyStr,
+      drawn_on: NonEmptyStr,
+      atlas_revision: NonEmptyStr,
+    }
 
 // WHERE THE BYTES ARE HELD, so a row can be re-checked rather than believed: a Drive folder and the name
 // inside it. The digest is what says the file there is the file this row is about.
@@ -138,7 +146,8 @@ fn cite(store: List<Photograph>, citation: PhotographCitation, judged: PhysicalA
           match value.origin {
             CapturedFrame { surface, capture: _, taken_on: _ } =>
               CheckableAgainstStoredBytes { surface: surface, region: region }
-            GeneratedImage { depicts, drawn_by: _, drawn_on: _ } => frame_is_our_own_drawing(depicts: depicts)
+            GeneratedImage { depicts, drawn_by: _, drawn_on: _, atlas_revision: _ } =>
+              frame_is_our_own_drawing(depicts: depicts)
           }
         } else {
           frame_depicts_another_board(content: content, depicted_on: value.board)

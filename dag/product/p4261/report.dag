@@ -28,6 +28,7 @@ import extdeps.electronic_component.types {
   DrainSourceMaximum,
   DrivenByThePart,
   ElectronicComponentRow,
+  designator_text,
   FuseInterruptRating,
   gate_pin_standing,
   GateInputPin,
@@ -1253,7 +1254,7 @@ fn compared_side_text(s: ComparedSide) -> String {
 fn population_comparison_text(c: P4261Comparison) -> String {
   join([
     "at the designators both revisions' silkscreens carry (a shared label, not an established circuit correspondence): ",
-    join(map(c.positions, p => join([p.designator as String, " as received ", comparison_conclusion_text(c: p.observed), " (", compared_side_text(s: p.e1), "; ", compared_side_text(s: p.k1), ")"], "")), "; "),
+    join(map(c.positions, p => join([designator_text(designator: p.designator) as String, " as received ", comparison_conclusion_text(c: p.observed), " (", compared_side_text(s: p.e1), "; ", compared_side_text(s: p.k1), ")"], "")), "; "),
     ". Not covered: ", to_string(count(c.e1.uncovered)), " components observed on ", c.e1.asset as String, " and ", to_string(count(c.k1.uncovered)), " on ", c.k1.asset as String,
     " have no admitted designator reading, and ", to_string(count(c.e1.refused) + count(c.k1.refused)), " readings were refused",
   ], "")
@@ -1526,9 +1527,9 @@ fn no_net_assessments() -> List<NetPropositionAssessment> {
 // propositions it argues about. They are hypotheses, not derivations; nothing reads their prose.
 fn hypothesis_class_text(c: HypothesisClass) -> String {
   match c {
-    DesignRelationRemainder { positions } => if count(positions) == 0 { "about the board's design, not yet modeled" } else { join(["about the board's design at ", join(map(positions, p => p.designator as String), ", "), ", not yet modeled"], "") }
+    DesignRelationRemainder { positions } => if count(positions) == 0 { "about the board's design, not yet modeled" } else { join(["about the board's design at ", join(map(positions, p => designator_text(designator: p.designator) as String), ", "), ", not yet modeled"], "") }
     SpecimenDiagnostic { asset } => join(["about ", asset as String, " as we hold it"], "")
-    DesignAndSpecimen { positions, asset } => join(["about the board's design at ", join(map(positions, p => p.designator as String), ", "), " and about ", asset as String, " as we hold it"], "")
+    DesignAndSpecimen { positions, asset } => join(["about the board's design at ", join(map(positions, p => designator_text(designator: p.designator) as String), ", "), " and about ", asset as String, " as we hold it"], "")
   }
 }
 

@@ -16,7 +16,7 @@ import extdeps.nvidia.p4261.population {
   p4261_e1_positions,
   p4261_k1_positions,
 }
-import extdeps.electronic_component.types { ElectronicComponentRow, electronic_component_row_eq }
+import extdeps.electronic_component.types { ElectronicComponentRow, electronic_component_row_eq , designator_eq, designator_of }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, component_identity_eq, component_local_label }
 import product.electrical.photograph { Broken, Checkable, CitationStanding, CitationVerdict, Gap, Photograph, PhotographCitation, citation_verdict, cite }
@@ -557,7 +557,7 @@ fn outcome_of(claim: PopulatedPart, s: ScopedObservations) -> PopulationOutcome 
 }
 
 fn same_position(a: P4261DesignPosition, b: P4261DesignPosition) -> Bool {
-  p4261_revision_eq(a: a.position.revision, b: b.position.revision) && (a.position.designator as String) == (b.position.designator as String)
+  p4261_revision_eq(a: a.position.revision, b: b.position.revision) && designator_eq(a: a.position.designator, b: b.position.designator)
 }
 
 fn unattributed(position: P4261DesignPosition, layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>) -> AttributionGap? {
@@ -669,7 +669,7 @@ type InventoryAssessment {
 }
 
 fn same_p4261_position(a: P4261Position, b: P4261Position) -> Bool {
-  p4261_revision_eq(a: a.revision, b: b.revision) && (a.designator as String) == (b.designator as String)
+  p4261_revision_eq(a: a.revision, b: b.revision) && designator_eq(a: a.designator, b: b.designator)
 }
 
 fn census_evidence(c: ConnectorPositionCensus) -> EvidenceRef {
@@ -711,7 +711,7 @@ fn assess_contact_inventory(claim: P4261ContactInventory, layout: CarrierLayoutO
 
 // The board's revision's J20 inventory claim, if any, assessed on this board's own records.
 fn j20_inventory_assessment(layout: CarrierLayoutObservation) -> InventoryAssessment? {
-  match (filter(p4261_contact_inventories, c => p4261_revision_eq(a: c.position.revision, b: layout.revision) && (c.position.designator as String) == "J20")).first() {
+  match (filter(p4261_contact_inventories, c => p4261_revision_eq(a: c.position.revision, b: layout.revision) && designator_eq(a: c.position.designator, b: designator_of(verbatim: "J20")))).first() {
     Absent => Absent
     Present { value: c } => Present { value: assess_contact_inventory(claim: c, layout: layout, admitted: admit_correspondence(layout: layout).admitted) }
   }
@@ -738,7 +738,7 @@ type RecountStanding
   | RecountNotEstablished { gap: RecountGap, observed: ObservedInventory }
 
 fn at_j20(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>) -> List<SpecimenPosition> {
-  filter(admitted, s => p4261_revision_eq(a: s.position.position.revision, b: layout.revision) && (s.position.position.designator as String) == "J20")
+  filter(admitted, s => p4261_revision_eq(a: s.position.position.revision, b: layout.revision) && designator_eq(a: s.position.position.designator, b: designator_of(verbatim: "J20")))
 }
 
 fn j20_recount(layout: CarrierLayoutObservation) -> RecountStanding {

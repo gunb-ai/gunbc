@@ -203,7 +203,7 @@ test fn the_least_of_nothing_is_nothing() -> Bool {
 // A frame the store holds, taken from the store itself rather than typed in here: if this witness named a
 // digest by hand, the store could drift away from it and the tests below would still pass.
 fn a_stored_frame() -> Photograph? {
-  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _ } => false })
+  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false })
 }
 
 // Bytes no atlas receipt produced: the shape of a guessed digest, or of a K1 frame cited to the E1 store.

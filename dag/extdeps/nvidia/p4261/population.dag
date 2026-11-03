@@ -3,7 +3,13 @@ module extdeps.nvidia.p4261.population
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
-import extdeps.electronic_component.types { ElectronicComponentRow }
+import extdeps.electronic_component.types {
+  Designator,
+  ElectronicComponentRow,
+  designator_eq,
+  designator_of,
+  designator_text,
+}
 import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_10cx085yf672e6g }
 import extdeps.electronic_component.microchip_cec1736 { cec1736 }
 import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
@@ -42,9 +48,11 @@ import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1, p4261_r
 //
 // The extdeps -> product import (PrintedRating) reuses the generic electrical vocabulary in place
 // (approved for Stage B): acyclicity is the import graph's only law (DESIGN 3).
+// A position IS its revision plus its designator's exact spelling: the field carries the `Designator`
+// authority, so a position cannot be built from text that was tidied on the way in.
 type P4261Position {
   revision: P4261AssemblyRevision
-  designator: NonEmptyStr
+  designator: Designator
 }
 
 // What a reconstructed claim says the position is populated with. PartConstrainedToRows says the part
@@ -65,8 +73,23 @@ type P4261DesignPosition {
   population: PopulationClaim?
 }
 
+// The only way a position is minted: from the text as read, lifted into the identity type unchanged.
 fn p4261_position(revision: P4261AssemblyRevision, designator: NonEmptyStr) -> P4261Position {
-  P4261Position { revision: revision, designator: designator }
+  P4261Position { revision: revision, designator: designator_of(verbatim: designator) }
+}
+
+// What our reconstruction says about one designator, looked up by EXACT spelling. Consumers ask this
+// instead of casting a designator to text and comparing: a search by a tidied key (underscores gone,
+// case folded) would answer for a position NVIDIA may not have, and an invented position is a
+// fabricated design fact. A miss is Absent, and the caller says so rather than guessing.
+fn p4261_position_at(
+  positions: List<P4261DesignPosition>,
+  verbatim: NonEmptyStr
+) -> P4261DesignPosition? {
+  (filter(
+    positions,
+    p => designator_eq(a: p.position.designator, b: designator_of(verbatim: verbatim))
+  )).first()
 }
 
 fn bom_obligation(revision: P4261AssemblyRevision, designator: NonEmptyStr) -> NonEmptyStr {

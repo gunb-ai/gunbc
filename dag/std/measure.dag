@@ -299,12 +299,14 @@ type ByteSize = Measure<Memory, One, Nat>
 
 // A ByteSize known to be more than nothing, for a field where a zero would be a lie rather than a
 // measurement: the length of a document a store holds, the payload a receipt reports. The quantity
-// stays std.measure's own ByteSize, so a file's length and a drive's capacity are the same kind of
-// number under one scale table; what the wrapper adds is that no consumer has to ask whether the
-// count is zero before dividing by it. Positivity comes from the Peano count beside it, never from
-// a check a caller might skip -- which is why there is no `Nat` constructor here.
+// stays std.measure's own ByteSize -- a file's length and a drive's capacity are the same kind of number
+// under one scale table -- and positivity is in the FIELD'S TYPE: `PositiveMeasureCount` has exactly one
+// constructor, `PositiveMeasureSuccessor { predecessor: Nat }`, so no literal of this type can say zero
+// bytes. The ByteSize is derived on request by `positive_byte_size_bytes`; storing one would have made
+// positivity a brand, `PositiveByteSize { size: byte_size(count: 0) }` writable by anyone, which is a
+// check wearing a type (DESIGN §4b).
 type PositiveByteSize {
-  size: ByteSize
+  count: PositiveMeasureCount
 }
 
 type PositiveByteSizeBuild
@@ -1403,7 +1405,7 @@ fn byte_size_count(b: ByteSize) -> Nat {
 // through the Build, which says which way it went, so a receipt read off a wire never silently
 // becomes a length.
 fn positive_byte_size_from_count(count: PositiveMeasureCount) -> PositiveByteSize {
-  PositiveByteSize { size: byte_size(count: positive_measure_count_nat(count)) }
+  PositiveByteSize { count: count }
 }
 
 fn positive_byte_size(count: Int) -> PositiveByteSizeBuild {
@@ -1415,8 +1417,10 @@ fn positive_byte_size(count: Int) -> PositiveByteSizeBuild {
   }
 }
 
-fn positive_byte_size_bytes(size: PositiveByteSize) -> Nat {
-  byte_size_count(size.size)
+// The length, as the unit-carrying quantity it is. Derived from the positive count, which is the only
+// thing this type stores -- so the number a caller sees cannot have been written past the proof.
+fn positive_byte_size_bytes(size: PositiveByteSize) -> ByteSize {
+  byte_size(count: positive_measure_count_nat(size.count))
 }
 
 fn bit_width(count: Nat) -> BitWidth {
