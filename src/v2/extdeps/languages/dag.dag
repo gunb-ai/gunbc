@@ -1860,7 +1860,8 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
 // head, which v2's grammar cannot read, so v2 separates them by POSITION: at a condition head (if
 // condition, match scrutinee) the record arm of the ident suffix carries
 // and_predicate(expr_continuation_head) -- the record is admitted only when its residue continues
-// with the block brace or an infix operator; when a new statement would start after the braces the
+// with a continuation head (block brace, infix row, or postfix suffix head); when a new statement
+// would start after the braces the
 // peek refuses the arm, the name parses bare, and the braces fall to the if-block (v1 02_parse
 // parse_expr_bp_no_brace realizes the same separation as a re-parse retry; v2 states it as one
 // grammar production both executors read). Every other record keeps its place, including
@@ -2037,17 +2038,22 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   dag_grammar_primary_ident_suffix_builder(record_arm: dag_grammar_record_literal_arm_expr())
 }
 
-// THE CONTINUATION HEAD SET: tokens that can legally FOLLOW a complete condition expression --
-// the `{` of the if/match block, or the first token of an infix operator that continues the
-// expression. Derived from ONE authority: the `{` terminal plus the token classes of
-// dag_infix_operators() itself, so a new operator row extends the peek without a second edit
-// (v1 02_parse parse_expr_bp_no_brace tests the same set -- '{' or an operator class -- before it
-// abandons a record read back to a bare head). The `-` row enters ONLY newline-aware: a `-` that
-// begins a line after a complete operand never continues the expression (the same guard the infix
-// table applies, dag_grammar_additive_newline_minus_guard, #12817), so it must not admit a record
-// either. Postfix heads (dot, index, call, as, is) are
-// DELIBERATELY EXCLUDED, matching the seed's set exactly; any widening is a stated divergence
-// needing per-head claims (grammar-owner review).
+// THE CONTINUATION HEAD SET: exactly the tokens the ORDINARY postfix chain can continue with
+// after a complete expression -- the `{` of the if/match block, the first token of any infix row
+// (the classes of dag_infix_operators() itself, so a new operator row extends the peek without a
+// second edit), and the first token of any postfix suffix: `.`, `as`, `is`, or a newline-guarded
+// `[` index. The peek set MUST equal the postfix repeat's head set (dag_grammar_postfix_expr_-
+// builder): a record the ordinary chain would keep may not be refused at a condition head --
+// corpus datum match R { ... }.totalUpdatedCells { ... } (test/claim/
+// review_sheet_converge_witness.dag:1745, green on main; control
+// record_scrutinee_dot_still_parses_holds). The seed's retry set ('{' or an operator class,
+// v1 02_parse parse_expr_bp_no_brace) is NARROWER and misses the postfix heads; that hole is the
+// divergence the grammar-owner directed, not a behavior to copy. `-` and `[` enter ONLY
+// newline-aware, mirroring dag_grammar_additive_newline_minus_guard and
+// dag_grammar_postfix_index_suffix_expr (#12817): a line-initial `-` or `[` never continues the
+// operand, so neither may admit a record. Call `(` is NOT a head: the call suffix lives inside
+// the ident suffix BEFORE the record arm (dag_grammar_primary_ident_suffix_builder), so after a
+// record the postfix repeat admits no `(`.
 fn dag_grammar_expr_continuation_head_expr() -> GrammarExpr {
   fold(
     dag_infix_operators(),
@@ -2104,8 +2110,8 @@ fn dag_grammar_expr_continuation_minus_head_expr() -> GrammarExpr {
 
 // THE CONDITION-POSITION IDENT SUFFIX: same optional call-or-record shape as
 // dag_grammar_primary_ident_suffix_expr, with the record arm admitted only when its residue
-// continues with the block brace or an infix operator -- the positive-lookahead dual
-// and_predicate over the derived continuation heads. When the peek refuses, the optional accepts
+// continues with a continuation head -- the positive-lookahead dual and_predicate over the
+// derived heads (block brace, infix rows, postfix suffix heads; see the head-set comment). When the peek refuses, the optional accepts
 // empty, the name parses bare, and the braces belong to the enclosing if-block or match arm. The
 // arm carries NO '{name}+ else' guard: the peek subsumes it (a brace run ending before ELSE ends
 // outside the continuation set), which also frees the then-branch record `if c then R { s } else d`
