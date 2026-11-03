@@ -6,7 +6,7 @@ import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac
-import extdeps.bmc.megarac { megarac_firmware_0_32 }
+import extdeps.bmc.megarac { megarac_firmware_0_32, media_row_named_medium }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
@@ -1682,7 +1682,18 @@ fn configuration_row_reading(
                       ConfigurationRowIdle
                     }
                   } else {
-                    match megarac_redirection_status_of_row(firmware: firmware, wire: wire, session_index: session_index) {
+                    // THE MEDIUM THE ROW NAMES, TYPED. The controller answers the empty string when a row
+                    // names no image, and `none` is what this repository keeps for that: the fold below
+                    // promotes an unread code only for a row that names no medium, and that distinction --
+                    // an empty answer versus no medium at all -- is what the byte-level reading of boot run
+                    // 41573858366 actually carried (its row named nothing).
+                    let named_medium = media_row_named_medium(name: name)
+                    match megarac_redirection_status_of_row(
+                      firmware: firmware,
+                      wire: wire,
+                      session_index: session_index,
+                      image_name: named_medium,
+                    ) {
                       RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadFirmware { firmware: f, wire: w } }
                       RedirectionStatusKnown { firmware: f, status: status } =>
                         match status {

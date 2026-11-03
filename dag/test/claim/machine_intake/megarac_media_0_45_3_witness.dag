@@ -12,6 +12,7 @@ import extdeps.bmc.megarac {
   megarac_redirection_status_of_wire,
   megarac_redirection_status_of_row,
   megarac_no_redirection_session_index,
+  media_row_named_medium,
   megarac_redirection_presentation_standing,
   RedirectionStatusKnown,
   RedirectionStatusFirmwareUncatalogued,
@@ -40,6 +41,7 @@ import gunbc.megarac_media_model {
 import extdeps.external_authority { TranscribedUncited }
 import gunbc.machine_intake.megarac_media_row_reading {
   boot_run_40258937016_end_media_row, boot_run_40264233543_end_media_row,
+  boot_run_41573858366_end_media_row,
   boot_run_40258937016_started_session_marker, mtcollins1_cd_row_ui_attestation,
   attestation_labels_a_stopped_and_ejected_row, attestation_and_read_name_the_same_row,
   reads_agree_on_the_ejected_row,
@@ -745,11 +747,11 @@ test fn w_the_ejected_row_triple_is_stopped_on_the_release_the_controller_report
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
-      match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+      match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
         RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
-      && match megarac_redirection_status_of_row(firmware: megarac_firmware_0_45_reported, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+      && match megarac_redirection_status_of_row(firmware: megarac_firmware_0_45_reported, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
         RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_reported)
         _ => false
       }
@@ -772,11 +774,11 @@ test fn w_code_16_beside_an_active_session_is_still_an_unread_code() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
-      match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: Present { value: boot_run_40258937016_started_session_marker.session_index }) {
+      match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: Present { value: boot_run_40258937016_started_session_marker.session_index }, image_name: Present { value: boot6_leftover_iso }) {
         RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
-      && match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: none) {
+      && match megarac_redirection_status_of_row(firmware: read, wire: 16, session_index: none, image_name: Present { value: boot6_leftover_iso }) {
         RedirectionStatusKnown { firmware: _, status: RedirectionWireUncatalogued { wire: w } } => w == 16
         _ => false
       }
@@ -795,13 +797,13 @@ test fn w_code_16_beside_an_active_session_is_still_an_unread_code() -> Bool {
 // know answers by release, not by code. Same triple, other releases, no knowledge -- so the grounding
 // cannot drift into a default.
 test fn w_code_16_is_not_catalogued_on_the_releases_that_never_reported_it() -> Bool {
-  match megarac_redirection_status_of_row(firmware: megarac_firmware_0_32, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+  match megarac_redirection_status_of_row(firmware: megarac_firmware_0_32, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
     RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_32)
     _ => false
-  } && match megarac_redirection_status_of_row(firmware: megarac_firmware_0_45_3, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+  } && match megarac_redirection_status_of_row(firmware: megarac_firmware_0_45_3, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
     RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_3)
     _ => false
-  } && match megarac_redirection_status_of_row(firmware: firmware_0_99, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
+  } && match megarac_redirection_status_of_row(firmware: firmware_0_99, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
     RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: firmware_0_99)
     _ => false
   }
@@ -810,7 +812,10 @@ test fn w_code_16_is_not_catalogued_on_the_releases_that_never_reported_it() -> 
 // THE TWO RELEASES REPORT DIFFERENT WIRES FOR A ROW THAT IS NOT PRESENTING, AND NEITHER MEANING TRAVELS.
 // The reads are the source, not a typed status: at the release the committed hpm check names, 16 beside the
 // marker is Stopped; the same row shape at 0.32 -- which never reported 16 -- is an unread code; the wire the
-// 2026-09-05 probe saw for a non-presenting drive (0) is Stopped at 0.32 and an unread code at this build. So
+// 2026-09-05 probe saw for a non-presenting drive (0) is Stopped at 0.32 and -- for a row that NAMES a
+// medium, which is what the probe read -- an unread code at this build (the row that names NO medium at 0 is
+// a separate claim, and it is Stopped: see
+// w_the_row_that_named_no_medium_at_zero_is_stopped_on_the_release_the_controller_reports). So
 // no status here is a default, and a world that pairs one release's wire with a route asking at the other
 // gets a refusal rather than a silent substitution -- which is exactly how a fixture error shows up. The last
 // group ties the two row receipts to the same machine's boot lane as the committed hpm read that names the
@@ -819,11 +824,21 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
-      match megarac_redirection_status_of_row(firmware: read, wire: boot_run_40264233543_end_media_row.redirection_status, session_index: Present { value: boot_run_40264233543_end_media_row.session_index }) {
+      match megarac_redirection_status_of_row(
+        firmware: read,
+        wire: boot_run_40264233543_end_media_row.redirection_status,
+        session_index: Present { value: boot_run_40264233543_end_media_row.session_index },
+        image_name: boot_run_40264233543_end_media_row.image_name,
+      ) {
         RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
-      && match megarac_redirection_status_of_row(firmware: mtcollins1_identity.firmware, wire: boot_run_40264233543_end_media_row.redirection_status, session_index: Present { value: boot_run_40264233543_end_media_row.session_index }) {
+      && match megarac_redirection_status_of_row(
+        firmware: mtcollins1_identity.firmware,
+        wire: boot_run_40264233543_end_media_row.redirection_status,
+        session_index: Present { value: boot_run_40264233543_end_media_row.session_index },
+        image_name: boot_run_40264233543_end_media_row.image_name,
+      ) {
         RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
         _ => false
       }
@@ -831,7 +846,7 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
         RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
         _ => false
       }
-      && match megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }) {
+      && match megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }, image_name: Present { value: boot6_leftover_iso }) {
         RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
         _ => false
       }
@@ -840,6 +855,151 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
       && string_contains(s: boot_run_40264233543_end_media_row.artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-")
       && string_contains(s: mtcollins1_boot_run_40082618814_hpm_check_artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-")
   }
+}
+
+// THE ROW THAT STOPPED THE SEVENTH BOOT ATTEMPT, AS FAR AS IT WAS READ. Boot run 41573858366 ended with a
+// CD row that was PRESENT: media_type 1, media_index 0, the no-session marker, NO medium named, and
+// redirection_status 0 -- a code this release's wire table does not carry, which is what refused the attach.
+// This claim is the GREEN side of the second arm of megarac_redirection_status_of_row: on the release the
+// committed hpm check names, that row shape is admitted as STOPPED, and the fields pinned here are exactly
+// the ones the arm's guard reads. The receipt is the only evidence -- one attempt, one read -- so the claims
+// that follow pin what the arm must NOT reach: an active session, a named medium, an unread index, another
+// release. It also pins that this row cannot borrow code 16's operator attestation: the vendor page names a
+// medium, and this row names none, so attestation_and_read_name_the_same_row refuses it by construction.
+test fn w_the_row_that_named_no_medium_at_zero_is_stopped_on_the_release_the_controller_reports() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_redirection_status_of_row(
+        firmware: read,
+        wire: boot_run_41573858366_end_media_row.redirection_status,
+        session_index: Present { value: boot_run_41573858366_end_media_row.session_index },
+        image_name: boot_run_41573858366_end_media_row.image_name,
+      ) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      // THE READ ITSELF, pinned so the arm cannot be reached by a row nobody read.
+      && boot_run_41573858366_end_media_row.redirection_status == 0
+      && boot_run_41573858366_end_media_row.session_index == megarac_no_redirection_session_index
+      && boot_run_41573858366_end_media_row.media_type == 1
+      && boot_run_41573858366_end_media_row.media_index == 0
+      && match boot_run_41573858366_end_media_row.image_name {
+        Absent => true
+        Present { value: _ } => false
+      }
+      && string_contains(s: boot_run_41573858366_end_media_row.artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-41573858366/")
+      && boot_run_41573858366_end_media_row.run_id != boot_run_40264233543_end_media_row.run_id
+      // NOT CORROBORATED BY THE UI ATTESTATION, and that is said out loud rather than glossed: the page's
+      // reading is of a row naming the runner medium, so it speaks about 16's row and about this one not at
+      // all. An operator read of THIS row is what would corroborate it, and it is not yet held.
+      && !attestation_and_read_name_the_same_row(attestation: mtcollins1_cd_row_ui_attestation, read: boot_run_41573858366_end_media_row)
+  }
+}
+
+// RED: CODE 0 IS ADMITTED ONLY FOR THE ROW SHAPE THAT WAS READ. The three cases below are each one step
+// outside the single reading, and each must stay an unread code: 0 beside the ONLY session index this
+// repository has ever read as live at this build; 0 beside the marker on a row that NAMES a medium (what the
+// 2026-09-05 probe read was a named drive, and a row presenting an image is not the leftover row that was
+// read); and 0 on a row whose reading carried no session index at all, which is not the marker. Were the arm
+// written as "0 means stopped", all three would pass by construction -- and a boot would be licensed over a
+// row that may be presenting.
+test fn w_code_0_is_admitted_only_for_the_row_shape_that_was_read() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match megarac_redirection_status_of_row(
+        firmware: read,
+        wire: 0,
+        session_index: Present { value: boot_run_40258937016_started_session_marker.session_index },
+        image_name: Absent,
+      ) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } =>
+          w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      && match megarac_redirection_status_of_row(
+        firmware: read,
+        wire: 0,
+        session_index: Present { value: megarac_no_redirection_session_index },
+        image_name: Present { value: boot6_leftover_iso },
+      ) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } =>
+          w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      && match megarac_redirection_status_of_row(
+        firmware: read,
+        wire: 0,
+        session_index: none,
+        image_name: Absent,
+      ) {
+        RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } =>
+          w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
+        _ => false
+      }
+      // AND THE MEDIUM SPELLING IS THE CONTROLLER'S OWN, not a caller's convenience: "" is no medium, and a
+      // row that answers a name is a different row. This is the same fold the production gate uses, so the
+      // gate and this claim cannot drift on the case that decides a boot.
+      && match media_row_named_medium(name: "") {
+        Absent => true
+        Present { value: _ } => false
+      }
+      && match media_row_named_medium(name: boot6_leftover_iso as String) {
+        Present { value: named } => (named as String) == (boot6_leftover_iso as String)
+        Absent => false
+      }
+  }
+}
+
+// CODE 0 IS NOT CARRIED TO A RELEASE THAT NEVER READ IT, AND 0.32 KEEPS ITS OWN REASON. The page label
+// "0.45.3" is not a key of the table at all and a release the corpus does not know answers by release, so
+// both fall through to the wire table and answer UNCATALOGUED for this row shape. 0.32 answers Stopped at 0
+// THROUGH ITS OWN TABLE -- which is the ground the inference leans on, and it does so with no session index
+// and no medium at all, so the arm here is not what makes 0.32 stopped. Three releases, three different
+// reasons, and none of them a default.
+test fn w_code_0_is_not_carried_to_the_releases_that_never_read_it() -> Bool {
+  match megarac_redirection_status_of_row(
+    firmware: megarac_firmware_0_45_3,
+    wire: 0,
+    session_index: Present { value: megarac_no_redirection_session_index },
+    image_name: Absent,
+  ) {
+    RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } =>
+      w == 0 && bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_3)
+    _ => false
+  } && match megarac_redirection_status_of_row(
+    firmware: firmware_0_99,
+    wire: 0,
+    session_index: Present { value: megarac_no_redirection_session_index },
+    image_name: Absent,
+  ) {
+    RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } =>
+      w == 0 && bmc_firmware_release_identity_eq(a: f, b: firmware_0_99)
+    _ => false
+  } && match megarac_redirection_status_of_row(
+    firmware: megarac_firmware_0_32,
+    wire: 0,
+    session_index: none,
+    image_name: Absent,
+  ) {
+    RedirectionStatusKnown { firmware: f, status: RedirectionStopped } =>
+      bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_32)
+    _ => false
+  }
+}
+
+// THE DIGEST THE RECEIPT CARRIES, WRITTEN ONCE. The receipt names the diagnostics file it was read from and
+// carries a digest; this claim is the place in the corpus where that hex is written, so the receipt cannot
+// quietly change what it claims to be a reading of. The artifact dir ships the conventional SHA256SUMS ledger
+// beside the file, which is what turns the binding into a check a reviewer can run (`sha256sum -c
+// SHA256SUMS` in that directory): if the bytes on disk and the receipt's digest ever part company, the
+// GREEN above stops meaning what it says.
+test fn w_the_boot_seven_row_receipt_carries_the_diagnostics_files_own_sha256() -> Bool {
+  (boot_run_41573858366_end_media_row.artifact_sha256 as String)
+    == "838a763be6c8abee7cf592ffa1f348310cb4041fd4abe8eb03d9154cc29c833e"
+    && string_contains(s: boot_run_41573858366_end_media_row.artifact_path as String, pattern: "mtcollins1-boot-diagnostics.txt")
+    && string_contains(s: boot_run_41573858366_end_media_row.artifact_lines as String, pattern: "2062")
 }
 
 // THE WORLD THE BOOT RUNS AGAINST PUTS THE SUPPLIED RELEASE'S WIRE IN ITS CD ROW, AND THE PAIRING IS NOT
@@ -858,11 +1018,21 @@ test fn w_the_boot_fixture_renders_the_cleared_cd_on_the_wire_the_current_build_
       megarac_cleared_cd_at_the_current_build().redirection_status == boot_run_40264233543_end_media_row.redirection_status
         && megarac_cleared_cd_at_the_current_build().session_index == boot_run_40264233543_end_media_row.session_index
         && boot_run_40258937016_end_media_row.redirection_status == boot_run_40264233543_end_media_row.redirection_status
-        && match megarac_redirection_status_of_row(firmware: read, wire: megarac_cleared_cd_at_the_current_build().redirection_status, session_index: Present { value: megarac_cleared_cd_at_the_current_build().session_index }) {
+        && match megarac_redirection_status_of_row(
+          firmware: read,
+          wire: megarac_cleared_cd_at_the_current_build().redirection_status,
+          session_index: Present { value: megarac_cleared_cd_at_the_current_build().session_index },
+          image_name: media_row_named_medium(name: megarac_cleared_cd_at_the_current_build().image_name),
+        ) {
           RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: read)
           _ => false
         }
-        && match megarac_redirection_status_of_row(firmware: mtcollins1_identity.firmware, wire: megarac_cleared_cd_at_the_current_build().redirection_status, session_index: Present { value: megarac_cleared_cd_at_the_current_build().session_index }) {
+        && match megarac_redirection_status_of_row(
+          firmware: mtcollins1_identity.firmware,
+          wire: megarac_cleared_cd_at_the_current_build().redirection_status,
+          session_index: Present { value: megarac_cleared_cd_at_the_current_build().session_index },
+          image_name: media_row_named_medium(name: megarac_cleared_cd_at_the_current_build().image_name),
+        ) {
           RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
           _ => false
         }

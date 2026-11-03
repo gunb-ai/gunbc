@@ -317,6 +317,25 @@ fn megarac_redirection_status_of_wire(
 // "0.45"; the marker is not claimed for any other release.
 data megarac_no_redirection_session_index: Int = 255
 
+// HOW THIS CONTROLLER SPELLS "THE ROW NAMES NO MEDIUM". The media table's image_name member comes back as the
+// EMPTY STRING for a leftover row that names no image -- the controller has no word for absence here -- so
+// every reading of that answer in this repository becomes `none` and a non-empty answer becomes `Present`.
+// The distinction is not cosmetic: the row fold below promotes an unread code only for a row that names no
+// medium, so "" must not be able to pose as a name, and one site must spell it for the gate and the witness
+// alike.
+fn media_row_named_medium(name: String) -> NonEmptyStr? {
+  if name == "" {
+    Absent
+  } else {
+    Present { value: name as NonEmptyStr }
+  }
+}
+
+// WHAT A CODE MEANS FOR A ROW, AND ONLY AS FAR AS IT WAS READ. This fold has one arm per read TRIPLE it
+// holds evidence for, and the arm's guards are the shape of that evidence: release, wire, session marker,
+// and -- for code 0 -- whether the row names a medium at all. An arm fires only on the combination that was
+// actually read; everything else falls through to the wire table.
+//
 // WHAT CODE 16 MEANS, AND ONLY AS FAR AS IT WAS READ. On the release the controller reports ("0.45"), a
 // row that reads redirection_status 16 AND carries the no-session marker is the vendor's STOPPED - DEVICE
 // EJECTED state: the row is there, and it is NOT presenting. The reads that ground the triple, and the one
@@ -335,25 +354,58 @@ data megarac_no_redirection_session_index: Int = 255
 //     Stopped - Device Ejected, N/A". Typed as a dated attestation, not a machine read, and kept in the
 //     observing layer: a person reading a vendor page is an observation this repository makes, not a fact
 //     of the upstream product (DESIGN.md §3). It corroborates the state; it does not supply the code.
+// WHAT CODE 0 MEANS, AND ONLY AS FAR AS IT WAS READ. On the SAME reported release, a row that reads
+// redirection_status 0 AND carries the no-session marker AND NAMES NO MEDIUM is admitted as stopped. The
+// only reading of wire 0 on this release this repository holds is boot run 41573858366's end-of-attempt row,
+// retained as boot_run_41573858366_end_media_row in the observing layer: media_type 1, media_index 0,
+// session_index 255, image_name the controller's empty answer, redirection_status 0
+// (artifacts/bmc/mtcollins1-boot-run-41573858366/mtcollins1-boot-diagnostics.txt line 2062, and the
+// refusal that halted the attempt quotes the same row). The wire table above DELIBERATELY does not carry 0
+// for this release -- no 0.45 reading had returned it -- so this arm, not the table, is the whole of the
+// claim, and it is an INFERRED meaning rather than a vendor statement: what was read is that the row
+// PRESENTS 0 while naming nothing. Its grounds, none of them a citation to the vendor, are that 0 reads as
+// Stopped in the committed 0.32 table for this controller family (the wire == 0 branch of
+// megarac_redirection_status_of_wire's 0.32 arm), that 255 is the marker this same controller answers when
+// no redirection session is live (megarac_no_redirection_session_index, read on this release by boot run
+// 40258937016), and that the row carries no image at all -- a row naming no medium has nothing to present.
+// An operator read of the controller's own UI for this row, of the kind that corroborates code 16 as
+// mtcollins1_cd_row_ui_attestation does, is being sought and is NOT yet held.
 // WHAT IS NOT CLAIMED, and the SHAPE of this fold is what keeps the claim inside its evidence: 16 beside
 // an ACTIVE session index is not this state -- the only started session read at this build carried index 0
 // (boot_run_40258937016_started_session_marker) with status started -- so it stays an uncatalogued wire;
 // 16 on any other release stays uncatalogued (0.32 never returned 16); and a row whose reading did not
-// carry a session index is not promoted either. test.claim.machine_intake.megarac_media_0_45_3_witness
-// pins each of those separations.
+// carry a session index is not promoted either. The same four separations hold for 0, and one more: a row
+// that NAMES a medium was never read at 0 on this release, so naming anything at all keeps it uncatalogued.
+// test.claim.machine_intake.megarac_media_0_45_3_witness pins each of those separations.
+// THIS ARM LICENSES StartMedia. RedirectionStopped is what the attach lane reads as "known not presenting"
+// (megarac_redirection_presentation_standing), so a wrong promotion here is a boot started over a row that
+// may be live -- which is why the arm sits inside the read triple rather than in the wire table, and why
+// each side of it is pinned RED.
 fn megarac_redirection_status_of_row(
   firmware: BmcFirmwareReleaseIdentity,
   wire: Int,
   session_index: Int?,
+  image_name: NonEmptyStr?,
 ) -> MegaRacRedirectionStatusLookup {
   let no_session = match session_index {
     Present { value: i } => i == megarac_no_redirection_session_index
     Absent => false
   }
+  // EVERYTHING THIS FOLD HOLDS NO READING FOR IS ANSWERED BY THE WIRE TABLE, and the wire table is the only
+  // other place a code becomes a state.
+  let by_wire_table = megarac_redirection_status_of_wire(firmware: firmware, wire: wire)
   if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) && wire == 16 && no_session {
     RedirectionStatusKnown { firmware: firmware, status: RedirectionStopped }
+  } else if no_session && wire == 0 && bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) {
+    // THE ROW THAT WAS READ NAMED NO MEDIUM (media_row_named_medium spells the controller's empty answer as
+    // `none`): a row naming a medium was never read at 0 on this release and stays with the wire table. The
+    // medium is MATCHED, not converted to a flag -- the optional is itself the state that was read.
+    match image_name {
+      Absent => RedirectionStatusKnown { firmware: firmware, status: RedirectionStopped }
+      Present { value: _ } => by_wire_table
+    }
   } else {
-    megarac_redirection_status_of_wire(firmware: firmware, wire: wire)
+    by_wire_table
   }
 }
 
