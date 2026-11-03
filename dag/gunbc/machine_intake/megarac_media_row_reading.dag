@@ -65,9 +65,11 @@ data boot_run_40258937016_end_media_row: MegaRacMediaRowReceipt = MegaRacMediaRo
 // The upstream's fold answers 0 as an uncatalogued wire and goes no further -- the vendor's catalogue does not
 // name it (extdeps.bmc.megarac megarac_redirection_status_of_row). What this repository makes of the reading
 // lives with the reading, at gunbc.machine_intake.megarac_media_attach
-// megarac_status_zero_row_inference, and it is an INFERENCE rather than a state, because what was read is that
-// the row PRESENTS 0 while naming nothing, not that the controller calls 0 stopped on the release it runs. No
-// lane acts on the inference; an operator read of the vendor's own UI for this row is what would settle it. THE ATTEMPT WAS HALTED AT MEDIA ATTACH
+// megarac_status_zero_row_inference. The resemblance it carries there is an INFERENCE rather than a state,
+// because what was read is that the row PRESENTS 0 while naming nothing, not that the controller calls 0
+// stopped on the release it runs; the one arm of that fold that IS a state is the attested one, and it is
+// unreachable while mtcollins1_cd_row_ui_attestation_status_zero below is `none`. No lane acts on the
+// inference; an operator read of the vendor's own UI for this row is what would settle it. THE ATTEMPT WAS HALTED AT MEDIA ATTACH
 // BY THIS ROW: the lane would not stop it (it names no image, so nothing identifies it as this lane's) and 0
 // was not a code this release's catalogue named, so nothing was written, no session was started and the host
 // was never powered on. Committing this reading does not lift that refusal: the row is still unread to the
@@ -141,7 +143,12 @@ data boot_run_40258937016_started_session_marker: MegaRacSessionMarkerReceipt = 
 // above.
 type BmcMediaRowUiAttestation {
   row_label: NonEmptyStr
-  image_name: NonEmptyStr
+  // THE MEDIUM THE PAGE NAMES, OR NOTHING. A row whose image cell is blank is recorded as `none`, the way
+  // the machine read records it, and NOT as a transcription of the blank (an empty string, a dash, "N/A"):
+  // the pairing fold below compares the two readings' medium, and a placeholder matched against an empty
+  // read would be exactly the false agreement that licenses a boot on nothing. Whatever the page actually
+  // PRINTS in that cell is still worth keeping, and it goes in `detail_label`, which is never compared.
+  image_name: NonEmptyStr?
   state_label: NonEmptyStr
   detail_label: NonEmptyStr
   read_on_day: NonEmptyStr
@@ -150,32 +157,60 @@ type BmcMediaRowUiAttestation {
 
 data mtcollins1_cd_row_ui_attestation: BmcMediaRowUiAttestation = BmcMediaRowUiAttestation {
   row_label: "CD/DVD 0" as NonEmptyStr,
-  image_name: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" as NonEmptyStr,
+  image_name: Present { value: "gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso" as NonEmptyStr },
   state_label: "Stopped - Device Ejected" as NonEmptyStr,
   detail_label: "N/A" as NonEmptyStr,
   read_on_day: "2026-10-26" as NonEmptyStr,
   read_by: "operator" as NonEmptyStr,
 }
 
+// THE SAME KIND OF READING, FOR THE ROW THAT IS STILL A BET. The status-0 CD row boot run 41573858366 read
+// (boot_run_41573858366_end_media_row: code 0, the no-session marker, no medium named) has NO attestation
+// yet -- nobody has read the controller's page for a row that names no medium -- so
+// gunbc.machine_intake.megarac_media_attach megarac_status_zero_row_inference keeps answering with the bet,
+// which no lane acts on. THIS is the one missing piece of that promotion, and it is left as a typed absence
+// rather than filled in: it becomes Present { value: BmcMediaRowUiAttestation { ... } } when, and only when,
+// an operator records for THAT row whether the image cell is empty or what it prints (verbatim), the state
+// cell's words (attestation_labels_a_stopped_and_ejected_row requires both "Stopped" and "Ejected" -- if the
+// page's words are not those, the finding is reported, not the fold bent), the date, and the row label as the
+// page shows it. The fold it feeds decides whether a boot may start, so nothing here may be inferred
+// (DESIGN.md §4d).
+data mtcollins1_cd_row_ui_attestation_status_zero: BmcMediaRowUiAttestation? = none
+
+// THE VENDOR'S TWO WORDS FOR A ROW THAT IS PRESENTING NOTHING, spelled once. These are the controller
+// page's words, not the repository's; the refusal text in gunbc.machine_intake.megarac_media_attach quotes
+// the same two, so a rename that missed one of them would have the lane refuse a row for a reason the
+// diagnostic then misquotes.
+data megarac_stopped_ui_word: NonEmptyStr = "Stopped"
+
+data megarac_ejected_ui_word: NonEmptyStr = "Ejected"
+
 // DOES THE VENDOR'S LABEL DESCRIBE A ROW THAT IS NOT PRESENTING? Only two of the page's own words are
 // accepted, and BOTH are required: a row the page calls Stopped AND Ejected. Any other label -- "Connected",
 // "In Use", an empty cell, or a label that says stopped without saying ejected -- fails this, so an
 // attestation of some other state cannot be pushed through it to license a boot.
 fn attestation_labels_a_stopped_and_ejected_row(attestation: BmcMediaRowUiAttestation) -> Bool {
-  string_contains(s: attestation.state_label as String, pattern: "Stopped")
-    && string_contains(s: attestation.state_label as String, pattern: "Ejected")
+  string_contains(s: attestation.state_label as String, pattern: megarac_stopped_ui_word as String)
+    && string_contains(s: attestation.state_label as String, pattern: megarac_ejected_ui_word as String)
 }
 
-// DO THE ATTESTATION AND A MACHINE READ DESCRIBE THE SAME ROW? The medium name and the CD/DVD row, and
-// nothing more. This deliberately does NOT say "the label means code 16": it only records that the two
-// readings are about one row, which is what lets the vendor's words corroborate the read without becoming
-// the evidence for it. An operator can only corroborate a row they could NAME, so a row that names no medium
-// fails here -- which is also why the 0 claim cannot borrow 16's attestation.
+// DO THE ATTESTATION AND A MACHINE READ DESCRIBE THE SAME ROW? The medium and the CD/DVD row, and nothing
+// more. This deliberately does NOT say "the label means code 16" or "code 0": it only records that the two
+// readings are about one row, which is what lets the vendor's words corroborate a read without becoming the
+// evidence for it. Absence is a case on BOTH sides: a row whose cell is blank on the controller and blank on
+// the page is the same row, and a reading that named a medium is a DIFFERENT row from one that named none --
+// which is why code 0 cannot borrow code 16's attestation, whose medium is named.
 fn attestation_and_read_name_the_same_row(attestation: BmcMediaRowUiAttestation, read: MegaRacMediaRowReceipt) -> Bool {
   match read.image_name {
-    Absent => false
-    Present { value: named } => (attestation.image_name as String) == (named as String)
-      && string_contains(s: attestation.row_label as String, pattern: "CD/DVD")
+    Absent => match attestation.image_name {
+      Absent => string_contains(s: attestation.row_label as String, pattern: "CD/DVD")
+      Present { value: _ } => false
+    }
+    Present { value: named } => match attestation.image_name {
+      Absent => false
+      Present { value: attested } => (attested as String) == (named as String)
+        && string_contains(s: attestation.row_label as String, pattern: "CD/DVD")
+    }
   }
 }
 
