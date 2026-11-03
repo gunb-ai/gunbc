@@ -202,7 +202,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_map, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_reverse, list_head, list_tail }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_map, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_reverse }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -1729,6 +1729,13 @@ fn dag_grammar_block_literal_head_expr() -> GrammarExpr {
 }
 
 fn dag_grammar_expr_expr() -> GrammarExpr {
+  dag_grammar_expr_builder(binary_production: ^dag_production_binary_expr)
+}
+
+// ONE builder for the ordinary and condition expression layers (DESIGN 6b): the four-arm choice
+// is one copy; only the binary production differs -- the condition side reads the gated record
+// chain. A new arm reaches both routes by construction.
+fn dag_grammar_expr_builder(binary_production: Symbol) -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
     right: dag_grammar_choice(
@@ -1740,7 +1747,7 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
         left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
         right: dag_grammar_sequence(
           left: grammar_expr_not_predicate(element: dag_grammar_arrow_lambda_name_head_expr()),
-          right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+          right: dag_grammar_nonterminal(production: binary_production)
         )
       )
     )
@@ -2159,22 +2166,7 @@ fn dag_grammar_condition_binary_expr_expr() -> GrammarExpr {
 // parse_match -> parse_expr_no_brace), and v2 keeps that separation in one grammar production
 // read in both directions (DESIGN section 4), not in a parser-side retry.
 fn dag_grammar_condition_expr_expr() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
-    right: dag_grammar_choice(
-      left: dag_grammar_sequence(
-        left: grammar_expr_not_predicate(element: dag_grammar_block_literal_head_expr()),
-        right: dag_grammar_nonterminal(production: ^dag_production_block_expr)
-      ),
-      right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
-        right: dag_grammar_sequence(
-          left: grammar_expr_not_predicate(element: dag_grammar_arrow_lambda_name_head_expr()),
-          right: dag_grammar_nonterminal(production: ^dag_production_condition_binary_expr)
-        )
-      )
-    )
-  )
+  dag_grammar_expr_builder(binary_production: ^dag_production_condition_binary_expr)
 }
 
 
