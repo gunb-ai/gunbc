@@ -215,8 +215,9 @@ type AppendWriter
 // construction hole dressed up as validation. With the variant deleted, handing a create to the append admission
 // cannot be constructed at all, so no runtime create-refusal is needed and none exists. The "member already
 // exists" fact for a create is the create admission's own CreateOverExistingMember.
+// The `| ` on the variant line is what makes this a one-variant SUM; `type X = Name` would be an alias.
 type AppendWriteIntent
-  = IntentAppendRecord
+  = | IntentAppendRecord
 
 type AppendWriteRefusal
   = WriterNotAuthorizedByPolicy
