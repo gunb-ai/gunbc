@@ -126,6 +126,15 @@ fn parse_sweep_one_bad_file_among_valid_files_gives_exactly_one_finding() {
         )
         .expect("valid source");
     }
+    // Clean-workspace control: with only the valid files the sweep must succeed and count all
+    // three, so a sweep that never read them could not pass the isolation assertion below.
+    match v1_compiler::cli_run::run_dag_parse_sweep(&dir, &["probe_root"]) {
+        Ok(sweep) => assert_eq!(
+            sweep.parse_clean, 3,
+            "the three valid files must be read clean"
+        ),
+        Err(errors) => panic!("valid files alone must sweep clean, got {errors:?}"),
+    }
     std::fs::write(root.join("bad.dag"), "// only a comment\n").expect("bad source");
 
     let errors = match v1_compiler::cli_run::run_dag_parse_sweep(&dir, &["probe_root"]) {
