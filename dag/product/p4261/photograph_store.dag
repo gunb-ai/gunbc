@@ -1,0 +1,68 @@
+module product.p4261.photograph_store
+
+import std.list { first_where }
+import std.optional { Absent, Present }
+import std.types { List, NonEmptyStr }
+import product.electrical.photograph { Photograph }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
+import product.p4261.e1_photographs { e1_photographs }
+
+// WHICH FRAMES WE HOLD FOR A BOARD: ONE FACT, ONE HOME.
+//
+// A board's photographs are not a payload a consumer can hand to a check. If the set of frames arrives as
+// an argument, then whoever holds the argument holds the verdict -- a private strategy, a fixture, or a
+// stale copy could establish photo coverage by passing a list it liked, fabricated rows included, and the
+// model would have no way to tell that the coverage was asserted rather than held. So the binding
+// board -> frames lives HERE, one row per board, and everything that needs the answer asks this module
+// (DESIGN §3: a fact has one home; the same reason `product.p4261.carrier` owns which layout belongs to
+// which board rather than letting callers pair them).
+//
+// The store PARAMETER stays at the evidence level -- product.p4261.evidence's `reading_groundings(store:,
+// layout:)` and `judge_image_readings(store:, layout:)` take one, which is where the "judge this board
+// against a set that does not hold its frames" control belongs, and belongs only: it is a check on the
+// judgement, not a way to author a verdict.
+//
+// A BOARD WITH NO STORE IS A TYPED STANDING, not an empty list. An empty list would make two different
+// claims indistinguishable -- "we hold no frames for this board" and "this board has no photograph record
+// at all" -- and would let a board that was never surveyed read as one that was surveyed and found bare.
+// `NoStoreForBoard` names the board and the obligation that would close it. The K1 is in that state today:
+// its Drive folders exist and nobody has hashed them.
+
+type BoardPhotographStore {
+  board: PhysicalAssetIdentity
+  // The frames themselves, identified by content (product.electrical.photograph). Generated views are in
+  // the store and are REFUSED as grounding there, so including them costs nothing and keeps the sheets
+  // able to cite the picture they show.
+  frames: List<Photograph>
+  // Where the rows came from, so a reader can re-derive the whole store. A store nobody can audit is a
+  // list of numbers somebody typed.
+  receipts: NonEmptyStr
+}
+
+// The E1: the 91 rows of the 2026-11-03 atlas receipts (82 captured frames, 9 generated views), produced
+// by scripts/gen_p4261_e1_atlas.py from the Drive folder named in `receipts`.
+data p4261_e1_photograph_store: BoardPhotographStore = BoardPhotographStore {
+  board: p4261_e1_b,
+  frames: e1_photographs,
+  receipts: "docs/plans/2026-11-03-p4261-e1-atlas: manifest_e1_all_photos.csv + photo_registry_top.csv + photo_registry_bottom.csv; Drive parent 1zZyiMhjCeVofNO7n72ugxstcSvsMByzf / E1 1C2Y0zKWDFshCJe8NnwXx7Ct7VVoURzi1 (owner brian@gunb.ai)",
+}
+
+// One row per board whose frames have been hashed. The K1 has no row because its Drive folders are
+// unhashed -- that absence is the `NoStoreForBoard` standing, and its obligation says what closes it.
+data p4261_photograph_stores: List<BoardPhotographStore> = [p4261_e1_photograph_store]
+
+type PhotographStoreForBoard
+  = StoreHeld { store: BoardPhotographStore }
+  | NoStoreForBoard { board: PhysicalAssetIdentity, obligation: NonEmptyStr }
+
+// The one lookup. Consumers ask this; none of them carries a frame list of its own.
+fn photograph_store_for(board: PhysicalAssetIdentity) -> PhotographStoreForBoard {
+  match first_where(p4261_photograph_stores, s => (s.board as String) == (board as String)) {
+    Present { value } => StoreHeld { store: value }
+    Absent => NoStoreForBoard {
+      board: board,
+      obligation: "hash this board's photographs from its atlas receipts and add its row to p4261_photograph_stores; product.p4261.e1_photographs is the pattern the E1 store was generated from",
+    }
+  }
+}

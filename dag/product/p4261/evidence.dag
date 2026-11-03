@@ -18,7 +18,9 @@ import extdeps.nvidia.p4261.population {
 }
 import extdeps.electronic_component.types { ElectronicComponentRow, electronic_component_row_eq }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
-import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, component_identity_eq }
+import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, component_identity_eq, component_local_label }
+import product.electrical.photograph { BytesNeverStored, CheckableAgainstStoredBytes, CitationStanding, DigestNotInStore, FrameIsOurOwnDrawing, Photograph, PhotographCitation, cite }
+import product.p4261.photograph_store { NoStoreForBoard, StoreHeld, photograph_store_for }
 import product.electrical.continuity { ContinuityObservation, EvidenceRef, ModuleState, OperatorStatement, OperatorPhotograph, ReachabilityGraph, SellerListingPhotograph, is_reachability_contradicted, is_reachable, reach, supporting_readings }
 import std.measure { ampere_count, volt_count }
 import product.electrical.bench_session {
@@ -133,8 +135,14 @@ import product.p4261.k1_a { p4261_k1_layout }
 //
 // RUNG OF THE BINDING, STATED: the markings are transcribed from photographs into the corpus, so the
 // fold executes on authored data -- a boundary transcription (DESIGN 4b, outside the modeled
-// guarantee). NEXT-RUNG TRIGGER, as the capability: a photograph store whose content identity the
-// specimen records cite, so a marking row is checkable against the image it was read from.
+// guarantee). THE RUNG CLIMBED (2026-11-03): product.electrical.photograph gives a photograph a content
+// identity and a store, product.p4261.e1_photographs holds the E1 atlas's 91 frames by digest, and
+// EvidenceRef.OperatorPhotograph now cites a stored frame (with the box inside it) or names the gap --
+// see "WHAT A MARKING ROW IS CHECKABLE AGAINST" below. What that does NOT buy: a frame whose bytes never
+// reached the store, which is every frame the 2026-10-15 to 11-01 bench sessions sent into the chat, is
+// still unverifiable by anyone but the person who saw it. Those rows say so by name and keep their
+// obligation; the standing above still folds on a receipt whose label photograph nobody can re-open, which
+// is the honest state of that receipt and not a stronger claim than it warrants.
 
 // Whether a specimen's own records support a revision row: recorded against it, and its label and PCB
 // print both read and agree with it.
@@ -170,7 +178,7 @@ fn p4261_k1_revision_standing() -> CitedFigureStanding {
 // row, which is this layer's work, and findings now builds on this module.)
 fn is_operator_photograph(e: EvidenceRef) -> Bool {
   match e {
-    OperatorPhotograph { taken_on: _, locator: _ } => true
+    OperatorPhotograph { citation: _ } => true
     _ => false
   }
 }
@@ -411,7 +419,7 @@ fn identification_evidence(i: ComponentIdentification) -> EvidenceRef? {
 // Evidence of ours: a photograph or statement made at our bench, not the seller's listing.
 fn evidence_is_ours(e: EvidenceRef) -> Bool {
   match e {
-    OperatorPhotograph { taken_on: _, locator: _ } => true
+    OperatorPhotograph { citation: _ } => true
     OperatorStatement { stated_on: _, verbatim: _ } => true
     SellerListingPhotograph { listing: _, read_on: _ } => false
   }
@@ -1087,5 +1095,153 @@ fn net_assessment(layout: CarrierLayoutObservation, key: NonEmptyStr) -> NetProp
   match (filter(p4261_net_propositions, x => (x.key as String) == (key as String))).first() {
     Absent => Absent
     Present { value: prop } => Present { value: assess_net_proposition(prop: prop, layout: layout, admitted: admit_correspondence(layout: layout).admitted) }
+  }
+}
+// ── PHOTO GROUNDING: WHAT EACH IMAGE-READING IS CHECKABLE AGAINST ────────────
+// DESIGN §3, §3b, §4d. This is the rung the comment above `revision_supported` named as this module's next
+// trigger: "a photograph store whose content identity the specimen records cite, so a marking row is
+// checkable against the image it was read from." The vocabulary is product.electrical.photograph, the
+// frames we hold are product.p4261.photograph_store's, and the citations are the `PhotographCitation` each
+// `MarkingReading` and each `DesignatorReading` now carries.
+//
+// WHY RESOLUTION IS A CHECK HERE AND NOT A FIELD ON THE ROW. A citation nobody resolves is decoration: the
+// module that holds the store is the only one that can say whether a reading rests on bytes that exist, and
+// a report that prints "photographed" without asking has moved the unverified claim from the image to the
+// record (DESIGN §4d: a receipt nobody re-checks is a story).
+//
+// WHY THE STORE IS A PARAMETER AT THIS LEVEL ONLY. `reading_groundings(store:, layout:)` and
+// `judge_image_readings(store:, layout:)` take the set of frames, which is what lets the same board be
+// judged against a set that does not hold its frames and FAIL -- the control that makes this a check rather
+// than a restatement of the record. It is a control on the judgement, not a way to author a verdict: a
+// finding, a report or a strategy must not carry a frame list, because whoever holds the list then holds
+// the verdict. Those consumers call `judge_board_image_readings`, which asks
+// product.p4261.photograph_store which frames we hold for the board. One fact, one home (DESIGN §3).
+//
+// FOUR STANDINGS, DISTINCT IN THE TYPE, BECAUSE THEY NEED DIFFERENT WORK. `CheckableAgainstStoredBytes` is
+// re-readable now. `BytesNeverStored` is a declared gap with the obligation that closes it (every
+// 2026-10-15..11-01 chat frame is here: the operator must re-supply the uploads, and a guessed digest would
+// turn a known gap into a permanent lie). `DigestNotInStore` is a BROKEN record -- it claims bytes the store
+// does not have, so either the store is missing a row or the record is wrong. And `FrameIsOurOwnDrawing`
+// refuses the atlas's own trap: its `derived/` overviews are stitched from the readings they would
+// corroborate, and the type says so rather than leaving it to a reviewer's memory. The filters below match
+// EVERY standing with no `_`, so a fifth cannot fall into none of them and leave a board of unread rows
+// looking grounded; establishment is derived as `checkable == read`, never as "not in the other lists".
+//
+// WHY A ROW WITH NO PHOTOGRAPH IS NOT COUNTED AS A GAP. An `OperatorStatement` or a seller's listing is a
+// different kind of claim, and `evidence_is_ours` / `observation_is_falsifiable` already carry those.
+// Counting a statement as a missing photograph would inflate the shortfall and bury the real one.
+type BoardImageReading {
+  read_of: NonEmptyStr
+  citation: PhotographCitation
+}
+
+type ReadingGrounding {
+  read_of: NonEmptyStr
+  standing: CitationStanding
+}
+
+// The image a board row was read from, if it was read off an image at all.
+fn row_image_reading(read_of: NonEmptyStr, evidence: EvidenceRef) -> BoardImageReading? {
+  match evidence {
+    OperatorPhotograph { citation } => Present { value: BoardImageReading { read_of: read_of, citation: citation } }
+    _ => Absent
+  }
+}
+
+// Every image-reading on a board: designator rows and marking rows both, because a designator read off an
+// image is as checkable -- and as falsifiable -- as the marking printed beside it.
+fn board_image_readings(layout: CarrierLayoutObservation) -> List<BoardImageReading> {
+  flat_map(
+    concat(
+      map(layout.designator_readings, r => row_image_reading(read_of: r.designator, evidence: r.evidence)),
+      map(layout.components, c => match identification_evidence(i: c.identification) {
+        Absent => Absent
+        Present { value: e } => row_image_reading(read_of: component_local_label(c.component), evidence: e)
+      })
+    ),
+    r => match r {
+      Present { value: row } => [row]
+      Absent => []
+    }
+  )
+}
+
+// Judge every image-reading on a board against a set of frames. `read_of` names the part the row belongs
+// to, so a broken digest or an unhashed locator is a work item with a designator on it and not an
+// anonymous count.
+fn reading_groundings(store: List<Photograph>, layout: CarrierLayoutObservation) -> List<ReadingGrounding> {
+  map(board_image_readings(layout), r => ReadingGrounding { read_of: r.read_of, standing: cite(store: store, citation: r.citation) })
+}
+
+// The three partitions, each an EXHAUSTIVE match: no `_`, so adding a standing forces a decision in all
+// three instead of letting a row go uncounted.
+fn checkable_groundings(gs: List<ReadingGrounding>) -> List<ReadingGrounding> {
+  filter(gs, g => match g.standing {
+    CheckableAgainstStoredBytes { surface: _, region: _ } => true
+    BytesNeverStored { taken_on: _, locator: _, obligation: _ } => false
+    DigestNotInStore { content: _ } => false
+    FrameIsOurOwnDrawing { depicts: _, obligation: _ } => false
+  })
+}
+
+// Rows whose record is BROKEN rather than thin: a digest the store does not hold, or a citation to an image
+// we generated ourselves. Neither is evidence of anything until it is fixed, and a board report that lumped
+// them into "no photo yet" would be reporting a coverage gap where there is a defect.
+fn broken_groundings(gs: List<ReadingGrounding>) -> List<ReadingGrounding> {
+  filter(gs, g => match g.standing {
+    CheckableAgainstStoredBytes { surface: _, region: _ } => false
+    BytesNeverStored { taken_on: _, locator: _, obligation: _ } => false
+    DigestNotInStore { content: _ } => true
+    FrameIsOurOwnDrawing { depicts: _, obligation: _ } => true
+  })
+}
+
+// Rows honestly declared as gaps: the bytes were never in the store, and the obligation says what closes them.
+fn gap_groundings(gs: List<ReadingGrounding>) -> List<ReadingGrounding> {
+  filter(gs, g => match g.standing {
+    CheckableAgainstStoredBytes { surface: _, region: _ } => false
+    BytesNeverStored { taken_on: _, locator: _, obligation: _ } => true
+    DigestNotInStore { content: _ } => false
+    FrameIsOurOwnDrawing { depicts: _, obligation: _ } => false
+  })
+}
+
+// THE PER-BOARD JUDGEMENT. `checkable == read` is how it is derived -- never "broken is empty and gaps are
+// empty", which is a list of enumerations that a new standing could slip between. `read > 0` is the
+// anti-vacuity guard: a board with no image-readings has no un-checkable reading, but recording that as
+// coverage would be vacuity dressed as a receipt.
+//
+// `NoPhotographStore` is a different absence from an empty `frames`: "we never photographed this board" and
+// "we photographed it and hold nothing" are different work, and the K1 is in the first state today.
+type ImageReadingGrounding
+  = FromStore {
+      read: Nat
+      checkable: Nat
+      broken: List<ReadingGrounding>
+      gaps: List<ReadingGrounding>
+    }
+  | NoPhotographStore { board: PhysicalAssetIdentity, obligation: NonEmptyStr }
+
+fn image_readings_rest_on_stored_bytes(grounding: ImageReadingGrounding) -> Bool {
+  match grounding {
+    FromStore { read, checkable, broken: _, gaps: _ } => read > 0 && checkable == read
+    NoPhotographStore { board: _, obligation: _ } => false
+  }
+}
+
+// The judgement against a set of frames the caller names. For checks and controls; a consumer that is
+// REPORTING coverage uses `board_image_reading_grounding` below, which cannot be handed a list.
+fn judge_image_readings(store: List<Photograph>, layout: CarrierLayoutObservation) -> ImageReadingGrounding {
+  let gs = reading_groundings(store: store, layout: layout)
+  FromStore { read: count(gs), checkable: count(checkable_groundings(gs)), broken: broken_groundings(gs), gaps: gap_groundings(gs) }
+}
+
+// The judgement on this board's OWN store, from the one module that knows which frames we hold. This is
+// what product.p4261.findings consumes: no consumer carries a frame list, so none can establish coverage
+// by naming one.
+fn board_image_reading_grounding(layout: CarrierLayoutObservation) -> ImageReadingGrounding {
+  match photograph_store_for(board: layout.asset) {
+    StoreHeld { store } => judge_image_readings(store: store.frames, layout: layout)
+    NoStoreForBoard { board, obligation } => NoPhotographStore { board: board, obligation: obligation }
   }
 }

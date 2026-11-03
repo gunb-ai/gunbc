@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.measure { ampere, volt }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDesignIdentity, component_identity_eq, component_instance_identity }
+import product.electrical.photograph { BytesNotInStore }
 import product.electrical.continuity { EvidenceRef, OperatorPhotograph, AfterIncidents, BeforeIncidents, BetweenIncidents }
 import product.electrical.bench_session {
   AssetAlteration,
@@ -154,7 +155,7 @@ fn k1_lift_refitted() -> CarrierLayoutObservation {
 }
 
 fn photo() -> EvidenceRef {
-  OperatorPhotograph { taken_on: "supplied", locator: "supplied photograph" }
+  OperatorPhotograph { citation: BytesNotInStore { taken_on: "supplied", locator: "supplied photograph", obligation: "operator re-supplies the frame so its bytes can be hashed into the store" } }
 }
 
 fn read(c: ComponentInstanceIdentity, d: NonEmptyStr) -> DesignatorReading {

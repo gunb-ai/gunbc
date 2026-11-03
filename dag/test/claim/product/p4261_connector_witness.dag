@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.electrical.connectivity { ElectricalDesignIdentity, TerminalIdentity, component_instance_identity }
+import product.electrical.photograph { BytesNotInStore }
 import product.electrical.continuity { EvidenceRef, OperatorPhotograph, SellerListingPhotograph }
 import extdeps.external_authority { TranscribedUncited }
 import extdeps.nvidia.p4261 { p4261_e1 }
@@ -86,7 +87,7 @@ fn second_e1() -> CarrierLayoutObservation {
 }
 
 fn photo() -> EvidenceRef {
-  OperatorPhotograph { taken_on: "supplied", locator: "supplied photograph" }
+  OperatorPhotograph { citation: BytesNotInStore { taken_on: "supplied", locator: "supplied photograph", obligation: "operator re-supplies the frame so its bytes can be hashed into the store" } }
 }
 
 fn listing() -> EvidenceRef {
