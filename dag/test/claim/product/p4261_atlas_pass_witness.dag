@@ -207,6 +207,31 @@ test fn what_was_refused_is_held_with_an_obligation() -> Bool {
     && held_unresolved("U88") && held_unresolved("J3")
 }
 
+// 6b. And the held set is not a rumour. Every designator the receipts say we read and did not
+// position is on the board as an unresolved sighting (or as the one ambiguous reading), and
+// `obligation: NonEmptyStr` means such a row cannot be written without naming what would close
+// it. The test above samples six designators; a mutant run -- D17's unresolved row deleted --
+// passed it, which is how the missing direction was found. This joins the whole held set, so a
+// held part cannot vanish from the board silently.
+test fn every_held_receipt_is_recorded_on_the_board() -> Bool {
+  // The reverse direction of the refusal side: every held receipt survives as an unresolved
+  // board row. No name is exempted -- the ambiguous U3 sighting is not a held receipt (it is a
+  // read that became a position), and its own control is
+  // `the_ambiguous_sighting_mints_no_second_position`. The obligation cannot be empty because
+  // `UnresolvedPart.obligation` is `NonEmptyStr`: the type is the authority, so re-testing it
+  // here would be a second copy of the same rule.
+  //
+  // Why the direction is written with `.all` and not `count(list, pred)`: a first version of
+  // this test used `count(e1_held_receipts, h => ...)`, and the mutant below stayed green under
+  // it -- a two-argument `count` is not the repository idiom (`count(filter(list, pred))`,
+  // `.all`, `.any` are) and does not filter. The same mutant turns this red.
+  e1_held_receipts.all(r =>
+    any(p4261_e1_layout.unresolved, u => match u.designator {
+      Present { value: d } => designator_eq(a: designator_of(verbatim: d), b: r.designator)
+      Absent { } => false
+    }))
+}
+
 // 7. An empty footprint is a statement about THIS board. It is an observation arm, so the position
 // beside it carries no population claim at all -- there is no "unpopulated" arm in PopulatedPart, and
 // an empty footprint on our board is never a claim about NVIDIA's intent.
@@ -329,7 +354,11 @@ test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
 test fn the_pass_row_counts_are_a_change_detector() -> Bool {
   count(p4261_e1_layout.components) == 212
     && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 47
-    // The K1 keeps its own 13 positions: an E1 pass must not reach into another board's design facts.
+    // The held set keeps its 24 members, and the K1 keeps its own 13 positions: an E1 pass must
+    // not reach into another board's design facts. Both are change detectors, not proofs -- the
+    // held set's own authority is `every_held_receipt_is_recorded_on_the_board` joined to
+    // `e1_held_receipts`, and the design list's is `the_positions_are_the_receipts_and_nothing_else`.
+    && count(e1_held_receipts) == 24
     && count(p4261_k1_positions) == 13
 }
 
@@ -356,8 +385,7 @@ test fn no_component_instance_is_recorded_twice() -> Bool {
   // identifications on the same part on the board, and whichever a lookup met first would win --
   // a silent coin toss on what the part is. Duplicates cannot be seen in a total, so this counts
   // each name's own occurrences.
-  count(p4261_e1_layout.components, c =>
-    count(p4261_e1_layout.components, d =>
-      component_identity_eq(a: c.component, b: d.component)) == 1)
-    == length(p4261_e1_layout.components)
+  p4261_e1_layout.components.all(c =>
+    count(filter(p4261_e1_layout.components, d =>
+      component_identity_eq(a: c.component, b: d.component))) == 1)
 }
