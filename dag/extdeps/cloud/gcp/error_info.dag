@@ -27,7 +27,9 @@ module extdeps.cloud.gcp.error_info
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { minutes_per_hour, second, second_count, seconds_per_day, seconds_per_minute, Second }
 import std.optional { Present, Absent }
-import std.types { Bool, EpochSecs, Int, List, NonEmptyStr, String }
+import std.types { Bool, Char, EpochSecs, Int, List, NonEmptyStr, String }
+import std.algebra { Cons, Empty, FreeMonoid, contains, for_all }
+import std.coercion { unicode_scalar_unfold }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit { JsonArray, JsonValue }
@@ -219,6 +221,78 @@ fn quota_retry_wait_for(
           }
         }
       }
+    }
+  }
+}
+
+// ── THE SAFE ERROR CODES OF A GOOGLE ERROR BODY (credential-path redaction) ─────────────────────
+//
+// A refusal printed on a credential path (a Secret Manager read, a token exchange) may carry ONLY
+// facts that cannot hold a secret. A Google error body is free text in `error.message` and may echo
+// request material, so it is never printed. Two of its fields are CLOSED vocabularies by Google's own
+// definition and are safe by construction:
+//   * `error.status` is a google.rpc.Code canonical name (googleapis google/rpc/code.proto), a fixed
+//     list of seventeen names; any other spelling is dropped, never printed.
+//   * a google.rpc.ErrorInfo `reason` is, per google/rpc/error_details.proto (cited by AIP-193), "at
+//     most 63 characters" matching `[A-Z][A-Z0-9_]+[A-Z0-9]` (UPPER_SNAKE_CASE). A reason outside that
+//     shape is dropped. No token, key or message text can inhabit it.
+// The answer is a suffix (" status=<CODE>", " reason=<REASON>", either or both, or empty); a body that is
+// not JSON, has no error object, or names neither field contributes nothing, and nothing else is read.
+data google_rpc_code_names: List<String> = [
+  "OK", "CANCELLED", "UNKNOWN", "INVALID_ARGUMENT", "DEADLINE_EXCEEDED", "NOT_FOUND", "ALREADY_EXISTS",
+  "PERMISSION_DENIED", "RESOURCE_EXHAUSTED", "FAILED_PRECONDITION", "ABORTED", "OUT_OF_RANGE",
+  "UNIMPLEMENTED", "INTERNAL", "UNAVAILABLE", "DATA_LOSS", "UNAUTHENTICATED"
+]
+
+data error_reason_start_chars: FreeMonoid<Char> = unicode_scalar_unfold(s: "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+data error_reason_continue_chars: FreeMonoid<Char> = unicode_scalar_unfold(s: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+fn error_reason_char_in(alphabet: FreeMonoid<Char>, c: Char) -> Bool {
+  contains(xs: alphabet, item: c, eq: fn(a, b) { a == b })
+}
+
+// [A-Z][A-Z0-9_]+[A-Z0-9], at most 63 characters: a head from the start alphabet, a tail of at least
+// two from the continue alphabet, no trailing underscore.
+fn error_reason_is_upper_snake(reason: String) -> Bool {
+  match unicode_scalar_unfold(s: reason) {
+    Empty => false
+    Cons { head: first, tail: rest } => {
+      let tail_count = fold(rest, init: 0, f: (acc, _c) => acc + 1)
+      error_reason_char_in(alphabet: error_reason_start_chars, c: first)
+        && for_all(xs: rest, predicate: fn(c) { error_reason_char_in(alphabet: error_reason_continue_chars, c: c) })
+        && tail_count >= 2
+        && tail_count <= 62
+        && !reason.ends_with("_")
+    }
+  }
+}
+
+fn gcp_safe_status_suffix(error_value: JsonValue) -> String {
+  match error_info_string_member(v: error_value, key: "status") {
+    Absent => ""
+    Present { value: code } => if any(google_rpc_code_names, n => n == code) { concat(" status=", code) } else { "" }
+  }
+}
+
+fn gcp_safe_reason_suffix(error_value: JsonValue) -> String {
+  match error_info_member(v: error_value, key: "details") {
+    Present { value: JsonArray { elements: details } } => match find_error_info_detail(elements: details) {
+      Absent => ""
+      Present { value: info } => match error_info_string_member(v: info, key: "reason") {
+        Absent => ""
+        Present { value: reason } => if error_reason_is_upper_snake(reason: reason) { concat(" reason=", reason) } else { "" }
+      }
+    }
+    _ => ""
+  }
+}
+
+fn gcp_safe_error_codes(body: String) -> String {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ""
+    JsonDocumentParsed { value: doc } => match error_info_member(v: doc, key: "error") {
+      Absent => ""
+      Present { value: error_value } => concat(gcp_safe_status_suffix(error_value: error_value), gcp_safe_reason_suffix(error_value: error_value))
     }
   }
 }

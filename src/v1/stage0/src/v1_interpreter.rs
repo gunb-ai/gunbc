@@ -1680,6 +1680,14 @@ pub enum InterpError {
     ModeledWorkerKilled {
         operation: String,
     },
+    /// `--record` was asked to capture a CREDENTIAL-BEARING operation: its service declares auth
+    /// (`auth` / `auth_input` / `auth_source`) or the operation takes a `Secret` input. A recorded
+    /// fixture writes every input and the full response in clear, so the token sent and any
+    /// credential returned would land on disk. Refused BEFORE the inputs are serialized and before
+    /// any request is built; record a credential path with a modeled realization instead.
+    RecordRefusedCredentialOperation {
+        operation: String,
+    },
     /// A host-tool program could not be resolved to an existing executable path.
     /// `probed` carries every candidate location examined so the refusal is located
     /// and countable by class rather than by grepping a format string.
@@ -1924,6 +1932,11 @@ impl fmt::Display for InterpError {
                 f,
                 "modeled operation realization refused {}: {} (no real transport, recorded fixture or published mock was consulted)",
                 operation, cause
+            ),
+            InterpError::RecordRefusedCredentialOperation { operation } => write!(
+                f,
+                "--record refuses credential-bearing operation {}: it declares auth or takes a Secret input, and a recorded fixture would write its token and response in clear (no request was built and nothing was recorded)",
+                operation
             ),
             InterpError::ModeledWorkerKilled { operation } => write!(
                 f,
@@ -4501,6 +4514,75 @@ mod cross_claim_memo_tests {
                  it returned: {v:?}"
             ),
         }
+    }
+
+    // `--record` NEVER CAPTURES A CREDENTIAL-BEARING OPERATION. A recorded fixture writes every
+    // input and the full response in clear, so an operation whose service declares auth (or that
+    // takes a `Secret`) is refused BEFORE its inputs are serialized and before any request is built.
+    // The endpoint is the TEST-NET-1 documentation address (RFC 5737), unroutable by definition, so
+    // a refusal that came too late would show up as a transport error rather than this typed one.
+    #[test]
+    fn record_refuses_a_credential_bearing_operation_before_any_request() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/record_credential.dag".to_string(),
+                content: "module fixture.record_credential\n\nservice fixture.CredentialRead {\n  config {\n    endpoint: \"https://192.0.2.1\"\n    auth: Bearer\n    auth_input: access_token\n  }\n  operation ReadKey {\n    requires Network\n    input { access_token: Secret }\n    output { data: String from \"data\" }\n    readonly\n    transport rest { method: GET, path: \"/v1/key\" }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.CredentialRead.ReadKey(access_token: \"FAKE-SECRET-MARKER\" as Secret)\n  true\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Record);
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(InterpError::RecordRefusedCredentialOperation { operation }) => {
+                assert!(
+                    operation.contains("ReadKey"),
+                    "the refusal names the operation: {operation}"
+                );
+                let shown = format!(
+                    "{}",
+                    InterpError::RecordRefusedCredentialOperation { operation }
+                );
+                assert!(
+                    !shown.contains("FAKE-SECRET-MARKER"),
+                    "the refusal text carries no input value: {shown}"
+                );
+            }
+            Err(other) => panic!(
+                "--record must refuse a credential-bearing operation with the typed \
+                 RecordRefusedCredentialOperation before any request; got: {other}"
+            ),
+            Ok(v) => {
+                panic!("--record must refuse a credential-bearing operation; it returned: {v:?}")
+            }
+        }
+    }
+
+    // CONTROL: the credential test reads the declaration, so an operation with neither declared auth
+    // nor a Secret input is NOT credential-bearing (and stays recordable).
+    #[test]
+    fn an_operation_with_no_auth_and_no_secret_input_is_not_credential_bearing() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/record_plain.dag".to_string(),
+                content: "module fixture.record_plain\n\nservice fixture.PlainRead {\n  config {\n    endpoint: \"https://192.0.2.1\"\n  }\n  operation ReadPublic {\n    requires Network\n    input { name: String }\n    output { data: String from \"data\" }\n    readonly\n    transport rest { method: GET, path: \"/v1/public\" }\n  }\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, result.source_indices.clone(), ExecutionMode::Record);
+        let (_, (service_node, op_node)) = ctx
+            .indexes
+            .service_ops
+            .iter()
+            .find(|(k, _)| k.ends_with("PlainRead.ReadPublic"))
+            .expect("the fixture operation is indexed");
+        assert!(!service_op_is_credential_bearing(
+            service_node,
+            op_node,
+            &ctx
+        ));
     }
 
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
@@ -15125,6 +15207,14 @@ fn eval_service_call(
     )? {
         return Ok(answered);
     }
+    // A credential-bearing operation is never recorded: the refusal comes BEFORE the inputs are
+    // hashed or serialized and before any request is built, so neither the token sent nor a
+    // credential returned can reach the fixture store.
+    if ctx.execution_mode.is_record()
+        && service_op_is_credential_bearing(service_node, op_node, ctx)
+    {
+        return Err(InterpError::RecordRefusedCredentialOperation { operation: key });
+    }
     let inputs_hash =
         crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
     let inputs_json =
@@ -21223,6 +21313,27 @@ fn dispatch_rest(
         &response_format,
         ctx,
     ))
+}
+
+/// THE CREDENTIAL-BEARING TEST, read off the declaration: the service declares auth (the same three
+/// properties `resolve_auth` reads), or an operation input is declared `Secret`. Both facts are the
+/// model's own, so the record refusal needs no list of operation names beside it.
+fn service_op_is_credential_bearing(
+    service_node: &Rc<Node>,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> bool {
+    let si = ctx.si();
+    let declares_auth = service_node.properties.iter().any(|prop| {
+        matches!(
+            field_init_node_name_at(prop.clone(), si.clone()).as_str(),
+            "svc_auth" | "svc_auth_input" | "svc_auth_source"
+        )
+    });
+    declares_auth
+        || op_node.params.iter().any(|p| {
+            crate::v1_compiler_infer::resolved_type_name(p.clone(), si.clone()) == "Secret"
+        })
 }
 
 pub fn resolve_auth(
