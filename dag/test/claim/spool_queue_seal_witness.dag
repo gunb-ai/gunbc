@@ -481,7 +481,7 @@ test fn a_key_of_another_kind_cannot_be_observed() -> ProcessExit {
     SpoolKeyMinted { key: k } => {
       let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
       match spool_queue_observe(store: st, key: k) {
-        EntryObservationUnavailable { detail: _ } => ExitSuccess
+        EntryObservationUnavailable { detail: d } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
         other => exit_failure(reason: "a cross-kind key was observed as an entry state")
       }
     }
@@ -507,7 +507,7 @@ test fn a_key_of_another_kind_cannot_be_claimed() -> ProcessExit {
     SpoolKeyMinted { key: k } => {
       let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
       match spool_queue_claim(store: st, key: k) {
-        SpoolClaimNotDone { assessment: ClaimRefused { detail: _ } } => ExitSuccess
+        SpoolClaimNotDone { assessment: ClaimRefused { detail: d } } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
         other => exit_failure(reason: "a cross-kind key was claimed or read as absent")
       }
     }
@@ -520,7 +520,7 @@ test fn a_key_of_another_kind_cannot_be_completed() -> ProcessExit {
     SpoolKeyMinted { key: k } => {
       let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
       match spool_queue_complete(store: st, key: k, outcome: SpoolOutcomeDone) {
-        SpoolCompleteNotDone { assessment: CompleteRefused { detail: _ } } => ExitSuccess
+        SpoolCompleteNotDone { assessment: CompleteRefused { detail: d } } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
         other => exit_failure(reason: "a cross-kind key was completed or read as not claimed")
       }
     }
@@ -533,7 +533,7 @@ test fn a_key_of_another_kind_cannot_be_requeued() -> ProcessExit {
     SpoolKeyMinted { key: k } => {
       let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
       match spool_queue_requeue_on_evidence(store: st, key: k, evidence: BootsObserved { claim_boot_id: "a" as NonEmptyStr, current_boot_id: "b" as NonEmptyStr }) {
-        SpoolRequeueNotDone { assessment: RequeueNotClaimed { state: EntryObservationUnavailable { detail: _ } } } => ExitSuccess
+        SpoolRequeueNotDone { assessment: RequeueNotClaimed { state: EntryObservationUnavailable { detail: d } } } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
         other => exit_failure(reason: "a cross-kind key was requeued or read as absent")
       }
     }
