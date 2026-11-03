@@ -92,9 +92,10 @@ test fn every_documented_effort_lands_in_its_own_arm() -> Bool {
 // OpenAiReasoningEffortLow at the medium spelling turns "low" into "medium" here -- or a re-emission arm
 // is dropped.
 test fn every_documented_effort_round_trips_to_its_own_spelling() -> Bool {
-  if effort_round_trips(name: "none") && round_trips(name: "minimal") && round_trips(name: "low")
-    && round_trips(name: "medium") && round_trips(name: "high") && round_trips(name: "xhigh")
-    && round_trips(name: "max") { true } else { false }
+  if effort_round_trips(name: "none") && effort_round_trips(name: "minimal")
+    && effort_round_trips(name: "low") && effort_round_trips(name: "medium")
+    && effort_round_trips(name: "high") && effort_round_trips(name: "xhigh")
+    && effort_round_trips(name: "max") { true } else { false }
 }
 
 // AN UNDOCUMENTED NAME IS KEPT WHOLE IN BOTH DIRECTIONS, not read as one of the seven and not refused:
