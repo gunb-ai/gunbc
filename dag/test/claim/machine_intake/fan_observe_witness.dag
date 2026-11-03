@@ -1,7 +1,12 @@
 module test.claim.machine_intake.fan_observe_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import extdeps.bmc.ipmi_sdr { SdrVerboseUnreadable, sdr_verbose_readout }
+import extdeps.bmc.ipmi_sdr { SdrVerboseUnreadable }
+import test.fixture.machine_intake.mtcollins1_fan_capture {
+  mtcollins1_fan_capture_exit_code,
+  mtcollins1_fan_capture_readout,
+  mtcollins1_fan_capture_repository_lines,
+}
 import gunbc.machine_intake.bmc_fan_observation { RunVerboseCapture, RunVerboseAttempted, RunVerboseNotTaken, render_run_verbose_block }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
@@ -313,20 +318,20 @@ test fn fan_policy_phase_has_no_post_boot_gate() -> Bool {
 // drives them and no BMC is contacted. The executed half (the boot lane really passing not_taken through
 // the REAL writer) is the wet claim in fan_observe_local_wet, not here.
 //
-// The verbose bytes are the UNIT-SHAPE samples already used by mtcollins1_boot_fan_gate_witness (the
-// field spellings ipmitool emits), NOT a classification of this unit's sensors: nothing here decides
-// what any sensor IS. PR-B grounds that on the committed capture, not on these literals.
-
-// The four boot-5 rows as ipmitool renders them under `sdr elist -v`: the elist line, then the records
-// that elist never prints. PSU2_Status is EBh in the NUMBER field and Power Supply (08h) in the TYPE
-// field -- the reason PR-B may not key typing on the number.
-data run_verbose_off_run_stdout: String = "PSU2_Status      | EBh | ok  |  0.0 |\n   Sensor Type : Power Supply (08h)\n   Event/Reading Type Code   : 6Fh\nWatchdog2        | D7h | ok  | 33.0 |\n   Sensor Type : Watchdog2 (23h)\n   Event/Reading Type Code   : 6Fh\nEndOfPost        | E2h | ok  |  6.2 |\n   Sensor Type : Module / Board (09h)\n   Event/Reading Type Code   : 6Fh\nEvent_log        | D6h | ok  |  6.2 |\n   Sensor Type : Event Log (12h)\n   Event/Reading Type Code   : 6Fh\nFan1             | 00h | ns  | 29.1 |  0 RPM\n   Sensor Type : Fan (04h)\n   Event/Reading Type Code   : 01h"
+// THE VERBOSE BYTES ARE THE COMMITTED CAPTURE, NOT A SHAPE WE INVENTED.
+//
+// This file used to carry a hand-written sample whose detail lines read 'Sensor Type : Power Supply
+// (08h)' and 'Event/Reading Type Code   : 6Fh', copied from mtcollins1_boot_fan_gate_witness. Neither
+// is what ipmitool prints, and the claim asserted those very strings -- self-consistent, so no sweep
+// could catch it, and its name implied bytes from a run it did not have. It now renders the committed
+// verbose read of srv1 (run 41406891344) through the receipt module: the marker with its record count,
+// the raw block, the exit status, all from real bytes.
 
 fn run_verbose_captured() -> RunVerboseCapture {
   RunVerboseAttempted {
-    readout: sdr_verbose_readout(success: true, stdout: run_verbose_off_run_stdout),
-    exit_code: 0,
-    raw_stdout: run_verbose_off_run_stdout,
+    readout: mtcollins1_fan_capture_readout(),
+    exit_code: mtcollins1_fan_capture_exit_code,
+    raw_stdout: join(mtcollins1_fan_capture_repository_lines, "\n"),
     raw_stderr: "",
   }
 }
@@ -337,15 +342,17 @@ fn run_verbose_captured() -> RunVerboseCapture {
 // bytes, so the receipt must hold what the controller said, not only what our parser made of it.
 test fn the_standalone_run_keeps_verbose_records_raw_bytes_and_exit_status() -> Bool {
   let block = render_run_verbose_block(capture: run_verbose_captured())
-  string_contains(s: block, pattern: "run=0 verbose_record=[PSU2_Status")
-    && string_contains(s: block, pattern: "run=0 verbose_record=[Watchdog2")
-    && string_contains(s: block, pattern: "run=0 verbose_record=[EndOfPost")
-    && string_contains(s: block, pattern: "run=0 verbose_record=[Event_log")
+  string_contains(s: block, pattern: "run=0 verbose_record=[PSU2_Status (0xeb)]")
+    && string_contains(s: block, pattern: "run=0 verbose_record=[Watchdog2 (0xd7)]")
+    && string_contains(s: block, pattern: "run=0 verbose_record=[EndOfPost (0xe2)]")
+    && string_contains(s: block, pattern: "run=0 verbose_record=[Event_log (0xd6)]")
     && string_contains(s: block, pattern: "run=0 verbose_detail=[")
-    && string_contains(s: block, pattern: "Sensor Type : Power Supply (08h)")
-    && string_contains(s: block, pattern: "run=0 verbose_raw=[PSU2_Status")
+    && string_contains(s: block, pattern: "Sensor Type (Discrete): Power Supply (0x08)")
+    && string_contains(s: block, pattern: "run=0 verbose_raw=[Sensor ID              : PSU2_Status (0xeb)")
     && string_contains(s: block, pattern: "run=0 verbose_exit=0")
-    && string_contains(s: block, pattern: "run=0 verbose_sdr=captured")
+    && string_contains(s: block, pattern: "run=0 verbose_sdr=captured(5)")
+    // A repository that parsed to nothing is its OWN state; nothing here may print it as captured.
+    && !string_contains(s: block, pattern: "verbose_sdr=empty")
     // The marker is single-valued in BOTH directions (review 89921): a read whose records arrived must
     // not answer the reader with a failure marker it can grep for.
     && !string_contains(s: block, pattern: "verbose_sdr=unread")

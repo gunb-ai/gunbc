@@ -2538,6 +2538,12 @@ pub fn list_head<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Option<T> {
     }
 }
 
+pub fn list_last<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Option<T> {
+    fold_list(xs, std::option::Option::None, |acc, item| {
+        Some(item.clone())
+    })
+}
+
 pub fn skip<T: Clone>(
     mut __tco_loop_xs: Rc<FreeMonoid<T>>,
     mut __tco_loop_n: i64,

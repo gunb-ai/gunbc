@@ -301,6 +301,7 @@ fn producer_named_identities(producer: TargetProducer, index: Map<String, String
         Present { value: module } => [concat(module, concat(".", function))]
         Absent => []
       }
+    NativeCensusVerbProducer { verb: _ } => []
     NativeClaimProgramProducer { entry: _, deadline: _ } => []
     NativeServeProgramProducer { entry: _, probe: _ } => []
     SelfHostProducer {} => []
@@ -323,7 +324,6 @@ fn producer_named_identities(producer: TargetProducer, index: Map<String, String
     TypedGraphExclusiveBytesFloorSubjectProducer {} => []
     BareReferenceChannelOutcomeProducer {} => []
     SelfHostBehavioralEquivalenceProducer {} => []
-    NativeCensusVerbProducer { verb: _ } => []
     GenericIdentityCensusProducer {} => []
     InterpolationHoleCensusProducer {} => []
     SharedTypeLeafCollisionCensusProducer {} => []
