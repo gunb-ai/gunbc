@@ -874,3 +874,42 @@ fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
     RecoveryTerminalRecordMayRelease { state: s } => join(["the attempt is already ", attempt_state_wire(s: s), ", so there is no transition to make; its seat is released only once the unit is proven ended"], "")
   }
 }
+
+
+type AttemptSlotKeysReading
+  = AttemptSlotKeysListed { keys: List<NonEmptyStr> }
+  | AttemptSlotKeysRefused { detail: String }
+
+
+fn attempt_slot_keys(store: SlotStore) -> AttemptSlotKeysReading {
+  match slot_keys(store: store) {
+    CasSlotKeysListed { keys: ks } => AttemptSlotKeysListed { keys: ks }
+    CasSlotKeysListingRefused { root: _, detail: d } => AttemptSlotKeysRefused { detail: join(["the attempt store could not be listed: ", d], "") }
+    CasSlotKeysSubjectRefused { root: _, cause: c } => AttemptSlotKeysRefused { detail: join(["the attempt store is not admissible: ", c], "") }
+  }
+}
+
+
+// A TYPED PAYLOAD READ AND THE ENUMERATION OF A STORE'S ATTEMPTS, so a payload domain (the worktree claim)
+// reads and lists through this layer and never imports the CAS library. Both answer through the store it
+// was handed; neither takes or returns a path (a refusal names the store by what it could not do).
+type AttemptPayloadReading<P>
+  = AttemptPayloadAbsent
+  | AttemptPayloadHeld { record: P, generation: CasGeneration }
+  | AttemptPayloadUnreadable { detail: String }
+
+
+fn attempt_payload_read<P>(store: SlotStore, reference: NonEmptyStr, codec: AttemptPayloadCodec<P>) -> AttemptPayloadReading<P> {
+  match slot_observe(store: store, key: reference) {
+    CasObservedUnreadable { cause: c } => AttemptPayloadUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+    CasObservedReadable { readable: r } =>
+      match r {
+        CasReadableAbsent => AttemptPayloadAbsent
+        CasReadablePresent { version: v } =>
+          match codec.decode(v.value as String) {
+            Absent => AttemptPayloadUnreadable { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
+            Present { value: rec } => AttemptPayloadHeld { record: rec, generation: v.generation }
+          }
+      }
+  }
+}
