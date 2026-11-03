@@ -3,7 +3,7 @@ module v2.test.claim.parse.condition_position_record_parse
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 
@@ -111,21 +111,18 @@ data dotcond_with_tail_source: String = "module probe.dotcond_tail\n\nfn probe_d
 
 fn dotcond_with_tail_parses() -> Bool { g_parse_accepted(text: dotcond_with_tail_source, file: ^dotcond_tail_probe) }
 
-// keen-heron-809's newline-minus review item: the peek must apply the SAME newline guard the infix
-// table applies (#12817): a `-` beginning a line after a complete operand never continues the
-// expression, so it must not admit a record either. The text refuses EITHER way (the table guard
-// refuses operand-newline-`-` by design) -- what this claim pins is WHICH refusal: the guard's
-// reason, proving the bare-head reading stood and the chain's own guard fired. Pre-fix the record
-// swallowed `c { x }` and the refusal carried a different reason, so this is RED at the reason
-// level against the peek fix, green after it.
+// keen-heron-809's newline-minus review item, as originally specified: the peek must apply the
+// SAME newline guard the infix table applies (#12817). Engine datum (parse.dag
+// parse_expr_infix_continue): a failing continuation_guard ENDS the table cleanly -- it never
+// refuses the parse -- so a line-initial `-` after the if-block simply begins the next statement,
+// and the text PARSES as if-block plus statement. Pre-fix the record arm admitted `c { x }` (the
+// bare `-` looked like a continuation head), the if lost its block, and the text refused at parse:
+// RED before the fix, green after. (An earlier version of this claim asserted a refusal carrying
+// the guard's reason -- wrong: the v2 guard gates continuation, it does not abort. The seed aborts;
+// the v2 realization stops the table. cc2-15695c at 7d5d0d02 measured the failure.)
 data newline_minus_after_if_source: String = "module probe.nl_minus\n\nfn probe_nl(c: Bool, x: Int, y: Int) -> Int {\n  if c { x }\n -y\n}\n"
 
-fn newline_minus_after_if_refuses_with_guard_reason() -> Bool {
-  match g_tokenize_parse(text: newline_minus_after_if_source, file: ^nl_minus_probe) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == "NewlineBeforeDualRoleOperator"
-  }
-}
+fn newline_minus_after_if_parses() -> Bool { g_parse_accepted(text: newline_minus_after_if_source, file: ^nl_minus_probe) }
 
 fn labeled_call_block_condition_still_parses() -> Bool { g_parse_accepted(text: labeled_call_block_condition_source, file: ^cond_labeled_call_probe) }
 
@@ -149,9 +146,7 @@ test fn record_call_arg_still_parses_holds() -> Bool { record_call_arg_still_par
 
 test fn dotcond_with_tail_parses_holds() -> Bool { dotcond_with_tail_parses() }
 
-test fn newline_minus_after_if_refuses_with_guard_reason_holds() -> Bool {
-  newline_minus_after_if_refuses_with_guard_reason()
-}
+test fn newline_minus_after_if_parses_holds() -> Bool { newline_minus_after_if_parses() }
 
 test fn labeled_call_block_condition_still_parses_holds() -> Bool { labeled_call_block_condition_still_parses() }
 
