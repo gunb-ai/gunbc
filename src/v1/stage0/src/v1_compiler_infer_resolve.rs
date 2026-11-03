@@ -518,18 +518,34 @@ pub fn expand_nominal_alias_rhs_by_name(
                     .resolved
                     .clone();
                     // DESIGN 6b: a nominal alias whose binding `resolved` is an ungrounded
-                    // leaf still carries its target on TypeBinding.alias_rhs. Expand it AS
-                    // WRITTEN (applied args intact) so the alias genuinely expands and the
-                    // consumer judges the aliased declaration rather than the alias shell.
-                    // lookup_type_by_name is NOT used here: it drops the applied args (the
-                    // peel defect #15175 fixes), so it would misjudge a parameterized alias.
+                    // leaf still carries its target on TypeBinding.alias_rhs. Ground it there
+                    // (resolve_node_bounded, applied args intact) so the alias genuinely
+                    // expands and the consumer judges the aliased declaration rather than the
+                    // alias shell. lookup_type_by_name is NOT used: it drops the applied args
+                    // (the peel defect #15175 fixes), so it would misjudge a parameterized alias.
                     if structural.connective.clone() == Connective::NoConnective {
                         if let Some(binding) = crate::v1_compiler_infer_env::lookup_binding_by_name(
                             env.clone(),
                             brand.clone(),
                         ) {
                             if let Some(rhs) = binding.alias_rhs.clone() {
-                                structural = rhs;
+                                let expanded = resolve_node_bounded(
+                                    rhs.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                    0,
+                                    false,
+                                )
+                                .resolved
+                                .clone();
+                                // Adopt the target only when it genuinely grounds to a
+                                // structure; a parameterized alias (Cell<fn>, List<fn>) still
+                                // resolves to NoConnective here and is left for #15175's
+                                // applied-args arm -- we do NOT drop the args via
+                                // lookup_type_by_name, and we do NOT invent instantiation.
+                                if expanded.connective.clone() != Connective::NoConnective {
+                                    structural = expanded;
+                                }
                             }
                         }
                     }
