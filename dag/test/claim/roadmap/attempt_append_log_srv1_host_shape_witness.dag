@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptStateProvision, AttemptDirectoryRoot, AttemptDirectoryWorker, AttemptDirectoryReview, AttemptDirectorySupervisor,
   AttemptWorkerEvents, AttemptSupervisorEvents, AttemptAuditEvents, AttemptSupervisorLog,
   attempt_state_provision, attempt_state_provision_directory, attempt_log_provision_path,
-  attempt_append_log_store_open, attempt_append_log_census_slot, AttemptAppendLogReading, AttemptAppendLogReady, AttemptAppendLogUnready, AttemptAppendLogLegacyRefused,
+  attempt_append_log_store_open, attempt_append_log_member_slot, AttemptAppendLogReading, AttemptAppendLogReady, AttemptAppendLogUnready, AttemptAppendLogLegacyRefused,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
