@@ -975,3 +975,13 @@ test fn kvn_lambda_fn_binder_still_refuses_holds() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
+
+// THE CONSUMER SHAPE (src/v1/03_resolve.dag resolve_modules): a module-named lambda parameter inside a pipe call.
+data kvn_lambda_pipe_module_source: String = "module m.t\ndata d: Int = xs |> map(module => module_input(module: module, n: 1))\n"
+
+test fn kvn_lambda_pipe_module_binder_parses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_lambda_pipe_module_source, file: ^probe_kvn_lambda_pipe_module) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
