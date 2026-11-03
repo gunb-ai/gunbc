@@ -1,5 +1,6 @@
 module gunbc.provisioning.network_boot_actuation
 
+import gunbc.boot_artifact_delivery { BootDeliverySolution }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
@@ -24,9 +25,10 @@ import gunbc.provisioning.provisioning_arm {
   ArmUnobserved,
   ArmRefused,
   SeedBindingRefused,
-  DeliveryStrategy,
   DeliveryEvidence,
   provisioning_arm_derive,
+  provisioning_arm_attempt,
+  solution_attempt,
   FirmwarePreparation,
 }
 import gunbc.os_install_mechanism { OsInstallMechanism, PxeHttpInstall, VirtualMediaInstall, install_boot_target_for }
@@ -71,48 +73,50 @@ type NetworkBootActuation
       seed: UbuntuAutoinstallSeedBinding
     }
   | ArmActuationWithheld {
-      attempt: AttemptBinding
+      attempt: AttemptBinding?
       shape: ArmShape
     }
 
 fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation {
-  match arm.shape {
-    ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
-      ArmActuationPxe {
-        attempt: arm.attempt,
-        mechanism: PxeHttpInstall,
-        boot_target: install_boot_target_for(mechanism: PxeHttpInstall),
-        chain: c,
-        firmware: f,
-        origin: o,
-        seed: s,
-      }
-    ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
-      ArmActuationVirtualMedia {
-        attempt: arm.attempt,
-        mechanism: VirtualMediaInstall,
-        boot_target: install_boot_target_for(mechanism: VirtualMediaInstall),
-        media_observation: m,
-        origin: o,
-        seed: s,
-      }
-    ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: arm.attempt, shape: arm.shape }
-    ArmRefused { cause: _ } => ArmActuationWithheld { attempt: arm.attempt, shape: arm.shape }
+  match provisioning_arm_attempt(arm: arm) {
+    Absent => ArmActuationWithheld { attempt: none, shape: arm.shape }
+    Present { value: attempt } => match arm.shape {
+      ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
+        ArmActuationPxe {
+          attempt: attempt,
+          mechanism: PxeHttpInstall,
+          boot_target: install_boot_target_for(mechanism: PxeHttpInstall),
+          chain: c,
+          firmware: f,
+          origin: o,
+          seed: s,
+        }
+      ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
+        ArmActuationVirtualMedia {
+          attempt: attempt,
+          mechanism: VirtualMediaInstall,
+          boot_target: install_boot_target_for(mechanism: VirtualMediaInstall),
+          media_observation: m,
+          origin: o,
+          seed: s,
+        }
+      ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
+      ArmRefused { cause: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
+    }
   }
 }
 
 // THE INSTALL-ATTEMPT-RECORD STEP: the one production call of the sealed binder. An UbuntuAutoinstallSeedBinding
 // is minted only by bind_ubuntu_autoinstall_seed, so the seed an arm carries is never typed by hand; this entry
 // takes the raw seed, target, unit key, intake attempt and live disk selection, binds, and only then derives
-// the arm and actuates it. The strategy is a single parameter: one strategy per attempt, and a refused binding
+// the arm and actuates it. The route is the solver's BootDeliverySolution, not a free parameter: one route per attempt, and a refused binding
 // is Withheld, never re-armed as the other delivery. `evidence.seed` is overwritten by the binding, so a
 // caller cannot present a seed that the binder did not mint for this attempt. A refused binding is
 // Withheld as ArmRefused { SeedBindingRefused { blocker } }: the binder's own typed blocker survives to the
 // result, never degraded to an absence.
 fn network_boot_attempt_actuation(
-  strategy: DeliveryStrategy,
+  solution: BootDeliverySolution,
   evidence: DeliveryEvidence,
-  attempt: AttemptBinding,
   seed: UbuntuAutoinstallSeed,
   target: ProvisioningTargetAdmission,
   unit_key: UnitKey,
@@ -122,7 +126,7 @@ fn network_boot_attempt_actuation(
   match bind_ubuntu_autoinstall_seed(seed: seed, target: target, unit_key: unit_key, attempt: intake_attempt, selection: selection) {
     Bound { binding: b } =>
       network_boot_arm_actuator_steps(arm: provisioning_arm_derive(
-        strategy: strategy,
+        solution: solution,
         evidence: DeliveryEvidence {
           firmware: evidence.firmware,
           chain: evidence.chain,
@@ -130,10 +134,9 @@ fn network_boot_attempt_actuation(
           origin: evidence.origin,
           seed: Present { value: b },
         },
-        attempt: attempt,
       ))
     BindRefused { blocker: b } =>
-      ArmActuationWithheld { attempt: attempt, shape: ArmRefused { cause: SeedBindingRefused { blocker: b } } }
+      ArmActuationWithheld { attempt: solution_attempt(solution: solution), shape: ArmRefused { cause: SeedBindingRefused { blocker: b } } }
   }
 }
 

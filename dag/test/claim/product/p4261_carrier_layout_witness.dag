@@ -97,6 +97,7 @@ import product.electrical.measured_netlist {
   node_of,
   netlist_text,
 }
+import product.electrical.photograph { photograph_citation_text }
 import product.electrical.continuity {
   ModuleState,
   ReadingOrder,
@@ -107,6 +108,7 @@ import product.electrical.continuity {
   ModuleInstalled,
   ReachabilityGraph,
   reachability_graph,
+  reach,
   ContinuityObservation,
   BenchConditions,
   Unpowered,
@@ -782,7 +784,7 @@ fn shared_marking_evidence(c: ComponentInstanceIdentity) -> List<String> {
 fn evidence_text(e: EvidenceRef) -> String {
   match e {
     OperatorStatement { stated_on, verbatim } => join([stated_on as String, verbatim as String], " ")
-    OperatorPhotograph { taken_on, locator } => join([taken_on as String, locator as String], " ")
+    OperatorPhotograph { citation } => photograph_citation_text(citation: citation)
     _ => "listing"
   }
 }
