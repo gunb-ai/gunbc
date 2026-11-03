@@ -56,7 +56,7 @@ import v2.std.node_query { find_named_child }
 import v2.std.node { Atom, Authored, ComputationNode, Conj, Edge, Match, Node, Positional, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol, NotADeclaration, StructuralLabel, positional_child_target_nodes }
 import v2.std.provenance { RecordedSourceExtent, SourceExtentKnown, span_index_extent, span_index_textual_locus_optional, SpanIndex }
 import v2.std.namespace_alias { AliasBindingRow }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 
 // RULING-B ROSTER IMPORT SWEEP (#14003 / #14017), computed from the PARSED program, not from text.
 //
@@ -109,6 +109,11 @@ type RosterHeadRow {
 type RosterHeadRewrite
   = KeepHead
   | RenameHead { to: String, positional: List<String>, appended: List<RosterAppendedArg> }
+  // THE THIRD ARM (docs/plans/2026-11-01-xl3-respell-row-kind-design.md): the selected head's atom `call` is respelled to the
+  // declaring identity `home.import_name`, resolution unchanged. It carries nothing and derives NO companion import: the
+  // spelling is qualified, so it binds from any module. First consumer: a service-operation head `Service.Op(...)`, whose
+  // service prefix is the atom and whose operation sits in a postfix suffix (v2.test.claim.resolve.service_operation_call).
+  | RespellToDeclaringIdentity
 
 // A CONSTANT NAMED ARGUMENT A RenameHead ROW APPENDS after the call's last argument (tidy-ant-251's sort_by ruling): the
 // renamed callee declares one more parameter than the ambient spelling took, and its value is the same at every site of the
@@ -658,6 +663,7 @@ fn roster_appended_callee_refusal(table: List<RosterHeadRow>, selected: List<Ros
       Absent =>
         match r.head {
           KeepHead => Absent
+          RespellToDeclaringIdentity => Absent
           RenameHead { to: _, positional: _, appended: args } =>
             fold_list(xs: args, empty: Absent, cons: fn(a2, arg) {
               match a2 {
@@ -1422,13 +1428,22 @@ type RosterFreeHeads
   | FreeHeadsAmbiguous
 
 fn roster_free_heads(sites: FreeMonoid<ScopedReferenceSite>, sides: List<RosterHomeSide>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterHeadRow, gates: List<RosterSiteGate>) -> RosterFreeHeads {
+  roster_free_heads_reading(sites: sites, sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, gates: gates, type_positions_read: false)
+}
+
+// `type_positions_read` is true only for a respell row, whose TYPE-POSITION sites are read by roster_type_respell_edits (the second
+// occurrence kind of that arm). A free site at a type position is then not an off-value site this head read cannot place: it has its
+// own reader, which joins and refuses it. Every other caller passes false, so a rename or keep row still treats it as ambiguous.
+fn roster_free_heads_reading(sites: FreeMonoid<ScopedReferenceSite>, sides: List<RosterHomeSide>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterHeadRow, gates: List<RosterSiteGate>, type_positions_read: Bool) -> RosterFreeHeads {
   let gate = roster_gate_for(gates: gates, row: row)
   let imported_from_home = roster_symbol_imported(imported: imported, row: row)
   let free_off_value = fold_list(xs: sites, empty: 0, cons: fn(n, st) {
     if roster_spelling_is(qn: st.site.spelling, call: row.call) {
       match st.position {
         ValuePosition => n
-        _ => if roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) { n + 1 } else { n }
+        TypeAnnotationPosition => if type_positions_read { n } else { roster_free_off_value_count(sides: sides, st: st, row: row, imported_from_home: imported_from_home, n: n) }
+        ReturnPosition => if type_positions_read { n } else { roster_free_off_value_count(sides: sides, st: st, row: row, imported_from_home: imported_from_home, n: n) }
+        _ => roster_free_off_value_count(sides: sides, st: st, row: row, imported_from_home: imported_from_home, n: n)
       }
     } else {
       n
@@ -1453,6 +1468,10 @@ fn roster_free_heads(sites: FreeMonoid<ScopedReferenceSite>, sides: List<RosterH
       if fold_list(xs: m, empty: false, cons: fn(acc2, st) { roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) && roster_gate_allows_site(gate: gate, st: st, spans: spans) }) { [h] } else { [] }
     }), empty: [], cons: fn(acc, one) { list_append(left: acc, right: one) }) }
   }
+}
+
+fn roster_free_off_value_count(sides: List<RosterHomeSide>, st: ScopedReferenceSite, row: RosterHeadRow, imported_from_home: Bool, n: Int) -> Int {
+  if roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) { n + 1 } else { n }
 }
 
 // THE LABEL SITES ARE READ FROM RESOLUTION, NOT FROM LEXEMES (review 82002). A label edit is selected only at a call whose
@@ -1835,6 +1854,11 @@ fn roster_rows_label_plan(sites: FreeMonoid<ScopedReferenceSite>, sides: List<Ro
       LabelsSelected { edits: es } =>
         match row.head {
           KeepHead => roster_row_label_edits(sites: sites, sides: sides, gates: gates, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es)
+          RespellToDeclaringIdentity =>
+            match roster_respell_plan(sites: sites, sides: sides, gates: gates, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, text: text) {
+              LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es, right: more) }
+              other => other
+            }
           RenameHead { to: to, positional: positional, appended: _ } =>
             match roster_row_label_edits(sites: sites, sides: sides, gates: gates, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es) {
               LabelsSelected { edits: es3 } =>
@@ -1970,6 +1994,142 @@ fn roster_rename_plan(sites: FreeMonoid<ScopedReferenceSite>,
       }
     })
     }
+  }
+}
+
+// THE RESPELL PLAN OF ONE RespellToDeclaringIdentity ROW: the same free heads a rename selects (roster_free_heads, so a head
+// bound by a local, a parameter or another declaration is never a candidate), each given ONE edit -- its atom `call` becomes
+// `home.import_name`. A head whose atom is not followed by a `.` (a bare one-segment call) is untouched, and so is a head
+// the free-site read does not select (a method or field postfix on a value). No argument byte, label or import moves.
+fn roster_respell_plan(sites: FreeMonoid<ScopedReferenceSite>, sides: List<RosterHomeSide>, gates: List<RosterSiteGate>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterHeadRow, text: Optional<String>) -> RosterLabelPlan {
+  match roster_respell_head_plan(sites: sites, sides: sides, gates: gates, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, text: text) {
+    LabelsSelected { edits: head_edits } =>
+      match roster_type_respell_edits(sites: sites, sides: sides, gates: gates, parse_root: parse_root, spans: spans, imported: imported, row: row, text: text) {
+        LabelsSelected { edits: type_edits } => LabelsSelected { edits: list_append(left: head_edits, right: type_edits) }
+        other => other
+      }
+    other => other
+  }
+}
+
+// THE SECOND OCCURRENCE KIND OF THE RESPELL ARM: a TYPE-NAME REFERENCE (an annotation, a return type, a generic argument), where the
+// first kind is a call head. The parse tree's type references are the single-segment `qualified_name` captures whose atom is spelled
+// `call` (an already qualified reference is a sequence, not an atom, so it is never a candidate: a respell is idempotent). Each is JOINED,
+// by the source offset of its atom, to the collector's TypeAnnotationPosition / ReturnPosition site of that spelling that starts at the
+// same byte, and is edited only when that site is free for the row's home (roster_site_is_free, which asks the home's KIND through the same
+// position-by-kind table a rename uses: a type home matches a type position, a value home does not). A bound site (a type parameter, a
+// local alias) is joined and left alone. An atom no site starts at, a site no atom starts at, an offset two sites share, or a missing
+// extent REFUSES the module as ambiguous rather than respelling what cannot be placed. No import moves: the spelling is qualified.
+// A single-segment `qualified_name` capture that is not a type reference (a one-segment module header) meets no type site and so
+// refuses; it is never respelled by accident.
+fn roster_type_respell_edits(sites: FreeMonoid<ScopedReferenceSite>, sides: List<RosterHomeSide>, gates: List<RosterSiteGate>, parse_root: Node, spans: SpanIndex, imported: List<AliasBindingRow>, row: RosterHeadRow, text: Optional<String>) -> RosterLabelPlan {
+  let gate = roster_gate_for(gates: gates, row: row)
+  let imported_from_home = roster_symbol_imported(imported: imported, row: row)
+  let type_sites = roster_type_sites(sites: sites, call: row.call)
+  let atoms = roster_type_reference_atoms(parse_root: parse_root, call: row.call)
+  let site_starts = roster_site_starts(sites: type_sites, spans: spans)
+  let atom_starts = list_map(xs: atoms, f: fn(a) { roster_node_start(node: a, spans: spans) })
+  let unplaced = roster_absent_count(xs: site_starts) + roster_absent_count(xs: atom_starts)
+  let joined = list_map(xs: atoms, f: fn(a) { roster_sites_starting_at(sites: type_sites, starts: site_starts, at: roster_node_start(node: a, spans: spans)) })
+  let well_joined = for_all(xs: joined, predicate: fn(m) { length(xs: m) == 1 })
+  if unplaced != 0 || length(xs: atoms) != length(xs: type_sites) || !well_joined {
+    LabelsAmbiguous
+  } else {
+    match text {
+      Absent => LabelsSelected { edits: [] }
+      Present { value: _ } =>
+        fold_list(xs: zip_map(a: atoms, b: joined, f: fn(atom, m) {
+          if fold_list(xs: m, empty: false, cons: fn(acc, st) { roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) && roster_gate_allows_site(gate: gate, st: st, spans: spans) }) { [atom] } else { [] }
+        }), empty: LabelsSelected { edits: [] }, cons: fn(acc, chosen) {
+          match acc {
+            LabelsSelected { edits: es } =>
+              fold_list(xs: chosen, empty: acc, cons: fn(inner, atom) {
+                match inner {
+                  LabelsSelected { edits: es2 } =>
+                    match roster_node_byte_range(node: atom, spans: spans) {
+                      Absent => LabelsAmbiguous
+                      Present { value: r } => LabelsSelected { edits: list_snoc_item(xs: es2, item: RosterLabelEdit { start: r.start, end: r.end, from: row.call, to: qualified_name_to_dotted_string(qn: row.home) + "." + row.import_name, relocation: Absent }) }
+                    }
+                  other => other
+                }
+              })
+            other => other
+          }
+        })
+    }
+  }
+}
+
+// The collector's type-position sites spelled `call`: the annotation and the return position (the two positions position_verdict
+// answers with the type table).
+fn roster_type_sites(sites: List<ScopedReferenceSite>, call: String) -> List<ScopedReferenceSite> {
+  fold_list(xs: sites, empty: [], cons: fn(acc, st) {
+    if roster_spelling_is(qn: st.site.spelling, call: call) {
+      match st.position {
+        TypeAnnotationPosition => list_snoc_item(xs: acc, item: st)
+        ReturnPosition => list_snoc_item(xs: acc, item: st)
+        _ => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+// Every single-segment `qualified_name` capture whose atom is spelled `call`. The captured child of a one-segment name IS its atom;
+// a qualified name's captured child is a sequence (no atom identity), so it is skipped here by construction.
+fn roster_type_reference_atoms(parse_root: Node, call: String) -> List<Node> {
+  fold_list(xs: node_subtree_nodes(root: parse_root), empty: [], cons: fn(acc, n) {
+    match parse_production_emitted_identity_optional(node: n) {
+      Present { value: id } =>
+        if id == ^dag_surface_qualified_name {
+          match parse_production_captured_child_optional(node: n) {
+            Present { value: cap } =>
+              match node_atom_identity_optional(node: cap) {
+                Present { value: sym } => if symbol_lexeme(sym: sym) == call { list_snoc_item(xs: acc, item: cap) } else { acc }
+                Absent => acc
+              }
+            Absent => acc
+          }
+        } else {
+          acc
+        }
+      Absent => acc
+    }
+  })
+}
+
+fn roster_respell_head_plan(sites: FreeMonoid<ScopedReferenceSite>, sides: List<RosterHomeSide>, gates: List<RosterSiteGate>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterHeadRow, text: Optional<String>) -> RosterLabelPlan {
+  match roster_free_heads_reading(sites: sites, sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, gates: gates, type_positions_read: true) {
+    FreeHeadsAmbiguous => LabelsAmbiguous
+    FreeHeads { heads: heads } =>
+      fold_list(xs: heads, empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
+        match acc {
+          LabelsSelected { edits: es } =>
+            match find_named_child(root: head, name: ^grammar_sequence_left_node_projection) {
+              Rejected { diagnostics: _ } => LabelsAmbiguous
+              Accepted { value: atom, diagnostics: _ } =>
+                match roster_node_byte_range(node: atom, spans: spans) {
+                  Absent => LabelsAmbiguous
+                  Present { value: r } =>
+                    match text {
+                      Absent => LabelsSelected { edits: es }
+                      Present { value: t } =>
+                        match roster_text_between(text: t, start: r.end, end: r.end + 1) {
+                          Present { value: dot } =>
+                            if dot == "." {
+                              LabelsSelected { edits: list_snoc_item(xs: es, item: RosterLabelEdit { start: r.start, end: r.end, from: row.call, to: qualified_name_to_dotted_string(qn: row.home) + "." + row.import_name, relocation: Absent }) }
+                            } else {
+                              LabelsSelected { edits: es }
+                            }
+                          Absent => LabelsAmbiguous
+                        }
+                    }
+                }
+            }
+          other => other
+        }
+      })
   }
 }
 
@@ -2303,6 +2463,7 @@ fn roster_rename_direct_call_edits(head: Node, spans: SpanIndex, row: RosterHead
 fn roster_with_appended(plan: RosterLabelPlan, row: RosterHeadRow, end: Optional<Int>) -> RosterLabelPlan {
   let appended = match row.head {
     KeepHead => []
+    RespellToDeclaringIdentity => []
     RenameHead { to: _, positional: _, appended: a } => a
   }
   match appended {
@@ -2869,6 +3030,7 @@ fn roster_rename_production_row() -> List<RosterHeadRow> {
   fold_list(xs: roster_head_rows(), empty: [], cons: fn(acc, r) {
     match r.head {
       KeepHead => acc
+      RespellToDeclaringIdentity => acc
       RenameHead { to: _, positional: _, appended: _ } => list_snoc_item(xs: acc, item: r)
     }
   })
@@ -3004,7 +3166,16 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own",
     "occurrences-unknown-row-key-refuses",
     "occurrences-key-on-a-bound-site-refuses",
-    "occurrences-key-outside-the-paths-refuses"
+    "occurrences-key-outside-the-paths-refuses",
+    "respell-service-operation-head",
+    "respell-bare-head-untouched",
+    "respell-parameter-bound-untouched",
+    "respell-value-method-untouched",
+    "respell-mutation-keephead-does-not-respell",
+    "respell-type-annotation-and-return",
+    "respell-type-generic-argument",
+    "respell-type-already-qualified-untouched",
+    "respell-type-mutation-keephead-does-not-respell"
   ]
 }
 
@@ -3028,8 +3199,91 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
   ]
 }
 
+// THE RESPELL CONTROLS (docs/plans/2026-11-01-xl3-respell-row-kind-design.md). The fixture row respells the service prefix
+// `Filesystem` to its declaring identity extdeps.filesystem.filesystem_io.Filesystem. Positive: a service-operation head
+// `Filesystem.Write(..)` has its atom qualified, the brace import and every argument byte unchanged. Untouched: a bare
+// one-segment head, a head bound by a parameter, and a method on a value. Mutation: the same site under a KeepHead row is
+// NOT respelled, so dropping the arm leaves the text as authored and the positive control fails.
+fn roster_respell_row(head: RosterHeadRewrite) -> RosterHeadRow {
+  RosterHeadRow { call: "Filesystem", key: "Filesystem", import_name: "Filesystem", home: qualified_name_from_dotted_string(dotted: "extdeps.filesystem.filesystem_io"), labels: [], head: head }
+}
+
+fn roster_respell_closures() -> List<RosterHomeClosure> {
+  [RosterClosureRead { home: "extdeps.filesystem.filesystem_io", modules: ["extdeps.filesystem.filesystem_io"] }]
+}
+
+fn roster_respell_outcome(row: RosterHeadRow, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  roster_sweep_text_rows(sides: roster_home_sides(rows: [row]), companions: [], path: "control/respell.dag", text: text, prepared: prepared, lex: lex, candidates: [row], closures: roster_respell_closures())
+}
+
+// The text after one pass; a refusal or a clean outcome reads back as the input text with the cause named in `fail`.
+fn roster_respell_expect(name: String, row: RosterHeadRow, before: String, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_respell_outcome(row: row, text: before, prepared: prepared, lex: lex) {
+    RosterClean => if before == after { "" } else { "CONTROL-FAIL " + name + ": clean, wanted a respell\n" }
+    RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n"
+    outcome =>
+      match roster_applied(before: before, outcome: outcome) {
+        RosterApplyRefused { reason: r } => "CONTROL-FAIL " + name + ": splice " + roster_refusal_text(reason: r) + "\n"
+        RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
+      }
+  }
+}
+
+fn roster_respell_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  let respell = roster_respell_row(head: RespellToDeclaringIdentity)
+  let imp = "module c.respell\n\nimport extdeps.filesystem.filesystem_io { Filesystem }\n\n"
+  let site = "fn f(p: String, c: String) -> Bool {\n  let w = Filesystem.Write(path: p, content: c)\n  true\n}\n"
+  let site_after = "fn f(p: String, c: String) -> Bool {\n  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: p, content: c)\n  true\n}\n"
+  let bare = "fn f(p: String) -> Bool {\n  let w = Filesystem(path: p)\n  true\n}\n"
+  let bound = "fn f(Filesystem: String, c: String) -> Bool {\n  let w = Filesystem.Write(path: c, content: c)\n  true\n}\n"
+  let method = "fn f(p: String, c: String) -> Bool {\n  let w = p.Write(path: p, content: c)\n  true\n}\n"
+  [
+    roster_control_verdict(name: "respell-service-operation-head", fail: roster_respell_expect(name: "respell-service-operation-head", row: respell, before: imp + site, after: imp + site_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-bare-head-untouched", fail: roster_respell_expect(name: "respell-bare-head-untouched", row: respell, before: imp + bare, after: imp + bare, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-parameter-bound-untouched", fail: roster_respell_expect(name: "respell-parameter-bound-untouched", row: respell, before: imp + bound, after: imp + bound, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-value-method-untouched", fail: roster_respell_expect(name: "respell-value-method-untouched", row: respell, before: imp + method, after: imp + method, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-mutation-keephead-does-not-respell", fail: roster_respell_expect(name: "respell-mutation-keephead-does-not-respell", row: roster_respell_row(head: KeepHead), before: imp + site, after: imp + site, prepared: prepared, lex: lex))
+  ]
+}
+
+// THE TYPE-POSITION CONTROLS (the second occurrence kind of the respell arm). The row's home std.disposition declares `Disposition` as a
+// TYPE, so the home-kind table matches a type position and a value position does not. Positive: an annotation and a return type are
+// qualified, a generic argument is qualified, the brace import unchanged. Untouched: a reference already qualified. Mutation: the same
+// text under a KeepHead row is not respelled, so dropping the type reader leaves the text as authored and the positive controls fail.
+fn roster_respell_type_row(head: RosterHeadRewrite) -> RosterHeadRow {
+  RosterHeadRow { call: "Disposition", key: "Disposition", import_name: "Disposition", home: qualified_name_from_dotted_string(dotted: "std.disposition"), labels: [], head: head }
+}
+
+fn roster_respell_type_expect(name: String, row: RosterHeadRow, before: String, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text_rows(sides: roster_home_sides(rows: [row]), companions: [], path: "control/respell_type.dag", text: before, prepared: prepared, lex: lex, candidates: [row], closures: [RosterClosureRead { home: "std.disposition", modules: ["std.disposition"] }]) {
+    RosterClean => if before == after { "" } else { "CONTROL-FAIL " + name + ": clean, wanted a respell\n" }
+    RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n"
+    outcome =>
+      match roster_applied(before: before, outcome: outcome) {
+        RosterApplyRefused { reason: r } => "CONTROL-FAIL " + name + ": splice " + roster_refusal_text(reason: r) + "\n"
+        RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
+      }
+  }
+}
+
+fn roster_respell_type_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  let respell = roster_respell_type_row(head: RespellToDeclaringIdentity)
+  let imp = "module c.respell_type\n\nimport std.disposition { Disposition }\n\n"
+  let annotated = "fn f(d: Disposition) -> Disposition {\n  d\n}\n"
+  let annotated_after = "fn f(d: std.disposition.Disposition) -> std.disposition.Disposition {\n  d\n}\n"
+  let generic = "fn g(xs: List<Disposition>) -> Bool {\n  true\n}\n"
+  let generic_after = "fn g(xs: List<std.disposition.Disposition>) -> Bool {\n  true\n}\n"
+  let qualified = "fn f(d: std.disposition.Disposition) -> Bool {\n  true\n}\n"
+  [
+    roster_control_verdict(name: "respell-type-annotation-and-return", fail: roster_respell_type_expect(name: "respell-type-annotation-and-return", row: respell, before: imp + annotated, after: imp + annotated_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-type-generic-argument", fail: roster_respell_type_expect(name: "respell-type-generic-argument", row: respell, before: imp + generic, after: imp + generic_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-type-already-qualified-untouched", fail: roster_respell_type_expect(name: "respell-type-already-qualified-untouched", row: respell, before: imp + qualified, after: imp + qualified, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-type-mutation-keephead-does-not-respell", fail: roster_respell_type_expect(name: "respell-type-mutation-keephead-does-not-respell", row: roster_respell_type_row(head: KeepHead), before: imp + annotated, after: imp + annotated, prepared: prepared, lex: lex))
+  ]
+}
+
 fn roster_rename_controls_verdicts_all(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
-  list_append(left: roster_rename_control_verdicts(prepared: prepared, lex: lex), right: list_append(left: roster_control_edits_disjoint_verdicts(), right: list_append(left: roster_occ_controls(prepared: prepared, lex: lex), right: roster_head_controls(prepared: prepared, lex: lex))))
+  list_append(left: roster_respell_controls(prepared: prepared, lex: lex), right: list_append(left: roster_respell_type_controls(prepared: prepared, lex: lex), right: list_append(left: roster_rename_control_verdicts(prepared: prepared, lex: lex), right: list_append(left: roster_control_edits_disjoint_verdicts(), right: list_append(left: roster_occ_controls(prepared: prepared, lex: lex), right: roster_head_controls(prepared: prepared, lex: lex))))))
 }
 
 // The rename controls' failures and the count check, as the gated report reads them.
@@ -4565,6 +4819,7 @@ fn roster_companion_from_owner(row: RosterHeadRow, to: String, owner: String, re
 fn roster_rename_target(r: RosterHeadRow) -> Optional<String> {
   match r.head {
     KeepHead => Absent
+    RespellToDeclaringIdentity => Absent
     RenameHead { to: t, positional: _, appended: _ } => Present { value: t }
   }
 }
