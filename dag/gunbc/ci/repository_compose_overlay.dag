@@ -1,6 +1,7 @@
 module gunbc.ci.repository_compose_overlay
 
-import std.types { NonEmptyStr, String, List }
+import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.optional { Optional, Present, Absent }
 import gunbc.ci.repository_ci_profile { PublicSeed, OverlayIngest }
 import std.dissolution { DissolutionCondition, dissolution_description }
 import v2.std.node { Node }
@@ -319,17 +320,25 @@ fn head_tree_compose_statements(
   head_link_name: NonEmptyStr,
   compose_dir_name: NonEmptyStr
 ) -> List<Node> {
+  // ONE STEP, ONE ORDER. The step opens with `set -euo pipefail`, so a word that expands
+  // `$RUNNER_TMP_ROOT` BEFORE `runner_tmp_root_stmts` declares it aborts the script at that line with
+  // bash's own "unbound variable" -- which is exactly how this step failed in the field: the mirror's
+  // regenerate-and-seal step died at its line 6 with `RUNNER_TMP_ROOT: unbound variable`, so the heal
+  // publisher's input was never produced. That step runs only on pull_request events
+  // (`if: "!cancelled() && github.event_name == 'pull_request'"`), which is why a green push lane never
+  // showed it. The assignment is therefore emitted AFTER the declaration, and
+  // test.claim.compose_variable_order_witness keeps it that way for every builder in this module.
   concat(
     [
       set_strict_stmt(),
       command_words(rest: ["cd", seed.checkout_path as String]),
       seed_gunbc_assign_stmt(seed: seed),
-      private_root_assign_stmt(),
-      bash_build_assign(name: "HEAD_TREE", value: path_under(name: "RUNNER_TMP_ROOT", tail: head_tree_dir_name as String))
+      private_root_assign_stmt()
     ],
     concat(
       runner_tmp_root_stmts(fallback: overlay.compose_root_env_default),
       [
+        bash_build_assign(name: "HEAD_TREE", value: path_under(name: "RUNNER_TMP_ROOT", tail: head_tree_dir_name as String)),
         command(words: [
           word(text: "git"), word(text: "-C"), var_word(name: "PRIVATE_ROOT"), word(text: "fetch"),
           word(text: "--no-tags"), word(text: "--depth=1"), word(text: "origin"), var_word(name: "HEAD_SHA")
@@ -396,4 +405,299 @@ fn only_at_a_pull_request() -> String {
 
 fn seal_ran_and_repo_alive() -> String {
   "!cancelled() && github.event_name == 'pull_request' && steps.heal_seal.outcome == 'success'"
+}
+
+// ── THE ORDERING LAW OF A COMPOSED STEP ──────────────────────────────────────────────────────
+// A composed step is a SCRIPT, run under `set -euo pipefail`: a word that expands a variable the step
+// has not assigned YET does not evaluate to nothing, it aborts the script at that line. So the order of
+// statements inside one step is load-bearing, and the one fact each builder states (where the scratch
+// root is, where the head tree is, where the composition is) can be stated in the wrong place. This is
+// the general shape of the field failure recorded on `head_tree_compose_statements`: a hoisted
+// assignment read `$RUNNER_TMP_ROOT` before `runner_tmp_root_stmts` declared it.
+//
+// THE LAW. A step may read a variable only if (a) some EARLIER statement in the same step assigned it,
+// or (b) it is an external input: `RUNNER_TEMP`, anything the runner names with a `GITHUB_` prefix, or a
+// name the step's own `env:` mapping declares (the caller passes those, read off the same row that
+// emits the mapping -- `SealEnvBinding`, not a restatement). Anything else a step reads is a defect.
+//
+// The rule reads the RENDERED script, not a model of it, so it checks the bytes the workflow file will
+// carry rather than an intention. A line counts as an assignment of NAME when the text before its first
+// `=` is exactly NAME and NAME is a non-empty identifier run; that is how the builders spell
+// `bash_build_assign`, and a command word whose own text carries an `=` (the first `=` of a line like
+// `'git' 'fetch' '--depth=1'` sits inside a quoted word) never satisfies it.
+type ComposeOrderingDefect {
+  name: String
+  read_line: Int
+  assigned_line: Int
+}
+
+// The identifier alphabet, as data: the rule's notion of "a name" is this row, not a host regex.
+data compose_ordering_name_chars: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
+
+// The inputs the runner hands every step, as data. Deliberately narrow: `RUNNER_TMP_ROOT` is NOT here,
+// because a scratch root is the step's own to declare -- that is the name the field failure turned on.
+data compose_runner_input_prefixes: List<String> = ["GITHUB_"]
+data compose_runner_input_names: List<String> = ["RUNNER_TEMP"]
+
+fn compose_ordering_is_name_char(ch: String) -> Bool {
+  if ch == "" { false } else { string_contains(s: compose_ordering_name_chars, pattern: ch) }
+}
+
+// The leading identifier run of a fragment that followed a `$`; "" when the `$` did not start a name
+// (`${{`, `$$`, a lone `$` in a literal).
+fn compose_ordering_name_at(s: String, i: Int, acc: String) -> String {
+  if compose_ordering_is_name_char(ch: s.substring(start: i, end: i + 1)) {
+    compose_ordering_name_at(s: s, i: i + 1, acc: concat(acc, s.substring(start: i, end: i + 1)))
+  } else {
+    acc
+  }
+}
+
+// Names read on one line: every fragment after the first `$` that begins with an identifier run.
+fn compose_ordering_reads_at(parts: List<String>, i: Int, acc: List<String>) -> List<String> {
+  if i < count(parts) {
+    compose_ordering_reads_at(
+      parts: parts,
+      i: i + 1,
+      acc: compose_ordering_keep(acc: acc, name: compose_ordering_name_at(s: text_at(xs: parts, i: i), i: 0, acc: ""))
+    )
+  } else {
+    acc
+  }
+}
+
+fn compose_ordering_keep(acc: List<String>, name: String) -> List<String> {
+  if name == "" { acc } else { concat(acc, [name]) }
+}
+
+
+
+// Does a line assign NAME? An occurrence `NAME=` counts when the text left of `=` is exactly an
+// identifier run and the character before that run is a STATEMENT boundary -- start of line, space, `;`,
+// `|`, `&`, `(` -- and not a quote or another identifier character. That is what separates the two
+// spellings that look alike: `test -n "$X" || RUNNER_TMP_ROOT='/tmp'` assigns (the run follows a space,
+// and `||` is a shell conditional, so the fallback really is an assignment), while `'git' 'fetch'
+// '--depth=1'` and `'env' 'FOO=bar'` do not (their run follows a quote, so the `=` belongs to a WORD).
+// One acknowledged blind spot, stated rather than hidden: a step that exports a value for a LATER step
+// with `echo NAME=… >> "$GITHUB_ENV"` counts as assigning NAME in this step too. It is blind only in the
+// direction that says "assigned" when the assignment was for the next step, and no builder in this module
+// exports a name it also reads below the export.
+fn compose_ordering_line_assigns(line: String, name: String, i: Int) -> Bool {
+  if i >= line.length() {
+    false
+  } else if line.substring(start: i, end: i + 1) != "=" {
+    compose_ordering_line_assigns(line: line, name: name, i: i + 1)
+  } else if compose_ordering_candidate_is_assignment(
+    line: line,
+    name: name,
+    eq: i,
+    start: compose_ordering_run_start(line: line, i: i - 1)
+  ) {
+    true
+  } else {
+    compose_ordering_line_assigns(line: line, name: name, i: i + 1)
+  }
+}
+
+// Walk left over identifier characters; stops at the first character that cannot be part of a name.
+fn compose_ordering_run_start(line: String, i: Int) -> Int {
+  if i < 0 {
+    0
+  } else if compose_ordering_is_name_char(ch: line.substring(start: i, end: i + 1)) {
+    compose_ordering_run_start(line: line, i: i - 1)
+  } else {
+    i + 1
+  }
+}
+
+fn compose_ordering_candidate_is_assignment(line: String, name: String, eq: Int, start: Int) -> Bool {
+  if start >= eq {
+    false
+  } else if line.substring(start: start, end: eq) != name {
+    false
+  } else {
+    compose_ordering_boundary_ok(
+      before: if start == 0 { "" } else { line.substring(start: start - 1, end: start) }
+    )
+  }
+}
+
+// A boundary is anything that cannot continue or open a word: nothing (start of line), space, `;`, `|`,
+// `&`, `(`. A quote or an identifier character before the run means the `=` is inside a word.
+fn compose_ordering_boundary_ok(before: String) -> Bool {
+  if before == "" {
+    true
+  } else if before == " " || before == ";" || before == "|" || before == "&" || before == "(" {
+    true
+  } else {
+    false
+  }
+}
+
+// The 1-based line on which a name is first assigned in the script, or -1 when the step never assigns it.
+fn compose_ordering_first_assignment(lines: List<String>, name: String, i: Int) -> Int {
+  if i >= count(lines) {
+    -1
+  } else if compose_ordering_line_assigns(line: text_at(xs: lines, i: i), name: name, i: 0) {
+    i + 1
+  } else {
+    compose_ordering_first_assignment(lines: lines, name: name, i: i + 1)
+  }
+}
+
+fn compose_ordering_is_input_prefix(name: String) -> Bool {
+  compose_ordering_prefix_at(names: compose_runner_input_prefixes, name: name, i: 0)
+}
+
+fn compose_ordering_prefix_at(names: List<String>, name: String, i: Int) -> Bool {
+  if i >= count(names) {
+    false
+  } else if starts_with(s: name, prefix: text_at(xs: names, i: i)) {
+    true
+  } else {
+    compose_ordering_prefix_at(names: names, name: name, i: i + 1)
+  }
+}
+
+fn compose_ordering_listed(names: List<String>, name: String, i: Int) -> Bool {
+  if i >= count(names) {
+    false
+  } else if text_at(xs: names, i: i) == name {
+    true
+  } else {
+    compose_ordering_listed(names: names, name: name, i: i + 1)
+  }
+}
+
+fn compose_ordering_is_input(inputs: List<String>, name: String) -> Bool {
+  if compose_ordering_listed(names: compose_runner_input_names, name: name, i: 0) {
+    true
+  } else if compose_ordering_is_input_prefix(name: name) {
+    true
+  } else {
+    compose_ordering_listed(names: inputs, name: name, i: 0)
+  }
+}
+
+// One read's verdict: a defect when the name is neither an input nor assigned at or before this line.
+fn compose_ordering_read_defect(
+  lines: List<String>,
+  name: String,
+  line_no: Int,
+  inputs: List<String>
+) -> List<ComposeOrderingDefect> {
+  if name == "" {
+    []
+  } else if compose_ordering_is_input(inputs: inputs, name: name) {
+    []
+  } else {
+    compose_ordering_unassigned_defect(
+      lines: lines,
+      name: name,
+      line_no: line_no,
+      assigned: compose_ordering_first_assignment(lines: lines, name: name, i: 0)
+    )
+  }
+}
+
+fn compose_ordering_unassigned_defect(
+  lines: List<String>,
+  name: String,
+  line_no: Int,
+  assigned: Int
+) -> List<ComposeOrderingDefect> {
+  if assigned >= 1 && assigned <= line_no {
+    []
+  } else {
+    [ComposeOrderingDefect { name: name, read_line: line_no, assigned_line: assigned }]
+  }
+}
+
+fn compose_ordering_line_defects(
+  lines: List<String>,
+  line: String,
+  line_no: Int,
+  inputs: List<String>
+) -> List<ComposeOrderingDefect> {
+  compose_ordering_read_defects_at(
+    lines: lines,
+    names: compose_ordering_reads_at(parts: split(s: line, delimiter: "$"), i: 1, acc: []),
+    i: 0,
+    line_no: line_no,
+    inputs: inputs,
+    acc: []
+  )
+}
+
+fn compose_ordering_read_defects_at(
+  lines: List<String>,
+  names: List<String>,
+  i: Int,
+  line_no: Int,
+  inputs: List<String>,
+  acc: List<ComposeOrderingDefect>
+) -> List<ComposeOrderingDefect> {
+  if i < count(names) {
+    compose_ordering_read_defects_at(
+      lines: lines,
+      names: names,
+      i: i + 1,
+      line_no: line_no,
+      inputs: inputs,
+      acc: concat(
+        acc,
+        compose_ordering_read_defect(
+          lines: lines,
+          name: text_at(xs: names, i: i),
+          line_no: line_no,
+          inputs: inputs
+        )
+      )
+    )
+  } else {
+    acc
+  }
+}
+
+// THE RULE. `inputs` are the step's own `env:` mapping keys, read off the row that emits them; the
+// runner's names are added here, so a caller cannot widen the law by forgetting one.
+fn compose_step_ordering_defects(script: String, inputs: List<String>) -> List<ComposeOrderingDefect> {
+  compose_ordering_defects_at(lines: split(s: script, delimiter: "\n"), i: 0, inputs: inputs, acc: [])
+}
+
+fn compose_ordering_defects_at(
+  lines: List<String>,
+  i: Int,
+  inputs: List<String>,
+  acc: List<ComposeOrderingDefect>
+) -> List<ComposeOrderingDefect> {
+  if i < count(lines) {
+    compose_ordering_defects_at(
+      lines: lines,
+      i: i + 1,
+      inputs: inputs,
+      acc: concat(acc, compose_ordering_line_defects(lines: lines, line: text_at(xs: lines, i: i), line_no: i + 1, inputs: inputs))
+    )
+  } else {
+    acc
+  }
+}
+
+// A script the rule cannot read is not a pass: an empty script means the caller rendered nothing, and a
+// step whose first line is not the strict-mode opener is not a step these builders emitted.
+fn compose_step_script_is_readable(script: String) -> Bool {
+  if script == "" {
+    false
+  } else {
+    starts_with(s: script, prefix: "set -e")
+  }
+}
+
+// The corpus idiom, defined per module (a module reads a list by position through its own helper, so
+// resolution has an established callee): "" beyond the end, which the scanners above treat as "no name".
+fn text_at(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
 }

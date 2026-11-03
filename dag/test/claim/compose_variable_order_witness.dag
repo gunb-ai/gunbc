@@ -1,0 +1,327 @@
+module test.claim.compose_variable_order_witness
+
+// THE ORDERING LAW OF A COMPOSED STEP, CLAIMED. A composed step is a script run under
+// `set -euo pipefail`: expanding a variable the step has not assigned YET does not yield an empty word,
+// it aborts the script at that line. The field failure this claim exists for: the mirror's
+// regenerate-and-seal step opened with `HEAD_TREE="$RUNNER_TMP_ROOT"'/…-head'` one statement BEFORE
+// `runner_tmp_root_stmts` declared `RUNNER_TMP_ROOT`, so the step died at its line 6 with
+// `RUNNER_TMP_ROOT: unbound variable` -- and because that step carries
+// `if: "!cancelled() && github.event_name == 'pull_request'"`, no push ever ran it, so the defect sat
+// invisible in the shared emitter while the lane that publishes repairs produced nothing.
+//
+// WHAT IS CHECKED, AND HOW FAR. The rule is stated once, in `gunbc.ci.repository_compose_overlay`, and
+// this claim runs it over every script the compose family emits: the witness lane's compose step, the
+// composed gate run, the drift check step, the heal seal step, and `head_tree_compose_statements` named
+// on its own so the builder stays covered even if the seal that wraps it changes. Each script is read as
+// the bytes it will carry -- rendered by the same `bash_emit_stmts` the emitters use -- and its declared
+// inputs are read off the rows that emit the step's `env:` mapping (`memory_budget_rows`,
+// `heal_seal_env`), never typed out here. The planted cases are what make this a wall rather than a
+// tautology: the pre-fix ordering must go red, an undeclared name must go red, and declaring it in the
+// step's inputs must make it green.
+
+import std.types { Bool, Int, List, String }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import gunbc.ci.repository_compose_overlay {
+  ComposeOrderingDefect,
+  ComposeSpec,
+  compose_gunbc_run_statements,
+  compose_preamble_statements,
+  compose_step_ordering_defects,
+  compose_step_script_is_readable,
+  composed_source_roots,
+  head_tree_compose_statements,
+  heal_seal_env,
+  merge_checkout_compose
+}
+import gunbc.ci.repository_ci_profile {
+  DagInvocation,
+  Declared_seed_under_composed_overlay,
+  HealSeal,
+  OverlayIngest,
+  ProjectionDrift,
+  PublicSeed,
+  RepositoryCiProfile
+}
+import gunbc.ci.repository_projection_drift_workflow {
+  DriftProgram,
+  drift_check_script,
+  heal_seal_script,
+  memory_budget_rows
+}
+import gunbc.witness.repository_witness_workflow { mirror_compose_statements }
+import test.claim.repository_ci_profile_witness {
+  fixture_overlay, fixture_seed, mirror_drift_program, mirror_profile
+}
+
+// The corpus idiom, defined per module so resolution has an established callee.
+fn text_at(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// One entry per builder path, so a builder that stops being covered shows up as a MISSING ENTRY (the
+// count claim reddens) rather than as a silent pass.
+type ComposeOrderingSweep {
+  label: String
+  script: String
+  inputs: List<String>
+}
+
+// ── FIXTURES, READ OFF THE ROWS ──────────────────────────────────────────────────────────────
+
+fn mirror() -> RepositoryCiProfile {
+  mirror_profile(seal: true, publish: true)
+}
+
+fn source_seed(profile: RepositoryCiProfile) -> PublicSeed {
+  match profile.source {
+    Declared_seed_under_composed_overlay { seed: seed, overlay: _, run_roster_step_name: _ } => seed
+    _ => fixture_seed()
+  }
+}
+
+fn source_overlay(profile: RepositoryCiProfile) -> OverlayIngest {
+  match profile.source {
+    Declared_seed_under_composed_overlay { seed: _, overlay: overlay, run_roster_step_name: _ } => overlay
+    _ => fixture_overlay()
+  }
+}
+
+// The step's declared inputs are the keys of the `env:` mapping the SAME rows emit. Nothing here lists a
+// name by hand, so widening the law would take an edit to those rows -- which is the point.
+fn seal_inputs(profile: RepositoryCiProfile) -> List<String> {
+  concat(
+    memory_budget_rows(profile: profile).map(row => row.key),
+    heal_seal_env().map(binding => binding.key)
+  )
+}
+
+fn render(statements: List<Node>) -> String {
+  match bash_emit_stmts(statements: statements, set_e: true) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn render_outcome(script: Outcome<String>) -> String {
+  match script {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn swept_steps() -> List<ComposeOrderingSweep> {
+  let profile = mirror()
+  let seed = source_seed(profile: profile)
+  let overlay = source_overlay(profile: profile)
+  let spec = merge_checkout_compose(seed: seed, overlay: overlay, notes: [])
+  let program = mirror_drift_program()
+  let lane = [
+    ComposeOrderingSweep {
+      label: "witness lane compose step",
+      script: render(statements: mirror_compose_statements(profile: profile, seed: seed)),
+      inputs: []
+    }
+  ]
+  concat(lane, seal_sweeps(
+    profile: profile,
+    seed: seed,
+    overlay: overlay,
+    spec: spec,
+    program: program,
+    drift_row: profile.drift
+  ))
+}
+
+// The drift and heal rows are Optional on the profile, so each layer of "does this script exist" gets its
+// own function and its own one match: the sweep grows by rows, never by nesting.
+fn seal_sweeps(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  spec: ComposeSpec,
+  program: DriftProgram,
+  drift_row: Optional<ProjectionDrift>
+) -> List<ComposeOrderingSweep> {
+  match drift_row {
+    Absent => []
+    Present { value: drift } => composed_sweeps_for_seal(
+      profile: profile,
+      seed: seed,
+      overlay: overlay,
+      spec: spec,
+      program: program,
+      check: drift.check,
+      seal_row: drift.seal
+    )
+  }
+}
+
+fn composed_sweeps_for_seal(
+  profile: RepositoryCiProfile,
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  spec: ComposeSpec,
+  program: DriftProgram,
+  check: DagInvocation,
+  seal_row: Optional<HealSeal>
+) -> List<ComposeOrderingSweep> {
+  match seal_row {
+    Absent => []
+    Present { value: seal } => [
+      ComposeOrderingSweep {
+        label: "composed gate run",
+        script: render(
+          statements: concat(
+            compose_preamble_statements(seed: seed, c: spec),
+            compose_gunbc_run_statements(
+              overlay: overlay,
+              source_roots: composed_source_roots(
+                profile_roots: profile.roster.source_roots,
+                overlay: overlay
+              ),
+              entry: seal.invocation.entry,
+              function: seal.invocation.function
+            )
+          )
+        ),
+        inputs: []
+      },
+      ComposeOrderingSweep {
+        label: "drift check step",
+        script: render_outcome(
+          script: drift_check_script(
+            profile: profile,
+            seed: seed,
+            overlay: overlay,
+            program: program,
+            check: check
+          )
+        ),
+        inputs: []
+      },
+      ComposeOrderingSweep {
+        label: "heal seal step",
+        script: render_outcome(
+          script: heal_seal_script(profile: profile, seed: seed, overlay: overlay, seal: seal)
+        ),
+        inputs: seal_inputs(profile: profile)
+      },
+      ComposeOrderingSweep {
+        label: "head-tree compose",
+        script: render(
+          statements: head_tree_compose_statements(
+            seed: seed,
+            overlay: overlay,
+            head_tree_dir_name: seal.head_tree_dir_name,
+            head_link_name: seal.head_link_name,
+            compose_dir_name: seal.compose_dir_name
+          )
+        ),
+        inputs: heal_seal_env().map(binding => binding.key)
+      }
+    ]
+  }
+}
+
+fn swept_defects() -> List<String> {
+  defects_at(steps: swept_steps(), i: 0, acc: [])
+}
+
+fn defects_at(steps: List<ComposeOrderingSweep>, i: Int, acc: List<String>) -> List<String> {
+  if i >= count(steps) {
+    acc
+  } else {
+    defects_at(steps: steps, i: i + 1, acc: concat(acc, step_defect_texts(step: text_at(xs: steps, i: i))))
+  }
+}
+
+// A step that renders to nothing, or that reads no variable at all, is a sweep that proved nothing: it is
+// reported as a defect of its own instead of passing quietly.
+fn step_defect_texts(step: ComposeOrderingSweep) -> List<String> {
+  if !compose_step_script_is_readable(script: step.script) {
+    [concat(step.label, ": the rule cannot read this script (empty, or it does not open with set -e)")]
+  } else if !string_contains(s: step.script, pattern: "$") {
+    [concat(step.label, ": no variable is read here, so this entry checks nothing")]
+  } else {
+    compose_step_ordering_defects(script: step.script, inputs: step.inputs).map(
+      d => concat(concat(step.label, ": reads $"), d.name)
+    )
+  }
+}
+
+// The planted pre-fix shape, spelled the way the emitters spelled it: the head-tree assignment hoisted
+// above the scratch-root declaration. These are the bytes that ran in the field and died at line 6.
+data pre_fix_seal_prefix: String = "set -e\nset -euo pipefail\ncd 'gunbc-public'\nGUNBC='gunbc-public/target/release/gunbc'\nPRIVATE_ROOT='..'\nHEAD_TREE=\"$RUNNER_TMP_ROOT\"'/gunbc-private-head'\ntest -n \"$RUNNER_TEMP\" || RUNNER_TMP_ROOT=\"$RUNNER_TEMP\"\ntest -n \"$RUNNER_TMP_ROOT\" || RUNNER_TMP_ROOT='/tmp'\ntest -n \"$RUNNER_TMP_ROOT\"\ngit -C \"$PRIVATE_ROOT\" 'fetch' '--no-tags' '--depth=1' 'origin' \"$HEAD_SHA\""
+
+// The same lines with the declaration first: what the builder emits now.
+data fixed_seal_prefix: String = "set -e\nset -euo pipefail\ncd 'gunbc-public'\nGUNBC='gunbc-public/target/release/gunbc'\nPRIVATE_ROOT='..'\ntest -n \"$RUNNER_TEMP\" || RUNNER_TMP_ROOT=\"$RUNNER_TEMP\"\ntest -n \"$RUNNER_TMP_ROOT\" || RUNNER_TMP_ROOT='/tmp'\ntest -n \"$RUNNER_TMP_ROOT\"\nHEAD_TREE=\"$RUNNER_TMP_ROOT\"'/gunbc-private-head'\ngit -C \"$PRIVATE_ROOT\" 'fetch' '--no-tags' '--depth=1' 'origin' \"$HEAD_SHA\""
+
+// A step that reads the runner's names, its own declared input, and one name nobody assigns.
+data input_probe_script: String = "set -e\nset -euo pipefail\ntest -n \"$RUNNER_TEMP\" || RUNNER_TMP_ROOT=\"$RUNNER_TEMP\"\n'printf' '%s\\n' \"HEAD_TREE=$HEAD_TREE\" >> \"$GITHUB_ENV\"\n'rm' '-rf' \"$HEAD_TREE\"\n'git' 'fetch' '--depth=1' 'origin' \"$HEAD_SHA\""
+
+// ── THE CLAIMS ───────────────────────────────────────────────────────────────────────────────
+
+// EVERY BUILDER, ORDERED. No composed step reads a name it did not assign earlier in the same step, or
+// that the runner and its own `env:` rows do not declare. Five entries, none of them vacuous.
+test fn every_compose_builder_emits_an_ordered_step() -> Bool {
+  count(swept_steps()) == 5 && count(swept_defects()) == 0
+}
+
+// THE PRE-FIX ORDERING GOES RED, and names the name. If this claim ever passes on the hoisted shape, the
+// law is decoration.
+test fn the_pre_fix_ordering_is_a_defect_the_rule_names() -> Bool {
+  let defects = compose_step_ordering_defects(script: pre_fix_seal_prefix, inputs: ["HEAD_SHA"])
+  let first = text_at(xs: defects, i: 0)
+  count(defects) == 1
+    && first.name == "RUNNER_TMP_ROOT"
+    && first.read_line == 6
+    && first.assigned_line > first.read_line
+}
+
+// THE FIXED ORDERING PASSES ON THE SAME LINES: declaration first, then the assignment that reads it. The
+// pair is what makes the claim above a control rather than an accident of one string.
+test fn the_declared_then_assigned_ordering_passes() -> Bool {
+  count(compose_step_ordering_defects(script: fixed_seal_prefix, inputs: ["HEAD_SHA"])) == 0
+}
+
+// EXTERNAL INPUTS ARE INPUTS BECAUSE THEY ARE DECLARED. The runner's names (`RUNNER_TEMP`, `GITHUB_*`)
+// need no assignment; a name the step invents does, and the step's `env:` rows are what excuse it -- so
+// dropping the declaration reddens it and adding it greens it.
+test fn external_inputs_are_inputs_only_because_they_are_declared() -> Bool {
+  let undeclared = compose_step_ordering_defects(script: input_probe_script, inputs: [])
+  let declared = compose_step_ordering_defects(script: input_probe_script, inputs: ["HEAD_TREE"])
+  let first = text_at(xs: undeclared, i: 0)
+  count(undeclared) == 1
+    && first.name == "HEAD_TREE"
+    && count(declared) == 0
+}
+
+// A NAME THE STEP NEVER ASSIGNS IS REPORTED, not silently allowed: `assigned_line == -1` is the rule
+// saying it looked and found nothing, which is also the anti-vacuity half of the sweeper.
+test fn a_name_the_step_never_assigns_is_reported_with_no_assignment_line() -> Bool {
+  let script = "set -e\nset -euo pipefail\n'rm' '-rf' \"$COMPOSE_DIR\"\n'cp' '-R' 'overlay' \"$COMPOSE_DIR/dag\""
+  let defects = compose_step_ordering_defects(script: script, inputs: [])
+  let first = text_at(xs: defects, i: 0)
+  count(defects) == 1
+    && first.name == "COMPOSE_DIR"
+    && first.assigned_line == -1
+}
+
+// THE RULE DOES NOT PASS WHAT IT CANNOT READ, and a quoted word carrying `=` is not an assignment:
+// `'git' 'fetch' '--depth=1'` must not be read as assigning `depth`.
+test fn a_script_the_rule_cannot_read_is_not_a_pass() -> Bool {
+  !compose_step_script_is_readable(script: "")
+    && !compose_step_script_is_readable(script: "echo nothing")
+    && compose_step_script_is_readable(script: pre_fix_seal_prefix)
+    && count(compose_step_ordering_defects(
+      script: "set -e\n'git' 'fetch' '--depth=1' 'origin'",
+      inputs: []
+    )) == 0
+}
