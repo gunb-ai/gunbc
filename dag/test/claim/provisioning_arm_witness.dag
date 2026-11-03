@@ -6,12 +6,22 @@ import gunbc.boot_artifact_delivery {
   BootDeliveryPlanAdmitted,
   BootDeliveryPlanned,
   BootDeliverySolution,
+  BootDeliveryPlanIncoherence,
+  PlanBootControlNotTheDeliverys,
+  PlanControlRouteNotTheTargets,
+  PlanControllerDeliveryWithoutController,
+  PlanEligibilityNotTheDeliverys,
+  PlanNetworkEstablishmentForOtherTarget,
+  BootFromUefiHttp,
+  NetworkAddressedTarget,
   admit_boot_delivery_plan,
 }
+import extdeps.network.mac { mac_address }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
 import test.claim.machine_intake.boot_artifact_delivery_witness { solver_emitted_pxe_solution, solver_emitted_media_solution }
-import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution, pxe_plan, removable_media_plan, unit, attempt_one, controller_target, network_target, intake_artifact }
+import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution, pxe_plan, removable_media_plan, unit, attempt_one, controller_target, network_target, intake_artifact, intake_subject, solution_selecting_control, uefi_http_plan_serving }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
-import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_of_value }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64 }
@@ -479,56 +489,112 @@ test fn a_seed_bound_for_another_attempt_withholds_both_arms() -> Bool {
 
 // THE ADMISSION BOUNDARY. A supplied plan is not solver-admitted by being a BootDeliveryPlan: the arm refuses
 // one whose fields do not cohere, whatever evidence exists.
-fn is_incoherent(plan: BootDeliveryPlan) -> Bool {
+fn incoherence_of(plan: BootDeliveryPlan) -> BootDeliveryPlanIncoherence? {
   match derive(solution: BootDeliveryPlanned { plan: plan }, evidence: full_evidence()) {
-    ArmRefused { cause: BootDeliveryPlanNotCoherent { cause: _ } } => true
-    _ => false
+    ArmRefused { cause: BootDeliveryPlanNotCoherent { cause: c } } => Present { value: c }
+    _ => none
   }
 }
 
 test fn a_media_plan_over_the_firmware_boot_order_route_is_incoherent() -> Bool {
-  is_incoherent(plan: BootDeliveryPlan {
+  match incoherence_of(plan: BootDeliveryPlan {
     target: removable_media_plan.target,
     artifact: removable_media_plan.artifact,
     delivery: removable_media_plan.delivery,
     boot_control: removable_media_plan.boot_control,
     boot_control_route: BootControlByFirmwareBootOrder,
     eligibility: removable_media_plan.eligibility,
-  })
+  }) {
+    Present { value: PlanControlRouteNotTheTargets { target: _ } } => true
+    _ => false
+  }
 }
 
 test fn a_media_delivery_on_a_network_addressed_target_is_incoherent() -> Bool {
-  is_incoherent(plan: BootDeliveryPlan {
+  match incoherence_of(plan: BootDeliveryPlan {
     target: network_target,
     artifact: removable_media_plan.artifact,
     delivery: removable_media_plan.delivery,
     boot_control: removable_media_plan.boot_control,
     boot_control_route: BootControlByFirmwareBootOrder,
     eligibility: removable_media_plan.eligibility,
-  })
+  }) {
+    Present { value: PlanControllerDeliveryWithoutController { target: _ } } => true
+    _ => false
+  }
 }
 
 test fn a_pxe_plan_carrying_another_targets_establishment_is_incoherent() -> Bool {
-  is_incoherent(plan: BootDeliveryPlan {
-    target: controller_target,
+  match incoherence_of(plan: BootDeliveryPlan {
+    target: NetworkAddressedTarget { subject: intake_subject, mac: mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 2) },
     artifact: pxe_plan.artifact,
     delivery: pxe_plan.delivery,
     boot_control: pxe_plan.boot_control,
     boot_control_route: pxe_plan.boot_control_route,
     eligibility: pxe_plan.eligibility,
-  })
+  }) {
+    Present { value: PlanNetworkEstablishmentForOtherTarget { plan_target: _, establishment_target: _ } } => true
+    _ => false
+  }
 }
 
 test fn a_media_plan_whose_eligibility_selected_another_delivery_is_incoherent() -> Bool {
-  is_incoherent(plan: BootDeliveryPlan {
+  match incoherence_of(plan: BootDeliveryPlan {
     target: removable_media_plan.target,
     artifact: removable_media_plan.artifact,
     delivery: removable_media_plan.delivery,
     boot_control: removable_media_plan.boot_control,
     boot_control_route: removable_media_plan.boot_control_route,
     eligibility: pxe_plan.eligibility,
-  })
+  }) {
+    Present { value: PlanEligibilityNotTheDeliverys { selected: _ } } => true
+    _ => false
+  }
 }
+
+test fn a_plan_whose_boot_control_is_not_its_deliverys_is_incoherent() -> Bool {
+  match incoherence_of(plan: BootDeliveryPlan {
+    target: removable_media_plan.target,
+    artifact: removable_media_plan.artifact,
+    delivery: removable_media_plan.delivery,
+    boot_control: BootFromUefiHttp,
+    boot_control_route: removable_media_plan.boot_control_route,
+    eligibility: removable_media_plan.eligibility,
+  }) {
+    Present { value: PlanBootControlNotTheDeliverys { declared: _, derived: _ } } => true
+    _ => false
+  }
+}
+
+// The seed witnesses' HTTP-boot fixture pairs a PxeChainBoot delivery with BootFromUefiHttp: it is a seed
+// input, NOT an admitted plan, and the boundary refuses it. It is no evidence that HTTP delivery is admitted.
+test fn the_seed_fixtures_http_boot_control_over_a_pxe_delivery_is_refused() -> Bool {
+  match solution_selecting_control(control: BootFromUefiHttp, client_arch: Present { value: UefiArm64 }) {
+    BootDeliveryPlanned { plan: p } =>
+      match incoherence_of(plan: p) {
+        Present { value: PlanBootControlNotTheDeliverys { declared: _, derived: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// An evidence-bearing arm must carry the evidence of ITS delivery: a UEFI HTTP delivery whose params serve
+// another artifact is refused although its selected-evidence constructor family is right.
+test fn a_uefi_http_delivery_serving_another_artifact_is_incoherent() -> Bool {
+  match incoherence_of(plan: uefi_http_plan_serving(digest: content_hash_of_value(value: "another-artifact"))) {
+    Present { value: PlanEligibilityNotTheDeliverys { selected: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_uefi_http_delivery_serving_the_plans_artifact_is_admitted() -> Bool {
+  match admit_boot_delivery_plan(plan: uefi_http_plan_serving(digest: intake_artifact.digest)) {
+    BootDeliveryPlanAdmitted { plan: _ } => true
+    _ => false
+  }
+}
+
 
 // INHABITANCE: the plans the real solver emits are admitted by the boundary, so the boundary refuses supplied
 // incoherence without refusing the real producer's output (deleting the solver route makes this go red).
