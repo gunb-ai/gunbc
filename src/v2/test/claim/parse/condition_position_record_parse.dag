@@ -1,11 +1,13 @@
 module v2.test.claim.parse.condition_position_record_parse
 
-import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_module_prepared, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
+import v2.std.grammar { parse_production_emitted_identity_optional }
+import std.optional { Absent, Optional, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -31,16 +33,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // WHAT EACH ARM ESTABLISHES (the set is a pair per shape, never a lone RED):
 //   - elseless_if_with_tail is THE RED: refused before the fix (token remainder at the tail),
-//     parses after it, and the fn body lowers to the same Branch shape the equivalent
-//     return-bodied guard lowers to (the namespace_xl0 guard_fallthrough reading).
+//     parses after it; the tree-shape witness pins the reading (the if owns exactly one block,
+//     the tail is a separate sibling statement), so the claim asserts the ROUTE and not only the
+//     answer (DESIGN 5).
 //   - then_branch_record is THE SECOND RED: `if c then R { s } else d` refused under the old
 //     guard although the then-branch has no block slot and the record reading is the only one
-//     that fits; it parses now. Corpus: zero real then-form uses, and the seed has no then-form,
-//     so no source depended on the old refusal (stated correction, grammar-owner review).
+//     that fits; it parses now, and the tree-shape witness shows zero block productions under
+//     the if -- the then-branch braces were consumed inside the expression chain. Corpus: zero
+//     real then-form uses, and the seed has no then-form, so no source depended on the old
+//     refusal (stated correction, grammar-owner review). NOTE (cc2-15695c-5279): the then-branch
+//     is an ordinary expression production, NOT the condition arm, so this claim discriminates
+//     the guard deletion, not the condition-arm record consumption; the infix/chain/scrutinee
+//     controls do that (RED at the regression head 52790408, GREEN at the fixed head).
 //   - The controls make this a repair and not a trade: a record operand in an ordinary position
 //     (let head, call argument), a parenthesised record condition, a record on the right of an
-//     infix in condition position, a record-headed match scrutinee, and an operator chain of two
-//     records in condition position ALL keep parsing -- each was green before and must stay green.
+//     infix in condition position, a record-headed match scrutinee (plus its field-access form,
+//     the corpus datum from #15639), and an operator chain of two records in condition position
+//     ALL keep parsing -- each was green before and must stay green.
 
 fn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
   match dag_prepared_grammar() {
@@ -148,6 +157,97 @@ fn record_chain_condition_still_parses() -> Bool { g_parse_accepted(text: record
 
 fn else_if_chain_still_parses() -> Bool { g_parse_accepted(text: else_if_chain_source, file: ^else_chain_probe) }
 
+// TREE-SHAPE WITNESSES (review 38602, artifact 90174): the parse arms above show these texts
+// parse; these show HOW. The if-block form reads the fn_body production (dag_grammar_if_block_-
+// form_expr -> dag_production_fn_body), so a dag_surface_fn_body node under the if IS the if's
+// block; the condition chain emits dag_surface_postfix_expr for a dot suffix; the then-form's
+// branch is an ordinary expression production with no block production anywhere in it.
+fn g_parse_at_production(text: String, file: Symbol, production: Symbol) -> Optional<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match prepared {
+            PreparedVoidGrammar => Absent
+            PreparedModeled { modeled: modeled } =>
+              match parse_production_prepared(
+                tokens: token_stream,
+                validated: modeled.validated,
+                analysis: modeled.analysis,
+                production_name: production
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+              }
+          }
+      }
+  }
+}
+
+fn g_is_production(node: Node, emitted: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == emitted
+    Absent => false
+  }
+}
+
+fn g_count_production(root: Node, emitted: Symbol) -> Int {
+  let here = if g_is_production(node: root, emitted: emitted) { 1 } else { 0 }
+  fold(root.children, init: here, f: fn(acc, e) { acc + g_count_production(root: e.target, emitted: emitted) })
+}
+
+fn g_count_production_below(root: Node, emitted: Symbol) -> Int {
+  fold(root.children, init: 0, f: fn(acc, e) { acc + g_count_production(root: e.target, emitted: emitted) })
+}
+
+// The else-less if + tail: exactly one if node; it owns exactly one block (fn_body) holding
+// exactly one statement; the module holds three statements total (fn-body: if + tail; block: i),
+// so the tail is a separate sibling statement, not part of the if.
+fn elseless_if_with_tail_tree_shape() -> Bool {
+  match g_tokenize_parse(text: elseless_if_with_tail_source, file: ^elseless_probe) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      g_count_production(root: root, emitted: ^dag_surface_if_expr) == 1 &&
+      g_count_production(root: root, emitted: ^dag_surface_stmt) == 3 &&
+      match g_parse_at_production(text: elseless_if_with_tail_source, file: ^elseless_probe, production: ^dag_production_if_expr) {
+        Absent => false
+        Present { value: if_node } =>
+          g_count_production_below(root: if_node, emitted: ^dag_surface_fn_body) == 1 &&
+          g_count_production_below(root: if_node, emitted: ^dag_surface_stmt) == 1
+      }
+  }
+}
+
+// The then-form: the only block-capable production in an if_expr is the block form, so zero
+// fn_body nodes under the if means the then-branch braces were consumed inside the expression
+// chain -- the then-branch IS a record literal (the guard-deletion correction, pinned).
+fn then_branch_record_tree_shape() -> Bool {
+  match g_parse_at_production(text: then_branch_record_source, file: ^thenform_probe, production: ^dag_production_if_expr) {
+    Absent => false
+    Present { value: if_node } => g_count_production_below(root: if_node, emitted: ^dag_surface_fn_body) == 0
+  }
+}
+
+// The dot-condition: exactly one postfix chain under the if (the `.d` suffix consumed by the
+// condition) and exactly one fn_body (the if's block) -- the braces belong to the if, and the
+// tail is a separate statement (module stmt total 3).
+fn dotcond_with_tail_tree_shape() -> Bool {
+  match g_tokenize_parse(text: dotcond_with_tail_source, file: ^dotcond_probe) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      g_count_production(root: root, emitted: ^dag_surface_stmt) == 3 &&
+      match g_parse_at_production(text: dotcond_with_tail_source, file: ^dotcond_probe, production: ^dag_production_if_expr) {
+        Absent => false
+        Present { value: if_node } =>
+          g_count_production_below(root: if_node, emitted: ^dag_surface_postfix_expr) == 1 &&
+          g_count_production_below(root: if_node, emitted: ^dag_surface_fn_body) == 1 &&
+          g_count_production_below(root: if_node, emitted: ^dag_surface_stmt) == 1
+      }
+  }
+}
+
 test fn elseless_if_with_tail_parses_holds() -> Bool { elseless_if_with_tail_parses() }
 
 test fn then_branch_record_parses_holds() -> Bool { then_branch_record_parses() }
@@ -169,6 +269,12 @@ test fn infix_record_condition_still_parses_holds() -> Bool { infix_record_condi
 test fn record_match_scrutinee_still_parses_holds() -> Bool { record_match_scrutinee_still_parses() }
 
 test fn record_scrutinee_dot_still_parses_holds() -> Bool { record_scrutinee_dot_still_parses() }
+
+test fn elseless_if_with_tail_tree_shape_holds() -> Bool { elseless_if_with_tail_tree_shape() }
+
+test fn then_branch_record_tree_shape_holds() -> Bool { then_branch_record_tree_shape() }
+
+test fn dotcond_with_tail_tree_shape_holds() -> Bool { dotcond_with_tail_tree_shape() }
 
 test fn record_chain_condition_still_parses_holds() -> Bool { record_chain_condition_still_parses() }
 

@@ -1701,6 +1701,9 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "record_match_scrutinee_still_parses_holds", standing: ActiveFillDebt },
 
       SingleClaimFillDebtClaim { claim: "record_scrutinee_dot_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "elseless_if_with_tail_tree_shape_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "then_branch_record_tree_shape_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dotcond_with_tail_tree_shape_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "then_branch_record_parses_holds", standing: ActiveFillDebt }
     ]
   },
