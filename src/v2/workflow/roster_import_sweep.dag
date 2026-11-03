@@ -3049,6 +3049,10 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-unknown-row-key-refuses",
     "occurrences-key-on-a-bound-site-refuses",
     "occurrences-key-outside-the-paths-refuses",
+    "occurrences-keyed-pipe-site-rewrites",
+    "occurrences-keyed-negated-pipe-site-rewrites",
+    "occurrences-keyed-chained-pipe-refuses-not-skips",
+    "occurrences-keyed-non-head-reference-refuses-arity",
     "stage-refusal-carries-its-byte-span"
   ]
 }
@@ -3206,11 +3210,11 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-on-a-bound-site-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-key-on-a-bound-site-refuses", text: bound, keys: ["control/rename.dag:7:3"], key: "control/rename.dag:7:3", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-outside-the-paths-refuses", fail: roster_occ_outside_paths_control()),
-    roster_control_verdict(name: "stage-refusal-carries-its-byte-span", fail: roster_stage_span_control(companions: companions, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-pipe-site-rewrites", before: pipe_src, keys: ["control/rename.dag:6:8"], after: pipe_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-negated-pipe-site-rewrites", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-non-head-reference-refuses-arity", fail: roster_occ_expect_reason(name: "occurrences-keyed-non-head-reference-refuses-arity", want: "rename-call-arity call=map_get", text: by_name, keys: ["control/rename.dag:6:11"], prepared: prepared, lex: lex))
+    roster_control_verdict(name: "stage-refusal-carries-its-byte-span", fail: roster_stage_span_control(companions: companions, prepared: prepared, lex: lex)),
   ]
 }
 

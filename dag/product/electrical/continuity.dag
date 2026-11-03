@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import product.electrical.photograph { PhotographCitation, photograph_citation_text }
 import product.electrical.connectivity {
   ElectricalTerminalRef,
   terminal_ref_equal,
@@ -48,17 +49,21 @@ type BenchConditions {
   module: ModuleState
 }
 
-// What a reading rests on. The words and locators are transcriptions; no derivation reads their text.
+// What a reading rests on. The words are transcriptions; no derivation reads their text. An operator's
+// photograph is cited by REFERENCE, never by a sentence: `citation` names the bytes in the store (and the
+// box inside them) so the claim can be re-checked against the image, or names the gap where the bytes never
+// reached the store -- see product.electrical.photograph. A free-text locator alone used to be this arm's
+// whole content, and it made a marking unverifiable by construction.
 type EvidenceRef
   = OperatorStatement { stated_on: NonEmptyStr, verbatim: NonEmptyStr }
-  | OperatorPhotograph { taken_on: NonEmptyStr, locator: NonEmptyStr }
+  | OperatorPhotograph { citation: PhotographCitation }
   | SellerListingPhotograph { listing: NonEmptyStr, read_on: NonEmptyStr }
 
 // An evidence reference as a report quotes it.
 fn evidence_ref_text(e: EvidenceRef) -> String {
   match e {
     OperatorStatement { stated_on, verbatim } => join(["'", verbatim as String, "' (", stated_on as String, ")"], "")
-    OperatorPhotograph { taken_on, locator } => join(["photograph ", locator as String, " (", taken_on as String, ")"], "")
+    OperatorPhotograph { citation } => photograph_citation_text(citation: citation)
     SellerListingPhotograph { listing, read_on } => join(["listing photograph ", listing as String, " (read ", read_on as String, ")"], "")
   }
 }
