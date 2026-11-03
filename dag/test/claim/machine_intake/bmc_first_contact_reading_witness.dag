@@ -20,9 +20,13 @@ import gunbc.bmc_model { BmcWorld, bmc_world, bmc_with_mc_info, bmc_with_sol_con
 import gunbc.machine_intake.bmc_inband_recovery_receipts { asrock_altrad8ud_1l2t_inband_device_identity, asrock_altrad8ud_inband_device_identity_from_capture }
 import extdeps.bmc.redfish_network_boot {
   RedfishEthernetInterfaceRead, RedfishBootOptionRead, RedfishBootOptionsRead,
-  BootOptionsListed, BootOptionsNotServed,
+  BootOptionsListed, BootOptionsNotServed, LinkUp,
   render_redfish_ethernet_interface, render_redfish_boot_options, render_redfish_boot_options_not_served,
 }
+// THE ADDRESS, IN THE WITNESS TOO AS A VALUE. The fixtures build the typed address the reader would produce and
+// the assertions compare its canonical rendering, so no claim can pass by accident of spelling -- and the
+// uppercase/lowercase pair pinned below is pinned as addresses, not as text.
+import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, mac_addresses_are_equal }
 import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, TranscribedUncited, CitedToAuthority }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -41,7 +45,7 @@ import gunbc.machine_intake.bmc_first_contact_reading {
   SensorTypingObservation, IpmiSdrTyping, RedfishThermalTyping,
   ConsoleRouteReading, ConsoleConfigured, ConsoleServiceAdvertised, ConsoleSessionObservedHistorically,
   ConsoleSessionEvidence,
-  BootNicReading, InventoriedCandidate, ConfiguredBootSelection, ObservedBootUseHistorical,
+  BootNicReading, InventoriedCandidate, ConfiguredBootSelection, ObservedBootUseHistorical, BootNicRefused,
   BootNicCandidate, HostBootNicEvidence,
   BmcAcquisitionFold, BmcRecordsRead, BmcAcquisitionRefused,
   bmc_first_contact_reading_of, bmc_read_manifest, bmc_modeled_standings, bmc_modeled_controller_of_world,
@@ -133,12 +137,24 @@ fn dry_thermal_body() -> String {
   "{\"Members\": [{\"@odata.id\": \"/redfish/v1/Chassis/1/Thermal/Sensors/InletTemp\"}]}"
 }
 
+// THE PORT THE DRY CONTROLLER SERVES, AS AN ADDRESS. `ac:1f:6b:e3:f6:b0` is the canonical rendering of these
+// six octets, and the dry controller's BootOption names the same address in a device path as
+// `MAC(ac1f6be3f6b0,0x0)` -- packed, lowercase. That pair is the whole point of the join: two upstreams, two
+// spellings, one physical port.
+fn c1_dry_nic_mac() -> Eui48Address {
+  mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 176)
+}
+
+fn c1_second_nic_mac() -> Eui48Address {
+  mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 177)
+}
+
 fn dry_nic_body() -> String {
   render_redfish_ethernet_interface(read: RedfishEthernetInterfaceRead {
     id: "1" as NonEmptyStr,
     name: Present { value: "OnBoard LAN 1" },
-    mac_address: Present { value: "ac:1f:6b:e3:f6:b0" },
-    link_status: Present { value: "LinkUp" },
+    mac_address: Present { value: c1_dry_nic_mac },
+    link_status: Present { value: LinkUp },
   })
 }
 
@@ -308,7 +324,7 @@ test fn a_served_not_served_resource_is_an_answer_not_a_failure() -> Bool {
   )
   match reading.boot_nic {
     ReadingEstablished { value: InventoriedCandidate { candidate: candidate }, standing: standing } =>
-      candidate.mac_address == "ac:1f:6b:e3:f6:b0" as NonEmptyStr
+      render_mac_address(addr: candidate.mac_address) == "ac:1f:6b:e3:f6:b0"
     _ => false
   }
 }
@@ -393,7 +409,7 @@ fn ambiguous_interfaces() -> List<BmcModeledResponse> {
     body: render_redfish_ethernet_interface(read: RedfishEthernetInterfaceRead {
       id: "2" as NonEmptyStr,
       name: Present { value: "OnBoard LAN 2" },
-      mac_address: Present { value: "ac:1f:6b:e3:f6:b1" },
+      mac_address: Present { value: c1_second_nic_mac },
       link_status: none,
     }),
   }
@@ -549,7 +565,7 @@ fn bmc_session_arm_is_impossible(reading: BmcFirstContactReading) -> Bool {
 fn bmc_boot_nic_is_configured_selection(reading: BmcFirstContactReading) -> Bool {
   match reading.boot_nic {
     ReadingEstablished { value: ConfiguredBootSelection { candidate: candidate, boot_option: boot_option, device_path: device_path }, standing: standing } =>
-      candidate.mac_address == "ac:1f:6b:e3:f6:b0" as NonEmptyStr && boot_option == "Boot0001" as NonEmptyStr
+      render_mac_address(addr: candidate.mac_address) == "ac:1f:6b:e3:f6:b0" && boot_option == "Boot0001" as NonEmptyStr
     _ => false
   }
 }
@@ -561,7 +577,11 @@ fn bmc_capabilities_established(reading: BmcFirstContactReading) -> Bool {
   }
 }
 
-fn bmc_capability_evidence_of(reading: BmcFirstContactReading) -> List<BmcCapabilityEvidence> {
+// THE WITNESS'S OWN PROJECTION OF R2'S CARRIER. It is named apart from the production
+// `bmc_capability_evidence_of` on purpose: a local definition binds every bare use of a name, so a helper that
+// shared the production name would silently shadow it in every claim in this file -- the compiler says so, and
+// the shadowed calls would then be shape errors. `c1_` marks it as a fixture-side helper.
+fn c1_capability_evidence_list(reading: BmcFirstContactReading) -> List<BmcCapabilityEvidence> {
   match reading.capabilities {
     CapabilitiesEstablished { evidence: evidence } => evidence
     _ => []
@@ -569,11 +589,11 @@ fn bmc_capability_evidence_of(reading: BmcFirstContactReading) -> List<BmcCapabi
 }
 
 fn bmc_capability_missing(reading: BmcFirstContactReading, wanted: BmcCapability) -> Bool {
-  count(filter(bmc_capability_evidence_of(reading: reading), item => item.capability == wanted)) == 0
+  count(filter(c1_capability_evidence_list(reading: reading), item => item.capability == wanted)) == 0
 }
 
 fn bmc_capability_present_with_basis(reading: BmcFirstContactReading, wanted: BmcCapability) -> Bool {
-  count(filter(bmc_capability_evidence_of(reading: reading), item => item.capability == wanted && match item.basis {
+  count(filter(c1_capability_evidence_list(reading: reading), item => item.capability == wanted && match item.basis {
     SurfaceOffered { read: read } => true
     _ => false
   })) > 0
@@ -779,8 +799,8 @@ fn world_modeling_port(options: RedfishBootOptionsRead?) -> BmcWorld {
       value: RedfishEthernetInterfaceRead {
         id: "PCIe1" as NonEmptyStr,
         name: Present { value: "Primary" },
-        mac_address: Present { value: "ac:1f:6b:e3:f6:b0" },
-        link_status: Present { value: "LinkUp" },
+        mac_address: Present { value: c1_dry_nic_mac },
+        link_status: Present { value: LinkUp },
       }
     },
     options: options,
@@ -806,10 +826,11 @@ test fn a_modeled_port_and_an_enabled_boot_option_join_to_a_configured_selection
   )
   match reading.boot_nic {
     ReadingEstablished { value: selection, standing: standing } => match selection {
+      BootNicRefused { cause: cause } => false
       ConfiguredBootSelection { candidate: candidate, boot_option: option, device_path: path } =>
         // the MAC is the world's, the option is the world's, and the candidate is traceable to the member
         // resource that published it; the device path is the one the service printed, kept verbatim.
-        candidate.mac_address == "ac:1f:6b:e3:f6:b0" as NonEmptyStr
+        render_mac_address(addr: candidate.mac_address) == "ac:1f:6b:e3:f6:b0"
           && candidate.name == "Primary" as NonEmptyStr
           && candidate.source == bmc_redfish_ethernet_interface_read
           && option == "Boot0001" as NonEmptyStr
@@ -840,8 +861,9 @@ test fn a_modeled_service_that_says_boot_options_are_not_served_invents_no_selec
     ReadingEstablished { value: value, standing: standing } => match value {
       ConfiguredBootSelection { candidate: _, boot_option: _, device_path: _ } => false
       ObservedBootUseHistorical { candidate: _, evidence: _ } => false
+      BootNicRefused { cause: cause } => false
       InventoriedCandidate { candidate: candidate } =>
-        candidate.mac_address == "ac:1f:6b:e3:f6:b0" as NonEmptyStr
+        render_mac_address(addr: candidate.mac_address) == "ac:1f:6b:e3:f6:b0"
           && candidate.source == bmc_redfish_ethernet_interface_read
           && !is_observed_by_receipt(standing: standing)
     }
@@ -1351,9 +1373,10 @@ test fn a_malformed_boot_option_property_refuses_and_names_the_property() -> Boo
 test fn an_absent_boot_option_enabled_property_leaves_the_inventory_to_speak() -> Bool {
   match battery(responses: c1_boot_options_responses(body: "{\"Members\": [{\"Id\": \"Boot0001\", \"DisplayName\": \"UEFI: PXE IPv4 Realtek\", \"UefiDevicePath\": \"PciRoot(0x0)/Pci(0x1C,0x4)/MAC(ac1f6be3f6b0,0x0)\"}]}"), binding: no_binding()).boot_nic {
     ReadingEstablished { value: selection, standing: standing } => match selection {
-      InventoriedCandidate { candidate: candidate } => candidate.mac_address == "ac:1f:6b:e3:f6:b0" as NonEmptyStr
+      InventoriedCandidate { candidate: candidate } => render_mac_address(addr: candidate.mac_address) == "ac:1f:6b:e3:f6:b0"
       ConfiguredBootSelection { candidate: candidate, boot_option: option, device_path: path } => false
       ObservedBootUseHistorical { candidate: _, evidence: _ } => false
+      BootNicRefused { cause: cause } => false
     }
     ReadingRefused { cause: cause } => false
     ReadingNotTaken { obligation: obligation } => false
@@ -1386,6 +1409,7 @@ fn c1_manager_evidence(wire: String) -> FirmwareIdentityEvidence {
     named: RedfishManagerSource,
     identified: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: wire as NonEmptyStr),
     components: bmc_identity_components(wire: wire as NonEmptyStr),
+    states_full_release: true,
     standing: c1_cited_standing(),
     device_available: none,
   }
@@ -1399,6 +1423,7 @@ fn c1_cgi_evidence(wire: String) -> FirmwareIdentityEvidence {
     named: SupermicroCgiGenericInfoSource,
     identified: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: wire as NonEmptyStr),
     components: bmc_identity_components(wire: wire as NonEmptyStr),
+    states_full_release: true,
     standing: c1_cited_standing(),
     device_available: none,
   }
@@ -1412,6 +1437,7 @@ fn c1_mc_info_evidence(wire: String, major: Int, minor: Int) -> FirmwareIdentity
     named: McInfoSource,
     identified: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: wire as NonEmptyStr),
     components: [bmc_component(part: "major", value: major), bmc_component(part: "minor", value: minor)],
+    states_full_release: false,
     standing: c1_cited_standing(),
     device_available: Present { value: true },
   }
@@ -1430,5 +1456,239 @@ fn c1_established_text_of(reading: FirstContactReading<FirmwareIdentityReading>)
     ReadingEstablished { value: firmware, standing: standing } => c1_bound_release_text(firmware: firmware)
     ReadingRefused { cause: cause } => "(refused)"
     ReadingNotTaken { obligation: obligation } => "(owed)"
+  }
+}
+
+// ── (4) THE JOIN IS ON ADDRESSES, NOT ON TEXT ──────────────────────────────────────────────────────────
+// R5's join asks whether a boot option names the port the inventory published. The two upstreams spell the same
+// address differently -- DMTF Redfish publishes `MACAddress` as six uppercase hex pairs, EDK2 prints a UEFI
+// device path's `MAC(...)` node as twelve lowercase digits -- and the old implementation answered that question
+// with text: it stripped the colons, required the literal `MAC(` somewhere in the path, and then looked for the
+// packed digits anywhere. Three things went wrong and each is pinned below: the case difference made a real port
+// look un-named (a confident wrong answer, not a refusal); the digits could match outside any `MAC(...)` node;
+// and a `MAC(...)` node holding garbage fell through as "no configured selection", which is the same shape as
+// never having read. The fix is that both sides are PARSED -- the address at the extdeps boundary, the node by
+// `extdeps.bmc.redfish_network_boot` -- and compared by `extdeps.network.mac`'s equality.
+
+// POSITIVE CONTROL OVER THE CASE BUG: the controller publishes the port in the schema's uppercase spelling and
+// names it in a device path in EDK2's lowercase spelling. That is one physical NIC, and the reading says so.
+test fn a_port_published_uppercase_and_a_boot_option_lowercase_join_on_the_address() -> Bool {
+  match battery(
+    responses: c1_nic_responses(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": \"AC:1F:6B:E3:F6:B0\", \"LinkStatus\": \"LinkUp\"}"),
+    binding: no_binding(),
+  ).boot_nic {
+    ReadingEstablished { value: ConfiguredBootSelection { candidate: candidate, boot_option: boot_option, device_path: device_path }, standing: standing } =>
+      render_mac_address(addr: candidate.mac_address) == "ac:1f:6b:e3:f6:b0"
+        && boot_option == "Boot0001" as NonEmptyStr
+        && string_contains(s: device_path as String, pattern: "MAC(ac1f6be3f6b0")
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingRefused { cause: cause } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// THE CONTROL THAT KEEPS THE JOIN FROM BEING A SUBSTRING TEST: the same packed digits appear in the path, but
+// inside a `Pci(...)` node rather than a `MAC(...)` node. A PCI function number is not a NIC, so no option names
+// the port and the reading stops at the inventory it actually has.
+test fn hex_digits_outside_a_mac_node_do_not_name_the_boot_nic() -> Bool {
+  match battery(
+    responses: c1_boot_options_responses(body: render_redfish_boot_options(options: [RedfishBootOptionRead {
+      id: "Boot0002" as NonEmptyStr,
+      display_name: Present { value: "UEFI: PXE IPv4 Realtek" },
+      uefi_device_path: Present { value: "PciRoot(0x0)/Pci(0xac1f6be3f6b0,0x0)" },
+      enabled: Present { value: true },
+    }])),
+    binding: no_binding(),
+  ).boot_nic {
+    ReadingEstablished { value: InventoriedCandidate { candidate: candidate }, standing: standing } =>
+      render_mac_address(addr: candidate.mac_address) == "ac:1f:6b:e3:f6:b0"
+    ReadingEstablished { value: ConfiguredBootSelection { candidate: candidate, boot_option: boot_option, device_path: device_path }, standing: standing } => false
+    ReadingEstablished { value: ObservedBootUseHistorical { candidate: _, evidence: _ }, standing: _ } => false
+    ReadingEstablished { value: BootNicRefused { cause: _ }, standing: _ } => false
+    ReadingRefused { cause: cause } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// A `MAC(...)` NODE THAT IS NOT AN ADDRESS IS A REFUSAL, NOT AN ABSENCE. The controller answered the BootOptions
+// question and one of its answers is undecodable, so R5 refuses and names the path. Under the text test this
+// option simply failed to match, and the reading reported "no configured selection" -- an absence -- for a
+// question that was answered.
+test fn a_mac_node_that_is_not_an_address_refuses_and_names_the_device_path() -> Bool {
+  match battery(
+    responses: c1_boot_options_responses(body: render_redfish_boot_options(options: [RedfishBootOptionRead {
+      id: "Boot0003" as NonEmptyStr,
+      display_name: Present { value: "UEFI: Broken NIC" },
+      uefi_device_path: Present { value: "PciRoot(0x0)/Pci(0x1C,0x4)/MAC(00ff,0x1)" },
+      enabled: Present { value: true },
+    }])),
+    binding: no_binding(),
+  ).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "MAC(...) node")
+        && string_contains(s: cause as String, pattern: "MAC(00ff,0x1)")
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// THE PAIRING THE DESIGN ASKS FOR, ON THE PUBLISHED SIDE: a MACAddress that is present but is not six octets is
+// a decode refusal naming the property, while the same resource with the property ABSENT is a different refusal
+// with a different cause (`an_interface_publishing_no_mac_address_refuses_with_its_own_cause`, above). The empty
+// string is covered here too -- it is a published value that names no address, so it refuses rather than being
+// read as "no MACAddress published".
+test fn a_mac_address_that_is_not_six_octets_refuses_and_names_the_property() -> Bool {
+  match battery(responses: c1_nic_responses(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": \"zz:1f\"}"), binding: no_binding()).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "MACAddress")
+        && string_contains(s: cause as String, pattern: "cannot decode")
+        && string_contains(s: cause as String, pattern: "publishes no MACAddress") == false
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+test fn an_empty_mac_address_is_a_malformed_value_not_an_absent_one() -> Bool {
+  match battery(responses: c1_nic_responses(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": \"\"}"), binding: no_binding()).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "MACAddress")
+        && string_contains(s: cause as String, pattern: "publishes no MACAddress") == false
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// THE CLOSED ENUM, AT THE READING'S GRAIN: `LinkStatus` is a DMTF enum with three members. A controller that
+// answers `LinkOn` has said something this reader cannot map to the schema, and the port read refuses naming the
+// property -- it does not store the word and it does not drop the port. The positive control is the dry
+// controller itself, which serves `LinkUp` through the renderer and reaches an established reading.
+test fn a_link_status_outside_the_dmtf_enum_refuses_and_names_the_property() -> Bool {
+  match battery(responses: c1_nic_responses(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": \"AC:1F:6B:E3:F6:B0\", \"LinkStatus\": \"LinkOn\"}"), binding: no_binding()).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "LinkStatus")
+        && string_contains(s: cause as String, pattern: "cannot decode")
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// ── (5) THE SAME COLLAPSE, LOOKED FOR IN THE OTHER READERS (§6b sweep) ──────────────────────────────────
+// R5's defect was not a property of R5: it was a body that arrived, was not understood, and was reported as a
+// debt. The same shape was searched for in R3 and R4, and found in both. R1, R2 and the ipmitool `mc info`
+// parser were searched too and do not have it -- a report that cannot be read comes back as
+// `McInfoUnreadable` naming every missing label, and an empty Redfish collection announcement is refused by
+// `bmc_ports_announced_more_than_delivered` rather than believed. What follows pins the two that did.
+
+// R3, THERMAL: a served Thermal resource whose `Members` array is EMPTY is an ANSWER about the surface, not a
+// gap in the read. Before this, the empty list produced no observation and no refusal, and the reading fell to
+// its obligation arm -- reporting a debt for a source it had already read, which is the "absent reads
+// identically to never looked" failure this reading exists to avoid. The population text now says which it was.
+// The SDR read is dropped from this world so the thermal answer is the only thing R3 has.
+test fn a_thermal_surface_publishing_no_members_is_an_answer_not_a_debt() -> Bool {
+  match battery(responses: c1_thermal_responses(body: "{\"Members\": []}"), binding: no_binding()).sensor_typing {
+    ReadingEstablished { value: observations, standing: standing } =>
+      count(observations) == 1
+        && match observations |> first() {
+             Present { value: RedfishThermalTyping { surface: surface, population: population, members: members } } =>
+               count(members) == 0 && string_contains(s: population as String, pattern: "publishes no members")
+             _ => false
+           }
+    ReadingRefused { cause: cause } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// R3, SENSORS: the same distinction on the other Redfish collection.
+test fn a_sensors_surface_publishing_no_members_is_an_answer_not_a_debt() -> Bool {
+  match battery(responses: c1_sensors_responses(body: "{\"Members\": []}"), binding: no_binding()).sensor_typing {
+    ReadingEstablished { value: observations, standing: standing } =>
+      count(observations) == 1
+        && match observations |> first() {
+             Present { value: RedfishThermalTyping { surface: surface, population: population, members: members } } =>
+               count(members) == 0
+                 && string_contains(s: population as String, pattern: "sensor collection, which publishes no members")
+             _ => false
+           }
+    ReadingRefused { cause: cause } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// R4: a console read that ARRIVED AND COULD NOT BE READ. `ipmitool sol info` output with no `Sol` section is a
+// read that was taken and not understood, so the reading refuses and names what arrived. Under the previous arms
+// it fell through to the obligation arm and asked for the very read it had just performed. The positive control
+// is the dry controller's own SOL output, which reaches an established route.
+test fn a_console_read_that_arrived_unreadable_refuses_rather_than_owing() -> Bool {
+  match battery(responses: c1_sol_responses(body: "ipmitool: could not get SEL/SOL information"), binding: no_binding()).console {
+    ReadingRefused { cause: cause } => string_contains(s: cause as String, pattern: "Sol section")
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// THE PAIRING: the same read NEVER SCHEDULED is an obligation, and the obligation is never an empty string --
+// an empty debt would conceal the deficit the arm exists to record. This is the arm the collapse above used to
+// steal, so it is pinned next to it: the read is simply absent from the world, and the reading says what is owed.
+test fn a_console_read_never_taken_owes_a_named_debt() -> Bool {
+  match battery(
+    responses: filter(dry_responses(), response => response.read != bmc_ipmi_sol_info_read),
+    binding: no_binding(),
+  ).console {
+    ReadingNotTaken { obligation: obligation } => count(obligation as String) > 0
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingRefused { cause: cause } => false
+  }
+}
+
+fn c1_thermal_responses(body: String) -> List<BmcModeledResponse> {
+  concat(
+    filter(dry_responses(), response => response.read != bmc_redfish_thermal_read && response.read != bmc_ipmi_sdr_elist_read),
+    [BmcModeledResponse {
+      read: bmc_redfish_thermal_read,
+      operation: RedfishGet { uri: "/redfish/v1/Chassis/1/Thermal" },
+      outcome: HttpStatusRecorded { code: 200 },
+      body: body,
+    }],
+  )
+}
+
+fn c1_sensors_responses(body: String) -> List<BmcModeledResponse> {
+  concat(
+    filter(dry_responses(), response => response.read != bmc_redfish_thermal_read && response.read != bmc_ipmi_sdr_elist_read),
+    [BmcModeledResponse {
+      read: bmc_redfish_sensors_read,
+      operation: RedfishGet { uri: "/redfish/v1/Chassis/1/Sensors" },
+      outcome: HttpStatusRecorded { code: 200 },
+      body: body,
+    }],
+  )
+}
+
+fn c1_sol_responses(body: String) -> List<BmcModeledResponse> {
+  concat(
+    filter(dry_responses(), response => response.read != bmc_ipmi_sol_info_read),
+    [BmcModeledResponse {
+      read: bmc_ipmi_sol_info_read,
+      operation: IpmiToolCommand { command: "ipmitool sol info 1" },
+      outcome: CommandExitRecorded { code: 0 },
+      body: body,
+    }],
+  )
+}
+
+// EXACTNESS IS THE SOURCE'S, NOT THE SET'S. `mc info` publishes a major and a minor and has no field for a
+// patch; the Managers resource publishes the release the service ships. Here both say 3.22, and the reading
+// records TWO agreeing rows -- exactly one of them exact, and that one is the release R2 binds against --
+// without promoting the partial. Under the width rule this pair produced ONE row (the second full-stating
+// source was dropped) and a lone `mc info` answer became an exact release by having no better company.
+test fn a_full_statement_and_a_partial_one_agree_without_promoting_the_partial() -> Bool {
+  let identity = battery_of_dry_controller().firmware
+  match identity {
+    ReadingEstablished { value: reading, standing: standing } =>
+      count(reading.exact) == 1
+        && count(reading.partials) == 1
+        && count(reading.agreed) == 2
+        && c1_established_text_of(reading: identity) == "3.22"
+    _ => false
   }
 }

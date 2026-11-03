@@ -145,6 +145,40 @@ fn base16_is_upper_digit_code_point(cp: Int) -> Bool {
   any(base16_digit_rows, row => code_point(row.upper) == cp && row.lower != row.upper)
 }
 
+// EVEN-LENGTH HEX IN EITHER CASE, walking the same pairs as `base16_decode_lower` and reading each digit with
+// `base16_digit_value_at`, the module's existing either-case lookup over `base16_digit_rows`. It exists because
+// the spellings that arrive over a wire do not agree on case: the Redfish EthernetInterface schema publishes
+// `MACAddress` as uppercase hex pairs while EDK2's device-path text spells the same address lowercase, and
+// refusing one spelling would report the same physical NIC as no NIC at all -- a wrong answer, not a refusal.
+// The case POLICY is chosen here, beside the lowercase one; the alphabet stays in the rows.
+fn base16_decode_any_from(hex: String, i: Int, len: Int, acc: List<Int>) -> List<Int>? {
+  if i >= len {
+    Present { value: acc }
+  } else {
+    match base16_digit_value_at(cp: code_point(char_at(hex, i))) {
+      Absent => none
+      Present { value: high } =>
+        match base16_digit_value_at(cp: code_point(char_at(hex, i + 1))) {
+          Absent => none
+          Present { value: low } =>
+            base16_decode_any_from(hex: hex, i: i + 2, len: len, acc: acc |> list_push(high * 16 + low))
+        }
+    }
+  }
+}
+
+fn base16_decode_any(hex: String) -> QualifiedOctets? {
+  let len = string_length(hex)
+  if len % 2 != 0 {
+    none
+  } else {
+    match base16_decode_any_from(hex: hex, i: 0, len: len, acc: []) {
+      Absent => none
+      Present { value: members } => Present { value: qualified_octets(members: members) }
+    }
+  }
+}
+
 // THE LOOKUP IS OVER A CODE POINT, AND THAT IS THE WHOLE OPERATION. A String-shaped wrapper stood
 // here and read its argument with code_point, which returns only the FIRST scalar (and 0 for the
 // empty string): "one lowercase digit" silently widened to "this text starts with one", so "aa"

@@ -44,8 +44,15 @@ import extdeps.bmc.redfish_network_boot {
   redfish_ethernet_interface_of, redfish_ethernet_interface_collection_of, redfish_boot_options_of, redfish_boot_override_of,
   render_redfish_ethernet_interface, render_redfish_ethernet_interface_collection,
   render_redfish_boot_options, render_redfish_boot_options_not_served,
-  BootOptionsListed, BootOptionsNotServed,
+  BootOptionsListed, BootOptionsNotServed, RedfishLinkStatus, RedfishDevicePathMac, PathNamesMac,
+  PathNamesNoMac, PathMacUndecodable, redfish_device_path_mac,
 }
+// THE ADDRESS ITSELF, ITS EQUALITY AND ITS CANONICAL SPELLING. The battery never holds a MAC as text: the
+// candidate carries the value the extdeps codec parsed from the wire, the join compares values, and a refusal
+// that has to name a candidate renders it back through the codec. That is the only way the two upstream
+// spellings -- Redfish's uppercase colon-separated six octets, EDK2's lowercase packed twelve -- can be the
+// same port, which is what the R5 join is for.
+import extdeps.network.mac { Eui48Address, mac_addresses_are_equal, render_mac_address }
 import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyObserved, FamilyUnobserved }
 import gunbc.machine_intake.bmc_firmware_family_discriminator {
   ManagerIdentityObservation, manager_identity_observation_of, discriminate_family, family_standing_from_discrimination,
@@ -195,6 +202,20 @@ data bmc_redfish_ethernet_interface_read: NonEmptyStr = "GET /redfish/v1/Systems
 data bmc_redfish_ethernet_interfaces_collection_read: NonEmptyStr = "GET /redfish/v1/Systems/<id>/EthernetInterfaces"
 data bmc_redfish_sensors_read: NonEmptyStr = "GET /redfish/v1/Chassis/<id>/Sensors"
 data bmc_redfish_serial_interfaces_read: NonEmptyStr = "GET /redfish/v1/Managers/<id>/SerialInterfaces"
+
+// THE DEBTS, SPELLED ONCE, for the arm where every source was attempted and none of the other arms applied. An
+// assembled obligation is fine when there is something to assemble; an EMPTY one would tell a reader "nothing is
+// owed here" about a reading that has nothing established -- the deficit would be concealed rather than
+// recorded. Each reading names its own unread sources instead, and the arms that DO assemble from per-read
+// obligations are unchanged.
+data bmc_firmware_identity_obligation: NonEmptyStr =
+  "no firmware-identity source (Redfish Managers, IPMI Get Device ID via mc info, Supermicro CGI genericinfo) has been read for this controller"
+
+data bmc_sensor_typing_obligation: NonEmptyStr =
+  "no sensor-typing source (ipmitool sdr elist, Redfish Thermal, Redfish Sensors) has been read for this controller"
+
+data bmc_console_route_obligation: NonEmptyStr =
+  "no console-route read (ipmitool sol info, Redfish SerialInterfaces) has been taken for this controller"
 data bmc_redfish_virtual_media_read: NonEmptyStr = "GET /redfish/v1/Managers/<id>/VirtualMedia/<member>"
 
 // The ComputerSystem resource: its `Boot` object states the boot SOURCE the firmware was told to use. It is
@@ -480,14 +501,18 @@ type FirmwareIdentitySourceName
 //   - `components` is what the source actually measured -- `mc info` publishes a major and a minor and nothing
 //     else, so its list has two entries and states no patch.
 //   - `identified` is a release identity: the release the source named, spelled as that source spelled it.
-// Whether the source stated the WHOLE release is decided once, by `bmc_component_width` over the set of sources
-// (see `bmc_exact_evidence`), and `bmc_exact_evidence` / `bmc_partial_evidence` partition on that and nothing
-// else.
+// WHETHER THIS SOURCE COULD STATE THE WHOLE RELEASE is a fact about that source's WIRE FORMAT, declared by the
+// producer that builds the evidence, beside the reason -- and `bmc_exact_evidence` / `bmc_partial_evidence`
+// partition on that field and nothing else. It is NOT computed from the company a source happens to keep: a
+// width over the set would make the same `mc info` answer exact on a board whose other sources are silent and
+// partial beside a Managers resource, would promote a lone two-component answer to the release a capability row
+// is bound against, and would leave the reason nobody checked.
 type FirmwareIdentityEvidence {
   source: NonEmptyStr
   named: FirmwareIdentitySourceName
   identified: BmcFirmwareReleaseIdentity
   components: List<BmcVersionComponent>
+  states_full_release: Bool
   standing: CitedFigureStanding
   device_available: Bool?
 }
@@ -517,19 +542,12 @@ fn bmc_components_concur(a: List<BmcVersionComponent>, b: List<BmcVersionCompone
   count(filter(a, left => bmc_component_conflicts(left: left, others: b))) == 0
 }
 
-// HOW MANY COMPONENTS THE WIDEST SOURCE STATES. Exactness is a property of the SET, not of one read: `mc info`
-// states a major and a minor and nothing else, which on its own is a complete statement, but beside a Managers
-// resource that states major, minor AND patch it is the partial one. The width is what the sources state between
-// them, and it does not depend on the order they arrive in -- which is what makes the release R2 binds against
-// independent of list order.
-fn bmc_component_width(evidences: List<FirmwareIdentityEvidence>) -> Int {
-  fold(evidences, init: 0, f: (acc, evidence) => if count(evidence.components) > acc { count(evidence.components) } else { acc })
-}
-
-// THE EXACT OBSERVATIONS: the sources that stated as many components as any source states.
+// THE EXACT OBSERVATIONS: the sources whose wire format states a whole release, deduplicated by the identity
+// they named. Two sources naming ONE release collapse to one exact identity; two sources naming two DIFFERENT
+// full releases must never both sit here, and `bmc_exact_evidence_refusal` is what stops R2 from choosing
+// between them by list order.
 fn bmc_exact_evidence(evidences: List<FirmwareIdentityEvidence>) -> List<ExactFirmwareIdentityEvidence> {
-  let width = bmc_component_width(evidences: evidences)
-  let some = map(filter(evidences, evidence => count(evidence.components) == width), evidence => ExactFirmwareIdentityEvidence { evidence: evidence })
+  let some = map(filter(evidences, evidence => evidence.states_full_release), evidence => ExactFirmwareIdentityEvidence { evidence: evidence })
   let empty: List<ExactFirmwareIdentityEvidence> = []
   fold(some, init: empty, f: (acc, exact) => if bmc_exact_identity_collected(exact: exact, others: acc) { acc } else { concat(acc, [exact]) })
 }
@@ -542,8 +560,7 @@ fn bmc_exact_identity_collected(exact: ExactFirmwareIdentityEvidence, others: Li
 // THE PARTIAL OBSERVATIONS: the sources that stated fewer components than the widest. They corroborate or
 // conflict; they never become the release a capability row is bound against.
 fn bmc_partial_evidence(evidences: List<FirmwareIdentityEvidence>) -> List<PartialFirmwareIdentityEvidence> {
-  let width = bmc_component_width(evidences: evidences)
-  map(filter(evidences, evidence => count(evidence.components) < width), evidence => PartialFirmwareIdentityEvidence { evidence: evidence })
+  map(filter(evidences, evidence => evidence.states_full_release == false), evidence => PartialFirmwareIdentityEvidence { evidence: evidence })
 }
 
 // DOES A PARTIAL OBSERVATION FIT THE EXACT RELEASE? Only components both sources state are compared: a source
@@ -608,6 +625,9 @@ fn bmc_mc_info_evidence(
       bmc_component(part: "major", value: report.identity.firmware_revision_major),
       bmc_component(part: "minor", value: report.identity.firmware_revision_minor),
     ],
+    // The IPMI Device ID response has no field for a patch: its firmware-revision bytes carry a major and an
+    // auxiliary revision, so this source cannot state a three-part release however the numbers line up.
+    states_full_release: false,
     standing: standing,
     device_available: Present { value: report.device_available },
   }
@@ -712,7 +732,11 @@ fn bmc_firmware_identity_of(
             if count(refused) > 0 {
               reading_refused(join(map(refused, cause => cause as String), "; ") as NonEmptyStr)
             } else {
-              reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+              if count(owed) > 0 {
+                reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+              } else {
+                reading_not_taken(bmc_firmware_identity_obligation)
+              }
             }
           }
       }
@@ -734,10 +758,9 @@ fn bmc_exact_evidence_of(exact: List<ExactFirmwareIdentityEvidence>) -> ExactFir
 
 // TWO DISTINCT EXACT IDENTITIES: refuse, and name them. This is the case the component comparison used to wave
 // through (1.52 and 01.52.25 share their major and minor), and it is the case in which a list order would
-// otherwise pick the release R2 binds against.
-// TWO DISTINCT EXACT IDENTITIES: refuse, and name them. `bmc_exact_evidence` already collapsed repeats of one
-// identity, so what is left is exactly the distinct candidates -- counting them here rather than re-deriving a
-// distinctness rule keeps one identity comparison in the module.
+// otherwise pick the release R2 binds against. `bmc_exact_evidence` already collapsed repeats of ONE identity,
+// so what is left here is exactly the distinct candidates -- counting them rather than re-deriving a distinctness
+// rule keeps one identity comparison in the module.
 fn bmc_exact_evidence_refusal(exact: List<ExactFirmwareIdentityEvidence>) -> NonEmptyStr? {
   if count(exact) > 1 {
     Present { value: concat("the sources state more than one exact release identity: ", bmc_exact_identity_texts(exact: exact)) as NonEmptyStr }
@@ -750,11 +773,19 @@ fn bmc_exact_identity_texts(exact: List<ExactFirmwareIdentityEvidence>) -> NonEm
   join(map(exact, item => concat(item.evidence.source as String, " says ", item.evidence.identified.raw_version as String)), "; ") as NonEmptyStr
 }
 
-// THE CORROBORATING SET: the exact observation, plus every partial that fits it. A partial that contradicts the
-// exact release never reaches here -- step 1 refused the reading.
+// THE CORROBORATING SET, in the order the sources answered: every source that spoke and does not conflict with
+// the bound release. That includes a SECOND source stating the same release in full -- two sources naming one
+// release is corroboration, and dropping the second would record one row where two agree, which is the mirror
+// image of promoting a partial -- plus every partial whose shared components match. A source that contradicts
+// never reaches here: step 1 refused the reading. The filters below are safety nets, not the mechanism that
+// keeps conflicts out.
 fn bmc_agreeing_evidence(evidences: List<FirmwareIdentityEvidence>, winner: ExactFirmwareIdentityEvidence) -> List<FirmwareIdentityEvidence> {
-  let width = bmc_component_width(evidences: evidences)
-  concat([winner.evidence], filter(evidences, evidence => count(evidence.components) < width && bmc_evidence_concur(partial: evidence, exact: winner.evidence)))
+  filter(evidences, evidence =>
+    if evidence.states_full_release {
+      bmc_firmware_release_identity_eq(a: evidence.identified, b: winner.evidence.identified)
+    } else {
+      bmc_evidence_concur(partial: evidence, exact: winner.evidence)
+    })
 }
 
 // A PARTIAL-ONLY ESTABLISHMENT OWES THE READ THAT WOULD STATE A RELEASE. Spelled once, because a fold that
@@ -842,6 +873,10 @@ fn bmc_manager_body_attempt(body: BmcBodyAttempt, family: BmcFirmwareFamily) -> 
               named: RedfishManagerSource,
               identified: bmc_firmware_release_identity_of_wire(family: family, wire: observation.firmware_version as NonEmptyStr),
               components: bmc_identity_components(wire: observation.firmware_version),
+              // The Managers resource publishes the release the service ships, in the service's own spelling:
+              // whatever its shape, that is a whole release, so this source can be the one R2 binds a
+              // capability row against.
+              states_full_release: true,
               standing: standing,
               device_available: none,
             } }
@@ -870,6 +905,9 @@ fn bmc_cgi_body_attempt(body: BmcBodyAttempt, family: BmcFirmwareFamily) -> BmcS
             semantic_version: Present { value: reading.version },
           },
           components: bmc_semantic_components(version: reading.version),
+          // The CGI prints its full firmware version string and the upstream reader parses it into a semantic
+          // version, so this source states a whole release too.
+          states_full_release: true,
           standing: standing,
           device_available: none,
         } }
@@ -1061,18 +1099,24 @@ fn bmc_capability_evidence_of(
     ReadingRefused { cause: cause } => CapabilitiesOwed { obligation: concat("capabilities: no established release identity to bind a capability row against (", concat(cause as String, "); no catalogue row names this release until an identity is agreed")) as NonEmptyStr }
     ReadingNotTaken { obligation: obligation } => CapabilitiesOwed { obligation: concat("capabilities: ", obligation as String) as NonEmptyStr }
     ReadingEstablished { value: reading, standing: standing } =>
-      match bmc_release_row_for(rows: bmc_binding_rows(binding: binding), wanted: bmc_established_release(reading: reading)) {
-        Absent =>
-          match binding {
-            BindingAbsent { obligation: obligation } => CapabilitiesOwed { obligation: obligation }
-            BindingCatalogued { rows: rows, catalogued_in: catalogue, standing: catalogue_standing } => CapabilitiesOwed { obligation: bmc_uncatalogued_release_obligation(catalogue: catalogue, reading: reading) }
+      match bmc_established_release(reading: reading) {
+        // NOTHING EXACT TO BIND AGAINST. The sources published components only, so the read R2 owes is the one
+        // that states a release -- naming a catalogue that has no row for a release NOBODY STATED would point
+        // the reader at the wrong read.
+        Absent => CapabilitiesOwed { obligation: concat("capabilities: ", bmc_exact_release_obligation) as NonEmptyStr }
+        Present { value: identified } => match bmc_release_row_for(rows: bmc_binding_rows(binding: binding), wanted: Present { value: identified }) {
+          Absent =>
+            match binding {
+              BindingAbsent { obligation: obligation } => CapabilitiesOwed { obligation: obligation }
+              BindingCatalogued { rows: rows, catalogued_in: catalogue, standing: catalogue_standing } => CapabilitiesOwed { obligation: bmc_uncatalogued_release_obligation(catalogue: catalogue, reading: reading) }
+            }
+          // NO STANDING ON THE READING: each element of the list carries its own, from its own basis. The
+          // release identity is what the row was looked up with; it is not evidence for any capability.
+          Present { value: row } => CapabilitiesEstablished { evidence: concat(
+            bmc_catalogued_evidence_of(row: row, binding: binding),
+            bmc_offered_evidence_of(source: source, controller: controller, observed_at: observed_at, standings: standings),
+          ) }
           }
-        // NO STANDING ON THE READING: each element of the list carries its own, from its own basis. The release
-        // identity is what the row was looked up with; it is not evidence for any capability.
-        Present { value: row } => CapabilitiesEstablished { evidence: concat(
-          bmc_catalogued_evidence_of(row: row, binding: binding),
-          bmc_offered_evidence_of(source: source, controller: controller, observed_at: observed_at, standings: standings),
-        ) }
       }
   }
 }
@@ -1098,7 +1142,8 @@ fn bmc_binding_standing(binding: BmcCapabilityBinding) -> CitedFigureStanding? {
 // partials are not candidates because they do not state a release.
 fn bmc_established_release(reading: FirmwareIdentityReading) -> BmcFirmwareReleaseIdentity? {
   match reading.exact.first() {
-    Present { value: evidence } => Present { value: evidence.identified }
+    // The wrapper carries the observation; the observation carries the identity it established.
+    Present { value: wrapper } => Present { value: wrapper.evidence.identified }
     Absent => none
   }
 }
@@ -1265,7 +1310,14 @@ fn bmc_sensor_typing_reading(
     if count(refused) > 0 {
       reading_refused(join(map(refused, cause => cause as String), "; ") as NonEmptyStr)
     } else {
-      reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+      // A NAMED DEBT, never an empty string. With the arms above an empty `owed` list is not reachable -- every
+      // body that arrived has produced an observation or a refusal -- but a reading whose obligation text were
+      // "" would conceal the deficit it exists to record, so the fallback is spelled once, as data.
+      if count(owed) > 0 {
+        reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+      } else {
+        reading_not_taken(bmc_sensor_typing_obligation)
+      }
     }
   }
 }
@@ -1329,7 +1381,11 @@ fn bmc_thermal_typing_of(body: BmcBodyAttempt, surface: RedfishThermalTelemetryS
       match redfish_member_ids(body: text) {
         ObservationEstablished { observed: ids } =>
           if count(ids) == 0 {
-            none
+            // The service SERVED a Members array and it is EMPTY. That is an answer about the surface, not a gap
+            // in the read, and it is recorded as one: the alternative is a reading that reports an obligation for
+            // a source it has already read -- the narrow failure mode this reading exists to avoid, "absent reads
+            // identically to never looked". The population text says which of the two it was.
+            Present { value: RedfishThermalTyping { surface: surface, population: "the chassis thermal collection, which publishes no members" as NonEmptyStr, members: [] } }
           } else {
             Present { value: RedfishThermalTyping { surface: surface, population: "the chassis thermal collection" as NonEmptyStr, members: ids } }
           }
@@ -1368,7 +1424,9 @@ fn bmc_sensors_typing_of(body: BmcBodyAttempt) -> SensorTypingObservation? {
       match redfish_member_ids(body: text) {
         ObservationEstablished { observed: ids } =>
           if count(ids) == 0 {
-            none
+            // The same distinction as in `bmc_thermal_typing_of`: an empty Members array is what the service
+            // SAID, so it is an observation over an empty population, never the obligation of an unread source.
+            Present { value: RedfishThermalTyping { surface: RedfishThermalSubsystemSensorCollection, population: "the Redfish sensor collection, which publishes no members" as NonEmptyStr, members: [] } }
           } else {
             Present { value: RedfishThermalTyping { surface: RedfishThermalSubsystemSensorCollection, population: "the Redfish sensor collection" as NonEmptyStr, members: ids } }
           }
@@ -1594,13 +1652,59 @@ fn bmc_console_advertised(body: BmcBodyAttempt) -> NonEmptyStr? {
   }
 }
 
+// THE LAST CONSOLE ARM: nothing was advertised and nothing was configured. Three answers are kept apart here,
+// and the middle one is what used to be lost. A read that was REFUSED (the fetch failed) refuses; a read whose
+// body ARRIVED AND COULD NOT BE PARSED also refuses, naming what arrived -- under the previous arms that case
+// fell through to the obligation arm and reported a debt for a read that had in fact been taken, which is the
+// same collapse R5 was corrected for. Only a read that was never scheduled produces an obligation, and the
+// obligation is never an empty string.
 fn bmc_console_missing(sol: BmcBodyAttempt, advertised: BmcBodyAttempt) -> FirstContactReading<ConsoleRouteReading> {
-  let refused = bmc_filter_some([bmc_body_refusal_note(body: sol, prefix: "SOL configuration"), bmc_body_refusal_note(body: advertised, prefix: "Redfish SerialInterfaces")])
+  let refused = bmc_filter_some([
+    bmc_body_refusal_note(body: sol, prefix: "SOL configuration"),
+    bmc_body_refusal_note(body: advertised, prefix: "Redfish SerialInterfaces"),
+    bmc_sol_info_unparsed_note(body: sol),
+    bmc_serial_interfaces_unparsed_note(body: advertised),
+  ])
   let owed = bmc_filter_some([bmc_body_owed_note(body: sol), bmc_body_owed_note(body: advertised)])
   if count(refused) > 0 {
     reading_refused(join(map(refused, cause => cause as String), "; ") as NonEmptyStr)
   } else {
-    reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+    if count(owed) > 0 {
+      reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+    } else {
+      reading_not_taken(bmc_console_route_obligation)
+    }
+  }
+}
+
+// THE SOL CONFIGURATION OUTPUT ARRIVED AND THIS READER CANNOT READ IT. `ipmitool_print_read`'s parser answers
+// Absent both for output with no `Sol` section and for output that is not a print table at all; either way the
+// read was taken and the answer is undecodable, so the reading says so instead of asking for the read again.
+fn bmc_sol_info_unparsed_note(body: BmcBodyAttempt) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match ipmi_sol_configuration_of_sol_info(stdout: text) {
+        Present { value: configuration } => none
+        Absent => Present { value: "the SOL configuration output arrived but names no Sol section, so this reader cannot tell whether a console route exists" as NonEmptyStr }
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+// THE SERIAL-INTERFACES COLLECTION ARRIVED AND ITS MEMBER LIST DID NOT DECODE. Distinct from the fetch failing:
+// the service answered and this reader could not understand the answer.
+fn bmc_serial_interfaces_unparsed_note(body: BmcBodyAttempt) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_member_ids(body: text) {
+        ObservationEstablished { observed: ids } => none
+        ObservationRefused { cause: cause } => Present {
+          value: concat("Redfish SerialInterfaces: ", cause as String) as NonEmptyStr,
+        }
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
   }
 }
 
@@ -1674,23 +1778,17 @@ fn bmc_port_reading_of(
     BodyAvailable { body: text, standing: standing, provenance: provenance } =>
       match redfish_ethernet_interface_of(body: text) {
         ObservationEstablished { observed: interface } => match interface.mac_address {
-          // A published but empty MACAddress is a fact, not an absence, and it names no interface: refuse and
-          // say so, rather than inventing a candidate or reporting no port.
-          Present { value: mac } => if mac == "" {
-            PortUnusable {
-              read: read,
-              detail: "the EthernetInterface resource publishes an empty MACAddress, which names no interface" as NonEmptyStr,
-            }
-          } else {
-            PortCandidate { candidate: BootNicCandidate {
-              name: match interface.name {
-                Present { value: name } => if name == "" { interface.id } else { name as NonEmptyStr }
-                Absent => interface.id
-              },
-              mac_address: mac as NonEmptyStr,
-              source: read,
-            } }
-          }
+          // The address is already parsed: `extdeps.bmc.redfish_network_boot` refuses the whole resource when
+          // `MACAddress` is published but is not six hex octets (which covers the empty string and every other
+          // malformed spelling), so a candidate here is a port the service really published an address for.
+          Present { value: mac } => PortCandidate { candidate: BootNicCandidate {
+            name: match interface.name {
+              Present { value: name } => if name == "" { interface.id } else { name as NonEmptyStr }
+              Absent => interface.id
+            },
+            mac_address: mac,
+            source: read,
+          } }
           // The property is absent: the port exists and the service chose not to publish its MAC. For a boot
           // NIC that is a refusal with a different cause from a malformed MAC -- the distinction the reader
           // above keeps, kept here too.
@@ -1789,7 +1887,10 @@ fn bmc_selection_from(options: List<RedfishBootOptionRead>, candidates: List<Boo
 fn bmc_join_pair_texts(pairs: List<BootOptionMatch>) -> NonEmptyStr {
   join(map(pairs, pair => concat(
     pair.option.id as String,
-    concat(" names ", concat(pair.candidate.mac_address as String, concat(" (", concat(pair.candidate.name as String, ")")))),
+    concat(" names ", concat(
+      render_mac_address(addr: pair.candidate.mac_address) as String,
+      concat(" (", concat(pair.candidate.name as String, ")")),
+    )),
   )), "; ") as NonEmptyStr
 }
 
@@ -1823,16 +1924,24 @@ fn bmc_boot_nic_reading(
           ports: ports, options: options, collection: collection, systems_body: systems_body,
           source: source, controller: controller, observed_at: observed_at, standings: standings,
         )
-        OptionsListed { options: entries } => match bmc_selection_from(options: bmc_enabled_options(options: entries), candidates: bmc_port_candidates(ports: ports)) {
-          JoinSelected { candidate: candidate, boot_option: option, device_path: path } => ReadingEstablished {
-            value: ConfiguredBootSelection { candidate: candidate, boot_option: option, device_path: path },
-            standing: bmc_body_standing(body: options_body),
+        OptionsListed { options: entries } => match bmc_undecodable_option_paths(options: entries) {
+          // A published `MAC(...)` node whose address does not parse is attempted-plus-undecodable, so the
+          // reading refuses. Letting it fall through the join would report "no configured selection" -- an
+          // absence -- for a question the controller answered in a form we could not understand.
+          Present { value: detail } => reading_refused(concat(
+            "a BootOption device path names a MAC(...) node this reader cannot decode: ", detail
+          ) as NonEmptyStr)
+          Absent => match bmc_selection_from(options: bmc_enabled_options(options: entries), candidates: bmc_port_candidates(ports: ports)) {
+            JoinSelected { candidate: candidate, boot_option: option, device_path: path } => ReadingEstablished {
+              value: ConfiguredBootSelection { candidate: candidate, boot_option: option, device_path: path },
+              standing: bmc_body_standing(body: options_body),
+            }
+            JoinAmbiguous { detail: detail } => reading_refused(detail)
+            JoinNone => bmc_boot_nic_without_selection(
+              ports: ports, options: options, collection: collection, systems_body: systems_body,
+              source: source, controller: controller, observed_at: observed_at, standings: standings,
+            )
           }
-          JoinAmbiguous { detail: detail } => reading_refused(detail)
-          JoinNone => bmc_boot_nic_without_selection(
-            ports: ports, options: options, collection: collection, systems_body: systems_body,
-            source: source, controller: controller, observed_at: observed_at, standings: standings,
-          )
         }
       }
     }
@@ -1946,16 +2055,28 @@ fn bmc_yes_no(value: Bool) -> String {
 
 // A PORT, as read. `source` is the read identity that published it, so a candidate is always traceable to the
 // member resource it came from.
+// THE ADDRESS IS THE VALUE, NOT ITS SPELLING. It arrives already parsed by `extdeps.bmc.redfish_network_boot`
+// from the wire text, and it is joined to a boot option by `extdeps.network.mac`'s own equality. A string here
+// would put the case-and-delimiter question back where the answer is a substring test -- one that misses a real
+// port published in the other spelling, and one that can match digits sitting outside any `MAC(...)` node.
 type BootNicCandidate {
   name: NonEmptyStr
-  mac_address: NonEmptyStr
+  mac_address: Eui48Address
   source: NonEmptyStr
 }
 
+// `BootNicRefused` is the arm the acquisition contract demands: a read that was ATTEMPTED and came back
+// undecodable is a refusal -- never an empty inventory, and never the obligation that would have been owed had
+// the read never been scheduled. The states the design separates are spelled once here: a property ABSENT (an
+// absent optional, which the schema allows), a property MALFORMED (the reader's own refusal, naming the
+// property), the service SAYING NOT SERVED (`OptionsAnsweredNotServed`, an established negative), NEVER READ
+// (`PortOwed` / `OptionsOwed` / `CollectionOwed`), and a decoded inventory with no configured join
+// (`InventoriedCandidate`, only when the inventory is unambiguous).
 type BootNicReading
   = InventoriedCandidate { candidate: BootNicCandidate }
   | ConfiguredBootSelection { candidate: BootNicCandidate, boot_option: NonEmptyStr, device_path: NonEmptyStr }
   | ObservedBootUseHistorical { candidate: BootNicCandidate, evidence: NonEmptyStr }
+  | BootNicRefused { cause: NonEmptyStr }
 
 // THE HOST-SIDE JOIN, HANDED IN. gunbc.host.host_network_diagnosis owns InterfaceObservation/BootNicAssignment
 // and its `boot_nic_inventory`; a consumer that wants its rows reflected here projects them into this shape and
@@ -1978,15 +2099,49 @@ type HostBootNicEvidence {
 // inventories, refuses with the candidates and the paths in the cause: the reader can see what did not join,
 // which is the only way an operator can fix it.
 
+// AN ENABLED OPTION WHOSE DEVICE PATH NAMES A MAC NODE. The node, not the substring: `MAC(` in the path text
+// is what the filter used to ask, which let an option whose node holds garbage (`MAC(00ff,0x1)`) into the join
+// and out of the other side as "no selection" -- a malformed answer reported as an absent one. Such an option
+// is refused before the join, by `bmc_undecodable_option_paths`, so this filter only ever sees a node that
+// parsed or a path that names no MAC at all.
 fn bmc_enabled_options(options: List<RedfishBootOptionRead>) -> List<RedfishBootOptionRead> {
   filter(options, option => match option.enabled {
-    Present { value: true } => match option.uefi_device_path {
-      Present { value: path } => string_contains(s: path, pattern: "MAC(")
-      Absent => false
+    Present { value: true } => match redfish_device_path_mac(path: bmc_option_path(option: option)) {
+      PathNamesMac { address: address } => true
+      _ => false
     }
     Present { value: false } => false
     Absent => false
   })
+}
+
+// THE PATH TEXT, or the empty string when the option published none. An empty path names no MAC node, so such
+// an option leaves the join the same way it did when there was no path to compare.
+fn bmc_option_path(option: RedfishBootOptionRead) -> String {
+  match option.uefi_device_path {
+    Present { value: path } => path
+    Absent => ""
+  }
+}
+
+// A BOOT OPTION WHOSE `MAC(...)` NODE THIS READER COULD NOT DECODE, named by its path text, or none when every
+// enabled option's node parsed. The node was published and the address inside it is not an address: that is a
+// read that was attempted and came back undecodable, so the reading refuses rather than reporting no selection.
+fn bmc_undecodable_option_paths(options: List<RedfishBootOptionRead>) -> NonEmptyStr? {
+  let broken = filter(options, option => match redfish_device_path_mac(path: bmc_option_path(option: option)) {
+    PathMacUndecodable { text: text } => true
+    _ => false
+  })
+  if count(broken) == 0 {
+    none
+  } else {
+    Present {
+      value: join(map(broken, option => concat(
+        concat(option.id as String, " names device path "),
+        bmc_option_path(option: option),
+      )), "; ") as NonEmptyStr
+    }
+  }
 }
 
 
@@ -1994,34 +2149,31 @@ type BootOptionMatch { option: RedfishBootOptionRead, candidate: BootNicCandidat
 
 fn bmc_option_matches(option: RedfishBootOptionRead, candidates: List<BootNicCandidate>) -> List<BootOptionMatch> {
   let matches: List<BootOptionMatch> = []
-  fold(candidates, init: matches, f: (acc, candidate) => match option.uefi_device_path {
-    Present { value: path } =>
-      if bmc_device_path_names_mac(path: path, mac: candidate.mac_address as String) {
-        concat(acc, [BootOptionMatch { option: option, candidate: candidate }])
-      } else {
-        acc
-      }
-    Absent => acc
-  })
+  fold(candidates, init: matches, f: (acc, candidate) =>
+    if bmc_option_matches_candidate(option: option, candidate: candidate) {
+      concat(acc, [BootOptionMatch { option: option, candidate: candidate }])
+    } else {
+      acc
+    }
+  )
 }
 
-// THE ONE NORMALIZATION, AND WHY IT IS ALLOWED. A DMTF UEFI device path spells a MAC as `MAC(ac1f6be3f6b0,0x0)`
-// while Redfish publishes `ac:1f:6b:e3:f6:b0`; those are the same address in two upstreams' spellings, and
-// joining them is the join this reading exists to perform. This is NOT version-string normalization: both sides
-// come from the same DMTF definitions, and nothing here compares a firmware version. The check is done by
-// removing the colons Redfish adds and asking whether the device path carries the remaining digits inside a
-// `MAC(` term.
-fn bmc_device_path_names_mac(path: String, mac: String) -> Bool {
-  let packed = bmc_remove_colons(text: mac)
-  if count(split(s: path, delimiter: "MAC(")) < 2 {
-    false
-  } else {
-    string_contains(s: path, pattern: packed)
+// THE JOIN ITSELF, ON ADDRESSES. A DMTF UEFI device path spells a MAC as `MAC(ac1f6be3f6b0,0x0)` while Redfish
+// publishes `AC:1F:6B:E3:F6:B0`; those are the same address in two upstreams' spellings, and joining them is
+// what this reading exists to do. Both sides are PARSED -- the node's token by `extdeps.bmc.redfish_network_boot`
+// (packed or colon form, either case) and the candidate's address at the extdeps boundary -- and compared by
+// `extdeps.network.mac`'s equality. This is NOT version-string normalization: both spellings come from the same
+// DMTF definitions, and nothing here compares a firmware version.
+//
+// WHAT THE OLD TEXT TEST GOT WRONG, and what the witness now pins: it asked whether the path contained `MAC(`
+// anywhere and then whether the packed digits occurred anywhere, so (a) an uppercase Redfish MAC against EDK2's
+// lowercase node answered "no boot option names this NIC" with confidence, and (b) hex digits belonging to a PCI
+// function or an ACS parameter could satisfy the test for a port that the path never named.
+fn bmc_option_matches_candidate(option: RedfishBootOptionRead, candidate: BootNicCandidate) -> Bool {
+  match redfish_device_path_mac(path: bmc_option_path(option: option)) {
+    PathNamesMac { address: address } => mac_addresses_are_equal(left: address, right: candidate.mac_address)
+    _ => false
   }
-}
-
-fn bmc_remove_colons(text: String) -> String {
-  join(filter(split(s: text, delimiter: ":"), part => part != ""), "")
 }
 
 // A DECLARED BOOT USE, ADMITTED OR NOT AT ALL. The historical arm exists for a host-side account of ONE
@@ -2039,7 +2191,10 @@ fn bmc_admitted_boot_use(source: BmcReadSource, controller: NonEmptyStr, observe
 // THE CANDIDATES, AS A REFUSAL NAMES THEM. An ambiguous boot NIC refuses by listing every candidate it could
 // not choose between — the ambiguity is then on the record, in the form an operator can act on.
 fn bmc_candidate_text(candidates: List<BootNicCandidate>) -> NonEmptyStr {
-  let parts = map(candidates, candidate => concat(concat(candidate.name as String, " "), concat(candidate.mac_address as String, concat(" (read: ", concat(candidate.source as String, ")")))))
+  let parts = map(candidates, candidate => concat(concat(candidate.name as String, " "), concat(
+    render_mac_address(addr: candidate.mac_address) as String,
+    concat(" (read: ", concat(candidate.source as String, ")")),
+  )))
   if count(parts) == 0 {
     "no candidate was read" as NonEmptyStr
   } else {

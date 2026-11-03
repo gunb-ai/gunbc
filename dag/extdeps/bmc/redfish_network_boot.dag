@@ -7,6 +7,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.network.mac {
+  Eui48Address, MacParsed, MacParseFailed, parse_mac_address_any_case, parse_packed_mac_address,
+  render_mac_address, mac_addresses_are_equal, mac_parse_error_text,
+}
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_array, json_object, json_int, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -71,12 +75,52 @@ data redfish_key_display_name: String = "DisplayName"
 data redfish_key_code: String = "code"
 data redfish_key_boot_option_enabled: String = "BootOptionEnabled"
 
+// THE MAC IS A VALUE, NOT A STRING. Six octets, parsed once here: the Redfish schema publishes them
+// colon-separated and uppercase, a UEFI device path publishes them packed and lowercase, and the two spellings
+// have to meet somewhere -- meeting them as text is what made one physical port look like two (a comparison
+// that misses on case, or matches digits that sit outside any `MAC(...)` node, answers "no boot option names
+// this NIC" with confidence). `extdeps.network.mac` owns the address, its parse errors and its canonical
+// rendering; this module only reads the two wire spellings.
+//
+// `link_status` is the DMTF `Resource.v1_0_0.LinkStatus` enum, whose schema lists exactly three members. An
+// open String there would accept a spelling the schema does not define and hand it to a consumer as a fact
+// about the port; the fourth arm is a decode refusal instead, naming what arrived.
 type RedfishEthernetInterfaceRead {
   id: NonEmptyStr
   name: String?
-  mac_address: String?
-  link_status: String?
+  mac_address: Eui48Address?
+  link_status: RedfishLinkStatus?
 }
+
+// THE DMTF LinkStatus ENUM, spelled once. The renderer and the parser both read these spellings from here, so
+// a service that answers `LinkOn` is refused rather than stored.
+type RedfishLinkStatus
+  = LinkUp
+  | NoLink
+  | LinkDown
+
+fn redfish_link_status_text(status: RedfishLinkStatus) -> String {
+  match status {
+    LinkUp => "LinkUp"
+    NoLink => "NoLink"
+    LinkDown => "LinkDown"
+  }
+}
+
+fn redfish_link_status_of(text: String) -> RedfishLinkStatus? {
+  match filter([LinkUp, NoLink, LinkDown], status => redfish_link_status_text(status: status) == text) |> first() {
+    Present { value: status } => Present { value: status }
+    Absent => none
+  }
+}
+
+// WHAT A UEFI DEVICE PATH SAYS ABOUT THE NIC. The address is read out of the `MAC(...)` NODE and nowhere else
+// in the path: a path that carries hex digits somewhere else (a PCI function number, an ACS parameter) is not
+// naming a NIC, and a path whose `MAC(...)` node does not parse is a decode failure rather than "no MAC here".
+type RedfishDevicePathMac
+  = PathNamesMac { address: Eui48Address }
+  | PathNamesNoMac
+  | PathMacUndecodable { text: String }
 
 // One BootOption: the UEFI device path is the only member that can name hardware, and it is kept verbatim for
 // the same reason the MAC is. `BootOptionEnabled` absent is "the service did not say", not disabled.
@@ -116,6 +160,82 @@ type RedfishOptionalProperty<T>
   = PropertyAbsent
   | PropertyPublished { value: T }
   | PropertyUndecodable { key: String, cause: String }
+
+// PUBLISHED STRING -> PARSED VALUE, KEEPING THE THREE ARMS. Absent stays absent; a published value that does
+// not parse becomes `PropertyUndecodable` carrying the parser's own reason, so the refusal that reaches the
+// consumer says which property failed and why, not merely that something was wrong.
+fn redfish_mac_property(property: RedfishOptionalProperty<String>) -> RedfishOptionalProperty<Eui48Address> {
+  match property {
+    PropertyAbsent => PropertyAbsent
+    PropertyUndecodable { key: key, cause: cause } => PropertyUndecodable { key: key, cause: cause }
+    PropertyPublished { value: value } => match parse_mac_address_any_case(text: value) {
+      MacParsed { address: address } => PropertyPublished { value: address }
+      MacParseFailed { error: error } => PropertyUndecodable {
+        key: redfish_key_mac_address,
+        cause: mac_parse_error_text(error: error) as String,
+      }
+    }
+  }
+}
+
+fn redfish_link_status_property(property: RedfishOptionalProperty<String>) -> RedfishOptionalProperty<RedfishLinkStatus> {
+  match property {
+    PropertyAbsent => PropertyAbsent
+    PropertyUndecodable { key: key, cause: cause } => PropertyUndecodable { key: key, cause: cause }
+    PropertyPublished { value: value } => match redfish_link_status_of(text: value) {
+      Present { value: status } => PropertyPublished { value: status }
+      Absent => PropertyUndecodable {
+        key: redfish_key_link_status,
+        cause: concat("LinkStatus ", concat(value, " is not one of the DMTF enum members (LinkUp, NoLink, LinkDown)")) as String,
+      }
+    }
+  }
+}
+
+// THE `MAC(...)` NODE OF A UEFI DEVICE PATH. EDK2 prints a path as
+// `PciRoot(0x0)/Pci(0x1C,0x4)/MAC(ac1f6be3f6b0,0x0)`, so the node name is the delimiter and the address runs to
+// the next `,` or `)`. Some firmware prints the colon form inside the node instead, and both are accepted; what
+// is NOT accepted is a match on hex digits that sit outside a `MAC(...)` node, which is how a PCI function
+// number could otherwise be read as a NIC.
+fn redfish_device_path_mac(path: String) -> RedfishDevicePathMac {
+  let nodes = split(s: path, delimiter: "MAC(")
+  if count(nodes) < 2 {
+    PathNamesNoMac
+  } else {
+    match redfish_path_mac_node(nodes: nodes) {
+      Present { value: token } => match redfish_mac_token(token: token) {
+        Present { value: address } => PathNamesMac { address: address }
+        Absent => PathMacUndecodable { text: token }
+      }
+      Absent => PathNamesNoMac
+    }
+  }
+}
+
+// THE FIRST `MAC(` NODE'S ADDRESS TOKEN. The node is closed by `,` (the interface/ VLAN qualifier) or by `)`.
+fn redfish_path_mac_node(nodes: List<String>) -> String? {
+  match nodes |> get(1) {
+    Absent => none
+    Present { value: node } => match split(s: node, delimiter: ",") |> first() {
+      Absent => none
+      Present { value: before_comma } => match split(s: before_comma, delimiter: ")") |> first() {
+        Absent => none
+        Present { value: token } => Present { value: token }
+      }
+    }
+  }
+}
+
+// EITHER WIRE SPELLING INSIDE THE NODE: packed twelve hex digits, or the colon-separated six.
+fn redfish_mac_token(token: String) -> Eui48Address? {
+  match parse_packed_mac_address(text: token) {
+    MacParsed { address: address } => Present { value: address }
+    MacParseFailed { error: error } => match parse_mac_address_any_case(text: token) {
+      MacParsed { address: address } => Present { value: address }
+      MacParseFailed { error: error2 } => none
+    }
+  }
+}
 
 fn redfish_network_boot_optional_string(obj: JsonValue, key: String) -> RedfishOptionalProperty<String> {
   match json_field_string(obj: obj, key: key) {
@@ -188,8 +308,13 @@ fn redfish_ethernet_interface_of(body: String) -> ObservationAttempt<RedfishEthe
           ObservationRefused { cause: "the EthernetInterface resource has an empty Id" as NonEmptyStr }
         } else {
           let name = redfish_network_boot_optional_string(obj: doc, key: redfish_key_name)
-          let mac = redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address)
-          let link = redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status)
+          // The two typed properties are read THROUGH their wire spelling: the string is what the service
+          // published, and the value is what this reader can prove from it. A published string that is not a
+          // MAC address, or not one of the three LinkStatus members, is an undecodable property -- the same arm
+          // as a wrong JSON type, because in both cases the service answered and this reader could not
+          // understand the answer.
+          let mac = redfish_mac_property(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address))
+          let link = redfish_link_status_property(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status))
           match redfish_undecoded_details(details: [
             redfish_undecodable_detail(property: name),
             redfish_undecodable_detail(property: mac),
@@ -317,6 +442,20 @@ fn redfish_network_boot_optional(key: String, value: String?) -> List<JsonKeyVal
 // rendered_not_served_envelope_reads_back_as_not_served) pin that the reader and the writer of this vocabulary
 // cannot drift apart.
 data redfish_collection_odata_type: String = "#Redfish.EthernetInterfaceCollection"
+fn redfish_mac_rendered(address: Eui48Address?) -> String? {
+  match address {
+    Present { value: value } => Present { value: render_mac_address(addr: value) as String }
+    Absent => none
+  }
+}
+
+fn redfish_link_status_rendered(status: RedfishLinkStatus?) -> String? {
+  match status {
+    Present { value: value } => Present { value: redfish_link_status_text(status: value) }
+    Absent => none
+  }
+}
+
 fn render_redfish_ethernet_interface(read: RedfishEthernetInterfaceRead) -> String {
   serialize_json(v: json_object(members: concat(
     [
@@ -326,8 +465,11 @@ fn render_redfish_ethernet_interface(read: RedfishEthernetInterfaceRead) -> Stri
     concat(
       redfish_network_boot_optional(key: redfish_key_name, value: read.name),
       concat(
-        redfish_network_boot_optional(key: redfish_key_mac_address, value: read.mac_address),
-        redfish_network_boot_optional(key: redfish_key_link_status, value: read.link_status)
+        // The rendered spelling is the codec's canonical one and the enum's own text -- the SAME functions the
+        // parser reads through, so a rendered body parses back to the same value and no second spelling of a
+        // MAC or a LinkStatus can enter the tree.
+        redfish_network_boot_optional(key: redfish_key_mac_address, value: redfish_mac_rendered(address: read.mac_address)),
+        redfish_network_boot_optional(key: redfish_key_link_status, value: redfish_link_status_rendered(status: read.link_status))
       )
     )
   )))

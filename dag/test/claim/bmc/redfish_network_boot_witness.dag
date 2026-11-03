@@ -20,7 +20,12 @@ import extdeps.bmc.redfish_network_boot {
   render_redfish_boot_options,
   render_redfish_boot_options_not_served,
   render_redfish_ethernet_interface_collection,
+  RedfishLinkStatus, LinkUp, NoLink, LinkDown, redfish_link_status_of, redfish_link_status_text,
+  RedfishDevicePathMac, PathNamesMac, PathNamesNoMac, PathMacUndecodable, redfish_device_path_mac,
 }
+// THE ADDRESS CARRIER THE READER NOW PRODUCES. The witness builds the expected address with the codec's own
+// constructor and compares addresses, so a claim cannot pass because two spellings happen to be equal text.
+import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, mac_addresses_are_equal }
 
 // THE NIC AND BOOT-OPTION READERS: WHAT A MEMBER IS, AND WHAT "NOT SERVED" IS.
 //
@@ -34,6 +39,13 @@ import extdeps.bmc.redfish_network_boot {
 // empty collection, which IS a claim the service made).
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ADDRESS THE SPECIMEN BODY PUBLISHES, AS A VALUE. The body spells it lowercase in `MACAddress` and
+// uppercase in `PermanentMACAddress` -- both spellings are in the DMTF schema's range, and both parse to these
+// six octets.
+fn h11ssl_mac() -> Eui48Address {
+  mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 176)
+}
 
 fn h11ssl_ethernet_interface_body() -> String {
   join([
@@ -71,8 +83,8 @@ test fn ethernet_interface_resource_reads_its_published_members() -> Bool {
     ObservationEstablished { observed: read } =>
       read.id == "1" as NonEmptyStr
         && read.name == Present { value: "OnBoard LAN 1" }
-        && read.mac_address == Present { value: "ac:1f:6b:e3:f6:b0" }
-        && read.link_status == Present { value: "LinkUp" }
+        && read.mac_address == Present { value: h11ssl_mac() }
+        && read.link_status == Present { value: LinkUp }
     ObservationRefused { cause: c } => false
   }
 }
@@ -265,4 +277,146 @@ test fn an_undecodable_optional_property_is_not_the_same_answer_as_an_absent_one
 // malformed one has to be written out. Nothing here duplicates a rendered body -- these bodies are the point.
 fn raw_boot_options_body(members: String) -> String {
   concat(concat("{\"Members\": [", members), "]}")
+}
+
+// ── THE MAC IS PARSED HERE, AT THE BOUNDARY ──────────────────────────────────────────────────────────────
+// The observing layer joins a boot option to a port, and that join is only sound if both sides hold ADDRESSES.
+// So this module -- which is where the wire text stops being text -- is where the six octets are read, in both
+// spellings the upstreams actually use: DMTF Redfish publishes `MACAddress` as six hex pairs (the schema's
+// examples are uppercase), and EDK2 prints a UEFI device path's `MAC(...)` node as twelve packed digits
+// (lowercase). Refusing either spelling would report a real published port as no port at all.
+
+// THE SCHEMA'S OWN SPELLING PARSES. The specimen body publishes lowercase; this is the uppercase form, which is
+// what most Redfish services print.
+test fn an_uppercase_mac_address_is_the_same_address() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"AC:1F:6B:E3:F6:B0\"}") {
+    ObservationEstablished { observed: read } => read.mac_address == Present { value: h11ssl_mac() }
+      && render_mac_address(addr: h11ssl_mac()) == "ac:1f:6b:e3:f6:b0"
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// A PUBLISHED MAC THAT IS NOT SIX OCTETS IS A DECODE REFUSAL, NOT AN ABSENT PROPERTY. The empty string is the
+// same case: it is a value, and it names no address.
+test fn a_mac_address_that_is_not_six_octets_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"zz:1f\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "MACAddress")
+        && string_contains(s: c as String, pattern: "expected six hex octets, saw 2")
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+// SIX OCTET GROUPS, NONE OF THEM HEX: a different external fact from a wrong count, and the parser keeps
+// them apart instead of flattening every bad MAC into one message.
+test fn a_mac_address_of_unhexed_octets_refuses_naming_the_octet() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"zz:zz:zz:zz:zz:zz\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "MACAddress")
+        && string_contains(s: c as String, pattern: "not two hex digits")
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+test fn an_empty_mac_address_refuses_rather_than_reading_as_absent() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "MACAddress")
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+// THE ABSENT-PROPERTY PAIR: no `MACAddress` at all is a legitimate answer (the schema allows it), and the reader
+// establishes the resource with no address rather than refusing. Paired with the two claims above, this is the
+// distinction the acquisition contract asks for -- absent, malformed, published.
+test fn an_absent_mac_address_is_an_answer_not_a_failure() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\"}") {
+    ObservationEstablished { observed: read } => read.mac_address == none && read.id == "1" as NonEmptyStr
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// ── THE CLOSED DMTF ENUM ─────────────────────────────────────────────────────────────────────────────────
+// `LinkStatus` is `Resource.v1_0_0.LinkStatus`, whose schema lists exactly three members. An open String there
+// would accept a word the schema does not define and hand it downstream as a fact about the link; the fourth
+// case is a refusal that names what arrived. The spellings are spelled ONCE, in `redfish_link_status_text`, and
+// both the parser and the renderer read them from there.
+test fn the_three_dmtf_members_are_the_whole_vocabulary() -> Bool {
+  redfish_link_status_of(text: "LinkUp") == Present { value: LinkUp }
+    && redfish_link_status_of(text: "NoLink") == Present { value: NoLink }
+    && redfish_link_status_of(text: "LinkDown") == Present { value: LinkDown }
+    && redfish_link_status_text(status: LinkUp) == "LinkUp"
+    && redfish_link_status_text(status: NoLink) == "NoLink"
+    && redfish_link_status_text(status: LinkDown) == "LinkDown"
+}
+
+// A WORD OUTSIDE THE ENUM REFUSES THE PORT READ, NAMING THE PROPERTY.
+test fn a_link_status_outside_the_enum_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"ac:1f:6b:e3:f6:b0\", \"LinkStatus\": \"LinkOn\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "LinkStatus")
+        && string_contains(s: c as String, pattern: "LinkOn")
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+// AND THE THREE MEMBERS SURVIVE THE RENDERER, which prints them from the same vocabulary: a rendered body reads
+// back as the same resource, address and enum included.
+test fn a_rendered_interface_keeps_its_address_and_its_link_status() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": \"AC:1F:6B:E3:F6:B0\", \"LinkStatus\": \"NoLink\"}") {
+    ObservationEstablished { observed: original } =>
+      match redfish_ethernet_interface_of(body: render_redfish_ethernet_interface(read: original)) {
+        ObservationEstablished { observed: again } =>
+          again == original
+            && again.link_status == Present { value: NoLink }
+            && again.mac_address == Present { value: h11ssl_mac() }
+        ObservationRefused { cause: c } => false
+      }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// ── THE `MAC(...)` NODE OF A UEFI DEVICE PATH ────────────────────────────────────────────────────────────
+// The node is the delimiter. Reading the address out of it, rather than out of the path text, is what stops a
+// PCI function number from being read as a NIC and stops a malformed node from looking like "no NIC named".
+
+test fn the_mac_node_is_read_from_the_node_and_not_from_the_path() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/Pci(0x1C,0x4)/Pci(0x0,0x0)/MAC(ac1f6be3f6b0,0x0)") {
+    PathNamesMac { address: address } => mac_addresses_are_equal(left: address, right: h11ssl_mac())
+    PathNamesNoMac => false
+    PathMacUndecodable { text: text } => false
+  }
+}
+
+// THE SAME NODE, IN EITHER SPELLING AND EITHER CASE -- some firmware prints the colon form inside the node.
+test fn the_mac_node_accepts_either_spelling_and_either_case() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/MAC(AC:1F:6B:E3:F6:B0,0x1)") {
+    PathNamesMac { address: address } => mac_addresses_are_equal(left: address, right: h11ssl_mac())
+    _ => false
+  }
+}
+
+// DIGITS THAT SIT OUTSIDE ANY `MAC(...)` NODE NAME NOTHING. This is the case the old substring test accepted:
+// the packed digits appear inside a `Pci(...)` node.
+test fn digits_outside_a_mac_node_name_no_nic() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/Pci(0xac1f6be3f6b0,0x0)") {
+    PathNamesNoMac => true
+    _ => false
+  }
+}
+
+// A `MAC(...)` NODE THAT IS NOT AN ADDRESS IS A DECODE FAILURE, NOT "NO MAC HERE". The distinction is what lets
+// the first-contact battery refuse instead of reporting an absence for a question the firmware answered.
+test fn a_mac_node_that_is_not_an_address_is_reported_as_undecodable() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/Pci(0x1C,0x4)/MAC(00ff,0x1)") {
+    PathMacUndecodable { text: text } => string_contains(s: text, pattern: "00ff")
+    _ => false
+  }
+}
+
+test fn a_path_with_no_mac_node_names_no_nic() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/Pci(0x1C,0x4)/Pci(0x0,0x0)") {
+    PathNamesNoMac => true
+    _ => false
+  }
 }
