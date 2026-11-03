@@ -39,7 +39,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // their v2 counterparts import a type and never spell its arms). Each pair below therefore declares
 // the type in one module and uses it in another that imports only the type.
 
-data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\ntype Wrapper = Wrapper { inner: Cell }\ntype Cell = CellA { a: Int } | CellB { b: Int }\n"
+data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\ntype Wrapper = Wrapper { inner: Cell }\ntype Cell = CellA { a: Int } | CellB { b: Int }\ntype Holder<T> = Holder { held: T }\n"
 
 // A record whose NAME coincides with an arm of Tree above. The spelling has two declarations, one of
 // them a record type in a different module: the expected type's set holds the ARM, and the name door
@@ -135,7 +135,7 @@ data ctee_atom_field_source: String = "module v2.test.ctee.atom_field\n\nimport 
 data ctee_atom_binder_source: String = "module v2.test.ctee.atom_binder\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: picked } => 0\n  }\n}\n"
 data ctee_atom_misspelled_source: String = "module v2.test.ctee.atom_misspelled\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: Absnet } => 0\n  }\n}\n"
 data ctee_atom_unresolved_source: String = "module v2.test.ctee.atom_unresolved\n\nimport v2.test.ctee.types { Leaf, Tree }\nfn pick<T>(t: T) -> Int {\n  match t {\n    Leaf => 0\n  }\n}\n"
-data ctee_atom_unresolved_binder_source: String = "module v2.test.ctee.atom_unresolved_binder\n\nimport v2.test.ctee.types { Tree }\nfn pick<T>(t: T) -> Int {\n  match t {\n    picked => 0\n  }\n}\n"
+data ctee_atom_unresolved_binder_source: String = "module v2.test.ctee.atom_unresolved_binder\n\nimport v2.test.ctee.types { Holder }\nfn pick<T>(h: Holder<T>) -> Int {\n  match h {\n    Holder { held: picked } => 0\n  }\n}\n"
 
 fn ctee_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -250,11 +250,11 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
           coinciding_unimported: coinciding_unimported.verdict,
           type_param: type_param.verdict,
           nullary: nullary.verdict,
-          atom_field: verdict.atom_field,
-          atom_binder: verdict.atom_binder,
-          atom_misspelled: verdict.atom_misspelled,
-          atom_unresolved: verdict.atom_unresolved,
-          atom_unresolved_binder: verdict.atom_unresolved_binder,
+          atom_field: atom_field.verdict,
+          atom_binder: atom_binder.verdict,
+          atom_misspelled: atom_misspelled.verdict,
+          atom_unresolved: atom_unresolved.verdict,
+          atom_unresolved_binder: atom_unresolved_binder.verdict
         })
       }
   }
@@ -547,6 +547,10 @@ test fn an_atom_naming_a_visible_nullary_constructor_under_an_unreadable_expecta
     ctee_refuses_with(v: vs.atom_unresolved, reason: ^resolve_reason_pattern_atom_constructor_type_unresolved) }
 }
 
+// The atom sits in a FIELD pattern under a field type the expectation cannot read (the generic argument
+// `T` is a binder, and a binder head answers Absent), so the reading falls through to a binder. A
+// top-level arm binder that the body never reads would refuse on resolve's own unread catch-all gate
+// (resolve_catch_all_binder_read_gate) before this rule could be seen, so the fixture reads its position.
 test fn an_atom_naming_no_constructor_under_an_unreadable_expectation_binds_as_today() -> Bool {
   match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.atom_unresolved_binder) }
 }
