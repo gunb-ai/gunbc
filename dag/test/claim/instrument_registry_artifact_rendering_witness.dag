@@ -1,0 +1,61 @@
+module test.claim.instrument_registry_artifact_rendering_witness
+
+// THE REGRESSION CONTROL FOR THE RENDERED INSTRUMENT TABLE.
+//
+// SUBJECT AND BOUNDARY (DESIGN section 3, one authority): the committed bytes of
+// `src/v1/stage0/src/instrument_registry_generated.rs` against the rendering that
+// `gunbc.instruments.instrument_registry_emit` `expected_instrument_registry_generated_rs` produces from
+// `gunbc.instrument_targets` `instrument_bindings()`. The host dispatches instruments by reading the
+// committed file, so the file being behind the roster is the defect class filed as
+// `gunbc.recurring_failure_mode.instrument_subject_bound_twice_the_registry_reads_the_unbound_copy`, and
+// the only comparison that catches it today is a `cfg(test)` test no required lane runs.
+//
+// WHY THIS ROW EXISTS AT ALL. heal cannot adjudicate a first-time generated artifact in the PR that
+// introduces it: its population join refuses "a committed mirror is no longer emitted" BEFORE convergence
+// planning, because the retention-frontier skip that would let the join pass is compiled into the
+// comparator from the base mirror, which predates the artifact -- the class is
+// `gunbc.recurring_failure_mode.population_admission_compiled_into_the_comparator_refuses_a_first_time_artifact`.
+// So on the introducing head there is no executed comparison between the generator and the committed
+// bytes, and the set-equality and diff observations people reach for are cross-checks, not provenance.
+// This claim is that comparison, executed.
+//
+// IT COMPARES AGAINST THE FILE, NOT A COPY. The committed bytes come from `Filesystem.Read` of the path
+// the AUTHORITY names -- `gunbc.generated_artifact` `artifact_location` for
+// `InstrumentRegistryGeneratedRsArtifact` -- not from a re-spelled literal and not from a fixture copy.
+// `Filesystem.Read` resolves relative to the claim run's working directory, which is the checkout root, so
+// the bytes are the ones in the tree under test at this head. If the read fails the row is false: an
+// unreadable artifact is a red, never a pass.
+//
+// BYTE EQUALITY, NOT A COUNT OR A SUBSTRING. A count passes when a row is dropped and another added; a
+// substring passes when the table is reordered or a payload string is edited. Both are the drift this
+// control must catch. A refusal from the emitter comes out as text beginning `REFUSED:` and therefore
+// compares unequal, so a refusal is a red here rather than a silent skip.
+//
+// WHAT REDS IT: a roster row added, removed or edited without the artifact being regenerated; a hand edit
+// to the committed file that the model does not produce; the emitter changing its rendering without the
+// file following; and the emitter refusing.
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.generated_artifact { InstrumentRegistryGeneratedRsArtifact, artifact_location }
+import gunbc.instruments.instrument_registry_emit { instrument_registry_generated_text }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ONE ROW: the committed artifact equals the rendering, byte for byte.
+test fn the_committed_instrument_registry_artifact_equals_the_rendered_bytes() -> Bool {
+  let location = artifact_location(InstrumentRegistryGeneratedRsArtifact)
+  let path = concat(concat(location.directory, "/"), location.name)
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    return false
+  }
+  let rendered = instrument_registry_generated_text()
+  // A vacuous pass is the one way this control could lie: two empty strings are equal. The rendering
+  // always carries the file header, so this only bites if BOTH sides went empty.
+  if rendered == "" {
+    return false
+  }
+  read.content == rendered
+}
