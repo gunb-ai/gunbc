@@ -154,24 +154,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "decl-ref-census".to_string(),
-            },
-            TargetProducer::NativeCensusVerb {
-                verb: "decl-ref-census",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "effect-pair-census".to_string(),
-            },
-            TargetProducer::NativeCensusVerb {
-                verb: "effect-pair-census",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "generic-identity-census".to_string(),
             },
             TargetProducer::GenericIdentityCensus,
