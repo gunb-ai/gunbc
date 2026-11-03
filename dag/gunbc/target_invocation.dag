@@ -367,6 +367,18 @@ fn label_canonicality_cause_rendered(c: LabelCanonicalityCause) -> String {
   }
 }
 
+// WHAT A MISSING LABEL COSTS, AND WHAT RETIRES IT.
+//
+// `gunbc test` resolves a label through the hand-mirrored seed registry, so a label
+// `gunbc.instrument_targets` binds and that registry does not list is not a typo to guess at -- it
+// is a capability the seed does not have. The sentence is one fact with the host's
+// `TARGET_IS_UNKNOWN_CAPABILITY`; the parity control `host_registry_and_dag_registry_agree` (in
+// `gunbc.target_invocation_host`'s test module) refuses when the two render different bytes, and it
+// is the same control that compares the whole registry in both directions.
+fn target_is_unknown_capability() -> String {
+  "capability missing: label dispatch is hand-mirrored in the v1 seed, not emitted per repository; it retires when `gunbc test`'s producer dispatch is emitted (gunbc.target_invocation_seed_growth)"
+}
+
 // A REFUSED ROUTE TERMINATES AS REFUSED, AND THE RENDERING NAMES THE CAUSE.
 fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
   match cause {
@@ -380,7 +392,10 @@ fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
         label_canonicality_cause_rendered(c: c)
       )
     TargetIsUnknown { target: t } =>
-      concat("gunbc test: no such target: ", render_label(l: t))
+      concat(
+        concat("gunbc test: no such target: ", render_label(l: t)),
+        concat("\n", target_is_unknown_capability())
+      )
     TargetHasNoProducer { target: t } =>
       concat("gunbc test: target has no bound producer: ", render_label(l: t))
   }

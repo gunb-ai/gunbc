@@ -1,0 +1,238 @@
+module test.claim.instrument_registry_parity_witness
+
+import std.types { String, List, Bool, Int }
+import std.algebra { string_contains }
+import gunbc.process_hold_identity { text_at }
+import extdeps.bazel.label { render_label, label_root_prefix }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.instrument_targets { instrument_bindings }
+import gunbc.target_invocation { target_is_unknown_capability }
+
+// THE TWO LABEL REGISTRIES ARE ONE FACT HELD IN TWO LANGUAGES, AND NOTHING RAN THAT COMPARED THEM.
+//
+// `gunbc test <label>` resolves through a hand-maintained table in the v1 seed --
+// `src/v1/stage0/src/target_invocation_host.rs`, `instrument_registry` -- while what a label MEANS
+// lives in `gunbc.instrument_targets` (`instrument_bindings`). A label on one side and not the other
+// is the silent half of that split: absent from the table, `gunbc test` exits 2 "no such target"
+// while the registry-side consumer is content; absent from the registry, the host route still runs
+// while the registry says the label does not exist. `gunbc.target_invocation_seed_growth` records
+// that split as the standing hazard.
+//
+// THE CONTROL ALREADY EXISTED AND NEVER RAN. `target_invocation_host`'s own test module compares the
+// two registries in both directions (`registry_matches_rows`, plus the mutation control
+// `a_mutated_registry_entry_fails_by_name`) -- but the required gate compiles the v1-compiler lib
+// tests with `cargo test --no-run` and never RUNS them, which
+// `gunbc.recurring_failure_mode.a_rust_test_target_that_does_not_compile_reads_green` records as that
+// lane's standing condition. A comparison that never executes compares nothing, so the seed-growth
+// file is right that nothing compares the two registries. This claim is the comparison that runs: it
+// is evaluated in the roster, on every required run, and it covers the WHOLE registry -- every label,
+// both directions -- not only the rows anyone happens to be adding.
+//
+// WHY IT READS THE TABLE'S BYTES RATHER THAN ITS TYPES: the table is Rust, and the only way a claim
+// can see Rust is as text. So the scan is the part that must be earned, and it is earned twice over.
+// The table spells a label two ways -- `instrument_label("x")`, and one row written as a literal
+// `Label { target: "x".to_string() }` -- and BOTH are read. Completeness is not assumed: the table's
+// own row count (one `(` at the table's indentation) is compared against the names the scan found, so
+// a third spelling refuses with the scan-gap finding instead of quietly comparing less than the whole
+// table. The first run of this claim found exactly that hazard: the literal-spelled
+// `heads-reading-differential` row, invisible to a one-form scan.
+
+data host_registry_source: String = "src/v1/stage0/src/target_invocation_host.rs"
+data host_registry_open: String = "fn instrument_registry()"
+data host_registry_close: String = "\n    ]"
+data host_label_open: String = "instrument_label(\""
+data host_target_literal_open: String = "target: \""
+data host_row_open: String = "\n        ("
+data instruments_package_text: String = "gunbc/instruments"
+
+fn host_registry_body(content: String) -> String {
+  let after_open = split(s: content, delimiter: host_registry_open())
+  if count(after_open) < 2 {
+    ""
+  } else {
+    let before_close = split(s: text_at(xs: after_open, i: 1), delimiter: host_registry_close())
+    text_at(xs: before_close, i: 0)
+  }
+}
+
+// One scanned occurrence yields the text up to the next quote. Anything that is not a label name --
+// the preamble before the first marker, a stray fragment -- is dropped by the shape admission in
+// `is_scanned_label`: a target name is one token of the hyphenated target grammar, so it carries no
+// whitespace, quote, or parenthesis.
+fn scanned_names(body: String) -> List<String> {
+  concat(label_form_names(body: body), literal_form_names(body: body))
+}
+
+fn label_form_names(body: String) -> List<String> {
+  split(s: body, delimiter: host_label_open())
+    .map(piece => first_quoted(piece: piece))
+    .filter(name => is_scanned_label(name: name))
+}
+
+fn literal_form_names(body: String) -> List<String> {
+  split(s: body, delimiter: host_target_literal_open())
+    .map(piece => first_quoted(piece: piece))
+    .filter(name => is_scanned_label(name: name))
+}
+
+fn first_quoted(piece: String) -> String {
+  let fields = split(s: piece, delimiter: "\"")
+  if count(fields) < 1 { "" } else { text_at(xs: fields, i: 0) }
+}
+
+fn is_scanned_label(name: String) -> Bool {
+  name != ""
+    && !string_contains(s: name, pattern: " ")
+    && !string_contains(s: name, pattern: "\n")
+    && !string_contains(s: name, pattern: "\"")
+    && !string_contains(s: name, pattern: "(")
+}
+
+// One row per `(` at the table's own indentation. Formatting-dependent on purpose: if the table is
+// rewrapped and this stops counting rows, the scan-gap finding fires and the claim refuses rather than
+// comparing a scan of unknown coverage.
+fn table_row_count(body: String) -> Int {
+  count(split(s: body, delimiter: host_row_open())) - 1
+}
+
+// A label as BOTH sides can write it: the registry renders it; the host's bare target name is rendered
+// with the same prefix the registry's own grammar uses. One rendering, so a package that drifted on
+// either side shows up as a missing label rather than as a match.
+fn host_label_form(bare_name: String) -> String {
+  concat(concat(concat(label_root_prefix(), instruments_package_text()), ":"), bare_name)
+}
+
+fn registry_labels() -> List<String> {
+  instrument_bindings().map(b => render_label(l: b.target))
+}
+
+fn host_body() -> String {
+  let read = Filesystem.Read(path: host_registry_source())
+  if !read.success { "" } else { host_registry_body(content: read.content) }
+}
+
+fn host_labels() -> List<String> {
+  scanned_names(body: host_body()).map(name => host_label_form(bare_name: name))
+}
+
+fn host_rows() -> Int {
+  table_row_count(body: host_body())
+}
+
+fn presents(name: String, xs: List<String>) -> Bool {
+  count(xs.filter(x => x == name)) > 0
+}
+
+fn only_in(sources: List<String>, against: List<String>, side: String) -> List<String> {
+  sources.filter(name => !presents(name: name, xs: against))
+    .map(name => concat(side, concat(": ", name)))
+}
+
+fn repeated_labels(xs: List<String>) -> List<String> {
+  xs.filter(name => count(xs.filter(other => other == name)) > 1)
+}
+
+// THE JOIN. `rows` is the table's own row count, passed in so a caller that is comparing invented
+// lists (the controls below) says so explicitly instead of tripping the scan-gap check.
+fn instrument_registry_parity_findings(host: List<String>, rows: Int, dag: List<String>) -> List<String> {
+  let unreadable = if count(host) == 0 {
+    [
+      "the seed table yielded no scanned label: the file is unreadable, or it no longer opens with fn instrument_registry and rows written through instrument_label"
+    ]
+  } else {
+    []
+  }
+  let missing_in_registry = only_in(
+    sources: host,
+    against: dag,
+    side: "in the seed table, not bound in gunbc.instrument_targets"
+  )
+  let missing_in_table = only_in(
+    sources: dag,
+    against: host,
+    side: "bound in gunbc.instrument_targets, absent from the seed table"
+  )
+  let repeats = repeated_labels(xs: host)
+    .map(name => concat("the seed table lists a label twice: ", name))
+  let scan_gap = if count(host) != rows {
+    [
+      concat(
+        concat("the scan read ", concat(to_string(value: count(host)), " labels from a table of ")),
+        concat(to_string(value: rows), " rows: a row is written in a form the scan does not read")
+      )
+    ]
+  } else {
+    []
+  }
+  concat(concat(concat(concat(unreadable, missing_in_registry), missing_in_table), repeats), scan_gap)
+}
+
+// POSITIVE CONTROL ON THE SCAN. If the scan yields nothing -- the table renamed, the label helpers
+// replaced, the file moved -- an empty list compared against 60-odd registry rows must NOT read as
+// agreement. Red when the empty-list branch stops reporting.
+test fn an_empty_scan_is_a_finding_not_an_agreement() -> Bool {
+  count(instrument_registry_parity_findings(
+    host: [],
+    rows: 0,
+    dag: ["//gunbc/instruments:roster-rehome-controls"]
+  )) > 0
+}
+
+// RED CONTROL, BOTH DIRECTIONS. A row planted on either side has to be named, with the side it is
+// missing from in the finding. If the join ever stops reporting one side, this goes red and the parity
+// verdict below stops being trustworthy.
+test fn a_one_sided_row_is_named_on_both_sides() -> Bool {
+  let host = ["//gunbc/instruments:roster-rehome-controls", "//gunbc/instruments:tier-o-drift-check"]
+  let dag = ["//gunbc/instruments:tier-o-drift-check", "//gunbc/instruments:planted-only-in-registry"]
+  let findings = instrument_registry_parity_findings(host: host, rows: 2, dag: dag)
+  presents(
+    name: "in the seed table, not bound in gunbc.instrument_targets: //gunbc/instruments:roster-rehome-controls",
+    xs: findings
+  )
+    && presents(
+      name: "bound in gunbc.instrument_targets, absent from the seed table: //gunbc/instruments:planted-only-in-registry",
+      xs: findings
+    )
+}
+
+// A LABEL BOUND TWICE FOR ONE REPOSITORY REFUSES: the table is a lookup, and a second row for the same
+// label is a second answer to one question.
+test fn a_label_listed_twice_in_the_table_is_a_finding() -> Bool {
+  let host = ["//gunbc/instruments:roster-rehome-controls", "//gunbc/instruments:roster-rehome-controls"]
+  count(instrument_registry_parity_findings(host: host, rows: 2, dag: host)) > 0
+}
+
+// THE SCAN-COMPLETENESS CONTROL: a table that has more rows than the scan found names refuses. This is
+// the check that turned the literal-spelled `heads-reading-differential` row into a finding instead of
+// a silent gap; planting a row the scan cannot read must still light it up.
+test fn a_row_the_scan_cannot_read_is_a_finding() -> Bool {
+  let host = ["//gunbc/instruments:roster-rehome-controls"]
+  count(instrument_registry_parity_findings(
+    host: host,
+    rows: 2,
+    dag: ["//gunbc/instruments:roster-rehome-controls"]
+  )) > 0
+}
+
+// THE VERDICT. Every label the seed table names is bound in the registry, every label the registry
+// binds is named by the table, the table names none of them twice, and the scan read one name per row.
+test fn the_seed_table_and_the_registry_name_the_same_labels() -> Bool {
+  count(instrument_registry_parity_findings(host: host_labels(), rows: host_rows(), dag: registry_labels())) == 0
+}
+
+// THE REFUSAL IS ONE SENTENCE IN TWO LANGUAGES. `gunbc test` on a missing label prints the seed's
+// rendering; `gunbc.target_invocation` renders the same sentence on the registry side. The host's bytes
+// must contain what the registry renders, or the two have forked on what a missing label costs.
+test fn the_missing_label_refusal_is_the_same_sentence_in_both_authorities() -> Bool {
+  let read = Filesystem.Read(path: host_registry_source())
+  read.success && string_contains(s: read.content, pattern: target_is_unknown_capability())
+}
+
+// THE SCAN IS NOT READ FROM THE WHOLE FILE: the registry body is a slice, so a label named somewhere
+// else in the file -- its own tests, for instance -- must not be mistaken for a row. Red if the slice
+// stops cutting.
+test fn the_scan_reads_only_the_table_body() -> Bool {
+  let whole = "// not a table row: instrument_label(\"planted-outside-the-table\")\n    ]"
+  count(scanned_names(body: host_registry_body(content: whole))) == 0
+    && count(scanned_names(body: "(instrument_label(\"roster-rehome-controls\"), row())")) == 1
+}

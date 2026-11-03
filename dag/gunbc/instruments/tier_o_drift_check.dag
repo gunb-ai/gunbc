@@ -23,11 +23,21 @@ fn tier_o_finding(a: GeneratedArtifact) -> String? {
       let r = Filesystem.Read(path: path)
       if !r.success {
         Present { value: concat("UNREADABLE ", concat(path, concat(": ", concat(r.error, "; remedy: restore the committed file or regenerate it")))) }
-      } else if r.content == content { none }
-      else {
-        Present { value: concat("DRIFT ", concat(path, concat(": committed bytes differ from the authority's emission; remedy: ", generated_artifact_author_regen_command))) }
-      }
+      } else { tier_o_content_finding(path: path, emitted: content, committed: r.content) }
     }
+  }
+}
+
+// THE COMPARISON, SEPARATED FROM THE READ, SO IT CAN BE CONTROLLED. The scheduled lane's whole job is
+// to refuse when committed bytes are not what the authority emits; changing the lane's ROUTE (it is
+// judged by the emitted binary now, not by a lane handing its corpus to the v1 interpreter) must not
+// quietly cost it that teeth. `test.claim.drift_verdict_route_witness` plants a body that differs from
+// the emission and requires a DRIFT finding naming the path and the remedy, and requires no finding
+// when the bytes agree.
+fn tier_o_content_finding(path: String, emitted: String, committed: String) -> String? {
+  if committed == emitted { none }
+  else {
+    Present { value: concat("DRIFT ", concat(path, concat(": committed bytes differ from the authority's emission; remedy: ", generated_artifact_author_regen_command))) }
   }
 }
 

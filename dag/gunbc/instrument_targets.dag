@@ -1314,6 +1314,20 @@ fn instrument_targets() -> List<Label> {
   list_map(xs: instrument_bindings(), f: fn(b) { b.target })
 }
 
+// THE TIER O PROJECTION VERDICT ON THE COMPILED PATH. `gunbc test <this label>` is the drift
+// verdict of gunbc.drift_watch_workflow: the seed emits and builds the native instrument named here,
+// and THAT binary judges the committed bytes against their .dag authorities. DESIGN 'Building & checks'
+// rules that a verdict is a row judged by a binary built from the seed's emission; handing the corpus to
+// the v1 interpreter instead (the `gunbc run --function` shape this lane used) puts a frozen seed route
+// in the position of certifying a tree it cannot resolve, which is the recurring failure this row retires.
+fn tier_o_drift_check_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "tier-o-drift-check" } }
+}
+
+fn tier_o_drift_check_binding() -> TargetBinding {
+  TargetBinding { target: tier_o_drift_check_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/tier_o_drift_check_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
 fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
@@ -1328,7 +1342,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), tier_o_drift_check_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

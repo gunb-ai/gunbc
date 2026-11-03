@@ -318,6 +318,11 @@ fn v2_native_cli_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
 
+/// The second line of the `TargetIsUnknown` refusal: what is missing, and what retires it.
+/// `gunbc.target_invocation` renders the same sentence on the `.dag` side; the parity test
+/// `host_registry_and_dag_registry_agree` refuses when the two authorities disagree.
+const TARGET_IS_UNKNOWN_CAPABILITY: &str = "capability missing: label dispatch is hand-mirrored in the v1 seed, not emitted per repository; it retires when `gunbc test`'s producer dispatch is emitted (gunbc.target_invocation_seed_growth)";
+
 /// Modules this producer evaluates by name at spawn. Parallel to
 /// `REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`: listing here is what makes that by-name
 /// evaluation legitimate rather than an undeclared reach. Not a floor-subject seed — the floor
@@ -608,6 +613,22 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         // already under a seed census, so the duplication is tracked rather than invisible: the
         // `DeclarationRef { decl_name: "instrument_registry" }` row inside
         // `gunbc.target_invocation_seed_growth` `target_invocation_seed_growth_justification`.
+        // The drift verdict: `//gunbc/instruments:tier-o-drift-check` runs the same fold the v1
+        // `gunbc run --function` route used to run for `RepositoryProjectionDrift`, through the
+        // compiled instrument route. Why it belongs in this table: the drift step is a verdict, and
+        // a verdict is a row judged by a binary built from the seed's emission -- never a lane that
+        // hands the whole corpus to the v1 interpreter, which resolves declared symbols lazily and
+        // reports a symbol outside its demand closure as `not found in scope`. The entry point is a
+        // row in `gunbc.instrument_targets` (`tier_o_drift_check_native.dag`), so this is the
+        // growth that file's own justification sanctions -- a row in this table, no new arm; the
+        // `TargetProducer::NativeClaimProgram` arm it uses is already built. It retires with the
+        // mirror it serves: `gunbc.target_invocation_seed_growth`.
+        (
+            instrument_label("tier-o-drift-check"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/tier_o_drift_check_native.dag",
+            },
+        ),
         (
             instrument_label("known-red-derivation"),
             TargetProducer::CliWireProgram {
@@ -714,8 +735,16 @@ fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
     {
         match refusal {
             InvocationRefusal::TargetIsUnknown { target } => {
+                // The refusal names the capability that is missing AND what retires it, not just the
+                // label: this table is a hand-maintained seed registry, so a label
+                // `gunbc.instrument_targets` binds and this table does not list is a missing
+                // capability until label dispatch is emitted per repository rather than hand-mirrored
+                // -- the trigger `gunbc.target_invocation_seed_growth` records. The same sentence is
+                // the second line of `gunbc.target_invocation`'s render of `TargetIsUnknown`;
+                // `host_registry_and_dag_registry_agree` checks the two are the same bytes.
                 format!(
-                    "gunbc test: no such target: {target}\n{}",
+                    "gunbc test: no such target: {target}\n{capability}\n{}",
+                    capability = TARGET_IS_UNKNOWN_CAPABILITY,
                     rostered_targets_rendered()
                 )
             }
