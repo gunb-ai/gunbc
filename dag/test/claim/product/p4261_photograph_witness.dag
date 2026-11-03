@@ -541,15 +541,17 @@ test fn a_gap_names_the_bytes_it_lacks_and_what_would_close_it() -> Bool {
 test fn the_real_e1_judges_every_image_reading() -> Bool {
   match board_image_reading_grounding(p4261_e1_layout) {
     FromStore { read, checkable, broken, gaps } =>
-      // The 2026-11-03 atlas pass put 338 of the board's image readings onto frames the store holds, so this
-      // board is no longer all-gap -- it is part-grounded, which is a different report and the one that is
-      // true. What it is NOT is established: the bench sessions' earlier citations still name frames nobody
-      // hashed, so checkable < read and establishment -- derived, not enumerated -- stays false. The
-      // partitions must COVER the rows (checkable + gaps + broken == read) and every gap must still name the
-      // bytes it lacks and what would close it.
-      read > 0
+      // PIECE 1'S FRONTIER, PINNED TO THE NUMBER. On this branch every image reading on the E1 names a frame
+      // the store does not hold: the 2026-10-15 to 10-31 bench sessions left text locators and their bytes
+      // never reached us, so 94 rows are read, none are checkable, none are broken, and all 94 are
+      // BytesNeverStored gaps. The atlas pass (piece 3) is what moves rows across this line, on purpose and
+      // in its own PR; when it lands these numbers move with it and the report changes from all-gap to
+      // part-grounded. Asking only "read > 0 and nothing broken" would have stayed green either way -- which
+      // is precisely the crossing the piece boundary exists to make visible.
+      read == 94
+        && checkable == 0
         && count(broken) == 0
-        && count(gaps) + checkable == read
+        && count(gaps) == 94
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0
