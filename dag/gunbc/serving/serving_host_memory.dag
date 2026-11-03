@@ -13,10 +13,7 @@ import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves_local }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
-import gunbc.host.host_memory_observation {
-  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
-  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
-}
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 
 // WHAT A SERVING HOST'S RAM IS SPENT ON, AND WHETHER IT FITS WITH NO SWAP. A serving engine keeps the
 // sessions it is not running parked in host RAM (Strata's conversation cache, vLLM's LMCache L1), and a

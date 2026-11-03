@@ -1,4 +1,7 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.ci.ci_spec { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
+import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
 
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
@@ -17,7 +20,7 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
-import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time, gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path }
 import gunbc.revision_job_image_delivery { revision_job_image_artifact_name, revision_job_image_artifact_paths }
 import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
 import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_receipt_path, runner_user_session_converge_receipt_artifact_name, runner_user_session_converge_mode_wire }
@@ -40,13 +43,11 @@ import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_d
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 
 import gunbc.fleet.printer_federation { printer_environment, printer_provider_resource, printer_service_account,printer_lan_host_identity }
-import gunbc.ci.ci_spec { gunbc_ci_printer_workflow_invoke }
 import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
 import gunbc.auth.mtjade1_arrival_pair {
   mtjade1_arrival_environment, mtjade1_arrival_provider_resource, mtjade1_arrival_service_account,
 }
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
-import gunbc.ci.ci_spec { gunbc_ci_review_sheet_converge_invoke }
 import gunbc.review_sheet_federation {
   review_sheet_converge_environment, review_sheet_converge_provider_resource, review_sheet_converge_service_account,
   review_sheet_writer_token_scopes, schedule_event_name, push_event_name,
@@ -54,8 +55,6 @@ import gunbc.review_sheet_federation {
 import gunbc.gcp.gcp_estate_observation { review_sheet_writer_sa_email }
 import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
 import extdeps.google.sheets { sheets_token_env }
-import gunbc.ci.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path }
 
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import gunbc.auth.access_token_source { workload_identity_token_env }
@@ -139,7 +138,6 @@ import gunbc.auth.managed_host_boot_federation {
   BootFederationUnprovisioned, boot_federation_for, boot_federation_provider_resource,
 }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.ci_app_key_rotation {
   app_key_version_env_name,
   app_key_verify_record_env_name,
@@ -149,7 +147,7 @@ import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob,
 import gunbc.host.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
 import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_job, qualification_floor_job_id, qualification_attempt_subject_env_name, qualification_attempt_artifact_glob }
-import gunbc.witness.compiler_gate_workflow { compiler_gate_emit_build_timeout_minutes }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_emit_build_timeout }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_step_timeout_minutes, srv1_root_mutation_select_name_env, srv1_root_mutation_select_value_env, srv1_root_mutation_mode_env }
 import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, ApprovalNtfyRetire }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
@@ -279,8 +277,7 @@ import gunbc.host.host_reset_return {
 }
 import gunbc.host.host_reset_subject_roster { reset_observer_peer_roster, reset_roster_hosts, reset_subject_roster }
 import gunbc.host.host_reset_return { ResetObserverPairing }
-import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
-import gunbc.live_deploy.apply_receipt { rlm_dashboard_run_id_env_name }
+import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name, rlm_dashboard_run_id_env_name }
 
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
@@ -3737,7 +3734,7 @@ fn fleet_converge_qualification_attempt_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_qualification_attempt_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes + 30 }
+    timeout_minutes: Present { value: minute_count(m: compiler_gate_emit_build_timeout()) + 30 }
   }
 }
 
@@ -5788,7 +5785,7 @@ fn fleet_converge_qualification_floor_job() -> Job {
   qualification_floor_job(
     revision_input: fleet_converge_expected_revision_input,
     if_condition: join([fleet_converge_dispatch_event_if, " && ", fleet_converge_qualification_floor_step_if], ""),
-    timeout_minutes: compiler_gate_emit_build_timeout_minutes,
+    timeout_minutes: minute_count(m: compiler_gate_emit_build_timeout()),
   )
 }
 

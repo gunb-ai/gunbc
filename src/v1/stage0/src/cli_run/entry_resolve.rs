@@ -1587,7 +1587,6 @@ fn multi_entry_index_shell_body(
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
         parse_cache: RefCell::new(std::collections::HashMap::new()),
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
-        ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
@@ -2489,51 +2488,8 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
         return Err(ResolveFailure::Diagnostics(msgs.join("\n")));
     }
 
-    let ownership_started = std::time::Instant::now();
-    // Per-module memo (ownership_diag_cache): ownership proofs are a pure per-module
-    // map (v1.compiler.compile `module_ownership_proofs`; the authority's graph fold
-    // is exactly this row flat_mapped in module order) and `ownership_diagnostics`
-    // distributes over per-module concatenation, so the diagnostic list assembled in
-    // `typed.modules` order is identical to the graph-grain computation — a module
-    // with no bodied items contributes the same empty row the authority's filter
-    // skips. First-touch per module; the per-entry graph-grain rerun (7% of
-    // whole-corpus resolve in the resolve-split receipt) collapses to cache reads.
-    let mut ownership_diag_vec: im::Vector<Rc<ErrorNode>> = im::Vector::new();
-    for m in typed.modules.iter() {
-        let key = m.module.span.file.clone();
-        let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
-        let module_diags = match cached {
-            Some(hit) => hit,
-            None => {
-                let proofs = v1_compiler_compile::module_ownership_proofs(m.clone());
-                let computed = v1_compiler_compile::ownership_diagnostics(proofs);
-                index
-                    .ownership_diag_cache
-                    .borrow_mut()
-                    .insert(key, computed.clone());
-                computed
-            }
-        };
-        ownership_diag_vec.extend(module_diags.iter().cloned());
-    }
-    let ownership_diags = Rc::new(ownership_diag_vec);
-    if ownership_diags
-        .iter()
-        .any(|d| is_error_diagnostic(d.diagnostic.clone()))
-    {
-        return Err(ResolveFailure::Diagnostics(format_error_nodes(
-            &ownership_diags,
-            &source_indices,
-        )));
-    }
-    resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
-
-    let compile_clean_diags = compile_clean_diags_from_resolved_stages(
-        &graph.diagnostics,
-        &norm_diags,
-        &typed,
-        &ownership_diags,
-    );
+    let compile_clean_diags =
+        compile_clean_diags_from_resolved_stages(&graph.diagnostics, &norm_diags, &typed);
 
     // Install into the in-process share so same-subject re-resolves skip assembly —
     // UNLESS this is an Ephemeral gate resolve (the compile-clean whole-tree gate): its

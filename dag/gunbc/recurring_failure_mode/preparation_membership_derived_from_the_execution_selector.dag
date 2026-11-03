@@ -45,7 +45,7 @@ data preparation_membership_derived_from_the_execution_selector: RecurringFailur
 
     "THAT INSTRUMENT HAS A STRUCTURAL CEILING, stated so a later complete-looking run is not read as covering 1208: it works by importing an exported symbol, so the 9 modules exporting none are unreachable by construction and stay unreachable however long it runs -- `v2.test.fixture.extdeps_external_authority.missing_anchor.plant`, `gunbc.auth.optional_impersonation`, `gunbc.toolchain_home_interference_probe`, `gunbc.tools.bmc_read_telemetry`, `gunbc.instruments.cheap_claim_pool_gate`, `gunbc.instruments.extdeps_external_authority_gate`, `gunbc.instruments.floor_effect_gate_witness`, `v2.test.claim.workflow.ci_heal_revalidation_preflight_emit`, `v2.workflow.source_root_ingest_gate`.",
 
-    "A SECOND, SHARPER LIMIT WAS NOT RESOLVED AND MUST BE RESOLVED BEFORE ANY CENSUS IS BELIEVED: the specimen run reported ONE error and stopped, so if resolve halts at the first defect per closure then a full census yields a LOWER BOUND with an unquantified gap rather than a count -- and a lower bound would immediately be quoted as `the census`.",
+    "A SECOND, SHARPER LIMIT WAS NOT RESOLVED: the specimen run reported ONE error and stopped, so if resolve halts at the first defect per closure then a full census would yield a LOWER BOUND with an unquantified gap rather than a count -- and a lower bound would immediately be quoted as `the census`. Running such a census is not a prerequisite (retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`)); no result of one is to be read as coverage of the population.",
 
     "That question costs one module with two planted defects, not a corpus sweep.",
 

@@ -509,7 +509,7 @@ fn decoded_email_verified_reads(body: String, expected: Bool) -> Bool {
   match evaluate_in_witness_frame(frame: verified_flag_frame(body: body), subject: fn(_scope) {
     match test.RestReplay.VerifiedFlag() {
       RestAnswered { answer } => {
-        let claims = OidcStandardClaims { email: none, email_verified: answer.verified, name: none }
+        let claims = OidcStandardClaims { picture: Absent, email: none, email_verified: answer.verified, name: none }
         match claims.email_verified { Present { value: v } => v == expected  Absent => false }
       }
       RestRefused { refusal: _ } => false
@@ -537,7 +537,7 @@ test fn a_decoded_absent_optional_bool_takes_its_absent_arm() -> Bool {
   match evaluate_in_witness_frame(frame: verified_flag_frame(body: "{\"verified\":null}"), subject: fn(_scope) {
     match test.RestReplay.VerifiedFlag() {
       RestAnswered { answer } => {
-        let claims = OidcStandardClaims { email: none, email_verified: answer.verified, name: none }
+        let claims = OidcStandardClaims { picture: Absent, email: none, email_verified: answer.verified, name: none }
         match claims.email_verified { Present { value: _ } => false  Absent => true }
       }
       RestRefused { refusal: _ } => false
@@ -550,7 +550,7 @@ test fn a_decoded_absent_optional_bool_takes_its_absent_arm() -> Bool {
 }
 
 test fn a_constructed_present_bool_reads_through_its_present_arm() -> Bool {
-  let claims = OidcStandardClaims { email: none, email_verified: Present { value: true }, name: none }
+  let claims = OidcStandardClaims { picture: Absent, email: none, email_verified: Present { value: true }, name: none }
   match claims.email_verified { Present { value: v } => v  Absent => false }
 }
 

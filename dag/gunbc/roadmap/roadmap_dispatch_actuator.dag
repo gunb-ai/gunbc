@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_model {
   Dispatchable,
 }
 import gunbc.roadmap.roadmap_spawner { dispatch_brief_template }
-import gunbc.roadmap.roadmap_status { node_title }
+import gunbc.roadmap.roadmap_status { node_title, line_ticket }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, attempt_origin_base_ref, continuation_brief_prefix,
@@ -216,6 +216,12 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_git_worker_subtree_walk_depth,
+  dashboard_ensure_git_shared_repository_posture,
+  dashboard_git_worker_entry_writes_files_in_place,
+  dashboard_git_worker_subtree_chgrp_command,
+  dashboard_git_worker_subtree_chmod_command,
+  dashboard_instance_worker_writable_group_adoption,
+  dashboard_instance_worker_writable_owner,
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
@@ -294,6 +300,7 @@ import gunbc.roadmap.roadmap_dispatch_destination {
   destination_is_this_spawn_tree,
   destination_not_this_spawn_tree_reason,
 }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
@@ -1193,13 +1200,16 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
 // it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are
 // untouched.
 //
-// THE ORDINAL IS MINTED BY AN EXCLUSIVE DURABLE CREATE, NOT READ FROM THE CLOCK. The key used to be
+// THE ORDINAL IS MINTED BY AN EXCLUSIVE DURABLE FILE HOLD, NOT READ FROM THE CLOCK. The key used to be
 // content_hash(node_id x the second-granular probed_at), so two spawns of one node inside one second
 // derived ONE identity and the collision surfaced only at the git step. Now the identity is the
-// outcome of dispatch_attempt_identity_mint: a create-only file under the attempt-state root named
-// by (node, ordinal), whose creation is the claim on that ordinal. Two same-second spawns create two
-// different ordinals, so a same-second duplicate has no spelling; the clock observation is recorded
-// as the file's CONTENT (when it was minted) and is no longer an input to the identity. A clock
+// outcome of dispatch_attempt_identity_mint: an exclusive file hold in the SEALED attempt identity
+// store (gunbc.roadmap.roadmap_attempt_identity_store_root attempt_identity_claim), keyed by
+// attempt_identity_slot_key(node_id, ordinal), whose acquisition IS the claim on that ordinal -- an
+// occupied slot or a lost race moves to the next ordinal, and any other outcome refuses the claim. Two
+// same-second spawns create two different ordinals, so a same-second duplicate has no spelling; the
+// clock observation is carried in the hold's owner text (when it was minted) and is no longer an input
+// to the identity. A clock
 // refusal still refuses the spawn (step attempt-clock), never an unknown-stamped attempt, and a
 // mint the host refuses refuses the spawn (step attempt-identity).
 
@@ -3836,8 +3846,18 @@ type AttemptUnitObservation
 // a cycle, and the acyclicity law is the one structural rule the import graph has. The transport
 // indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
 // the host whose units it is reading, so the local manager IS the subject.
+// WHICH MANAGER RAN AN ATTEMPT UNIT, in the one place that knows it. The attempt units are created on
+// the SYSTEM manager (attempt_system_unit_launch goes through systemctl on the host), so a unit named
+// with the gunbc-attempt- prefix is read there and everything else is read through the user manager.
+// This is the test attempt_unit_property routes its read with, and the same test the settlement reads
+// its holder standing with: which manager a not-found reading came from is part of the holder's
+// identity, so it may not be spelled twice.
+fn attempt_unit_manager_is_system(unit: NonEmptyStr) -> Bool {
+  starts_with(s: unit as String, prefix: "gunbc-attempt-")
+}
+
 fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
-  if starts_with(s: unit as String, prefix: "gunbc-attempt-") {
+  if attempt_unit_manager_is_system(unit: unit) {
     let read = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
     if read.success {
       AttemptUnitFinished { exit_status: trim(read.value) }
@@ -3911,6 +3931,12 @@ type AttemptUnitStartStanding
 // (trigger: the next change to a WorkerProcessExited consumer's decision).
 fn attempt_unit_from_exit_record(unit: NonEmptyStr, record: AttemptExitRecordObservation, start: AttemptUnitStartStanding) -> AttemptUnitObservation {
   match record {
+    // The end is recorded (the hook ran) but its status was never substituted into the name, so the
+    // OUTCOME is unobserved. This names the record's WRITER as defective; it is not evidence about
+    // whether the process still runs -- that question is answered from the manager's standing, never
+    // from the shape of an artifact.
+    AttemptExitRecordWriterUnsubstituted { entries, variables } =>
+      AttemptUnitUnreadable { reason: join(["unit ", unit as String, " is not loaded and its exit record names the stop variables unexpanded (", join(variables, ", "), "), so its end is recorded but its status is not: ", join(entries, ", ")], "") }
     AttemptExitRecordUnreadable { reason } =>
       AttemptUnitUnreadable { reason: join(["unit ", unit as String, " is not loaded and its exit record could not be read: ", reason], "") }
     AttemptExitRecordFound { record: r } =>

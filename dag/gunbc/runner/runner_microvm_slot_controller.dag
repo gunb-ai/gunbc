@@ -1,5 +1,6 @@
 module gunbc.runner.runner_microvm_slot_controller
 
+import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.optional { Absent, Present }
 import gunbc.runner.runner_microvm_network_receipt_store { read_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
 
@@ -97,7 +98,7 @@ import gunbc.runner.runner_microvm_host_ready {
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_env_name, microvm_release_dir_env_name,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
-  microvm_slot_controller_receipt_dir, microvm_unit_receipt_path,
+  MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, ControllerReceipts, microvm_receipt_record,
 }
 import gunbc.runner.runner_guest_image {
   runner_guest_image_root, runner_guest_image_path, runner_guest_base_artifact_path, runner_guest_kernel_artifact,
@@ -563,14 +564,6 @@ fn slot_controller_launch(
 
 // ── the entry the unit execs, and its receipt ───────────────────────────────────────────────────
 
-fn slot_controller_receipt_prefix(instance: String) -> String {
-  join([microvm_slot_controller_receipt_dir, "/", instance, "-"], "")
-}
-
-fn slot_controller_receipt_path(instance: String, invocation_id: NonEmptyStr) -> String {
-  microvm_unit_receipt_path(prefix: slot_controller_receipt_prefix(instance: instance), invocation_id: invocation_id)
-}
-
 fn refusal_text(r: SlotControllerRefusal) -> String {
   match r {
     EnvironmentAbsent { name: n } => join(["EnvironmentAbsent ", n, " -- the unit did not set it, so the controller cannot name its slot or locus"], "")
@@ -663,17 +656,26 @@ fn controller_exit(instance: String, invocation_id: NonEmptyStr, outcome: SlotCo
   uses fs: Filesystem
 {
   let text = outcome_text(o: outcome)
-  let path = slot_controller_receipt_path(instance: instance, invocation_id: invocation_id)
-  let w = Filesystem.Write(path: path, content: concat(text, "\n"))
-  if !w.success {
-    exit_failure(reason: join(["microvm_slot_controller ", instance, ": receipt write refused at ", path, ": ", w.error, " -- outcome was: ", text], ""))
-  } else {
-    match outcome {
-      SlotControllerRan { outcome: _ } => ExitSuccess
-      SlotControllerSettledWithoutLaunch { reason: _ } => ExitSuccess
-      SlotControllerCommissioned => ExitSuccess
-      SlotControllerRefused { refusal: _ } => exit_failure(reason: join(["microvm_slot_controller ", instance, ": ", text], ""))
-    }
+  match microvm_receipt_store(tree: host_state_tree()) {
+    MicrovmReceiptStoreUnready { detail } =>
+      exit_failure(reason: join(["microvm_slot_controller ", instance, ": the receipt store is unready: ", detail, " -- outcome was: ", text], ""))
+    MicrovmReceiptStoreReady { store } =>
+      match microvm_receipt_record(store: store, writer: ControllerReceipts { instance: instance }, invocation_id: invocation_id, content: concat(text, "\n")) {
+        CreateOnceRefused { path, cause } =>
+          exit_failure(reason: join(["microvm_slot_controller ", instance, ": receipt write refused at ", path, ": ", cause, " -- outcome was: ", text], ""))
+        CreateOnceAlreadyRecorded { path } =>
+          exit_failure(reason: join(["microvm_slot_controller ", instance, ": a receipt already exists at ", path, " and is never overwritten -- outcome was: ", text], ""))
+        CreateOnceRecorded { path: _ } => controller_exit_code(instance: instance, text: text, outcome: outcome)
+      }
+  }
+}
+
+fn controller_exit_code(instance: String, text: String, outcome: SlotControllerOutcome) -> ProcessExit {
+  match outcome {
+    SlotControllerRan { outcome: _ } => ExitSuccess
+    SlotControllerSettledWithoutLaunch { reason: _ } => ExitSuccess
+    SlotControllerCommissioned => ExitSuccess
+    SlotControllerRefused { refusal: _ } => exit_failure(reason: join(["microvm_slot_controller ", instance, ": ", text], ""))
   }
 }
 

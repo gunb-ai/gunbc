@@ -1,4 +1,10 @@
 module gunbc.accelerator_demo.accelerator_demo_render
+import extdeps.communication.medium { DecodeFidelity }
+import gunbc.accelerator_demo.accelerator_demo_plan { AcceleratorRecognitionOutcome, AcceleratorRefusalReason, demo_target_label }
+import gunbc.accelerator_demo.accelerator_demo_program { AcceleratorDemoProgram, relu_mul_add_effectful_program, relu_mul_add_pure_program }
+import std.measure { Nano }
+import std.numerical_contract { NumericalContract }
+import std.types { NonEmptyStr }
 
 
 type AcceleratorDemoPlanView {

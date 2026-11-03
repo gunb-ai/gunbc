@@ -70,6 +70,13 @@ data consumption_interrogated_separately: DesignRuling = DesignRuling {
   provenance: "Operator: adding dangling modeling is interrogated separately, and the consumption must be understood well.",
 }
 
+data dependencies_are_admitted_by_their_consumer: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dependencies_are_admitted_by_their_consumer"),
+  decided: "2026-11-01",
+  section: "3c",
+  provenance: "Operator, 2026-11-01, after srv1 hung repeatedly while the board's firmware-first PCIe error handler was taking errors from its unused BMC graphics link: 'if we get 100 things on a board, we are effectively signing up for integration work on everything on that board, unless we disable it, and selectively bring it up -- i would make this the default posture for systems.' Generalized the same day: 'my interest is in proper dependency management -- meaning, we should only use exactly what we need -- in hardware we tend to be lax because we're not sophisticated yet, but as convergence matures, it should head in the direction of being more conservative/diligent', to be aligned at the design level and at each domain. On enabling: 'we have to find a diverse set to expose any integration/diverse mechanisms we otherwise couldn't understand, and then model those, and if they expose any new interactions, disable as much as we can.' First domain application: gunbc.fleet.board_function_admission.",
+}
+
 data authorization_pattern_is_a_selection: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "authorization_pattern_is_a_selection"),
   decided: "2026-09-19",
@@ -131,6 +138,13 @@ data root_generalization_closes_breadth: DesignRuling = DesignRuling {
   decided: "2026-10-16",
   section: "6b",
   provenance: "Operator ruling, amended 2026-10-16 after side-chat review: the method is named root generalization, with anti-unification (Plotkin) as its formal core, and lives in 6b beside chain re-derivation rather than in its own section. Root-cause repair fixes depth; this closes breadth. A new case that needs new code is first asked whether it is another instance of what existing leaves already do; if so, every leaf of that shape is collected, generalized to the least general rule at the earliest unjustified boundary (6b), and deleted (3, delete-first), repeating while the generalizations form a family. The horizontal half was filed as a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling with a recognition rule addressed to authors, which did not work: three fork families grew in one week while it existed (type-alias identity at node_type_compatible call sites, #13941 #14069 #13974 #14043 #14057; v1 Rust trait-bound pipelines, #13978 #14010 #14020; qualified-call resolution, #13925 #14085 #14089); positive specimens #14151 #14193 #13872 #14187). So the check is placed on the reviewer: a repeated pattern is rejected until the author answers with a stated reason not to generalize or a named trigger and follow-up, and the reviewer accepts or rejects that answer; no answer is a reject.",
+}
+
+data continuous_generalization_is_two_sided: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "continuous_generalization_is_two_sided"),
+  decided: "2026-11-02",
+  section: "6b",
+  provenance: "Operator ruling, 2026-11-02: use cases begin specific, and the repository rather than the operator carries the pressure to integrate them over time. Reconciliation is two-sided: neither the incumbent nor the newcomer has authority because it arrived first or is the current task. A change may leave integration unfinished, but a material concern it identifies stays discoverable with an explicit disposition, survives the session that found it, and is revisited by bounded periodic integration work. The operator scoped the first deliverable to an honestly scoped integration record and reading path, with automatic briefing, periodic scheduling and ownership handoff reported as unconnected until their routes exist; conformance stays three-valued.",
 }
 
 data v2_better_than_the_seed: DesignRuling = DesignRuling {
@@ -280,6 +294,13 @@ data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
   provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
 }
 
+data boot_delivery_persistence_and_role_are_independent_axes: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "boot_delivery_persistence_and_role_are_independent_axes"),
+  decided: "2026-11-02",
+  section: "3",
+  provenance: "Operator design decision relayed by bold-heron-131 to session merry-fox-82 on 2026-11-02, labelled by the relay as an OPERATOR DESIGN DECISION to record durably. The relayed text, verbatim apart from line breaks: 'support BOTH diskless boot and disk-backed OS naturally, without divergent machine workflows. Separate physical identity/controller capabilities, artifact+architecture, delivery strategy (PXE/HTTP or vendor media), OS storage/persistence policy, initialization, trust establishment, workload role/lifecycle. Delivery is independent of persistence: network boot can run stateless OR install/use local OS. Runner is consumer of initialized host, not boot prerequisite. Repeated converge preserves correct state; destructive disk install requires explicit target/intent, not default. Protocol differences live in extdeps adapters with verified firmware bindings; no board-name branch/duplicate capability catalog. H11 controller UNKNOWN: Supermicro interface does not imply MegaRAC or standard Redfish media.' This is the operator's words as relayed, not a sentence the operator typed into this repository. Two clauses restate rules that already govern and are not new here: no board-name branch and no duplicate catalog (DESIGN section 3, single authority and external upstream decomposition; ruling one_physical_machine_boot_transaction). The genuinely new decisions are both storage modes through one transaction, delivery independent of persistence, the runner as consumer of an initialized host, and destructive install only on explicit target and intent. The same relay states that the user's dual-model answer concerns STORAGE, not an explicit selection of per-boot SOL over other host-key strategies; this ruling records no trust-strategy selection.",
+}
+
 data fan_policy_is_one_fleet_management_workflow: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fan_policy_is_one_fleet_management_workflow"),
   decided: "2026-10-17",
@@ -371,7 +392,7 @@ data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
 // gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy carried a ratified literal
 // (wait_bound 2700s) on the premise that 'no source declares the longest job'. The premise is false:
 // the fleet-targeted generated workflows declare job timeouts (gunbc.witness.compiler_gate_workflow
-// compiler_gate_emit_build_timeout_minutes = 90, and a v2-bootstrap job runs ~55 minutes), and the
+// compiler_gate_emit_build_timeout = minute(90), and a v2-bootstrap job runs ~55 minutes), and the
 // literal bit srv3 cap converge run 39961292233 — every cap withheld on 'the drain bound of 2700s
 // was exceeded' while honest work ran.
 data drain_wait_bound_is_derived_from_declared_job_timeouts: DesignRuling = DesignRuling {
@@ -600,9 +621,11 @@ fn design_rulings() -> List<DesignRuling> {
     flex_first_recipe_is_flash_next,
     conformance_needs_attention,
     consumption_interrogated_separately,
+    dependencies_are_admitted_by_their_consumer,
     epistemic_humility_is_symmetric,
     chain_re_derivation,
     root_generalization_closes_breadth,
+    continuous_generalization_is_two_sided,
     instrument_is_a_row_not_a_flag,
     authorization_pattern_is_a_selection,
     one_approval_route_for_every_privileged_action,
@@ -626,6 +649,7 @@ fn design_rulings() -> List<DesignRuling> {
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
+    boot_delivery_persistence_and_role_are_independent_axes,
     physical_and_guest_control_remain_distinct,
     fan_policy_is_one_fleet_management_workflow,
     dimm_population_is_admitted_permissively,
