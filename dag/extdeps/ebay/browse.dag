@@ -1,7 +1,8 @@
 module extdeps.ebay.browse
+import std.types { Bearer }
 import std.resources { Network }
 
-import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.types { NonEmptyStr, String, Int, Bool, List, Bearer }
 import std.measure { MoneyAmountMicro, money_amount_micro_count }
 import std.decimal { fixed_point_wire }
 import std.algebra { fold_list }
