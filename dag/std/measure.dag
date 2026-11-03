@@ -38,6 +38,7 @@ type Quantity =
   | Frequency
   | Count
   | HardwareThreadTime
+  | CalendarTime
   | Currency
 
   | Power
@@ -1826,6 +1827,23 @@ fn second_displacement(count: Int) -> SecondDisplacement {
 }
 
 fn second_displacement_count(d: SecondDisplacement) -> Int {
+  measure_count(d)
+}
+
+// A SIGNED COUNT OF CALENDAR DAYS: how far apart two civil dates are, negative when the second is
+// earlier. Its quantity is CalendarTime, not Time, on purpose: a difference of calendar dates
+// counts dates, and stating it as Second (days x 86,400) would claim an elapsed-SI-seconds
+// precision a calendar does not carry, since a civil day is not always 86,400 SI seconds. So it has
+// no conversion to Second, and it is not a Count, which would make a gap between dates the same
+// type as a number of things. First consumer: gunbc-private strategy.calendar_date (plan slip, time
+// taken and estimate error, gunbc-private#279).
+type CalendarDayDisplacement = Measure<CalendarTime, One, Int>
+
+fn calendar_day_displacement(count: Int) -> CalendarDayDisplacement {
+  Measure { count: count }
+}
+
+fn calendar_day_displacement_count(d: CalendarDayDisplacement) -> Int {
   measure_count(d)
 }
 
