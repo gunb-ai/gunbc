@@ -221,6 +221,23 @@ fn seed_build_step(seed: PublicSeed) -> Outcome<Step> {
 // allowlist entry the wall admits are all projections of that one record. Nothing in a profile row can move
 // one of them away from the others -- which is the form the reviewer's #15631 ruling asked for: an entry is
 // earned by a producer record, never hand-written, and never row-supplied either (review 90155).
+//
+// WHY A JOB PROVES THE PIN WHEN actions/checkout WOULD ALSO FAIL -- the reason review 90180 asked to see
+// written down, decided by stern-bat-401 after keen-otter-392 approved this shape (msg_3ccdbb99). A 40-hex
+// string that commit_sha_text_holds accepts, rendered straight into `ref:`, is already refused by GitHub
+// when no such object lives in the row's `repository`: the checkout step passes `repository:` explicitly, so
+// it is that repository and not the workflow's own that is contacted, and a fetch asks for one object by sha,
+// so a blob or a tree is not served for it either. The verifier is therefore NOT there to catch a missing
+// object. It is there for two things a ref, on its own, cannot do:
+//   1. THE WALL ANSWERS "WHO EARNED THIS VALUE", NOT "DOES THIS STRING LOOK LIKE A COMMIT". Admission is a
+//      producer record (CommitOutputProducer, folded by the wall itself). A syntactic literal arm would make
+//      the answer something any emitter can produce by building a forty-character string, and would be a
+//      second path beside the modelled route DESIGN.md section 5 refuses. The property the wall decides has
+//      to be provenance, because syntax is the one thing an emitter can always fabricate.
+//   2. THE FAILURE NAMES THE FACT, AND IT NAMES IT BEFORE THE TREE IS READ. Each proof is a row carrying a
+//      typed refusal -- SeedPinIsNotACommit, SeedPinFetchedObjectIsNotThePin -- with the object it examined
+//      and the url it fetched from. `ref: <pin>` would fail inside actions/checkout, where the reason belongs
+//      to the action, in the one step that must not run until the fact is established.
 
 fn seed_pin_store_var_name() -> String { "GUNBC_SEED_PIN_STORE" }
 
@@ -518,6 +535,10 @@ fn seed_pin_verifier_job(seed: PublicSeed, pin: String, runner: RunnerSpec) -> O
 // therefore compares the value it actually received against the pin the row admitted, and fails before
 // the checkout runs: an absent value, an empty one, or one that is merely some other commit is refused.
 // It is a guard, not a checkout -- the checkout stays an action step under the ref wall.
+// WHAT IT IS NOT: it compares the received value to the SAME pin the row already holds, so it discovers no
+// new fact about the commit -- its value is the position it occupies (the last step before the seed tree is
+// read), the typed reason it prints, and the fact that it can refuse a producer that succeeded while
+// producing nothing. Review 90180 read that correctly, and the answer is stated here rather than claimed.
 fn seed_pin_consumer_guard_step_name() -> String {
   "Refuse the seed checkout unless the verifier reported the pinned commit"
 }
