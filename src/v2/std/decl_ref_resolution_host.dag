@@ -17,6 +17,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParamete
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_at_live }
 import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, qualified_name_from_module }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
+import std.algebra { count_where, list_head, list_map }
+import v2.std.node { named_edge_sort_key }
+import v2.std.node_query { node_labeled_child_edges }
 
 // G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves
 // to exactly one declaration_identity in decl_facts over a declared module, or refuses with one of

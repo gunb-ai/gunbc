@@ -14,8 +14,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_concat_from_nodes,
   bash_build_word_cmdsubst,
   bash_build_assign,
-  bash_build_or_else,
-  bash_build_subshell_from_stmts
+  bash_build_or_else
 }
 
 // THE COMPOSED ROOT, ONCE, FOR EVERY REPOSITORY THAT NEEDS ONE.
@@ -142,15 +141,30 @@ fn seed_gunbc_assign_stmt(seed: PublicSeed) -> Node {
   )
 }
 
-// `PRIVATE_ROOT="$(cd .. && pwd)"` - the mirror checkout, read from where the runner actually put it and
+// `PRIVATE_ROOT="$(realpath ..)"` - the mirror checkout, read from where the runner actually put it and
 // never spelled, so a row cannot claim a path the workflow did not create.
+//
+// WHY ONE COMMAND AND NOT THE TWO IT FIRST ASKED FOR. The pair `cd ..; pwd` was written as two statements
+// inside the substitution, and the fold rendered them inside a carrier subshell: `PRIVATE_ROOT=$(('cd' '..';
+// 'pwd'))`. Bash reads the adjacent `((` as the opening of an arithmetic expression, so the step died with
+// "syntax error: operand expected" before the overlay was ever composed -- gunbc-private's CI found it on
+// 2026-11-03 (run 41593920495, and the same line in the projection-drift run 41593920470). The compose step
+// is reached only by a mirror repository, so no `gunbc` emission had ever executed it. The command
+// substitution already opens its own parsing context, so the carrier subshell asked for nothing the
+// substitution does not give, and the folded grammar gives a substitution an OPERAND -- one command -- not a
+// statement list: the sequenced body is refused as `grammar_relation_production_not_found`. `realpath ..`
+// is the same fact in one command: the canonical absolute pathname of the directory the runner is standing
+// in, taken from where it was put there. The sequenced spelling would also be legal now: the renderer puts
+// one space between a substitution's `$(` and a body that opens with `(` (v2.extdeps.languages.bash::
+// bash_cmdsubst_body_spelling), so `$((` is never emitted and the arithmetic reading cannot be produced by
+// any call site; v2.test.claim.bash_command_fold holds that at the substitution. The structural shape of
+// the subshell carrier is a separate, already recorded program row
+// (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
 fn private_root_assign_stmt() -> Node {
   bash_build_assign(
     name: "PRIVATE_ROOT",
     value: bash_build_word_cmdsubst(
-      body: bash_build_subshell_from_stmts(
-        stmts: [command_words(rest: ["cd", ".."]), command_words(rest: ["pwd"])]
-      )
+      body: command_words(rest: ["realpath", ".."])
     )
   )
 }
