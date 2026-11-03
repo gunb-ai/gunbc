@@ -382,16 +382,6 @@ fn attempt_exit_subject_of_record(record: AttemptExitRecord) -> AttemptExitEntry
   }
 }
 
-// WHICH ROUTE'S SUBJECT A RECORD NAMES, asked through the type instead of read off a field: a role
-// belongs to the roadmap route, so a compute record answers false rather than being compared to a role
-// it never had.
-fn attempt_exit_record_is_role(record: AttemptExitRecord, token: String) -> Bool {
-  match record.subject {
-    RoadmapAttemptExit { node_id: _, attempt_key: _, role } => role == token
-    ComputeAttemptExit { identity: _ } => false
-  }
-}
-
 fn attempt_exit_record_names_attempt(record: AttemptExitRecord, node_id: String, attempt_key: String) -> Bool {
   match record.subject {
     RoadmapAttemptExit { node_id: n, attempt_key: a, role: _ } => n == node_id && a == attempt_key

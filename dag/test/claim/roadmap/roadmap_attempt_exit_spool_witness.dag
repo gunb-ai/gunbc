@@ -30,7 +30,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordWriterUnsubstituted, attempt_exit_entry_unexpanded_variables,
   attempt_exit_vendor_pane_entry_name, attempt_exit_vendor_pane_result_word,
   attempt_exit_vendor_pane_entry_name_of_death, VendorPaneSignaled,
-  attempt_exit_record_is_role, attempt_exit_record_names_attempt,
+  attempt_exit_record_role, attempt_exit_record_names_attempt,
   attempt_exit_subject_of_record,
   AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit, ComputeEntrySubject,
 }
@@ -177,7 +177,10 @@ test fn a_records_role_is_part_of_its_subject() -> Bool {
     AttemptExitRecordUnreadable { reason: _ } => false
   }
   let reviewer_found = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptReviewerRole { criterion_key: "conformance-leasing", head_sha: "abc123" }, listings: [AttemptExitStageNames { names: ["n-1+k1+worker+inv+success+exited+0", "n-1+k1+review.conformance-leasing.abc123+inv+success+exited+0"] }]) {
-    AttemptExitRecordFound { record } => attempt_exit_record_is_role(record: record, token: "review.conformance-leasing.abc123")
+    AttemptExitRecordFound { record } => match attempt_exit_record_role(record: record) {
+      AttemptUnitRoleDecoded { role: AttemptReviewerRole { criterion_key, head_sha } } => criterion_key == "conformance-leasing" && head_sha == "abc123"
+      _ => false
+    }
     AttemptExitRecordNone => false
     AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => false
     AttemptExitRecordUnreadable { reason: _ } => false
@@ -289,7 +292,10 @@ test fn the_reviewer_record_derives_the_review_unit_for_its_criterion() -> Bool 
   match attempt_exit_entry_decode(entry_name: "node-a+key-1+review.conformance-leasing.2f3a9c1d+0123456789abcdef0123456789abcdef+completed+exited+0") {
     AttemptExitEntryDecoded { record } =>
       record.unit == dispatch_review_unit_name(node_id: "node-a", attempt_key: "key-1", criterion_key: "conformance-leasing")
-        && attempt_exit_record_is_role(record: record, token: "review.conformance-leasing.2f3a9c1d")
+        && (match attempt_exit_record_role(record: record) {
+             AttemptUnitRoleDecoded { role: AttemptReviewerRole { criterion_key, head_sha } } => criterion_key == "conformance-leasing" && head_sha == "2f3a9c1d"
+             _ => false
+           })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }
@@ -372,8 +378,14 @@ test fn a_compute_seats_entry_derives_the_units_name_from_its_identity() -> Bool
 // a worker's exit and settle a seat it does not own.
 test fn a_compute_seats_record_is_never_read_as_an_attempts_worker() -> Bool {
   match attempt_exit_entry_decode(entry_name: "0a1b2c3d4e5f6789.occurrence.1793000000+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    // The role question is answered, not refused by silence: a compute record has no role token, so it
+    // decodes to Unknown carrying the ENTRY IT CAME FROM, which is what makes this row falsifiable -- a
+    // decode that filled a roadmap role from the positional fields would answer Decoded here.
     AttemptExitEntryDecoded { record } =>
-      !attempt_exit_record_is_role(record: record, token: "worker")
+      (match attempt_exit_record_role(record: record) {
+         AttemptUnitRoleUnknown { token } => token == record.entry_name
+         _ => false
+       })
         && !attempt_exit_record_names_attempt(record: record, node_id: "0a1b2c3d4e5f6789.occurrence.1793000000", attempt_key: "0123456789abcdef0123456789abcdef")
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
