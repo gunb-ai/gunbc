@@ -380,8 +380,8 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   },
   GapLedgerRow {
     phase_label: "prefix:os-install-mechanism",
-    modeling: "modeled",
-    authority_or_interim: "gunbc.fleet.fleet_boot_delivery_solution.srv3_boot_delivery_solution + gunbc.os_install.srv3_os_install_plan_standing (evidence-derived delivery + boot target; refusal carried, not erased)"
+    modeling: "gap",
+    authority_or_interim: "gunbc.fleet.fleet_boot_delivery_solution.srv3_boot_delivery_solution + gunbc.os_install.srv3_os_install_plan_standing (delivery is the ASSERTED access-unbound refusal, not solver-derived; climbs when an access context is bound on the install path so BootDeliverySolution is solved from fleet_bmc_firmware_evidence)"
   },
   GapLedgerRow {
     phase_label: "prefix:os-install-actuated",
