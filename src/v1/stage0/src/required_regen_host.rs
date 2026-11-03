@@ -58,7 +58,11 @@ use bootstrap_stage0_crate_layout_generated::{
 /// before building on a prior receipt; what still rejects a stale record is `deny_unknown_fields`
 /// on the carrier, which refuses the `.v1` shape's `fixed_point_equal` and the deleted
 /// `fixed_point` variant's fields alike.
-const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v2";
+///
+/// Bumped from `.v2` when `FirstGeneration` gained the REQUIRED `surface_roles` (generation 0
+/// carries the round's surface roles to the orchestrator): a `.v2` first-generation receipt no
+/// longer parses, so the shape it names is a different carrier and gets a different name.
+const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v3";
 
 /// EACH VARIANT CARRIES ONLY WHAT ITS PASS MEASURED (operator ruling 2026-08-20). There is one pass
 /// now: the second-generation pass and its `FixedPoint` variant, which referenced the first pass's
@@ -11832,6 +11836,8 @@ mod surface_roles_receipt_tests {
             surface_roles: ConvergenceSurfaceRoles::from_planning(roles()).unwrap(),
         })
         .unwrap();
+        // The carrier with required surface roles is the v3 shape; a v2 receipt is another carrier.
+        assert_eq!(receipt["schema"], "gunbc.regen_receipt.v3");
         fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
         let read = read_first_generation_receipt(&path).expect("a complete receipt is read");
         assert_eq!(read.surface_roles.into_planning().unwrap(), roles());
