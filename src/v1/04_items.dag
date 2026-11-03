@@ -2,7 +2,7 @@ module v1.compiler.infer_items
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, Map }
 
 import std.interface_summary {
   InterfaceSummary,

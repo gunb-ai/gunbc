@@ -36,7 +36,7 @@ import gunbc.crate_partition {
   EmittedEdgesMerge
 }
 
-import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.types { List, String, Bool, Int, NonEmptyStr, Map }
 import std.optional { Absent, Optional, Present, optional_present }
 import extdeps.rust.cargo { Bin, cargo_target_source_path }
 import gunbc.rust_emitted_edge {

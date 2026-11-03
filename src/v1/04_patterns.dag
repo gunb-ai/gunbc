@@ -2,7 +2,7 @@ module v1.compiler.infer_patterns
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, Map }
 import std.primitive_projection { never_type_declaration, never_type_qualified_path }
 import std.decl_ref { declaration_ref_eq }
 

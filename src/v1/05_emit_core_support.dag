@@ -26,6 +26,7 @@ import v1.compiler.languages {
   LanguageSpec, SnakeCaseTestNames, PascalCaseTestNames,
   language_spec_for_target, test_conventions_for_target
 }
+import std.types { Map }
 
 // emitted_edges are the Rust realization edges (gunbc.rust_emitted_edge) of the published modules;
 // every other target, and every refused emission, carries none.
