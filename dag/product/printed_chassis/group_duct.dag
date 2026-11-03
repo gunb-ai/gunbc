@@ -87,13 +87,13 @@ fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
       Absent => Absent
       Present { value: b } => match feature_value(f: b.taper) {
         Absent => Absent
-        Present { value: tp } => match card_separation(from: first, to: m) {
+        Present { value: tp } => if !taper_holds_grip(tp: tp) { Absent } else { match card_separation(from: first, to: m) {
           Absent => Absent
           Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
             Absent => Absent
             Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, bands: b, taper: tp, offset: s.across, length: c.length } }
           }
-        }
+        } }
       }
     }
   }
@@ -106,13 +106,21 @@ fn member_unfit_reason(first: InstalledCard, m: InstalledCard) -> String {
       Absent => join(missing_feature(name: "fin-free bands (the tabs grip there)", f: f.fin_free_bands), "; ")
       Present { value: b } => match feature_value(f: b.taper) {
         Absent => join(missing_feature(name: "the fin-free bands' taper (the tabs follow it)", f: b.taper), "; ")
-        Present { value: _ } => match card_envelope_of(row: m.instance.card.row) {
+        Present { value: tp } => if !taper_holds_grip(tp: tp) { taper_too_shallow_reason(tp: tp) } else { match card_envelope_of(row: m.instance.card.row) {
           Absent => "the card row states no length to draw its envelope from"
           Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
-        }
+        } }
       }
     }
   }
+}
+
+// A tab follows the read slope for `tab_grip_depth`, so the slope must have depth and be at least that deep;
+// a tab is never drawn past the geometry that was read.
+fn taper_holds_grip(tp: BandTaper) -> Bool { um(m: tp.slope_depth) > 0 && um(m: tab_grip_depth) <= um(m: tp.slope_depth) }
+
+fn taper_too_shallow_reason(tp: BandTaper) -> String {
+  join(["the band taper's slope is read as ", to_string(value: um(m: tp.slope_depth)), " um deep, and the tabs follow it for ", to_string(value: um(m: tab_grip_depth)), " um"], "")
 }
 
 // The plate covers the member's whole end face. Only a header OBSERVED absent is clear of it.
