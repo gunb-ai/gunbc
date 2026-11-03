@@ -37,8 +37,12 @@ import extdeps.nvidia.p4261.population {
   p4261_k1_positions,
   p4261_position_at,
 }
-import extdeps.electronic_component.types { designator_of, designator_text }
+import extdeps.electronic_component.types { designator_eq, designator_of, designator_text }
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
+import product.p4261.e1_position_receipts {
+  e1_held_receipts,
+  e1_position_receipts,
+}
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.e1_photographs { e1_photographs }
 import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite }
@@ -245,36 +249,96 @@ test fn every_reading_cites_a_frame_or_names_a_gap() -> Bool {
     && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U2_2")) == 1
 }
 
-// ---- the pass census, pinned as a tripwire ---------------------------------------------------------
+// ---- the positions are the receipts, joined by identity -------------------------------------------
 //
-// The header says a count is a receipt rather than an assertion, and the report renders counts from
-// the model, so nothing here is a report. This test exists for one reason: it is the tripwire for
-// THIS pass. A position deleted by a careless edit, two component rows merged on the wrong key, a
-// reading dropped when its citation went stale -- each leaves every shape test above green, because a
-// shape is still a shape once it has any instances. These numbers were established by probe (equality
-// holds at each value and at no neighbour of it), so an accidental deletion turns this red instead of
-// quietly re-greening.
+// DESIGN §5: "Completeness is an identity join, not a count equality." The referent is not this file
+// and not the model: it is the 2026-11-03 atlas receipts, emitted as data by
+// gen_e1_position_receipts_dag.py from inventory_top.csv, inventory_bottom.csv, the per-photo
+// sightings and final_pass_corrections.json (the header of e1_position_receipts.dag names them). So
+// a reader can re-run the generator against the receipts and get this set again; and a position that
+// disappears, a spelling that drifts, or a read that never happened shows up as a refusal here rather
+// than as a number that happens to still add up. Delete U41 and add a misspelled U4l and every count
+// in this file stays where it was; these two directions do not.
 //
-// n/m/k, as the handoff asks for it: n positions admitted from reads that are certain and complete;
-// m reads held back with an obligation, which are the unresolved rows plus the one ambiguous sighting;
-// k reads whose designator carried a '?' or a '*', which stay out of the model entirely -- 81 distinct
-// designated footprints above the passive level (85 inventory rows), a figure read off the atlas
-// receipts, since a read the model does not hold cannot be counted by the model.
+// The base rule the generator applies is stated in its own header -- a designated part above the
+// passive level, the designator transcribed 'clear', standing 'confirmed' or 'final-pass critic', no
+// unreadable character. 249 of the 262 positions come from that rule alone. The other 13 are named
+// exceptions carrying the receipt that justifies them (a per-photo sighting the merged inventory
+// lost, an entry on the atlas's own anomaly list, a bench read the atlas could not repeat, the bulk
+// capacitors the handoff puts in scope), and 5 more reads the rule reaches were refused anyway and
+// are held instead -- the two duplicate bottom-side labels and the three empty footprints that need
+// a visual check. k, the designators whose read carries a '?' or a '*', is 81 distinct above the
+// passive level: those stay in the receipts entirely, which is why no test here can count them.
 
-test fn the_pass_census_is_exactly_this() -> Bool {
-  let positions = count(p4261_e1_positions)
-  let claimed = count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false }))
-  // n: certain, complete reads that became positions; the K1 keeps its own 13 and is untouched here.
-  positions == 262
+test fn the_positions_are_the_receipts_and_nothing_else() -> Bool {
+  // Every position on NVIDIA's design list is a designator the receipts admitted, by the rule or by a
+  // named exception that says what it rests on.
+  p4261_e1_positions.all(p =>
+    any(e1_position_receipts, r => designator_eq(a: p.position.designator, b: r.designator)))
+    // And every designator the receipts admitted is on the list. The two directions together are the
+    // join: neither alone says the sets are the same.
+    && e1_position_receipts.all(r => match p4261_position_at(positions: p4261_e1_positions, verbatim: designator_text(r.designator)) {
+      Present { value: _ } => true
+      Absent { } => false
+    })
+}
+
+test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
+  // The other half of refusing: a read the receipts held back must not have slipped into the design
+  // facts. This is the assertion that catches a tentative read minting a position.
+  e1_held_receipts.all(r => match p4261_position_at(positions: p4261_e1_positions, verbatim: designator_text(r.designator)) {
+    Present { value: _ } => false
+    Absent { } => true
+  })
+}
+
+test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
+  // Nothing in the board record -- not an unresolved row, not the ambiguous sighting -- names a
+  // designator the receipts never recorded. A row with no designator at all (the unnamed clusters)
+  // is not a claim about a designator and is not checked here.
+  p4261_e1_layout.unresolved.all(u => match u.designator {
+    Present { value: d } =>
+      any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: d), b: r.designator))
+        || any(e1_held_receipts, r => designator_eq(a: designator_of(verbatim: d), b: r.designator))
+    Absent { } => true
+  })
+    // The ambiguous sighting: its verbatim and its candidate are both things the receipts saw. It
+    // mints no position of its own, which is what its own test below holds.
+    && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3"), b: r.designator))
+    && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3_2"), b: r.designator))
+}
+
+// ---- what a count is still good for ------------------------------------------------------------------
+//
+// Named as what it is: a per-pass change detector, not a completeness claim (DESIGN §5). The position
+// census above is a join; these two numbers have no independent referent yet. The component count
+// becomes a join when the atlas's component sightings are emitted the way the designator reads are,
+// and the claim count when a marking carries the receipt it was read from; the trigger that replaces
+// this test is that work, or the K1 receipts making the same joins natural. Until then it is here so
+// a deleted row or a wrongly merged pair is loud rather than a smaller board.
+
+test fn the_pass_row_counts_are_a_change_detector() -> Bool {
+  count(p4261_e1_layout.components) == 212
+    && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 47
+    // The K1 keeps its own 13 positions: an E1 pass must not reach into another board's design facts.
     && count(p4261_k1_positions) == 13
-    // claimed / unclaimed: a listed position with no claim is our coverage gap, never NVIDIA's silence.
-    && claimed == 47
-    && positions - claimed == 215
-    // one reading per position; one component row per instance, after 29 duplicate sightings merged.
-    && count(p4261_e1_layout.designator_readings) == 262
-    && count(p4261_e1_layout.components) == 212
-    // m: what the pass refused to mint, held with the obligation that would close it.
-    && count(p4261_e1_layout.unresolved) == 34
-    && count(p4261_e1_layout.ambiguous_designators) == 1
+}
+
+// ---- one reading per position --------------------------------------------------------------------
+//
+// The census pins two totals; this pins the shape a total cannot. Readings and positions stand in
+// one-to-one correspondence: every position on the list has exactly one designator reading, and no
+// reading names a designator that is not on the list. A position losing its reading while another
+// gains a second leaves both totals at 262 and every other test here green, which is exactly the
+// mistake this catches. The comparison goes through Designator's own equality, so a reading cannot
+// be matched to a position by a spelling that differs in case or whitespace: the reading side is a
+// plain string today (the type still says NonEmptyStr), so this test, not the type, is what holds
+// the two lists together -- see the PR note on widening DesignatorReading.designator.
+
+test fn every_position_is_read_exactly_once_and_nothing_else_is() -> Bool {
+  p4261_e1_positions.all(p =>
+    count(filter(p4261_e1_layout.designator_readings,
+      r => designator_eq(a: designator_of(verbatim: r.designator), b: p.position.designator))) == 1)
+    && p4261_e1_layout.designator_readings.all(r => is_position(r.designator))
 }
 
