@@ -851,6 +851,10 @@ fn presentation_evidence_text(e: MegaRacPresentationEvidence) -> String {
     " cd_error_code before any write=", cd_reading_text(r: e.cd_before_any_write),
     " at ready=", cd_reading_text(r: e.cd_at_ready),
     " general settings at ready ", raw_read_text(r: e.general_at_ready),
+    // THE IN-INTERVAL LOOK IS PRINTED, because the wait's ready path prints no look anywhere else: the
+    // document between the StartMedia write and the started reading exists in the corpus only if this line
+    // carries it.
+    " in-interval look ", readiness_look_text(look: e.in_interval),
   ], "")
 }
 

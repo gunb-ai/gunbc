@@ -175,6 +175,7 @@ type MegaRacPresentationEvidence {
   cd_before_any_write: CdErrorReading
   cd_at_ready: CdErrorReading
   general_at_ready: MegaRacRawRead
+  in_interval: ReadinessLook
 }
 
 // THE STOP COMMAND'S ANSWER AND THE READ-BACK ARE TWO FACTS AND BOTH ARE KEPT. This firmware has
@@ -2093,7 +2094,12 @@ fn megarac_readiness_budget_ms() -> Milliseconds {
 }
 
 type ReadinessWait
-  = ReadinessWaitReady { look: ReadinessLook, looks: Int }
+  // THE READY ARM KEEPS THE FIRST LOOK, not only the one that found the medium started. The interval this
+  // repository needs is between the StartMedia write and the started reading (megarac_start_media_interval's
+  // read_obligation asks for that look by name), and the loop overwrites its look on every pending pass -- so
+  // without this field the one document the wait cannot recompute is gone the moment the medium comes up, and
+  // the success path is exactly the path that never prints a look.
+  = ReadinessWaitReady { look: ReadinessLook, looks: Int, in_interval: ReadinessLook }
   | ReadinessWaitClosed { last: ReadinessLook, deadline: EpochMs, looks: Int }
   | ReadinessWaitRefused { look: ReadinessLook, looks: Int }
   | ReadinessWaitClockUnreadable { detail: String }
@@ -2112,6 +2118,7 @@ fn megarac_await_readiness(
   opened_at: EpochMs,
   previous: EpochMs?,
   looks: Int,
+  in_interval: ReadinessLook?,
 ) -> ReadinessWait
 {
   let got = megarac.Media.GetRemoteConfigurations(
@@ -2124,8 +2131,14 @@ fn megarac_await_readiness(
     ClockUnixMillisRefused { detail: d } => ReadinessWaitClockUnreadable { detail: d }
     ClockUnixMillisObserved { millis: now } => {
       let look = ReadinessLook { observed_at: now, reading: attach_readiness(answered: got.success, body: got.body, image_name: image_name, firmware: firmware) }
+      // The first look of THIS wait: the pending passes carry it forward, so it is never recomputed and
+      // never replaced by the look that happened to find the medium started.
+      let first_look = match in_interval {
+        Absent => look
+        Present { value: earlier } => earlier
+      }
       match readiness_verdict(opened_at: opened_at, budget: megarac_readiness_budget_ms(), previous: previous, look: look, phase: phase, looks: looks + 1) {
-        ReadinessReady { look: l, looks: n } => ReadinessWaitReady { look: l, looks: n }
+        ReadinessReady { look: l, looks: n } => ReadinessWaitReady { look: l, looks: n, in_interval: first_look }
         ReadinessWindowClosed { last: l, deadline: d, looks: n } => ReadinessWaitClosed { last: l, deadline: d, looks: n }
         ReadinessRefusedVerdict { look: l, looks: n } => ReadinessWaitRefused { look: l, looks: n }
         ReadinessClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n }
@@ -2141,6 +2154,7 @@ fn megarac_await_readiness(
             opened_at: opened_at,
             previous: Present { value: now },
             looks: looks + 1,
+            in_interval: Present { value: first_look },
           )
         }
       }
@@ -2172,6 +2186,7 @@ fn megarac_readiness_outcome(
         opened_at: opened_at,
         previous: none,
         looks: 0,
+        in_interval: none,
       )
       let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
       readiness_wait_outcome(
@@ -2207,7 +2222,7 @@ fn readiness_wait_outcome(
       MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
     ReadinessWaitRefused { look: l, looks: n } =>
       MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-    ReadinessWaitReady { look: l, looks: n } => {
+    ReadinessWaitReady { look: l, looks: n, in_interval: iv } => {
       let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
       let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
       match l.reading {
@@ -2228,6 +2243,7 @@ fn readiness_wait_outcome(
               cd_before_any_write: cd_before,
               cd_at_ready: cd_at_end,
               general_at_ready: general_at_end,
+              in_interval: iv,
             },
           }
           }

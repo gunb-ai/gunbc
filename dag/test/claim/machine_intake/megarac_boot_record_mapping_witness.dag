@@ -49,7 +49,7 @@ import gunbc.host.boot_attempt {
 }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateNotReached }
 import gunbc.machine_intake.megarac_media_attach {
-  MegaRacAttachResult, MegaRacPresentationReady, MegaRacPresentationEvidence,
+  MegaRacAttachResult, MegaRacPresentationReady, ReadinessLook, MegaRacPresentationEvidence,
   MegaRacPresentationObserved, MegaRacSessionRefused, MegaRacRawRead, SessionRelease,
   SessionReleased, SessionReleaseRefused, SessionReleaseNotAttempted, RouteAlreadyPresented,
   // THE READ-ONLY LOOK, as the observe task actually returns it: a share standing, an attach readiness
@@ -144,6 +144,8 @@ fn an_evidence() -> MegaRacPresentationEvidence {
     cd_before_any_write: CdErrorUnread { detail: "fixture" },
     cd_at_ready: CdErrorUnread { detail: "fixture" },
     general_at_ready: MegaRacRawRead { answered: true, body: "{}", observed_at: none },
+    // looks: 1, so the wait's first look is the one that found the medium started.
+    in_interval: ReadinessLook { observed_at: 12000, reading: ReadinessStarted { row: a_presenting_row(), configurations: "[]" } },
   }
 }
 
