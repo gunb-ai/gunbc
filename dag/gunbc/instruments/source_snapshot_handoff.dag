@@ -44,6 +44,9 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import std.fabric_storage {
   FabricObject,
   FabricObjectRef,
@@ -54,14 +57,8 @@ import std.fabric_storage {
   fabric_object_ref_wire,
 }
 import gunbc.fabric.fabric_storage_file_store {
-  FabricStorageFileRoot,
-  fabric_storage_file_root,
-  fabric_storage_file_root_ensure,
+  FabricStorageOperations, FabricStoreReady, FabricStoreUnready, fabric_store_open, fabric_storage_slots,
   fabric_storage_object_path,
-  fabric_storage_file_put,
-  FabricStorageRootStanding,
-  FabricStorageRootReady,
-  FabricStorageRootRefused,
 }
 import gunbc.fabric.fabric_source_snapshot {
   SourceComposition,
@@ -272,7 +269,7 @@ fn snapshot_outcome_line(outcome: SnapshotScenarioOutcome) -> String {
 type SnapshotWorkspace sole_constructor {
   root: String
   authoring: String
-  store: FabricStorageFileRoot
+  store: FabricStorageOperations
   provider: ProviderWorkspace
 }
 
@@ -290,11 +287,26 @@ fn prepare_snapshot_workspace() -> SnapshotWorkspaceStanding {
     SnapshotWorkspaceUnavailable { detail: "no temporary directory" }
   } else {
     let root = trim(s: made.path as String)
-    let store = fabric_storage_file_root(root: join([root, "/store"], "") as NonEmptyStr)
-    match fabric_storage_file_root_ensure(root: store) {
-      FabricStorageRootRefused { area: a, detail: d } =>
+    // THE SCENARIO'S STORE SITS ON THE DECLARED CHAIN, over an instance rooted at the temporary directory
+    // this scenario owns (gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance -- the recorded
+    // route for an isolated instance, no new route), and it is obtained through the ONE mint. The store's
+    // directory is now <tmp>/fabric-storage, the declared member, instead of a "store" directory this driver
+    // picked: a driver that can name a store directory is exactly the route this lane deletes.
+    let scenario_instance = isolated_dashboard_instance(
+      deployment: deployment_id(name: "snapshot-scenario" as NonEmptyStr),
+      instance_id: "snapshot-scenario" as NonEmptyStr,
+      layout: srv1_host_layout(),
+      root: root as FilePath,
+      serve_function: "fabric_storage_serve_handle" as NonEmptyStr,
+      listen_port: 18099,
+      source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+      actuation: DashboardActuating,
+      provision_transport: DashboardLocalProvision,
+    )
+    match fabric_store_open(members: fabric_storage_slots, instance: scenario_instance, entry_mode: none) {
+      FabricStoreUnready { area: a, detail: d } =>
         SnapshotWorkspaceUnavailable { detail: join(["store ", a, ": ", d], "") }
-      FabricStorageRootReady =>
+      FabricStoreReady { store: store } =>
         let authoring = join([root, "/authored"], "")
         match allocate_provider_workspace() {
           ProviderWorkspaceRefused { detail: d } =>

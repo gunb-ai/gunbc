@@ -1,0 +1,440 @@
+module test.claim.fleet.board_function_converge_witness
+
+import std.types { Bool, Int, List, String }
+import extdeps.boards.types { FirmwareSetupSwitch }
+import extdeps.boards.asrock_altrad8ud_setup_varstore { ras_setup_checkbox_row }
+import extdeps.linux.efivarfs { EfiVariableReading, EfiVariableRead, EfiVariableUnread, efivarfs_decode }
+import std.optional { Optional, Present, Absent }
+import extdeps.boards.types { BmcGraphicsController, PcieErrorFirmwareFirstHandling }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.board_function_topology { PcieFunctionIdentity, PcieDetachRoute, asrock_altrad8ud_1l2t_bmc_graphics_route, asrock_altrad8ud_1l2t_x550_route }
+import gunbc.fleet.board_function_admission {
+  RemovedByHostAfterBoot, RemovedAtBoard, PlannedFunction, board_function_removal, fleet_board_function_plans,
+}
+import gunbc.fleet.board_function_converge {
+  SetupSwitchReadback, SetupSwitchSet, SetupSwitchWrong, SetupSwitchUnrouted, setup_switch_readback,
+  PcieFunctionReading, PcieFunctionEnumerated, PcieFunctionNotEnumerated, PcieFunctionUnread,
+  LinkControlReading, LinkControlRead, LinkControlUnread,
+  RouteFunctionReading, PcieDetachObservation, PcieDetachOutcome,
+  BelowDetachedReading, BelowDetachedListed, BelowDetachedUnread,
+  ChildFunctionsReading, ChildFunctionsListed, ChildFunctionsUnread,
+  PcieDetachPorts, PcieDetachRun, converge_pcie_detach_over,
+  DetachAlreadyConverged, DetachConvergedAfterApply, DetachNotConverged,
+  PcieDetachDecision, DetachConverged, DetachApply, DetachRefused,
+  pcie_detach_decision, converge_plan, converge_plans_over, distinct_plan_routes, host_board_function_plans,
+  BoardFunctionConvergeLine, admission_marker_action, WriteAdmissionMarker, RemoveAdmissionMarker,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED READINGS AT THE DECISION'S BOUNDARY (DESIGN §3, a witness discriminates at one interface). The
+// real producer, observe_pcie_detach over sysfs and setpci, runs on srv1 itself; its run is the PR's
+// receipt, because no CI host carries this board.
+fn route() -> PcieDetachRoute { asrock_altrad8ud_1l2t_bmc_graphics_route }
+
+fn present(f: PcieFunctionIdentity) -> PcieFunctionReading {
+  PcieFunctionEnumerated { vendor: f.vendor as String, device: f.device as String }
+}
+
+// Link Control as read from a root port whose link is up (0040: Common Clock Configuration only) and as
+// read after Link Disable is Set (0050).
+data link_enabled: LinkControlReading = LinkControlRead { value: 64 }
+data link_disabled: LinkControlReading = LinkControlRead { value: 80 }
+
+fn bridge_identity() -> PcieFunctionIdentity {
+  match route().detached.first() { Present { value: f } => f Absent => route().root_port }
+}
+
+fn named_below() -> BelowDetachedReading {
+  BelowDetachedListed { functions: map(route().behind, f => f.address as String) }
+}
+
+fn observation_full(root: PcieFunctionReading, root_children: ChildFunctionsReading, bridge: PcieFunctionReading, vga: PcieFunctionReading, below: BelowDetachedReading, link: LinkControlReading) -> PcieDetachObservation {
+  let r = route()
+  PcieDetachObservation {
+    root_port: root,
+    root_children: root_children,
+    detached: map(r.detached, f => RouteFunctionReading { identity: f, reading: bridge }),
+    behind: map(r.behind, f => RouteFunctionReading { identity: f, reading: vga }),
+    below: below,
+    link: link,
+  }
+}
+
+// What the host lists below the bridge when it holds exactly the named functions, or nothing when the bridge
+// is gone -- the shape observe_below_detached produces.
+fn below_for(bridge: PcieFunctionReading) -> BelowDetachedReading {
+  match bridge {
+    PcieFunctionEnumerated { vendor: _, device: _ } => named_below()
+    PcieFunctionNotEnumerated => BelowDetachedListed { functions: [] }
+    PcieFunctionUnread { cause: _ } => BelowDetachedListed { functions: [] }
+  }
+}
+
+// What the root port's own directory lists: the bridge while it is enumerated, nothing once it is gone.
+fn root_children_for(bridge: PcieFunctionReading) -> ChildFunctionsReading {
+  match bridge {
+    PcieFunctionEnumerated { vendor: _, device: _ } => ChildFunctionsListed { addresses: [bridge_identity().address as String] }
+    PcieFunctionNotEnumerated => ChildFunctionsListed { addresses: [] }
+    PcieFunctionUnread { cause: _ } => ChildFunctionsListed { addresses: [] }
+  }
+}
+
+fn observation_below(root: PcieFunctionReading, bridge: PcieFunctionReading, vga: PcieFunctionReading, below: BelowDetachedReading, link: LinkControlReading) -> PcieDetachObservation {
+  observation_full(root: root, root_children: root_children_for(bridge: bridge), bridge: bridge, vga: vga, below: below, link: link)
+}
+
+fn observation(root: PcieFunctionReading, bridge: PcieFunctionReading, vga: PcieFunctionReading, link: LinkControlReading) -> PcieDetachObservation {
+  observation_below(root: root, bridge: bridge, vga: vga, below: below_for(bridge: bridge), link: link)
+}
+
+fn decide(o: PcieDetachObservation) -> PcieDetachDecision { pcie_detach_decision(route: route(), observation: o) }
+
+fn refused(d: PcieDetachDecision) -> Bool {
+  match d { DetachRefused { cause: _ } => true _ => false }
+}
+
+fn vga() -> PcieFunctionIdentity {
+  match route().behind.first() { Present { value: f } => f Absent => route().root_port }
+}
+
+// A fresh boot: everything the firmware brought up is there, so the bridge is removed and the link disabled.
+test fn a_fresh_boot_removes_the_bridge_and_disables_the_link() -> Bool {
+  let r = route()
+  decide(o: observation(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: present(f: vga()), link: link_enabled))
+    == DetachApply { remove: [bridge_identity()], disable_link: true }
+}
+
+// Idempotent: a second run in the same boot applies nothing.
+test fn a_removed_bridge_behind_a_disabled_link_is_converged() -> Bool {
+  let r = route()
+  decide(o: observation(root: present(f: r.root_port), bridge: PcieFunctionNotEnumerated, vga: PcieFunctionNotEnumerated, link: link_disabled))
+    == DetachConverged
+}
+
+// Each half is judged on its own: removal alone is not convergence, and neither is the link alone.
+test fn each_half_of_the_route_is_checked_on_its_own() -> Bool {
+  let r = route()
+  decide(o: observation(root: present(f: r.root_port), bridge: PcieFunctionNotEnumerated, vga: PcieFunctionNotEnumerated, link: link_enabled))
+    == DetachApply { remove: [], disable_link: true }
+    && decide(o: observation(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: present(f: vga()), link: link_disabled))
+    == DetachApply { remove: [bridge_identity()], disable_link: false }
+}
+
+// THE IDENTITY REDS. Each is a host whose tree is not the observed one; acting on it would remove or cut off
+// a function the route never named.
+test fn a_different_tree_refuses_before_anything_is_written() -> Bool {
+  let r = route()
+  let other = PcieFunctionEnumerated { vendor: "8086", device: "1563" }
+  refused(d: decide(o: observation(root: other, bridge: present(f: bridge_identity()), vga: present(f: vga()), link: link_enabled)))
+    && refused(d: decide(o: observation(root: PcieFunctionNotEnumerated, bridge: present(f: bridge_identity()), vga: present(f: vga()), link: link_enabled)))
+    && refused(d: decide(o: observation(root: present(f: r.root_port), bridge: other, vga: present(f: vga()), link: link_enabled)))
+    && refused(d: decide(o: observation(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: other, link: link_enabled)))
+    && refused(d: decide(o: observation(root: present(f: r.root_port), bridge: PcieFunctionNotEnumerated, vga: present(f: vga()), link: link_disabled)))
+}
+
+// THE UNNAMED-FUNCTION RED. Removing the bridge removes everything below it, so a function there that the route
+// does not name -- a second function of the VGA device, or one below a function the route names -- refuses
+// before the bridge is touched; and a listing that could not be read is not an empty one.
+test fn an_unnamed_function_below_the_bridge_refuses() -> Bool {
+  let r = route()
+  let named = map(r.behind, f => f.address as String)
+  refused(d: decide(o: observation_below(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: present(f: vga()), below: BelowDetachedListed { functions: concat(named, ["0003:02:00.1"]) }, link: link_enabled)))
+    && refused(d: decide(o: observation_below(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: present(f: vga()), below: BelowDetachedListed { functions: [] }, link: link_enabled)))
+    && refused(d: decide(o: observation_below(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: present(f: vga()), below: BelowDetachedUnread { cause: "listing refused" }, link: link_enabled)))
+    && decide(o: observation_below(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: present(f: vga()), below: named_below(), link: link_enabled))
+      == DetachApply { remove: [bridge_identity()], disable_link: true }
+}
+
+// THE PARENTAGE REDS, read from the root port's own directory rather than from remembered addresses: the
+// bridge must be the root port's only child; and when the remembered bridge and VGA addresses are absent, the
+// root port must lead to nothing, because absence at old addresses says nothing about what the link serves now.
+test fn the_root_port_must_lead_to_the_bridge_alone() -> Bool {
+  let r = route()
+  let bridge = present(f: bridge_identity())
+  refused(d: decide(o: observation_full(root: present(f: r.root_port), root_children: ChildFunctionsListed { addresses: [bridge_identity().address as String, "0003:01:00.1"] }, bridge: bridge, vga: present(f: vga()), below: named_below(), link: link_enabled)))
+    && refused(d: decide(o: observation_full(root: present(f: r.root_port), root_children: ChildFunctionsListed { addresses: [] }, bridge: bridge, vga: present(f: vga()), below: named_below(), link: link_enabled)))
+    && refused(d: decide(o: observation_full(root: present(f: r.root_port), root_children: ChildFunctionsListed { addresses: ["0003:01:00.0"] }, bridge: PcieFunctionNotEnumerated, vga: PcieFunctionNotEnumerated, below: BelowDetachedListed { functions: [] }, link: link_enabled)))
+    && refused(d: decide(o: observation_full(root: present(f: r.root_port), root_children: ChildFunctionsUnread { cause: "listing refused" }, bridge: PcieFunctionNotEnumerated, vga: PcieFunctionNotEnumerated, below: BelowDetachedListed { functions: [] }, link: link_disabled)))
+}
+
+// ── the orchestration, over supplied ports ──────────────────────────────────────────────────────
+
+fn fresh_boot() -> PcieDetachObservation {
+  let r = route()
+  observation(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: present(f: vga()), link: link_enabled)
+}
+
+fn removed_and_disabled() -> PcieDetachObservation {
+  let r = route()
+  observation(root: present(f: r.root_port), bridge: PcieFunctionNotEnumerated, vga: PcieFunctionNotEnumerated, link: link_disabled)
+}
+
+fn ports(before: PcieDetachObservation, after: PcieDetachObservation, remove_fails: Bool, disable_fails: Bool) -> PcieDetachPorts {
+  PcieDetachPorts {
+    observe: fn(round) { if round == 0 { before } else { after } },
+    remove: fn(f) { if remove_fails { Present { value: "write refused" } } else { none } },
+    disable: fn(rt) { if disable_fails { Present { value: "setpci exited 1" } } else { none } },
+  }
+}
+
+fn run(before: PcieDetachObservation, after: PcieDetachObservation, remove_fails: Bool, disable_fails: Bool) -> PcieDetachRun {
+  converge_pcie_detach_over(route: route(), ports: ports(before: before, after: after, remove_fails: remove_fails, disable_fails: disable_fails))
+}
+
+fn not_converged(r: PcieDetachRun) -> Bool {
+  match r.outcome { DetachNotConverged { cause: _ } => true _ => false }
+}
+
+// A fresh boot writes the removal, then the link, and is converged only by the readback.
+test fn a_fresh_boot_writes_remove_then_disable_and_converges_on_readback() -> Bool {
+  let r = run(before: fresh_boot(), after: removed_and_disabled(), remove_fails: false, disable_fails: false)
+  r.writes == ["remove 0003:01:00.0", "disable"] && r.outcome == DetachConvergedAfterApply { removed: [bridge_identity()], disabled: true }
+}
+
+// A failed removal stops before the link write; a failed link write never reports convergence; and writes
+// that report success while the readback still shows the bridge or the link up refuse.
+test fn a_failed_or_unseen_write_never_reports_convergence() -> Bool {
+  let removal_failed = run(before: fresh_boot(), after: removed_and_disabled(), remove_fails: true, disable_fails: false)
+  let disable_failed = run(before: fresh_boot(), after: removed_and_disabled(), remove_fails: false, disable_fails: true)
+  let unseen = run(before: fresh_boot(), after: fresh_boot(), remove_fails: false, disable_fails: false)
+  not_converged(r: removal_failed) && removal_failed.writes == ["remove 0003:01:00.0"]
+    && not_converged(r: disable_failed) && disable_failed.writes == ["remove 0003:01:00.0", "disable"]
+    && not_converged(r: unseen) && unseen.writes == ["remove 0003:01:00.0", "disable"]
+}
+
+// ZERO MUTATIONS on every topology refusal and on a converged host: nothing is written unless the decision
+// over the first observation is DetachApply.
+test fn a_refused_or_converged_host_is_not_written() -> Bool {
+  let r = route()
+  let foreign_child = observation_full(root: present(f: r.root_port), root_children: ChildFunctionsListed { addresses: [bridge_identity().address as String, "0003:01:00.1"] }, bridge: present(f: bridge_identity()), vga: present(f: vga()), below: named_below(), link: link_enabled)
+  let unnamed_below = observation_below(root: present(f: r.root_port), bridge: present(f: bridge_identity()), vga: present(f: vga()), below: BelowDetachedListed { functions: ["0003:02:00.0", "0003:02:00.1"] }, link: link_enabled)
+  let other_tree = observation(root: PcieFunctionEnumerated { vendor: "8086", device: "1563" }, bridge: present(f: bridge_identity()), vga: present(f: vga()), link: link_enabled)
+  let leads_elsewhere = observation_full(root: present(f: r.root_port), root_children: ChildFunctionsListed { addresses: ["0003:01:00.0"] }, bridge: PcieFunctionNotEnumerated, vga: PcieFunctionNotEnumerated, below: BelowDetachedListed { functions: [] }, link: link_enabled)
+  all([foreign_child, unnamed_below, other_tree, leads_elsewhere], o => {
+    let x = run(before: o, after: removed_and_disabled(), remove_fails: false, disable_fails: false)
+    not_converged(r: x) && length(x.writes) == 0
+  })
+    && run(before: removed_and_disabled(), after: fresh_boot(), remove_fails: false, disable_fails: false) == PcieDetachRun { outcome: DetachAlreadyConverged, writes: [] }
+}
+
+// An unreadable reading is never read as absence.
+test fn an_unread_reading_refuses() -> Bool {
+  let r = route()
+  let unread = PcieFunctionUnread { cause: "listing refused" }
+  refused(d: decide(o: observation(root: present(f: r.root_port), bridge: unread, vga: PcieFunctionNotEnumerated, link: link_disabled)))
+    && refused(d: decide(o: observation(root: present(f: r.root_port), bridge: PcieFunctionNotEnumerated, vga: unread, link: link_disabled)))
+    && refused(d: decide(o: observation(root: present(f: r.root_port), bridge: PcieFunctionNotEnumerated, vga: PcieFunctionNotEnumerated, link: LinkControlUnread { cause: "setpci exited 1" })))
+}
+
+// The plan the converge route consumes carries this route: srv1's graphics removal is the ALTRAD8UD-1L2T's
+// observed tree, not a route the converge module chose for itself.
+test fn the_plan_carries_the_route_the_converge_acts_on() -> Bool {
+  match board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: BmcGraphicsController) {
+    RemovedByHostAfterBoot { residue: _, route: r } => r == route()
+    _ => false
+  }
+}
+
+// THE SETUP-SWITCH DECISION, over supplied bytes. The payload is srv2's RasIfrNVData as read on 2026-11-02:
+// 47 octets, the AER Firmware First octet (5) at 0.
+data aer_menu: String = "Advanced > RAS Configuration"
+data aer_item: String = "PCIe AER Firmware First"
+data srv2_ras_payload: List<Int> = [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 120, 0, 0, 0, 176, 4, 0, 0, 1, 0, 0, 0, 160, 5, 0, 0]
+
+fn readback_is_unrouted(r: SetupSwitchReadback) -> Bool {
+  match r {
+    SetupSwitchUnrouted { cause: _ } => true
+    _ => false
+  }
+}
+
+fn reading_is_unread(r: EfiVariableReading) -> Bool {
+  match r {
+    EfiVariableUnread { cause: _ } => true
+    EfiVariableRead { attributes: _, payload: _ } => false
+  }
+}
+
+fn is_present<T>(o: Optional<T>) -> Bool {
+  match o {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn aer_readback(bios: String?, payload: List<Int>) -> SetupSwitchReadback {
+  setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: bios, reading: EfiVariableRead { attributes: 7, payload: payload })
+}
+
+test fn a_switched_off_aer_item_reads_set() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: srv2_ras_payload) {
+    SetupSwitchSet { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn an_enabled_aer_item_refuses_with_the_observed_value() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: concat(take_prefix(xs: srv2_ras_payload, n: 5), concat([1], skip(xs: srv2_ras_payload, n: 6)))) {
+    SetupSwitchWrong { detail } => contains(detail, "reads 1")
+    _ => false
+  }
+}
+
+test fn a_payload_of_another_size_refuses() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: take_prefix(xs: srv2_ras_payload, n: 40)) {
+    SetupSwitchWrong { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn another_bios_version_or_none_is_unrouted_not_decoded() -> Bool {
+  readback_is_unrouted(r: aer_readback(bios: Present { value: "3.10" }, payload: srv2_ras_payload))
+    && readback_is_unrouted(r: aer_readback(bios: Absent, payload: srv2_ras_payload))
+}
+
+test fn an_unread_variable_refuses() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: Present { value: "2.06" }, reading: EfiVariableUnread { cause: "x" }) {
+    SetupSwitchWrong { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn another_setup_item_has_no_route() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: "An item with no varstore row", board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: Present { value: "2.06" }, reading: EfiVariableRead { attributes: 7, payload: srv2_ras_payload }) {
+    SetupSwitchUnrouted { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn another_board_is_unrouted_even_at_bios_2_06() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "OTHER" }, bios_version: Present { value: "2.06" }, reading: EfiVariableRead { attributes: 7, payload: srv2_ras_payload }) {
+    SetupSwitchUnrouted { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE INHABITANCE CLAIM for the route: srv1's real plan for the firmware-first handling is a RemovedAtBoard
+// FirmwareSetupSwitch whose real catalog menu and item resolve to a readback route and a varstore row. Breaking
+// the catalog strings, the route rows or the converge_plan arm's input shape turns this red. (The host read
+// itself is run by setup_switch_receipt_cli, as root on srv1 and srv2.)
+test fn the_real_srv1_aer_plan_resolves_to_a_readback_route() -> Bool {
+  let plans = filter(fleet_board_function_plans(), p => (p.host as String) == (operator_host_srv1 as String)
+    && p.subject == PlannedFunction { board_function: PcieErrorFirmwareFirstHandling })
+  length(plans) == 1 && all(plans, p =>
+    match p.removal {
+      RemovedAtBoard { switch: s } =>
+        match s {
+          FirmwareSetupSwitch { menu, item, off_meaning: _, citation: _ } =>
+            is_present(o: ras_setup_checkbox_row(menu: menu as String, item: item as String))
+          _ => false
+        }
+      _ => false
+    })
+}
+
+// THE DECODE: efivarfs od output for a 4-octet attribute word and two data octets.
+test fn the_efivarfs_decode_splits_attributes_from_payload() -> Bool {
+  match efivarfs_decode(stdout: "07 00 00 00 aa 01\n") {
+    EfiVariableRead { attributes, payload } => attributes == 7 && payload == [170, 1]
+    EfiVariableUnread { cause: _ } => false
+  }
+}
+
+test fn the_efivarfs_decode_refuses_short_or_non_hex_output() -> Bool {
+  reading_is_unread(r: efivarfs_decode(stdout: "07 00\n")) && reading_is_unread(r: efivarfs_decode(stdout: "zz 00 00 00\n"))
+}
+
+// THE LATCH FOLLOWS THE RESULT: any refused line removes it, so a refusing re-run closes admission even while
+// the converge unit stays active; a run with no refusal -- reported, kept or unmodeled lines included --
+// writes it.
+test fn the_admission_latch_follows_the_latest_result() -> Bool {
+  let kept = BoardFunctionConvergeLine { text: "kept", refused: false }
+  let refused_line = BoardFunctionConvergeLine { text: "REFUSED", refused: true }
+  admission_marker_action(lines: [kept, kept]) == WriteAdmissionMarker
+    && admission_marker_action(lines: [kept, refused_line]) == RemoveAdmissionMarker
+    && admission_marker_action(lines: []) == WriteAdmissionMarker
+}
+
+// ── the X550: two functions on one root port, removed together ──────────────────────────────────
+
+fn x550() -> PcieDetachRoute { asrock_altrad8ud_1l2t_x550_route }
+
+fn x550_function(i: Int) -> PcieFunctionIdentity {
+  match (if i == 0 { x550().detached.first() } else { reverse(x550().detached).first() }) { Present { value: f } => f Absent => x550().root_port }
+}
+
+// The X550 as a host reads it: each function's reading, the root port's children (the functions still
+// enumerated, as observe_pcie_detach lists them), nothing below either function, and the link.
+fn x550_observation(port0: PcieFunctionReading, port1: PcieFunctionReading, below: BelowDetachedReading, link: LinkControlReading) -> PcieDetachObservation {
+  let readings = [RouteFunctionReading { identity: x550_function(i: 0), reading: port0 }, RouteFunctionReading { identity: x550_function(i: 1), reading: port1 }]
+  PcieDetachObservation {
+    root_port: present(f: x550().root_port),
+    root_children: ChildFunctionsListed { addresses: map(filter(readings, r => match r.reading { PcieFunctionEnumerated { vendor: _, device: _ } => true _ => false }), r => r.identity.address as String) },
+    detached: readings,
+    behind: [],
+    below: below,
+    link: link,
+  }
+}
+
+fn x550_fresh() -> PcieDetachObservation {
+  x550_observation(port0: present(f: x550_function(i: 0)), port1: present(f: x550_function(i: 1)), below: BelowDetachedListed { functions: [] }, link: link_enabled)
+}
+
+fn x550_removed() -> PcieDetachObservation {
+  x550_observation(port0: PcieFunctionNotEnumerated, port1: PcieFunctionNotEnumerated, below: BelowDetachedListed { functions: [] }, link: link_disabled)
+}
+
+fn x550_run(before: PcieDetachObservation, remove_fails: Bool) -> PcieDetachRun {
+  converge_pcie_detach_over(route: x550(), ports: ports(before: before, after: x550_removed(), remove_fails: remove_fails, disable_fails: false))
+}
+
+// A fresh boot removes both functions, in the route's order, before the link is disabled.
+test fn the_x550_is_removed_whole_then_its_link_disabled() -> Bool {
+  let r = x550_run(before: x550_fresh(), remove_fails: false)
+  pcie_detach_decision(route: x550(), observation: x550_fresh()) == DetachApply { remove: x550().detached, disable_link: true }
+    && r.writes == ["remove 0003:03:00.0", "remove 0003:03:00.1", "disable"]
+    && r.outcome == DetachConvergedAfterApply { removed: x550().detached, disabled: true }
+    && pcie_detach_decision(route: x550(), observation: x550_removed()) == DetachConverged
+}
+
+// A run stopped between the two removals is finished by the next one, which removes only what remains; a
+// failed first removal writes nothing after it.
+test fn a_run_stopped_between_removals_is_finished_and_a_failed_removal_stops_the_line() -> Bool {
+  let half = x550_observation(port0: PcieFunctionNotEnumerated, port1: present(f: x550_function(i: 1)), below: BelowDetachedListed { functions: [] }, link: link_enabled)
+  let failed = x550_run(before: x550_fresh(), remove_fails: true)
+  pcie_detach_decision(route: x550(), observation: half) == DetachApply { remove: [x550_function(i: 1)], disable_link: true }
+    && not_converged(r: failed) && failed.writes == ["remove 0003:03:00.0"]
+}
+
+// THE X550 REDS: a third function on its root port, a function enumerated below either X550 function, a
+// different device at a function's address, or a root port that still lists a function the readings say is
+// gone -- each refuses with nothing written.
+test fn an_x550_tree_that_is_not_the_observed_one_refuses_unwritten() -> Bool {
+  let fresh = x550_fresh()
+  let third = PcieDetachObservation { root_port: fresh.root_port, root_children: ChildFunctionsListed { addresses: ["0003:03:00.0", "0003:03:00.1", "0003:03:00.2"] }, detached: fresh.detached, behind: fresh.behind, below: fresh.below, link: fresh.link }
+  let below = x550_observation(port0: present(f: x550_function(i: 0)), port1: present(f: x550_function(i: 1)), below: BelowDetachedListed { functions: ["0003:04:00.0"] }, link: link_enabled)
+  let foreign = x550_observation(port0: PcieFunctionEnumerated { vendor: "8086", device: "1528" }, port1: present(f: x550_function(i: 1)), below: BelowDetachedListed { functions: [] }, link: link_enabled)
+  let stale = PcieDetachObservation { root_port: fresh.root_port, root_children: ChildFunctionsListed { addresses: ["0003:03:00.0"] }, detached: x550_removed().detached, behind: [], below: fresh.below, link: link_disabled }
+  all([third, below, foreign, stale], o => {
+    let x = x550_run(before: o, remove_fails: false)
+    not_converged(r: x) && length(x.writes) == 0
+  })
+}
+
+// ONE RUN PER ROUTE. srv1's plans carry two routes -- the BMC graphics bridge, and the X550 that both LAN1
+// and LAN2 carry -- so each is realized once and its outcome reported on every plan that carries it.
+fn always_converged(r: PcieDetachRoute) -> PcieDetachOutcome { DetachAlreadyConverged }
+
+test fn each_distinct_route_is_run_once_and_reported_on_every_plan() -> Bool {
+  let plans = host_board_function_plans(host: operator_host_srv1)
+  let lines = converge_plans_over(plans: plans, converge: fn(r) { always_converged(r: r) })
+  distinct_plan_routes(plans: plans) == [route(), x550()]
+    && length(lines) == length(plans)
+    && length(filter(lines, l => contains(l.text, "onboard Ethernet LAN") && contains(l.text, ": removed --"))) == 2
+    && length(filter(lines, l => contains(l.text, "onboard Ethernet LAN3: kept"))) == 1
+    && !any(lines, l => l.refused)
+}

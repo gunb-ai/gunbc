@@ -32,6 +32,7 @@ import extdeps.github.actions {
 }
 import gunbc.action_use_admission { upload_artifact_action }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
+import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.repository_ci_profile {
   DagInvocation,
   HealSeal,
@@ -39,9 +40,9 @@ import gunbc.ci.repository_ci_profile {
   ProjectionDrift,
   PublicSeed,
   RepositoryCiProfile,
-  gunbc_roster_gate,
   repository_ci_profile_refusal,
   profile_overlay,
+  profile_public_seed,
 }
 import gunbc.ci.repository_compose_overlay {
   SealEnvBinding,
@@ -88,9 +89,9 @@ import gunbc.ci.repository_seed_steps {
 
 data drift_no_job_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: this repository's CI profile declares no drift check (RepositoryCiProfile.drift is Absent), so there is nothing to emit. Declare the job or delete its workflow file."
 
-data drift_no_seed_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: a drift check that regenerates from a sealed seed needs that seed (RepositoryCiProfile.public_seed is Absent). Emission that claims to check against a seed it never checks out is a check that always passes."
+data drift_no_seed_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: a drift check that regenerates from a sealed seed needs that seed (its CompilerSource builds the repository's own checkout, so there is no seed to check out). Emission that claims to check against a seed it never checks out is a check that always passes."
 
-data drift_no_overlay_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: the mirror's drift check and seal both run from the composed overlay, so the profile must declare the ingest (RepositoryCiProfile.roster.route.Overlay.composition). Without that row the emitted job could not name the copy it reads, and the copy is precisely the step that must be visible in the committed YAML."
+data drift_no_overlay_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: the mirror's drift check and seal both run from the composed overlay, so the profile must declare the ingest (gunbc.ci.repository_ci_profile CompilerSource carries the OverlayIngest beside the seed it composes into). Without it the emitted job could not name the copy it reads, and the copy is precisely the step that must be visible in the committed YAML."
 
 // PRESENCE READ BY MATCHING, NOT BY COMPARING AN OPTIONAL TO A SENTINEL. Each arm of the row that this
 // emitter cannot work without -- the drift check, the seed it regenerates from, the overlay ingest that
@@ -112,7 +113,7 @@ fn projection_drift_refusal(profile: RepositoryCiProfile) -> Optional<String> {
   match profile.drift {
     Absent => Present { value: drift_no_job_refusal_reason }
     Present { value: _ } =>
-      match profile.public_seed {
+      match profile_public_seed(profile: profile) {
         Absent => Present { value: drift_no_seed_refusal_reason }
         Present { value: _ } =>
           match profile_overlay(profile: profile) {
@@ -279,11 +280,11 @@ fn projection_drift_steps(
             uses: upload_artifact_action,
             with: Present {
               value: [
-                kv(key: "name", value: yaml_string(s: seal.candidate_artifact as String)),
+                kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name)),
                 kv(
                   key: "path",
                   value: yaml_string(
-                    s: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", seal.candidate_artifact as String, "/"], "")
+                    s: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", heal_repair_candidate_artifact_name, "/"], "")
                   )
                 ),
                 kv(key: "if-no-files-found", value: yaml_string(s: "error"))
@@ -438,9 +439,9 @@ fn expected_projection_drift_workflow_yml(
   // THE SEED AND THE OVERLAY ARE THE PROFILE'S, READ ONCE AT THE TOP. The check step, the seed receipt,
   // the build and the seal are all threaded from these two values, so no caller can hand the drift check
   // one seed and the seal another. Both Absent arms refuse with the row named; nothing is invented here.
-  match profile.public_seed {
+  match profile_public_seed(profile: profile) {
     Absent => ProjectionDriftWorkflowGenerationRefused {
-      reason: "REFUSE gunbc.ci.repository_projection_drift_workflow: this repository's profile declares no public_seed, and the drift check compares projections judged by that seed's compiler. The row owns the seed; the emitter does not supply one."
+      reason: "REFUSE gunbc.ci.repository_projection_drift_workflow: this repository's profile builds its compiler in its own checkout, and the drift check compares projections judged by a seed's compiler. The row owns where the compiler comes from; the emitter does not supply one."
     }
     Present { value: seed } =>
       match profile_overlay(profile: profile) {

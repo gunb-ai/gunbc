@@ -91,7 +91,7 @@ Historical direct `twin_sig` probes found three conflicting rules: authored impo
 
 Delete `fn_nodes`; dispatch by the resolver’s exact `QualifiedName` into shared `SymbolIndex.entries`, one map hit after resolution, not an ancestor walk per call. Do not independently teach runtime imports or stamp targets from a wrong resolver. A temporary holding measure may expose actual dispatch in the existing typed binding-fork ledger, never widen or introduce another binding rule.
 
-### 12.4 NEXT STEP — the divergence census (operator-directed 2026-07-19)
+### 12.4 The divergence census (operator-directed 2026-07-19; delivered, and no longer a prerequisite under the 2026-10-30 process ruling)
 
 The read-only census compares actual resolver return identities, not diagnostic silence. Every whole-corpus/both-root call site records callee, caller, legacy target and containment target. Bucket into Agree, Diverge (list both targets), ContainmentAmbiguous (qualification owed), ContainmentUnresolved (fill gaps reported separately); never skip. Record lookup cost to falsify the substitution claim without changing policy, resolver or dispatch.
 

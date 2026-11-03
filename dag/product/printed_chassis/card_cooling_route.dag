@@ -4,7 +4,9 @@ import std.checked_arithmetic {checked_int_to_nat}
 import std.types {Bool, Int, List, NonEmptyStr, String}
 import std.measure {Micrometer, micrometer}
 import std.optional {Present, Absent}
-import product.printed_chassis.chassis_clearances {ChassisGap, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, DeclaredConservativeByOperator, chassis_gaps, card_end_to_chassis_fan_2026_10_29, power_connector_head_protrusion, cable_bend_keepout, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display, gap_declared_bound, gap_is_estimate, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall, GapRoom, Room, OverSubscribed, NoReading, gap_room, standing_origin, gap_may_be_printed_on}
+import product.printed_chassis.chassis_clearances {ChassisGap, single_card_side_allowance_2026_11_02, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, DeclaredConservativeByOperator, chassis_gaps, card_end_to_chassis_fan_2026_10_29, power_connector_head_protrusion, cable_bend_keepout, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display, gap_declared_bound, gap_is_estimate, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall, GapRoom, Room, OverSubscribed, NoReading, gap_room, standing_origin, gap_may_be_printed_on}
+import product.printed_chassis.printable_assembly {CardFaceSide, BackFaceSide, FrontFaceSide, card_face_side_wire}
+import product.printed_chassis.side_mount_duct {side_mount_rear_spend, side_mount_side_spend, side_mount_card_gap}
 import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back, plane_on_end_blower_bottom_standoff}
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
@@ -68,6 +70,7 @@ type BlowerHome
   | PlaneAcrossRowStanding           // the existing straight-back home
   | OverTheRow { riser: Micrometer } // fan above the card row on a riser, outlet leg turned down behind the end
   | BesideTheRow                     // fan in a free lane beside the outermost card
+  | AgainstCardSide { side: CardFaceSide } // broad face against one face of the card, intake outward; short chamber behind the end
 
 fn blower_home_display(h: BlowerHome) -> String {
   match h {
@@ -75,6 +78,7 @@ fn blower_home_display(h: BlowerHome) -> String {
     PlaneAcrossRowStanding => "fan on its side wall behind the plug end (straight back, as built today)"
     OverTheRow {riser: r} => join(["fan over the card row on a ", to_string(value: um(m: r) / 1000), " mm riser, outlet leg turned down behind the end"], "")
     BesideTheRow => "fan beside the row in a free lane"
+    AgainstCardSide {side: s} => join(["fan against the card's ", card_face_side_wire(side: s), " face, intake outward, short chamber behind the end"], "")
   }
 }
 
@@ -276,6 +280,16 @@ fn admit_home_over(s: RouteSubject, home: BlowerHome, rear: ChassisGap, lane: Ch
             Present { value: refused2 } => refused2
             Absent => RouteAdmitted { home: home, needs: [high, back, RouteDemand { name: "fan face span along the row", needed: micrometer(count: over_the_row_span(b: b)), of_gap: "free row length behind the card ends" }] }
           }
+        }
+      }
+    }
+    AgainstCardSide {side: _} => {
+      let back = RouteDemand { name: "behind the plug end (chamber, flange and back wall)", needed: side_mount_rear_spend(d: d), of_gap: "plug end to rear chassis fan" }
+      match ask(gap: rear, need: back.needed, home: home, unmet: back, over: governing_rear(rear: rear)) {
+        Present { value: refused } => refused
+        Absent => {
+          let beside = RouteDemand { name: "beside the card (gap, socket walls and the housing's thickness)", needed: side_mount_side_spend(d: d, b: s.fan), of_gap: "space beside the A16 in the single-card arrangement" }
+          finish(home: home, needs: [back, beside], gap: single_card_side_allowance_2026_11_02, unmet: beside, over: Absent)
         }
       }
     }
@@ -603,6 +617,11 @@ fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> 
     // thickness stands up toward the lid, and nothing was read between the DECK and the lid -- the 120 mm is
     // floor-to-lid at an unnamed place, and no deck height exists -- so this home's third extent reports the
     // reading it still owes.
+    AgainstCardSide {side: _} => BlowerShape {
+      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: single_card_side_allowance_2026_11_02), deductions: [side_mount_card_gap, d.wall, d.wall, a16_blower_duct_design.socket_clearance, a16_blower_duct_design.socket_clearance]), why: "less the card gap, two socket walls and two socket clearances"),
+      along_the_row: unread_extent(obligation: "the housing runs along the card's own side; nothing read here bounds that length but the card"),
+      behind_the_end: extent_of(room: room_less(room: rear, deductions: [d.wall]), why: "the housing does not reach behind the end; only the chamber, flange and back wall do"),
+    }
     BesideTheRow => BlowerShape {
       across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: side_lane_width), deductions: concat(walls_two, [d.band_clearance, d.band_clearance])), why: "less two duct walls and the band clearance on both sides"),
       along_the_row: extent_of(room: room_less(room: rear, deductions: [d.sleeve_clearance]), why: "less the sleeve clearance"),
@@ -1119,9 +1138,11 @@ fn side_display(s: BlockedSide) -> String {
 //
 // Two things this leaves OUT, both honest rather than convenient: it assumes all the board's heat goes into
 // the air this duct moves, which ignores the conduction into the board and the radiation off the fins that
-// exhaust_thermal lists as unmodelled couplings, and it is free-air flow at the fan's inlet, which is not
-// the flow the scroll will actually deliver against the scroll's own pressure drop. Both push the required
-// free-air figure UP, never down, so reading these numbers as a minimum is the safe direction to read them.
+// exhaust_thermal lists as unmodelled couplings, and the answer is the THROUGH-FLOW the fins must carry, not a
+// fan's catalog free-air rating: a fan delivers less than its free-air figure against the duct's and fins'
+// pressure drop, so a fan whose free-air rating merely equals this number is short. Both push the fan rating
+// needed UP, never down, so reading these numbers as a minimum is the safe direction to read them
+// (product.printed_chassis.group_cooling_plan states the assumed delivered fraction beside every screen).
 
 // Volume flow needed to carry `heat` away at a rise of `rise`, using only cited properties:
 // rho [g/m3] * V [mL/s] / 1000 = m_dot [mg/s], and Q [W] = m_dot [mg/s] * 1e-6 [kg/mg] * cp * dT. Inverted

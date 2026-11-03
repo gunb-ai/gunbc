@@ -1,4 +1,5 @@
 module extdeps.github.checks
+import std.types { Bearer }
 
 import extdeps.ietf.http_semantics { GET, PATCH, POST }
 import extdeps.github.github { default_api_base, default_per_page }
