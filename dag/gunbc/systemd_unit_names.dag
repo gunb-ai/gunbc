@@ -1,7 +1,7 @@
 module gunbc.systemd_unit_names
 
 import std.types { String, Int, NonEmptyStr }
-import extdeps.systemd { SystemdUnitNameAdmission, systemd_service_unit_name }
+import extdeps.systemd { SystemdUnitNameAdmission, SystemdUnitNameStemEmpty, systemd_service_unit_name }
 
 // ONE HOME FOR THE NAMES GUNBC GIVES ITS OWN TRANSIENT UNITS. Every route that launches work mints a unit
 // name from the identity it holds, and every route that later reads that unit's fate -- the exit spool, the
