@@ -135,13 +135,21 @@ test fn a_whole_or_absent_framing_does_not_read_undecodable_bytes_as_torn() -> B
   }
 }
 
+// The eight log members' declared framing comes from the total slot function in the module that declares the
+// members, NOT from the census: their MemberCensusRow entries are deleted (review 90246), so a census lookup of
+// "AttemptWorkerEvents" now answers Absent. The wire member above still reads the census, because that class has
+// no declaring-module slot function.
+fn worker_events_declared_framing() -> AppendFraming {
+  attempt_append_log_member_slot(member: AttemptWorkerEvents).framing
+}
+
 test fn an_events_member_declared_a_stream_refuses_a_record_observation() -> Bool {
-  match census_framing_of(member: "AttemptWorkerEvents") {
-    Absent => false
-    Present { value: f } => match append_readback(framing: f, observation: InPlaceRecordObserved { record: InPlaceRecordAbsent {} }, standing: WriterWindowReleased {}) {
+  match worker_events_declared_framing() {
+    NewlineDelimitedStream {} => match append_readback(framing: worker_events_declared_framing(), observation: InPlaceRecordObserved { record: InPlaceRecordAbsent {} }, standing: WriterWindowReleased {}) {
       AppendLogUnreadable { cause: _ } => true
       _ => false
     }
+    _ => false
   }
 }
 
