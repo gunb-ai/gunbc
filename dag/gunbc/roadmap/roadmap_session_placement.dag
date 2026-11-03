@@ -13,6 +13,7 @@ import gunbc.roadmap.roadmap_session_attempt_slots_root {
   SessionAttemptSlotStoreRef, WorkerAttemptSlots, ReviewerAttemptSlots, session_attempt_slot_store_handle,
   SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready, session_attempt_slots_store, session_attempt_slots_path,
   SessionReviewerSlotsStoreReady, SessionReviewerSlotsStoreUnready, session_reviewer_slots_store, session_reviewer_slots_path,
+  SessionSlotLane, SessionSlotLaneReading, SessionSlotLaneAdmitted, SessionSlotLaneCrossed, session_attempt_slot_store_admit,
 }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
@@ -1415,7 +1416,18 @@ fn session_placement_settle_pass_at(stores: SessionPlacementStores, host: String
   }
 }
 
+// THE ENTRY GUARD. Before a single slot is listed, read, terminated or released, the store the caller handed
+// over is admitted against what this pass IS -- the WorkerSlotLane lane and this instance. A store minted for the
+// other lane, or for another dashboard instance, ends the pass with a typed refusal naming the lane asked
+// for and the lane handed over (session_attempt_slot_store_admit). The body is unchanged below the guard.
 fn session_placement_settle_pass(instance: HostDashboardInstance, stores: SessionPlacementStores) -> SessionSettlePass {
+  match session_attempt_slot_store_admit(ref: stores.slots, acting_as: WorkerSlotLane, acting_for: instance.instance_id as NonEmptyStr) {
+    SessionSlotLaneCrossed { detail: d } => SessionSettlePassRefused { detail: d }
+    SessionSlotLaneAdmitted { store: _ } => session_placement_settle_pass_guarded(instance: instance, stores: stores)
+  }
+}
+
+fn session_placement_settle_pass_guarded(instance: HostDashboardInstance, stores: SessionPlacementStores) -> SessionSettlePass {
   match now_epoch_seconds() {
     Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger compares against a deadline" }
     Present { value: now } => session_placement_settle_pass_at(stores: stores, host: instance.host_identity as String, lifecycle_of: u => session_worker_unit_lifecycle_for_instance(instance: instance, unit: u), now: now)
@@ -2127,7 +2139,18 @@ fn session_reviewer_placement_settle_pass_at(
   }
 }
 
+// THE ENTRY GUARD. Before a single slot is listed, read, terminated or released, the store the caller handed
+// over is admitted against what this pass IS -- the ReviewerSlotLane lane and this instance. A store minted for the
+// other lane, or for another dashboard instance, ends the pass with a typed refusal naming the lane asked
+// for and the lane handed over (session_attempt_slot_store_admit). The body is unchanged below the guard.
 fn session_reviewer_placement_settle_pass(instance: HostDashboardInstance, stores: SessionPlacementStores) -> SessionSettlePass {
+  match session_attempt_slot_store_admit(ref: stores.slots, acting_as: ReviewerSlotLane, acting_for: instance.instance_id as NonEmptyStr) {
+    SessionSlotLaneCrossed { detail: d } => SessionSettlePassRefused { detail: d }
+    SessionSlotLaneAdmitted { store: _ } => session_reviewer_placement_settle_pass_guarded(instance: instance, stores: stores)
+  }
+}
+
+fn session_reviewer_placement_settle_pass_guarded(instance: HostDashboardInstance, stores: SessionPlacementStores) -> SessionSettlePass {
   match now_epoch_seconds() {
     Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and a reviewer settlement measures launch deadlines against it" }
     Present { value: now } => session_reviewer_placement_settle_pass_at(
