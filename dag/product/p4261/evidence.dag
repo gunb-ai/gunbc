@@ -137,8 +137,9 @@ import product.p4261.k1_a { p4261_k1_layout }
 // RUNG OF THE BINDING, STATED: the markings are transcribed from photographs into the corpus, so the
 // fold executes on authored data -- a boundary transcription (DESIGN 4b, outside the modeled
 // guarantee). THE RUNG CLIMBED (2026-11-03): product.electrical.photograph gives a photograph a content
-// identity and a store, product.p4261.e1_photographs holds the E1 atlas's 91 frames by digest, and
-// EvidenceRef.OperatorPhotograph now cites a stored frame (with the box inside it) or names the gap --
+// identity and a store, product.p4261.e1_photographs holds the E1 atlas's 201 rows by digest (192 captured
+// frames and 9 views we drew), and EvidenceRef.OperatorPhotograph now cites a stored frame (with the box
+// inside it) or names the gap --
 // see "WHAT A MARKING ROW IS CHECKABLE AGAINST" below. What that does NOT buy: a frame whose bytes never
 // reached the store, which is every frame the 2026-10-15 to 11-01 bench sessions sent into the chat, is
 // still unverifiable by anyone but the person who saw it. Those rows say so by name and keep their
@@ -1118,16 +1119,16 @@ fn net_assessment(layout: CarrierLayoutObservation, key: NonEmptyStr) -> NetProp
 // the verdict. Those consumers call `judge_board_image_readings`, which asks
 // product.p4261.photograph_store which frames we hold for the board. One fact, one home (DESIGN §3).
 //
-// FIVE STANDINGS, DISTINCT IN THE TYPE, BECAUSE THEY NEED DIFFERENT WORK. `CheckableAgainstStoredBytes` is
+// FOUR STANDINGS, DISTINCT IN THE TYPE, BECAUSE THEY NEED DIFFERENT WORK. `CheckableAgainstStoredBytes` is
 // re-readable now. `BytesNeverStored` is a declared gap with the obligation that closes it (every
 // 2026-10-15..11-01 chat frame is here: the operator must re-supply the uploads, and a guessed digest would
 // turn a known gap into a permanent lie). `DigestNotInStore` is a BROKEN record -- it claims bytes the store
 // does not have, so either the store is missing a row or the record is wrong. `FrameIsOurOwnDrawing` refuses
 // the atlas's own trap: its `derived/` overviews are stitched from the readings they would corroborate, and
-// the type says so rather than leaving it to a reviewer's memory. `FrameDepictsAnotherBoard` refuses the
-// subtler one: a digest identifies BYTES, not the specimen they picture, so a row that resolves but names
-// another board cannot corroborate a reading taken off this one -- `Photograph.board` is the specimen and
-// this is the consumer that makes it execute. The filters below match EVERY standing with no `_`, so a sixth
+// the type says so rather than leaving it to a reviewer's memory. WHICH SPECIMEN A FRAME PICTURES is not a
+// fifth standing here: a digest identifies bytes, not what they depict, and that question is settled once, on
+// the store row that holds the frame, by product.p4261.photograph_store's `store_row_judgment` -- see
+// `StoreHoldsAnotherBoardsFrames` below. The filters below match EVERY standing with no `_`, so a fifth
 // cannot fall into none of them and leave a board of unread rows looking grounded; establishment is derived
 // as `checkable == read`, never as "not in the other lists".
 //
@@ -1174,7 +1175,7 @@ fn board_image_readings(layout: CarrierLayoutObservation) -> List<BoardImageRead
 // to, so a broken digest or an unhashed locator is a work item with a designator on it and not an
 // anonymous count.
 fn reading_groundings(store: List<Photograph>, layout: CarrierLayoutObservation) -> List<ReadingGrounding> {
-  map(board_image_readings(layout), r => ReadingGrounding { read_of: r.read_of, standing: cite(store: store, citation: r.citation, judged: layout.asset) })
+  map(board_image_readings(layout), r => ReadingGrounding { read_of: r.read_of, standing: cite(store: store, citation: r.citation) })
 }
 
 // THE THREE PARTITIONS. Each selects on the ONE fold, product.electrical.photograph's
@@ -1237,25 +1238,18 @@ fn judge_image_readings(store: List<Photograph>, layout: CarrierLayoutObservatio
 
 // The judgement on this board's OWN store, from the one module that knows which frames we hold. This is
 // what product.p4261.findings consumes: no consumer carries a frame list, so none can establish coverage
-// by naming one.
-// The frames that ground THIS layout must be pictures of THIS layout's board. Reaching the `foreign`
-// branch here means the store row and the layout disagree about the board even though the lookup matched
-// one -- a malformed pairing, and it judges as such rather than borrowing another board's pixels.
-fn store_or_misattribution(store: BoardPhotographStore, layout: CarrierLayoutObservation) -> ImageReadingGrounding {
-  let foreign = filter(store.frames, f => !physical_asset_identity_eq(a: f.board, b: layout.asset))
-  if count(foreign) > 0 {
-    StoreHoldsAnotherBoardsFrames { board: layout.asset, foreign: foreign }
-  } else {
-    judge_image_readings(store: store.frames, layout: layout)
-  }
-}
-
+// by naming one. Nor does any consumer re-test whose pictures they are: `photograph_store_for` is keyed on
+// the board, and `store_row_judgment` refuses a store row that holds a frame of another specimen, so a
+// digest can only resolve among frames attributed to the board being judged. That is the single place the
+// specimen is decided (DESIGN §3); an earlier cut tested it here and in `cite` as well, and those second
+// copies could not fire.
 fn board_image_reading_grounding(layout: CarrierLayoutObservation) -> ImageReadingGrounding {
   match photograph_store_for(board: layout.asset) {
-    StoreHeld { store } => store_or_misattribution(store: store, layout: layout)
+    StoreHeld { store } => judge_image_readings(store: store.frames, layout: layout)
     NoStoreForBoard { board, obligation } => NoPhotographStore { board: board, obligation: obligation }
     // A store row that is wrong about the specimen: judged against the board we are actually looking at,
-    // so what surfaces names THIS board and the frames in it that are somebody else's.
+    // so what surfaces names THIS board and the frames in it that are somebody else's. This is the only
+    // route to that standing -- no consumer re-tests the frames.
     StoreRowHoldsForeignFrames { board: _, foreign: foreign } =>
       StoreHoldsAnotherBoardsFrames { board: layout.asset, foreign: foreign }
   }

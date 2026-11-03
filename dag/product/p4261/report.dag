@@ -1400,13 +1400,16 @@ fn judgment_words(j: FindingJudgment, established: Bool) -> String {
     // here and named by product.p4261.evidence's `gap_groundings`, which is the worklist. Naming 94
     // designators inside a dossier sentence would bury the one number the reader needs.
     ImageReadingsJudged { grounding } => match grounding {
-      // The census in the sheet's own words. Broken rows are NAMED, because each is a defect with a
-      // designator on it that somebody has to go fix; the rows awaiting bytes are counted here and listed
-      // by product.p4261.evidence's `gap_groundings`, which is the worklist. Naming 94 designators inside a
-      // dossier sentence would bury the one number the reader needs.
+      // The census in the sheet's own words. Broken rows are NAMED, each with the reason
+      // product.electrical.photograph's `citation_explanation` gives for it -- a row can be broken because
+      // the store holds nothing under its digest OR because the frame is our own drawing, and saying "names
+      // bytes the store does not hold" about the second would be a false report about our own file. The rows
+      // awaiting bytes are counted here and listed by product.p4261.evidence's `gap_groundings`, which is
+      // the worklist. Naming every designator inside a dossier sentence would bury the one number the
+      // reader needs.
       FromStore { read, checkable, broken, gaps } => join([
         to_string(read), " image-readings on this carrier: ", to_string(checkable), " rest on frames we hold for it; ",
-        to_string(count(broken)), " name bytes the store does not hold", grounding_row_names(gs: broken), "; ",
+        to_string(count(broken)), " cannot carry a reading", grounding_row_names(gs: broken), "; ",
         to_string(count(gaps)), " were read off frames whose bytes never reached the store",
         if count(gaps) == 0 { "" } else { "; they are listed by product.p4261.evidence.gap_groundings" }], "")
       // A different absence, said plainly: this carrier has never been photographed into a store, so no

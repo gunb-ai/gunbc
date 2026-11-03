@@ -6,7 +6,7 @@ import std.measure { FiniteByteSize }
 import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.types { List, NonEmptyStr }
-import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity }
 
 // WHAT A PHOTOGRAPH IS IN THE MODEL. A reading of a board is read off an image, and the image is what
 // lets someone who was not at the bench re-check the reading. So a photograph is a row identified by its
@@ -124,12 +124,11 @@ type CitationStanding
   | BytesNeverStored { taken_on: NonEmptyStr, locator: NonEmptyStr, obligation: NonEmptyStr }
   | DigestNotInStore { content: Sha256Digest }
   | FrameIsOurOwnDrawing { depicts: NonEmptyStr, obligation: NonEmptyStr }
-  // THE DIGEST RESOLVES, BUT TO A PICTURE OF A DIFFERENT OBJECT. A content hash says which bytes; it does
-  // not say what they depict. `Photograph.board` is the specimen the frame is of, and a frame of another
-  // board cannot be re-read to check a reading taken off this one -- the pixels would show a different
-  // board's silkscreen, a different part's body. Broken rather than quietly dropped: a citation that points
-  // at another specimen's frame is a record defect, and the sheet has to say so.
-  | FrameDepictsAnotherBoard { content: Sha256Digest, depicted_on: PhysicalAssetIdentity, obligation: NonEmptyStr }
+// WHERE THE SPECIMEN CHECK LIVES. A digest says which bytes, not what they picture, so the board a frame
+// belongs to is decided once, over the store row that holds it, in product.p4261.photograph_store's
+// `store_row_judgment`: a store row containing a frame of another board is refused there, so a digest
+// can only resolve among frames attributed to the board whose store was opened. Nothing here re-tests
+// it (DESIGN §3).
 
 // The store's lookup, and the only way a digest becomes a frame.
 fn photograph_in_store(store: List<Photograph>, content: Sha256Digest) -> Photograph? {
@@ -138,36 +137,21 @@ fn photograph_in_store(store: List<Photograph>, content: Sha256Digest) -> Photog
 
 // WHAT A CITATION RESTS ON. Resolved by content, never by text: two rows with the same file name are
 // still two frames, and a row we drew cannot ground a reading of the board.
-fn cite(store: List<Photograph>, citation: PhotographCitation, judged: PhysicalAssetIdentity) -> CitationStanding {
+fn cite(store: List<Photograph>, citation: PhotographCitation) -> CitationStanding {
   match citation {
     InStore { content, region } => match photograph_in_store(store: store, content: content) {
-      Present { value } =>
-        // The digest found a row; the row says which board that picture is of. Both must agree with the
-        // board under judgement, or the citation cannot carry a reading about it.
-        if physical_asset_identity_eq(a: value.board, b: judged) {
-          match value.origin {
-            CapturedFrame { surface, capture: _, taken_on: _ } =>
-              CheckableAgainstStoredBytes { surface: surface, region: region }
-            GeneratedImage { depicts, drawn_by: _, drawn_on: _, atlas_revision: _ } =>
-              frame_is_our_own_drawing(depicts: depicts)
-          }
-        } else {
-          frame_depicts_another_board(content: content, depicted_on: value.board)
-        }
+      // The store row this frame came from was already judged to be a picture of the board whose store was
+      // opened (product.p4261.photograph_store), so what is left to decide here is what KIND of frame it is.
+      Present { value } => match value.origin {
+        CapturedFrame { surface, capture: _, taken_on: _ } =>
+          CheckableAgainstStoredBytes { surface: surface, region: region }
+        GeneratedImage { depicts, drawn_by: _, drawn_on: _, atlas_revision: _ } =>
+          frame_is_our_own_drawing(depicts: depicts)
+      }
       Absent => DigestNotInStore { content: content }
     }
     BytesNotInStore { taken_on, locator, obligation } =>
       BytesNeverStored { taken_on: taken_on, locator: locator, obligation: obligation }
-  }
-}
-
-// The refusal for citing a frame that pictures some other board. Same reason as the drawing refusal: the
-// obligation travels with the standing so no caller has to re-type (and could forget) the remedy.
-fn frame_depicts_another_board(content: Sha256Digest, depicted_on: PhysicalAssetIdentity) -> CitationStanding {
-  FrameDepictsAnotherBoard {
-    content: content,
-    depicted_on: depicted_on,
-    obligation: "cite a frame photographed on the board this reading was taken from; a frame of another specimen cannot corroborate this board's markings, whatever bytes it holds",
   }
 }
 
@@ -201,7 +185,6 @@ fn citation_verdict(standing: CitationStanding) -> CitationVerdict {
     BytesNeverStored { taken_on: _, locator: _, obligation: _ } => Gap
     DigestNotInStore { content: _ } => Broken
     FrameIsOurOwnDrawing { depicts: _, obligation: _ } => Broken
-    FrameDepictsAnotherBoard { content: _, depicted_on: _, obligation: _ } => Broken
   }
 }
 
@@ -229,10 +212,6 @@ fn citation_explanation(standing: CitationStanding) -> String {
     )
     FrameIsOurOwnDrawing { depicts: depicts, obligation: obligation } => join(
       ["the cited frame is our own drawing of ", depicts as String, "; an image we drew from a reading cannot corroborate it. To close it: ", obligation as String],
-      ""
-    )
-    FrameDepictsAnotherBoard { content: content, depicted_on: depicted_on, obligation: obligation } => join(
-      ["the cited digest ", content.hex as String, " is held as a picture of '", depicted_on as String, "', not of the board this reading was taken from. To close it: ", obligation as String],
       ""
     )
   }

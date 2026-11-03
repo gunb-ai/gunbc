@@ -39,7 +39,6 @@ import product.electrical.photograph {
   CaptureDateUnrecorded,
   CheckableAgainstStoredBytes,
   DigestNotInStore,
-  FrameDepictsAnotherBoard,
   FrameIsOurOwnDrawing,
   GeneratedImage,
   DeviceUnrecorded,
@@ -74,9 +73,18 @@ import std.measure {
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
-import product.p4261.photograph_store { BoardPhotographStore, frames_of_another_board }
+import product.p4261.photograph_store {
+  BoardPhotographStore,
+  NoStoreForBoard,
+  StoreHeld,
+  StoreRowHoldsForeignFrames,
+  frames_of_another_board,
+  store_row_judgment,
+}
 import product.p4261.e1_photographs { e1_photograph, e1_photographs }
-import product.p4261.evidence { FromStore, NoPhotographStore, StoreHoldsAnotherBoardsFrames, board_image_reading_grounding, broken_groundings, checkable_groundings, gap_groundings, image_readings_rest_on_stored_bytes, judge_image_readings, reading_groundings }
+import product.p4261.evidence { ReadingGrounding, FromStore, NoPhotographStore, StoreHoldsAnotherBoardsFrames, board_image_reading_grounding, broken_groundings, checkable_groundings, gap_groundings, image_readings_rest_on_stored_bytes, judge_image_readings, reading_groundings }
+import product.p4261.report { judgment_words }
+import product.p4261.findings { ImageReadingsJudged }
 import product.p4261.k1_a { p4261_k1_layout }
 
 // WHICH FRAMES THE STORE HOLDS, by how they came to be. These live HERE and not in
@@ -345,7 +353,7 @@ test fn every_row_resolves_by_its_own_content() -> Bool {
 test fn a_citation_to_bytes_the_store_holds_is_checkable() -> Bool {
   match first_captured_frame() {
     Absent => false
-    Present { value: frame } => match cite(store: e1_photographs, citation: InStore { content: frame.content, region: Absent }, judged: p4261_e1_layout.asset) {
+    Present { value: frame } => match cite(store: e1_photographs, citation: InStore { content: frame.content, region: Absent }) {
       CheckableAgainstStoredBytes { surface, region: _ } => match frame.origin {
         CapturedFrame { surface: shot, capture: _, taken_on: _ } => surface == shot
         GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
@@ -364,7 +372,7 @@ test fn a_citation_points_at_a_box_and_the_box_arrives() -> Bool {
     Absent => false
     Present { value: frame } =>
       let box = PixelRegion { left: 175, top: 120, width: 65, height: 40 }
-      match cite(store: e1_photographs, citation: InStore { content: frame.content, region: Present { value: box } }, judged: p4261_e1_layout.asset) {
+      match cite(store: e1_photographs, citation: InStore { content: frame.content, region: Present { value: box } }) {
         CheckableAgainstStoredBytes { surface: _, region: Present { value: kept } } =>
           kept.left == 175 && kept.top == 120 && kept.width == 65 && kept.height == 40
             && string_contains(photograph_citation_text(citation: InStore { content: frame.content, region: Present { value: box } }), "175")
@@ -382,11 +390,12 @@ test fn a_citation_points_at_a_box_and_the_box_arrives() -> Bool {
 // bytes are missing instead of saying merely "no".
 // A FRAME OF ANOTHER BOARD CANNOT CARRY A READING ABOUT THIS ONE. The digest says which bytes, not what they
 // picture; `Photograph.board` says which specimen the pixels are of, and this is the control that makes that
-// field execute. One digest, one citation, the same primitives production uses -- supplied a store row that
-// attributes it to the K1 while the E1 is being judged, the citation is refused and the board does not
-// establish; supplied the identical row attributed to the E1, it is checkable and the board does. Everything
-// here is built from inputs the witness itself supplies, and the only difference between the two halves is
-// the board the store row names.
+// field execute. One digest, one citation, the same primitive production uses -- supplied a store row that
+// attributes the frame to the K1 while the E1 is being judged, `store_row_judgment` REFUSES the row and names
+// the foreign frame, so there is no held store to read and nothing establishes; supplied the identical row
+// attributed to the E1, it is held, the citation is checkable and the board establishes. Everything here is
+// built from inputs the witness itself supplies, and the only difference between the two halves is the board
+// the store row names.
 fn frame_as(frame: Photograph, board: PhysicalAssetIdentity) -> Photograph {
   Photograph { content: frame.content, board: board, origin: frame.origin, bytes: frame.bytes, store: frame.store }
 }
@@ -399,30 +408,56 @@ test fn a_frame_of_another_board_is_refused_where_the_same_frame_of_this_board_i
       let as_k1 = frame_as(frame: frame, board: p4261_k1_layout.asset)
       let as_e1 = frame_as(frame: frame, board: p4261_e1_layout.asset)
       let one_reading = fixture_board(readings: [reading_off_frame(designator: "U909", citation: cited)])
-      true
-      // The store row that is wrong about the specimen is visible as a defect, not filtered on the way in.
-      && count(frames_of_another_board(store: BoardPhotographStore { board: p4261_e1_layout.asset, frames: [as_k1], receipts: "witness fixture: one frame, named as the E1" })) == 1
-      && count(frames_of_another_board(store: BoardPhotographStore { board: p4261_e1_layout.asset, frames: [as_e1], receipts: "witness fixture: one frame, named as the E1" })) == 0
-      // ...and the citation itself is refused, naming which board the bytes really picture.
-      && citation_verdict(standing: cite(store: [as_k1], citation: cited, judged: p4261_e1_layout.asset)) == Broken
-      && match cite(store: [as_k1], citation: cited, judged: p4261_e1_layout.asset) {
-        FrameDepictsAnotherBoard { content, depicted_on, obligation: _ } =>
-          content_hash_eq_cryptographic(left: content, right: frame.content)
-            && physical_asset_identity_eq(a: depicted_on, b: p4261_k1_layout.asset)
-        _ => false
+      // The two rows are the same bytes; they differ ONLY in the board the store row is a picture of.
+      let k1shaped = BoardPhotographStore {
+        board: p4261_e1_layout.asset,
+        frames: [as_k1],
+        receipts: "witness fixture",
       }
-      // The board does not establish on it...
-      && !image_readings_rest_on_stored_bytes(grounding: judge_image_readings(store: [as_k1], layout: one_reading))
-      // ...while the identical frame, named as this board's, both checks and establishes.
-      && citation_verdict(standing: cite(store: [as_e1], citation: cited, judged: p4261_e1_layout.asset)) == Checkable
-      && image_readings_rest_on_stored_bytes(grounding: judge_image_readings(store: [as_e1], layout: one_reading))
+      let e1shaped = BoardPhotographStore {
+        board: p4261_e1_layout.asset,
+        frames: [as_e1],
+        receipts: "witness fixture",
+      }
+      true
+      // The store authority is the ONE place the specimen is decided. It refuses a row carrying another
+      // board's frame and names the foreign rows, so whoever assembled the store sees what to fix instead
+      // of watching the reading quietly fail.
+      && match store_row_judgment(held: k1shaped) {
+        StoreRowHoldsForeignFrames { board, foreign: foreign } =>
+          physical_asset_identity_eq(a: board, b: p4261_e1_layout.asset)
+            && count(foreign) == 1
+            && match first_where(foreign, f => content_hash_eq_cryptographic(left: f.content, right: frame.content)) {
+              Present { value: _ } => true
+              Absent => false
+            }
+        StoreHeld { store: _ } => false
+        NoStoreForBoard { board: _, obligation: _ } => false
+      }
+      // ...and holds the row whose frames are the board's own, with nothing foreign in it.
+      && match store_row_judgment(held: e1shaped) {
+        StoreHeld { store: held } => count(frames_of_another_board(store: held)) == 0
+        StoreRowHoldsForeignFrames { board: _, foreign: _ } => false
+        NoStoreForBoard { board: _, obligation: _ } => false
+      }
+      // Same bytes both halves, so the digest never decided this -- the attribution did. Reading the HELD
+      // row is what makes the citation checkable and the board establish; production only ever judges a
+      // store this authority has held, which is why the refusal happens here rather than per citation.
+      && match store_row_judgment(held: e1shaped) {
+        StoreHeld { store: held } =>
+          citation_verdict(standing: cite(store: held.frames, citation: cited)) == Checkable
+            && image_readings_rest_on_stored_bytes(
+              grounding: judge_image_readings(store: held.frames, layout: one_reading))
+        StoreRowHoldsForeignFrames { board: _, foreign: _ } => false
+        NoStoreForBoard { board: _, obligation: _ } => false
+      }
   }
 }
 
 test fn a_citation_to_bytes_the_store_does_not_hold_is_refused() -> Bool {
   let citation = InStore { content: no_such_frame, region: Absent }
-  citation_verdict(standing: cite(store: e1_photographs, citation: citation, judged: p4261_e1_layout.asset)) == Broken
-    && match cite(store: e1_photographs, citation: citation, judged: p4261_e1_layout.asset) {
+  citation_verdict(standing: cite(store: e1_photographs, citation: citation)) == Broken
+    && match cite(store: e1_photographs, citation: citation) {
       DigestNotInStore { content } => content_hash_eq_cryptographic(left: content, right: no_such_frame)
       _ => false
     }
@@ -433,7 +468,6 @@ test fn a_citation_to_bytes_the_store_does_not_hold_is_refused() -> Bool {
       standing: cite(
         store: same_name_two_frames(p4261_e1_layout.asset),
         citation: InStore { content: Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" as Sha256DigestHex }, region: Absent },
-        judged: p4261_e1_layout.asset,
       )) == Checkable
 }
 
@@ -462,8 +496,8 @@ test fn a_frame_we_drew_ourselves_cannot_ground_a_reading() -> Bool {
     Absent => false
     Present { value: drawn } =>
       let citation = InStore { content: drawn.content, region: Absent }
-      citation_verdict(standing: cite(store: e1_photographs, citation: citation, judged: p4261_e1_layout.asset)) == Broken
-        && match cite(store: e1_photographs, citation: citation, judged: p4261_e1_layout.asset) {
+      citation_verdict(standing: cite(store: e1_photographs, citation: citation)) == Broken
+        && match cite(store: e1_photographs, citation: citation) {
           FrameIsOurOwnDrawing { obligation } => string_length(obligation as String) > 0
           _ => false
         }
@@ -480,8 +514,8 @@ test fn a_frame_we_drew_ourselves_cannot_ground_a_reading() -> Bool {
 // have deleted the readings with them; hashing them anyway would have made the uncheckable look checkable.
 test fn a_gap_names_the_bytes_it_lacks_and_what_would_close_it() -> Bool {
   let citation = BytesNotInStore { taken_on: "2026-10-19", locator: "Andonstar upload a7113c26", obligation: "operator re-supplies the chat upload so its bytes can be hashed" }
-  citation_verdict(standing: cite(store: e1_photographs, citation: citation, judged: p4261_e1_layout.asset)) == Gap
-    && match cite(store: e1_photographs, citation: citation, judged: p4261_e1_layout.asset) {
+  citation_verdict(standing: cite(store: e1_photographs, citation: citation)) == Gap
+    && match cite(store: e1_photographs, citation: citation) {
       BytesNeverStored { taken_on, locator, obligation } =>
         (taken_on as String) == "2026-10-19"
           && string_contains(locator as String, "a7113c26")
@@ -492,7 +526,7 @@ test fn a_gap_names_the_bytes_it_lacks_and_what_would_close_it() -> Bool {
     // What a consumer renders for a failure is what the fold decided, in words a bench reader can act on:
     // a broken row's explanation carries the digest to go and look up.
     && string_contains(
-      citation_explanation(standing: cite(store: e1_photographs, citation: InStore { content: no_such_frame, region: Absent }, judged: p4261_e1_layout.asset)),
+      citation_explanation(standing: cite(store: e1_photographs, citation: InStore { content: no_such_frame, region: Absent })),
       "0000000000000000000000000000000000000000000000000000000000000000")
 }
 
@@ -576,5 +610,29 @@ test fn a_frame_the_board_cites_is_a_frame_somebody_can_open() -> Bool {
           && finite_byte_size_count(size: found.bytes) == finite_byte_size_count(size: frame.bytes)
       Absent => false
     }
+  }
+}
+
+// 12.8 A broken row is reported with the reason that makes it broken, because the
+// sheet renders the judge's own explanation rather than its own sentence. Both rows
+// below are Broken to the judge, and neither is a gap: one frame is a drawing we
+// made from the board's own fields, the other is bytes that never reached the store.
+// A sheet that flattened the two into one sentence would be false here, which is the
+// defect the 2026-11-03b review found -- the sheet said "bytes the store does not
+// hold" about frames the store does hold. Both rows carry the SAME designator, so the
+// only thing the two sentences can differ in is the reason the judge gave.
+test fn a_broken_row_is_reported_with_the_reason_that_makes_it_broken() -> Bool {
+  match first_generated_image() {
+    Absent => false
+    Present { value: drawn } =>
+      let drawn_row = ReadingGrounding { read_of: "U908", standing: cite(store: e1_photographs, citation: InStore { content: drawn.content, region: Absent }) }
+      let missing_row = ReadingGrounding { read_of: "U908", standing: cite(store: e1_photographs, citation: InStore { content: no_such_frame, region: Absent }) }
+      let drawn_sheet = judgment_words(j: ImageReadingsJudged { grounding: FromStore { read: 1, checkable: 0, broken: [drawn_row], gaps: [] } }, established: false)
+      let missing_sheet = judgment_words(j: ImageReadingsJudged { grounding: FromStore { read: 1, checkable: 0, broken: [missing_row], gaps: [] } }, established: false)
+
+      citation_verdict(standing: drawn_row.standing) == Broken
+        && citation_verdict(standing: missing_row.standing) == Broken
+        && citation_explanation(standing: drawn_row.standing) != citation_explanation(standing: missing_row.standing)
+        && drawn_sheet != missing_sheet
   }
 }
