@@ -35,7 +35,7 @@ data empty_observation_narrow: RecurringFailureMode = RecurringFailureMode {
 
     "RECOGNITION RULE: when a check answers clean, ask what POPULATION it ranged over and whether that is the population the question was about -- an analysis scoped to the wrong range is, from the caller's seat, indistinguishable from an analysis that does not exist.",
 
-    "NEXT-RUNG TRIGGER for this instance, named as the capability and not as an artifact: A CORPUS-WIDE NAMESPACE CENSUS OVER EVERY TYPE DECLARATION AND EVERY COPRODUCT ARM, sufficient to answer 'is this spelling already declared anywhere in the corpus' before a name is authored, rather than after emission.",
+    "NEXT-RUNG TRIGGER for this instance, named as the capability and not as an artifact: A NAME-COLLISION REFUSAL OVER TYPE DECLARATIONS AND COPRODUCT ARMS, sufficient to answer 'is this spelling already declared' for the name being authored, before emission rather than after. A corpus-wide census is not a prerequisite of this trigger; it is retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`), which does not establish corpus-wide coverage.",
 
     "ONE census over the one Node tree, not a second check beside the type-name one -- two checks over one namespace is the range split that produced this instance.",
 
