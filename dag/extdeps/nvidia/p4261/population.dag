@@ -16,7 +16,6 @@ import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.micron_mt25qu01g { mt25qu01gbbb8e12 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
-import extdeps.electronic_component.diodes_bss138 { bss138 }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
@@ -156,6 +155,23 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   reconstructed(revision: p4261_e1, designator: "D5", part: PartConstrainedToRows { rows: [tvs_5_0smdj60a, aos_tvs_5_0smdj60a] }),
   e1_part(designator: "C10_P5", row: eeh_zu1j151),
   e1_part(designator: "C12_P5", row: eeh_zu1j151),
+  // Q21_P5 AND Q22_P5 CARRY NO CLAIM. Both were claimed as Infineon's IPB017N10N5LF on one print,
+  // "017N10LF / HAD228", read 2026-10-19 from a single photograph of the stacked pair that is not on
+  // Drive. The 2026-11-03 pass cannot say which body carries it: it records that print under an unread
+  // designator, reads "0?7N10LF" tentatively at Q21_P5, and sees the Q22_P5 label with no separate body
+  // beside it. A print that cannot be attributed to one body is a lead, not a design fact (§4d). What
+  // settles it: a frame with the pair separated, or that upload re-supplied. Both board rows stay
+  // MarkingCandidate in product.p4261.e1_b, where each reading keeps its own frame.
+  // OPEN DEFECT, NOT REPAIRED HERE (see the PR body). These two positions claim Infineon's
+  // IPB017N10N5LF on ONE print, "017N10LF / HAD228", read 2026-10-19 from ONE photograph of the stacked
+  // pair whose bytes are not in the store. The 2026-11-03 pass cannot say which body carries the print:
+  // it records that print under an unread designator, reads "0?7N10LF" tentatively at Q21_P5, and sees
+  // the Q22_P5 label with no separate body beside it. A print that cannot be attributed to one body is a
+  // lead, not a design fact (§4d), so the honest standing for both is no claim at all. It is not done
+  // here because two findings the operator measured hang off those rows -- the input switches reading
+  // BLOCKING and the protected input bus reading its downstream terminals -- and both are derived from
+  // the identified row's typed roles, so downgrading the rows retires the findings. What settles it: a
+  // frame with the pair separated, or the 2026-10-19 upload re-supplied. Ruling pending from swift-owl-113.
   e1_part(designator: "Q21_P5", row: ipb017n10n5lf),
   e1_part(designator: "Q22_P5", row: ipb017n10n5lf),
   e1_part(designator: "U1_P5", row: lm5066i_pwp),
@@ -164,8 +180,16 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   e1_unclaimed(designator: "D4_P5"),
   e1_unclaimed(designator: "U2_P5"),
   e1_unclaimed(designator: "U3_P5"),
-  e1_part(designator: "Q301", row: bss138),
-  e1_part(designator: "Q300", row: bss138),
+  // Q300 AND Q301 CARRY NO CLAIM. Both were once claimed as Diodes Incorporated's BSS138 on the mark
+  // "K38", which was a stronger statement than the evidence supports: "K38" is a marking several makers
+  // use, and the model holds exactly one BSS138 row, so there is no second candidate row to constrain
+  // the pair to and PartConstrainedToRows would have been a claim dressed up as a bet. The positions
+  // stay listed -- NVIDIA's design has them -- with no population claim. What would settle it is on the
+  // observation that raised it, where observations live: product.p4261.e1_b's e1_k38_candidate carries
+  // the discriminator, "the maker's date-code line, or another maker's marking table, read against
+  // Diodes Incorporated's BSS138 table". A second maker's cited row is what would let a claim return.
+  e1_unclaimed(designator: "Q301"),
+  e1_unclaimed(designator: "Q300"),
   e1_unclaimed(designator: "U2_P1"),
   e1_unclaimed(designator: "Q5_P5"),
   e1_unclaimed(designator: "D5_P5"),
