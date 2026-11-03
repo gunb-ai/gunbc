@@ -1,7 +1,7 @@
 module test.fixture.boot_delivery_plans
 
 import std.algebra { FreeSemigroup }
-import std.types { List }
+import std.types { List, NonEmptyStr }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, UefiArm64 }
@@ -10,7 +10,7 @@ import extdeps.crypto.mac { MacKeyId }
 import extdeps.uri { Uri, Https, Tftp }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaLocator, TransferHttps, UnderManager }
-import extdeps.bmc.virtual_media { RedfishVirtualMediaParams }
+import extdeps.bmc.virtual_media { RedfishVirtualMediaParams, ConfigfsGadgetParams }
 import extdeps.bmc.access_profile { SurfaceRedfishVirtualMedia, RedfishRoute, BmcBootControlRouteObservation, ProfileFromExternalAuthority }
 import extdeps.uri { uri_https }
 import extdeps.external_authority { ExternalAuthority }
@@ -68,6 +68,8 @@ import gunbc.boot_artifact_delivery {
   SelectedFromNetworkBootEstablishment,
   SelectedFromProfileIntersection,
   SelectedFromUefiHttpEvidence,
+  SelectedFromConfigfsQualification,
+  OpenBmcConfigfsUsbGadget,
   UefiHttpBoot,
   UefiHttpBootParams,
 }
@@ -321,6 +323,22 @@ fn uefi_http_plan_serving(digest: ContentHash) -> BootDeliveryPlan {
       profile_provenance: none,
       evidence_manifest: [],
       selected: SelectedFromUefiHttpEvidence { evidence: [] },
+      considered: [],
+    },
+  }
+}
+
+fn configfs_plan_without_qualification() -> BootDeliveryPlan {
+  BootDeliveryPlan {
+    target: removable_media_plan.target,
+    artifact: intake_artifact,
+    delivery: OpenBmcConfigfsUsbGadget { params: ConfigfsGadgetParams { nbd_server_host: "nbd.example.test" as NonEmptyStr, nbd_port: 10809, export_name: "export0" as NonEmptyStr, nbd_device: "/dev/nbd0" as NonEmptyStr, udc: "udc0" as NonEmptyStr } },
+    boot_control: BootFromRemovableMedia,
+    boot_control_route: removable_media_plan.boot_control_route,
+    eligibility: BootDeliveryEligibilityProvenance {
+      profile_provenance: removable_media_plan.eligibility.profile_provenance,
+      evidence_manifest: [],
+      selected: SelectedFromConfigfsQualification { qualified_by: [] },
       considered: [],
     },
   }

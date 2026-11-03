@@ -536,6 +536,7 @@ type BootDeliveryPlanIncoherence
   | PlanControlRouteNotTheTargets { target: BootDeliveryTarget }
   | PlanControllerDeliveryWithoutController { target: BootDeliveryTarget }
   | PlanEligibilityNotTheDeliverys { selected: SelectedCandidateEvidence }
+  | PlanEligibilityNotEstablished { delivery: BootArtifactDelivery }
   | PlanProfileProvenanceNotTheTargets { target: BootDeliveryTarget }
   | PlanNetworkEstablishmentForOtherTarget { plan_target: BootDeliveryTarget, establishment_target: BootDeliveryTarget }
 
@@ -608,6 +609,18 @@ fn delivery_params_serve_the_artifact(plan: BootDeliveryPlan) -> Bool {
   }
 }
 
+// The configfs and UEFI HTTP arms carry evidence lists the plan cannot associate with the delivery's params
+// (the solver keys them to the target at a standing the plan drops), so admission cannot establish their
+// eligibility and REFUSES them rather than admit it unchecked. Retires with the plan indexed by delivery
+// family (gunbc.rung_drop boot_delivery_plan_coherence_is_admitted_not_constructed).
+fn delivery_eligibility_is_checkable(delivery: BootArtifactDelivery) -> Bool {
+  match delivery {
+    OpenBmcConfigfsUsbGadget { params: _ } => false
+    UefiHttpBoot { params: _ } => false
+    _ => true
+  }
+}
+
 fn plan_provenance_matches_target(plan: BootDeliveryPlan) -> Bool {
   let has_provenance = match plan.eligibility.profile_provenance {
     Present { value: _ } => true
@@ -629,6 +642,8 @@ fn admit_boot_delivery_plan(plan: BootDeliveryPlan) -> BootDeliveryPlanAdmission
     BootDeliveryPlanIncoherent { cause: PlanControllerDeliveryWithoutController { target: plan.target } }
   } else if (selected_evidence_is_the_deliverys(delivery: plan.delivery, selected: plan.eligibility.selected) == false || delivery_params_serve_the_artifact(plan: plan) == false) {
     BootDeliveryPlanIncoherent { cause: PlanEligibilityNotTheDeliverys { selected: plan.eligibility.selected } }
+  } else if delivery_eligibility_is_checkable(delivery: plan.delivery) == false {
+    BootDeliveryPlanIncoherent { cause: PlanEligibilityNotEstablished { delivery: plan.delivery } }
   } else if plan_provenance_matches_target(plan: plan) == false {
     BootDeliveryPlanIncoherent { cause: PlanProfileProvenanceNotTheTargets { target: plan.target } }
   } else {
