@@ -150,11 +150,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Boundaries.**
 
 - A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.
-<<<<<<< /tmp/claude-1000/-home-briansrls--worktrees-gunbc-swift-ibex-475/be160fa8-589a-429c-9808-b46caf130b7c/scratchpad/o
-- Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice.
-=======
 - Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; the changed site executes the selection (a census of every current site is not required: retired by the 2026-10-30 process ruling, gunbc.design_ruling bad_process_is_worse_than_no_process).
->>>>>>> /tmp/claude-1000/-home-briansrls--worktrees-gunbc-swift-ibex-475/be160fa8-589a-429c-9808-b46caf130b7c/scratchpad/t
 
 **Existing authorities**
 
