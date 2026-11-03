@@ -3083,7 +3083,11 @@ fn roster_rename_control_names() -> List<String> {
     "requires-scope-list-receiver-site-untouched",
     "requires-scope-spelling-safe-row-unscoped-still-sweeps",
     "requires-scope-planted-any-site-row-no-longer-refuses",
-    "requires-scope-sort-by-unscoped-run-refuses"
+    "requires-scope-sort-by-unscoped-run-refuses",
+    "occurrences-keyed-pipe-site-rewrites",
+    "occurrences-keyed-negated-pipe-site-rewrites",
+    "occurrences-keyed-chained-pipe-refuses-not-skips",
+    "occurrences-keyed-non-head-reference-refuses-arity"
   ]
 }
 

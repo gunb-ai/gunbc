@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.swap_zero_read_as_a_thrash_refusal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data swap_zero_read_as_a_thrash_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "swap_zero_read_as_a_thrash_refusal" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "every subject step that runs under the gunbc.runner.runner_slot_desired slot contract is judged WHILE IT RUNS by gunbc.host.memory_stall_refusal supervised_subject_verdict from outside the subject, and refused and ended on a refusal -- today the heal round's generations only; the v2-bootstrap subject steps (gunbc.emitted_subject_build_gate emitted_subject_build_rows, run through gunbc test) still read memory only at exit through gunbc.host.memory_envelope" } },
+
+  receipts: [
+    "**swap zero read as a thrash refusal** (a slot shape that refuses swap -- MemorySwapMax 0 -- is read as if it made a memory overrun END, so a run whose working set exceeds memory.high is expected to fail loudly, and the liveness property 'no thrashing allowed ever' is treated as discharged by static cgroup settings).",
+
+    "INVALID STATE: an authority states, and a consumer relies on, 'swap 0 refuses an overrun' -- gunbc.runner.runner_slot_desired's 2026-10-09 ruling note ('swap refused outright, no thrashing allowed ever') and DESIGN's instrument-queue bullet ('MemorySwapMax: 0 refuses an overrun rather than paging it'). cgroup v2 makes neither memory.high nor swap.max an error boundary: above memory.high the cgroup is throttled and reclaimed, never killed for it (Documentation/admin-guide/cgroup-v2.rst); with swap refused only file-backed pages can be dropped, so the run can refault its own text below memory.max indefinitely. swap.max = 0 forbids swap-backed relief; it does not guarantee that excess working-set demand terminates, reaches memory.max, or produces an OOM kill. The exit-time envelope verdict (gunbc.host.memory_envelope memory_envelope_verdict) reads the two terminal endings -- an OOM kill, charged swap -- and a run that never exits produces neither.",
+
+    "OBSERVED (heal, 2026-10-28 to 2026-11-03). The heal job's intermittent 90-minute timeouts are all srv3 runs that needed a second generation (first_generation_equal=false); the rebuilt-seed child went silent after regen.digest for the rest of the step. srv3's slots carry the declared 22/21 GiB with swap 0 (memory.max 23622320128, memory.high 22548578304, swap_max 0 in their receipts). At child begin the orchestrator's slot read memory.current 15636525056: generation 0 had run INSIDE the orchestrator and its corpus was still resident. On srv4, whose slots have drifted to 26/25 GiB with 32 GiB swap, the same rounds completed: child begin 15.63-15.72 GB, slot memory.peak 25.95-26.04 GB, memory.events high 0 (gunbc runs 41638560225, 41632788144, 41632705008, 41630838008).",
+
+    "DERIVED. The two generations' working sets composed in one slot -- about 15.6 GB retained plus about 10.4 GB for the next generation -- which fits under srv4's drifted 25 GiB memory.high and cannot fit under the declared 21 GiB. The drift on srv4 is hidden capacity for this defect: converging srv4 to the declared shape before generation-state lifetime isolation landed would have made the heal round fail fleet-wide.",
+
+    "HYPOTHESIZED, NOT ESTABLISHED. That the srv3 silence is the memory.high throttle with file-page refault, rather than some other mechanism. No srv3 stall was read for memory.events or memory.pressure: a cancelled step prints no receipt, and the slots were not reachable for a live read. The first refusal issued by the supervised verdict prints those readings and settles it either way; until then this row claims only the observed composition and the authority's false inference.",
+
+    "REPAIR (this row's PR). Three authorities kept distinct: the SLOT says what is admitted (gunbc.runner.runner_slot_desired); the EXIT verdict reads terminal evidence (gunbc.host.memory_envelope); LIVENESS under the envelope is observed during the run from outside the subject (gunbc.host.memory_stall_refusal supervised_subject_verdict: no progress mark for the declared window AND either the slot's PSI full share at its floor with an envelope event, or the page-thrash verdict over the slot's counters). The heal round's generations are its first consumer, each in its own process group so a refusal ends the whole generation. And the composition itself is removed at its root: generation-state lifetime isolation (v2.workflow.regen_convergence_transaction regen_admit_generation_begin) -- every generation, the first included, runs as its own process, and the orchestrator's resident set is checked at every transition against its footprint when the first generation began.",
+
+    "RUNG FOUND AT: mitigatable only -- the step timeout contained the harm, after 90 minutes, with no cause attached.",
+
+    "CEILING: mechanically preventable. Liveness under a host's memory is a runtime fact about external reality; no structure makes a stall unwritable, but a supervisor that executes on every subject step under the slot contract reliably exposes and ends one. Below ceiling while any such step reads memory only at exit.",
+  ],
+
+  evidence: [],
+}
