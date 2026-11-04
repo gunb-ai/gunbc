@@ -23,7 +23,7 @@ import extdeps.llm.claude_code_stream_json {
 }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_snapshot_disposition, SnapshotConsumedByChild, SnapshotDiscardRequired,
 }
 import gunbc.roadmap.roadmap_launch_admission { launch_identity_exemplar, LaunchTransitionInhibited }
