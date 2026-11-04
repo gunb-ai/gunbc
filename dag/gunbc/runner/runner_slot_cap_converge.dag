@@ -247,7 +247,7 @@ type CapFilesState
 
 // WHAT DIFFERS, named for a cause string: each differing managed file, and each slot whose live caps differ with its reading.
 fn host_cap_differences_wire(standings: List<SlotCapUnitStanding>, differing_files: FreeSemigroup<NonEmptyStr>?) -> String {
-  let files = match differing_files { Absent => [] Present { value: ps } => map(non_empty_to_list(xs: ps), p => concat("file ", p as String)) }
+  let files = match differing_files { Absent => [] Present { value: ps } => map(non_empty_to_list<NonEmptyStr>(xs: ps), p => concat("file ", p as String)) }
   let units = map(filter(standings, x => host_cap_standing_differs(s: x.standing)), x => join([x.unit as String, ": ", match x.standing { SlotCapsNeedRestart { detail: d } => d SlotCapsAtDesired => "" SlotCapsReadingsDisagree { detail: _ } => "" SlotCapsUnread { cause: _ } => "" SlotCapsStopped => "" }], ""))
   join(concat(files, units), "; ")
 }
