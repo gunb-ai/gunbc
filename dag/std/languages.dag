@@ -1,7 +1,7 @@
 module std.languages
 
 import std.types { LanguageId }
-import std.optional { Present }
+import std.optional { Absent, Present }
 // READ, not restated. The HTML comment spelling is governed by the WHATWG tokenizer, so its home is
 // extdeps.languages.html (§3b, External facts: a fact governed by an independently versioned upstream
 // has its home with that upstream, not in std).
@@ -376,19 +376,19 @@ data rust_language: Language = {
   name: "Rust",
   extensions: [".rs"],
   comment: {
-    line_prefix: "//",
-    block_start: "/*",
-    block_end: "*/",
-    doc_prefix: "///"
+    line_prefix: Present { value: "//" },
+    block_start: Present { value: "/*" },
+    block_end: Present { value: "*/" },
+    doc_prefix: Present { value: "///" }
   },
-  naming: {
+  naming: Present { value: NamingConvention {
     type_case: PascalCase,
     function_case: SnakeCase,
     variable_case: SnakeCase,
     constant_case: ScreamingSnakeCase,
     module_case: SnakeCase
-  },
-  types: {
+  } },
+  types: Present { value: TypeMapping {
     string: "String",
     int: "i64",
     float: "f64",
@@ -397,7 +397,7 @@ data rust_language: Language = {
     list_template: "Vec<\{0\}>",
     optional_template: "Option<\{0\}>",
     map_template: "HashMap<\{0\}, \{1\}>"
-  }
+  } }
 }
 
 data go_language: Language = {
@@ -405,19 +405,19 @@ data go_language: Language = {
   name: "Go",
   extensions: [".go"],
   comment: {
-    line_prefix: "//",
-    block_start: "/*",
-    block_end: "*/",
-    doc_prefix: null
+    line_prefix: Present { value: "//" },
+    block_start: Present { value: "/*" },
+    block_end: Present { value: "*/" },
+    doc_prefix: Absent
   },
-  naming: {
+  naming: Present { value: NamingConvention {
     type_case: PascalCase,
     function_case: CamelCase,
     variable_case: CamelCase,
     constant_case: PascalCase,
     module_case: Lowercase
-  },
-  types: {
+  } },
+  types: Present { value: TypeMapping {
     string: "string",
     int: "int64",
     float: "float64",
@@ -426,7 +426,7 @@ data go_language: Language = {
     list_template: "[]\{0\}",
     optional_template: "*\{0\}",
     map_template: "map[\{0\}]\{1\}"
-  }
+  } }
 }
 
 data python_language: Language = {
@@ -434,19 +434,19 @@ data python_language: Language = {
   name: "Python",
   extensions: [".py"],
   comment: {
-    line_prefix: "#",
-    block_start: null,
-    block_end: null,
-    doc_prefix: null
+    line_prefix: Present { value: "#" },
+    block_start: Absent,
+    block_end: Absent,
+    doc_prefix: Absent
   },
-  naming: {
+  naming: Present { value: NamingConvention {
     type_case: PascalCase,
     function_case: SnakeCase,
     variable_case: SnakeCase,
     constant_case: ScreamingSnakeCase,
     module_case: SnakeCase
-  },
-  types: {
+  } },
+  types: Present { value: TypeMapping {
     string: "str",
     int: "int",
     float: "float",
@@ -455,7 +455,7 @@ data python_language: Language = {
     list_template: "list[\{0\}]",
     optional_template: "\{0\} | None",
     map_template: "dict[\{0\}, \{1\}]"
-  }
+  } }
 }
 
 data typescript_language: Language = {
@@ -463,19 +463,19 @@ data typescript_language: Language = {
   name: "TypeScript",
   extensions: [".ts", ".tsx"],
   comment: {
-    line_prefix: "//",
-    block_start: "/*",
-    block_end: "*/",
-    doc_prefix: "/**"
+    line_prefix: Present { value: "//" },
+    block_start: Present { value: "/*" },
+    block_end: Present { value: "*/" },
+    doc_prefix: Present { value: "/**" }
   },
-  naming: {
+  naming: Present { value: NamingConvention {
     type_case: PascalCase,
     function_case: CamelCase,
     variable_case: CamelCase,
     constant_case: ScreamingSnakeCase,
     module_case: CamelCase
-  },
-  types: {
+  } },
+  types: Present { value: TypeMapping {
     string: "string",
     int: "number",
     float: "number",
@@ -484,7 +484,7 @@ data typescript_language: Language = {
     list_template: "\{0\}[]",
     optional_template: "\{0\} | undefined",
     map_template: "Map<\{0\}, \{1\}>"
-  }
+  } }
 }
 
 data rust_statements: StatementSyntax = {
@@ -1112,10 +1112,10 @@ data markdown_format: MarkupFormat = {
   name: "Markdown",
   extensions: [".md", ".markdown"],
   comment: {
-    line_prefix: null,
+    line_prefix: Absent,
     block_start: Present { value: html_comment_open_sequence as String },
     block_end: Present { value: html_comment_close_sequence as String },
-    doc_prefix: null
+    doc_prefix: Absent
   },
   code_fence: "```"
 }
@@ -1125,10 +1125,10 @@ data html_format: MarkupFormat = {
   name: "HTML",
   extensions: [".html", ".htm"],
   comment: {
-    line_prefix: null,
+    line_prefix: Absent,
     block_start: Present { value: html_comment_open_sequence as String },
     block_end: Present { value: html_comment_close_sequence as String },
-    doc_prefix: null
+    doc_prefix: Absent
   },
   code_fence: null
 }
@@ -1138,12 +1138,12 @@ data yaml_format: ConfigFormat = {
   name: "YAML",
   extensions: [".yml", ".yaml"],
   comment: {
-    line_prefix: "#",
-    block_start: null,
-    block_end: null,
-    doc_prefix: null
+    line_prefix: Present { value: "#" },
+    block_start: Absent,
+    block_end: Absent,
+    doc_prefix: Absent
   },
-  record: { assign: ": ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: null }
+  record: Present { value: SerializationKnobs { assign: ": ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: Absent } }
 }
 
 data toml_format: ConfigFormat = {
@@ -1151,12 +1151,12 @@ data toml_format: ConfigFormat = {
   name: "TOML",
   extensions: [".toml"],
   comment: {
-    line_prefix: "#",
-    block_start: null,
-    block_end: null,
-    doc_prefix: null
+    line_prefix: Present { value: "#" },
+    block_start: Absent,
+    block_end: Absent,
+    doc_prefix: Absent
   },
-  record: { assign: " = ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: "\"" }
+  record: Present { value: SerializationKnobs { assign: " = ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: Present { value: "\"" } } }
 }
 
 data makefile_format: ConfigFormat = {
@@ -1164,12 +1164,12 @@ data makefile_format: ConfigFormat = {
   name: "Makefile",
   extensions: ["Makefile", "*.mk"],
   comment: {
-    line_prefix: "#",
-    block_start: null,
-    block_end: null,
-    doc_prefix: null
+    line_prefix: Present { value: "#" },
+    block_start: Absent,
+    block_end: Absent,
+    doc_prefix: Absent
   },
-  record: { assign: " = ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: null }
+  record: Present { value: SerializationKnobs { assign: " = ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: Absent } }
 }
 
 data gitignore_format: ConfigFormat = {
@@ -1177,12 +1177,12 @@ data gitignore_format: ConfigFormat = {
   name: "Gitignore",
   extensions: [".gitignore"],
   comment: {
-    line_prefix: "#",
-    block_start: null,
-    block_end: null,
-    doc_prefix: null
+    line_prefix: Present { value: "#" },
+    block_start: Absent,
+    block_end: Absent,
+    doc_prefix: Absent
   },
-  record: null
+  record: Absent
 }
 
 data css_format: ConfigFormat = {
@@ -1190,12 +1190,12 @@ data css_format: ConfigFormat = {
   name: "CSS",
   extensions: [".css"],
   comment: {
-    line_prefix: null,
-    block_start: "/*",
-    block_end: "*/",
-    doc_prefix: null
+    line_prefix: Absent,
+    block_start: Present { value: "/*" },
+    block_end: Present { value: "*/" },
+    doc_prefix: Absent
   },
-  record: null
+  record: Absent
 }
 
 data json_record_knobs: SerializationKnobs = {
@@ -1204,5 +1204,5 @@ data json_record_knobs: SerializationKnobs = {
   open: "{",
   close: "}",
   quote_keys: true,
-  value_quote: "\""
+  value_quote: Present { value: "\"" }
 }

@@ -4,7 +4,28 @@ import gunbc.filesystem_file_observe {
   filesystem_path_decomposition,
   FilesystemPathDecomposed,
   FilesystemPathUndecomposable,
+  filesystem_file_observation_of_path,
 }
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  FilesystemEntryPresence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_listing_observation,
+  filesystem_entry_presence,
+  filesystem_file_observation,
+  filesystem_file_observation_below_ancestor,
+}
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // These execute the pure path-decomposition authority that fronts every
 // filesystem_file_observation_of_path call (review on the head of the helper's introduction). The
@@ -85,5 +106,134 @@ test fn a_dot_dot_cursor_entry_name_is_refused() -> Bool {
     FilesystemPathUndecomposable { cause: c } =>
       string_contains(s: c, pattern: "'..' directory cursor")
     FilesystemPathDecomposed { directory: _, name: _ } => false
+  }
+}
+
+// ANCESTOR-ABSENCE CONTROLS over supplied boundary values: a file whose parent directory is missing
+// (operations/<node>/ of a first operation) is absent when the grandparent's successful listing
+// lacks the parent, and stays indeterminate when that ancestor could not be listed.
+fn missing_parent_listing() -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/w/operations/n", success: false, entries: "", error: "No such file or directory (os error 2)"),
+    name: "op.json",
+    path: "/w/operations/n/op.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+  )
+}
+
+fn ancestor_listed_as(success: Bool, entries: String) -> FilesystemEntryPresence {
+  filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: "/w/operations", success: success, entries: entries, error: "Permission denied (os error 13)"),
+    name: "n",
+  )
+}
+
+test fn a_missing_parent_proven_by_a_successful_ancestor_listing_is_an_absence() -> Bool {
+  match filesystem_file_observation_below_ancestor(
+    observation: missing_parent_listing(),
+    ancestor: ancestor_listed_as(success: true, entries: "other\n"),
+    path: "/w/operations/n/op.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+  ) {
+    FilesystemFileAbsent(_) => true
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+test fn an_unlistable_ancestor_leaves_the_observation_indeterminate() -> Bool {
+  match filesystem_file_observation_below_ancestor(
+    observation: missing_parent_listing(),
+    ancestor: ancestor_listed_as(success: false, entries: ""),
+    path: "/w/operations/n/op.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+  ) {
+    FilesystemFileIndeterminate { cause: _ } => true
+    FilesystemFileAbsent(_) => false
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+test fn a_listed_parent_whose_own_listing_failed_stays_indeterminate() -> Bool {
+  match filesystem_file_observation_below_ancestor(
+    observation: missing_parent_listing(),
+    ancestor: ancestor_listed_as(success: true, entries: "n\n"),
+    path: "/w/operations/n/op.json",
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+  ) {
+    FilesystemFileIndeterminate { cause: _ } => true
+    FilesystemFileAbsent(_) => false
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+test fn a_read_that_succeeded_below_an_absent_ancestor_is_a_disagreement() -> Bool {
+  match filesystem_file_observation_below_ancestor(
+    observation: missing_parent_listing(),
+    ancestor: ancestor_listed_as(success: true, entries: "other\n"),
+    path: "/w/operations/n/op.json",
+    read: FilesystemReadSucceeded { content: "x" },
+  ) {
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => true
+    FilesystemFileAbsent(_) => false
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+test fn an_existing_receipt_is_still_read_not_touched_by_the_ancestor_fold() -> Bool {
+  let listed = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/w/operations/n", success: true, entries: "op.json\n", error: ""),
+    name: "op.json",
+    path: "/w/operations/n/op.json",
+    read: FilesystemReadSucceeded { content: "{}" },
+  )
+  match filesystem_file_observation_below_ancestor(
+    observation: listed,
+    ancestor: ancestor_listed_as(success: true, entries: "other\n"),
+    path: "/w/operations/n/op.json",
+    read: FilesystemReadSucceeded { content: "{}" },
+  ) {
+    FilesystemFileRead { path: _, content: c } => c == "{}"
+    FilesystemFileAbsent(_) => false
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+test fn an_existing_directory_without_the_file_is_absent_as_before() -> Bool {
+  let listed = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/w/operations/n", success: true, entries: "other.json\n", error: ""),
+    name: "op.json",
+    path: "/w/operations/n/op.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+  )
+  match listed {
+    FilesystemFileAbsent(_) => true
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+// INHABITANCE: the real wet producer, over a checkout directory that exists and two missing levels below it.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn the_real_producer_establishes_a_file_two_missing_levels_deep_absent() -> Bool {
+  match filesystem_file_observation_of_path(path: "dag/std/gunbc-no-such-level-one/no-such-level-two/op.json") {
+    FilesystemFileAbsent(_) => true
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
   }
 }
