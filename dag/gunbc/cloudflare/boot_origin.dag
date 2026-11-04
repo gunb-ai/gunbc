@@ -11,9 +11,7 @@ import std.human_intervention {
 import extdeps.external_authority { FactCitation }
 import extdeps.cloudflare.r2 { r2_custom_domain_citation }
 import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name, domain_name_wire, host_name_eq }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, uri_https }
 import gunbc.network_boot_delivery {
   FleetBootServiceReceipt,
@@ -417,31 +415,3 @@ fn boot_bundle_availability(
   }
 }
 
-// NO EXECUTOR REACHES THESE FOLDS YET, and that is a declared frontier rather than silence (DESIGN
-// section 3c). The PUT/GET route is gunbc.cloudflare.r2_origin_object put_origin_object and
-// fetch_origin_object, bound to the durable bucket today; the boot route is the same executor
-// parameterized by BucketPurpose. It cannot run until the boot write credential is minted and a named
-// intake-Linux producer yields ARM64 kernel/initrd/root bytes.
-data cloudflare_boot_origin_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.boot_origin", decl_name: "classify_boot_publish"),
-    reason: "publish folds (admit_boot_publication, admit_boot_object_key, classify_boot_publish) have no executing PUT route for the boot bucket",
-    dissolution: unbound_dissolution(
-      description: "dissolves when put_origin_object is parameterized by BucketPurpose and a boot publish entry calls admit_boot_publication, admit_boot_object_key and classify_boot_publish on real ARM64 bundle bytes from a named producer; a witness over supplied answers does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.boot_origin", decl_name: "boot_readback_locator"),
-    reason: "readback folds (boot_readback_locator, classify_boot_readback, boot_bundle_availability) have no executing GET over the custom domain; the hostname standing is Unallocated",
-    dissolution: unbound_dissolution(
-      description: "dissolves when boot_origin_hostname_standing is Allocated and a boot readback entry fetches every published key through boot_readback_locator and classifies it with classify_boot_readback, then mints boot_bundle_availability from those verdicts"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_standing"),
-    reason: "both boot-origin credentials stand OriginCredentialUnminted: gunbc.cloudflare.r2_token_mint_run is parameterized by BucketPurpose and run_boot_object_read / run_boot_object_write are the boot mint entries the standing names, but neither has executed, so no boot token is stored and no version is pinned",
-    dissolution: unbound_dissolution(
-      description: "dissolves when run_boot_object_read and run_boot_object_write have executed, stored each token as a new version under its fabric_boot_origin secret id, and a reviewed row change pins each stored version in fabric_boot_origin_standing as OriginCredentialPinned with its access_key_id"
-    )
-  ),
-]
