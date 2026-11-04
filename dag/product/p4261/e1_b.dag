@@ -2969,11 +2969,11 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   UnresolvedPart {
     designator: Present { value: "J3" },
     marking: Absent { },
-    obligation: "the designator read stands as 'final-pass critic', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell B2 C2 settles it -- the position itself stands on the 2026-10-20 bench read of J3, whose bytes were never supplied",
+    obligation: "the label is read and cited: three stored frames, boxed, on 2026-11-04, in the FromStoredFrames authority that admits the position and in the single DesignatorReading above. What this row still carries is that the ATLAS has never read it -- its reading_standing is not confirmed by any pass of ours, the marking is unknown, and the close-ups it skipped are listed in `located` -- so the position stands on a read recorded here, not on a pass that has not looked",
     evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(
       designator: "J3",
-      located: "the atlas pass names no frame in its photos column ('overview only'), because it never read 16 of the top photos (05-08, 14-18, _22, _23, 26-29); the operator has since read the label in three stored frames, cited as J3's designator readings above and in the FromStoredFrames authority that admits the position",
-      closing: "the label is read and cited; what remains is the atlas pass over the 16 photos it skipped, which should join these rows through the same receipts, and a box on any frame still cited without one") },
+      located: "the atlas pass names no frame in its photos column ('overview only') because of its own coverage gap: the pass recorded readings for 28 of the 51 top-side files in manifest_e1_all_photos.csv and never read 15 numbered close-ups among them: 05-08, 14-18, 22-23 and 26-29. The operator has since read the label in three of those stored frames -- cited in the FromStoredFrames authority that admits the position, and on the best of them by the single DesignatorReading above",
+      closing: "the label is read and cited; what remains is the atlas pass over the close-ups it skipped, joined through these same receipts, and a box on any frame still cited without one") },
   }
   UnresolvedPart {
     designator: Present { value: "J141" },
