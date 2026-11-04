@@ -295,7 +295,9 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // the systemd unit through gunbc.live_deploy.emit. The tmux path's argv builder,
 // dashboard_instance_serve_argv, had no consumer in any lane and was deleted under DESIGN §3c; if a
 // tmux bring-up returns it returns through the live-deploy emit, not through a second argv spelling.
-// Registering that member is separate work and is the thing that stops this recurring.
+// Registering that member is separate work and is the thing that stops this recurring. Since the
+// serve verb's deletion (gunbc.plans.converged_ingress M1) the command is `gunbc run` on
+// gunbc.roadmap.roadmap_ingress, the deployment binding of these handlers.
 //
 // THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter
 // load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN
@@ -2057,10 +2059,10 @@ fn roadmap_serve_handle(
   )
 }
 
-// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by serve entry function. That is a
-// constraint of `gunbc serve`, not a dual: the Serve verb binds method/path/body from the socket
-// and has no `--arg` (handle_serve; Serve flags are function/host/port/release-revision only).
-// `gunbc run --arg name=value` exists for ProcessExit entries and does not apply here. Observing
+// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by handler function: the binding
+// (gunbc.roadmap.roadmap_ingress) names which handler a process serves, and a handler receives only
+// request facts by its declared parameters (gunbc.http_ingress), so an instance is a handler, not an
+// argument. Observing
 // the repo root at request time would make the served identity depend on where the binary happened
 // to be launched, which is an ambient fact, and it would re-answer per request a question that is
 // fixed for a process's whole life.
