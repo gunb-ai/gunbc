@@ -727,6 +727,57 @@ pub fn memory_stall_refusal_pressure_text(v: &MemoryStallVerdict) -> String {
     }
 }
 
+/// ONE READING OF A SLOT'S CUMULATIVE COUNTERS, taken by an observer outside the subject and
+/// supplied, as read, to `gunbc.host.memory_stall_refusal` `SupervisedSlotReading`. This is host
+/// observation only: the window between two readings, the PSI parse, the verdict and every line it
+/// prints are the authority's (`supervised_subject_window_between` and the fns after it), evaluated
+/// by the seed through the interpreter -- nothing here restates them. The three counters are
+/// required together: a reading missing any is `SlotStallReading::Unreadable`, never a zero.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlotStallCounters {
+    /// `memory.stat` `pgmajfault`.
+    pub major_faults: u64,
+    /// `cpu.stat` `user_usec` (present whether or not the cpu controller is enabled).
+    pub user_usec: u64,
+    /// `memory.events` `high` + `max`.
+    pub envelope_events: u64,
+    /// `memory.pressure`, uncut; empty when the file is absent, which the authority's `parse_psi`
+    /// answers as unparseable rather than as zero pressure.
+    pub pressure_body: String,
+    /// `memory.current`, for the heartbeat only.
+    pub memory_current: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SlotStallReading {
+    Read(SlotStallCounters),
+    Unreadable { cause: String },
+}
+
+/// Read the slot counters from one cgroup directory.
+pub fn read_slot_stall_counters(dir: &Path) -> SlotStallReading {
+    let read = |file: &str| std::fs::read_to_string(dir.join(file));
+    let field = |file: &str, key: &str| -> Result<u64, String> {
+        let body = read(file).map_err(|e| format!("read {}/{file}: {e}", dir.display()))?;
+        memory_events_field(&body, key)
+            .ok_or_else(|| format!("{}/{file} carries no `{key}` field", dir.display()))
+    };
+    let counters = (|| -> Result<SlotStallCounters, String> {
+        Ok(SlotStallCounters {
+            major_faults: field("memory.stat", "pgmajfault")?,
+            user_usec: field("cpu.stat", "user_usec")?,
+            envelope_events: field("memory.events", "high")?
+                .saturating_add(field("memory.events", "max")?),
+            pressure_body: read("memory.pressure").unwrap_or_default(),
+            memory_current: read_cgroup_u64(dir, "memory.current"),
+        })
+    })();
+    match counters {
+        Ok(c) => SlotStallReading::Read(c),
+        Err(cause) => SlotStallReading::Unreadable { cause },
+    }
+}
+
 /// This process's cumulative major-fault count — `/proc/self/stat` majflt, proc.5 field 12
 /// (index 9 after the comm field, whose parentheses force the split on the LAST `)` —
 /// the same parse discipline as `v1_rt::trace_process_tree_cpu_ms`). `None` where the file

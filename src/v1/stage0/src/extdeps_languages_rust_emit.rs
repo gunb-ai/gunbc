@@ -11,6 +11,7 @@ use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_algebra::{
     collection_concat_shape, collection_count_shape, collection_join_shape, collection_map_shape,
+    list_flat_map, map_lookup,
 };
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
@@ -747,7 +748,7 @@ pub fn is_rt_function(name: String) -> bool {
 }
 
 pub fn rt_bridge_name(name: String) -> String {
-    match v1_rt::map_get(&rt_bridge_function_names(), name.clone()) {
+    match v1_rt::lookup(&rt_bridge_function_names(), name.clone()) {
         Some(bridge) => bridge.clone(),
         std::option::Option::None => name.clone(),
     }
@@ -877,22 +878,14 @@ pub fn rust_pair_completion_factor_source(factor: Rc<PairCompletionFactor>) -> S
 }
 
 pub fn rust_pair_completion_arm_sources(arm: Rc<PairCompletionArm>) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for term in arm.terms.clone().iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for f in term.factors.clone().iter().cloned() {
-                        __result.push(rust_pair_completion_factor_source(f.clone()));
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
+    crate::std_algebra::list_flat_map(arm.terms.clone(), |term| {
+        Rc::new({
+            let mut __result = Vec::new();
+            for f in term.factors.clone().iter().cloned() {
+                __result.push(rust_pair_completion_factor_source(f.clone()));
+            }
+            __result
+        })
     })
 }
 

@@ -163,10 +163,9 @@ pub(crate) use complexity_gates::*;
 mod emit_host;
 pub(crate) use emit_host::*;
 pub use emit_host::{
-    builtin_function_registry_keys, compile_dag_call_form_leaf_guard,
-    compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
-    compile_dag_multi_module_fixture, compile_dag_operation_requires,
-    compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
+    compile_dag_call_form_leaf_guard, compile_dag_callsite_resolved_call_edges,
+    compile_dag_importer_resolved_call_edges, compile_dag_multi_module_fixture,
+    compile_dag_operation_requires, compile_dag_reference_occurrence_binding_census,
 };
 pub use emit_host::{
     compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
@@ -207,7 +206,9 @@ mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
 mod source_layout_lookup;
-pub use demand_acquire::resolve_entry_graph_demand_acquired;
+pub use demand_acquire::{
+    resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_with_diagnostics,
+};
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -4348,63 +4349,6 @@ pub struct ResolvedCallEdgeRow {
 pub enum ResolvedCallEdgeCensus {
     Refused { cause: String },
     Observed { edges: Vec<ResolvedCallEdgeRow> },
-}
-
-/// THE CALLEE IDENTITY THE RESOLVER ESTABLISHED FOR ONE CALL SITE, projected for the primitive
-/// census (`gunbc.primitive_egress.census`). This is the resolver's OWN product read off the typed
-/// tree -- `CallTargetIdentity::RuntimePrimitiveCall` for a free call and
-/// `MethodSemantics::AlgebraMethodSemantics` for a method form -- never a spelling match. The
-/// two arms that carry a spelling and no identity (`PlainMethod`, `UndeterminedFreeCall`) are
-/// exactly the sites where the resolver established NOTHING; they are carried so the census can
-/// report a consumer whose callee identity is unresolved rather than drop it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrimitiveCalleeIdentity {
-    RuntimePrimitive {
-        primitive_name: String,
-        projected_from_module: Option<String>,
-        projected_from_decl: Option<String>,
-    },
-    AlgebraMethod {
-        template_name: String,
-    },
-    ServiceOperation {
-        service_name: String,
-        operation: String,
-    },
-    PlainMethod {
-        spelling: String,
-    },
-    UndeterminedFreeCall {
-        spelling: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PrimitiveCallEdgeRow {
-    pub caller_module: String,
-    pub caller_decl: String,
-    pub authored_spelling: String,
-    pub callee: PrimitiveCalleeIdentity,
-    pub span_file: String,
-    pub span_start: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PrimitiveCallEntryRefusal {
-    pub entry: String,
-    pub cause: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrimitiveCallEdgeCensus {
-    Refused {
-        cause: String,
-    },
-    Observed {
-        entries_resolved: Vec<String>,
-        entries_refused: Vec<PrimitiveCallEntryRefusal>,
-        edges: Vec<PrimitiveCallEdgeRow>,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18070,37 +18014,30 @@ pub fn handle_serve(
         );
         std::process::exit(1);
     }
-    let index = process_shared_index_or_refuse(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
-        Ok(sources) => sources,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    eprintln!("resolved {} sources", sources.len());
-    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
-        &index,
-        sources,
-        &entry_file,
-        ResolvedGraphMemoShare::Memoize,
-    )
-    .map_err(ResolveFailure::into_message)
-    {
-        Ok(parts) => parts,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    if compile_clean_diags
+    // THE DEMAND-ACQUIRED RESOLVE, the same route `gunbc run` takes (#14046): the closure is found by
+    // source-layout lookup from the entry, so the whole-tree index (a parse of every module in the
+    // pool for a name census, ~2m15s of the lab's restart) is never built. Serving is not a reason
+    // to resolve a wider population than running.
+    let (graph, source_indices, compile_clean_diags) =
+        match resolve_entry_graph_demand_acquired_with_diagnostics(&source_roots, &entry_file) {
+            Ok(parts) => parts,
+            Err(msg) => {
+                eprintln!("error: {}", msg);
+                std::process::exit(1);
+            }
+        };
+    eprintln!("resolved {} sources", source_indices.len());
+    // ONE BLOCKING RULE WITH `gunbc run`: `is_interpreter_blocking_diagnostic`. Serve used to route
+    // through `compile_clean_diagnostic_is_hard`, whose only extra arm reads the `UnlistedImportUse`
+    // policy row by resolving and interpreting a second closure (~116 s measured at startup) to
+    // learn a Bool that is `false` today (`FloorNotYet`); `run` and `compile` already omit that read
+    // (gunbc#8286). The policy's own terminal shape is promotion in this single classifier.
+    let blocking: Vec<_> = compile_clean_diags
         .iter()
-        .any(|d| compile_clean_diagnostic_is_hard(d))
-    {
-        for d in compile_clean_diags
-            .iter()
-            .filter(|d| compile_clean_diagnostic_is_hard(d))
-        {
+        .filter(|d| crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+        .collect();
+    if !blocking.is_empty() {
+        for d in blocking {
             eprintln!("error: {}", format_error_node(d, &source_indices));
         }
         std::process::exit(1);

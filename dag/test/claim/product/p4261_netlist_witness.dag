@@ -144,7 +144,7 @@ fn e1_with(continuity: List<ContinuityObservation>, input: InputConnector?) -> C
     analysis: x.analysis, asset: x.asset, continuity: continuity, diode_readings: x.diode_readings, source_draws: x.source_draws,
     bench: x.bench, phases: x.phases, transitions: x.transitions, pole_closures: x.pole_closures,
   } }, Absent => Absent }
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
     j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
     management_io: b.management_io, components: b.components, measured: m, input: input, unresolved: b.unresolved, designator_readings: b.designator_readings,

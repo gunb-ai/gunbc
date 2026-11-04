@@ -1,0 +1,81 @@
+module gunbc.roadmap.operator_session_lease_release
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_session_placement {
+  SessionPlacementStores, session_placement_stores, SessionStoresResolved, SessionStoresUnresolved,
+  session_operator_settle_one, session_settlement_wire,
+  SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
+}
+import gunbc.compute.host_capacity { ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// AN OPERATOR-DIRECTED RELEASE OF ONE srv1 SESSION-MEMORY LEASE, through the settle pass's own fence and
+// release, for a holder the settle pass cannot reach. Operator direction 2026-11-04 ~11:20Z (relayed by
+// loyal-deer-449; supported by silent-bee-845, references and evidence from snappy-carp-24). It is not the
+// settle pass's verdict: the caller supplies the reason, which carries the death evidence it read.
+//
+// THE AUTHORITY IS THE SETTLE PASS'S (gunbc.roadmap.roadmap_session_placement session_operator_settle_one):
+// the same slot admission as the pass (a slot not bound consistently under the key is kept, never closed or
+// released under that name), the same terminate-at-the-read-generation CAS, the same release. This module
+// only resolves the srv1 lab's stores, supplies the reason, and exits from the TYPED settlement.
+//
+// A SLOT ABSENT FROM THE CURRENT STORE REFUSES; IT IS NEVER RELEASED LEDGER-ONLY. Release and slot closure are
+// one modeled step, slot first. Releasing the ledger while the slot sits where no pass reads it (a pre-re-root
+// root) removes the acquisition instant the settle pass needs to prove the holder died
+// (session_holder_evidence reads it from the ledger), so that slot could never be settled afterwards
+// (snappy-carp-24, 2026-11-04, measured at 5029bce9de94; this route did exactly that to the 2026-10-14 lease
+// before this arm was removed). Such a slot is first carried into a store a settle pass reads, and then
+// released through this route or that pass.
+//
+// dissolve-on: the cutover carry of pre-re-root slots (snappy-carp-24, B') lands, after which every held slot
+// is in a store some settle pass enumerates and an operator release has no case the pass does not cover.
+// SUFFICIENT FOR deleting this module together with its witness rows: its only importer is
+// test.claim.roadmap.session_placement_wet_witness (operator_release_succeeded), which goes with it.
+
+// The command's verdict is taken from the settlement's TYPE, never from its rendered line. A seat that is
+// held in the ledger and now returned is success; a settlement already done (slot closed, release recorded)
+// is success, the desired state holding. ComputeNothingToRelease is success: the ledger does not hold the
+// seat, so the desired state (no held seat, closed slot) holds, and the settlement already closed the slot
+// before asking, so nothing remains to do; the receipt line still says it was not a release. A refused
+// release, a kept seat and a refused transition are all failures: something the operator asked for did not happen.
+fn operator_release_succeeded(s: SessionSettlement) -> Bool {
+  match s {
+    SessionSettlementReleaseAttempted { unit: _, freed, detail: _ } =>
+      match freed {
+        ComputeReleased { partition: _, reference: _, reason: _ } => true
+        ComputeNothingToRelease { detail: _ } => true
+        ComputeReleaseRefused { detail: _ } => false
+      }
+    SessionSettlementDone { unit: _, why: _ } => true
+    SessionSettlementKept { unit: _, why: _ } => false
+    SessionSettlementRefused { unit: _, detail: _ } => false
+  }
+}
+
+// The srv1 lab instance's stores, the same resolution the settle pass uses. The outcome line is written to
+// the receipt path because the operator who ordered it reads it from another process.
+fn operator_session_lease_release_srv1_lab(reference: String, reason: String, receipt: String) -> ProcessExit {
+  if trim(s: reference) == "" || trim(s: reason) == "" || trim(s: receipt) == "" {
+    exit_failure(reason: "--arg reference=<unit name> --arg reason=<evidence> --arg receipt=<path> are all required")
+  } else {
+    let instance = srv1_lab_dashboard_instance()
+    match session_placement_stores(instance: instance) {
+      SessionStoresUnresolved { detail } => exit_failure(reason: join(["the srv1 lab's session stores are unresolved: ", detail], ""))
+      SessionStoresResolved { stores } => {
+        let settlement = session_operator_settle_one(stores: stores, host: instance.host_identity as String, key: reference as NonEmptyStr, reason: reason as NonEmptyStr)
+        let line = session_settlement_wire(s: settlement)
+        let w = Filesystem.Write(path: receipt, content: join([line, "\n"], ""))
+        if !w.success {
+          exit_failure(reason: join(["release outcome not written at ", receipt, ": ", w.error, "; outcome: ", line], ""))
+        } else if operator_release_succeeded(s: settlement) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: line)
+        }
+      }
+    }
+  }
+}

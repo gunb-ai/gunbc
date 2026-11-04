@@ -128,6 +128,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_child,
   dashboard_named_tmux_server,
   dispatch_worker_memory_ceiling,
+  belt_max_concurrent_default,
   fleet_admitted_revision_source,
   fleet_compute_hermetic_dashboard_id,
   fleet_compute_hermetic_deployment,
@@ -215,6 +216,7 @@ fn witness_instance(temp_root: String) -> HostDashboardInstance {
     admitted_revision: fleet_admitted_revision_source,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: Present {

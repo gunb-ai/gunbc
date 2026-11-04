@@ -57,6 +57,7 @@ import extdeps.electronic_component.types {
   TvsDiodeSpec,
   UndervoltageEnable,
   VoltageWithstand,
+  RectifierSpec,
 }
 import product.electrical.carrier_phase {
   carrier_phase_standing,
@@ -728,6 +729,7 @@ fn identified_row(c: InstalledComponent) -> ElectronicComponentRow? {
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }
 
@@ -748,6 +750,10 @@ fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
       SwitchingRegulatorSpec { regulator: _ } => Absent
+      BusMultiplexerSpec { multiplexer: _ } => Absent
+      UsbHubSpec { hub: _ } => Absent
+      ClockFanoutSpec { clock: _ } => Absent
+      RectifierSpec { rectifier: _ } => Absent
     }
   }
 }
@@ -769,6 +775,10 @@ fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
       SwitchingRegulatorSpec { regulator: _ } => Absent
+      BusMultiplexerSpec { multiplexer: _ } => Absent
+      UsbHubSpec { hub: _ } => Absent
+      ClockFanoutSpec { clock: _ } => Absent
+      RectifierSpec { rectifier: _ } => Absent
     }
   }
 }
@@ -796,6 +806,7 @@ fn translator_row_of(c: InstalledComponent) -> ElectronicComponentRow? {
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }
 

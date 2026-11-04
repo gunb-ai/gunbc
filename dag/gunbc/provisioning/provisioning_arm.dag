@@ -1,6 +1,7 @@
 module gunbc.provisioning.provisioning_arm
 
 import gunbc.boot_artifact_delivery {
+  BootArtifactDelivery,
   BootDeliveryPlan,
   BootDeliveryPlanAdmitted,
   BootDeliveryPlanIncoherence,
@@ -115,6 +116,7 @@ type PlanEvidenceAxis
   = SeedBoundForOtherUnit
   | SeedBoundForOtherAttempt
   | ChainForOtherArchitecture { chain: Architecture, artifact: Architecture }
+  | ShapeForOtherDelivery { delivery: BootArtifactDelivery }
 
 // THE SHAPE OF AN ARM: ONE strategy, fully bound, or a terminal Unobserved/Refused. It is derived from
 // (strategy, evidence) and from nothing else; no attempt or unit identity exists at this type, so the
