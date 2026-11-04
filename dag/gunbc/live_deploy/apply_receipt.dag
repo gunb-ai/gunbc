@@ -2,7 +2,9 @@ module gunbc.live_deploy.apply_receipt
 
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, GitRef }
 import product.host_identity { HostIdentity }
-import std.algebra { trim }
+import std.algebra { trim, length }
+import std.optional { Optional, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString, json_kv, json_string, json_object, json_array, serialize_json }
 import extdeps.languages.json.parse {
@@ -22,6 +24,7 @@ import gunbc.actions_run_binding {
   JsonStringMemberFound, JsonStringMemberRefused,
   actions_run_binding_identity_text,
   actions_variable_read,
+  actions_variable_trimmed,
   ActionsVariablePresent, ActionsVariableAbsent,
 }
 
@@ -763,5 +766,124 @@ fn read_live_deploy_transaction_refusal_receipt_at(path: String) -> LiveDeployTr
     LiveDeployTransactionRefusalReceiptUnreadable { reason: join(["transaction refusal receipt could not be read at ", path, ": ", read.error], "") }
   } else {
     live_deploy_transaction_refusal_receipt_decode(raw: read.content)
+  }
+}
+
+// ═════════════════════════ EXACTLY-ONE-RECEIPT JOB-SIDE ADMISSION ═════════════════════════
+// The transaction mints a document on EVERY terminal arm -- an apply receipt on decision, a named
+// refusal otherwise -- so the deploy job's final assertion is a count and a pairing, and that rule
+// belongs here as an admission, not as hand-written shell in the workflow (DESIGN §6: raw shell
+// implementing semantics expressible in .dag is a scaffold tell). The step runs this entry with the
+// deploy step's conclusion; nothing here re-decides the deployment, it only counts and pairs the
+// documents the transaction itself wrote.
+//
+// THE RULES, each with a name: exactly one decodable receipt (apply XOR refusal); zero receipts is a
+// refusal whether the step succeeded (the fold exited without deciding or refusing) or failed (the
+// fold died before even refusing); two receipts in one run is a deploy that both decided and refused;
+// a document unreadable by BOTH decoders is a receipt the job cannot vouch for; and the pairing --
+// an apply receipt means the step succeeded, a refusal means it failed -- a mismatch means one of the
+// two is lying, which is a named refusal, not a mystery. A directory that cannot be LISTED fails by
+// name; a directory that is absent lists empty and fails as a zero receipt, which is the truth.
+data live_deploy_receipt_assert_dir_env_name: String = "GUNBC_LIVE_DEPLOY_RECEIPT_DIR"
+data live_deploy_deploy_conclusion_env_name: String = "GUNBC_DEPLOY_STEP_CONCLUSION"
+
+type DashboardReceiptAssertVerdict
+  = AssertAdmitted { kind: String, name: String }
+  | AssertListingUnreadable { reason: String }
+  | AssertZeroReceipts { conclusion: String }
+  | AssertMultipleReceipts { names: String }
+  | AssertUnreadableReceipt { name: String, reason: String }
+  | AssertConclusionMismatch { kind: String, conclusion: String }
+
+fn dashboard_receipt_assert_verdict_text(verdict: DashboardReceiptAssertVerdict) -> String {
+  match verdict {
+    AssertAdmitted { kind, name } => join(["dashboard receipt assertion admitted: exactly one ", kind, " receipt (", name, ")", " with deploy-step conclusion admitted"], "")
+    AssertListingUnreadable { reason } => join(["dashboard receipt assertion refused: the receipt directory could not be listed: ", reason], "")
+    AssertZeroReceipts { conclusion } => join(["dashboard receipt assertion refused: the receipt directory holds no receipt while the deploy step concluded '", conclusion, "'; the transaction mints a document on every terminal arm (apply or named refusal), so its absence means the fold died before the transaction ran"], "")
+    AssertMultipleReceipts { names } => join(["dashboard receipt assertion refused: more than one receipt document (", names, "); one deploy run decides exactly once"], "")
+    AssertUnreadableReceipt { name, reason } => join(["dashboard receipt assertion refused: '", name, "' is neither a decodable apply receipt nor a decodable transaction refusal: ", reason], "")
+    AssertConclusionMismatch { kind, conclusion } => join(["dashboard receipt assertion refused: an ", kind, " receipt paired with deploy-step conclusion '", conclusion, "'; an apply receipt means the step succeeded and a refusal means it failed -- one of the two is lying"], "")
+  }
+}
+
+// ONE DOCUMENT, THREE VERDICTS: apply receipt, transaction refusal, or unreadable -- with BOTH
+// decoders' reasons when unreadable, because which decoder refused says which writer broke.
+data DashboardReceiptDocument
+  = ReceiptDocumentApply { name: String }
+  | ReceiptDocumentRefusal { name: String }
+  | ReceiptDocumentUnreadable { name: String, reason: String }
+
+fn classify_dashboard_receipt_document(dir: String, name: String) -> DashboardReceiptDocument {
+  let path = join([dir, "/", name], "")
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    ReceiptDocumentUnreadable { name: name, reason: join(["file not readable: ", read.error], "") }
+  } else {
+    match live_deploy_apply_receipt_decode(raw: read.content) {
+      LiveDeployApplyReceiptDecoded { receipt: receipt } => ReceiptDocumentApply { name: name }
+      LiveDeployApplyReceiptUnreadable { reason: apply_reason } =>
+        match live_deploy_transaction_refusal_receipt_decode(raw: read.content) {
+          LiveDeployTransactionRefusalReceiptDecoded { receipt: receipt } => ReceiptDocumentRefusal { name: name }
+          LiveDeployTransactionRefusalReceiptUnreadable { reason: refusal_reason } =>
+            ReceiptDocumentUnreadable { name: name, reason: join(["apply-receipt decode: ", apply_reason, "; refusal-receipt decode: ", refusal_reason], "") }
+        }
+    }
+  }
+}
+
+fn classify_dashboard_receipt_documents(dir: String, names: List<String>) -> List<DashboardReceiptDocument> {
+  map(names, name => classify_dashboard_receipt_document(dir: dir, name: name))
+}
+
+// PURE ON THE LISTING AND THE CONCLUSION, so the rules above have witnesses that never touch a file:
+// the entry below only lifts Filesystem.List and the two environment variables into these arguments.
+fn admit_dashboard_deploy_receipts(dir: String, listed_success: Bool, listing_error: String, listing: String, conclusion: String) -> DashboardReceiptAssertVerdict {
+  if !listed_success {
+    AssertListingUnreadable { reason: listing_error }
+  } else {
+    let names = filter(listing.split(delimiter: "\n"), name => name != "" && ends_with(s: name, suffix: ".json"))
+    if length(names) == 0 {
+      AssertZeroReceipts { conclusion: conclusion }
+    } else if length(names) > 1 {
+      AssertMultipleReceipts { names: join(names, ", ") }
+    } else {
+      match classify_dashboard_receipt_document(dir: dir, name: single_name(names)) {
+        ReceiptDocumentApply { name: name } =>
+          if conclusion == "success" {
+            AssertAdmitted { kind: "apply", name: name }
+          } else {
+            AssertConclusionMismatch { kind: "apply", conclusion: conclusion }
+          }
+        ReceiptDocumentRefusal { name: name } =>
+          if conclusion == "success" {
+            AssertConclusionMismatch { kind: "refusal", conclusion: conclusion }
+          } else {
+            AssertAdmitted { kind: "refusal", name: name }
+          }
+        ReceiptDocumentUnreadable { name: name, reason: reason } =>
+          AssertUnreadableReceipt { name: name, reason: reason }
+      }
+    }
+  }
+}
+
+// The list has exactly one name when this is called; the Absent arm only names the impossible.
+fn single_name(names: List<String>) -> String {
+  match names.first() {
+    Present { value: value } => value
+    Absent => ""
+  }
+}
+
+// THE STEP'S ENTRY: two environment variables the workflow pins, the directory listing the
+// filesystem reports, and the verdict -- admitted exits 0, every refusal exits 1 naming its rule.
+fn assert_dashboard_deploy_receipts() -> ProcessExit {
+  let dir = actions_variable_trimmed(name: live_deploy_receipt_assert_dir_env_name as NonEmptyStr)
+  let conclusion = actions_variable_trimmed(name: live_deploy_deploy_conclusion_env_name as NonEmptyStr)
+  let listed = Filesystem.List(path: dir)
+  let verdict = admit_dashboard_deploy_receipts(dir: dir, listed_success: listed.success, listing_error: listed.error, listing: listed.entries, conclusion: conclusion)
+  match verdict {
+    AssertAdmitted { kind, name } => ExitSuccess
+    _ => exit_failure(reason: dashboard_receipt_assert_verdict_text(verdict: verdict))
   }
 }

@@ -23,7 +23,7 @@ import gunbc.auth.branch_dispatch_federation {
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
-import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time, gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke, gunbc_ci_revision_job_image_build_invoke, gunbc_ci_printer_workflow_invoke, gunbc_ci_review_sheet_converge_invoke, gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time, gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_assert_dashboard_deploy_receipts_invoke }
 import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name, fleet_converge_apply_pointer_env_name }
 import gunbc.revision_job_image_delivery { revision_job_image_artifact_name, revision_job_image_artifact_paths }
 import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
@@ -281,7 +281,7 @@ import gunbc.host.host_reset_return {
 }
 import gunbc.host.host_reset_subject_roster { reset_observer_peer_roster, reset_roster_hosts, reset_subject_roster }
 import gunbc.host.host_reset_return { ResetObserverPairing }
-import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name, rlm_dashboard_run_id_env_name }
+import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name, rlm_dashboard_run_id_env_name, live_deploy_receipt_assert_dir_env_name, live_deploy_deploy_conclusion_env_name }
 
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
@@ -2102,39 +2102,31 @@ fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Step {
   }
 }
 
-// THE EXACTLY-ONE-RECEIPT ASSERTION. The transaction now leaves exactly one receipt on every
-// terminal path -- an apply receipt, or a refusal receipt naming the arm (apply.dag arms). This
-// step reads the receipt directory and says plainly which it is: a successful transaction with no
-// receipt, or two receipts, is a broken guarantee and the job must name THAT, not let the upload
-// step's generic "No files were found with the provided path" become the job's visible failure
-// (what runs 36719161144 and 39177393512 actually showed). It runs under always(): when the
-// transaction step itself failed, its exit already names the cause -- this step only reports
-// whether the refusal receipt is there to carry it, and never turns a red step into a second red
-// step whose message says less. The paths come from the same data the writer and the upload use;
-// the shell here only counts files, it names nothing of its own.
+// THE JOB'S FINAL RECEIPT ASSERTION, always run. The transaction mints a document on every terminal
+// arm -- apply receipt or named refusal -- so the job's rule is a count and a pairing, and the rule
+// lives with the documents in gunbc.live_deploy.apply_receipt (admit_dashboard_deploy_receipts), not
+// as hand-written shell here (DESIGN §6: raw shell implementing semantics expressible in .dag is the
+// scaffold tell; the rest of this workflow already runs its checks through gunbc run --function).
+// It runs under always(): when the transaction step itself failed, its exit already names the cause
+// -- this step only reports whether the refusal receipt is there to carry it, and never turns a red
+// step into a second red step whose message says less. The directory and the conclusion arrive as
+// environment, named by the same data the writer uses.
 fn fleet_converge_dashboard_receipt_assert_step() -> Step {
   RunStep {
-    name: Present { value: "Assert exactly one live-deploy transaction receipt (apply or refusal, never both, never zero on success)" },
+    name: Present { value: "Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)" },
     id: Present { value: "dashboard_receipt_assert" },
-    run: join([
-      "set -eu",
-      join(["dir=\"", gunbc_live_deploy_receipt_artifact_dir, "\""], ""),
-      "concl=\"${{ steps.dashboard_deploy.conclusion }}\"",
-      "count=$(find \"$dir\" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')",
-      "if [ \"$count\" -gt 1 ]; then echo \"the transaction wrote $count receipts into $dir; exactly one is allowed\"; exit 1; fi",
-      "if [ \"$concl\" = \"success\" ] && [ \"$count\" -ne 1 ]; then echo \"the transaction step succeeded but no transaction receipt is in $dir\"; exit 1; fi",
-      "if [ \"$count\" -eq 1 ]; then file=$(find \"$dir\" -maxdepth 1 -type f -name '*.json' | head -1); echo \"transaction receipt: $file\"; echo \"transaction receipt: \\`$file\\`\" >> \"$GITHUB_STEP_SUMMARY\"; fi",
-      "if [ \"$count\" -eq 0 ]; then echo \"no transaction receipt; the transaction step conclusion is '$concl' -- a refused run leaves the refusal receipt, a killed process leaves none\"; echo \"no transaction receipt (transaction step conclusion: $concl)\" >> \"$GITHUB_STEP_SUMMARY\"; fi",
-    ], "\n"),
+    run: gunbc_ci_assert_dashboard_deploy_receipts_invoke(),
     shell: none,
-    env: none,
+    env: Present { value: [
+      kv(key: live_deploy_receipt_assert_dir_env_name, value: yaml_string(s: gunbc_live_deploy_receipt_artifact_dir)),
+      kv(key: live_deploy_deploy_conclusion_env_name, value: yaml_string(s: "${{ steps.dashboard_deploy.conclusion }}")),
+    ] },
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
-
 fn fleet_converge_receipt_upload_step(id: String, name: String, artifact: String, path: String, if_condition: String) -> Step {
   UsesStep {
     name: Present { value: name },
@@ -4495,8 +4487,11 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
       ],
-      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_dashboard_deploy_selected_inputs),
+      // THE DISPATCH ADMISSION IS THE GATE'S FRONT PORCH: a dispatch that cannot deploy -- malformed
+      // expected_revision, empty plan_artifact_hash, malformed run pointers -- is refused in seconds,
+      // before the human is asked to approve a run that would die at the fold anyway.
       fleet_converge_admit_dashboard_deploy_inputs_step(),
+      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_dashboard_deploy_selected_inputs),
       fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
       [
         fleet_converge_receipt_download_step(

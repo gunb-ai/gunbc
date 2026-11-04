@@ -201,6 +201,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           FLEET_CONVERGE_PLAN_RUN_POINTER: ${{ github.event.inputs.plan_workflow_run_id }}
         if: github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'dashboard_deploy'
+        timeout-minutes: 5
       - name: Download the plan artifact (carries the plan receipt) from the plan run
         id: plan_revision_download
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
@@ -3277,6 +3278,17 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
+      - name: Refuse an undeployable dashboard_deploy dispatch by name, before approval and before the fold
+        id: admit_dashboard_deploy_inputs
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function admit_dashboard_deploy_dispatch_inputs
+        env:
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
+          FLEET_CONVERGE_PLAN_RUN_POINTER: ${{ github.event.inputs.plan_workflow_run_id }}
+          FLEET_CONVERGE_APPLY_RUN_POINTER: ${{ github.event.inputs.apply_workflow_run_id }}
+        timeout-minutes: 5
       - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
@@ -3327,16 +3339,6 @@ jobs:
           retention-days: 30
         if: always()
         timeout-minutes: 10
-      - name: Refuse an undeployable dashboard_deploy dispatch by name, before approval and before the fold
-        id: admit_dashboard_deploy_inputs
-        run: |-
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function admit_dashboard_deploy_dispatch_inputs
-        env:
-          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
-          RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
-          FLEET_CONVERGE_PLAN_RUN_POINTER: ${{ github.event.inputs.plan_workflow_run_id }}
-          FLEET_CONVERGE_APPLY_RUN_POINTER: ${{ github.event.inputs.apply_workflow_run_id }}
       - name: Admit the plan run pointer before downloading from it
         id: admit_plan_run_pointer
         run: |-
@@ -3346,6 +3348,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           FLEET_CONVERGE_PLAN_RUN_POINTER: ${{ github.event.inputs.plan_workflow_run_id }}
         if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
       - name: Download the plan artifact (carries the plan receipt) from the plan run
         id: dashboard_plan_receipt_download
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
@@ -3364,6 +3367,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           FLEET_CONVERGE_APPLY_RUN_POINTER: ${{ github.event.inputs.apply_workflow_run_id }}
         if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
       - name: Download the fleet apply receipt from the apply run
         id: dashboard_apply_receipt_download
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
@@ -3391,18 +3395,16 @@ jobs:
           RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
           RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
         timeout-minutes: 30
-      - name: Assert exactly one live-deploy transaction receipt (apply or refusal, never both, never zero on success)
+      - name: Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)
         id: dashboard_receipt_assert
         run: |-
-          set -eu
-          dir="target/live-deploy-srv1-live-receipt"
-          concl="${{ steps.dashboard_deploy.conclusion }}"
-          count=$(find "$dir" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$count" -gt 1 ]; then echo "the transaction wrote $count receipts into $dir; exactly one is allowed"; exit 1; fi
-          if [ "$concl" = "success" ] && [ "$count" -ne 1 ]; then echo "the transaction step succeeded but no transaction receipt is in $dir"; exit 1; fi
-          if [ "$count" -eq 1 ]; then file=$(find "$dir" -maxdepth 1 -type f -name '*.json' | head -1); echo "transaction receipt: $file"; echo "transaction receipt: \`$file\`" >> "$GITHUB_STEP_SUMMARY"; fi
-          if [ "$count" -eq 0 ]; then echo "no transaction receipt; the transaction step conclusion is '$concl' -- a refused run leaves the refusal receipt, a killed process leaves none"; echo "no transaction receipt (transaction step conclusion: $concl)" >> "$GITHUB_STEP_SUMMARY"; fi
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply_receipt.dag --function assert_dashboard_deploy_receipts
+        env:
+          GUNBC_LIVE_DEPLOY_RECEIPT_DIR: target/live-deploy-srv1-live-receipt
+          GUNBC_DEPLOY_STEP_CONCLUSION: ${{ steps.dashboard_deploy.conclusion }}
         if: always()
+        timeout-minutes: 5
       - name: Upload live-deploy transaction receipt
         id: dashboard_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

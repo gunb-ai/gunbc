@@ -1,5 +1,10 @@
 module test.claim.live_deploy.apply_receipt_witness
 
+import extdeps.exec.command { LocalExec }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import gunbc.command_runner { run_shell_commands }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data apply_receipt_fixture_r: String = "0123456789abcdef0123456789abcdef01234567"
@@ -229,4 +234,71 @@ test fn witness_transaction_refusal_shares_dir_not_file_with_apply_receipt() -> 
 
 fn string_has_prefix(text: String, prefix: String) -> Bool {
   text.length() >= prefix.length() && text.substring(start: 0, end: prefix.length()) == prefix
+}
+
+// ═════ THE JOB'S EXACTLY-ONE-RECEIPT RULE, WITNESSED (fleet_converge_dashboard_receipt_assert_step) ═════
+// The rule admits exactly one decodable document, apply XOR refusal; zero never passes (on either
+// conclusion); two never pass; a document neither decoder accepts never passes; and the document must
+// pair with the deploy step's conclusion. These witnesses pin every name, and the classify paths run
+// against real files written into a scratch dir so the decoders, not the listing, decide.
+
+data receipt_assert_scratch_dir: String = "target/live-deploy-receipt-assert-witness"
+
+fn receipt_assert_verdict_tag(verdict: DashboardReceiptAssertVerdict) -> String {
+  match verdict {
+    AssertAdmitted { kind: kind, name: _ } => join(["admitted:", kind], "")
+    AssertListingUnreadable { reason: _ } => "listing-unreadable"
+    AssertZeroReceipts { conclusion: _ } => "zero"
+    AssertMultipleReceipts { names: _ } => "multiple"
+    AssertUnreadableReceipt { name: _, reason: _ } => "unreadable"
+    AssertConclusionMismatch { kind: kind, conclusion: _ } => join(["mismatch:", kind], "")
+  }
+}
+
+test fn witness_receipt_assert_zero_never_passes_on_either_conclusion() -> Bool {
+  receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "", conclusion: "success")) == "zero"
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "", conclusion: "failure")) == "zero"
+}
+
+test fn witness_receipt_assert_two_receipts_refused() -> Bool {
+  receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_transaction_refusal.json\nlive_deploy_apply_receipt.json\nnotes.txt", conclusion: "success")) == "multiple"
+}
+
+test fn witness_receipt_assert_listing_failure_is_named() -> Bool {
+  receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: false, listing_error: "transport gone", listing: "", conclusion: "success")) == "listing-unreadable"
+}
+
+test fn witness_receipt_assert_non_json_files_do_not_count() -> Bool {
+  // The zero rule counts .json documents; a stray notes file is not a receipt and does not rescue an empty directory.
+  receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "notes.txt\n", conclusion: "success")) == "zero"
+}
+
+fn assert_scratch_written(name: String, content: String) -> Bool {
+  run_shell_commands(commands: [mkdir_parents_command(path: receipt_assert_scratch_dir)], transport: LocalExec) == ExitSuccess
+    && Filesystem.Write(path: join([receipt_assert_scratch_dir, "/", name], ""), content: content).success
+}
+
+test fn witness_receipt_assert_apply_receipt_admits_only_with_success() -> Bool {
+  let body = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
+  assert_scratch_written(name: "live_deploy_apply_receipt.json", content: body)
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_apply_receipt.json", conclusion: "success")) == "admitted:apply"
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_apply_receipt.json", conclusion: "failure")) == "mismatch:apply"
+}
+
+test fn witness_receipt_assert_refusal_admits_only_with_failure() -> Bool {
+  let body = serialize_json(v: live_deploy_transaction_refusal_json(r: fixture_transaction_refusal()))
+  assert_scratch_written(name: "live_deploy_transaction_refusal.json", content: body)
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_transaction_refusal.json", conclusion: "failure")) == "admitted:refusal"
+    && receipt_assert_verdict_tag(admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_transaction_refusal.json", conclusion: "success")) == "mismatch:refusal"
+}
+
+test fn witness_receipt_assert_garbage_refuses_naming_both_decoders() -> Bool {
+  assert_scratch_written(name: "live_deploy_apply_receipt.json", content: "{ not json")
+    && match admit_dashboard_deploy_receipts(dir: receipt_assert_scratch_dir, listed_success: true, listing_error: "", listing: "live_deploy_apply_receipt.json", conclusion: "failure") {
+      AssertUnreadableReceipt { name: n, reason: why } =>
+        n == "live_deploy_apply_receipt.json"
+          && string_has_prefix(text: why, prefix: "apply-receipt decode: ")
+          && why != "apply-receipt decode: "
+      _ => false
+    }
 }

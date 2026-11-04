@@ -822,6 +822,14 @@ data gunbc_ci_admit_dashboard_deploy_inputs_target: GunbcRunStepTarget = GunbcRu
   function: "admit_dashboard_deploy_dispatch_inputs",
 }
 
+// THE JOB-SIDE EXACTLY-ONE-RECEIPT ASSERTION (gunbc.live_deploy.apply_receipt): the rule -- exactly one
+// decodable document, apply XOR refusal, zero never (named), the receipt/conclusion pairing -- lives in
+// the receipt module with the documents it counts, not in shell in the workflow (DESIGN §6).
+data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply_receipt.dag",
+  function: "assert_dashboard_deploy_receipts",
+}
+
 data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/org_actions_inspection.dag",
   function: "org_actions_inspect_wet",
@@ -1543,6 +1551,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_admit_plan_run_pointer_target,
     gunbc_ci_admit_apply_run_pointer_target,
     gunbc_ci_admit_dashboard_deploy_inputs_target,
+    gunbc_ci_assert_dashboard_deploy_receipts_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
@@ -2501,6 +2510,16 @@ fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_admit_dashboard_deploy_inputs_target.entry,
     function: gunbc_ci_admit_dashboard_deploy_inputs_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_assert_dashboard_deploy_receipts_target.entry,
+    function: gunbc_ci_assert_dashboard_deploy_receipts_target.function,
     claim_run: false,
     receipt_rel: none
   )
