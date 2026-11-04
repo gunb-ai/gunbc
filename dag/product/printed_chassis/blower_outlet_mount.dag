@@ -137,9 +137,6 @@ fn lug_arm_protrusion(wall: Micrometer) -> Int { um(m: blower_lug_arm_thickness)
 // whole mount inside a height reads.
 fn label_side_stack(clearance: Micrometer) -> Int { um(m: clearance) + um(m: blower_lug_arm_thickness) + um(m: blower_lug_screw_head_height) }
 
-// How much of the screw enters the lug: its length less the arm and the boss.
-fn lug_screw_engagement(clearance: Micrometer) -> Int { um(m: blower_lug_screw_length) - um(m: blower_lug_arm_thickness) - um(m: clearance) }
-
 // The arm runs from the socket's corner end, past the frame, to the hole, flat on the label face.
 fn lug_arm_adds(m: OutletMount, half: Int, clearance: Micrometer, wall: Micrometer) -> List<Primitive> {
   let margin = um(m: blower_lug_arm_margin)
