@@ -656,8 +656,8 @@ fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDeco
 // THE ONE DERIVATION OF A TAKEN SNAPSHOT'S PATH LIVES IN THE STORE THAT WRITES IT, AND NOTHING ELSE ASKS
 // FOR ONE: gunbc.dispatch_credential_snapshot derives the path INSIDE dispatch_credential_snapshot_take,
 // through credential_snapshot_path_for_attempt, over that module's own declaration row
-// (taken_credential_snapshot_slots) and the attempt-state declaration's entry name
-// (gunbc.roadmap.roadmap_attempt_state_store attempt_state_entry_name) -- the attempt identity in, the path
+// (taken_credential_snapshot_slots) and the attempt-state naming module's entry name
+// (gunbc.roadmap.roadmap_attempt_state_naming attempt_state_entry_name) -- the attempt identity in, the path
 // out, and no parameter through which a caller could name a file. Every reader downstream, the two draws
 // below included, reads the path OFF the sealed TakenCredentialSnapshot the take returned
 // (taken_credential_snapshot_path) rather than deriving one: a path re-derived at a reader is exactly the
