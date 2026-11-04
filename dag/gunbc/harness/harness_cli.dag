@@ -857,7 +857,7 @@ fn harness_worker_cli(
   harness_worker_turn_cli(
     worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
     events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
-    alignment_chain_fingerprint: alignment_chain_fingerprint, turn: none,
+    alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, turn: none,
   )
 }
 
@@ -875,6 +875,8 @@ fn harness_durable_worker_cli(
   gunbc_program: String,
   attempt_identity: String,
   alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
   dispatch_node: String,
   turn_ordinal: Int,
   state_root: String,
@@ -884,7 +886,7 @@ fn harness_durable_worker_cli(
     Present { value: turn } => harness_worker_turn_cli(
       worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
       events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
-      alignment_chain_fingerprint: alignment_chain_fingerprint, turn: Present { value: turn },
+      alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, turn: Present { value: turn },
     )
   }
 }
@@ -899,6 +901,8 @@ fn harness_worker_turn_cli(
   gunbc_program: String,
   attempt_identity: String,
   alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
   turn: HarnessCallerTurn?,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
