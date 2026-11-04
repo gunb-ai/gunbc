@@ -626,7 +626,7 @@ fn attempt_open_payload<P>(store: SlotStore, record: P, codec: AttemptPayloadCod
       reference: codec.reference_of(reserved) as NonEmptyStr,
       state: AttemptReserved,
       payload: codec.encode(reserved) as NonEmptyStr,
-      expected: ExpectSlotAbsent)
+      expected: ExpectSlotGeneration { generation: cas_generation_first() })
   }
 }
 
