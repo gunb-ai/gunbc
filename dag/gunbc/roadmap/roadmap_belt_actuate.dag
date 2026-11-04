@@ -330,7 +330,7 @@ import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly,
   RefusalCauseInfrastructure, RefusalCauseCandidate,
   compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
-  refused_retry_standing, refused_retry_owed, refused_retry_ledger_entry_name, refused_retry_ledger_count,
+  refused_retry_standing, refused_retry_wakes, refused_retry_ledger_entry_name, refused_retry_ledger_count, refused_retry_terminal_ordinal,
   refused_retry_exhausted_reason, refused_retry_bound,
   RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop, belt_verification_retry_verdict,
 }
@@ -9094,6 +9094,37 @@ fn belt_verify_retry_standing(instance: HostDashboardInstance, progress: Workflo
   }
 }
 
+// ONE LEDGER ENTRY, recorded before the decision it licenses is returned: a retry (Run) or the terminal (Refuse).
+fn belt_verify_retry_ledger_write(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  receipt_basename: String,
+  ordinal: Int,
+  cause: String,
+  onwritten: BeltVerificationDecision,
+) -> BeltVerificationDecision {
+  match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
+    AttemptStateUnready { detail } =>
+      BeltVerificationEvidenceUnreadable { reason: join(["the refused-retry ledger could not be opened, so the decision is not made unrecorded: ", detail], "") }
+    AttemptStateReady { store } =>
+      match attempt_state_write(
+        store: store,
+        member: AttemptVerificationRetryEntry { receipt_basename: receipt_basename, ordinal: ordinal },
+        content: serialize_json(v: json_object(members: [
+          json_kv(key: "schema", value: json_string(s: "roadmap-refused-retry/v1")),
+          json_kv(key: "ordinal", value: json_int(n: ordinal)),
+          json_kv(key: "bound", value: json_int(n: refused_retry_bound)),
+          json_kv(key: "cause", value: json_string(s: cause)),
+        ])),
+      ) {
+        FilesystemWritten { path: _ } => onwritten
+        FilesystemWriteRefused { path: _, error: e } =>
+          BeltVerificationEvidenceUnreadable { reason: join(["the refused-retry ledger entry could not be written, so the decision is not made unrecorded: ", e], "") }
+      }
+  }
+}
+
 fn belt_verify_retry_gate(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
@@ -9109,28 +9140,14 @@ fn belt_verify_retry_gate(
         Present { value: n } =>
           match belt_verification_retry_verdict(decision: decision, source: source, retries_recorded: n) {
             RefusedRetryPassThrough => decision
-            RefusedRetryStop { reason } => BeltVerificationRefuse { reason: reason }
-            RefusedRetryRun { ordinal, cause } => {
-              match attempt_state_open(instance: instance, node: node_id as String, attempt_key: progress.attempt_key) {
-                AttemptStateUnready { detail } =>
-                  BeltVerificationEvidenceUnreadable { reason: join(["the refused-retry ledger could not be opened, so the retry is not made unrecorded: ", detail], "") }
-                AttemptStateReady { store } =>
-                  match attempt_state_write(
-                    store: store,
-                    member: AttemptVerificationRetryEntry { receipt_basename: receipt_basename, ordinal: ordinal },
-                    content: serialize_json(v: json_object(members: [
-                      json_kv(key: "schema", value: json_string(s: "roadmap-refused-retry/v1")),
-                      json_kv(key: "ordinal", value: json_int(n: ordinal)),
-                      json_kv(key: "bound", value: json_int(n: refused_retry_bound)),
-                      json_kv(key: "cause", value: json_string(s: cause)),
-                    ])),
-                  ) {
-                    FilesystemWritten { path: _ } => BeltVerificationRun
-                    FilesystemWriteRefused { path: _, error: e } =>
-                      BeltVerificationEvidenceUnreadable { reason: join(["the refused-retry ledger entry could not be written, so the retry is not made unrecorded: ", e], "") }
-                  }
+            RefusedRetryStop { reason } =>
+              if n > refused_retry_bound {
+                BeltVerificationRefuse { reason: reason }
+              } else {
+                belt_verify_retry_ledger_write(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: receipt_basename, ordinal: refused_retry_terminal_ordinal(), cause: reason, onwritten: BeltVerificationRefuse { reason: reason })
               }
-            }
+            RefusedRetryRun { ordinal, cause } =>
+              belt_verify_retry_ledger_write(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: receipt_basename, ordinal: ordinal, cause: cause, onwritten: BeltVerificationRun)
           }
       }
     }
@@ -14305,7 +14322,7 @@ type BeltAttemptObligationRun
 // leaves a retry; the obligation then runs belt_verify_retry_gate, which records it.
 fn belt_verify_retry_wakes(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, kind: BeltAttemptObligationKind) -> Bool {
   match kind {
-    VerifyObligation => refused_retry_owed(standing: belt_verify_retry_standing(instance: instance, progress: progress))
+    VerifyObligation => refused_retry_wakes(standing: belt_verify_retry_standing(instance: instance, progress: progress))
     CaptureObligation => false
     ReviewObligation => false
     AuditObligation => false
@@ -14596,7 +14613,7 @@ type BeltDiscovery
 // PURE: which attempts are owed something, in observation order, and the bounded prefix to queue.
 fn belt_discovery_owed(instance: HostDashboardInstance, attempts: List<WorkflowAttemptProgress>) -> List<WorkflowAttemptProgress> {
   attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0
-    || refused_retry_owed(standing: belt_verify_retry_standing(instance: instance, progress: p)))
+    || refused_retry_wakes(standing: belt_verify_retry_standing(instance: instance, progress: p)))
 }
 
 fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery {

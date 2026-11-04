@@ -3,7 +3,7 @@ module test.claim.verification_evidence_addressing_witness
 import gunbc.roadmap.roadmap_refused_retry {
   RefusalCauseInfrastructure, RefusalCauseCandidate, RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop,
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly,
-  belt_verification_retry_verdict, refusal_cause_class, refused_retry_standing, refused_retry_bound,
+  belt_verification_retry_verdict, refusal_cause_class, refused_retry_standing, refused_retry_bound, refused_retry_wakes, refused_retry_terminal_ordinal, refused_retry_exhausted_reason,
   compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
 }
 import gunbc.compute.work_request { work_ending_wire, WorkEndedRefusedByInfrastructure, WorkEndedFailed, WorkEndedCancelled }
@@ -925,4 +925,19 @@ test fn resume_never_re_runs_a_passed_or_failed_verdict() -> Bool {
       BeltVerificationDefer { reason: _ } => true
       _ => false
     })
+
+fn wakes_wakes_at(n: Int) -> Bool {
+  refused_retry_wakes(standing: refused_retry_standing(class: RefusalCauseInfrastructure, retries_recorded: n))
+}
+
+// CLAIM C6 (review 90565): the belt's wake chain REACHES the RetryExhausted terminal. Walking the ledger
+// count up from zero, the obligation wakes at every count through the bound (so the gate sees n == bound
+// and answers Stop), and does not wake once the terminal entry (ordinal bound+1) is recorded. RED against a
+// wake that is true only for Owed: it is false at n == bound, so the Stop arm is never reached.
+test fn c6_the_wake_chain_reaches_the_exhausted_terminal_once() -> Bool {
+  wakes_at(n: 0) && wakes_at(n: refused_retry_bound - 1) && wakes_at(n: refused_retry_bound)
+    && !wakes_at(n: refused_retry_terminal_ordinal())
+    && refused_retry_terminal_ordinal() == refused_retry_bound + 1
+    && !refused_retry_wakes(standing: RefusedRetryOperatorOnly)
+    && refused_retry_exhausted_reason(attempts: refused_retry_terminal_ordinal()) == refused_retry_exhausted_reason(attempts: refused_retry_bound)
 }
