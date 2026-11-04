@@ -14,6 +14,7 @@ echo "host=$(hostname) systemd=$(systemctl --version | head -1) kernel=$(uname -
 W=$(mktemp -d /var/tmp/slotctl.XXXXXX)
 trap 'rm -rf "$W"; systemctl list-units "slotctl-*" --no-legend --plain | awk "{print \$1}" | xargs -r systemctl stop 2>/dev/null' EXIT
 dd if=/dev/urandom of="$W/hot.bin" bs=1M count=1024 status=none
+sync "$W/hot.bin"
 cat > "$W/fixture.py" <<'PY'
 import mmap, os, random, sys, time
 kind, E = sys.argv[1], 2 * 1024**3
@@ -24,23 +25,24 @@ def alloc(n):
         b = bytearray(chunk); b[::4096] = b"\x01" * len(b[::4096]); keep.append(b); n -= chunk
 f = open(os.path.join(os.path.dirname(__file__), "hot.bin"), "rb")
 m = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-def touch(secs):
-    end = time.time() + secs; n = len(m) // 4096
+def touch(secs, span):
+    end = time.time() + secs; n = span // 4096
     while time.time() < end:
         for _ in range(2000): m[random.randrange(n) * 4096]
 if kind == "under":      # working set 0.5E anon + 0.2E hot file: must PASS
-    alloc(int(0.5 * E)); touch(15); print("under: done", flush=True); sys.exit(0)
+    alloc(int(0.5 * E)); touch(15, int(0.2 * E)); print("under: done", flush=True); sys.exit(0)
 if kind == "thrash":     # anon 0.9E + hot file 0.5E > E, anon alone below max: reclaim-only stall, no allocation fails
-    alloc(int(0.9 * E)); print("thrash: allocated", flush=True); touch(600)
+    alloc(int(0.9 * E)); print("thrash: allocated", flush=True); touch(600, int(0.5 * E))
 if kind == "grow":       # anon grows to 1.6E: plain allocation overrun
-    alloc(int(1.6 * E)); print("grow: SURVIVED (bad)", flush=True); touch(600)
+    alloc(int(1.6 * E)); print("grow: SURVIVED (bad)", flush=True); touch(600, int(0.5 * E))
 PY
 run_case() { # name highcfg oomd fixture
   local shape=$1 high=$2 oomd=$3 fx=$4 unit="slotctl-$1-$4"
   local props=(-p MemoryMax=2G -p MemorySwapMax=0 -p MemoryHigh="$high" -p CPUQuota=100% -p IOWeight=1 -p TasksMax=64 -p RuntimeMaxSec=75)
   [ "$oomd" = 1 ] && props+=(-p ManagedOOMMemoryPressure=kill -p ManagedOOMMemoryPressureLimit=40% -p ManagedOOMMemoryPressureDurationSec=15s)
+  python3 -c "import os,sys;fd=os.open(sys.argv[1],os.O_RDONLY);os.fsync(fd) if False else None;os.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)" "$W/hot.bin"
   local cg=/sys/fs/cgroup/system.slice/$unit.service t0=$(date +%s.%N)
-  ( while sleep 2; do [ -d "$cg" ] && { cat "$cg/memory.events" > "$W/ev.$unit" 2>/dev/null; cat "$cg/memory.pressure" > "$W/psi.$unit" 2>/dev/null; }; done ) & local samp=$!
+  ( while sleep 2; do [ -d "$cg" ] && { cat "$cg/memory.events" > "$W/ev.$unit" 2>/dev/null; cat "$cg/memory.pressure" > "$W/psi.$unit" 2>/dev/null; grep -E "^(anon|file|file_mapped) " "$cg/memory.stat" > "$W/st.$unit" 2>/dev/null; }; done ) & local samp=$!
   local out; out=$(systemd-run --unit="$unit" --wait "${props[@]}" python3 "$W/fixture.py" "$fx" 2>&1); local rc=$?
   kill $samp 2>/dev/null; wait $samp 2>/dev/null
   local dt; dt=$(awk -v a="$t0" -v b="$(date +%s.%N)" 'BEGIN{printf "%.0f", b-a}')
@@ -48,6 +50,7 @@ run_case() { # name highcfg oomd fixture
   local oomk; oomk=$(awk '$1=="oom_kill"{print $2}' "$W/ev.$unit" 2>/dev/null)
   local hi; hi=$(awk '$1=="high"{print $2}' "$W/ev.$unit" 2>/dev/null)
   local oomd_k; oomd_k=$(journalctl -u systemd-oomd --since "-$((dt+5))s" --no-pager -q 2>/dev/null | grep -c "$unit" || true)
+  echo "MEMSTAT_LAST $unit $(tr '\n' ' ' < "$W/st.$unit" 2>/dev/null)"
   printf 'RESULT shape=%-12s fixture=%-7s rc=%s result=%-10s secs=%-3s kernel_oom_kill=%s high_events=%s oomd_log_lines=%s\n' "$shape" "$fx" "$rc" "${res:-?}" "$dt" "${oomk:-?}" "${hi:-?}" "$oomd_k"
   [ "$oomd" = 1 ] && journalctl -u systemd-oomd --since "-$((dt+5))s" --no-pager -q 2>/dev/null | grep "$unit" | sed 's/^/OOMD_JOURNAL /'
   systemctl reset-failed "$unit.service" 2>/dev/null
