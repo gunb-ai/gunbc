@@ -137,7 +137,7 @@ fn oci_signed_exchange(shape: OciRequestShape, host: NonEmptyStr, path_and_query
                 url: join(["https://", host as String, path_and_query as String], "") as NonEmptyStr,
                 path_and_query: path_and_query,
                 date: date as NonEmptyStr,
-                authorization: oci_authorization_header(key: oci_api_key_id, headers_list: headers_list, signature_base64: oci_signature_base64(signature: map(signature, o => o as Int))) as NonEmptyStr,
+                authorization: oci_authorization_header(key: oci_api_key_id, headers_list: headers_list, signature_base64: oci_signature_base64(signature: signature)) as NonEmptyStr,
                 content_sha256: content_sha256,
               )
           }

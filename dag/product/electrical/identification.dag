@@ -57,6 +57,14 @@ type MarkingReading {
 
 type PrintedRating = PrintedFuseRating { current: Ampere, interrupt_voltage: Volt? }
 
+// TWO WAYS A FOOTPRINT SAYS SOMETHING ABOUT WHAT IS IN IT, read off a photograph rather than off a
+// marking. FootprintUnpopulated is absence: the pads are bare in a frame that identifies itself by
+// content, and it means no part is fitted there on this board. Its twin, BodySeenMarkingUnread, is
+// presence read the same way — a body stands in the cited region of the cited frame and no marking was
+// read from it — and it makes no claim about what the part is. The pair stays distinguishable in the
+// type. Do not write a sighted body as MarkingUnresolved with no text: that arm means a part named in
+// the session that nobody saw, and its observed_presence is PresenceUnobserved, so folding "we saw a
+// body" into it would make "we saw a part" and "we never looked" one state.
 type ComponentIdentification
   = IdentifiedByMarking { row: ElectronicComponentRow, marking: MarkingReading }
   | MarkingSharedByMakers { rows: List<ElectronicComponentRow>, marking: MarkingReading }
@@ -65,6 +73,7 @@ type ComponentIdentification
   | ResistanceCodeRead { milliohms: Nat, marking: MarkingReading }
   | MarkingUnresolved { marking: MarkingReading?, discriminator: NonEmptyStr }
   | FootprintUnpopulated { evidence: EvidenceRef }
+  | BodySeenMarkingUnread { evidence: EvidenceRef }
 
 // WHEN THE COMPONENT WAS SEEN. seen is the observation's order against the board's dividing events, in
 // the vocabulary its readings use (product.electrical.continuity ReadingOrder). A part removed from the
@@ -98,6 +107,7 @@ fn observed_presence(i: ComponentIdentification) -> ObservedPresence {
     ResistanceCodeRead { milliohms: _, marking: _ } => PartPresent
     MarkingUnresolved { marking, discriminator: _ } => match marking { Present { value: _ } => PartPresent, Absent => PresenceUnobserved }
     FootprintUnpopulated { evidence: _ } => PartAbsent
+    BodySeenMarkingUnread { evidence: _ } => PartPresent
   }
 }
 
@@ -162,6 +172,7 @@ fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }
 
@@ -170,7 +181,8 @@ fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
 // a finding that asked "is there text?" took that explanation for the identification (the
 // candidate-as-identified defect). A marking several makers share names the part's rows and leaves only
 // the maker open, so it identifies the part. A printed rating or a resistor code is the value the
-// part carries, read off its body. An unresolved marking and a bare footprint identify nothing.
+// part carries, read off its body. An unresolved marking, a bare footprint and a body sighted without a
+// readable marking identify nothing.
 fn identification_established(i: ComponentIdentification) -> Bool {
   match i {
     IdentifiedByMarking { row: _, marking: _ } => true
@@ -180,6 +192,7 @@ fn identification_established(i: ComponentIdentification) -> Bool {
     ResistanceCodeRead { milliohms: _, marking: _ } => true
     MarkingUnresolved { marking: _, discriminator: _ } => false
     FootprintUnpopulated { evidence: _ } => false
+    BodySeenMarkingUnread { evidence: _ } => false
   }
 }
 
@@ -247,5 +260,6 @@ fn identification_text(i: ComponentIdentification) -> String? {
     ResistanceCodeRead { milliohms, marking } => Present { value: join([to_string(milliohms), " milliohms by the resistor code '", marking.text as String, "'"], "") }
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }

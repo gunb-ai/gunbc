@@ -16,7 +16,6 @@ import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.micron_mt25qu01g { mt25qu01gbbb8e12 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
-import extdeps.electronic_component.diodes_bss138 { bss138 }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
@@ -156,6 +155,14 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   reconstructed(revision: p4261_e1, designator: "D5", part: PartConstrainedToRows { rows: [tvs_5_0smdj60a, aos_tvs_5_0smdj60a] }),
   e1_part(designator: "C10_P5", row: eeh_zu1j151),
   e1_part(designator: "C12_P5", row: eeh_zu1j151),
+  // OPEN QUESTION on Q21_P5 and Q22_P5 (the note on the two rows in product.p4261.e1_b holds both
+  // records; it is not restated here). The bench read "017N10LF / HAD228" on both bodies of the stacked
+  // pair from one 2026-10-19 photograph, whose bytes are not in the photograph store; the 2026-11-03
+  // atlas pass did not contradict that, it simply did not repeat it. Until the operator settles it, both
+  // positions keep their claim and both board rows keep their identification, because two findings the
+  // operator measured are derived from those rows -- if the print turns out to sit on only one body, the
+  // input-switch BLOCKING reading and the protected-bus downstream-terminal read become unestablished.
+  // What settles it is in the e1_b note.
   e1_part(designator: "Q21_P5", row: ipb017n10n5lf),
   e1_part(designator: "Q22_P5", row: ipb017n10n5lf),
   e1_part(designator: "U1_P5", row: lm5066i_pwp),
@@ -164,8 +171,16 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   e1_unclaimed(designator: "D4_P5"),
   e1_unclaimed(designator: "U2_P5"),
   e1_unclaimed(designator: "U3_P5"),
-  e1_part(designator: "Q301", row: bss138),
-  e1_part(designator: "Q300", row: bss138),
+  // Q300 AND Q301 CARRY NO CLAIM. Both were once claimed as Diodes Incorporated's BSS138 on the mark
+  // "K38", which was a stronger statement than the evidence supports: "K38" is a marking several makers
+  // use, and the model holds exactly one BSS138 row, so there is no second candidate row to constrain
+  // the pair to and PartConstrainedToRows would have been a claim dressed up as a bet. The positions
+  // stay listed -- NVIDIA's design has them -- with no population claim. What would settle it is on the
+  // observation that raised it, where observations live: product.p4261.e1_b's e1_k38_candidate carries
+  // the discriminator, "the maker's date-code line, or another maker's marking table, read against
+  // Diodes Incorporated's BSS138 table". A second maker's cited row is what would let a claim return.
+  e1_unclaimed(designator: "Q301"),
+  e1_unclaimed(designator: "Q300"),
   e1_unclaimed(designator: "U2_P1"),
   e1_unclaimed(designator: "Q5_P5"),
   e1_unclaimed(designator: "D5_P5"),
