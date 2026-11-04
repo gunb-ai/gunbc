@@ -27,6 +27,7 @@ import gunbc.ci.ci_runner_target {
   GithubHostedRunner,
   selected_ci_runner_target,
 }
+import std.types { commit_sha_text_holds }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.required_ci_contract_epoch { required_ci_context_name }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
@@ -82,14 +83,76 @@ type DagInvocation {
 // THE PUBLIC SEED: the repository whose compiler runs this repository's claims, when that is not the
 // repository under CI. Present only for a mirror that carries content and no compiler; Absent means the
 // repository builds itself, which is what a self-compiling repository does and how gunbc's own row reads.
+//
+// WHICH SEED COMMIT, AS A SUM RATHER THAN A FIELD-NAMED-REF -- AND WHY THERE IS NO BRANCH VARIANT.
+//
+// The field this replaces was `ref_name: NonEmptyStr`, and its two possible kinds (a moving branch, a
+// pinned commit) were told apart by convention alone. That is the bug the exact-pin work exists to close:
+// a job that waits in the runner queue behind the run it follows resolves `ref: main` at the moment IT
+// starts, so the compiler that judged a seal and the compiler that later admits the publication can be
+// two different commits, and the wall that refuses moving checkout refs (gunbc.action_use_admission
+// admit_workflow_checkout_refs) could not see the difference because both kinds are a string. A
+// `Seed_branch_declared` variant that every consumer refuses would be exactly that bug, one layer up: a
+// nameable state with no legal use, kept alive by a predicate family instead of by the model. So a branch
+// is not a variant here: it is UNCONSTRUCTIBLE, and the only way to name a seed commit is to carry one.
+//
+// `Seed_pin_owed` is the other inhabitant, and it is not a placeholder sha. It says the requirement
+// exists and the approved commit does not, which is the standing of every mirror row until the operator
+// records the intended source commit; a consumer asked to emit a seed step from it refuses with its
+// reason rather than emitting a workflow that checks out something else and calls it the seed.
+type SeedSource
+  = Seed_commit_pin { sha: String }
+  | Seed_pin_owed { owed_because: NonEmptyStr }
+
+// WHAT A MIRROR'S ROW SAYS ABOUT ITS VERIFIER, and nothing more. The verifier's IDENTITY -- its job id, the
+// name of the output that names the commit, and the step that earns that output -- is model-owned, in
+// gunbc.action_use_admission (seed_pin_verifier_producer), because that identity is what the wall admits a
+// consumer's `needs.` read from; a row that could name them could steer the job it built away from the
+// entry that admits it. What the row legitimately owns is the human-facing step name, and where the seed
+// comes from, derived from the row's own `repository` (gunbc.ci.repository_seed_steps seed_pin_fetch_url),
+// so a verifier cannot certify a pin in a store fetched from a different repository than the one the lane is
+// filled from. The pin is fetched BY SHA and from nothing else, so a pin that exists only in a fork, or only
+// under a tag, or only as a branch tip, is refused rather than quietly used.
+type SeedPinVerifierProducer {
+  verification_step_name: NonEmptyStr
+}
+
 type PublicSeed {
   repository: NonEmptyStr
   checkout_path: NonEmptyStr
-  ref_name: NonEmptyStr
+  source: SeedSource
+  verifier: SeedPinVerifierProducer
   build_command: List<Node>
   seed_binary_relative_path: NonEmptyStr
   record_step_name: NonEmptyStr
   build_step_name: NonEmptyStr
+}
+
+// THE PIN ITSELF, for the emitter that has to PUT it in a step. There is one way to read a pin out of a
+// row and it is this: an owed pin is a refusal, never an empty string, so no consumer can render a
+// workflow whose ref is "" (which GitHub reads as "the default branch", the very fallback being removed).
+fn seed_source_pin(source: SeedSource) -> Optional<String> {
+  match source {
+    Seed_commit_pin { sha: s } =>
+      if commit_sha_text_holds(head: s) { Present { value: s } } else { Absent {  } }
+    Seed_pin_owed { owed_because: _ } => Absent {  }
+  }
+}
+
+// THE REFUSAL A CONSUMER RETURNS FOR A SEED ITS CLAIMS CANNOT BE JUDGED BY. The text names the variant
+// and the missing fact, because "no workflow was emitted" is only useful if the reader can tell an
+// unfiled requirement from a mistake in the emitter. An empty reason means the source is admissible.
+fn seed_source_refusal_reason(source: SeedSource) -> String {
+  match source {
+    Seed_commit_pin { sha: s } =>
+      match seed_source_pin(source: source) {
+        Present { value: _ } => ""
+        Absent {  } =>
+          join(["Seed_commit_pin carries ", s, ", which std.types commit_sha_text_holds refuses: a seed pin is forty lowercase hexadecimal characters and nothing else"], "")
+      }
+    Seed_pin_owed { owed_because: b } =>
+      join(["Seed_pin_owed: this seed has no approved commit yet (", b, "). Until the intended source commit is recorded as Seed_commit_pin, no workflow may check out the seed: a branch or a branch tip names a different tree on every run, and a placeholder sha would claim a commit nobody approved."], "")
+  }
 }
 
 // THE COMPOSED ROOT, and the obligations that make the copy a WALL rather than a convenience.
@@ -588,8 +651,35 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
     Present { value: "REFUSE: a declared job carries a timeout that is not positive, so it would be killed before it could report a reason. The gate's timeout is refused at zero; heal, drift and publisher timeouts are held to the same bound (gunbc.ci.repository_ci_profile profile_optional_job_timeouts_are_positive)." }
   } else if minute_count(m: profile.roster.timeout) == 0 {
     Present { value: "REFUSE: the required gate declares a timeout that is not positive; it would be killed before it could report a reason." }
+  } else if profile_seed_pin_is_a_commit_or_is_owed(profile: profile) == false {
+    Present { value: "REFUSE: the seed declares Seed_commit_pin with something that is not a commit: std.types commit_sha_text_holds wants forty lowercase hexadecimal characters and nothing else. A pin is the identity the seed-pin verifier proves exists, so a typo here is a workflow that can only ever refuse (gunbc.ci.repository_ci_profile profile_seed_pin_is_a_commit_or_is_owed)." }
   } else {
     Absent
+  }
+}
+
+// THE SEED'S PIN IS EITHER A COMMIT OR AN OPEN REQUIREMENT, and nothing else. A Seed_commit_pin that is
+// not a sha is refused here, at admission, because it is a lie about an identity: the verifier would spend
+// a job fetching a string that cannot name an object, and every consumer would refuse downstream with a
+// reason that reads like an emitter defect. Seed_pin_owed is NOT refused -- it is the honest standing of a
+// mirror whose approved commit has not been recorded yet, and refusing it would put the operator's
+// unfinished requirement into the same category as a malformed row. What an owed pin cannot do is emit a
+// workflow: each seed-consuming consumer refuses it by name (seed_source_refusal_reason), which is where
+// an unfiled requirement has to surface -- at the byte that would have used it.
+fn profile_seed_pin_is_a_commit_or_is_owed(profile: RepositoryCiProfile) -> Bool {
+  match profile_public_seed(profile: profile) {
+    Absent {  } => true
+    Present { value: seed } => match seed.source {
+      // An owed pin is the operator's unfinished requirement, not a malformed row: it is admitted here,
+      // and every seed-consuming emitter refuses it by name. A declared pin is admitted only as the one
+      // reading of it admits -- there is no second sha check here to fall out of step with.
+      Seed_pin_owed { owed_because: _ } => true
+      Seed_commit_pin { sha: _ } =>
+        match seed_source_pin(source: seed.source) {
+          Present { value: _ } => true
+          Absent {  } => false
+        }
+    }
   }
 }
 

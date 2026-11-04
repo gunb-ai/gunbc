@@ -117,7 +117,7 @@ import gunbc.machine_intake.megarac_media_attach {
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  EndReleaseKeptHostOn, MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved, MegaRacHandoff, MegaRacHandoffAttempted, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffConfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffNotNeeded, detach_evidence_text, end_media_is_owed, handoff_media_harness, harness_finding_text, media_attach_outcome_reason, media_loss_after_handoff, outcome_attributing_media_loss, megarac_media_attach_text, MegaRacMediaAttachNotAttempted,
+  EndReleaseKeptHostOn, MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved, MegaRacHandoff, MegaRacHandoffAttempted, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffConfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffNotNeeded, detach_evidence_text, end_media_is_owed, handoff_media_harness, harness_finding_text, media_attach_outcome_reason, media_loss_after_handoff, outcome_attributing_media_loss, megarac_media_attach_text, presentation_evidence_text, MegaRacMediaAttachNotAttempted,
 }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_boot_media_gate }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
@@ -258,7 +258,7 @@ test fn connecting_is_pending_inside_the_window() -> Bool {
 test fn connecting_only_times_out_keeping_the_last_look() -> Bool {
   match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: look(at: 31000, status: "100", session: "0"), phase: ReadinessAfterStart, looks: 15) {
     ReadinessWindowClosed { last: l, deadline: d, looks: n } =>
-      d == 31000 && n == 15 && (match l.reading { ReadinessConnecting { row: r } => r.redirection_wire == 100 _ => false })
+      d == 31000 && n == 15 && (match l.reading { ReadinessConnecting { row: r, configurations: _ } => r.redirection_wire == 100 _ => false })
     _ => false
   }
 }
@@ -274,7 +274,7 @@ test fn unknown_after_connecting_refuses() -> Bool {
 
 test fn started_without_a_bound_session_is_pending() -> Bool {
   match look(at: 2000, status: "1", session: "255").reading {
-    ReadinessStartedUnbound { row: r } => optional_text_is(v: r.session_index, want: "255")
+    ReadinessStartedUnbound { row: r, configurations: _ } => optional_text_is(v: r.session_index, want: "255")
     _ => false
   }
 }
@@ -316,7 +316,7 @@ test fn not_presented_is_pending_after_start_and_refused_when_it_was_presented()
 // ALREADY STARTED: no detach, no start, and the evidence carries the Started row's own indices.
 test fn already_started_is_ready_with_its_evidence_and_no_list_index() -> Bool {
   match readiness_wait_outcome(
-    wait: ReadinessWaitReady { look: look(at: 1500, status: "1", session: "0"), looks: 1 },
+    wait: ReadinessWaitReady { look: look(at: 1500, status: "1", session: "0"), looks: 1, in_interval: look(at: 1500, status: "1", session: "0") },
     image_name: desired_census,
     firmware: megarac_firmware_0_32,
     route: RouteAlreadyPresented,
@@ -386,7 +386,7 @@ test fn a_refused_presentation_withholds_the_handoff_with_the_wire() -> Bool {
 
 fn ready_outcome() -> MegaRacAttachResult {
   MegaRacAttachResult {
-    outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_clean, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported)),
+    outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: look(at: 1100, status: "0", session: "255") }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_clean, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported)),
     session_release: SessionReleased,
     baseline: none,
   }
@@ -528,7 +528,7 @@ fn raw_at(body: String) -> MegaRacRawRead {
 }
 
 fn ready_after(cd_before: CdErrorReading, general: String) -> MegaRacAttachOutcome {
-  readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_before, general_at_end: raw_at(body: general))
+  readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: look(at: 1100, status: "0", session: "255") }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_before, general_at_end: raw_at(body: general))
 }
 
 fn gate_of(outcome: MegaRacAttachOutcome) -> String {
@@ -580,14 +580,14 @@ test fn a_code_outside_the_table_beside_a_started_presentation_is_ready_and_reco
 }
 
 test fn an_unread_code_at_readiness_withholds_as_unestablished() -> Bool {
-  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_clean, general_at_end: MegaRacRawRead { answered: false, body: "curl: (28)", observed_at: none }) {
+  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: look(at: 1100, status: "0", session: "255") }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_clean, general_at_end: MegaRacRawRead { answered: false, body: "curl: (28)", observed_at: none }) {
     MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_ready: CdErrorUnread { detail: d }, general_at_ready: _ } => d == "curl: (28)"
     _ => false
   }
 }
 
 test fn a_clean_code_at_readiness_is_ready() -> Bool {
-  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported)) {
+  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: look(at: 1100, status: "0", session: "255") }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported)) {
     MegaRacPresentationReady { route: _, evidence: e } => (match e.cd_at_ready { CdErrorRead { code: CdErrorNone } => true _ => false })
     _ => false
   }
@@ -607,7 +607,7 @@ data run_36721915217_image: NonEmptyStr = "gunbc-mtcollins1-census-ubuntu-24.04.
 test fn boot_run_36721915217_readings_now_admit() -> Bool {
   let general = MegaRacRawRead { answered: true, body: run_36721915217_general_at_ready, observed_at: Present { value: 1790776024628 } }
   let started = ReadinessLook { observed_at: 1790776024465, reading: attach_readiness(answered: true, body: run_36721915217_configurations_at_ready, image_name: run_36721915217_image, firmware: megarac_firmware_0_32) }
-  let outcome = readiness_wait_outcome(wait: ReadinessWaitReady { look: started, looks: 7 }, image_name: run_36721915217_image, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "6", start: WriteAccepted { body: "{}" } }, cd_before: cd_error_reading(body: run_36721915217_general_at_ready, firmware: megarac_firmware_0_32), general_at_end: general)
+  let outcome = readiness_wait_outcome(wait: ReadinessWaitReady { look: started, looks: 7, in_interval: started }, image_name: run_36721915217_image, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "6", start: WriteAccepted { body: "{}" } }, cd_before: cd_error_reading(body: run_36721915217_general_at_ready, firmware: megarac_firmware_0_32), general_at_end: general)
   (match outcome {
     MegaRacPresentationReady { route: _, evidence: e } =>
       e.session_index == Present { value: "0" }
@@ -1023,4 +1023,66 @@ test fn the_write_verdict_follows_the_exit_code_not_the_stderr_wording() -> Bool
     && (match megarac_write_answer(exit_code: 28, body: "", stderr: "curl: (22) misleading text") { WriteEffectUncertain { exit_code: x, partial_body: _, stderr: _ } => x == 28 _ => false })
     && (match megarac_write_answer(exit_code: 7, body: "", stderr: "curl: (7) Failed to connect") { WriteEffectUncertain { exit_code: x, partial_body: _, stderr: _ } => x == 7 _ => false })
     && (match megarac_write_answer(exit_code: 0, body: "{}", stderr: "") { WriteAccepted { body: _ } => true _ => false })
+}
+
+// ─── THE IN-INTERVAL READ SURVIVES THE WAIT ────────────────────────────────────────────
+// The interval between the StartMedia write and the started reading is what gunbc.megarac_media_model's
+// megarac_start_media_interval is a hypothesis about, and its read_obligation names this look ("Read
+// configurations 0 INSIDE the interval between a successful StartMedia and the started reading"). Two things
+// lost it: the loop overwrote its look on every pending pass, so only the ready look survived the wait, and the
+// ready path printed no look at all -- the bundle renders a look only where the attempt refuses. The wait now
+// carries its first look and presentation_evidence_text prints it. The fixture's in-interval look is the row
+// reading 0 beside the no-session marker, which decodes into ReadinessConnecting -- one of the three arms that
+// used to drop the document they were decoded from -- so these claims exercise all three layers at once.
+
+// The SAME fixture as ready_outcome(), with the in-interval look as its only variable -- including the
+// general-settings body, which is what makes cd_error_of_raw ANSWER rather than come back unread. An unread
+// code there sends the ready arm to MegaRacMediaStateUnestablished, which renders no evidence at all: these
+// three claims were red for that reason and no other, so the fixture that never reached the arm it claims to
+// exercise was the defect, not the claims.
+fn ready_outcome_with_interval(interval: ReadinessLook) -> MegaRacAttachOutcome {
+  readiness_wait_outcome(
+    wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: interval },
+    image_name: desired_census,
+    firmware: megarac_firmware_0_32,
+    route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } },
+    cd_before: cd_clean,
+    general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported),
+  )
+}
+
+fn evidence_text_of(outcome: MegaRacAttachOutcome) -> String {
+  match outcome {
+    MegaRacPresentationReady { route: _, evidence: e } => presentation_evidence_text(e: e)
+    _ => ""
+  }
+}
+
+// END TO END, THE WAY BOOT 8 RUNS IT: a wait of four looks that came up started still prints the FIRST look's
+// configurations -- the status the row read beside the no-session marker, which the ready look's own fields
+// never say.
+test fn the_ready_outcome_prints_the_in_interval_configurations() -> Bool {
+  let text = evidence_text_of(outcome: ready_outcome_with_interval(interval: look(at: 1100, status: "0", session: "255")))
+  string_contains(s: text, pattern: "\"redirection_status\":0")
+    && string_contains(s: text, pattern: "\"session_index\":255")
+}
+
+// THE FIRST LOOK, NOT THE READY ONE REPRINTED. The ready path types its own reading (redirection_status=,
+// session_index=) and prints a configurations DOCUMENT only for the in-interval look, so the two readings are
+// told apart by their JSON markers: the interval reads 0 beside the no-session marker 255, the ready look reads
+// 1 beside a bound 0. If the wait ever filled the interval from the ready look, the interval's marker would be
+// gone and the ready document's "session_index":0 would appear -- this claim goes red on either half alone.
+test fn the_in_interval_look_is_not_the_ready_look_reprinted() -> Bool {
+  let text = evidence_text_of(outcome: ready_outcome_with_interval(interval: look(at: 1100, status: "0", session: "255")))
+  string_contains(s: text, pattern: "\"redirection_status\":0")
+    && !string_contains(s: text, pattern: "\"session_index\":0")
+}
+
+// RED: IF THE IN-INTERVAL LOOK IS EVER DROPPED, THE TEXT COLLAPSES. Same wait, same ready look, two in-interval
+// documents differing only in the session the row carried. Should the receipt stop carrying the interval, the
+// two renders become one string and this goes red.
+test fn a_dropped_in_interval_look_would_collapse_the_receipt_text() -> Bool {
+  let left = evidence_text_of(outcome: ready_outcome_with_interval(interval: look(at: 1100, status: "0", session: "255")))
+  let right = evidence_text_of(outcome: ready_outcome_with_interval(interval: look(at: 1100, status: "0", session: "7")))
+  left != right
 }
