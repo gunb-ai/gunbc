@@ -339,7 +339,10 @@ test fn a_component_is_bound_only_to_its_own_boards_revision() -> Bool {
   // if a future edit starts binding unobserved parts, this claim goes red rather than following along.
   // The 2026-11-03 body sightings move exactly 66 of them from refused to admitted, so 191 + 66 = 257 and
   // 71 - 66 = 5 -- until the 2026-11-04 C3_F1 correction deleted that position's DesignatorReading, which
-  // leaves 261 readings to bind and one fewer admitted: 256 + 5. Refused is untouched, because C3_F1's
+  // leaves 261 readings to bind and one fewer admitted: 256 + 5. The same day's stored-frame evidence for
+  // J3 REPLACED its reading rather than adding to it -- grain A allows one modelled reading per part, so
+  // the bench row whose bytes never arrived gives way to one citing a frame the store holds -- which is why
+  // both totals hold: still 261 readings, still 256 admitted. Refused is untouched, because C3_F1's
   // reading was admitted (its InstalledComponent was observed) and the row is now held as an
   // UnresolvedPart instead, which is a board observation and not a bindable reading. The five that stay refused, each for a reason of its own: D1_P1 and U3_P3, where the pass
   // sighted a body and an empty footprint in the same region and claims neither, and U40, whose body was

@@ -710,10 +710,19 @@ test fn the_real_e1_judges_every_image_reading() -> Bool {
       // was counting as a reading. Deleted rows move this number DOWN, which is the direction that
       // catches a quiet deletion today. Measured at probe, one candidate per family, with
       // checkable + count(broken) + count(gaps) == read holding at 520.
+      //
+      // The same day's stored-frame evidence for J3 did not add a reading, it replaced one: grain A
+      // allows one modelled reading per part, so the bench row whose bytes never arrived (a gap) gives
+      // way to a row citing frame _22, boxed, which the store holds. read stays 520 -- one out, one in
+      // -- while checkable 379 -> 380 and gaps 141 -> 140. That is the movement worth pinning: a
+      // citation invented rather than read would have landed back in gaps, a second reading for J3
+      // would have raised read, and a quiet deletion would have lowered it. The other two frames the
+      // operator named are carried by the receipts' authority rather than by extra rows, which is where
+      // corroboration belongs when the board is allowed one reading per part.
       read == 520
-        && checkable == 379
+        && checkable == 380
         && count(broken) == 0
-        && count(gaps) == 141
+        && count(gaps) == 140
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0

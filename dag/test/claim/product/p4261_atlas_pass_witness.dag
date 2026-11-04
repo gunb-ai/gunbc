@@ -62,7 +62,6 @@ import extdeps.electronic_component.types { designator_eq, designator_of, design
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 
 import product.p4261.e1_position_receipts {
-  DesignatorAuthority,
   HeldReceipt,
   LabelSighting,
   ReceiptBasis,
@@ -218,10 +217,14 @@ test fn a_printed_frequency_is_not_an_identification() -> Bool {
 // duplicate rows the atlas itself struck, the bare thermal pads, and the three outlines that were
 // owed a closer look. Each of these is a position that would exist on NVIDIA's list and does not.
 // Two of these names are not like the others, and the difference is the rule rather than an exception.
-// J3 was on the design list BEFORE this pass: the 2026-10-20 bench session read it (upload 9cd281be, whose
-// bytes never reached us), so it keeps its position and its gap. What the pass must not do is mint anything
-// new for it -- so the check is that no J3 reading cites a frame the store holds, not that no J3 position
-// exists. U1_TSE is the mirror image: the corrected inventory reads its designator clear and confirmed
+// J3 was on the design list BEFORE this pass and keeps its position -- but since 2026-11-04 it keeps it for
+// a better reason than the one it had. It used to rest on the 2026-10-20 bench read of upload 9cd281be,
+// whose bytes never reached us, and the pin here was that NO J3 reading cited a frame the store held. The
+// operator has read 'J3' in three stored frames, so the pin is now the other half of the same rule: grain
+// A allows one modelled reading per part, so J3 has exactly ONE reading and it cites a frame the store
+// holds -- the witness that J3's identity rests on pixels, not on a name asserted twice, is
+// a_stored_frame_authority_is_checkable_against_the_board. What the pass must not do is mint anything NEW
+// for it, and a second reading would be exactly that. U1_TSE is the mirror image: the corrected inventory reads its designator clear and confirmed
 // (t4_07), so it IS a position; only its body marking is unread, and an unread marking is a population gap,
 // never a reason to drop a position the silkscreen gave us.
 test fn what_the_pass_refused_to_mint_is_absent() -> Bool {
@@ -243,7 +246,7 @@ test fn what_the_pass_refused_to_mint_is_absent() -> Bool {
               Broken { } => false
             }
           _ => false
-        })) == 0
+        })) == 1
 }
 
 // 6. The refusals are not silently dropped: each is on the observation side, named, with the photo
@@ -675,36 +678,49 @@ test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool 
 // The authority carried by frames rather than by a receipt is the one place a designator could be minted
 // with no pass behind it, so the frames have to do the work a receipt would have done. Every frame it
 // names must be in the store, resolved by CONTENT -- so a digest typed from memory fails, not only a
-// name typed wrong. A read that calls itself clear must say where in at least one of them the label
-// sits, because a clear read knows its own coordinates. And the board must state its own reading of that
-// same designator citing one of the very same bytes: rows agreeing on a NAME are worthless, rows agreeing
-// on which pixels the name was read from are a read that happened. `read_by` and `read_on` are provenance
+// name typed wrong. A read that calls itself clear must say where in at least one of them the label sits,
+// because a clear read knows its own coordinates. And the board must state its own reading of that same
+// designator citing one of the very same bytes: rows agreeing on a NAME are worthless, rows agreeing on
+// which pixels the name was read from are a read that happened. `read_by` and `read_on` are provenance
 // for a reader; the store's capture days are free text ("2026-11-02, the atlas pass day ..."), so they
 // carry no decidable order and this test does not pretend to compare them.
 test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
-  let frame_is_held = fn(s: LabelSighting) -> Bool {
-    match photograph_in_store(store: e1_photographs, content: s.digest) {
-      Present { value: _ } => true
-      Absent { } => false
-    }
+  e1_position_receipts.all(rec => authority_is_checkable(name: rec.designator.verbatim, basis: rec.rests_on))
+  && any(e1_position_receipts, rec => candidate_cites_what_it_sees(rec))
+}
+
+// One frame the authority or the candidate names, checked against the store by content: a digest typed
+// from memory resolves nowhere, which is the failure this whole test exists to catch.
+fn frame_is_held(s: LabelSighting) -> Bool {
+  match photograph_in_store(store: e1_photographs, content: s.digest) {
+    Present { value: _ } => true
+    Absent { } => false
   }
-  let board_reads_those_frames = fn(name: NonEmptyStr, frames: List<LabelSighting>) -> Bool {
-    any(xs: p4261_e1_layout.designator_readings, predicate: d =>
-      string_eq(a: d.designator as String, b: name as String)
-      && any(xs: frames, predicate: s =>
-        match d.evidence {
-          OperatorPhotograph { citation: InStore { content: c, region: _ } } =>
-            string_eq(a: c.hex as String, b: s.digest.hex as String)
-          OperatorPhotograph { citation: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } =>
-            false
-          SellerListingPhotograph { listing: _, read_on: _ } => false
-          // A spoken "it says J3" is the shape this arm exists to refuse: a name with no image behind it
-          // is exactly what the receipts must not be able to lean on.
-          OperatorStatement { stated_on: _, verbatim: _ } => false
-        }))
-  }
-  let authority_is_checkable = fn(name: NonEmptyStr, authority: DesignatorAuthority) -> Bool {
-    match authority {
+}
+
+// The board's own reading of this designator has to point at one of the very same bytes, not merely at
+// a photo taken on some day. The unstored arm is refused rather than excused: it says the bytes were
+// never supplied, which is the gap this authority was written to close.
+fn board_reads_those_frames(name: NonEmptyStr, frames: List<LabelSighting>) -> Bool {
+  any(p4261_e1_layout.designator_readings, d =>
+    string_eq(a: d.designator as String, b: name as String)
+    && any(frames, s =>
+      match d.evidence {
+        OperatorPhotograph { citation: InStore { content: c, region: _ } } =>
+          string_eq(a: c.hex as String, b: s.digest.hex as String)
+        OperatorPhotograph { citation: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } =>
+          false
+        SellerListingPhotograph { } => false
+        // A spoken "it says J3" is the shape this arm exists to refuse: a name with no image behind it
+        // is exactly what a position's identity must not be able to lean on.
+        OperatorStatement { } => false
+      }))
+}
+
+fn authority_is_checkable(name: NonEmptyStr, basis: ReceiptBasis) -> Bool {
+  match basis {
+    RuleRead { } => true
+    NamedException { why: _, authority: a } => match a {
       // A receipt read the label. The receipts module holds that read to its own columns, and a frame
       // cannot disagree with a receipt that never carried it; nothing here can settle it further.
       FromReceipt { legibility: _, legibility_basis: _ } => true
@@ -712,10 +728,10 @@ test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
         // nothing is read off frames nobody has named
         count(frames) > 0
         // every frame named is one the store holds, by content
-        && all(xs: frames, predicate: frame_is_held)
+        && all(frames, s => frame_is_held(s))
         // a read claimed clear states where on the image it happened
         && (match leg {
-             Clear { } => any(xs: frames, predicate: s => match s.box {
+             Clear { } => any(frames, s => match s.box {
                Present { value: _ } => true
                Absent => false
              })
@@ -727,31 +743,24 @@ test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
         && board_reads_those_frames(name: name, frames: frames)
     }
   }
-  let no_authority_unexamined = all(xs: e1_position_receipts, predicate: rec =>
-    match rec.rests_on {
-      RuleRead { } => true
-      NamedException { why: _, authority: a } =>
-        authority_is_checkable(name: rec.designator.verbatim, authority: a)
-    })
-  // C3_F1: no receipt transcribed it, and the operator reads the label as partly legible in a stored
-  // frame. Both halves have to be in the row. 'No receipt read it' is not 'no frame shows it', and a row
-  // that says only one of the two leaves a reader guessing which gap they are looking at -- which is how
-  // this row came to be described as a label nobody had ever seen.
-  let candidate_cites_what_it_sees = any(xs: e1_position_receipts, predicate: rec =>
-    match rec.rests_on {
-      RuleRead { } => false
-      NamedException { why: _, authority: _ } => false
-      Held { held: UntranscribedCandidate {
-        source_key: k, proposed_name: n, standing: _, partly_legible_in: frames, obligation: o, why: _
-      } } =>
-        string_eq(a: k as String, b: C3_F1_SOURCE_KEY)
-        && string_eq(a: n as String, b: "C3_F1")
-        && count(frames) > 0
-        && all(xs: frames, predicate: frame_is_held)
-        && count(o as String) > 0
-      Held { held: HeldDesignatorRead {
-        legibility: _, legibility_basis: _, transcription: _, marking: _, reading_standing: _, source: _
-      } } => false
-    })
-  no_authority_unexamined && candidate_cites_what_it_sees
+}
+
+// C3_F1: no receipt transcribed it, and the operator reads the label as partly legible in a stored
+// frame. Both halves have to be in the row. 'No receipt read it' is not 'no frame shows it', and a row
+// that says only one of the two leaves a reader guessing which gap they are looking at -- which is how
+// this row came to be described as a label nobody had ever seen.
+fn candidate_cites_what_it_sees(rec: PositionReceipt) -> Bool {
+  match rec.rests_on {
+    RuleRead { } => false
+    NamedException { why: _, authority: _ } => false
+    Held { held: UntranscribedCandidate {
+      source_key: k, proposed_name: n, standing: _, partly_legible_in: frames, obligation: o, why: _
+    } } =>
+      string_eq(a: k as String, b: C3_F1_SOURCE_KEY)
+      && string_eq(a: n as String, b: "C3_F1")
+      && count(frames) > 0
+      && all(frames, s => frame_is_held(s))
+      && count(o as String) > 0
+    Held { held: HeldDesignatorRead { } } => false
+  }
 }

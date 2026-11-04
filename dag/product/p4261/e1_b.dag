@@ -2314,16 +2314,17 @@ data e1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: e1_u500, designator: "U500", evidence: e1_u500_photo },
   DesignatorReading { specimen: e1_y50, designator: "Y50", evidence: e1_u500_photo },
   DesignatorReading { specimen: e1_u43, designator: "U43", evidence: e1_u43_photo },
-  DesignatorReading { specimen: e1_j3, designator: "J3", evidence: e1_module_site_photo },
-  // J3's label, read off three frames the atlas pass never claimed to have read (it never read 16 of
-  // the top photos: 05-08, 14-18, _22, _23 and 26-29, which is why it recorded J3 as 'overview only').
-  // The operator read these three on 2026-11-04 and gave the boxes. e1_position_receipts carries the
-  // same three citations in the FromStoredFrames authority that admits the position, and the atlas-pass
-  // witness requires the two to name the SAME bytes -- which is what makes this a label read once and
-  // recorded twice, rather than a name asserted in two places.
+  // J3 keeps its position, and the reason it keeps it changed on 2026-11-04. It used to rest on the
+  // 2026-10-20 bench read of upload 9cd281be, whose bytes never reached us; the operator has since read
+  // 'J3' in three frames the store does hold, and gave the box for each. Grain A allows ONE modelled
+  // reading per part, citing its best photo, so this row cites the largest of the three boxes -- 50x60
+  // px on frame _22 -- and the other two frames are carried by the FromStoredFrames authority in
+  // e1_position_receipts, which names every digest, file name and box. The atlas-pass witness requires
+  // this row's digest to be one of the authority's, which is what makes it one read recorded twice
+  // rather than a name asserted twice. The superseded bench citation is not lost: the authority says who
+  // read the label and on what day, and the unresolved row below names the 16 top photos the pass never
+  // read -- the reason it recorded J3 as 'overview only' in the first place.
   DesignatorReading { specimen: e1_j3, designator: "J3", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "471155264d4b3337a59c6eeaa55d14ce440a5d36b5b8d6e0d912d9eaec8e54db" as Sha256DigestHex }, left: 675, top: 1612, width: 50, height: 60) } },
-  DesignatorReading { specimen: e1_j3, designator: "J3", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "b8cbb2a88309ca084efe1c0bfe12b3c5c16f9ec094a882554878ffcdbf563c3c" as Sha256DigestHex }, left: 1595, top: 1515, width: 45, height: 57) } },
-  DesignatorReading { specimen: e1_j3, designator: "J3", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "aa05ff842fec52c580952a342027443375587bef5fc64e20c2e40e2a12e020fe" as Sha256DigestHex }, left: 1740, top: 663, width: 37, height: 39) } },
   DesignatorReading { specimen: e1_j4, designator: "J4", evidence: e1_module_site_photo },
   DesignatorReading { specimen: e1_u3, designator: "U3", evidence: e1_u3_photo },
   DesignatorReading { specimen: e1_u4, designator: "U4", evidence: e1_u4_photo },
