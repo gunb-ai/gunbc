@@ -278,6 +278,22 @@ type HostDashboardInstance {
   admitted_revision: DashboardAdmittedRevisionSource
   toolchain: DashboardToolchain
   dispatch_worker_memory_max: ByteSize
+  // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (§3). It was
+  // once a single shared constant (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent,
+  // 3) read by EVERY instance; it is now a per-instance row field so one host's lab can widen without
+  // widening its neighbours. Every reader of the old constant reads THROUGH this field: the belt's launch
+  // admission (the standing carries it -- gunbc.roadmap.roadmap_launch_admission launch_gate_capacity ->
+  // belt_free_slots_int), the timer's reconcile fold (belt_tick_launch_pass_observed -> belt_reconcile),
+  // the session-memory pool (roadmap_session_placement session_placement_pool), and thus the pool's
+  // appropriation (gunbc.compute.host_capacity host_capacity_pool_appropriation = dispatch_worker_memory_max
+  // x slots). The default for an instance that does not override is belt_max_concurrent_default below; the
+  // srv1 lab overrides to srv1_lab_belt_max_concurrent because 512 GiB of host and ~245 GiB MemAvailable
+  // (observed 2026-11-04 08:10Z) hold 6 x the 22 GiB worker ceiling (dispatch_worker_memory_ceiling) with
+  // margin beside srv1-live (3 x 22 GiB) and the compute build pool (compute_pool_slots x 22 GiB); 7 would
+  // need 264 GiB and does not fit. See srv1_lab_dashboard_instance for the arithmetic. A Nat, because a
+  // worker count has no negative case: the readers that need Int (BeltCapacity.max_concurrent, the
+  // launch-admission fold) convert the total way; nothing here validates against a value the type admits.
+  belt_max_concurrent: Nat
   directory_owner: PosixOwnerNames
   // THE ACCOUNT A DISPATCHED WORKER UNIT RUNS AS. Equal to directory_owner is the STAGED form of a
   // replacement migration (DESIGN section 3, gap-intolerant boundary): the worker as the service user is
@@ -430,6 +446,45 @@ fn dashboard_instance_tailnet_door_socket(instance: HostDashboardInstance) -> No
   join([owned_directory_path(t: dashboard_instance_tailnet_door_directory(instance: instance)) as String, "/door.sock"], "") as NonEmptyStr
 }
 
+// THE LAB AGENT'S DOOR directory, beside the tailnet door's and with the same traverse-for-all mode:
+// the socket the seed opens to every class is walled by nothing but the kernel peer uid the handler
+// is handed, so the account that connects needs only to reach it. LAB-ONLY SITE, adopting no
+// foreign ownership (group_adoption ForeignOwnershipRefuses): the directory is host-prepared, so a
+// pre-existing group the deploy did not create is refused, never adopted.
+fn dashboard_instance_agent_door_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "agent-door" as NonEmptyStr,
+    path: lab_agent_door_host_prepared_directory,
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// HOST-PREPARED, outside the home tree. The instance roots sit under a home whose parents are not
+// other-traversable (srv1: .local/share is drwx--x---), and opening that would expose every instance
+// directory to every account, so the lab agent's account could never reach a socket beneath it. The
+// directory is created once by the operator-side qualification step (sudo, owner = the service user,
+// mode 0711), exactly as the gunbc-lab-agent account is; the deploy then re-asserts it as an ordinary
+// owned-directory demand. Only a deployment with an agent door demands it.
+data lab_agent_door_host_prepared_directory: FilePath = "/var/lib/gunbc-lab-agent-door" as FilePath
+
+fn dashboard_instance_agent_door_socket(instance: HostDashboardInstance) -> NonEmptyStr {
+  agent_door_socket_in(directory: dashboard_instance_agent_door_directory(instance: instance))
+}
+
+// The one place the socket's name inside its directory is spelled: the instance names the socket
+// through it, and the deploy spec reads the socket back out of the directory demand through it.
+fn agent_door_socket_in(directory: OwnedDirectoryTarget) -> NonEmptyStr {
+  join([owned_directory_path(t: directory) as String, "/agent.sock"], "") as NonEmptyStr
+}
+
+// The agent door's directory is identified by the one host-prepared path it is declared at, not by a
+// second spelling of its member tag.
+fn owned_directory_is_agent_door(t: OwnedDirectoryTarget) -> Bool {
+  owned_directory_path(t: t) == lab_agent_door_host_prepared_directory
+}
+
 fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.provider_state {
     DashboardExistingProviderState { root, executable: _, binding: _ } => root
@@ -522,22 +577,6 @@ fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> Fil
     } =>
       controller_repo
   }
-}
-
-fn dashboard_instance_serve_argv(
-  instance: HostDashboardInstance,
-  release_revision: String,
-) -> List<String> {
-  [
-    "serve",
-    "--source-root", "dag",
-    "--source-root", "src/v2",
-    "--entry", "dag/gunbc/roadmap/roadmap_serve.dag",
-    "--function", instance.serve_function as String,
-    "--host", instance.listen_host as String,
-    "--port", to_string(instance.listen_port),
-    "--release-revision", release_revision,
-  ]
 }
 
 fn dashboard_actuation_posture_label(posture: DashboardActuationPosture) -> String {
@@ -644,6 +683,26 @@ type DashboardToolchain {
 // and becomes one term in an allocation the fabric can express. Until then it is honest about being
 // a ceiling with no width beside it.
 data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memory_max
+
+// THE BELT CONCURRENT-WORKER CEILING, AS A PER-INSTANCE FACT. This is the ONE source of the number a
+// belt holds at once: the instance row's HostDashboardInstance.belt_max_concurrent reads either this
+// default or the srv1-lab override below, and every former reader of the shared constant
+// (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent, which now merely wraps this
+// default as a BeltCapacity) reads the instance field instead. It was 3 for EVERY instance; it is now a
+// per-instance fact so one host's lab can widen without widening its neighbours -- and the session-memory
+// pool slots and their appropriation follow from this figure. The attempt-worker slice does NOT follow it:
+// that slice is the operator's own 2-slot figure (live_deploy.slice_bounds.attempt_worker_slice_charged_slots,
+// msg_57614325) and is deliberately unchanged here -- see gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact.
+// srv1_lab_belt_max_concurrent is the widest belt; see srv1_lab_dashboard_instance for why srv1 can hold it.
+data belt_max_concurrent_default: Nat = 3
+
+// THE SRV1 LAB RUNS SIX WORKERS AT ONCE. A Nat, so no negative width is representable and no reader has
+// to validate against one. The arithmetic that puts srv1 at 6 (512 GiB, ~245 GiB MemAvailable observed
+// 2026-11-04 08:10Z: 6 x 22 GiB fits beside srv1-live 3 x 22 and the compute build pool 2 x 22 = 242 <=
+// 245 GiB; 7 needs 264 and does not fit; router ceiling 8) is the operator's dated ruling, recorded in
+// gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact and on srv1_lab_dashboard_instance -- not
+// comment arithmetic and not a hand-typed reader elsewhere.
+data srv1_lab_belt_max_concurrent: Nat = 6
 
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,
@@ -1062,6 +1121,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: macbook_local_admitted_revision_source,
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: macbook_local_directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: MacbookLocal } },
@@ -1166,6 +1226,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: DurableHostVolume },
@@ -1231,6 +1292,7 @@ fn isolated_dashboard_instance(
     publication_base_branch: "main" as NonEmptyStr,
     worker: WorkerIsServiceUser,
     provision_parent_root: dashboard_home_provision_parent_root,
+    belt_max_concurrent: belt_max_concurrent_default,
   )
 }
 
@@ -1251,6 +1313,7 @@ fn isolated_dashboard_instance_admitting(
   publication_base_branch: NonEmptyStr,
   worker: WorkerIdentity,
   provision_parent_root: FilePath,
+  belt_max_concurrent: Nat,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1294,6 +1357,7 @@ fn isolated_dashboard_instance_admitting(
     admitted_revision: admitted_revision,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent,
     directory_owner: linux_service_directory_owner(),
     worker: worker,
     materialization_store_root: none,
@@ -1325,6 +1389,17 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     publication_base_branch: srv1_lab_publication_base_branch,
     worker: WorkerDedicatedAccount,
     provision_parent_root: srv1_dashboard_lab_provision_parent,
+    // THE SRV1 LAB WIDENS TO 6. Operator ruling 2026-11-04, held as the row
+    // gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact (concurrency is a per-instance fact read
+    // through the instance; srv1 lab at 6, every other instance stays at 3). srv1 has 512 GiB, ~245 GiB
+    // MemAvailable observed 2026-11-04 08:10Z. 6 x the 22 GiB worker ceiling (dispatch_worker_memory_ceiling)
+    // = 132 GiB fits beside srv1-live (3 x 22 = 66 GiB) and srv1's compute build pool (2 x 22 = 44 GiB):
+    // 132 + 66 + 44 = 242 <= 245 GiB, a 3 GiB margin. 7 needs 264 > 245 and does not fit; the srv1 fabric
+    // router's route ceiling is 8 (gunb-ai/gunbc#15789), so 6 is within it. See srv1_lab_belt_max_concurrent
+    // for the same figure. NOTE the attempt-worker slice (live_deploy.slice_bounds) stays the operator's
+    // 2 x 22 GiB, so this belt admits 6 to LAUNCH while the resident transient-worker cgroup stays bounded by
+    // the operator's slice figure -- widening the slice is a separate operator decision (see the ruling).
+    belt_max_concurrent: srv1_lab_belt_max_concurrent,
   )
 }
 
@@ -1458,6 +1533,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: srv2_deploy_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: Srv2Deploy } },
@@ -1592,6 +1668,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     admitted_revision: fleet_admitted_revision_source,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: FrameJobWorkspace { frame: frame } },
