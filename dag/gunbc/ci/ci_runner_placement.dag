@@ -61,7 +61,6 @@ import gunbc.ci.ci_floor_measurement {
 import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.ci.ci_fleet { fleet_intent_offers, fleet_converge_applied_offers, fleet_image_baked_offers, fleet_host_is_image_baked }
 import gunbc.host.host_layout { gunbc_compile_pool_placement }
-import gunbc.host.host_memory_observation { oomd_actuation_floor }
 
 type WorkloadClass
   = BatchLatencyTolerant

@@ -43,7 +43,6 @@ import product.host_identity { HostIdentity }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_unit { runner_unit_dropin_path }
 import gunbc.runner.runner_registration_labels {
-import gunbc.runner.runner_slot_allocation { runner_label_set_union }
   HostCapabilityRow, HostCapabilityWitness, CapabilityHeld, CapabilityAbsent, CapabilityUnobservable,
   RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused,
   runner_evidence_gated_registration_labels, runner_label_set_union,

@@ -4,7 +4,7 @@ import std.optional { Absent, Optional, Present }
 
 import extdeps.external_authority { ExternalAuthority }
 import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
-import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef }
 import std.roster_frontier { declaration_ref_display_key }
 import std.types { Bool, List, String }
 import std.algebra { list_append, fold_list, list_head, list_map }

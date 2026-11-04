@@ -62,8 +62,8 @@ import gunbc.ci.repository_compose_overlay {
   overlay_note,
   seal_ran_and_repo_alive
 }
-import gunbc.ci.repository_seed_steps {
 import gunbc.toolchain_home_standing { admit_workflow_toolchain_homes, toolchain_home_refusal_reason }
+import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   seed_build_step,
   SeedLaneSteps,

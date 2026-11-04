@@ -132,8 +132,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.bootloader.grub {
   GrubBannerOnly, GrubBootFailed, GrubConsoleReport, GrubNothingStated, GrubStillTrying
   grub_console_banner_prefix, grub_console_report, grub_error_prefix, grub_error_text
-  grub_failed_default_and_fallback,
-  grub_error_text,
+  grub_failed_default_and_fallback
 }
 import gunbc.machine_intake.pre_os_bringup_verdict {
   FirmwareConsoleReport, FirmwareErrorStatementUnrecognized, NoTerminalStated, TrainingRefusedByFirmware
@@ -142,9 +141,7 @@ import gunbc.machine_intake.pre_os_bringup_verdict {
 import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake.ampere_dram_console_observation {
   AmpereDramConsoleObservation, ampere_dram_console_line, ampere_dram_console_observation
-  ampere_dram_console_text, ampere_dram_fw_version_marker,
-  ampere_dram_console_observation,
-  ampere_dram_console_text,
+  ampere_dram_console_text, ampere_dram_fw_version_marker
 }
 import gunbc.machine_intake.ampere_nvparam_console_observation {
   NvParamConsoleObservation, ampere_nvparam_console_observation, ampere_nvparam_console_text
@@ -158,22 +155,20 @@ import gunbc.machine_intake.kernel_module_decompression_observation {
 import gunbc.machine_intake.ampere_socket_console_observation {
   AmpereSocketConsoleObservation, AmpereSocketReferenceComparison, ampere_socket_console_observation
   ampere_socket_console_text, ampere_socket_reference_comparison, ampere_socket_reference_comparison_text
-  ampere_summary_rc_marker,
-  ampere_socket_console_observation,
-  ampere_socket_console_text,
-  ampere_socket_reference_comparison_text,
+  ampere_summary_rc_marker
 }
 import gunbc.machine_intake.ampere_checkpoint_console_observation {
   AmpereCheckpointConsoleObservation, AmpereCheckpointFold, AmpereCheckpointReference, AmpereCheckpointRelation
   AmpereCheckpointSpan, ampere_checkpoint_console_observation, ampere_checkpoint_console_text
   ampere_checkpoint_relation, ampere_checkpoint_relation_text, ampere_checkpoint_relation_unread
-  ampere_console_span_lines, checkpoint_fold_step, empty_span,
-  ampere_checkpoint_console_text,
-  ampere_checkpoint_relation,
-  ampere_checkpoint_relation_unread,
+  ampere_console_span_lines, checkpoint_fold_step, empty_span
 }
 import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_stem }
 import extdeps.linux.efi_stub { linux_efi_stub_initrd_load_failed_prefix, linux_efi_stub_line_prefix }
+import gunbc.machine_intake.ampere_checkpoint_console_observation { ampere_checkpoint_console_text, ampere_checkpoint_relation, ampere_checkpoint_relation_unread }
+import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_observation, ampere_dram_console_text }
+import gunbc.machine_intake.ampere_socket_console_observation { ampere_socket_console_observation, ampere_socket_console_text, ampere_socket_reference_comparison_text }
+import extdeps.bootloader.grub { grub_error_text }
 import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_end_marker, linux_kernel_panic_prefix }
 
 

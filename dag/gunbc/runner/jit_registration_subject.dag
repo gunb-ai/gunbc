@@ -9,7 +9,6 @@ import gunbc.runner.runner_microvm_attempt {
   runner_microvm_attempt_unit_name,
 }
 import gunbc.runner.runner_host_unit_slot {
-import gunbc.runner.runner_microvm_attempt_identity { runner_microvm_attempt_unit_name }
   HostUnitSlot, HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
 }
 

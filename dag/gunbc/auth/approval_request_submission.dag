@@ -13,7 +13,6 @@ import gunbc.auth.approval_status_wire {
   filed_approval_status_text, submission_filed_text,
 }
 import gunbc.auth.approval_decision_store {
-import gunbc.auth.mac_keyring { read_mac_keyring }
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal,
   StoredApprovalRequest, stored_request_json, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
   approval_capability_authority,

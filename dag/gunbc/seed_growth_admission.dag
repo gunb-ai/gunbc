@@ -157,7 +157,7 @@ import gunbc.floor.floor_cost_debt_verdict_seed_growth { floor_cost_debt_verdict
 import gunbc.floor.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
 import gunbc.filesystem_link_create_new_seed_growth { filesystem_link_create_new_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.disposition { Disposition }
 import std.roster_frontier {
   declaration_ref_display_key,
