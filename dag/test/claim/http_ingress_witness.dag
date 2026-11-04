@@ -14,7 +14,7 @@ import gunbc.http_ingress {
   HttpIngressRequestFact, IngressFactRequestHeaders, http_ingress_fact_name,
   http_ingress_frame, HttpIngressPreEvaluationRoute, http_ingress_pre_evaluation_routes,
   HttpIngressArgument, HttpIngressTextArgument, HttpIngressHeadersArgument, http_ingress_arguments,
-  http_ingress_outgoing, http_ingress_wire_head, http_ingress_announcement,
+  http_ingress_outgoing, http_ingress_wire_head, http_ingress_announcement, http_ingress_handler_identity,
 }
 
 // THE PARITY CLAIMS FOR THE INGRESS FOLDS. Each decision `gunbc serve`'s hand Rust used to make
@@ -190,5 +190,15 @@ test fn the_announcement_names_the_bound_address_and_every_limit() -> Bool {
     Present { value: b } =>
       http_ingress_announcement(b: b, bound_host: "127.0.0.1", bound_port: 40713)
         == concat("http-ingress listening on 127.0.0.1:40713 -> test.fixture.serve_seam_probe.serve_seam_probe() release_revision=", concat(w_revision, " head_limit_bytes=16384 body_limit_bytes=1048576 read_timeout_ms=10000 eval_budget_cpu_ms=30000 eval_budget_wall_ms=120000"))
+  }
+}
+
+// THE HOST CALLS THE HANDLER BY ITS MODULE-QUALIFIED IDENTITY, so another module's declaration of the
+// same bare name is never the one served (a binding naming handler `serve_seam_ingress` refuses at
+// startup: that name is declared in the binding module, not the handler module).
+test fn the_handler_is_identified_by_module_and_name() -> Bool {
+  match w_bound(listener: "tcp:127.0.0.1:0") {
+    Absent => false
+    Present { value: b } => http_ingress_handler_identity(b: b) == "test.fixture.serve_seam_probe.serve_seam_probe"
   }
 }

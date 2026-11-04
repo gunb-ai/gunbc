@@ -341,6 +341,9 @@ const BREACH_BINDING_ENTRY: &str = "dag/test/fixture/serve_seam_ingress.dag";
 const BREACH_BINDING_FUNCTION: &str = "serve_seam_ingress";
 const BREACH_HANDLER_MODULE: &str = "test.fixture.serve_seam_probe";
 const BREACH_FUNCTION: &str = "serve_budget_breach_probe";
+// The armed entry a refusal names is the handler's module-qualified identity
+// (gunbc.http_ingress http_ingress_handler_identity).
+const BREACH_ENTRY: &str = "test.fixture.serve_seam_probe.serve_budget_breach_probe";
 const CPU_LIMIT_MS: u64 = 50;
 // A binding's budgets are both positive by construction. The wall bound is set far past the CPU one
 // so the CPU clock is the one that crosses.
@@ -1884,7 +1887,7 @@ fn serve_and_judge(
                 Some(format!("moved occurrences {moved_occurrences}"))
             } else if former_occurrences != 0 {
                 Some(format!("former occurrences {former_occurrences}"))
-            } else if entry != BREACH_FUNCTION {
+            } else if entry != BREACH_ENTRY {
                 Some(format!("entry {entry}"))
             } else if clock != "thread_cpu" {
                 Some(format!("clock {clock}"))
@@ -1905,7 +1908,7 @@ fn serve_and_judge(
                     serve_stdout: serve_stdout.clone(),
                     serve_stderr: serve_stderr.clone(),
                     expectation: format!(
-                        "500, content-type=application/json; charset=utf-8, code={moved_value}, moved=1, former=0, entry={BREACH_FUNCTION}, clock=thread_cpu, limit_ms={CPU_LIMIT_MS}, elapsed_ns>{}, and a serve diagnostic agreeing with the body",
+                        "500, content-type=application/json; charset=utf-8, code={moved_value}, moved=1, former=0, entry={BREACH_ENTRY}, clock=thread_cpu, limit_ms={CPU_LIMIT_MS}, elapsed_ns>{}, and a serve diagnostic agreeing with the body",
                         u128::from(CPU_LIMIT_MS) * 1_000_000
                     ),
                     observed,

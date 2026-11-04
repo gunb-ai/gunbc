@@ -304,18 +304,6 @@ fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<Str
         .map_err(|_| "the request head is not utf-8".to_string())
 }
 
-/// What one connection asks for, read within the binding's limits and judged by the folds.
-enum Exchange {
-    Idle,
-    /// A pre-evaluation route matched: these bytes were rendered at startup and nothing is evaluated.
-    PreRendered(usize),
-    Answer(Value),
-    Handle {
-        head: Value,
-        body: String,
-    },
-}
-
 /// One row of the graph's pre-evaluation route table (`http_ingress_pre_evaluation_routes`), its
 /// response already rendered to bytes at startup.
 struct PreEvaluationRoute {
@@ -330,31 +318,59 @@ struct Limits {
     read_timeout: std::time::Duration,
 }
 
-fn exchange(
+/// Why a request's evaluation produced no bytes: the per-request budget was crossed (rendered as the
+/// budget refusal once the scope has closed), or a fold of the loaded program could not answer.
+enum RequestFailure {
+    Budget(v1_interpreter::InterpError),
+    Defect(String),
+}
+
+impl From<String> for RequestFailure {
+    fn from(s: String) -> Self {
+        RequestFailure::Defect(s)
+    }
+}
+
+/// [`fold`] inside the per-request budget: a crossed budget stays typed so it can be answered.
+fn eval(
     ctx: &InterpContext,
-    binding: &Value,
+    name: &str,
+    args: Vec<(&str, Value)>,
+) -> Result<Value, RequestFailure> {
+    let named: Vec<(Option<String>, Value)> = args
+        .into_iter()
+        .map(|(n, v)| (Some(n.to_string()), v))
+        .collect();
+    v1_interpreter::run_in_context_with_args(ctx, name, &named, true).map_err(|e| {
+        if serve_budget_refusal::serve_budget_refusal_from_exceeded(&e).is_some() {
+            RequestFailure::Budget(e)
+        } else {
+            RequestFailure::Defect(format!("{name}: {e}"))
+        }
+    })
+}
+
+/// The request's head as read, before anything is evaluated.
+enum HeadRead {
+    Idle,
+    Refused(String),
+    PreRendered(usize),
+    Head {
+        request_line: String,
+        header_lines: Vec<String>,
+    },
+}
+
+fn read_head(
+    reader: &mut impl BufRead,
     limits: &Limits,
     routes: &[PreEvaluationRoute],
-    stream: &mut dyn IngressConnection,
-) -> Result<Exchange, String> {
-    let refused = |reason: String| -> Result<Exchange, String> {
-        fold(
-            ctx,
-            "http_ingress_read_refused",
-            vec![("reason", v1_interpreter::str_value(reason))],
-        )
-        .map(Exchange::Answer)
-    };
-    if let Err(e) = stream.set_read_timeout_for_request(limits.read_timeout) {
-        return refused(format!("set_read_timeout: {e}"));
-    }
-    let mut reader =
-        std::io::BufReader::new((&mut *stream).take((limits.head + limits.body) as u64));
+) -> HeadRead {
     let mut budget = limits.head;
-    let request_line = match read_line(&mut reader, &mut budget) {
+    let request_line = match read_line(reader, &mut budget) {
         Ok(Some(line)) => line,
-        Ok(None) => return Ok(Exchange::Idle),
-        Err(reason) => return refused(reason),
+        Ok(None) => return HeadRead::Idle,
+        Err(reason) => return HeadRead::Refused(reason),
     };
     // THE PRE-EVALUATION TABLE IS CONSULTED BEFORE ANYTHING IS EVALUATED. The comparison is the
     // request line's method and target against the graph's rows, exactly; the host chooses no route.
@@ -364,25 +380,46 @@ fn exchange(
             .iter()
             .position(|r| r.method == method && r.target == target)
         {
-            return Ok(Exchange::PreRendered(i));
+            return HeadRead::PreRendered(i);
         }
     }
     let mut header_lines = Vec::new();
     loop {
-        match read_line(&mut reader, &mut budget) {
+        match read_line(reader, &mut budget) {
             Ok(Some(line)) if line.is_empty() => break,
             Ok(Some(line)) => header_lines.push(line),
-            Ok(None) => return refused("connection closed before end of headers".to_string()),
-            Err(reason) => return refused(reason),
+            Ok(None) => {
+                return HeadRead::Refused("connection closed before end of headers".to_string())
+            }
+            Err(reason) => return HeadRead::Refused(reason),
         }
     }
-    let frame = fold(
+    HeadRead::Head {
+        request_line,
+        header_lines,
+    }
+}
+
+/// Everything a request's bytes depend on, evaluated inside the one per-request budget: framing,
+/// the body read the frame fold sized, the handler's arguments, the handler, and the response bytes.
+#[allow(clippy::too_many_arguments)]
+fn evaluate_request(
+    ctx: &InterpContext,
+    binding: &Value,
+    facts: &Value,
+    handler: &str,
+    reader: &mut impl Read,
+    request_line: &str,
+    header_lines: &[String],
+    peer: &str,
+) -> Result<Vec<u8>, RequestFailure> {
+    let frame = eval(
         ctx,
         "http_ingress_frame",
         vec![
             ("b", binding.clone()),
-            ("request_line", v1_interpreter::str_value(&request_line)),
-            ("header_lines", str_list(&header_lines)),
+            ("request_line", v1_interpreter::str_value(request_line)),
+            ("header_lines", str_list(header_lines)),
         ],
     )?;
     let Value::Variant {
@@ -391,37 +428,42 @@ fn exchange(
         ..
     } = &frame
     else {
-        return Err(format!(
-            "http_ingress_frame answered {}",
-            ctx.format_value(&frame)
-        ));
+        return Err(format!("http_ingress_frame answered {}", ctx.format_value(&frame)).into());
     };
-    if !ctx.sym_eq(*variant_name, "NativeServeFramed") {
-        return match ctx.field(fields, "response") {
-            Some(response) => Ok(Exchange::Answer(response.clone())),
-            None => Err(format!(
-                "http_ingress_frame answered {}",
-                ctx.format_value(&frame)
-            )),
+    let response = if !ctx.sym_eq(*variant_name, "NativeServeFramed") {
+        ctx.field(fields, "response")
+            .cloned()
+            .ok_or_else(|| format!("http_ingress_frame answered {}", ctx.format_value(&frame)))?
+    } else {
+        let head = ctx
+            .field(fields, "head")
+            .cloned()
+            .ok_or_else(|| "NativeServeFramed carries no head".to_string())?;
+        let body_length = match ctx.field(fields, "body_length") {
+            Some(Value::Int(n)) => usize::try_from(*n).map_err(|_| format!("body_length {n}"))?,
+            _ => {
+                return Err("NativeServeFramed carries no body_length"
+                    .to_string()
+                    .into())
+            }
         };
-    }
-    let head = ctx
-        .field(fields, "head")
-        .cloned()
-        .ok_or_else(|| "NativeServeFramed carries no head".to_string())?;
-    let body_length = match ctx.field(fields, "body_length") {
-        Some(Value::Int(n)) => usize::try_from(*n).map_err(|_| format!("body_length {n}"))?,
-        _ => return Err("NativeServeFramed carries no body_length".to_string()),
+        let mut body_bytes = vec![0u8; body_length];
+        let body = match reader.read_exact(&mut body_bytes) {
+            Err(e) => Err(format!("read body: {e}")),
+            Ok(()) => {
+                String::from_utf8(body_bytes).map_err(|_| "the body is not utf-8".to_string())
+            }
+        };
+        match body {
+            Err(reason) => eval(
+                ctx,
+                "http_ingress_read_refused",
+                vec![("reason", v1_interpreter::str_value(reason))],
+            )?,
+            Ok(body) => answer_with_handler(ctx, binding, facts, handler, head, body, peer)?,
+        }
     };
-    let mut body_bytes = vec![0u8; body_length];
-    if let Err(e) = reader.read_exact(&mut body_bytes) {
-        return refused(format!("read body: {e}"));
-    }
-    let body = match String::from_utf8(body_bytes) {
-        Ok(text) => text,
-        Err(_) => return refused("the body is not utf-8".to_string()),
-    };
-    Ok(Exchange::Handle { head, body })
+    render_response_in(ctx, response)
 }
 
 /// The handler's named arguments, as the arguments fold planned them. Each arm unwraps to its value;
@@ -488,21 +530,44 @@ fn render_response(ctx: &InterpContext, response: Value) -> Result<Vec<u8>, Stri
     })
 }
 
+fn render_response_in(ctx: &InterpContext, response: Value) -> Result<Vec<u8>, RequestFailure> {
+    let outgoing = eval(ctx, "http_ingress_outgoing", vec![("r", response)])?;
+    let body = match &outgoing {
+        Value::Record { fields, .. } => match ctx.field(fields, "body") {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => return Err("NativeServeOutgoing carries no body".to_string().into()),
+        },
+        other => {
+            return Err(
+                format!("http_ingress_outgoing answered {}", ctx.format_value(other)).into(),
+            )
+        }
+    };
+    let head = match &eval(
+        ctx,
+        "http_ingress_wire_head",
+        vec![
+            ("o", outgoing),
+            ("body_octets", Value::Int(body.len() as i64)),
+        ],
+    )? {
+        Value::Str(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "http_ingress_wire_head answered {}",
+                ctx.format_value(other)
+            )
+            .into())
+        }
+    };
+    let mut bytes = head.into_bytes();
+    bytes.extend_from_slice(body.as_bytes());
+    Ok(bytes)
+}
+
 fn write_bytes(stream: &mut dyn IngressConnection, bytes: &[u8]) {
     if let Err(e) = stream.write_all(bytes) {
         eprintln!("http-ingress: write error: {e}");
-    }
-}
-
-fn write_response(ctx: &InterpContext, stream: &mut dyn IngressConnection, response: Value) {
-    match render_response(ctx, response) {
-        Ok(bytes) => write_bytes(stream, &bytes),
-        // A response fold that cannot answer is a defect of the loaded program, not of the request.
-        // The connection is closed unanswered and the defect is printed, never papered over with a
-        // host-authored body.
-        Err(e) => {
-            eprintln!("http-ingress: response folds failed, connection closed unanswered: {e}")
-        }
     }
 }
 
@@ -516,7 +581,7 @@ fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
     let startup = || -> Result<_, String> {
         let handler = fold_text(
             ctx,
-            "http_ingress_handler_name",
+            "http_ingress_handler_identity",
             vec![("b", binding.clone())],
         )?;
         let limits = Limits {
@@ -536,7 +601,7 @@ fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
         // THE ARGUMENT PLAN IS DERIVED ONCE, before the listener binds, from the handler's declared
         // parameters. A handler absent from the closure, or a parameter naming no fact, refuses here.
         let declared = v1_interpreter::declared_parameter_names(ctx, &handler)
-            .ok_or_else(|| format!("no function `{handler}` in the run's closure (the binding module must import the handler's module)"))?;
+            .ok_or_else(|| format!("no function `{handler}` in the run's closure (the binding names a module and handler; the binding module must import that module)"))?;
         let plan = fold(
             ctx,
             "http_ingress_fact_plan",
@@ -652,37 +717,132 @@ fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
             }
         };
         let stream: &mut dyn IngressConnection = &mut *conn;
-        let response = match exchange(ctx, &binding, &limits, &routes, stream) {
-            Ok(Exchange::Idle) => continue,
-            Ok(Exchange::PreRendered(i)) => {
-                write_bytes(stream, &routes[i].bytes);
-                continue;
+        if let Err(e) = stream.set_read_timeout_for_request(limits.read_timeout) {
+            if let Some(bytes) = read_refused_bytes(ctx, format!("set_read_timeout: {e}")) {
+                write_bytes(stream, &bytes);
             }
-            Ok(Exchange::Answer(response)) => Ok(response),
-            Ok(Exchange::Handle { head, body }) => {
-                answer_with_handler(ctx, &binding, &facts, &armed, head, body, &peer)
+            continue;
+        }
+        let bytes = {
+            let mut reader =
+                std::io::BufReader::new((&mut *stream).take((limits.head + limits.body) as u64));
+            match read_head(&mut reader, &limits, &routes) {
+                HeadRead::Idle => None,
+                HeadRead::PreRendered(i) => Some(routes[i].bytes.clone()),
+                // Nothing request-dependent has been evaluated: the head did not arrive whole.
+                HeadRead::Refused(reason) => read_refused_bytes(ctx, reason),
+                HeadRead::Head {
+                    request_line,
+                    header_lines,
+                } => {
+                    // ONE BUDGET PER REQUEST, OVER EVERY EVALUATION ITS BYTES DEPEND ON -- framing,
+                    // arguments, the handler and the response folds -- armed once the head is read so
+                    // no socket wait is charged to it, and restored when it ends: `ctx` outlives every
+                    // request, so a leaked deadline would refuse every later one.
+                    let outcome = {
+                        let _budget = ctx.enter_evaluation_budget(
+                            serve_budget_refusal::serve_contract_entry(&armed),
+                            serve_budget_refusal::serve_contract_cpu_limit_ms(&armed),
+                            serve_budget_refusal::serve_contract_wall_limit_ms(&armed),
+                        );
+                        evaluate_request(
+                            ctx,
+                            &binding,
+                            &facts,
+                            serve_budget_refusal::serve_contract_entry(&armed),
+                            &mut reader,
+                            &request_line,
+                            &header_lines,
+                            &peer,
+                        )
+                    };
+                    match outcome {
+                        Ok(bytes) => Some(bytes),
+                        Err(RequestFailure::Budget(e)) => budget_refused_bytes(ctx, &armed, &e),
+                        Err(RequestFailure::Defect(e)) => {
+                            eprintln!("http-ingress: request folds failed, connection closed unanswered: {e}");
+                            None
+                        }
+                    }
+                }
             }
-            Err(e) => Err(e),
         };
-        match response {
-            Ok(response) => write_response(ctx, stream, response),
-            Err(e) => {
-                eprintln!("http-ingress: request folds failed, connection closed unanswered: {e}")
-            }
+        if let Some(bytes) = bytes {
+            write_bytes(stream, &bytes);
         }
     }
 }
 
+fn read_refused_bytes(ctx: &InterpContext, reason: String) -> Option<Vec<u8>> {
+    fold(
+        ctx,
+        "http_ingress_read_refused",
+        vec![("reason", v1_interpreter::str_value(reason))],
+    )
+    .and_then(|r| render_response(ctx, r))
+    .map_err(|e| {
+        eprintln!("http-ingress: response folds failed, connection closed unanswered: {e}")
+    })
+    .ok()
+}
+
+/// The budget refusal, rendered after the request's scope has closed. The single armed contract
+/// makes a refusal naming another entry unreachable; it is answered as a handler error rather than
+/// rendered under the wrong subject.
+fn budget_refused_bytes(
+    ctx: &InterpContext,
+    armed: &serve_budget_refusal::ServeArmedContract,
+    e: &v1_interpreter::InterpError,
+) -> Option<Vec<u8>> {
+    let response = match serve_budget_refusal::serve_budget_refusal_from_exceeded(e) {
+        Some(refusal) if serve_budget_refusal::serve_refusal_names_contract(&refusal, armed) => {
+            eprintln!(
+                "{}",
+                serve_budget_refusal::serve_budget_refusal_diagnostic_line(&refusal)
+            );
+            fold(
+                ctx,
+                "http_ingress_budget_refused",
+                vec![(
+                    "machine_body",
+                    v1_interpreter::str_value(
+                        serve_budget_refusal::serve_budget_refusal_machine_body(&refusal),
+                    ),
+                )],
+            )
+        }
+        _ => fold(
+            ctx,
+            "http_ingress_handler_error",
+            vec![(
+                "reason",
+                v1_interpreter::str_value(
+                    "a budget refusal named an entry other than the armed handler",
+                ),
+            )],
+        ),
+    };
+    response
+        .and_then(|r| render_response(ctx, r))
+        .map_err(|e| {
+            eprintln!("http-ingress: response folds failed, connection closed unanswered: {e}")
+        })
+        .ok()
+}
+
+/// The handler call, by the handler's MODULE-QUALIFIED identity (`gunbc.http_ingress`
+/// `http_ingress_handler_identity`), so a binding naming one module's handler can never run another
+/// module's declaration of the same bare name.
 fn answer_with_handler(
     ctx: &InterpContext,
     binding: &Value,
     facts: &Value,
-    armed: &serve_budget_refusal::ServeArmedContract,
+    handler: &str,
     head: Value,
     body: String,
     peer: &str,
-) -> Result<Value, String> {
-    let arguments = fold(
+) -> Result<Value, RequestFailure> {
+    let arguments = eval(
         ctx,
         "http_ingress_arguments",
         vec![
@@ -694,23 +854,12 @@ fn answer_with_handler(
         ],
     )?;
     let args = handler_args(ctx, &arguments)?;
-    let entry = serve_budget_refusal::serve_contract_entry(armed);
-    // THE BUDGET IS ARMED AROUND THIS CALL AND RESTORED WHEN IT ENDS: `ctx` outlives every request,
-    // so a leaked deadline would refuse every later one.
-    let result = {
-        let _budget = ctx.enter_evaluation_budget(
-            entry,
-            serve_budget_refusal::serve_contract_cpu_limit_ms(armed),
-            serve_budget_refusal::serve_contract_wall_limit_ms(armed),
-        );
-        v1_interpreter::run_in_context_with_args(ctx, entry, &args, true)
-    };
-    match result {
+    match v1_interpreter::run_in_context_with_args(ctx, handler, &args, true) {
         Ok(value) => match &value {
             Value::Record { type_name, .. } if ctx.sym_eq(*type_name, "ServeWireResponse") => {
                 Ok(value)
             }
-            other => fold(
+            other => eval(
                 ctx,
                 "http_ingress_not_a_response",
                 vec![(
@@ -719,43 +868,14 @@ fn answer_with_handler(
                 )],
             ),
         },
-        Err(e) => match serve_budget_refusal::serve_budget_refusal_from_exceeded(&e) {
-            Some(refusal)
-                if serve_budget_refusal::serve_refusal_names_contract(&refusal, armed) =>
-            {
-                eprintln!(
-                    "{}",
-                    serve_budget_refusal::serve_budget_refusal_diagnostic_line(&refusal)
-                );
-                fold(
-                    ctx,
-                    "http_ingress_budget_refused",
-                    vec![(
-                        "machine_body",
-                        v1_interpreter::str_value(
-                            serve_budget_refusal::serve_budget_refusal_machine_body(&refusal),
-                        ),
-                    )],
-                )
-            }
-            // The single armed contract makes this unreachable; it refuses rather than rendering a
-            // refusal that names the wrong function.
-            Some(_) => fold(
-                ctx,
-                "http_ingress_handler_error",
-                vec![(
-                    "reason",
-                    v1_interpreter::str_value(
-                        "a budget refusal named an entry other than the armed handler",
-                    ),
-                )],
-            ),
-            None => fold(
-                ctx,
-                "http_ingress_handler_error",
-                vec![("reason", v1_interpreter::str_value(e.to_string()))],
-            ),
-        },
+        Err(e) if serve_budget_refusal::serve_budget_refusal_from_exceeded(&e).is_some() => {
+            Err(RequestFailure::Budget(e))
+        }
+        Err(e) => eval(
+            ctx,
+            "http_ingress_handler_error",
+            vec![("reason", v1_interpreter::str_value(e.to_string()))],
+        ),
     }
 }
 
