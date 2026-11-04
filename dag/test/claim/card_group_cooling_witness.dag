@@ -10,7 +10,7 @@ import product.printed_chassis.card_end_interface {
 import product.printed_chassis.gpu_duct { screwed_end_cap_of, ScrewedEndCap, ScrewedEndCapMissing }
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, a2_duct_card, a16_duct_card }
 import product.printed_chassis.group_duct {
-  GroupDuctPlan, GroupFitPlateAdmission, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
+  GroupDuctPlan, GroupFitPlateAdmission, a2_altra_row_plan, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
   GroupMembersNotSideBySide,
 }
 import product.printed_chassis.printable_assembly { CardGroupRoot, GroupFitPlate, PrintableAssemblyReady, PrintableAssemblyRefused }
@@ -106,7 +106,6 @@ fn face_with(inserts_absent: Bool) -> CardEndInterface {
     window_length: micrometer(count: 52370), window_depth: micrometer(count: 14200),
     window_from_top: micrometer(count: 1600), window_from_back: micrometer(count: 16400),
     fin_setback: micrometer(count: 1000),
-    fin_free_bands: FeatureNotObserved { read_obligation: "supplied" },
     inserts: if inserts_absent { FeatureAbsentObserved } else { FeatureNotObserved { read_obligation: "supplied: not looked for" } },
     connector: FeatureAbsentObserved,
   }
@@ -182,7 +181,7 @@ fn a2_with_connector(id: NonEmptyStr, designator: NonEmptyStr, connector: EndFac
   let face = CardEndInterface {
     source: f.source, face_length: f.face_length, face_thickness: f.face_thickness,
     window_length: f.window_length, window_depth: f.window_depth, window_from_top: f.window_from_top, window_from_back: f.window_from_back,
-    fin_setback: f.fin_setback, fin_free_bands: f.fin_free_bands, inserts: f.inserts, connector: connector,
+    fin_setback: f.fin_setback, inserts: f.inserts, connector: connector,
   }
   InstalledCard { instance: CardInstance { id: id, card: DuctCard { row: a2_duct_card.row, end_face: EndFaceRead { face: face } } }, slot: altra_slot(designator: designator) }
 }
@@ -212,23 +211,11 @@ test fn a_fit_plate_is_refused_across_an_empty_slot() -> Bool {
 }
 
 
-// THE PLATE ENTERS NO FACE, so it does not need the fin-free bands: an A2 face whose bands were never read
-// selects beside one whose bands were, and the plate it draws carries only the plate and its sleeve.
-fn a2_with_unread_bands(id: NonEmptyStr, designator: NonEmptyStr) -> InstalledCard {
-  let f = a2_card_end
-  let face = CardEndInterface {
-    source: f.source, face_length: f.face_length, face_thickness: f.face_thickness,
-    window_length: f.window_length, window_depth: f.window_depth, window_from_top: f.window_from_top, window_from_back: f.window_from_back,
-    fin_setback: f.fin_setback, fin_free_bands: FeatureNotObserved { read_obligation: "supplied: not read" }, inserts: f.inserts, connector: f.connector,
-  }
-  InstalledCard { instance: CardInstance { id: id, card: DuctCard { row: a2_duct_card.row, end_face: EndFaceRead { face: face } } }, slot: altra_slot(designator: designator) }
-}
-
-test fn a_fit_plate_does_not_need_the_fin_free_bands() -> Bool {
-  let p = supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_with_unread_bands(id: "b", designator: "PCIE5")])
-  let one_plate_body = match admit_group_fit_plate(p: p) {
-    GroupFitPlateAdmitted { parts: ps, interfaces: _ } => any(ps, x => x.id == "FIT-PLATE" && length(list: x.adds) == 5)
+// THE REAL A2 ROW PLATE IS THE PLATE AND ITS SLEEVE ALONE: the operator's plan admits, and the printed part
+// is one plate body plus four sleeve walls, with nothing standing on the plate inside a face.
+test fn the_a2_row_fit_plate_is_the_plate_and_its_sleeve_alone() -> Bool {
+  match admit_group_fit_plate(p: a2_altra_row_plan) {
+    GroupFitPlateAdmitted { parts: ps, interfaces: _ } => any(ps, x => x.id == "FIT-PLATE" && length(list: x.adds) == 5 && length(list: x.cuts) == 4)
     _ => false
   }
-  selects(p: p) && one_plate_body
 }
