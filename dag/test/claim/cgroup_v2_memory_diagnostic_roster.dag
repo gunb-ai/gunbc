@@ -1,0 +1,86 @@
+module test.claim.cgroup_v2_memory_diagnostic_roster
+
+import std.types { Bool }
+import extdeps.linux.cgroup_v2_memory {
+  MemoryEvents, MemoryEventsLocal, Instantaneous, CumulativeCounter,
+  CgroupMemoryStatKey, cgroup_memory_interface_file_name, cgroup_memory_metric_kind,
+  cgroup_memory_diagnostic_stat_key_roster, cgroup_memory_stat_value,
+  CgroupMemoryEventCounters, CgroupMemoryEventsRead, CgroupMemoryEventCountersIncomplete,
+  parse_cgroup_memory_event_counters,
+}
+
+// THE memory.events.local VARIANT IS THE KERNEL'S OWN NAME, AND IT IS A COUNTER LIKE ITS
+// HIERARCHICAL TWIN. The name is not a spelling the renderer may invent and the kind is not a
+// consumer's preference: cgroup-v2 defines both, and the pair is what tells a reader that the two
+// files differ in scope and not in kind.
+test fn the_local_events_file_carries_the_kernel_name_and_the_counter_kind() -> Bool {
+  cgroup_memory_interface_file_name(f: MemoryEventsLocal) == "memory.events.local"
+    && cgroup_memory_metric_kind(f: MemoryEventsLocal) == CumulativeCounter
+}
+
+// THE TWO EVENTS FILES DIFFER ONLY IN NAME. If a kind ever diverges between them the model is wrong
+// about the kernel, not about the consumer: the document gives both the same entries and moves only
+// the hierarchy. And if the names ever collide, every witness that reads one and prints the other
+// becomes indistinguishable, which is the silent half of this class.
+test fn the_two_events_files_differ_in_name_and_nowhere_else() -> Bool {
+  cgroup_memory_interface_file_name(f: MemoryEvents) == "memory.events"
+    && cgroup_memory_metric_kind(f: MemoryEvents) == cgroup_memory_metric_kind(f: MemoryEventsLocal)
+    && cgroup_memory_interface_file_name(f: MemoryEvents) != cgroup_memory_interface_file_name(f: MemoryEventsLocal)
+}
+
+// THE DIAGNOSTIC ROSTER IS THE SET THE REGEN ROUND PRINTS, IN THE ORDER IT PRINTS IT. The host list
+// (src/v1/stage0/src/required_regen_host.rs CGROUP_DIAGNOSTIC_STAT_KEYS) is a hand copy that must
+// stay equal to this roster until the module joins the stage0 population; this claim is the authority
+// side of that equality, and the row
+// dag/gunbc/recurring_failure_mode/a_host_renderer_hand_copies_an_extdeps_key_roster.dag carries the
+// debt and its trigger.
+test fn the_roster_is_exactly_the_printed_memory_stat_keys_in_print_order() -> Bool {
+  let names = map(cgroup_memory_diagnostic_stat_key_roster(), k => match k { CgroupMemoryStatKey { name: n, kind: _ } => n })
+  names == [
+    "anon", "file", "kernel", "slab", "shmem", "file_mapped", "file_dirty", "file_writeback",
+    "swapcached", "inactive_anon", "active_anon", "inactive_file", "active_file", "unevictable",
+  ]
+}
+
+// EVERY PRINTED KEY IS AN INSTANTANEOUS LEVEL, so the diagnostic prints levels and not intervals.
+// The two CumulativeCounter entries memory.stat also documents (workingset_refault_file,
+// pgmajfault) are absent from the roster on purpose: a counter printed at several phases whose pair
+// is never subtracted reads as a level, and that is how a refault count gets mistaken for a charge.
+test fn every_roster_key_is_an_instantaneous_level() -> Bool {
+  let roster = cgroup_memory_diagnostic_stat_key_roster()
+  let instantaneous = filter(roster, k => match k { CgroupMemoryStatKey { name: _, kind: Instantaneous } => true  _ => false })
+  length(instantaneous) == length(roster) && length(roster) == 14
+}
+
+// THE ROSTER IS READABLE, NOT JUST NAMEABLE: every key it declares parses out of a memory.stat body
+// written in the kernel's flat "key value" line form, through the authority's own reader. A roster
+// nothing can read is a list of strings wearing a kernel interface.
+test fn every_roster_key_reads_from_a_flat_stat_body() -> Bool {
+  let roster = cgroup_memory_diagnostic_stat_key_roster()
+  let body = join(map(roster, k => match k { CgroupMemoryStatKey { name: n, kind: _ } => concat(n, " 4096") }), "\n")
+  let unreadable = filter(roster, k => match cgroup_memory_stat_value(body: body, key: match k { CgroupMemoryStatKey { name: n, kind: _ } => n }) { Present { value: _ } => false  Absent => true })
+  length(unreadable) == 0
+}
+
+// THE EVENTS COUNTERS READ AS A RECORD, AND A KEY THE BODY DOES NOT CARRY IS NAMED, NOT ZEROED.
+// Zeroing an absent counter turns a truncated read into a witness that the cgroup was never killed,
+// which is the difference between an OOM reclassification and a shrug.
+test fn the_events_counters_read_from_a_flat_body() -> Bool {
+  let body = "low 2\nhigh 5\nmax 1\noom 0\noom_kill 3\noom_group_kill 0"
+  match parse_cgroup_memory_event_counters(body: body) {
+    CgroupMemoryEventsRead { counters: CgroupMemoryEventCounters { low: l, high: h, max: m, oom: o, oom_kill: k } } =>
+      l == 2 && h == 5 && m == 1 && o == 0 && k == 3
+    _ => false
+  }
+}
+
+// THE SAME READER OVER A BODY MISSING oom_kill REFUSES AND SAYS WHICH KEY. The refusal is the point:
+// the extra entry the kernel does define (oom_group_kill) is ignored, and the one this record reads
+// is not silently defaulted.
+test fn a_missing_counter_is_refused_and_named_rather_than_defaulted() -> Bool {
+  let body = "low 0\nhigh 0\nmax 0\noom 0\nsock_throttled 7"
+  match parse_cgroup_memory_event_counters(body: body) {
+    CgroupMemoryEventCountersIncomplete { missing: ms } => ms == ["oom_kill"]
+    _ => false
+  }
+}

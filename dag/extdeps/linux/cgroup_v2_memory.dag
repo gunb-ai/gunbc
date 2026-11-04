@@ -59,6 +59,7 @@ type CgroupMemoryInterfaceFile
   | MemorySwapMax
   | MemorySwapPeak
   | MemoryEvents
+  | MemoryEventsLocal
 
 fn cgroup_memory_interface_file_name(f: CgroupMemoryInterfaceFile) -> NonEmptyStr {
   match f {
@@ -70,6 +71,7 @@ fn cgroup_memory_interface_file_name(f: CgroupMemoryInterfaceFile) -> NonEmptySt
     MemorySwapMax => "memory.swap.max"
     MemorySwapPeak => "memory.swap.peak"
     MemoryEvents => "memory.events"
+    MemoryEventsLocal => "memory.events.local"
   }
 }
 
@@ -83,8 +85,21 @@ fn cgroup_memory_metric_kind(f: CgroupMemoryInterfaceFile) -> CgroupMemoryMetric
     MemorySwapMax => Instantaneous
     MemorySwapPeak => LifetimeEpochScoped
     MemoryEvents => CumulativeCounter
+    MemoryEventsLocal => CumulativeCounter
   }
 }
+
+// THE TWO EVENTS FILES CARRY THE SAME COUNTERS AND DIFFER IN SCOPE, NOT IN KIND, so the difference
+// is carried in the name and nowhere else. cgroup-v2
+// (https://docs.kernel.org/admin-guide/cgroup-v2.html, "memory.events"): "Note that all fields in
+// this file are hierarchical and the file modified event can be generated due to an event down the
+// hierarchy. For the local events at the cgroup level see memory.events.local." And, under
+// "memory.events.local": "Similar to memory.events but the fields in the file are local to the
+// cgroup i.e. not hierarchical. The file modified event generated on this file reflects only the
+// local events." That is why these are two variants of one file type rather than one variant with a
+// scope flag: the kernel names them, and a reader that asks for the wrong one silently charges a
+// descendant's OOM to the level it read -- which is how a parent scope gets blamed for a child's
+// peak, and a child's for a sibling's.
 
 // A NEGATIVE BODY IS MALFORMED, NOT A MAGNITUDE. parse_int admits negatives, and every file modeled
 // here is documented as a non-negative byte count, so a leading minus is a malformed read, not a
@@ -264,4 +279,102 @@ fn parse_cgroup_memory_stat(body: String) -> CgroupMemoryStatReading {
       }
     }
   }
+}
+
+// ── memory.events AND memory.events.local: THE COUNTERS, NARROWED TO WHAT A CONSUMER ASKS ──────
+//
+// cgroup-v2 ("memory.events") defines low, high, max, oom, oom_kill, oom_group_kill and
+// sock_throttled. This record carries the five that answer the question an endpoint observation
+// asks of a build-cache daemon -- was this cgroup throttled, throttled at its own limit, or killed
+// -- and the two the kernel also defines are deliberately NOT modelled. That is a narrowing of the
+// file, not a claim that the file lacks them: the same document warns that a flat-keyed file grows
+// ("new entries can show up in the middle"), so a closed record over every entry would be stale on
+// the kernel's next release, while a named subset says exactly what is read.
+//
+// The five are the same in both events files. WHICH file a count was read from is the interface-file
+// question above, not a field of the record, and it is the question that decides whether an oom_kill
+// is this level's or a descendant's.
+type CgroupMemoryEventCounters {
+  low: Nat
+  high: Nat
+  max: Nat
+  oom: Nat
+  oom_kill: Nat
+}
+
+type CgroupMemoryEventCountersReading
+  = CgroupMemoryEventsRead { counters: CgroupMemoryEventCounters }
+  | CgroupMemoryEventCountersIncomplete { missing: List<String> }
+
+// A flat "key value" body read for the five keys, through the key/value reader this authority
+// already has: both files are documented as flat-keyed, so the reader is shared and only the key set
+// differs. A key the body does not carry is reported as missing rather than defaulted to zero -- an
+// absent counter and a zero counter are different facts, and the difference is what separates an OOM
+// witness from a truncated read.
+fn parse_cgroup_memory_event_counters(body: String) -> CgroupMemoryEventCountersReading {
+  let keys = ["low", "high", "max", "oom", "oom_kill"]
+  let missing = filter(keys, k => match cgroup_memory_stat_value(body: body, key: k) { Present { value: _ } => false  Absent => true })
+  match cgroup_memory_stat_value(body: body, key: "low") {
+    Absent => CgroupMemoryEventCountersIncomplete { missing: missing }
+    Present { value: v_low } => match cgroup_memory_stat_value(body: body, key: "high") {
+      Absent => CgroupMemoryEventCountersIncomplete { missing: missing }
+      Present { value: v_high } => match cgroup_memory_stat_value(body: body, key: "max") {
+        Absent => CgroupMemoryEventCountersIncomplete { missing: missing }
+        Present { value: v_max } => match cgroup_memory_stat_value(body: body, key: "oom") {
+          Absent => CgroupMemoryEventCountersIncomplete { missing: missing }
+          Present { value: v_oom } => match cgroup_memory_stat_value(body: body, key: "oom_kill") {
+            Absent => CgroupMemoryEventCountersIncomplete { missing: missing }
+            Present { value: v_oom_kill } => CgroupMemoryEventsRead { counters: CgroupMemoryEventCounters {
+              low: v_low,
+              high: v_high,
+              max: v_max,
+              oom: v_oom,
+              oom_kill: v_oom_kill,
+            } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── WHICH memory.stat KEYS A DIAGNOSTIC PRINTS IS THE CONSUMER'S; WHAT EACH KEY IS IS NOT ───────
+//
+// The rebuilt-seed regen round prints a cgroup memory diagnostic at each phase
+// (src/v1/stage0/src/required_regen_host.rs: CGROUP_DIAGNOSTIC_STAT_KEYS plus cgroup_stat_field).
+// It was hand-copying two facts that belong to this authority -- the kernel's spelling of each key
+// and which of the three kinds it is -- while the choice of WHICH keys to print is its own. So the
+// keys are declared here as data, and the consumer keeps its own list, which it must keep in step
+// with this one until the module joins the stage0 population and can import this module at all.
+// That divergence is tracked, not prose:
+// dag/gunbc/recurring_failure_mode/a_host_renderer_hand_copies_an_extdeps_key_roster.dag.
+//
+// Every key below is an Instantaneous byte count. The two CumulativeCounter entries the same file
+// documents (workingset_refault_file, pgmajfault) are NOT in this roster: the diagnostic prints
+// levels at phases, and a counter printed at two phases whose pair is never subtracted reads as a
+// level. CgroupMemoryStat's own required set is UNCHANGED -- which five keys are required is that
+// consumer's fact, not a property of the kernel interface (DESIGN 3: interface, realization and
+// policy are three facts, and extdeps owns the interface only).
+type CgroupMemoryStatKey {
+  name: String
+  kind: CgroupMemoryMetricKind
+}
+
+fn cgroup_memory_diagnostic_stat_key_roster() -> List<CgroupMemoryStatKey> {
+  [
+    CgroupMemoryStatKey { name: "anon", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "file", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "kernel", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "slab", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "shmem", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "file_mapped", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "file_dirty", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "file_writeback", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "swapcached", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "inactive_anon", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "active_anon", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "inactive_file", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "active_file", kind: Instantaneous },
+    CgroupMemoryStatKey { name: "unevictable", kind: Instantaneous },
+  ]
 }

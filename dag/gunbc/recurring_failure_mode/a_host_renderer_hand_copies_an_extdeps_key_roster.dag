@@ -1,0 +1,46 @@
+module gunbc.recurring_failure_mode.a_host_renderer_hand_copies_an_extdeps_key_roster
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_host_renderer_hand_copies_an_extdeps_key_roster: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_host_renderer_hand_copies_an_extdeps_key_roster" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "render an external interface's keys from that interface's own authority, so a consumer that wants a different subset asks the authority for its keys rather than spelling them again",
+    },
+  },
+
+  receipts: [
+    "**a hand copy of an external interface's key roster outlives the authority that owns those keys** (INVALID STATE: a consumer outside the corpus keeps its own list of names for facts an extdeps authority already models -- the kernel's spelling of each key, and which kind of quantity it is. The two lists agree only while someone edits both. The day either side changes, the consumer prints a name the interface does not have, or stops printing one it should, and no lane compares them.)",
+
+    "MECHANISM. src/v1/stage0/src/required_regen_host.rs carries CGROUP_DIAGNOSTIC_STAT_KEYS, fourteen string literals naming memory.stat keys, plus cgroup_stat_field, a hand-written match over those same names that yields the string absent when a key is missing. The authority for those names and kinds is extdeps.linux.cgroup_v2_memory, which models the interface files by their real names and classifies each quantity as an instantaneous level, a lifetime-epoch-scoped level, or a cumulative counter. The host cannot import that authority: the regen host module is not in the stage0 crate population, so no mirror of the authority exists for it to read. The copy is forced by the module's absence, not chosen for convenience -- which is what makes it a structural debt rather than a style slip.",
+
+    "WHY IT SURVIVES REVIEW: both sides read correctly in isolation. A literal array of key names inside a diagnostic function is unremarkable, and a roster inside the authority is exactly where such a roster belongs. Nothing at this head is wrong: the two lists were measured EQUAL when this row was filed, fourteen keys in the same order, a clean diff between the host array and the authority roster. The class is about the NEXT edit to either side, and no lane runs that edit against the other.",
+
+    "RECOGNITION RULE (mechanical, at diff grain): when a diff adds, renames or reorders a string literal that denotes an EXTERNAL interface fact -- a file name, a stat key, a counter name -- grep the corpus for the same literal outside the module that owns that interface. Two owners of one external fact is the class, and it is the class whether or not the two currently agree, because agreement is not a property either owner can maintain.",
+
+    "SPECIMEN, measured at the change that filed this row. The host array and the authority roster are equal today (fourteen keys: anon, file, kernel, slab, shmem, file_mapped, file_dirty, file_writeback, swapcached, inactive_anon, active_anon, inactive_file, active_file, unevictable; every one an instantaneous level). The two CumulativeCounter entries the same kernel file documents, workingset_refault_file and pgmajfault, are deliberately outside the roster: the diagnostic prints levels at phases, and a counter printed at several phases whose pair is never subtracted reads as a level. Which keys to print is the consumer's fact and stays with the consumer; what the consumer was hand-copying is the keys' names and kinds, and those now live on the authority.",
+
+    "FOUND SIBLINGS, named rather than silently left, all the same family. gunbc.build_cache.build_cache_instance carried its own five-field record of the memory.events counters; that one is re-pointed onto the authority in the change filing this row, because the authority now owns the record and the copy could not say WHICH events file a count came from -- memory.events is hierarchical, memory.events.local is not. gunbc.observation_seed_render carries the two events file names as hand-written data constants (the causes memory.events unreadable and memory.events.local unreadable) without importing the authority, and gunbc.build_cache.build_cache_instance carries a local memory-limit triple beside the authority's MemoryMax, MemoryHigh and MemoryCurrent interface files. Neither is re-pointed here: each needs its consumer's field shapes restated, which is a change of its own, and bundling it would hide the one fact this change is about.",
+
+    "HARM. The regen round's cgroup memory diagnostic is the only instrument on the memory envelope of a generation, and it is what tells a host ruling whether a slot fits. A key that drifts renders as the string absent beside real numbers, which reads as an interface that lacks the key rather than a copy that lost it -- the failure points at the kernel instead of at the diff. Measured cost so far: the equality had to be established by hand for this change, and every future key change needs the same hand check on both sides, by whoever happens to remember the copy exists.",
+
+    "RUNG FOUND AT: Mitigatable. The mitigation now in the corpus is the authority-side half of the equality: the roster is data on the authority and a claim pins its keys, its order and each key's kind, so one side of the pair is no longer prose. The host half is still a hand diff, so the class recurs at every key change rather than being discharged once.",
+
+    "CEILING, derived: MechanicallyPreventable. Once the regen host module joins the stage0 crate population it can import the authority and render each key as a typed present-or-absent reading of the roster; the copy then has no second place to live. No new judgement, model or capability anywhere else is required, which is what makes the ceiling mechanical rather than structural.",
+
+    "NEXT TRIGGER, named as a capability: render an external interface's keys from that interface's own authority. The blocker to building it here is that growing the stage0 crate population is a crate-layout change, and the population and the job roster are closed to growth without a ruling; this row records the class and its trigger, and builds nothing.",
+
+    "BOUNDED AGAINST NEIGHBOURS: [[a_pin_claim_compares_two_copies_while_a_third_drifts]] pins two copies and lets a third drift, so its defect is a pin that covers the wrong population; here nothing pins anything and the drift is between exactly two owners of one external fact. [[absence_carried_by_a_second_representation]] is one absence carried twice; here one presence -- a name the interface defines -- is carried twice. [[meaning_fork]] is the general shape, two texts for one meaning; this row is the case where both texts are correct today, which is why the class is invisible to review and needs a diff-grain rule rather than a reviewer.",
+  ],
+
+  evidence: [],
+}
