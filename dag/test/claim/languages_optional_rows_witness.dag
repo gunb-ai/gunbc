@@ -10,6 +10,7 @@ import std.languages {
   rust_language,
   python_language
 }
+import extdeps.cloud.gcp.errors { gcp_error_example, GcpRpcCodePermissionDenied }
 import std.render { config_comment_prefix, language_comment_prefix, comment_prefix_for }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -42,4 +43,16 @@ test fn markdown_absent_line_prefix_reads_as_the_empty_prefix() -> Bool {
 test fn the_line_prefix_rows_are_the_declared_optional() -> Bool {
   gitignore_format.comment.line_prefix == Present { value: "#" }
     && markdown_format.comment.line_prefix == Absent
+}
+
+// gcp_error_example.error.status is declared `GcpRpcCode?`; the row must be Present, not the bare code.
+test fn gcp_error_example_status_is_present() -> Bool {
+  gcp_error_example.error.status == Present { value: GcpRpcCodePermissionDenied }
+}
+
+test fn gcp_error_example_status_reads_through_the_null_binder_match() -> Bool {
+  match gcp_error_example.error.status {
+    null => false
+    c => c == GcpRpcCodePermissionDenied
+  }
 }
