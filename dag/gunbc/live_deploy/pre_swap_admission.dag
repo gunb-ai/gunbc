@@ -1,18 +1,52 @@
 module gunbc.live_deploy.pre_swap_admission
 
 import std.types { String, Bool, Int, NonEmptyStr, GitRef, List }
-import std.algebra { trim }
+import std.algebra { trim, join }
 import std.integer { int_to_decimal_string }
+import std.optional { Optional, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { content_hash_tagged_structural }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
+  prod_role_desired_deployment,
+  ProdRoleDeployment,
+  ProdRoleDeploymentSelected,
+  ProdRoleDeploymentRefused,
+  ProdRoleDeploymentRosterRefused,
+  ProdRoleDeploymentHolderRowMismatch,
 }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots }
+import gunbc.live_deploy.emit {
+  deployment_serve_source_root_flags_text,
+  eval_budget_flag_text,
+}
 import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.output_policy { OutcomeIsData }
+import gunbc.actions_run_binding {
+  json_required_string_member,
+  JsonStringMemberFound,
+  JsonStringMemberRefused,
+}
+import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+import gunbc.fleet.fleet_converge_receipt {
+  receipt_int_member,
+  ReceiptIntFound,
+  ReceiptIntRefused,
+}
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.git
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum {
+  sha256sum_file_digest_via_shell,
+  Sha256FileDigest,
+  Sha256FileDigestUnavailable,
+}
+import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_object, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+}
 import extdeps.git.inspect {
   merge_base_outcome,
   MergeBaseOutcome,
@@ -138,15 +172,10 @@ fn observe_serve_entry_compile_clean(repo_root: String, bin_path: String, roots:
   }
 }
 
-// The candidate is the checkout this process runs in, compiled by the gunbc that checkout built.
-fn observe_spec_serve_entry_compile(spec: DeploymentSpec) -> ServeEntryCompileVerdict {
-  let root = git.Inspect.Toplevel()
-  observe_serve_entry_compile_clean(
-    repo_root: root.path as String,
-    bin_path: witness_bin_release_path(root: root.path as String, bin_name: "gunbc"),
-    roots: deployment_serve_source_roots,
-    entry: spec.service.serve_entry as String,
-  )
+// The candidate checkout's HEAD hex. Same read the detached-HEAD admission uses; recorded in the
+// plan's serve-entry verdict so the swap can bind the verdict to the revision it admits.
+fn observe_checkout_head_hex() -> String {
+  trim(s: git.Inspect.HeadCommit(expect: OutcomeIsData).sha as String)
 }
 
 // Named checkout as git reports it. A detached HEAD is the literal "HEAD"; provenance for that
@@ -323,6 +352,463 @@ fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwap
   pre_swap_from_checkout(
     standing: observe_checkout_for_admission(admitted: deployment.admitted_branch),
     admitted: deployment.admitted_branch,
-    compile: observe_spec_serve_entry_compile(spec: selected_deployment_spec(row: deployment)),
+    compile: observe_plan_serve_entry_verdict(spec: selected_deployment_spec(row: deployment)),
   )
+}
+
+// ---------------------------------------------------------------------------
+// THE PLAN'S SERVE-ENTRY VERDICT, CONSUMED BY IDENTITY (prod gap 1, failure b).
+//
+// THE OLD CUT compiled the candidate's serve entry cold, inside the swap transaction, under
+// pre_swap_admission: resolve_entry_graph_inclusive over the full closure took 614964 ms and the
+// step still exited 1 (job 117824998335). The compile is a plan-time fact — it belongs where the
+// plan is made and the fold is expected to be paid — and the swap must consume that verdict by
+// IDENTITY rather than re-derive it. The identity is the four things the swap actually admits:
+// the source revision, the serve entry path, the serve argv (the ExecStart command text the
+// unit binds, digested through the same fragment builders the emit uses), and the release binary
+// that the swap promotes — the checkout's own target/release/gunbc, digested by sha256sum.
+//
+// THERE IS NO COLD-RESOLVE FALLBACK. A missing, unreadable, or foreign-identity verdict is a
+// refusal, never a licence to re-compile here: paying the fold in the swap "just in case" is the
+// §5 absorbing widen that made this step both slow and untestable. The producer entry below
+// runs in the plan job (after the plan step, before the artifact upload), so every uploaded
+// plan artifact carries its verdict; a deploy whose pointer run predates this rule refuses by
+// name and the operator re-runs the plan.
+// ---------------------------------------------------------------------------
+
+data serve_entry_verdict_schema: String = "live-deploy-serve-entry-verdict/v1"
+
+fn serve_entry_verdict_path() -> String {
+  join([fleet_converge_plan_artifact_dir, "/serve_entry_verdict.json"], "")
+}
+
+type ServeEntryVerdictConsumption
+  = ConsumedAdmitted
+  | ConsumedAbsent { detail: String }
+  | ConsumedIdentityMismatch { field: String, expected: String, seen: String }
+  | ConsumedCompileBlocked { blocking: Int, diagnostics_text: String }
+  | ConsumedCompileUnobserved { detail: String }
+
+type ServeEntryVerdictRecord
+  = ServeEntryVerdictAdmitted {
+      source_revision: String,
+      entry: String,
+      argv_digest: String,
+      compiler_bin_sha256_hex: String,
+    }
+  | ServeEntryVerdictBlocked {
+      source_revision: String,
+      entry: String,
+      argv_digest: String,
+      compiler_bin_sha256_hex: String,
+      blocking: Int,
+      diagnostics_text: String,
+    }
+  | ServeEntryVerdictUnobserved {
+      source_revision: String,
+      entry: String,
+      argv_digest: String,
+      compiler_bin_sha256_hex: String,
+      detail: String,
+    }
+
+type ServeEntryVerdictDecode
+  = ServeEntryVerdictDecoded { record: ServeEntryVerdictRecord }
+  | ServeEntryVerdictUndecoded { detail: String }
+
+// The serve argv the unit's ExecStart binds, as one text. Built from the same helpers the emit
+// uses for ExecStart (deployment_serve_source_root_flags_text, eval_budget_flag_text), so this
+// is the unit's argv digested, not a second spelling of it minus the launch directory, the
+// binary path, and --release-revision -- those are covered by the compiler digest and the
+// revision in the same record.
+fn serve_entry_argv_identity_text(spec: DeploymentSpec) -> String {
+  let svc = spec.service
+  join([
+    "serve",
+    deployment_serve_source_root_flags_text(),
+    " --entry ",
+    svc.serve_entry as String,
+    " --function ",
+    svc.serve_function as String,
+    " --host ",
+    svc.listen.host as String,
+    " --port ",
+    to_string(svc.listen.port),
+    eval_budget_flag_text(flag: "--cpu-budget", limit: svc.serve_cpu_limit),
+    eval_budget_flag_text(flag: "--wall-budget", limit: svc.serve_wall_limit),
+  ], "")
+}
+
+fn serve_entry_argv_digest_of_text(text: String) -> String {
+  content_hash_tagged_structural(
+    tag: "live-deploy-serve-argv-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: text as NonEmptyStr),
+  ).digest as String
+}
+
+fn serve_entry_argv_digest(spec: DeploymentSpec) -> String {
+  serve_entry_argv_digest_of_text(text: serve_entry_argv_identity_text(spec: spec))
+}
+
+fn serve_entry_verdict_json(record: ServeEntryVerdictRecord) -> JsonValue {
+  match record {
+    ServeEntryVerdictAdmitted { source_revision, entry, argv_digest, compiler_bin_sha256_hex } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: serve_entry_verdict_schema)),
+        json_kv(key: "source_revision", value: json_string(s: source_revision)),
+        json_kv(key: "entry", value: json_string(s: entry)),
+        json_kv(key: "argv_digest", value: json_string(s: argv_digest)),
+        json_kv(key: "compiler_bin_sha256_hex", value: json_string(s: compiler_bin_sha256_hex)),
+        json_kv(key: "compile_arm", value: json_string(s: "admitted")),
+      ])
+    ServeEntryVerdictBlocked { source_revision, entry, argv_digest, compiler_bin_sha256_hex, blocking, diagnostics_text } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: serve_entry_verdict_schema)),
+        json_kv(key: "source_revision", value: json_string(s: source_revision)),
+        json_kv(key: "entry", value: json_string(s: entry)),
+        json_kv(key: "argv_digest", value: json_string(s: argv_digest)),
+        json_kv(key: "compiler_bin_sha256_hex", value: json_string(s: compiler_bin_sha256_hex)),
+        json_kv(key: "compile_arm", value: json_string(s: "blocked")),
+        json_kv(key: "compile_blocking", value: json_string(s: int_to_decimal_string(value: blocking))),
+        json_kv(key: "compile_diagnostics_text", value: json_string(s: diagnostics_text)),
+      ])
+    ServeEntryVerdictUnobserved { source_revision, entry, argv_digest, compiler_bin_sha256_hex, detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: serve_entry_verdict_schema)),
+        json_kv(key: "source_revision", value: json_string(s: source_revision)),
+        json_kv(key: "entry", value: json_string(s: entry)),
+        json_kv(key: "argv_digest", value: json_string(s: argv_digest)),
+        json_kv(key: "compiler_bin_sha256_hex", value: json_string(s: compiler_bin_sha256_hex)),
+        json_kv(key: "compile_arm", value: json_string(s: "unobserved")),
+        json_kv(key: "compile_detail", value: json_string(s: detail)),
+      ])
+  }
+}
+
+fn serve_entry_verdict_decode(raw: String) -> ServeEntryVerdictDecode {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap } =>
+      ServeEntryVerdictUndecoded { detail: join(["verdict document is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_required_string_member(doc: doc, key: "schema") {
+        JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+        JsonStringMemberFound { value: schema } =>
+          if schema != serve_entry_verdict_schema {
+            ServeEntryVerdictUndecoded {
+              detail: join(["verdict schema is not ", serve_entry_verdict_schema, ": ", schema], ""),
+            }
+          } else {
+            match json_required_string_member(doc: doc, key: "source_revision") {
+              JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+              JsonStringMemberFound { value: source_revision } =>
+                match json_required_string_member(doc: doc, key: "entry") {
+                  JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+                  JsonStringMemberFound { value: entry } =>
+                    match json_required_string_member(doc: doc, key: "argv_digest") {
+                      JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+                      JsonStringMemberFound { value: argv_digest } =>
+                        match json_required_string_member(doc: doc, key: "compiler_bin_sha256_hex") {
+                          JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+                          JsonStringMemberFound { value: compiler_bin_sha256_hex } =>
+                            match json_required_string_member(doc: doc, key: "compile_arm") {
+                              JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+                              JsonStringMemberFound { value: arm } =>
+                                if arm == "admitted" {
+                                  ServeEntryVerdictDecoded {
+                                    record: ServeEntryVerdictAdmitted {
+                                      source_revision: source_revision,
+                                      entry: entry,
+                                      argv_digest: argv_digest,
+                                      compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+                                    },
+                                  }
+                                } else if arm == "blocked" {
+                                  match receipt_int_member(doc: doc, key: "compile_blocking") {
+                                    ReceiptIntRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+                                    ReceiptIntFound { value: blocking } =>
+                                      match json_required_string_member(doc: doc, key: "compile_diagnostics_text") {
+                                        JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+                                        JsonStringMemberFound { value: diagnostics_text } =>
+                                          ServeEntryVerdictDecoded {
+                                            record: ServeEntryVerdictBlocked {
+                                              source_revision: source_revision,
+                                              entry: entry,
+                                              argv_digest: argv_digest,
+                                              compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+                                              blocking: blocking,
+                                              diagnostics_text: diagnostics_text,
+                                            },
+                                          }
+                                      }
+                                  }
+                                } else if arm == "unobserved" {
+                                  match json_required_string_member(doc: doc, key: "compile_detail") {
+                                    JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
+                                    JsonStringMemberFound { value: detail } =>
+                                      ServeEntryVerdictDecoded {
+                                        record: ServeEntryVerdictUnobserved {
+                                          source_revision: source_revision,
+                                          entry: entry,
+                                          argv_digest: argv_digest,
+                                          compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+                                          detail: detail,
+                                        },
+                                      }
+                                  }
+                                } else {
+                                  ServeEntryVerdictUndecoded {
+                                    detail: join(["verdict compile arm is not admitted, blocked, or unobserved: ", arm], ""),
+                                  }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+type ServeEntryVerdictIdentity
+  = IdentityChecked
+  | IdentityMismatched { field: String, expected: String, seen: String }
+
+// The four things the swap admits, checked one at a time and named at the first mismatch. The
+// check is ordered revision, entry, argv, binary so a witness that flips exactly one field sees
+// exactly one name.
+fn serve_entry_verdict_identity_check(
+  source_revision: String,
+  entry: String,
+  argv_digest: String,
+  compiler_bin_sha256_hex: String,
+  expected_source_revision: String,
+  expected_entry: String,
+  expected_argv_digest: String,
+  admitted_bin_sha256_hex: String,
+) -> ServeEntryVerdictIdentity {
+  if source_revision != expected_source_revision {
+    IdentityMismatched { field: "source_revision", expected: expected_source_revision, seen: source_revision }
+  } else if entry != expected_entry {
+    IdentityMismatched { field: "entry", expected: expected_entry, seen: entry }
+  } else if argv_digest != expected_argv_digest {
+    IdentityMismatched { field: "argv_digest", expected: expected_argv_digest, seen: argv_digest }
+  } else if compiler_bin_sha256_hex != admitted_bin_sha256_hex {
+    IdentityMismatched { field: "compiler_bin_sha256_hex", expected: admitted_bin_sha256_hex, seen: compiler_bin_sha256_hex }
+  } else {
+    IdentityChecked
+  }
+}
+
+// Pure admission: the recorded identity against the four facts the swap itself holds, then the
+// verdict's own arm. A blocked or unobserved verdict still passes identity first -- a verdict
+// about someone else's bytes must be named as such, not laundered into a compile answer.
+fn admit_plan_serve_entry_verdict(
+  record: ServeEntryVerdictRecord,
+  expected_source_revision: String,
+  expected_entry: String,
+  expected_argv_digest: String,
+  admitted_bin_sha256_hex: String,
+) -> ServeEntryVerdictConsumption {
+  match record {
+    ServeEntryVerdictAdmitted { source_revision, entry, argv_digest, compiler_bin_sha256_hex } =>
+      match serve_entry_verdict_identity_check(
+        source_revision: source_revision,
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+        expected_source_revision: expected_source_revision,
+        expected_entry: expected_entry,
+        expected_argv_digest: expected_argv_digest,
+        admitted_bin_sha256_hex: admitted_bin_sha256_hex,
+      ) {
+        IdentityMismatched { field, expected, seen } =>
+          ConsumedIdentityMismatch { field: field, expected: expected, seen: seen }
+        IdentityChecked => ConsumedAdmitted
+      }
+    ServeEntryVerdictBlocked { source_revision, entry, argv_digest, compiler_bin_sha256_hex, blocking, diagnostics_text } =>
+      match serve_entry_verdict_identity_check(
+        source_revision: source_revision,
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+        expected_source_revision: expected_source_revision,
+        expected_entry: expected_entry,
+        expected_argv_digest: expected_argv_digest,
+        admitted_bin_sha256_hex: admitted_bin_sha256_hex,
+      ) {
+        IdentityMismatched { field, expected, seen } =>
+          ConsumedIdentityMismatch { field: field, expected: expected, seen: seen }
+        IdentityChecked => ConsumedCompileBlocked { blocking: blocking, diagnostics_text: diagnostics_text }
+      }
+    ServeEntryVerdictUnobserved { source_revision, entry, argv_digest, compiler_bin_sha256_hex, detail } =>
+      match serve_entry_verdict_identity_check(
+        source_revision: source_revision,
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+        expected_source_revision: expected_source_revision,
+        expected_entry: expected_entry,
+        expected_argv_digest: expected_argv_digest,
+        admitted_bin_sha256_hex: admitted_bin_sha256_hex,
+      ) {
+        IdentityMismatched { field, expected, seen } =>
+          ConsumedIdentityMismatch { field: field, expected: expected, seen: seen }
+        IdentityChecked => ConsumedCompileUnobserved { detail: detail }
+      }
+  }
+}
+
+// Consumption projected onto the swap's existing pre-swap shape, so the refusal carries the same
+// PreSwapRefused arm and text surface as every other pre-swap question. Absence and foreign
+// identity both say Unobserved truthfully -- the candidate's compile was genuinely never
+// observed by THIS process -- and both name the cause and the no-fallback rule.
+fn serve_entry_verdict_as_compile_verdict(consumption: ServeEntryVerdictConsumption) -> ServeEntryCompileVerdict {
+  match consumption {
+    ConsumedAdmitted => ServeEntryCompileAdmitted
+    ConsumedCompileBlocked { blocking, diagnostics_text } =>
+      ServeEntryCompileBlocked { blocking: blocking, diagnostics: [diagnostics_text] as List<String> }
+    ConsumedAbsent { detail } =>
+      ServeEntryCompileUnobserved {
+        detail: join(["the plan run published no serve-entry verdict (", detail, "); refusing without a cold resolve -- re-run the plan"], ""),
+      }
+    ConsumedIdentityMismatch { field, expected, seen } =>
+      ServeEntryCompileUnobserved {
+        detail: join(["plan serve-entry verdict identity mismatch on ", field, ": expected '", expected, "', saw '", seen, "'; the verdict certifies different bytes and there is no cold resolve fallback"], ""),
+      }
+    ConsumedCompileUnobserved { detail } => ServeEntryCompileUnobserved { detail: detail }
+  }
+}
+
+// THE SWAP'S QUESTION, ANSWERED FROM THE PLAN. Reads the plan artifact's verdict, digests the
+// release binary the swap itself would promote, and admits only on a four-way identity match.
+// No branch of this function compiles anything: that is the whole point.
+fn observe_plan_serve_entry_verdict(spec: DeploymentSpec) -> ServeEntryCompileVerdict {
+  let path = serve_entry_verdict_path()
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    serve_entry_verdict_as_compile_verdict(
+      consumption: ConsumedAbsent { detail: join(["could not read ", path, ": ", read.error], "") },
+    )
+  } else {
+    match serve_entry_verdict_decode(raw: read.content) {
+      ServeEntryVerdictUndecoded { detail } =>
+        serve_entry_verdict_as_compile_verdict(consumption: ConsumedAbsent { detail: detail })
+      ServeEntryVerdictDecoded { record } => {
+        let root = git.Inspect.Toplevel()
+        let bin = witness_bin_release_path(root: root.path as String, bin_name: "gunbc")
+        match sha256sum_file_digest_via_shell(path: bin as NonEmptyStr) {
+          Sha256FileDigestUnavailable { path: wanted, reason } =>
+            serve_entry_verdict_as_compile_verdict(
+              consumption: ConsumedAbsent {
+                detail: join(["the release binary the swap admits (", wanted as String, ") has no readable digest: ", reason], ""),
+              },
+            )
+          Sha256FileDigest { digest } =>
+            serve_entry_verdict_as_compile_verdict(
+              consumption: admit_plan_serve_entry_verdict(
+                record: record,
+                expected_source_revision: observe_checkout_head_hex(),
+                expected_entry: spec.service.serve_entry as String,
+                expected_argv_digest: serve_entry_argv_digest(spec: spec),
+                admitted_bin_sha256_hex: digest.hex as String,
+              ),
+            )
+        }
+      }
+    }
+  }
+}
+
+// The plan job's compile answer recorded as the verdict document the swap consumes. One arm per
+// compile outcome; the identity fields are the plan checkout's own facts.
+fn serve_entry_verdict_record_of(
+  compile: ServeEntryCompileVerdict,
+  source_revision: String,
+  entry: String,
+  argv_digest: String,
+  compiler_bin_sha256_hex: String,
+) -> ServeEntryVerdictRecord {
+  match compile {
+    ServeEntryCompileAdmitted =>
+      ServeEntryVerdictAdmitted {
+        source_revision: source_revision,
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+      }
+    ServeEntryCompileBlocked { blocking, diagnostics } =>
+      ServeEntryVerdictBlocked {
+        source_revision: source_revision,
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+        blocking: blocking,
+        diagnostics_text: join(diagnostics, "\n"),
+      }
+    ServeEntryCompileUnobserved { detail } =>
+      ServeEntryVerdictUnobserved {
+        source_revision: source_revision,
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+        detail: detail,
+      }
+  }
+}
+
+fn record_plan_serve_entry_verdict_for(row: DesiredDeployment) -> ProcessExit {
+  let spec = selected_deployment_spec(row: row)
+  let root = git.Inspect.Toplevel()
+  let root_path = root.path as String
+  let bin = witness_bin_release_path(root: root_path, bin_name: "gunbc")
+  match sha256sum_file_digest_via_shell(path: bin as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: wanted, reason } =>
+      exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the pair build produced no digestable gunbc at ", wanted as String, ": ", reason], ""))
+    Sha256FileDigest { digest } => {
+      let compile = observe_serve_entry_compile_clean(
+        repo_root: root_path,
+        bin_path: bin,
+        roots: deployment_serve_source_roots,
+        entry: spec.service.serve_entry as String,
+      )
+      let record = serve_entry_verdict_record_of(
+        compile: compile,
+        source_revision: observe_checkout_head_hex(),
+        entry: spec.service.serve_entry as String,
+        argv_digest: serve_entry_argv_digest(spec: spec),
+        compiler_bin_sha256_hex: digest.hex as String,
+      )
+      let path = serve_entry_verdict_path()
+      let write = Filesystem.Write(path: path, content: serialize_json(value: serve_entry_verdict_json(record: record)))
+      if !write.success {
+        exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — could not write ", path, ": ", write.error], ""))
+      } else {
+        match compile {
+          ServeEntryCompileAdmitted => ExitSuccess
+          ServeEntryCompileBlocked { blocking, diagnostics } =>
+            exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the serve entry does not compile cleanly; ", int_to_decimal_string(value: blocking), " blocking: ", serve_entry_blocking_summary(diagnostics: diagnostics)], ""))
+          ServeEntryCompileUnobserved { detail } =>
+            exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the serve-entry compile was not observed: ", detail], ""))
+        }
+      }
+    }
+  }
+}
+
+// PLAN-JOB ENTRY (fleet-converge job, after the plan step, before the artifact upload): compile
+// the prod-role serve entry with the release pair the run itself built, and publish the verdict
+// beside the plan receipt so the swap consumes it by identity. A blocked or unobserved compile
+// fails the PLAN RUN here, where the fold belongs -- the deploy chain then never starts, and
+// PR 1's run-pointer admission names the refused plan run.
+fn record_plan_serve_entry_compile_verdict() -> ProcessExit {
+  match prod_role_desired_deployment() {
+    ProdRoleDeploymentSelected { deployment } => record_plan_serve_entry_verdict_for(row: deployment)
+    ProdRoleDeploymentRefused =>
+      exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the prod-role desired deployment is refused; the serve-entry verdict has no subject")
+    ProdRoleDeploymentRosterRefused =>
+      exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the desired roster is refused; the serve-entry verdict has no subject")
+    ProdRoleDeploymentHolderRowMismatch =>
+      exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the prod-role holder row mismatches the roster")
+  }
 }

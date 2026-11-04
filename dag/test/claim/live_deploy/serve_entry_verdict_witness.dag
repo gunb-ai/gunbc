@@ -1,0 +1,339 @@
+module test.claim.live_deploy.serve_entry_verdict_witness
+
+import std.types { Bool, Int, List, String }
+import std.algebra { join }
+import gunbc.live_deploy.pre_swap_admission {
+  ServeEntryVerdictRecord,
+  ServeEntryVerdictAdmitted,
+  ServeEntryVerdictBlocked,
+  ServeEntryVerdictUnobserved,
+  ServeEntryVerdictDecode,
+  ServeEntryVerdictDecoded,
+  ServeEntryVerdictUndecoded,
+  ServeEntryVerdictConsumption,
+  ConsumedAdmitted,
+  ConsumedAbsent,
+  ConsumedIdentityMismatch,
+  ConsumedCompileBlocked,
+  ConsumedCompileUnobserved,
+  ServeEntryCompileVerdict,
+  serve_entry_verdict_json,
+  serve_entry_verdict_decode,
+  serve_entry_argv_identity_text,
+  serve_entry_argv_digest_of_text,
+  admit_plan_serve_entry_verdict,
+  serve_entry_verdict_as_compile_verdict,
+}
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.live_deploy.desired { srv1_production_desired_deployment, selected_deployment_spec }
+
+// THE PLAN'S SERVE-ENTRY VERDICT, WITNESSED AT THE DISTINCTIONS IT EXISTS FOR. The rule this
+// document carries is: the swap consumes the plan's compile answer ONLY under a four-way identity
+// match -- source revision, entry, serve argv, and the release binary the swap admits -- and every
+// other case refuses by name with no cold resolve behind it. Each witness flips exactly one thing.
+
+data fixture_revision: String = "0123456789abcdef0123456789abcdef01234567"
+data fixture_entry: String = "dag/gunbc/roadmap/roadmap_serve.dag"
+data fixture_argv_digest: String = "argv-digest-aaa"
+data fixture_bin_hex: String = "bin-digest-bbb"
+
+fn fixture_admitted() -> ServeEntryVerdictRecord {
+  ServeEntryVerdictAdmitted {
+    source_revision: fixture_revision,
+    entry: fixture_entry,
+    argv_digest: fixture_argv_digest,
+    compiler_bin_sha256_hex: fixture_bin_hex,
+  }
+}
+
+fn fixture_blocked() -> ServeEntryVerdictRecord {
+  ServeEntryVerdictBlocked {
+    source_revision: fixture_revision,
+    entry: fixture_entry,
+    argv_digest: fixture_argv_digest,
+    compiler_bin_sha256_hex: fixture_bin_hex,
+    blocking: 3,
+    diagnostics_text: "type error at roadmap_serve.dag:1\nunresolved import x",
+  }
+}
+
+fn fixture_unobserved() -> ServeEntryVerdictRecord {
+  ServeEntryVerdictUnobserved {
+    source_revision: fixture_revision,
+    entry: fixture_entry,
+    argv_digest: fixture_argv_digest,
+    compiler_bin_sha256_hex: fixture_bin_hex,
+    detail: "spawn refused",
+  }
+}
+
+fn record_tag(record: ServeEntryVerdictRecord) -> String {
+  match record {
+    ServeEntryVerdictAdmitted { source_revision: _, entry: _, argv_digest: _, compiler_bin_sha256_hex: _ } => "admitted"
+    ServeEntryVerdictBlocked { source_revision: _, entry: _, argv_digest: _, compiler_bin_sha256_hex: _, blocking: _, diagnostics_text: _ } => "blocked"
+    ServeEntryVerdictUnobserved { source_revision: _, entry: _, argv_digest: _, compiler_bin_sha256_hex: _, detail: _ } => "unobserved"
+  }
+}
+
+fn consumption_tag(consumption: ServeEntryVerdictConsumption) -> String {
+  match consumption {
+    ConsumedAdmitted => "admitted"
+    ConsumedAbsent { detail: _ } => "absent"
+    ConsumedIdentityMismatch { field: _, expected: _, seen: _ } => "mismatch"
+    ConsumedCompileBlocked { blocking: _, diagnostics_text: _ } => "blocked"
+    ConsumedCompileUnobserved { detail: _ } => "compile-unobserved"
+  }
+}
+
+fn mismatch_field(consumption: ServeEntryVerdictConsumption) -> String {
+  match consumption {
+    ConsumedIdentityMismatch { field: field, expected: _, seen: _ } => field
+    _ => "not-mismatch"
+  }
+}
+
+fn compile_verdict_tag(verdict: ServeEntryCompileVerdict) -> String {
+  match verdict {
+    ServeEntryCompileAdmitted => "admitted"
+    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => "blocked"
+    ServeEntryCompileUnobserved { detail: _ } => "unobserved"
+  }
+}
+
+fn compile_verdict_detail(verdict: ServeEntryCompileVerdict) -> String {
+  match verdict {
+    ServeEntryCompileUnobserved { detail: detail } => detail
+    _ => ""
+  }
+}
+
+fn string_has_prefix(text: String, prefix: String) -> Bool {
+  text.length() >= prefix.length() && text.substring(start: 0, end: prefix.length()) == prefix
+}
+
+fn contains_at(text: String, needle: String, index: Int, limit: Int) -> Bool {
+  if index + needle.length() > limit {
+    false
+  } else if text.substring(start: index, end: index + needle.length()) == needle {
+    true
+  } else {
+    contains_at(text: text, needle: needle, index: index + 1, limit: limit)
+  }
+}
+
+fn string_contains(text: String, needle: String) -> Bool {
+  if needle.length() > text.length() {
+    false
+  } else {
+    contains_at(text: text, needle: needle, index: 0, limit: text.length())
+  }
+}
+
+// ───────────────────────────── encode / decode round-trips ─────────────────────────────
+
+test fn witness_round_trip_admitted() -> Bool {
+  match serve_entry_verdict_decode(raw: serialize_json(value: serve_entry_verdict_json(record: fixture_admitted()))) {
+    ServeEntryVerdictDecoded { record } => record_tag(record) == "admitted"
+    ServeEntryVerdictUndecoded { detail: _ } => false
+  }
+}
+
+test fn witness_round_trip_blocked_keeps_blocking_and_diagnostics() -> Bool {
+  match serve_entry_verdict_decode(raw: serialize_json(value: serve_entry_verdict_json(record: fixture_blocked()))) {
+    ServeEntryVerdictDecoded { record } =>
+      match record {
+        ServeEntryVerdictBlocked { blocking: blocking, diagnostics_text: text, source_revision: revision, entry: _, argv_digest: _, compiler_bin_sha256_hex: _ } =>
+          blocking == 3 && string_contains(text: text, needle: "type error at roadmap_serve.dag:1") && revision == fixture_revision
+        _ => false
+      }
+    ServeEntryVerdictUndecoded { detail: _ } => false
+  }
+}
+
+test fn witness_round_trip_unobserved_keeps_detail() -> Bool {
+  match serve_entry_verdict_decode(raw: serialize_json(value: serve_entry_verdict_json(record: fixture_unobserved()))) {
+    ServeEntryVerdictDecoded { record } =>
+      match record {
+        ServeEntryVerdictUnobserved { detail: detail, source_revision: _, entry: _, argv_digest: _, compiler_bin_sha256_hex: _ } => detail == "spawn refused"
+        _ => false
+      }
+    ServeEntryVerdictUndecoded { detail: _ } => false
+  }
+}
+
+// ───────────────────────────── decode refusals, named ─────────────────────────────
+
+fn raw_with_schema(schema: String) -> String {
+  join(["{\"schema\": \"", schema, "\", \"source_revision\": \"", fixture_revision, "\", \"entry\": \"", fixture_entry, "\", \"argv_digest\": \"", fixture_argv_digest, "\", \"compiler_bin_sha256_hex\": \"", fixture_bin_hex, "\", \"compile_arm\": \"admitted\"}"], "")
+}
+
+test fn witness_foreign_schema_undecoded() -> Bool {
+  match serve_entry_verdict_decode(raw: raw_with_schema(schema: "live-deploy-apply-receipt/v4")) {
+    ServeEntryVerdictUndecoded { detail } => string_has_prefix(text: detail, prefix: "verdict schema is not ")
+    ServeEntryVerdictDecoded { record: _ } => false
+  }
+}
+
+test fn witness_missing_entry_member_undecoded() -> Bool {
+  match serve_entry_verdict_decode(raw: "{\"schema\": \"live-deploy-serve-entry-verdict/v1\", \"source_revision\": \"r\", \"argv_digest\": \"a\", \"compiler_bin_sha256_hex\": \"b\", \"compile_arm\": \"admitted\"}") {
+    ServeEntryVerdictUndecoded { detail: _ } => true
+    ServeEntryVerdictDecoded { record: _ } => false
+  }
+}
+
+test fn witness_plain_admitted_document_decodes() -> Bool {
+  match serve_entry_verdict_decode(raw: raw_with_schema(schema: "live-deploy-serve-entry-verdict/v1")) {
+    ServeEntryVerdictDecoded { record } => record_tag(record) == "admitted"
+    ServeEntryVerdictUndecoded { detail: _ } => false
+  }
+}
+
+test fn witness_blocked_missing_diagnostics_undecoded() -> Bool {
+  match serve_entry_verdict_decode(raw: join(["{\"schema\": \"live-deploy-serve-entry-verdict/v1\", \"source_revision\": \"", fixture_revision, "\", \"entry\": \"", fixture_entry, "\", \"argv_digest\": \"", fixture_argv_digest, "\", \"compiler_bin_sha256_hex\": \"", fixture_bin_hex, "\", \"compile_arm\": \"blocked\", \"compile_blocking\": \"2\"}"], "")) {
+    ServeEntryVerdictUndecoded { detail: _ } => true
+    ServeEntryVerdictDecoded { record: _ } => false
+  }
+}
+
+// ───────────────────────── identity: one field flipped at a time ─────────────────────────
+
+fn admit_with(record: ServeEntryVerdictRecord) -> ServeEntryVerdictConsumption {
+  admit_plan_serve_entry_verdict(
+    record: record,
+    expected_source_revision: fixture_revision,
+    expected_entry: fixture_entry,
+    expected_argv_digest: fixture_argv_digest,
+    admitted_bin_sha256_hex: fixture_bin_hex,
+  )
+}
+
+test fn witness_identity_full_match_admits() -> Bool {
+  consumption_tag(admit_with(record: fixture_admitted())) == "admitted"
+}
+
+test fn witness_foreign_revision_names_revision() -> Bool {
+  match fixture_admitted() {
+    ServeEntryVerdictAdmitted { source_revision: _, entry: entry, argv_digest: argv_digest, compiler_bin_sha256_hex: bin_hex } =>
+      mismatch_field(admit_with(record: ServeEntryVerdictAdmitted {
+        source_revision: "ffffffffffffffffffffffffffffffffffffffff",
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: bin_hex,
+      })) == "source_revision"
+    _ => false
+  }
+}
+
+test fn witness_foreign_entry_names_entry() -> Bool {
+  match fixture_admitted() {
+    ServeEntryVerdictAdmitted { source_revision: revision, entry: _, argv_digest: argv_digest, compiler_bin_sha256_hex: bin_hex } =>
+      mismatch_field(admit_with(record: ServeEntryVerdictAdmitted {
+        source_revision: revision,
+        entry: "dag/gunbc/some/other_serve.dag",
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: bin_hex,
+      })) == "entry"
+    _ => false
+  }
+}
+
+test fn witness_foreign_argv_names_argv_digest() -> Bool {
+  match fixture_admitted() {
+    ServeEntryVerdictAdmitted { source_revision: revision, entry: entry, argv_digest: _, compiler_bin_sha256_hex: bin_hex } =>
+      mismatch_field(admit_with(record: ServeEntryVerdictAdmitted {
+        source_revision: revision,
+        entry: entry,
+        argv_digest: "argv-digest-other",
+        compiler_bin_sha256_hex: bin_hex,
+      })) == "argv_digest"
+    _ => false
+  }
+}
+
+test fn witness_foreign_binary_names_compiler_bin() -> Bool {
+  match fixture_admitted() {
+    ServeEntryVerdictAdmitted { source_revision: revision, entry: entry, argv_digest: argv_digest, compiler_bin_sha256_hex: _ } =>
+      mismatch_field(admit_with(record: ServeEntryVerdictAdmitted {
+        source_revision: revision,
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: "bin-digest-other",
+      })) == "compiler_bin_sha256_hex"
+    _ => false
+  }
+}
+
+// A blocked verdict about DIFFERENT bytes is named as foreign, not laundered into a compile
+// answer: identity is checked first on every arm.
+test fn witness_blocked_foreign_binary_is_mismatch_not_blocked() -> Bool {
+  match fixture_blocked() {
+    ServeEntryVerdictBlocked { source_revision: revision, entry: entry, argv_digest: argv_digest, compiler_bin_sha256_hex: _, blocking: blocking, diagnostics_text: text } =>
+      consumption_tag(admit_with(record: ServeEntryVerdictBlocked {
+        source_revision: revision,
+        entry: entry,
+        argv_digest: argv_digest,
+        compiler_bin_sha256_hex: "bin-digest-other",
+        blocking: blocking,
+        diagnostics_text: text,
+      })) == "mismatch"
+    _ => false
+  }
+}
+
+test fn witness_blocked_matching_identity_carries_diagnostics() -> Bool {
+  match admit_with(record: fixture_blocked()) {
+    ConsumedCompileBlocked { blocking: blocking, diagnostics_text: text } =>
+      blocking == 3 && string_contains(text: text, needle: "unresolved import x")
+    _ => false
+  }
+}
+
+test fn witness_unobserved_matching_identity_names_detail() -> Bool {
+  match admit_with(record: fixture_unobserved()) {
+    ConsumedCompileUnobserved { detail } => detail == "spawn refused"
+    _ => false
+  }
+}
+
+// ─────────────────── the no-fallback surface, projected onto the swap ───────────────────
+
+test fn witness_absent_maps_to_named_unobserved_no_cold_resolve() -> Bool {
+  let verdict = serve_entry_verdict_as_compile_verdict(consumption: ConsumedAbsent { detail: "could not read /tmp/x: no such file" })
+  compile_verdict_tag(verdict: verdict) == "unobserved"
+    && string_has_prefix(text: compile_verdict_detail(verdict: verdict), prefix: "the plan run published no serve-entry verdict")
+    && string_contains(text: compile_verdict_detail(verdict: verdict), needle: "refusing without a cold resolve")
+}
+
+test fn witness_mismatch_maps_to_named_unobserved_no_fallback() -> Bool {
+  let verdict = serve_entry_verdict_as_compile_verdict(consumption: ConsumedIdentityMismatch { field: "entry", expected: "e", seen: "other" })
+  compile_verdict_tag(verdict: verdict) == "unobserved"
+    && string_has_prefix(text: compile_verdict_detail(verdict: verdict), prefix: "plan serve-entry verdict identity mismatch on entry")
+    && string_contains(text: compile_verdict_detail(verdict: verdict), needle: "no cold resolve fallback")
+}
+
+test fn witness_blocked_projection_stays_blocked() -> Bool {
+  compile_verdict_tag(
+    verdict: serve_entry_verdict_as_compile_verdict(consumption: ConsumedCompileBlocked { blocking: 1, diagnostics_text: "one line" }),
+  ) == "blocked"
+}
+
+test fn witness_admitted_projection_stays_admitted() -> Bool {
+  compile_verdict_tag(verdict: serve_entry_verdict_as_compile_verdict(consumption: ConsumedAdmitted)) == "admitted"
+}
+
+// ─────────────────────────── the serve argv identity itself ───────────────────────────
+
+test fn witness_argv_identity_binds_the_real_serve_entry() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_production_desired_deployment())
+  string_contains(text: serve_entry_argv_identity_text(spec: spec), needle: spec.service.serve_entry as String)
+}
+
+test fn witness_argv_identity_binds_port_and_budgets() -> Bool {
+  let text = serve_entry_argv_identity_text(spec: selected_deployment_spec(row: srv1_production_desired_deployment()))
+  string_contains(text: text, needle: " --entry ") && string_contains(text: text, needle: " --port ")
+}
+
+test fn witness_argv_digest_is_deterministic_and_text_sensitive() -> Bool {
+  serve_entry_argv_digest_of_text(text: "serve --x 1") == serve_entry_argv_digest_of_text(text: "serve --x 1")
+    && serve_entry_argv_digest_of_text(text: "serve --x 1") != serve_entry_argv_digest_of_text(text: "serve --x 2")
+}
