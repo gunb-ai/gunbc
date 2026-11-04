@@ -1,9 +1,9 @@
 module gunbc.ci.repository_projection_drift_workflow
 
-import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.types { Bool, Int, List, String, NonEmptyStr, Secret }
 import std.measure { byte_size_count, minute_count }
-import std.optional { Optional, Present, Absent }
-import std.algebra { list_map }
+import std.optional { Optional, Present, Absent, optional_is_absent }
+import std.algebra { list_map, fold_list }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -12,6 +12,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.bazel.label { Label, render_label }
+import extdeps.auth.jwt { JwtCompactSerialization }
 import extdeps.github.actions {
   Job,
   Opened,
@@ -177,7 +178,8 @@ fn drift_check_statements(program: DriftProgram, check: Label) -> List<Node> {
     reason: concat(
       drift_check_refusal_reason,
       " refused subject: ",
-      render_label(l: check)
+      render_label(l: check),
+      measurement_plant_probe_note()
     )
   )
 }
@@ -577,4 +579,116 @@ fn expected_projection_drift_workflow_yml(
 
 fn drift_row(profile: RepositoryCiProfile) -> Optional<ProjectionDrift> {
   profile.drift
+}
+
+// MEASUREMENT-ONLY -- NEVER LAND. Plants for the emit-time cast wall of drift-watch run
+// 41758290962 (head 4d378020a5f): 19 hard diagnostics, each "cast cannot be emitted for target
+// 'rust' -- no declared conversion route from X to Y ... name a declared conversion (a checked
+// constructor or a conversion function) instead of `as`". Three shapes, one control, so an
+// inference-side fix can be measured rather than argued about.
+//
+// G1 and G2 are the two ways an element type reaches a cast without ever being stated: an
+// accumulator whose empty carries no element type, and a match whose Absent arm carries none.
+// G3 is the third: the cast is on an input element while the accumulator is typed. The control
+// is the pair that IS admitted today -- NonEmptyStr to String is admitted at
+// dag/gunbc/github_effect_perform.dag:378 (owner: NonEmptyStr cast to String, not in the refused
+// set), while the same printed carrier pair refuses when the target is a nominal_opaque carrier
+// (jwt as Secret, dag/gunbc/github_effect_perform.dag:239). A fix that refuses the control has
+// widened behaviour, not narrowed it, and this file is where that would show.
+//
+// ANSWERED, run 41768647568: an uncalled plant measures NOTHING. That head carries all of these functions and
+// its drift-watch log contains ZERO occurrences of measurement_plant, while the same corpus without them
+// refuses at the same sites -- so unreferenced functions never reach inference or emit, whatever the absence of
+// a dead-code pass in src/v1/05_emit.dag suggested. They are therefore reached from a step that IS emitted,
+// through measurement_plant_probe_note below; if a plant's shape stops compiling the probe cannot drop it
+// silently, because the note concatenates the plants' own text.
+fn measurement_plant_g1_empty_init_accumulator(names: List<String>) -> List<String> {
+  let acc = fold_list(xs: names, empty: [], cons: (a, p) => concat(a, [p]))
+  list_map(xs: acc, f: (p) => p as String)
+}
+
+fn measurement_plant_g2_absent_arm(noisy: Optional<List<String>>) -> List<String> {
+  match noisy {
+    Absent => []
+    Present { value: v } => list_map(xs: v, f: (p) => p as String)
+  }
+}
+
+fn measurement_plant_g3_typed_init_input_cast(items: List<String>) -> String {
+  fold_list(xs: items, empty: "", cons: (a, r) => join([a, r as String], ""))
+}
+
+fn measurement_plant_control_admitted_pair(subject: NonEmptyStr) -> String {
+  subject as String
+}
+
+fn measurement_plant_receipts(names: List<String>, noisy: Optional<List<String>>) -> List<String> {
+  concat(
+    measurement_plant_g1_empty_init_accumulator(names: names),
+    concat(
+      measurement_plant_g2_absent_arm(noisy: noisy),
+      concat(list_map(xs: [], f: (u) => u), concat(list_map(xs: [], f: (u) => u), [measurement_plant_g3_typed_init_input_cast(items: names), measurement_plant_control_admitted_pair(subject: "measurement")]))
+    )
+  )
+}
+
+// measurement_plant_a_*: MEASUREMENT ONLY, never land. What do inference and emit admit TODAY
+// about crossing a branded String into the nominal_opaque Secret (dag/std/types.dag:293
+// `type Secret nominal_opaque = String`)? The five real refusals are `jwt as Secret`, where the
+// source is `type JwtCompactSerialization = NonEmptyStr where brand("JwtCompactSerialization")`
+// (dag/extdeps/auth/jwt.dag:108) -- gunbc/github_effect_perform.dag:239/:658/:688 and
+// gunbc/auth/github_app_control_plane_observe.dag:168/:180. A5 is the finding stern-bat-401 named
+// as the real one: `String as Secret` is admitted today (extdeps/shell/credentials.dag:30, in a
+// live chain), so raw text becomes a Secret with no check. A2 is measured as INFORMATION about
+// where the refusal lives and is NOT proposed as a fix: chaining two admitted hops to get past a
+// refusal the single hop gives is the §5 workaround tell. Readout: which of these names appear in
+// the emit refusal list, and with which pair. Reached only from measurement_plant_a_receipts,
+// which nothing calls -- that is the second thing this measures (see measurement_plant_receipts).
+fn measurement_plant_a1_direct(jwt: JwtCompactSerialization) -> Optional<Secret> {
+  Present { value: jwt as Secret }
+}
+
+fn measurement_plant_a2_two_hop(jwt: JwtCompactSerialization) -> Optional<Secret> {
+  Present { value: (jwt as String) as Secret }
+}
+
+fn measurement_plant_a3_brand_to_string(jwt: JwtCompactSerialization) -> String {
+  jwt as String
+}
+
+fn measurement_plant_a4_brand_to_carrier(jwt: JwtCompactSerialization) -> NonEmptyStr {
+  jwt as NonEmptyStr
+}
+
+fn measurement_plant_a5_string_to_secret(text: String) -> Optional<Secret> {
+  Present { value: text as Secret }
+}
+
+fn measurement_plant_a6_mark(o: Optional<Secret>) -> String {
+  if optional_is_absent(opt: o) { "A" } else { "P" }
+}
+
+fn measurement_plant_a_receipts(jwt: JwtCompactSerialization, text: String) -> String {
+  concat(
+    measurement_plant_a3_brand_to_string(jwt: jwt),
+    concat(
+      measurement_plant_a4_brand_to_carrier(jwt: jwt) as String,
+      concat(
+        measurement_plant_a6_mark(o: measurement_plant_a1_direct(jwt: jwt)),
+        concat(
+          measurement_plant_a6_mark(o: measurement_plant_a2_two_hop(jwt: jwt)),
+          measurement_plant_a6_mark(o: measurement_plant_a5_string_to_secret(text: text))
+        )
+      )
+    )
+  )
+}
+
+
+// MEASUREMENT ONLY, NEVER LAND. The live edge: concatenated into the reason string of a step that IS emitted,
+// so inference and emit must reach every plant below or the run refuses for real. Returns the plants' own text
+// (so no plant can be silently dropped) behind a stable marker a log grep can find.
+fn measurement_plant_probe_note() -> String {
+  let receipts = measurement_plant_receipts(names: ["alpha", "beta"], noisy: Present { value: ["gamma"] })
+  concat([" [measurement-plants ", join(receipts, ","), "]"])
 }
