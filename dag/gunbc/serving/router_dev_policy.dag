@@ -12,7 +12,6 @@ import std.algebra { list_append }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.algebra { list_append }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, LocationBlock, ExactMatch,

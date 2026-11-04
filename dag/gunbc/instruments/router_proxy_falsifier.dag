@@ -2,7 +2,7 @@ module gunbc.instruments.router_proxy_falsifier
 
 import std.types { Int, List, String, Bool, NonEmptyStr, Port }
 import std.optional { Optional, Present, Absent }
-import std.algebra { skip }
+import std.algebra { skip, list_append }
 import std.measure { byte_size }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -661,7 +661,7 @@ fn member_is(v: JsonValue, key: String, literal: String) -> Bool {
 // holding fixture prints once it is inside the upstream (after the router admitted the turn). If the signal never
 // arrives the script prints NOT-ENTERED and reads nothing, so the case is red rather than lucky. Stats are read
 // while the turn is outstanding (the fixture holds six seconds); then the turn is waited out and its output printed.
-// TRANSIENT SHELL, declared as row 6 of gunbc.serving.router_dev_scaffold router_dev_frontier_rows (like self_signed, row 5):
+// TRANSIENT SHELL, declared by gunbc.serving.router_dev_scaffold router_dev_uncapped_inflight_shell_scaffold (like self_signed, router_dev_falsifier_shell_scaffold):
 // the ordering is the fact under test and DockerCli has no logs or exec operation to model it as steps, so this sh -c
 // program is the authority until bash emission (extdeps.languages.bash.grammar) replaces it.
 fn uncapped_inflight_script() -> String {
