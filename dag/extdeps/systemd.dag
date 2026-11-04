@@ -395,7 +395,7 @@ fn systemd_unit_file_state_wire_label(s: SystemdUnitFileState) -> String {
     UnitFileEnabledRuntime => "enabled-runtime"
     UnitFileLinked => "linked"
     UnitFileLinkedRuntime => "linked-runtime"
-    UnitFileMasked => "masked"
+    UnitFileMasked => systemd_unit_file_state_masked_wire as String
     UnitFileDisabled => "disabled"
     UnitFileStatic => "static"
     UnitFileIndirect => "indirect"
