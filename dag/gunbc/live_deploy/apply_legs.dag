@@ -66,6 +66,7 @@ import gunbc.live_deploy.spec {
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.spool_queue { SpoolKind, SpoolRole, SpoolAttemptExit, SpoolAttemptUnit, SpoolPublication, RolePending, RoleClaimed, RoleRefused, SpoolDirectoryOwnerOnly, SpoolDirectoryGroupBlindWrite, spool_role_directory_shape, spool_role_dirs, spool_declared_roles, spool_role_label }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
+import product.host_identity { HostIdentity }
 import gunbc.live_deploy.release_locus { HelperLocus }
 import gunbc.live_deploy.retract_legs { retract_remove_files, RetractDisableIfLoaded }
 import product.host_identity { host_identity_eq }
@@ -126,7 +127,7 @@ import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency, ComposeOwned, UpsertOwned,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, AttemptUnitDrainPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping,
-  ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ApprovalBrokerFrontDoor, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
 }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
 import gunbc.live_deploy.retract_legs { DeployRetractLeg, retract_leftover_timer_legs }
@@ -157,11 +158,11 @@ import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tail
 import extdeps.systemd.unit_file { SystemdUnitFile }
 import gunbc.live_deploy.emit {
   spec_has_artifact_kind, live_deploy_fabric_storage_unit_file,
-  live_deploy_tailnet_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
+  live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.live_deploy.spec {
   deployment_fabric_storage_door_socket, deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path,
-  deployment_fabric_storage_serve_endpoint, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path,
+  deployment_fabric_storage_serve_endpoint, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_agent_door_unit_name, deployment_agent_door_unit_path,
 }
 import gunbc.live_deploy.spec { UpsertArtifactKind }
 
@@ -874,33 +875,56 @@ fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
 // retired, once the unit that names the new one stands.
 fn deploy_apply_board_function_converge_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
   if !deployment_owns_the_host_approval_broker(spec: spec) { ApplyPlanReady { legs: [] } } else {
-    match board_function_converge_unit_file(host: spec.target.host.identity, revision: revision) {
-      BoardFunctionConvergeUnitRefused { cause: _ } =>
-        ApplyPlanRefused { step: "board-function-converge-unit", reason: "live-deploy apply refused: the board-function converge host argument was not admitted, so no unit naming a false argv is installed" }
-      BoardFunctionConvergeUnitReady { file: unit } => {
-        let locus = board_function_converge_locus()
-        let gate = serialize_systemd_drop_in(drop_in: board_function_converge_gate_drop_in())
-        let gates = flat_map(board_function_converge_gated_workloads(), w => [
-          apply_root_leg(step: "board-function-converge-gate-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: w.drop_in_path as String))),
-          apply_staged_leg(step: "board-function-converge-gate", dest: w.drop_in_path as String, payload: apply_unit_text(file_text: gate)),
-        ])
-        let retire = flat_map(retired_hand_installed_removals_on(host: spec.target.host.identity), r => match r.paths {
-          Empty => [ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } }]
-          Cons { head: h, tail: rest } => [
-            ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } },
-            ApplyLegRetract { step: "board-function-hand-unit-remove", leg: retract_remove_files(head: h, rest: rest) },
-          ]
-        })
-        ApplyPlanReady { legs: concat(concat(concat(concat([
-          ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotInstall },
-          apply_staged_leg(step: "board-function-converge-unit", dest: board_function_converge_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: unit))),
-        ], gates), retire), [
-          apply_root_leg(step: "board-function-converge-reload", argv: systemctl_daemon_reload_argv()),
-          apply_root_leg(step: "board-function-converge-enable", argv: systemctl_enable_argv(unit: board_function_converge_unit_name)),
-          apply_root_leg(step: "board-function-converge-run", argv: systemctl_reload_or_restart_argv(unit: board_function_converge_unit_name)),
-        ]), [
-          ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotRetireSuperseded },
-        ]) }
+    board_function_converge_install_plan(host: spec.target.host.identity, revision: revision, stage: BoardFunctionConvergeFullStage)
+  }
+}
+
+// WHICH LEGS OF THE CONVERGE INSTALL A CALLER ASKS FOR. A deployment that owns the host runs them all, in the
+// order above. A host with no deployment (srv2-srv4, gunbc.fleet.board_function_converge_delivery) runs the
+// UNGATED stage first -- snapshot, unit, run -- and the GATE stage only after the run's admission latch reads
+// back, so a tree that differs from the route leaves the host's workloads running and the refusal loud,
+// rather than holding the container runtime and the runners down. The legs are the same rows either way.
+type BoardFunctionConvergeStage
+  = BoardFunctionConvergeFullStage
+  | BoardFunctionConvergeUngatedStage
+  | BoardFunctionConvergeGateStage
+
+fn board_function_converge_gate_legs() -> List<DeployApplyLeg> {
+  let gate = serialize_systemd_drop_in(drop_in: board_function_converge_gate_drop_in())
+  flat_map(board_function_converge_gated_workloads(), w => [
+    apply_root_leg(step: "board-function-converge-gate-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: w.drop_in_path as String))),
+    apply_staged_leg(step: "board-function-converge-gate", dest: w.drop_in_path as String, payload: apply_unit_text(file_text: gate)),
+  ])
+}
+
+fn board_function_converge_install_plan(host: HostIdentity, revision: ReleaseRevisionBinding, stage: BoardFunctionConvergeStage) -> DeployApplyPlan {
+  match board_function_converge_unit_file(host: host, revision: revision) {
+    BoardFunctionConvergeUnitRefused { cause: _ } =>
+      ApplyPlanRefused { step: "board-function-converge-unit", reason: "live-deploy apply refused: the board-function converge host argument was not admitted, so no unit naming a false argv is installed" }
+    BoardFunctionConvergeUnitReady { file: unit } => {
+      let locus = board_function_converge_locus()
+      let gates = board_function_converge_gate_legs()
+      let retire = flat_map(retired_hand_installed_removals_on(host), r => match r.paths {
+        Empty => [ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } }]
+        Cons { head: h, tail: rest } => [
+          ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } },
+          ApplyLegRetract { step: "board-function-hand-unit-remove", leg: retract_remove_files(head: h, rest: rest) },
+        ]
+      })
+      let install = [
+        ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotInstall },
+        apply_staged_leg(step: "board-function-converge-unit", dest: board_function_converge_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: unit))),
+      ]
+      let run = [
+        apply_root_leg(step: "board-function-converge-reload", argv: systemctl_daemon_reload_argv()),
+        apply_root_leg(step: "board-function-converge-enable", argv: systemctl_enable_argv(unit: board_function_converge_unit_name)),
+        apply_root_leg(step: "board-function-converge-run", argv: systemctl_reload_or_restart_argv(unit: board_function_converge_unit_name)),
+      ]
+      let retire_superseded = [ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotRetireSuperseded }]
+      match stage {
+        BoardFunctionConvergeFullStage => ApplyPlanReady { legs: concat(concat(concat(concat(install, gates), retire), run), retire_superseded) }
+        BoardFunctionConvergeUngatedStage => ApplyPlanReady { legs: concat(concat(concat(install, retire), run), retire_superseded) }
+        BoardFunctionConvergeGateStage => ApplyPlanReady { legs: concat(gates, [apply_root_leg(step: "board-function-converge-gate-reload", argv: systemctl_daemon_reload_argv())]) }
       }
     }
   }
@@ -1194,6 +1218,20 @@ fn deploy_apply_tailnet_door_plan(spec: DeploymentSpec, revision: ReleaseRevisio
   }
 }
 
+fn deploy_apply_agent_door_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> DeployApplyPlan {
+  match live_deploy_agent_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
+    LiveDeployTailnetDoorUnitNotDeployed => ApplyPlanReady { legs: [] }
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: c } =>
+      ApplyPlanRefused { step: "agent-door", reason: join(["live-deploy apply refused: the agent door unit's OIDC readback was refused (", c as String, ") (DESIGN 5: refuse, never widen)"], "") }
+    LiveDeployTailnetDoorUnitEmitted { file: f } =>
+      ApplyPlanReady { legs: deploy_apply_unit_lifecycle_legs(
+        step: "agent-door",
+        unit: deployment_agent_door_unit_name(names: spec.names),
+        dest: deployment_agent_door_unit_path(names: spec.names),
+        file: f) }
+  }
+}
+
 fn deploy_apply_step_effects_plan(step: DeploymentStep, effects: List<MemberEffect<DeploymentStep>>, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
   deploy_apply_effects_plan(
     effects: filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
@@ -1218,6 +1256,7 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
                 deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
               }
             TailnetDoorServeUnit => deploy_apply_tailnet_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
+            AgentDoorServeUnit => deploy_apply_agent_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
             FleetConvergeTimerUnit =>
               ApplyPlanRefused { step: "fleet-converge-timer", reason: "live-deploy apply refused: FleetConvergeTimerUnit is retired from deployment membership; timer cadence is on-demand via fleet-converge plan/apply, not live_deploy apply" }
           }
