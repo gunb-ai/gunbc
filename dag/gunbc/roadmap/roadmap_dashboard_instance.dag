@@ -30,7 +30,7 @@ import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
 }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
   materialization_store_frame_root,
