@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_attempt_state_store {
 }
 import gunbc.durable_append_log_store { LegacyFramingMismatch, LegacyDuplicateClaim }
 import gunbc.roadmap.dispatch_worker_unit_confinement {
-  ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir,
+  ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, ReplayDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir,
   dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds,
 }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
@@ -59,7 +59,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_capability_program, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused,
   dispatch_worktree_path_for_instance, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance,
   git_worktree_add_branch_argv_for_instance, git_rev_parse_verify_argv_for_instance, dispatch_attempt_handin_dir_for_instance, dispatch_branch_name,
-  DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv_for_instance, ReplayDispatchProvider,
+  DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv_for_instance,
   dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name,
   tmux_ls_argv_for_instance, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process,
   dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession,

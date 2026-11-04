@@ -9,7 +9,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
 }
-import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptCommitOutcomeLast, attempt_state_observe_at }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -18,12 +18,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceIdUnknown,
   srv1_dashboard_lab_id,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance, dispatch_replay_instance_admission, ReplayAdmittedOnInstance, ReplayRefusedOffLab }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_replay_instance_admission, ReplayAdmittedOnInstance, ReplayRefusedOffLab }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_scm_base_sha_observe,
   BaseShaObserved,
   BaseShaUnobserved,
-  belt_commit_outcome_last_basename,
   belt_commit_record_decode,
   CommitRecordDecoded,
   CommitRecordPredatesHead,
@@ -38,10 +37,12 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptWorkerRole,
   AttemptExitRecordFound,
   AttemptExitRecordNone,
+  AttemptExitRecordWriterUnsubstituted,
   AttemptExitRecordUnreadable,
 }
 import gunbc.dispatch_replay_recording {
   recording_capture,
+  recording_prepare,
   RecordingCaptured,
   RecordingCaptureRefused,
   RecordingCaptureRefusal,
@@ -70,11 +71,7 @@ type ReplayCaptureInputs
   | ReplayCaptureInputsRefused { reason: String }
 
 fn replay_capture_result_commit(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ReplayCaptureInputs {
-  let path = join([
-    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
-    "/", belt_commit_outcome_last_basename as String,
-  ], "")
-  match filesystem_file_observation_of_path(path: path) {
+  match attempt_state_observe_at(instance: instance, node: node_id, attempt_key: attempt_key, member: AttemptCommitOutcomeLast) {
     FilesystemFileAbsent(_) => ReplayCaptureInputsRefused { reason: "the belt's commit step has not run for this attempt, so it has no result commit" }
     FilesystemFileIndeterminate { cause } => ReplayCaptureInputsRefused { reason: join(["the commit step's record could not be read: ", cause], "") }
     FilesystemFileObservationsDisagree { path: _, cause } => ReplayCaptureInputsRefused { reason: join(["the commit step's record could not be read: ", cause], "") }
@@ -115,6 +112,12 @@ fn replay_capture_refused(reason: String) -> ProcessExit {
   ExitFailure { code: 1, reason: join(["recording capture refused: ", reason], "") }
 }
 
+// A prepare refusal says 'prepare', so an operator reading the exit record of a failed mint is never told a
+// recording was captured when nothing was captured.
+fn replay_prepare_refused(reason: String) -> ProcessExit {
+  ExitFailure { code: 1, reason: join(["recording prepare refused: ", reason], "") }
+}
+
 fn recording_capture_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ProcessExit {
   match dispatch_replay_instance_admission(instance: instance) {
     ReplayRefusedOffLab { instance_id } =>
@@ -126,6 +129,12 @@ fn recording_capture_for_instance(instance: HostDashboardInstance, node_id: Stri
           match attempt_exit_record_observe(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
             AttemptExitRecordNone => replay_capture_refused(reason: "the exit spool holds no exit record for this attempt's worker unit")
             AttemptExitRecordUnreadable { reason } => replay_capture_refused(reason: join(["the exit spool could not be read: ", reason], ""))
+            // #15482's contract for this arm: an entry EXISTS, but its name still spells the stop
+            // variables unexpanded, so the arm names its WRITER as defective and is NOT an answer
+            // about how the unit ended. Capture reads the recorded end out of this record or refuses;
+            // it never substitutes a guess for an end it cannot read, so this arm refuses.
+            AttemptExitRecordWriterUnsubstituted { entries, variables } =>
+              replay_capture_refused(reason: join(["the exit record for this attempt was written without substituting the stop variables (", join(variables, ", "), ") in ", join(entries, ", "), ", so its end cannot be read from it"], ""))
             AttemptExitRecordFound { record } =>
               match recording_capture(repo_root: instance.repo_root as String, base_sha: base_sha, result_commit: result_commit, exit: record) {
                 RecordingCaptured { id: _, ref_name: _ } => ExitSuccess
@@ -147,4 +156,35 @@ fn recording_capture_cli(instance_id: String, node_id: String, attempt_key: Stri
 
 fn srv1_lab_recording_capture_cli(node_id: String, attempt_key: String) -> ProcessExit {
   recording_capture_cli(instance_id: srv1_dashboard_lab_id as String, node_id: node_id, attempt_key: attempt_key)
+}
+
+// THE DECLARED MINT FOR A PREPARED RECORDING, the sibling of srv1_lab_recording_capture_cli. It is a declared
+// operation over values the operator names -- base, result commit, exit status -- and NOT a hand-written ref: the
+// tree is read from the object store over a commit that exists, the manager result is derived from the status
+// rather than accepted, and the write goes through recording_capture_write, which is create-only. That is what
+// keeps requirement 2's premise standing when the recording was not captured from an attempt: the operator supplies
+// the END STATE, never the receipt, and the type records that (provenance `prepared`, namespace
+// refs/gunbc/recordings-prepared/) so nothing downstream can read it as a real attempt's.
+//
+// The gate is the same one replay itself passes: off the lab instance this refuses with the same typed reason, and
+// no fallback. base_sha and result_commit are the untagged 40-hex forms (the same form recording_id_text renders);
+// exit_status is the status the replayed worker will exit with, or 0 for a clean success.
+fn recording_prepare_cli(instance_id: String, base_sha: String, result_commit: String, exit_status: Int) -> ProcessExit {
+  match dashboard_instance_for_id(instance_id: instance_id) {
+    DashboardInstanceIdUnknown { instance_id: unknown } => replay_prepare_refused(reason: join(["no declared dashboard instance ", unknown], ""))
+    DashboardInstanceForId { instance } =>
+      match dispatch_replay_instance_admission(instance: instance) {
+        ReplayRefusedOffLab { instance_id: off } =>
+          replay_prepare_refused(reason: join(["recordings are prepared only where replay is admitted (", srv1_dashboard_lab_id as String, "); instance ", off, " is not"], ""))
+        ReplayAdmittedOnInstance =>
+          match recording_prepare(repo_root: instance.repo_root as String, base_sha: base_sha, result_commit: result_commit, exit_status: exit_status) {
+            RecordingCaptured { id: _, ref_name: _ } => ExitSuccess
+            RecordingCaptureRefused { cause } => replay_prepare_refused(reason: replay_capture_refusal_reason(cause: cause))
+          }
+      }
+  }
+}
+
+fn srv1_lab_recording_prepare_cli(base_sha: String, result_commit: String, exit_status: Int) -> ProcessExit {
+  recording_prepare_cli(instance_id: srv1_dashboard_lab_id as String, base_sha: base_sha, result_commit: result_commit, exit_status: exit_status)
 }
