@@ -1,0 +1,16 @@
+module test.fixture.serve_seam_twin_ingress
+
+import std.types { String, Int }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import test.fixture.serve_seam_probe { serve_budget_breach_probe }
+import test.fixture.serve_seam_probe_twin { serve_seam_probe_twin_marker }
+
+// TWO BINDINGS OVER ONE CLOSURE THAT HOLDS TWO `serve_seam_probe` DECLARATIONS. Each names its
+// module; the host must serve exactly the declaration named.
+fn serve_seam_original_ingress(listener: String, release_revision: String) -> HttpIngressAdmission {
+  http_ingress_binding(handler_module: "test.fixture.serve_seam_probe", handler: "serve_seam_probe", listener: listener, release_revision: release_revision, cpu_limit_ms: 5000, wall_limit_ms: 10000)
+}
+
+fn serve_seam_twin_ingress(listener: String, release_revision: String) -> HttpIngressAdmission {
+  http_ingress_binding(handler_module: "test.fixture.serve_seam_probe_twin", handler: "serve_seam_probe", listener: listener, release_revision: release_revision, cpu_limit_ms: 5000, wall_limit_ms: 10000)
+}
