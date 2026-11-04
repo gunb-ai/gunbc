@@ -4,7 +4,7 @@ import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.http.header_dump { HeaderDumpRead }
-import gunbc.harness.harness_turn { HarnessPostOutcome, harness_post_drew_no_response, harness_route_is_fleet_engine }
+import gunbc.harness.harness_turn { HarnessPostOutcome, harness_route_is_fleet_engine }
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
@@ -15,7 +15,6 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationRefused, continuation_decision,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
-import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -59,7 +58,7 @@ fn recovery_lines(request: String, rounds: Int) -> List<String> {
 fn prior_with(recovery: SessionRecovery) -> PriorAttemptFacts {
   PriorAttemptFacts {
     node_id: "n1", attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
-    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, verification_retry: RefusedRetryOperatorOnly,
+    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery,
   }
 }
 
@@ -128,12 +127,11 @@ test fn s3_claim_5_past_the_resume_bound_the_lineage_ends_with_every_cause() -> 
 
 // CLAIM 6 (inhabitance). The real post path hands the classifier a HarnessPostOutcome; the receipt's
 // shape -- unsuccessful, empty body, headers read -- is the shape harness_send_round passes, it is
-// NOT a request that drew no response (so it is never retried in place), and only the fleet's own
+// the shape the classifier reads (headers came back, so the engine answered), and only the fleet's own
 // routes qualify.
 test fn s3_claim_6_the_real_post_path_shape_for_the_empty_400_is_classified_not_retried() -> Bool {
-  let posted = HarnessPostOutcome { body: "", success: false, headers: Present { value: receipt_headers() }, retries: [] as List<String> }
-  !harness_post_drew_no_response(posted: posted)
-    && (match harness_unexplained_refusal(route_qualifies: true, success: posted.success, body: posted.body, headers: posted.headers, request_body: validated_request()) {
+  let posted = HarnessPostOutcome { body: "", success: false, headers: Present { value: receipt_headers() } }
+  (match harness_unexplained_refusal(route_qualifies: true, success: posted.success, body: posted.body, headers: posted.headers, request_body: validated_request()) {
       Present { value: r } => r.status == 400 && r.request_id == Present { value: "req_2ae5021ab9c56e6eb7fe1707af067e27" }
       Absent => false
     })

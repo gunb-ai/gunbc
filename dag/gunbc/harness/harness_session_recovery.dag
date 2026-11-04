@@ -23,8 +23,7 @@ import extdeps.languages.json.parse {
 //
 // THE CLASS IS NAMED BY WHAT WAS OBSERVED, NOT BY A GUESS AT ITS CAUSE (operator decision
 // 2026-10-16, condition 1). A fleet engine answered -- response headers came back, so this is not a
-// request that "drew no response" and had no effect (gunbc.harness.harness_turn
-// harness_post_drew_no_response) -- with a non-success status and nothing in the body. The refusal
+// request that "drew no response" and had no effect -- with a non-success status and nothing in the body. The refusal
 // is carried with the only identities that can be chased afterwards: the status, the engine's own
 // x-request-id and the identity of the exact bytes sent. Whether the cause was transient is exactly
 // what the 2026-10-16 receipt could not establish from the refusal itself (the identical bytes were
