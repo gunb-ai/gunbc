@@ -3019,7 +3019,8 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-keyed-pipe-site-rewrites",
     "occurrences-keyed-negated-pipe-site-rewrites",
     "occurrences-keyed-chained-pipe-refuses-not-skips",
-    "occurrences-keyed-non-head-reference-refuses-arity"
+    "occurrences-keyed-non-head-reference-refuses-arity",
+    "collection-head-get"
   ]
 }
 
@@ -3039,7 +3040,8 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "collection-head-reverse", fail: roster_head_expect(name: "collection-head-reverse", call: "reverse", sig: "xs: List<Int>", arg: "xs", to: "list_reverse", out: "List<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-take", fail: roster_head_expect(name: "collection-head-take", call: "take", sig: "xs: List<Int>, n: Int", arg: "xs, n", to: "take_prefix", out: "List<Int>", labeled: "xs: xs, n: n", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-flat_map", fail: roster_head_expect(name: "collection-head-flat_map", call: "flat_map", sig: "xs: List<Int>", arg: "xs, fn(s) { [s] }", to: "list_flat_map", out: "List<Int>", labeled: "xs: xs, f: fn(s) { [s] }", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "collection-head-last", fail: roster_head_expect(name: "collection-head-last", call: "last", sig: "xs: List<Int>", arg: "xs", to: "list_last", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex))
+    roster_control_verdict(name: "collection-head-last", fail: roster_head_expect(name: "collection-head-last", call: "last", sig: "xs: List<Int>", arg: "xs", to: "list_last", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-get", fail: roster_head_expect(name: "collection-head-get", call: "get", sig: "xs: List<Int>, i: Int", arg: "xs, i", to: "list_at_optional", out: "Optional<Int>", labeled: "xs: xs, index: i", prepared: prepared, lex: lex))
   ]
 }
 
