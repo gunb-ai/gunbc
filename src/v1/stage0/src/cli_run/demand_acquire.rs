@@ -49,7 +49,7 @@ pub fn resolve_entry_graph_demand_acquired(
 }
 
 /// The demand-acquired resolve with the compile-clean diagnostics the core produced. `gunbc serve`
-/// gates on them (`compile_clean_diagnostic_is_hard`); `gunbc run` gates on the graph's own. One
+/// gates on them (`is_interpreter_blocking_diagnostic`); `gunbc run` gates on the graph's own. One
 /// resolve, two consumers: the closure is the layout closure for both, never the whole-tree index.
 pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
     source_roots: &[String],
