@@ -3,6 +3,7 @@ module test.claim.live_deploy.serve_entry_verdict_witness
 import std.types { Bool, Int, List, String }
 import std.algebra { join, string_contains }
 import gunbc.live_deploy.pre_swap_admission {
+  deployment_requires_plan_serve_entry_verdict,
   ServeEntryVerdictRecord,
   ServeEntryVerdictAdmitted,
   ServeEntryVerdictBlocked,
@@ -25,7 +26,7 @@ import gunbc.live_deploy.pre_swap_admission {
   serve_entry_verdict_as_compile_verdict,
 }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.live_deploy.desired { srv1_production_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.desired { srv1_production_desired_deployment, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.apply { operator_local_deploy_dissolved_refusal }
 
 // THE PLAN'S SERVE-ENTRY VERDICT, WITNESSED AT THE DISTINCTIONS IT EXISTS FOR. The rule this
@@ -332,4 +333,14 @@ test fn the_operator_local_route_refusal_names_the_dissolution_and_the_surviving
     && string_contains(s: text, pattern: "--mode deploy")
     && string_contains(s: text, pattern: "dashboard_deploy")
     && string_contains(s: text, pattern: "Nothing was mutated")
+}
+
+// ── THE VERDICT REQUIREMENT IS SCOPED TO THE FLEET PROD-ROLE (STAGE) ROW ─────────────────────
+// The plan job mints the verdict for the prod-role spec only, so only that row's swap may demand
+// it: the stage row's swap must, a lab row's swap must not (its route has no plan job and keeps
+// the pre-gap cold compile -- the manager's rule that the lab's wet route is left alone).
+
+test fn the_stage_row_demands_the_plan_verdict_and_the_lab_row_does_not() -> Bool {
+  deployment_requires_plan_serve_entry_verdict(deployment: srv1_production_desired_deployment())
+    && !deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
 }

@@ -10,6 +10,7 @@ import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
   prod_role_desired_deployment,
+  instance_id_text,
   ProdRoleDeployment,
   ProdRoleDeploymentSelected,
   ProdRoleDeploymentRefused,
@@ -353,8 +354,47 @@ fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwap
   pre_swap_from_checkout(
     standing: observe_checkout_for_admission(admitted: deployment.admitted_branch),
     admitted: deployment.admitted_branch,
-    compile: observe_plan_serve_entry_verdict(spec: selected_deployment_spec(row: deployment)),
+    compile: swap_serve_entry_compile_for(deployment: deployment),
   )
+}
+
+// THE VERDICT REQUIREMENT IS SCOPED TO THE FLEET PROD-ROLE (STAGE) INSTANCE. The plan job mints
+// the serve-entry verdict for the prod-role spec only (record_plan_serve_entry_verdict_for runs
+// over the prod-role row), so the swap demands it only when the deployment IS that row -- decided
+// by the single authority for who holds the fleet prod role (prod_role_desired_deployment; an
+// unreadable realization fails CLOSED into the verdict arm). The LAB route is left alone (manager
+// rule): the operator-local lab live_deploy apply (live_deploy_apply_desired_wet over a lab row,
+// Plan B from an integration checkout) has no plan job, so it keeps the pre-gap mechanism -- the
+// cold serve-entry compile -- UNCHANGED, slowness and all. Changing the lab's wet route is a
+// separate node, not a ride-along in this one.
+fn swap_serve_entry_compile_for(deployment: DesiredDeployment) -> ServeEntryCompileVerdict {
+  if deployment_requires_plan_serve_entry_verdict(deployment: deployment) {
+    observe_plan_serve_entry_verdict(spec: selected_deployment_spec(row: deployment))
+  } else {
+    let spec = selected_deployment_spec(row: deployment)
+    let root = git.Inspect.Toplevel()
+    let root_path = root.path as String
+    let bin = witness_bin_release_path(root: root_path, bin_name: "gunbc")
+    observe_serve_entry_compile_clean(
+      repo_root: root_path,
+      bin_path: bin,
+      roots: deployment_serve_source_roots,
+      entry: spec.service.serve_entry as String,
+    )
+  }
+}
+
+// The scope predicate: true exactly when the deployment is the row the fleet holds as its prod
+// role (STAGE). Every refusal of the role lookup FAILS CLOSED -- a swap that cannot see who holds
+// the role cannot be trusted to be a lab swap.
+fn deployment_requires_plan_serve_entry_verdict(deployment: DesiredDeployment) -> Bool {
+  match prod_role_desired_deployment() {
+    ProdRoleDeploymentSelected { deployment: stage } =>
+      instance_id_text(id: deployment.instance.instance_id) == instance_id_text(id: stage.instance.instance_id)
+    ProdRoleDeploymentRefused => true
+    ProdRoleDeploymentRosterRefused => true
+    ProdRoleDeploymentHolderRowMismatch => true
+  }
 }
 
 // ---------------------------------------------------------------------------

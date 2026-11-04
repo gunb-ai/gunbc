@@ -1544,6 +1544,15 @@ data fleet_converge_allocation_store_plan_step_if: String = fleet_converge_mode_
 data fleet_converge_workspace_commissioning_plan_step_if: String = fleet_converge_mode_step_if(mode: WorkspaceCommissioningPlan)
 
 data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan])
+
+// THE VERDICT STEP'S OWN GATE (§3c, §6b step 4). The serve-entry verdict is consumed by exactly
+// one reader -- the dashboard swap's pre-swap admission -- which can only be reached from a
+// pointer run that minted the RUN-BOUND PLAN RECEIPT the receipt assertion demands. That receipt
+// is minted by the two plan modes below (the launch-environment plan carries the same run-bound
+// binding as the full-host plan, see the comment under fleet_converge_plan_step); an
+// allocation-store, workspace-commissioning or workspace-allocation plan run never feeds the
+// swap, so those runs do not pay the ~18-minute serve-entry compile for a verdict nothing reads.
+data fleet_converge_serve_entry_verdict_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan])
 data fleet_converge_apply_step_if: String = fleet_converge_mode_step_if(mode: FleetApply)
 data fleet_converge_org_actions_step_if: String = fleet_converge_mode_step_if(mode: OrgActionsObserve)
 data fleet_converge_org_runner_roster_step_if: String = fleet_converge_mode_step_if(mode: OrgRunnerRosterObserve)
@@ -1963,9 +1972,11 @@ fn fleet_converge_plan_step() -> Step {
 // the prod-role serve entry ONCE, with the release pair this run built, and publishes the verdict
 // beside the plan receipt; the swap transaction consumes it by identity -- source revision, entry,
 // serve argv, and the release binary the swap admits -- instead of paying the cold resolve again
-// (job 117824998335 spent 614964 ms there and still exited 1). It runs wherever an uploadable plan
-// is made, immediately before the artifact upload, so no plan artifact ever ships without the
-// verdict the swap will demand from it.
+// (job 117824998335 spent 614964 ms there and still exited 1). It runs, immediately before the
+// artifact upload, exactly in the modes whose run-bound plan receipt the swap's receipt assertion
+// demands (fleet_converge_serve_entry_verdict_step_if: the full-host and launch-environment plans)
+// -- so no consumable plan artifact ships without the verdict, and the modes that never feed the
+// swap pay no serve-entry fold (§6b step 4).
 fn fleet_converge_serve_entry_verdict_step() -> Step {
   RunStep {
     name: Present { value: "Record the serve-entry compile verdict beside the plan artifact (gunbc.live_deploy.pre_swap_admission)" },
@@ -1974,7 +1985,7 @@ fn fleet_converge_serve_entry_verdict_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: Present { value: fleet_converge_any_plan_step_if },
+    if_condition: Present { value: fleet_converge_serve_entry_verdict_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes }
   }

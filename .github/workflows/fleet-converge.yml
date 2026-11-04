@@ -1243,7 +1243,7 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/pre_swap_admission.dag --function record_plan_serve_entry_compile_verdict
-        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan'
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan'
         timeout-minutes: 30
       - name: Upload fleet converge plan artifact
         id: plan_upload
