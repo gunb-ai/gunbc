@@ -68,10 +68,6 @@ import extdeps.linux.cgroup_v2 {
 // instead of reading both layouts.
 data metering_closing_legacy_marker_name: NonEmptyStr = attempt_metering_slots.roster_closing_basename
 
-// The transient per-attempt obligation units that enqueue the metering obligation (one per attempt: this is the
-// family stem, not a unit that can be masked by name).
-data metering_closing_enqueue_unit_family_stem: NonEmptyStr = "gunbc-obligation-attempt-" as NonEmptyStr
-
 // THE FENCE ITSELF IS DECLARED WHERE THE OTHER LEGACY-WRITER FENCES ARE --
 // `gunbc.roadmap.roadmap_dashboard_instance.metering_closing_writer_fences`, beside #15413's
 // `legacy_writer_fences` -- because the route that acts on a cutover is the instance's own apply route, and a

@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, Lega
 import gunbc.roadmap.roadmap_belt_obligation { MeteringObligation, belt_instance_obligation_unit_name, belt_attempt_obligation_unit_name }
 import gunbc.roadmap.roadmap_metering_closing_cutover {
   MeteringClosingWriterObservation, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
-  metering_closing_legacy_marker_name, metering_closing_enqueue_unit_family_stem, metering_closing_activation_step,
+  metering_closing_legacy_marker_name, metering_closing_activation_step,
   metering_closing_unit_exclusion, metering_closing_cutover_disposition,
 }
 
@@ -187,9 +187,14 @@ test fn the_legacy_marker_name_is_the_slots_basename_row_spelled_as_the_pre_seal
 // enqueue derivation spells for a real attempt -- so the step is about units that actually exist, and a change to
 // that naming moves the step and the pin together.
 test fn the_activation_step_names_the_transient_enqueue_unit_family() -> Bool {
+  // The family stem is pinned HERE, against the belt's own naming (gunbc.roadmap.roadmap_belt_obligation
+  // belt_attempt_obligation_unit_name), rather than being re-declared in production where it would be a second
+  // spelling of a fact the belt owns: the unit name is derived, per attempt, so no such unit can be masked by
+  // name and the gate never needs the stem to act.
+  let family_stem = "gunbc-obligation-attempt-"
   let attempt_unit = belt_attempt_obligation_unit_name(node_id: "c-roadmap2-node", attempt_key: "0123456789abcdef") as String
-  string_contains(s: metering_closing_activation_step as String, pattern: metering_closing_enqueue_unit_family_stem as String)
-    && starts_with(s: attempt_unit, prefix: metering_closing_enqueue_unit_family_stem as String)
+  starts_with(s: attempt_unit, prefix: family_stem)
+    && string_contains(s: metering_closing_activation_step as String, pattern: family_stem)
 }
 
 // 11. THE PLAN CARRIES THE GATE FOR THE INSTANCES THAT DECLARE A FENCE, and not for the one that has no systemd.
