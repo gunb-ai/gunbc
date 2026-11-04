@@ -180,6 +180,10 @@ fn http_ingress_cpu_limit_ms(b: HttpIngressBinding) -> Int { millisecond_count(m
 fn http_ingress_wall_limit_ms(b: HttpIngressBinding) -> Int { millisecond_count(m: b.wall_limit) }
 fn http_ingress_handler_name(b: HttpIngressBinding) -> String { b.handler.decl_name as String }
 fn http_ingress_handler_module(b: HttpIngressBinding) -> String { b.handler.module_path as String }
+// THE HANDLER'S MODULE-QUALIFIED IDENTITY, which is what the host resolves and calls: a binding names
+// a module and a declaration in it, so another module's declaration of the same bare name can never
+// be the one served.
+fn http_ingress_handler_identity(b: HttpIngressBinding) -> String { concat(http_ingress_handler_module(b: b), concat(".", http_ingress_handler_name(b: b))) }
 
 // The line the host prints once it has bound, naming the address ACTUALLY bound (a port-0 caller
 // reads the chosen port from here) and every limit the process will enforce. Unset is not a state
@@ -313,7 +317,6 @@ type HttpIngressArgument
   = HttpIngressTextArgument { name: String, value: String }
   | HttpIngressHeadersArgument { name: String, value: List<ServeRequestHeader> }
 
-data http_ingress_upper_ascii: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 data http_ingress_lower_ascii: String = "abcdefghijklmnopqrstuvwxyz"
 
 fn http_ingress_lower_char(c: String) -> String {

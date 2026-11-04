@@ -1,0 +1,15 @@
+module test.fixture.ingress_lookalike
+
+import std.types { String }
+
+// THE LOOKALIKE CONTROL. Same coproduct and arm spellings as gunbc.http_ingress HttpIngressAdmission,
+// declared here instead. `gunbc run --function ingress_lookalike_bound` must treat its answer as an
+// ordinary one-shot result and never bind a listener: the seed reads an ingress answer by the arm's
+// declaring coproduct, not by its spelling.
+type HttpIngressAdmission
+  = HttpIngressBound { binding: String }
+  | HttpIngressRefused { reason: String }
+
+fn ingress_lookalike_bound() -> HttpIngressAdmission {
+  HttpIngressBound { binding: "not a binding" }
+}

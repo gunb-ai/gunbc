@@ -116,7 +116,7 @@ fn section_5_refused() -> List<MarkdownBlock> {
     h2(text: "5. Refused"),
     ul(items: [
       li(text: "`gunbc run` absorbing `handle_serve` with its Rust decisions intact: a rename of the seam, not its deletion."),
-      li(text: "A serve flag or mode on `gunbc run` read from argv literals: policy in argv. `run` reads the binding."),
+      li(text: "A serve flag or mode on `gunbc run`, or any independently authored policy literal or second policy authority in argv. The converger does serialize the binding constructor and its arguments through argv; those values are projections of the typed deployment authority (`DeploymentServiceConfig`), not competing hand-authored policy."),
       li(text: "A large declared iteration bound, or a lifecycle construct in the language, as the service model (section 1)."),
       li(text: "A v2 `Loop` over a domain of arriving demands: the map is the host's, one evaluation per demand (section 3, frontiers)."),
       li(text: "A second AUTHORED binding beside `DeploymentServiceConfig`. As built, the spec stays the authority for listener, handler and budgets; the converger renders them as typed arguments of the binding constructor, and `HttpIngressBinding` is the value the run constructs from them, not a second place the facts are written."),
