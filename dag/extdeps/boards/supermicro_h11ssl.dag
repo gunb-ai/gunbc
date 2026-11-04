@@ -54,7 +54,20 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [supermicro_h11ssl_i_product_page_authority]
+  further_citations: [supermicro_h11ssl_i_product_page_authority, supermicro_h11ssl_nc_top_render_authority]
+}
+
+// A SUPERMICRO TOP-VIEW PRODUCT RENDER of the -NC variant (silkscreen "H11SSL-NC"), 1280 x 1048 px,
+// sha256 45b8582ea3acf9a64652c42688ceebc6e3e4890c802dc7b03a77c59601a37f54, shared from the operator's
+// Drive 2026-11-04. Rear I/O runs
+// along the top edge (VGA, two LAN, USB, COM). It carries no dimensions, so it does not change the
+// extents or the hole standing; it is cited so the image is findable from the board's module, and it
+// is the image a scaled hole read would start from.
+data supermicro_h11ssl_nc_top_render_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "drive.google.com/file/d/17T8k8PKfccEmC5zm_4SUFsZNoUDFcU4E/view"
+  }
 }
 
 // THE -i PRODUCT PAGE, read 2026-11-04: "Form Factor ATX", "Dimensions 12" x 9.6" (30.5cm x 24.4cm)",
