@@ -97,10 +97,10 @@ test fn the_lab_verify_leg_is_the_verify_arm_on_the_lab_locus_at_the_acts_revisi
   })
 }
 
-fn any_leg(legs: List<DeployApplyLeg>, test: fn(DeployApplyLeg) -> Bool) -> Bool {
+fn any_leg(legs: List<DeployApplyLeg>, check: fn(DeployApplyLeg) -> Bool) -> Bool {
   match legs {
     Empty => false
-    Cons { head: head, tail: rest } => check(leg: head) || any_leg(legs: rest, test: test)
+    Cons { head: head, tail: rest } => check(head) || any_leg(legs: rest, check: check)
   }
 }
 
@@ -127,9 +127,9 @@ test fn the_verify_legs_test_the_three_declared_members_at_the_named_path() -> B
       let locus = attempt_system_unit_launcher_locus(instance: instance)
       let dir = helper_locus_dir(locus: locus, revision: revision())
       let legs = dark_helper_verify_legs(locus: locus, dir: dir)
-      member_check(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-x", join([dir, "/", "gunbc"], "")]))
-        && member_check(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/dag"], "")]))
-        && member_check(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/src/v2"], "")]))
+      member_test(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-x", join([dir, "/", "gunbc"], "")]))
+        && member_test(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/dag"], "")]))
+        && member_test(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/src/v2"], "")]))
     DashboardInstanceIdUnknown { instance_id: _ } => false
   }
 }
@@ -140,7 +140,7 @@ fn member_test(legs: List<DarkLeg>, predicate: fn(List<String>) -> Bool) -> Bool
     Cons { head: head, tail: rest } => match head {
       DarkLegArgv { step: step, command: command } =>
         if step == DarkStepHelperVerify {
-          predicate(words: argv_words(command: command)) || member_test(legs: rest, predicate: predicate)
+          predicate(argv_words(command: command)) || member_test(legs: rest, predicate: predicate)
         } else {
           member_test(legs: rest, predicate: predicate)
         }
@@ -163,9 +163,14 @@ fn matches_words(words: List<String>, expected: List<String>) -> Bool {
 // member test carries the install's --parents mkdir or the retire's rm -- three distinct arms, each
 // with its own argv shape, so a match here cannot be an install leg wearing a new badge.
 test fn the_verify_step_name_is_distinct_from_install_and_retire() -> Bool {
+  // Read every name from the PLAN the implementation built, so a rename in the implementation
+  // turns this red instead of leaving three witness-side literals agreeing with each other.
+  let legs = drain_legs(spec: lab_spec())
   let install_name = join(["attempt-unit", "-helper-snapshot"], "")
   let retire_name = join(["attempt-unit", "-helper-snapshot-retire"], "")
   let verify_name = join(["attempt-unit", "-helper-snapshot-verify"], "")
-  verify_name != install_name && verify_name != retire_name
-    && any_leg(legs: drain_legs(spec: lab_spec()), check: leg => deploy_apply_leg_step(leg: leg) == verify_name)
+  let v = step_index(legs: legs, step: verify_name)
+  let r = step_index(legs: legs, step: retire_name)
+  v >= 0 && r >= 0 && v < r
+    && !any_leg(legs: legs, check: leg => deploy_apply_leg_step(leg: leg) == install_name)
 }
