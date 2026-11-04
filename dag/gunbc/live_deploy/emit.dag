@@ -202,6 +202,7 @@ import gunbc.live_deploy.lab_host_plan {
   SystemManagerLauncherSelected,
 }
 import gunbc.live_deploy.spec {
+  DeploymentServiceConfig,
   deployment_serve_source_roots,
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
@@ -480,6 +481,13 @@ fn live_deploy_serve_unit_emission_at(
   live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
 }
 
+// THE LISTENER FRAGMENT OF THE SERVE COMMAND, one spelling shared by the emitted ExecStart and
+// the plan's serve-entry verdict identity (gunbc.live_deploy.pre_swap_admission), so the digest
+// covers the argv the unit really binds and not a hand-copied likeness of it.
+fn live_deploy_serve_listener_fragment(svc: DeploymentServiceConfig) -> String {
+  join([" --host ", svc.listen.host, " --port ", to_string(svc.listen.port)], "")
+}
+
 // One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
 // manager environment and evaluation caps are the same value, and the two differ only in the
 // entry function they launch and the listener they bind.
@@ -491,7 +499,7 @@ fn live_deploy_serve_unit_file_over(
     spec: spec, revision: revision, oidc_env: oidc_env,
     description: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr,
     function: svc.serve_function,
-    listener: join([" --host ", svc.listen.host, " --port ", to_string(svc.listen.port)], ""),
+    listener: live_deploy_serve_listener_fragment(svc: svc),
   )
 }
 

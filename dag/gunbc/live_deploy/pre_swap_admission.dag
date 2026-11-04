@@ -20,6 +20,7 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots }
 import gunbc.live_deploy.emit {
   deployment_serve_source_root_flags_text,
   eval_budget_flag_text,
+  live_deploy_serve_listener_fragment,
 }
 import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.output_policy { OutcomeIsData }
@@ -430,10 +431,7 @@ fn serve_entry_argv_identity_text(spec: DeploymentSpec) -> String {
     svc.serve_entry as String,
     " --function ",
     svc.serve_function as String,
-    " --host ",
-    svc.listen.host as String,
-    " --port ",
-    to_string(svc.listen.port),
+    live_deploy_serve_listener_fragment(svc: svc),
     eval_budget_flag_text(flag: "--cpu-budget", limit: svc.serve_cpu_limit),
     eval_budget_flag_text(flag: "--wall-budget", limit: svc.serve_wall_limit),
   ], "")
