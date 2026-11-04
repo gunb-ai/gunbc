@@ -33,6 +33,7 @@ import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow, ScannedFirstContact, ConsolePerBoot, ProvisionedInstall, known_hosts_line, fleet_name_at_ssh_port,
 }
 import gunbc.provisioning.network_install_receipt { NetworkInstallReceipt, InstalledToDisk, InstallNotEstablished, network_install_client, CurrentInstallForHost, CurrentInstallEstablished, CurrentInstallUnestablished }
+import extdeps.ssh.keys { Ed25519, ssh_key_algorithm_token, ssh_key_blob_parses_for }
 import extdeps.network.mac { mac_addresses_are_equal }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_bound_transport {
@@ -436,7 +437,7 @@ fn host_key_console_line_of_fields(fields: List<String>) -> HostKeyConsoleLine? 
           Present { value: key_b64 } => match fields |> skip(n: 4) |> first {
             Absent => none
             Present { value: fingerprint } =>
-              if marker == per_boot_console_marker && key_type == "ssh-ed25519" && starts_with_sha256(f: fingerprint) {
+              if marker == per_boot_console_marker && key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && starts_with_sha256(f: fingerprint) {
                 host_key_console_line_of(boot_field: boot_field, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint)
               } else { none }
           }

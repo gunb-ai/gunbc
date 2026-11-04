@@ -668,6 +668,9 @@ test fn the_runbook_mints_nothing_and_still_installs_the_anchor() -> Bool {
 // row in anchored_host_transport_frontier_rows, with its trigger. What is pinned here is the fleet's side: a pin binds only
 // its own boot, only the key it carries, and only from a well-formed console read.
 
+// A well-formed ed25519 blob (RFC 8709), so the parser's blob check passes; the hermetic fixture key above is a placeholder that is not a parseable blob.
+data per_boot_valid_key_b64: String = "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL"
+
 data per_boot_fixture_fingerprint: String = "SHA256:HERMETICWITNESSFIXTUREFINGERPRINT0"
 
 fn per_boot_console_line(boot_id: String, key_b64: String) -> String {
@@ -706,14 +709,14 @@ fn per_boot_binding(console: String, expected_boot: NonEmptyStr, key_b64: String
 
 // POSITIVE CONTROL: the sshd presents the key the console printed at THIS boot -> bound.
 test fn a_per_boot_pin_binds_the_key_printed_at_that_boot() -> Bool {
-  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-a" as NonEmptyStr, key_b64: fixture_public_key.material as String) == "bound"
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-a" as NonEmptyStr, key_b64: per_boot_valid_key_b64) == "bound"
 }
 
 // A per-boot pin is neither trust-on-first-use nor an external join: its provenance is its own arm, so a policy
 // keyed on provenance can tell a BMC-console key from a bare network scan (review 89380). The static anchor's
 // arm is unchanged.
 test fn a_per_boot_pin_carries_its_own_provenance_arm() -> Bool {
-  match per_boot_pin_from_console_line(row: anchored_fixture_row(), line: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String)) {
+  match per_boot_pin_from_console_line(row: anchored_fixture_row(), line: per_boot_console_line(boot_id: "boot-a", key_b64: per_boot_valid_key_b64)) {
     Present { value: pin } => host_key_provenance_label(p: pin.anchor.provenance) == "console-per-boot"
     Absent => false
   }
@@ -723,17 +726,17 @@ test fn a_per_boot_pin_carries_its_own_provenance_arm() -> Bool {
 // RED: a pin read at boot A, presented while acting on boot B (the same key even) refuses before any key
 // is compared -- a per-boot key vouches for its own boot only.
 test fn a_pin_from_another_boot_refuses() -> Bool {
-  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-b" as NonEmptyStr, key_b64: fixture_public_key.material as String) == "pin-from-another-boot"
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-b" as NonEmptyStr, key_b64: per_boot_valid_key_b64) == "pin-from-another-boot"
 }
 
 // RED: right boot, but the sshd presents a different key than the console printed.
 test fn a_mismatched_key_under_a_per_boot_pin_refuses() -> Bool {
-  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: fixture_public_key.material as String), expected_boot: "boot-a" as NonEmptyStr, key_b64: wrong_public_key_base64) == "presented-key-mismatch"
+  per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-a" as NonEmptyStr, key_b64: wrong_public_key_base64) == "presented-key-mismatch"
 }
 
 // RED: no pin (nothing read from the console) refuses; so does every malformed read.
 test fn no_per_boot_pin_refuses_and_so_does_every_malformed_console_read() -> Bool {
-  let key = fixture_public_key.material as String
+  let key = per_boot_valid_key_b64
   let ok = per_boot_console_line(boot_id: "boot-a", key_b64: key)
   per_boot_binding(console: "", expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
   && per_boot_binding(console: join(["x", ok], " "), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
@@ -742,6 +745,7 @@ test fn no_per_boot_pin_refuses_and_so_does_every_malformed_console_read() -> Bo
   && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a=b ssh-ed25519 ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
   && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-ed25519 ", key], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
   && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-rsa ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: "AAAAC3NzaC1lZDI1NTE5"), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
 }
 
 // ══ T2: THE PROVISIONED PER-INSTALL PIN (gunbc.plans.host_trust_provisioned_key) ══
