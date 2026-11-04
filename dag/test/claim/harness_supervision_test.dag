@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_alignment_verdict { Aligned, Misaligned, ExtremelyM
 import gunbc.harness.harness_turn {
   HarnessToolResult, HarnessSupervision, Unsupervised, SupervisedRounds,
   HarnessSupervisionVerdictRead, SupervisionVerdictDecoded, SupervisionVerdictUnreadable,
-  TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnStepBudgetExhausted,
+  TurnStoppedBySupervision, StoppedByAlignmentCheck, StoppedBySupervisor, TurnSupervisionUnavailable, TurnStepBudgetExhausted,
   harness_supervision_verdict_decode, harness_supervision_counts_down, harness_messages_with_steer,
   harness_tool_result_messages_json, harness_outcome_label, harness_outcome_detail,
   harness_event_supervision_verdict, harness_supervision_verdict_name,
@@ -17,7 +17,7 @@ import gunbc.harness.harness_turn {
   harness_nested_usage_lines, harness_supervision_observation_text, harness_supervision_message_bound,
   harness_supervision_observed_message_cap,
 }
-import gunbc.roadmap.roadmap_supervisor { SupervisorVerdictReceipt, VerdictSteer, VerdictStuck, supervisor_verdict_text }
+import gunbc.roadmap.roadmap_supervisor { SupervisorVerdictReceipt, VerdictSteer, VerdictStuck, VerdictPlanDefect, supervisor_verdict_text }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
 import gunbc.harness.harness_cli { harness_turn_exit, harness_worker_supervision, harness_worker_step_budget }
 
@@ -89,11 +89,12 @@ test fn a_steer_appends_one_user_message_with_the_direction() -> Bool {
 // and it exits as a refusal like every other turn that did not complete -- there is no exit 3 left
 // for a consumer to read as "resume me".
 test fn a_supervision_stop_is_a_named_refusal() -> Bool {
-  let stopped = TurnStoppedBySupervision { verdict: "extremely-misaligned", detail: "off contract", steps_taken: 80 }
+  let stopped = TurnStoppedBySupervision { verdict: StoppedByAlignmentCheck { verdict: ExtremelyMisaligned { direction: "off contract" } }, detail: "off contract", steps_taken: 80 }
   let undecided = TurnSupervisionUnavailable { cause: "the verdict is not readable as JSON at offset 0", steps_taken: 40 }
   harness_outcome_label(outcome: stopped) == "stopped-by-supervision"
     && harness_outcome_label(outcome: undecided) == "supervision-unavailable"
     && harness_outcome_detail(outcome: stopped).contains("extremely-misaligned")
+    && harness_outcome_detail(outcome: TurnStoppedBySupervision { verdict: StoppedBySupervisor { verdict: VerdictPlanDefect { defect: "d" } }, detail: "d", steps_taken: 80 }).contains("plan-defect")
     && harness_outcome_detail(outcome: undecided).contains("rather than continue unsupervised")
     && (match harness_turn_exit(outcome: stopped) { ExitSuccess => false  ExitFailure { code, reason: _ } => code != 3 })
     && (match harness_turn_exit(outcome: undecided) { ExitSuccess => false  ExitFailure { code, reason: _ } => code != 3 })
