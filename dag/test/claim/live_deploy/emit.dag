@@ -7,7 +7,7 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now_for, apply_complete_object_source_serve }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt, Winget, HomebrewDeFacto }
@@ -102,7 +102,7 @@ import std.materialization_ladder { string_list_contains }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
 import gunbc.live_deploy.operations {
-  systemctl_disable_now_command, systemctl_user_daemon_reload_command, install_directory_owned_command,
+  systemctl_disable_now_command, systemctl_user_daemon_reload_command,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command, systemctl_restart_effect,
@@ -130,6 +130,8 @@ import gunbc.live_deploy.emit {
 import gunbc.live_deploy.emit {
   live_deploy_approval_broker_unit_file, live_deploy_fabric_storage_unit_file, deployment_serve_route_command, install_d_shared_mode, path_parent_dir, live_deploy_systemd_unit_for, live_deploy_remote_mutation_service_op_realization_dissolution_trigger, live_deploy_intent_dependency_graph_emit_dissolution_trigger, live_deploy_publication_path_unit_file,
   live_deploy_belt_service_unit_file, live_deploy_publication_service_unit_file,
+  install_d_owned_render_for, render_install_line, shell_inert_absolute_path,
+  InstallLine, InstallLineRefused, RefusalEmpty, RefusalNotAbsolute, RefusalUnsafeBytes,
 }
 import gunbc.live_deploy.release_locus {
   release_locus_tree_receipt_path,
@@ -398,7 +400,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   let expected = join([
     "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2",
@@ -418,7 +420,7 @@ test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Boo
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   !string_contains(s: unit, pattern: "--port 8080\nRestart=")
     && !string_contains(s: unit, pattern: "--release-revision \n")
@@ -429,12 +431,12 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
   let a = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   let b = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_other_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   a != b
     && string_contains(s: b, pattern: deploy_witness_other_release_revision as String)
@@ -442,7 +444,7 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
 }
 
 test fn witness_systemd_unit_emitted() -> Bool {
-  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now())
+  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()))
   string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 127.0.0.1 --port 8080")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "Group=briansrls")
@@ -1061,4 +1063,43 @@ test fn the_retract_plan_never_restarts_the_serve_unit() -> Bool {
   let retract_text = retract_plan_text(spec: spec)
   !string_contains(s: retract_text, pattern: "REFUSED ")
     && !string_contains(s: retract_text, pattern: join(["restart ", unit], ""))
+}
+
+// ── THE TYPED INSTALL-LINE OUTCOME (review 90613): the refusal is a NAMED CAUSE, not prose in a
+// command position, and its total display fails a script closed rather than fabricating a line.
+
+test fn the_typed_render_refuses_a_hazardous_path_with_a_named_cause() -> Bool {
+  match install_d_owned_render_for(user: "briansrls" as NonEmptyStr, path: "/opt/gunbc/attempt-state; rm -rf /opt/gunbc") {
+    InstallLine { text: _ } => false
+    InstallLineRefused { cause } => match cause {
+      RefusalUnsafeBytes => true
+      _ => false
+    }
+  }
+}
+
+test fn a_refused_install_displays_as_a_false_command_carrying_no_path_bytes() -> Bool {
+  let shown: String = render_install_line(render: install_d_owned_render_for(user: "briansrls" as NonEmptyStr, path: "relative/path"))
+  starts_with(s: shown, prefix: "false ")
+    && !string_contains(s: shown, pattern: "relative/path")
+    && !string_contains(s: shown, pattern: ";")
+}
+
+test fn the_checked_constructor_admits_only_inert_absolute_paths() -> Bool {
+  match shell_inert_absolute_path(path: "/opt/gunbc/live/attempt-state") {
+    Present { value: v } => (v.raw as String) == "/opt/gunbc/live/attempt-state"
+    Absent => false
+  }
+    && match shell_inert_absolute_path(path: "/tmp/x;evil") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match shell_inert_absolute_path(path: "") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match shell_inert_absolute_path(path: "tmp/x") {
+      Present { value: _ } => false
+      Absent => true
+    }
 }

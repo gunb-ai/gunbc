@@ -16,10 +16,10 @@ import gunbc.durable_cas_file_store {
   DerivedPayloadAdmission, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload,
   DefaultAccessCreateOnly, SlotStore, file_slot_store, slot_observe, slot_commit,
-  listed_slot_store, SlotStoreListed, SlotStoreRefused,
+  listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused,
 }
 import gunbc.compute.attempt_lifecycle {
-  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
+  AttemptSlotKeysAbsent, attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
   attempt_slot_read, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
   attempt_record_state, AttemptState,
 }
@@ -182,10 +182,25 @@ fn attempt_slots_cutover_seam_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.roadmap.roadmap_session_attempt_slots_cutover", decl_name: "attempt_slots_carry_for_instance")
 }
 
+// THE MINT THIS LANE STILL OWES, carried as a frontier rather than as a comment. The source store now
+// answers proven-absent separately (SlotStoreAdmission), but AttemptSlotsCarry* has only
+// AttemptSlotsCarrySourceUnlistable for "there is nothing to carry from", which cannot say which of the
+// two facts it is. The named later change is the constructor on this module's carry coproduct -- minted
+// by whoever lands the cutover pass, since what it means is the pass's completion condition, not this
+// fold's -- and it dissolves when that pass appears.
+fn attempt_slots_source_absent_frontier_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.roadmap.roadmap_session_attempt_slots_cutover", decl_name: "AttemptSlotsCarrySourceAbsent")
+}
+
 data attempt_slots_cutover_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: attempt_slots_cutover_seam_ref(),
     reason: "the declared srv1 row is read by this entry point, and the carry it drives is the route that returns the 2026-10-14 lease's orphaned slot to the store the settle pass enumerates; the host run is gated on its own operator authorization, so the belt-actuator cutover pass that will call it is the named later change",
+    dissolution: bound_dissolution(ref: attempt_slots_cutover_run_ref()),
+  ),
+  frontier_row_decl(
+    ref: attempt_slots_source_absent_frontier_ref(),
+    reason: "attempt_slots_source_store answers SlotStoreAbsent for a replaced root whose directory was never created; the census reports that as its own refusal detail, while the carry can only report it as AttemptSlotsCarrySourceUnlistable because that coproduct has no proven-absent constructor. The constructor is the named later change, and the cutover pass is where its meaning is decided.",
     dissolution: bound_dissolution(ref: attempt_slots_cutover_run_ref()),
   ),
 ]
@@ -448,12 +463,17 @@ fn attempt_slots_census(target: SessionAttemptSlotsStore, moved: ReplacedAttempt
     Present { value: refusal } => AttemptSlotsCensusRowRefused { refusal: refusal }
     Absent =>
       match attempt_slots_source_store(moved: moved) {
-        Absent => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: "the old root's directory could not be listed; there is no store there to census" }
-        Present { value: source } =>
-          match attempt_slot_keys(store: source) {
+        // A source PROVEN ABSENT and a source that could not be READ are different facts and are
+        // reported as different facts. Both still refuse the census: neither licenses a carry or a
+        // release, and a census answer is never a release trigger.
+        SlotStoreAbsent { member: _, root: r } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: join(["the replaced root's own directory was never created, so there is no store to census (proven absent at ", r as String, "); this coproduct has no proven-absent constructor yet -- attempt_slots_source_absent_frontier_ref names that mint"], "") }
+        SlotStoreRefused { detail: d } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: d }
+        SlotStoreListed { root: listed_root } =>
+          match attempt_slot_keys(store: file_slot_store(root: listed_root)) {
+            AttemptSlotKeysAbsent { store: _ } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: "the replaced root PROVES it holds no attempt-slot directory; absence is reported as absence, never as an empty census, and no entry is carried or released on it" }
             AttemptSlotKeysRefused { detail: d } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: d }
             AttemptSlotKeysListed { keys: keys } => {
-              let entries = map(keys, k => attempt_slots_census_entry(source: source, target: target.slots, reference: k))
+              let entries = map(keys, k => attempt_slots_census_entry(source: file_slot_store(root: listed_root), target: target.slots, reference: k))
               AttemptSlotsCensusOf {
                 old_root: moved.old_slots_root,
                 entries: entries,
@@ -535,13 +555,17 @@ fn attempt_slots_carry_refused_detail(cause: CasStoreFailure) -> String {
   }
 }
 
-// The source store, minted from the declared row: listed first, so readiness is evidence the directory
-// was observed rather than a caller's assertion (the same list-then-fold every sealed store uses).
-fn attempt_slots_source_store(moved: ReplacedAttemptSlotsRoot) -> SlotStore? {
-  match listed_slot_store(member: session_attempt_slots.member as String, root: moved.old_slots_root) {
-    SlotStoreRefused { detail: _ } => Absent
-    SlotStoreListed { root: r } => Present { value: file_slot_store(root: r) }
-  }
+// The source store, listed from the declared row: readiness is evidence the directory was observed
+// rather than a caller's assertion, the same list-then-fold every sealed store uses. It hands back the
+// ADMISSION answer rather than an Optional, because an Optional has two cases and this fact has three:
+// wrapping it was the conflation this change exists to remove, one line below the fold that separates
+// them. The callers keep the distinction in their own details; what they still cannot do is ANSWER
+// proven-absent as its own outcome, because this module's census/carry coproducts have no
+// proven-absent constructor. That mint is this lane's next change, and
+// attempt_slots_source_absent_frontier_ref carries it as a frontier row with its dissolution, so the
+// deferral is tracked rather than asserted.
+fn attempt_slots_source_store(moved: ReplacedAttemptSlotsRoot) -> SlotStoreAdmission {
+  listed_slot_store(member: session_attempt_slots.member as String, root: moved.old_slots_root)
 }
 
 // THE CARRY, keyed on the reference and decided by the ATTEMPT the two sides name.
@@ -561,9 +585,15 @@ fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptS
     Present { value: refusal } => AttemptSlotsCarryRowRefused { refusal: refusal }
     Absent =>
       match attempt_slots_source_store(moved: moved) {
-        Absent => AttemptSlotsCarrySourceUnlistable { old_root: moved.old_slots_root }
-        Present { value: source } =>
-          match attempt_slot_keys(store: source) {
+        // AttemptSlotsCarrySourceUnlistable is the only constructor this coproduct has for "the source
+        // is not there to carry from", and it carries no detail, so absence and unreadability land in the
+        // same outcome HERE. That is the named residue, and it is tracked:
+        // attempt_slots_source_absent_frontier_ref. Nothing in this arm infers a release.
+        SlotStoreAbsent { member: _, root: _ } => AttemptSlotsCarrySourceUnlistable { old_root: moved.old_slots_root }
+        SlotStoreRefused { detail: _ } => AttemptSlotsCarrySourceUnlistable { old_root: moved.old_slots_root }
+        SlotStoreListed { root: listed_root } =>
+          match attempt_slot_keys(store: file_slot_store(root: listed_root)) {
+            AttemptSlotKeysAbsent { store: _ } => AttemptSlotsCarryKeysRefused { old_root: moved.old_slots_root, detail: "the replaced root PROVES it holds no attempt-slot directory; absence is not an empty key set, and no outcome is claimed for it" }
             AttemptSlotKeysRefused { detail: d } => AttemptSlotsCarryKeysRefused { old_root: moved.old_slots_root, detail: d }
             AttemptSlotKeysListed { keys: keys } =>
               AttemptSlotsCarryReported {
@@ -571,7 +601,7 @@ fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptS
                   instance_id: moved.instance_id,
                   old_root: moved.old_slots_root,
                   new_root: target.slots.root,
-                  outcomes: map(keys, k => attempt_slots_carry_one(source: source, target: target.slots, reference: k)),
+                  outcomes: map(keys, k => attempt_slots_carry_one(source: file_slot_store(root: listed_root), target: target.slots, reference: k)),
                 },
               }
           }
