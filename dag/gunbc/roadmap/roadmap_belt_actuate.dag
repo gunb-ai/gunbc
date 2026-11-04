@@ -9615,38 +9615,35 @@ fn belt_verify_retry_ledger_count(instance: HostDashboardInstance, node_id: Road
   }
 }
 
-fn belt_verify_retry_basename(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String? {
-  match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
-    WorktreeHeadUnobserved { reason: _ } => none
-    WorktreeHeadObserved { revision } =>
-      match belt_verification_selection_observe(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: revision as String) {
-        SelectionObserved { head, window_identity } =>
-          Present { value: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)) }
-        SelectionUnaddressable { cause: _ } => none
-        SelectionAbsent => none
-        SelectionUnreadable { cause: _ } => none
-        SelectionMalformed { cause: _ } => none
-      }
-  }
-}
-
 // THE REFUSED SEGMENT'S STANDING is read from the receipt's typed cause, not from the segment's detail text.
 fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> RefusedRetryStanding {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  match belt_verify_retry_basename(instance: instance, node_id: node_id, attempt_key: progress.attempt_key) {
-    Absent => RefusedRetryOperatorOnly
-    Present { value: basename } =>
-      match belt_verification_refused_cause(source: exact_verification_receipt_source_read(
-        attempt_dir: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
-        verification_dir: belt_verify_retry_dir(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
-        receipt_basename: basename,
-      )) {
-        Absent => RefusedRetryOperatorOnly
-        Present { value: cause } =>
-          match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
-            RetryLedgerUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
-            RetryLedgerCounted { n } => refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: n)
+  match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)) {
+    WorktreeHeadUnobserved { reason: _ } => RefusedRetryOperatorOnly
+    WorktreeHeadObserved { revision } =>
+      match belt_verification_selection_observe(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: revision as String) {
+        SelectionObserved { head, window_identity } => {
+          let window_hex = git_diff_window_identity_hex(identity: window_identity)
+          let basename = exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: window_hex)
+          match belt_verification_refused_cause(source: attempt_state_verification_receipt_read_at(
+            instance: instance,
+            node: node_id as String,
+            attempt_key: progress.attempt_key,
+            head_sha: head as String,
+            window_identity_hex: window_hex,
+          )) {
+            Absent => RefusedRetryOperatorOnly
+            Present { value: cause } =>
+              match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
+                RetryLedgerUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
+                RetryLedgerCounted { n } => refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: n)
+              }
           }
+        }
+        SelectionUnaddressable { cause: _ } => RefusedRetryOperatorOnly
+        SelectionAbsent => RefusedRetryOperatorOnly
+        SelectionUnreadable { cause: _ } => RefusedRetryOperatorOnly
+        SelectionMalformed { cause: _ } => RefusedRetryOperatorOnly
       }
   }
 }
