@@ -8,6 +8,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_dashboard_lab_id,
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
   srv1_dashboard_lab_id, srv2_dashboard_lab_id, srv1_lab_dashboard_instance, srv2_lab_dashboard_instance,
   macbook_local_dashboard_instance, dashboard_instance_dispatch_attempt_state_root,
@@ -66,6 +67,25 @@ fn fx_observed(unit: NonEmptyStr, active: String, enabled: String) -> List<Meter
     cgroup_read_established: true,
     writer_process_count: 0,
   }]
+}
+
+// A fixture instance under /tmp whose instance_id is the srv1 lab id, so the REAL
+// `gunbc.roadmap.roadmap_dashboard_instance.metering_closing_writer_fences` row covers it: the gate's quiescence
+// axis reads the fence, and an id with no row makes the fold answer ActivationRequired, which would let a census
+// claim pass by never reaching the census arm. The root is still a fresh mktemp under /tmp -- nothing here
+// touches the live srv1 lab root.
+fn fx_lab_instance(tag: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["c-roadmap2-cutover-", tag], "") as NonEmptyStr),
+    instance_id: srv1_dashboard_lab_id,
+    layout: srv1_host_layout(),
+    root: shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_c_roadmap2_cutover_", tag, ".XXXXXX"], "")).path as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18121,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
 }
 
 // A fixture instance under /tmp, in the shape the apply route's own wet witnesses build one.
@@ -231,7 +251,7 @@ test fn the_plan_carries_the_closing_gate_for_the_instances_that_declare_a_fence
 
 // 12. A CLEAN ROOT IS COUNTED ZERO, and the gate closes on the count.
 test fn the_live_census_counts_zero_over_a_clean_attempt_state_root_and_the_gate_closes_on_it() -> Bool {
-  let i = fx_instance(tag: "census-clean")
+  let i = fx_lab_instance(tag: "census-clean")
   let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
   let made = shell.Mkdir.Parents(path: root).success
   let census = dashboard_metering_closing_marker_census(instance: i, root: root)
@@ -246,7 +266,7 @@ test fn the_live_census_counts_zero_over_a_clean_attempt_state_root_and_the_gate
 // 13. A PLANTED PLAIN MARKER IS COUNTED AND REFUSES THE GATE BY COUNT -- the census is not decorative: the byte
 // the test writes is a real file on a real disk, read by a real ls, and the refusal names the count.
 test fn the_live_census_counts_a_planted_plain_marker_and_the_gate_refuses_by_count() -> Bool {
-  let i = fx_instance(tag: "census-marker")
+  let i = fx_lab_instance(tag: "census-marker")
   let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
   let metering_dir = join([root as String, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
   let planted = shell.Mkdir.Parents(path: metering_dir as FilePath).success
@@ -264,7 +284,7 @@ test fn the_live_census_counts_a_planted_plain_marker_and_the_gate_refuses_by_co
 // This pins the census to `roadmap_metering_roster.metering_closing_marker_name`'s basename: rename the row and
 // 13 goes red while this one stays green, which is what stops the count being "any file under metering".
 test fn the_live_census_counts_zero_for_a_marker_planted_under_the_wrong_name() -> Bool {
-  let i = fx_instance(tag: "census-wrongname")
+  let i = fx_lab_instance(tag: "census-wrongname")
   let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
   let metering_dir = join([root as String, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
   let planted = shell.Mkdir.Parents(path: metering_dir as FilePath).success
@@ -277,7 +297,7 @@ test fn the_live_census_counts_zero_for_a_marker_planted_under_the_wrong_name() 
 // plain file fails with ENOTDIR, which is NOT the ENOENT answer, so the producer must carry a refusal. This is
 // the arm the pre-PR code collapsed onto "0 markers", and it is exercised here against a real failing ls.
 test fn the_live_census_refuses_when_the_walk_cannot_be_performed() -> Bool {
-  let i = fx_instance(tag: "census-enotdir")
+  let i = fx_lab_instance(tag: "census-enotdir")
   let blocker = join([i.instance_root as String, "/not-a-directory"], "")
   let planted = Filesystem.Write(path: blocker as FilePath, content: "x").success
   let census = dashboard_metering_closing_marker_census(instance: i, root: join([blocker, "/sub"], "") as FilePath)
@@ -290,7 +310,7 @@ test fn the_live_census_refuses_when_the_walk_cannot_be_performed() -> Bool {
 // 16. AND A POSITIVELY ABSENT ROOT IS ESTABLISHED ABSENCE, not a refusal: ENOENT is an answer. Paired with 15 so
 // the two arms cannot collapse into one another again.
 test fn the_live_census_reports_established_absence_when_the_root_is_positively_gone() -> Bool {
-  let i = fx_instance(tag: "census-enoent")
+  let i = fx_lab_instance(tag: "census-enoent")
   let census = dashboard_metering_closing_marker_census(instance: i, root: join([i.instance_root as String, "/never-created"], "") as FilePath)
   match census { CensusAbsentEstablished => true, _ => false }
 }
@@ -304,7 +324,7 @@ test fn the_live_census_reports_established_absence_when_the_root_is_positively_
 test fn the_observation_asks_systemctl_exactly_what_the_upstream_builders_compose() -> Bool {
   // The unit the fence row actually holds -- the same derivation fx_unit uses, which is the name
   // the real producer is handed by the fence, so the equality below is about the producer's request.
-  let u = fx_unit(i: fx_instance(tag: "argv-inhabitance"))
+  let u = fx_unit(i: fx_lab_instance(tag: "argv-inhabitance"))
   let active_ok = join(systemctl_user_closing_active_args(unit: u), "\n") == join(["--user", systemctl_is_active_verb as String, u as String], "\n")
   let enabled_ok = join(systemctl_user_closing_enabled_args(unit: u), "\n") == join(["--user", systemctl_is_enabled_verb as String, u as String], "\n")
   let show_ok = join(systemctl_user_closing_show_args(unit: u), "\n") == join(systemctl_user_show_properties_argv(unit: u, properties: [MainPID, ControlGroup]), "\n")
