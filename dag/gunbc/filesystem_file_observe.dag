@@ -10,7 +10,15 @@ import extdeps.filesystem.filesystem_io {
   filesystem_read_outcome,
   filesystem_listing_observation,
   filesystem_file_observation,
+  filesystem_file_observation_below_ancestor,
   filesystem_entry_presence,
+  FilesystemEntryPresenceIndeterminate,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemFileIndeterminate,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileObservationsDisagree,
 }
 
 type FilesystemPathDecomposition
@@ -100,7 +108,8 @@ fn filesystem_file_observation_of_path(path: String) -> FilesystemFileObservatio
     FilesystemPathDecomposed { directory: directory, name: name } => {
       let listing = Filesystem.List(path: directory)
       let read = Filesystem.Read(path: path)
-      filesystem_file_observation(
+      let outcome = filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+      let observed = filesystem_file_observation(
         listing: filesystem_listing_observation(
           directory: directory,
           success: listing.success,
@@ -109,8 +118,21 @@ fn filesystem_file_observation_of_path(path: String) -> FilesystemFileObservatio
         ),
         name: name,
         path: path,
-        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+        read: outcome,
       )
+      match observed {
+        FilesystemFileIndeterminate { cause: _ } =>
+          filesystem_file_observation_below_ancestor(
+            observation: observed,
+            ancestor: filesystem_entry_presence_of_path(path: directory),
+            path: path,
+            read: outcome,
+          )
+        FilesystemFileAbsent(_) => observed
+        FilesystemFileRead { path: _, content: _ } => observed
+        FilesystemFileObservationsDisagree { path: _, cause: _ } => observed
+        FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => observed
+      }
     }
   }
 }
@@ -126,7 +148,7 @@ fn filesystem_entry_presence_of_path(path: String) -> FilesystemEntryPresence {
       FilesystemEntrySubjectRefused { directory: "", name: "", cause: cause }
     FilesystemPathDecomposed { directory: directory, name: name } => {
       let listing = Filesystem.List(path: directory)
-      filesystem_entry_presence(
+      let presence = filesystem_entry_presence(
         listing: filesystem_listing_observation(
           directory: directory,
           success: listing.success,
@@ -135,6 +157,18 @@ fn filesystem_entry_presence_of_path(path: String) -> FilesystemEntryPresence {
         ),
         name: name,
       )
+      match presence {
+        FilesystemEntryPresenceIndeterminate { cause: _ } =>
+          match filesystem_entry_presence_of_path(path: directory) {
+            FilesystemEntryAbsent(established) => FilesystemEntryAbsent(established)
+            FilesystemEntryListed { directory: _, name: _ } => presence
+            FilesystemEntryPresenceIndeterminate { cause: _ } => presence
+            FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => presence
+          }
+        FilesystemEntryAbsent(_) => presence
+        FilesystemEntryListed { directory: _, name: _ } => presence
+        FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => presence
+      }
     }
   }
 }

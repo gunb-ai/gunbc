@@ -734,8 +734,8 @@ fn dashboard_directory_observation_operations_of(deploy: RunnerHostDeploy, spec:
   if (deploy.host_label as String) != (spec.target.host.identity as String) {
     []
   } else {
-    let demanded = map(deployment_directory_demands(spec: spec), t => owned_directory_path(t: t) as String)
-    let listed = fold(flat_map(demanded, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
+    let demanded: List<String> = map(deployment_directory_demands(spec: spec), t => owned_directory_path(t: t) as String)
+    let listed: List<String> = fold(flat_map(demanded, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
     concat(
       map(demanded, p => ReadDirectoryIdentity { path: p as NonEmptyStr }),
       map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr }),
@@ -754,7 +754,7 @@ fn printer_state_privileged_operations(deploy: RunnerHostDeploy) -> List<Executo
   } else {
     let targets = printer_state_directories(tree: host_state_tree())
     let paths = map(targets, t => owned_directory_path(t: t) as String)
-    let listed = fold(flat_map(paths, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
+    let listed: List<String> = fold(flat_map(paths, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
     executor_privileged_plan_rows(plan: printer_state_store_plan(spec: runner_host_spec_of(deploy: deploy)))
       + map(paths, p => ReadDirectoryIdentity { path: p as NonEmptyStr })
       + map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr })

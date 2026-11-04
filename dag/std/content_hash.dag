@@ -2,7 +2,7 @@ module std.content_hash
 import std.optional { Absent, Present }
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.algebra { Ordering, TotalOrder, collection_concat_shape, collection_join_shape, string_compare_canonical }
+import std.algebra { Ordering, TotalOrder, collection_concat_shape, collection_join_shape, string_compare_canonical, list_at_optional }
 import std.host_text { chars }
 
 // CRYPTOGRAPHIC CARRIER WALL (reviews 45441/45460/45496; same law as extdeps.git.object_store
@@ -340,7 +340,7 @@ fn serialize_content_hash(hash: ContentHash) -> NonEmptyStr {
 // does not re-serialize to the text it was read from is not that text's hash.
 fn parse_content_hash_candidate(wire: String) -> ContentHash? {
   if starts_with(s: wire, prefix: "sha256:") {
-    match get(xs: split(s: wire, delimiter: "sha256:"), index: 1) {
+    match list_at_optional(xs: split(s: wire, delimiter: "sha256:"), index: 1) {
       Absent => none
       Present { value: hex } =>
         match sha256_hex_digest(hex: hex) {
@@ -349,7 +349,7 @@ fn parse_content_hash_candidate(wire: String) -> ContentHash? {
         }
     }
   } else if starts_with(s: wire, prefix: "sha512:") {
-    match get(xs: split(s: wire, delimiter: "sha512:"), index: 1) {
+    match list_at_optional(xs: split(s: wire, delimiter: "sha512:"), index: 1) {
       Absent => none
       Present { value: hex } =>
         match sha512_hex_digest(hex: hex) {

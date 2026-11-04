@@ -7,7 +7,7 @@ import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.compute.attempt_lifecycle {
-  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
+  AttemptSlotKeysAbsent, attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
   AttemptRecord, UnitLifecycle, UnitLifecycleUnknown,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease, recovery_trigger,
   AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
@@ -308,6 +308,7 @@ fn session_activation_ensure_pass_at(
             AttemptSlotUnreadable { detail } => ActivationRefused { unit: k as String, reason: join(["the slot is unreadable: ", detail], "") }
           }),
       }
+    AttemptSlotKeysAbsent { store: _ } => ActivationPassRefused { detail: "no session slot store is present -- the activation pass creates nothing and releases nothing on an absent census" }
     AttemptSlotKeysRefused { detail: d } => ActivationPassRefused { detail: join(["the session slot store: ", d], "") }
   }
 }
