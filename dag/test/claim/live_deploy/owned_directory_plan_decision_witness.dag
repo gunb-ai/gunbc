@@ -1,0 +1,88 @@
+// R2 WITNESS (one-deploy-path safety, GAP 1): a demanded owned directory whose plan row is absent
+// installs NOTHING. The old arm of gunbc.live_deploy.emit owned_directory_will_install returned true
+// on MemberNotInPlan -- an install with no decision, unblessed by the plan authority yet blessed by
+// the post-apply readback. Each claim below flips exactly ONE input: the row's presence, or its
+// mutation. SOUNDNESS counterpart (why the refusal never blocks a real deploy):
+// gunbc.live_deploy.member_observe deployment_member_roster maps EVERY deployment_directory_demands
+// path into the roster as a DirectoryRoot and derive_member_plan emits one row per roster member, so
+// MemberNotInPlan is unreachable for a demanded path in any plan the two consumers can receive; a
+// separate claim asserts that closure below.
+
+import std.types { Bool, String, NonEmptyStr, CommitSha, FilePath, List }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryDeclared, PosixOwnerNames, owned_directory_path,
+  DirectoryOwnerOnly, ForeignOwnershipRefuses,
+}
+import gunbc.live_deploy.emit { owned_directory_will_install }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.member_identity {
+  ReleaseTarget, MemberEffectRow, ReleaseEffectPlan, plan_of_rows,
+  ConvergedMember, DirectoryRoot, KeepMember, CreateRoot,
+}
+import gunbc.live_deploy.member_observe { deployment_member_roster }
+import gunbc.live_deploy.spec { deployment_directory_demands }
+import std.collections { any }
+
+fn target_at(path: String) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "attempt-state" as NonEmptyStr,
+    path: path as FilePath,
+    owner: PosixOwnerNames { user: "briansrls" as NonEmptyStr, group: "briansrls" as NonEmptyStr },
+    mode: DirectoryOwnerOnly,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+fn release_target() -> ReleaseTarget {
+  ReleaseTarget {
+    revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha,
+    executable: sha256_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr),
+    unit: "gunbc-roadmap-dashboard.service" as NonEmptyStr,
+  }
+}
+
+fn row_at(path: String, keep: Bool) -> MemberEffectRow {
+  MemberEffectRow {
+    member: DirectoryRoot { path: path as NonEmptyStr },
+    mutation: if keep { KeepMember } else { CreateRoot },
+  }
+}
+
+// THE DISCRIMINATOR: with the row present (CreateRoot) the install proceeds; delete ONLY the row and
+// nothing installs. The old MemberNotInPlan arm returned true, so this claim is red on the old code.
+test fn a_demanded_directory_with_no_plan_decision_installs_nothing() -> Bool {
+  let without_row: ReleaseEffectPlan = plan_of_rows(
+    target: release_target(),
+    rows: [row_at(path: "/opt/gunbc/live/other", keep: false)],
+  )
+  let with_row: ReleaseEffectPlan = plan_of_rows(
+    target: release_target(),
+    rows: [row_at(path: "/opt/gunbc/live/attempt-state", keep: false)],
+  )
+  owned_directory_will_install(spec: deployment_spec_srv1(), plan: without_row, t: target_at(path: "/opt/gunbc/live/attempt-state")) == false
+    && owned_directory_will_install(spec: deployment_spec_srv1(), plan: with_row, t: target_at(path: "/opt/gunbc/live/attempt-state")) == true
+}
+
+// Keep-in-plan is still no-install (the refusal arm must not have inverted Keep into install).
+test fn a_kept_directory_installs_nothing() -> Bool {
+  let plan: ReleaseEffectPlan = plan_of_rows(
+    target: release_target(),
+    rows: [row_at(path: "/opt/gunbc/live/attempt-state", keep: true)],
+  )
+  owned_directory_will_install(spec: deployment_spec_srv1(), plan: plan, t: target_at(path: "/opt/gunbc/live/attempt-state")) == false
+}
+
+// THE SOUNDNESS CLOSURE: the ONE plan authority cannot omit a demanded directory -- every
+// deployment_directory_demands path is in deployment_member_roster as the same DirectoryRoot that
+// owned_directory_will_install asks about. If a future demand is added without roster coverage this
+// claim goes red BEFORE the refusal arm can silently skip an install in production.
+test fn every_demanded_directory_is_a_roster_member() -> Bool {
+  let roster: List<ConvergedMember> = deployment_member_roster(spec: deployment_spec_srv1())
+  is_empty(filter(deployment_directory_demands(spec: deployment_spec_srv1()), t =>
+    !any(roster, m => match m {
+      DirectoryRoot { path } => (path as String) == (owned_directory_path(t: t) as String)
+      _ => false
+    })
+  ))
+}

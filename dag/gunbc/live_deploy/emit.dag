@@ -1536,9 +1536,22 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
   install_d_owned_for_user(user: spec.service.service_user, path: path)
 }
 
+// A directory the plan holds no decision about is NOT installed (R2, one-deploy-path safety). The
+// old arm returned true on MemberNotInPlan -- an install with no decision, which is exactly the
+// unblessed act §5 forbids: the plan authority never admitted it, yet the readback would have blessed
+// it. This is SOUND rather than merely safer because the ONE plan authority cannot omit a demanded
+// directory: gunbc.live_deploy.member_observe deployment_member_roster maps EVERY
+// deployment_directory_demands path into the roster as a DirectoryRoot, and derive_member_plan emits
+// exactly one row per roster member -- so for every plan that reaches its two consumers (this module's
+// standing route and gunbc.live_deploy.apply_legs deploy_apply_directories_plan, both fed only from
+// release_member_plan) MemberNotInPlan is unreachable for a demanded path. The refusal arm therefore
+// fires only on planner drift, and the drift then fails LOUDLY: a demanded directory that is not
+// Keep-in-plan must have an apply leg, and a dropped leg means the post-apply readback of that member
+// fails its admission -- never a silent skip. Witness: test.claim.live_deploy.emit's
+// a_demanded_directory_with_no_plan_decision_installs_nothing flips exactly the row's presence.
 fn owned_directory_will_install(spec: DeploymentSpec, plan: ReleaseEffectPlan, t: OwnedDirectoryTarget) -> Bool {
   match plan_mutation_of(plan: plan, member: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }) {
-    MemberNotInPlan => true
+    MemberNotInPlan => false
     MutationInPlan { mutation } => !mutation_is_keep(e: mutation)
   }
 }
