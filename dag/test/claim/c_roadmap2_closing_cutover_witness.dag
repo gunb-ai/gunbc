@@ -5,6 +5,7 @@ import std.types { String, FilePath, NonEmptyStr, List }
 import std.algebra { string_contains }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
+import test.fixture.systemd_fence_stub { systemctl_fence_stub_write, systemctl_stub_quiescent_answers }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
