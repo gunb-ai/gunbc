@@ -9,6 +9,7 @@ import extdeps.network.mac {
   MacAddressTransmission, IndividualAddress, GroupAddress,
   mac_address_scope, mac_address_transmission, mac_is_permanent_interface_identity,
   mac_oui,
+  parse_mac_address_any_case, parse_packed_mac_address, mac_parse_error_text, mac_addresses_are_equal,
 }
 
 // THE ROUND TRIP AND THE TWO FLAG BITS. The round trip is the standard grounding witness for a
@@ -168,10 +169,13 @@ test fn the_two_flag_bits_are_read_independently() -> Bool {
     && !mac_is_permanent_interface_identity(addr: both)
 }
 
+// THE OUI IS THE FIRST THREE OCTETS, AND NOTHING ELSE. This claim used to fold the three octets into a
+// decimal number (`acc * 1000 + x`) and compare it to a literal -- which is what made the whole entry refuse
+// pre-evaluation on main: an arithmetic carrier is undecided inside that fold, so the entry never evaluates and
+// every claim in this file is starved. Comparing the octets to the octets says the same thing, pins the same
+// three values, and invents no number that no upstream spells.
 test fn the_oui_is_the_first_three_octets() -> Bool {
-  let o = mac_oui(addr: srv3_burned_in())
-  list_length(items: o) == 3
-    && fold(o, init: 0, f: fn(acc, x) { acc * 1000 + x }) == 72 * 1000000 + 33 * 1000 + 11
+  mac_oui(addr: srv3_burned_in()) == [72, 33, 11]
 }
 
 // ---------------------------------------------------------------------------
@@ -213,4 +217,71 @@ test fn a_single_digit_group_refuses_by_width_not_by_hexness() -> Bool {
 
 test fn an_over_wide_group_refuses_by_width() -> Bool {
   is_wrong_width(e: error_of(text: "48:21:0bb:81:c7:1d"))
+}
+
+// ── THE EITHER-CASE ENTRY POINT, AND WHY IT IS A SEPARATE ONE ────────────────────────────────────────────
+// The claims above refuse an uppercase spelling, and that refusal is deliberate: in the provisioning and DHCP
+// layer this codec serves, accepting both spellings would erase which one a source emitted, and the round trip
+// (`render_mac_address` prints lowercase) would stop being a round trip.
+//
+// A DIFFERENT FACT NEEDS THE OPPOSITE POLICY, and it is not a license to relax the one above. A DMTF Redfish
+// service publishes `MACAddress` as six hex pairs and the schema's own examples are uppercase, while a UEFI
+// device path prints the same address packed and lowercase. A reader that refused the schema's spelling would
+// answer "this controller has no such port" about a port the controller really published -- a confident wrong
+// answer, not a refusal. So the either-case parsers live HERE, beside the digit rows they share, and the
+// canonical rendering is unchanged: the two spellings meet at the parsed address, never at the text.
+test fn the_either_case_parser_accepts_the_schema_spelling_and_the_canonical_one() -> Bool {
+  match parse_mac_address_any_case(text: "AC:1F:6B:E3:F6:B0") {
+    MacParsed { address: address } => mac_addresses_are_equal(left: address, right: srv3_burned_in()) == false
+      && mac_addresses_are_equal(left: address, right: uppercase_specimen())
+      && render_mac_address(addr: address) == "ac:1f:6b:e3:f6:b0"
+    MacParseFailed { error: error } => false
+  }
+}
+
+// THE PACKED SPELLING A UEFI DEVICE PATH USES, and the refusal when the width is wrong: eleven digits is not a
+// truncated address, it is a different fact, and it names its own cause.
+test fn the_packed_spelling_is_the_same_address_and_a_wrong_width_refuses() -> Bool {
+  match parse_packed_mac_address(text: "ac1f6be3f6b0") {
+    MacParsed { address: address } => mac_addresses_are_equal(left: address, right: uppercase_specimen())
+      && match parse_packed_mac_address(text: "ac1f6be3f6b") {
+           MacParseFailed { error: MacWrongOctetCount { observed_count: observed_count } } => observed_count == 11
+           _ => false
+         }
+      && match parse_packed_mac_address(text: "zz1f6be3f6b0") {
+           MacParseFailed { error: MacOctetNotHex { position: position, raw: raw } } => position == 0
+           _ => false
+         }
+    MacParseFailed { error: error } => false
+  }
+}
+
+// THE EITHER-CASE PARSER STILL KEEPS THE THREE CAUSES APART, which is the point of sharing the digit rows: a
+// wrong-width group is not reported as non-hex, and a non-hex group is not reported as the wrong width.
+test fn the_either_case_parser_keeps_width_and_hexness_apart() -> Bool {
+  match parse_mac_address_any_case(text: "AC:1F:B:E3:F6:B0") {
+    MacParseFailed { error: MacOctetWrongWidth { position: position, raw: raw, observed_width: observed_width } } =>
+      position == 2 && raw == "B" && observed_width == 1
+    _ => false
+  }
+    && match parse_mac_address_any_case(text: "AC:1F:6B:E3:F6:G0") {
+         MacParseFailed { error: MacOctetNotHex { position: position, raw: raw } } => position == 5 && raw == "G0"
+         _ => false
+       }
+    && match parse_mac_address_any_case(text: "AC:1F:6B:E3:F6") {
+         MacParseFailed { error: MacWrongOctetCount { observed_count: observed_count } } => observed_count == 5
+         _ => false
+       }
+}
+
+// THE CAUSE TEXT, ONCE. A refusal that reaches a reading has to say which of the three facts arrived; spelling
+// the three sentences here keeps a consumer from inventing its own summary of a failed parse.
+test fn each_parse_cause_says_what_arrived() -> Bool {
+  string_contains(s: mac_parse_error_text(error: MacWrongOctetCount { observed_count: 5 }), pattern: "six hex octets")
+    && string_contains(s: mac_parse_error_text(error: MacOctetNotHex { position: 2, raw: "GG" }), pattern: "not two hex digits")
+    && string_contains(s: mac_parse_error_text(error: MacOctetWrongWidth { position: 1, raw: "ABC", observed_width: 3 }), pattern: "not two")
+}
+
+fn uppercase_specimen() -> Eui48Address {
+  mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 176)
 }

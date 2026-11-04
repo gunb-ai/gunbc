@@ -2669,7 +2669,7 @@ fn redfish_collection_assembly(pages: List<RedfishCollectionPage>, member_bound:
       match first.member_count {
         Absent => CollectionRefused { detail: "the first page carries no Members@odata.count, so completeness cannot be established" }
         Present { value: total } => {
-          let links = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
+          let links: List<String> = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
           let last_has_next = match reverse(pages).first() { Absent => false Present { value: p } => p.next_link != none }
           let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true RedfishLinkSameOrigin { path: _ } => false })
           let disagreeing = filter(pages, p => p.member_count != Present { value: total })

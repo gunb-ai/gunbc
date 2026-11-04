@@ -1566,10 +1566,6 @@ fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<
   concat([git_program_word], git_config_local_get_words(repo: repo, key: key))
 }
 
-fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
-  git_argv_of_args(args: ["rev-parse", "--verify", "--quiet", target])
-}
-
 fn shape_git_rev_parse_head_args() -> List<String> {
   ["rev-parse", "HEAD"]
 }
@@ -2460,6 +2456,12 @@ fn shape_git_reset_hard_argv(repo: FilePath, target: GitRef) -> List<String> {
 
 fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
   ["-C", repo as String, "rev-parse", target as String]
+}
+
+// The EXISTENCE test for a ref whose absence must be a typed refusal rather than a failing
+// mutation: `git rev-parse --verify --quiet <ref>` exits 1 silently when the ref does not exist.
+fn shape_git_rev_parse_verify_quiet_argv(repo: FilePath, ref_name: GitRef) -> List<String> {
+  ["-C", repo as String, "rev-parse", "--verify", "--quiet", ref_name as String]
 }
 
 service git.Worktree {

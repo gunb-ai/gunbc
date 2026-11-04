@@ -3,7 +3,7 @@
 
 use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceReferenceBindingOutcome::*;
-pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
+pub use crate::std_algebra::{collection_concat_shape, map_lookup, FreeMonoid};
 use crate::std_occurrence_binding::OccurrenceBindingResult::*;
 pub use crate::std_occurrence_binding::{
     occurrence_binding_from_candidates, BindingCandidate, BindingOccurrence, ContainmentPath,
@@ -207,7 +207,7 @@ pub fn binding_candidates_from_supplied_declarations(
     refusal: std::option::Option::None,
 }), |build: Rc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
     Some(_) => build.clone(),
-    std::option::Option::None => match v1_rt::map_get(&validated.entries_by_id.clone(), candidate_occurrence.value.clone()) {
+    std::option::Option::None => match v1_rt::lookup(&validated.entries_by_id.clone(), candidate_occurrence.value.clone()) {
     std::option::Option::None => Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
@@ -215,7 +215,7 @@ pub fn binding_candidates_from_supplied_declarations(
     occurrence: candidate_occurrence.clone(),
 })),
 }),
-    Some(entry) => match v1_rt::map_get(&build.seen_candidate_ids.clone(), candidate_occurrence.value.clone()) {
+    Some(entry) => match v1_rt::lookup(&build.seen_candidate_ids.clone(), candidate_occurrence.value.clone()) {
     Some(_) => Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
@@ -224,8 +224,8 @@ pub fn binding_candidates_from_supplied_declarations(
     diagnostic_span: entry.projection.diagnostic_span.clone(),
 })),
 }),
-    std::option::Option::None => match v1_rt::map_get(&validated.declarations_by_id.clone(), candidate_occurrence.value.clone()) {
-    std::option::Option::None => match v1_rt::map_get(&validated.references_by_id.clone(), candidate_occurrence.value.clone()) {
+    std::option::Option::None => match v1_rt::lookup(&validated.declarations_by_id.clone(), candidate_occurrence.value.clone()) {
+    std::option::Option::None => match v1_rt::lookup(&validated.references_by_id.clone(), candidate_occurrence.value.clone()) {
     Some(observed_reference) => Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
@@ -280,7 +280,7 @@ pub fn reference_occurrence_by_id(
     validated: Rc<ValidatedOccurrenceTransport>,
     occurrence: OccurrenceId,
 ) -> Option<Rc<ReferenceOccurrence>> {
-    v1_rt::map_get(
+    v1_rt::lookup(
         &validated.references_by_id.clone(),
         occurrence.value.clone(),
     )
@@ -291,7 +291,7 @@ pub fn resolve_reference_occurrence_binding_validated(
     occurrence: OccurrenceId,
     supplied_candidates: Rc<Vec<OccurrenceId>>,
 ) -> Rc<OccurrenceReferenceBindingOutcome> {
-    match v1_rt::map_get(&validated.entries_by_id.clone(), occurrence.value.clone()) {
+    match v1_rt::lookup(&validated.entries_by_id.clone(), occurrence.value.clone()) {
         std::option::Option::None => {
             match reference_occurrence_by_id(validated.clone(), occurrence.clone()) {
                 Some(reference) => Rc::new(
@@ -313,7 +313,7 @@ pub fn resolve_reference_occurrence_binding_validated(
             }
         }
         Some(entry) => match reference_occurrence_by_id(validated.clone(), occurrence.clone()) {
-            std::option::Option::None => match v1_rt::map_get(
+            std::option::Option::None => match v1_rt::lookup(
                 &validated.declarations_by_id.clone(),
                 occurrence.value.clone(),
             ) {
