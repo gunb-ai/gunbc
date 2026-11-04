@@ -102,7 +102,7 @@ import std.materialization_ladder { string_list_contains }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
 import gunbc.live_deploy.operations {
-  systemctl_disable_now_command, systemctl_user_daemon_reload_command, install_directory_owned_command,
+  systemctl_disable_now_command, systemctl_user_daemon_reload_command,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command, systemctl_restart_effect,

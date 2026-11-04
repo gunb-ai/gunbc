@@ -162,7 +162,7 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }
-import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program, coreutils_install_directory_owned_arguments }
+import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program, coreutils_install_directory_owned_argv }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
@@ -291,9 +291,6 @@ import gunbc.membership_reconcile {
   membership_effects,
 }
 import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv, shell_command_text_of_stmts }
-import gunbc.live_deploy.operations {
-  install_directory_owned_command,
-}
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
   Pipeline, PipelineStep,
@@ -1484,12 +1481,31 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
 )
 
 fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
-  install_directory_owned_command(
-    mode: install_d_shared_mode,
-    owner: user,
-    group: user,
-    path: path,
-  )
+  if install_d_owned_path_is_safe(path: path) {
+    shell_privileged_command_text_of_argv(
+      argv: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: user, group: user, path: path),
+    )
+  } else {
+    install_d_owned_refusal_text
+  }
+}
+
+// The refusal is a constant: it says a refusal happened and its cause, and can carry no byte of the
+// hazardous path (a refusal that echoed the path would re-smuggle the operator it refused).
+data install_d_owned_refusal_text: String = "install refused: unsafe owned-directory path (fail closed, no bytes of the path are rendered)"
+
+// A safe owned-directory install path is absolute, non-empty, and free of every byte the shell gives
+// a meaning (control, quote, expansion, glob, whitespace, traversal). One named list, checked whole:
+// a path that would need quoting is REFUSED rather than quoted, because this surface's whole point is
+// that its output embeds inertly.
+fn install_d_owned_path_is_safe(path: String) -> Bool {
+  let unsafe_fragments: List<String> = [
+    " ", "\t", "\n", ";", "|", "&", ">", "<", "$", "`", "\\", "'", "\"",
+    "(", ")", "{", "}", "[", "]", "*", "?", "!", "~", "#", "..",
+  ]
+  if path == "" { false }
+  else if !starts_with(s: path, prefix: "/") { false }
+  else { is_empty(filter(unsafe_fragments, u => string_contains(s: path, pattern: u))) }
 }
 
 // WHY THIS INSTALLS WITH -o/-g RATHER THAN WRITING AS ROOT AND FIXING UP, and the history is the

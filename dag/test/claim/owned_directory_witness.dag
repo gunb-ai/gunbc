@@ -10,6 +10,7 @@ import gunbc.owned_directory {
   owned_directory_decide, owned_directory_reading_of_stat_line, owned_directory_observe,
   ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverFailure, ObserverNotSpawned, ObserverExited, ObserverTransportRefused,
   owned_directory_ensure, OwnedDirectoryEnsured, OwnedDirectoryEnsureRefused,
+  owned_directory_act_time_handover,
 }
 
 // THE PROVIDER'S DECISION TABLE, over supplied observations (DESIGN 3: one interface, supplied values).
@@ -131,4 +132,61 @@ test fn observe_only_absent_refuses() -> Bool {
 // A MODE DRIFT ON THE DEMANDED OWNER'S DIRECTORY IS REPAIRED, not refused.
 test fn a_mode_drift_on_the_owners_directory_applies() -> Bool {
   decision_label(o: observed(line: "directory|svc|svc|755"), may_apply: true) == "apply"
+}
+
+// ── THE ACT-TIME OWNERSHIP EFFECT (roadmap node "Realize live_deploy's install-owned leaves as typed
+// fs writes with an ownership effect"). A directory that changed hands between the plan-time
+// observation and the act is refused BEFORE the install runs, so the readback can never report
+// convergence over a stolen directory. The handover decision is pure, so each arm below is flipped by
+// exactly ONE input; the last claim shows the provider's act path stays silent over a foreign owner.
+
+test fn handover_is_a_foreign_owner_at_act_time() -> Bool {
+  match owned_directory_act_time_handover(target: target(), at_act: observed(line: "directory|root|root|700")) {
+    Present { value: o } => (o.user as String) == "root" && (o.group as String) == "root"
+    Absent => false
+  }
+}
+
+test fn no_handover_when_the_act_time_owner_is_the_declared_one() -> Bool {
+  match owned_directory_act_time_handover(target: target(), at_act: observed(line: "directory|svc|svc|700")) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn handover_when_the_path_is_no_longer_a_directory() -> Bool {
+  match owned_directory_act_time_handover(target: target(), at_act: observed(line: "regular file|svc|svc|700")) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn an_unreadable_act_time_reading_is_not_a_fabricated_handover() -> Bool {
+  match owned_directory_act_time_handover(target: target(), at_act: EnsureAbsent { reason: "absent" }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn an_inaccessible_act_time_reading_is_not_a_fabricated_handover() -> Bool {
+  match owned_directory_act_time_handover(target: target(), at_act: EnsureInaccessible { reason: "stat failed" }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The provider refuses over a directory that is foreign-owned at act time, and the refusal is the
+// plan-time foreign-owner refusal -- never a silent install: a converged receipt here would mean the
+// install ran and the readback blessed it.
+test fn the_provider_installs_nothing_over_a_foreign_owner_at_act_time() -> Bool {
+  match owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: target(),
+    observe: p => observed(line: "directory|root|root|700"),
+    run: plan => true,
+  ) {
+    OwnedDirectoryEnsured { target: _, converged: _ } => false
+    OwnedDirectoryEnsureRefused { target: _, reason } =>
+      string_contains(s: reason, pattern: "never adopted") && !string_contains(s: reason, pattern: "changed hands")
+  }
 }
