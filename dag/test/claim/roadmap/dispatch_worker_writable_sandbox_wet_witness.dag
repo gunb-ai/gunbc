@@ -39,11 +39,8 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_gid_command, witness_group_name_command, witness_effective_user_command,
   witness_supplied_root_is_refused, witness_supplied_roots_are_off_the_live_host,
   witness_refused_instance, witness_unnameable_principal,
+  wet_ok, wet_out,
 }
-import std.algebra { trim }
-import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessOutcome }
-import gunbc.command_runner { run_shell_command_capture }
 import extdeps.tools.stat { stat_mode_command }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command,
@@ -134,26 +131,6 @@ data wet_probe_key: String = "wetprobe"
 // where someone pre-provisioned -- the reachability trap the RFM row files, re-opened. Host-said
 // is also what gives the confinement readbacks their oracle: uid, gid, octal mode and the
 // names `find -printf '%u %g'` prints are all compared against the host's own answer.
-fn wet(command: ArgvCommand) -> ProcessOutcome {
-  run_shell_command_capture(command: command, transport: LocalExec)
-}
-
-fn wet_ok(command: ArgvCommand) -> Bool {
-  match wet(command: command) {
-    ProcessRefused { exit_code: _, stderr: _ } => false
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
-  }
-}
-
-fn wet_out(command: ArgvCommand) -> String {
-  match wet(command: command) {
-    ProcessOutputPresent { text: text } => trim(s: text)
-    ProcessOutputAbsent => ""
-    ProcessRefused { exit_code: _, stderr: _ } => ""
-  }
-}
-
 // THE ROOT THIS CLAIM OWNS: the host's own `mktemp -d`, under the fixture's prefix, with a
 // per-claim tag so two claims in one batch can never share a tree. An empty answer is the
 // refusal -- never a fallback to a fixed path, which is how a witness ends up writing the

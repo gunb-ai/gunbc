@@ -3,7 +3,9 @@ module test.claim.roadmap.witness_supplied_instance
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.optional { Optional, Present, Absent }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
+import gunbc.command_runner { run_shell_command_capture }
 import extdeps.posix.identity { PosixOwnerNames }
 import extdeps.tools.gnu_coreutils { mktemp_directory_command, whoami_command }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
@@ -84,6 +86,40 @@ data witness_scratch_leaf_template: NonEmptyStr = "gunbc-wet-witness-XXXXXX" as 
 
 fn witness_scratch_template() -> String {
   join([witness_scratch_prefix as String, "/", witness_scratch_leaf_template as String], "")
+}
+
+// THE HOST ROUTE, IN ONE PLACE. Three supplied-root witnesses need to run an ArgvCommand on the
+// host and read its answer, and a third local copy of these three bodies was the trigger DESIGN section 6b
+// names -- "the trigger is the second local implementation of one rule". They live here, beside the
+// prefix and the principal commands they serve, so there is one route from a witness to `id -u`,
+// `stat -c %a` and `mktemp -d`: an ArgvCommand goes in as an ArgvCommand, which is what makes a
+// refusal here a real refusal and not a string comparison.
+//
+// STILL DUPLICATED, NAMED RATHER THAN LEFT QUIET: worker_git_subtree_apply_spawn_wet_witness.dag:106-118
+// keeps its own copies of all three and worker_git_subtree_builder_wet_witness.dag:76 its own `wet_out`
+// (whose body inlines the capture call). They are not migrated here because the spawn witness's entry is
+// refused today by the `circular dependency detected` in the roadmap_dashboard_instance_apply closure
+// (main defect #15790), so an edit to it could not be verified by running anything -- migrating a claim
+// file whose claims cannot execute is exactly how a repair gets asserted without being observed. TRIGGER
+// for the migration: when the spawn witness's entry resolves, i.e. when the apply.dag cycle is fixed.
+fn wet(command: ArgvCommand) -> ProcessOutcome {
+  run_shell_command_capture(command: command, transport: LocalExec)
+}
+
+fn wet_ok(command: ArgvCommand) -> Bool {
+  match wet(command: command) {
+    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+  }
+}
+
+fn wet_out(command: ArgvCommand) -> String {
+  match wet(command: command) {
+    ProcessOutputPresent { text: text } => trim(s: text)
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
+  }
 }
 
 // THE ONE PROCESS THE FIXTURE NEEDS TO GET A ROOT. Callers run this with `run_shell_command_observe` and read
