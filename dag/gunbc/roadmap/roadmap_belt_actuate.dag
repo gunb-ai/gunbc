@@ -726,7 +726,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
 import gunbc.managed_directory { declared_directory_mode_octal }
-import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots, session_attempt_slots_path }
 import gunbc.roadmap.roadmap_session_placement {
   attempt_worker_unit_observe_for_instance,
   SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores,
@@ -1785,13 +1785,13 @@ fn belt_session_slots_ensure(instance: HostDashboardInstance) -> String? {
   match belt_exec(
     cmd: host_exec_argv(
       program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
-      args: ["-d", "-m", declared_directory_mode_octal(m: session_attempt_slots.mode), session_placement_slots_root(instance: instance) as String],
+      args: ["-d", "-m", declared_directory_mode_octal(m: session_attempt_slots.mode), session_attempt_slots_path(instance: instance) as String],
     ),
     workdir: belt_observe_workdir as String,
   ) {
     ExecOk { stdout: _ } => none
-    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", session_placement_slots_root(instance: instance) as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
-    ExecRefused { program, reason } => Present { value: join(["the session slot store ", session_placement_slots_root(instance: instance) as String, " could not be created (", program, "): ", reason], "") }
+    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", session_attempt_slots_path(instance: instance) as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
+    ExecRefused { program, reason } => Present { value: join(["the session slot store ", session_attempt_slots_path(instance: instance) as String, " could not be created (", program, "): ", reason], "") }
   }
 }
 
