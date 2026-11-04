@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_k1_a, p4261_e1_b }
-import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin, RectifierRepetitivePeak, voltage_withstand }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
@@ -482,6 +482,9 @@ import product.electrical.carrier_phase {
 import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1 }
 import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 
+import extdeps.electronic_component.onsemi_fsv20100v {
+  onsemi_schottky_fsv20100v,
+}
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
 fn layout_with(base: CarrierLayoutObservation, components: List<InstalledComponent>, measured: MeasuredBoard?, input: InputConnector?) -> CarrierLayoutObservation {
@@ -580,6 +583,33 @@ fn negative_term() -> TerminalIdentity {
 
 // The K1 has no measured board, so every rated part is an observed rating with no placement and the
 // photographs establish NO bound; the 75 V fuse and the 100 V MOSFETs are carried, never promoted.
+// ---- FSV20100V: what the component row itself may say ---------------------------------------
+// Grounded in the onsemi datasheet (fsv20100v-d.pdf, Rev 4, September 2024): the cover gives Part
+// Number FSV20100V with Top Mark FSV20100V, and the page-1 maximum-ratings table gives V_RRM 100 V at
+// T_A = 25 C in a single value column. Both tests exist to be reddened: delete a character from
+// top_marking, or change the rating, and the identification stops being supportable.
+test fn the_fsv_row_prints_the_part_number_the_sheet_prints() -> Bool {
+  match onsemi_schottky_fsv20100v.top_marking {
+    Absent => false
+    Present { value: printed } => printed == "FSV20100V"
+  }
+}
+
+// The sheet's own legend prints the issuer as "onsemi" (33 occurrences, including "$Y = onsemi Logo"),
+// and never prints "ON Semiconductor"; the copyright line names Semiconductor Components Industries,
+// LLC. The row carries the name the document prints, so a rebrand of this string is a change to what
+// the datasheet says, not to how we refer to the company.
+test fn the_fsv_row_names_the_maker_the_sheet_prints() -> Bool {
+  onsemi_schottky_fsv20100v.vendor.legal_name == "onsemi"
+}
+
+test fn the_fsv_row_reports_the_sheets_rrrm_as_a_rectifier() -> Bool {
+  match voltage_withstand(spec: onsemi_schottky_fsv20100v.specification) {
+    Absent => false
+    Present { value: w } => w.kind == RectifierRepetitivePeak && w.maximum == volt(count: 100)
+  }
+}
+
 test fn the_photographs_establish_no_input_bound() -> Bool {
   match input_bound(layout: p4261_k1_layout) {
     BoundUnestablished { observed } =>
