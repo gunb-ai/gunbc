@@ -73,6 +73,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_tailnet_door_socket,
   dashboard_instance_tailnet_door_directory,
   dashboard_instance_agent_door_directory,
+  dashboard_instance_agent_door_socket,
   agent_door_socket_in,
   owned_directory_is_agent_door,
 }
@@ -405,13 +406,23 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // other half of the same fact.
 
 // THE SERVE ROUTE'S SOURCE ROOTS, relative to the deployed tree. The emitted ExecStart passes them to
-// `serve`, and the pre-swap admission compiles the serve entry under the same roots, so both read
+// `gunbc run`, and the pre-swap admission compiles the serve entry under the same roots, so both read
 // this one value rather than each spelling the flags.
 data deployment_serve_source_roots: List<String> = ["dag", "src/v2"]
 
-data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_serve.dag"
+// THE SERVE ENTRY IS THE HANDLER'S DEPLOYMENT BINDING (gunbc.http_ingress), not the handler's own
+// module: serving is declared by the binding, which imports the handler, so the unit's `gunbc run
+// --entry` loads the binding and its closure carries the handler. serve_function stays the handler
+// the binding is asked to serve; the binding constructor each entry declares is named beside it.
+data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_ingress.dag"
+data roadmap_ingress_function: NonEmptyStr = "roadmap_ingress"
 
-data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_serve.dag"
+data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_ingress.dag"
+data approval_broker_ingress_function: NonEmptyStr = "approval_broker_ingress"
+
+data fabric_storage_ingress_entry_file: NonEmptyStr = "dag/gunbc/fabric/fabric_storage_ingress.dag"
+data fabric_storage_ingress_function: NonEmptyStr = "fabric_storage_ingress"
+data fabric_storage_handler_function: NonEmptyStr = "fabric_storage_serve_handle"
 
 // ── THE APPROVAL BROKER IS ONE PER HOST, AND THAT IS THE POINT RATHER THAN A SIMPLIFICATION ──
 // Every other unit this deployment installs is named per deployment identity, so a lab twin gets

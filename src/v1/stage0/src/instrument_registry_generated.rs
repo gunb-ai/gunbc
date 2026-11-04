@@ -40,13 +40,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "compile-clean-diagnostic-census".to_string(),
-            },
-            TargetProducer::CompileCleanDiagnosticCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "self-host".to_string(),
             },
             TargetProducer::SelfHost,
@@ -71,34 +64,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
                 target: "evaluation-store-address-exact-head".to_string(),
             },
             TargetProducer::EvaluationStoreAddressExactHead,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "primitive-egress-census".to_string(),
-            },
-            TargetProducer::PrimitiveEgressCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "primitive-egress-census-v2".to_string(),
-            },
-            TargetProducer::PrimitiveEgressCensusV2,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "primitive-egress-census-dag".to_string(),
-            },
-            TargetProducer::PrimitiveEgressCensusDag,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "primitive-egress-census-seed".to_string(),
-            },
-            TargetProducer::PrimitiveEgressCensusSeed,
         ),
         (
             Label {

@@ -1,0 +1,16 @@
+module gunbc.auth.approval_broker_ingress
+
+import std.types { String, Int }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import gunbc.auth.approval_broker_serve { approval_broker_handle }
+
+// THE DEPLOYMENT BINDING OF the approval broker (gunbc.http_ingress, gunbc.plans.converged_ingress).
+// The handler stays an ordinary entry; this module is where serving it is declared. The import above
+// is what puts the handler's module in the run's closure, and `handler` names which of its entries
+// this process serves. gunbc.live_deploy.emit renders the per-host values as `gunbc run --arg`s.
+fn approval_broker_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
+  http_ingress_binding(
+    handler_module: "gunbc.auth.approval_broker_serve", handler: handler, listener: listener,
+    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+  )
+}
