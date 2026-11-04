@@ -5048,8 +5048,6 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
 
 pub(crate) type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
-/// The fallible core. Every filesystem condition and every corpus-authority violation
-/// returns a located `Err` instead of unwinding.
 /// WHETHER ONE `--source-root` IS A DIRECTORY TO WALK, as a typed refusal. The one admission every
 /// index builder asks -- the whole-tree builder below and the demand-acquired route
 /// (`demand_acquire`) -- so a missing root, or a file where a directory belongs, refuses on both
@@ -5058,6 +5056,8 @@ pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
     anchor_source_root_typed(root)
 }
 
+/// The fallible core. Every filesystem condition and every corpus-authority violation
+/// returns a located `Err` instead of unwinding.
 fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
