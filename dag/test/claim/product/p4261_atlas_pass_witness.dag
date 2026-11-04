@@ -415,7 +415,11 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
     // claim (§4d). Each became an unclaimed position with its obligation kept on the observation that
     // raised it: 47 - 2 = 45. (Q21_P5 and Q22_P5 carry the same defect and are listed in the PR body
     // as open; repairing them here would retire two findings the operator measured, pending a ruling.)
-    && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 45
+    // 45 became 49 when the four FSV20100V rectifiers were claimed: D2_P1, D8_P1, D2_P5 and D8_P5,
+    // whose bodies print the device code the datasheet gives, joined to the vendor row in
+    // product.p4261.e1_b rather than asserted beside it. 47 - 2 + 4 = 49. Beside the identity join
+    // (the_positions_are_the_receipts_and_nothing_else), a change detector only.
+    && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 49
     // The held set keeps its 24 members, and the K1 keeps its own 13 positions: an E1 pass must
     // not reach into another board's design facts. Both are change detectors, not proofs -- the
     // held set's own authority is `every_held_receipt_is_recorded_on_the_board` joined to
