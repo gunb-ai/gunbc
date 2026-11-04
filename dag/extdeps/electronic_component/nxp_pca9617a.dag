@@ -41,7 +41,7 @@ data pca9617adp: ElectronicComponentRow = ElectronicComponentRow {
   vendor: nxp_semiconductors,
   ordering_code: "PCA9617ADP",
   package: "TSSOP8 (SOT505-1)",
-  top_marking: "P617A / <date and lot lines>",
+  top_marking: Present { value: "P617A / <date and lot lines>" },
   specification: LevelTranslatorSpec { translator: LevelTranslatorSpecification {
     channels: 2,
     supply_a: MillivoltRange { minimum: millivolt(count: 800), maximum: millivolt(count: 5500) },

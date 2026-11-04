@@ -1,5 +1,6 @@
 module gunbc.boot_artifact_delivery
 
+import extdeps.bmc.types { BootTargetCd, BootTargetPxe, BootTargetUefiHttp, RedfishBootSourceOverrideTarget }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_equal }
@@ -156,8 +157,8 @@ import gunbc.network_boot_delivery {
 // MegaRAC plan exists only when the profile's OEM route carries the image_redirection fact its
 // operation contract requires; and every staged offer must name the requested digest, so 'the
 // URI serves digest B while the request names digest A' is a typed refusal.
-// gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access
-// context and therefore always refuses at AccessContextProfileLookupNotRun.
+// gunbc.fleet.fleet_boot_delivery_solution never binds an access context for the install path and
+// therefore every host refuses at AccessContextProfileLookupNotRun.
 
 type BootControlObligation
   = SetOneShotTarget
@@ -236,6 +237,17 @@ fn boot_artifact_delivery_boot_control(delivery: BootArtifactDelivery) -> BootCo
     OpenBmcConfigfsUsbGadget { params: _ } => BootFromRemovableMedia
     UefiHttpBoot { params: _ } => BootFromUefiHttp
     PxeChainBoot { evidence: _ } => BootFromNetworkPxe
+  }
+}
+
+// The Redfish boot-source override a control target is armed with. One answer for every install
+// consumer: a consumer that cannot realize an arm refuses the arm locally, it does not re-derive
+// the target.
+fn redfish_boot_target_of_control(control: BootControlTarget) -> RedfishBootSourceOverrideTarget {
+  match control {
+    BootFromRemovableMedia => BootTargetCd
+    BootFromNetworkPxe => BootTargetPxe
+    BootFromUefiHttp => BootTargetUefiHttp
   }
 }
 

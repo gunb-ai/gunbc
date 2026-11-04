@@ -413,7 +413,7 @@ data k1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: k1_converter_far, designator: "U2_P2", evidence: k1_converter_area_photo_1031 },
 ]
 
-data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
+data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation { ambiguous_designators: [],
   asset: p4261_k1_a,
   design: k1_design,
   revision: p4261_k1,
