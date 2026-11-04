@@ -6,7 +6,7 @@ import std.measure { Micrometer, micrometer, micrometer_count }
 import std.euclidean_geometry { Axis3X, Axis3Y }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, FixedFrame, LayOnXY, FrictionFitSleeve, Proposed,
-  ProfileVertex, block, part, mechanical_interface, prism, M5FanScrewIntoBlowerLug, Clearance,
+  ProfileVertex, block, part, mechanical_interface, tapping_into, prism, M5FanScrewIntoBlowerLug, Clearance,
 }
 import product.printed_chassis.blower_outlet_mount {
   OutletMount, EdgeAlongY, outlet_mount_unfit, run_for_label, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
@@ -360,8 +360,8 @@ fn group_duct_merge(plate: List<AssemblyPart>, stages: BlowerStages) -> List<Ass
 }
 
 fn group_blower_joint(k: Int) -> MechanicalInterface {
-  mechanical_interface(id: join(["blower-", to_string(value: k), "-to-socket"], ""), members: ["DUCT", join(["FAN-", to_string(value: k)], ""), join(["SCREW-", to_string(value: k)], "")], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
-    requirement: "The blower's outlet frame sits in its socket on the ledges around the opening, label face against the arm; one M5 x 10 fan screw through the arm into the lug of the hole nearer the outlet retains it.")
+  tapping_into(i: mechanical_interface(id: join(["blower-", to_string(value: k), "-to-socket"], ""), members: ["DUCT", join(["FAN-", to_string(value: k)], ""), join(["SCREW-", to_string(value: k)], "")], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
+    requirement: "The blower's outlet frame sits in its socket on the ledges around the opening, label face against the arm; one M5 x 10 fan screw through the arm into the lug of the hole nearer the outlet retains it."), members: [join(["SCREW-", to_string(value: k)], "")])
 }
 
 fn group_duct_readme(p: GroupDuctPlan) -> String {

@@ -5,7 +5,7 @@ import std.measure { Micrometer, micrometer }
 import std.euclidean_geometry { Axis3X, Axis3Z }
 import product.printed_chassis.assembly_geometry {
   AssemblyPart, MechanicalInterface, Primitive, Printed, Purchased, FixedFrame, LayOnXY, LayOnYZ, PrintPlane, print_plane_pose, Proposed,
-  M5FanScrewIntoBlowerLug, part, round, mechanical_interface, prism, rounded_rectangle, ProfileVertex,
+  M5FanScrewIntoBlowerLug, part, round, mechanical_interface, tapping_into, prism, rounded_rectangle, ProfileVertex,
 }
 import product.printed_chassis.blower_outlet_mount {
   OutletMount, EdgeAlongX, run_for_label, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
@@ -229,8 +229,8 @@ fn x_prism(outline: List<ProfileVertex>, x_lo: Int, x_hi: Int) -> Primitive {
 
 fn side_mount_joints() -> List<MechanicalInterface> {
   concat(card_joints(mount: PlugAndFlange, printed_id: "DUCT"), [
-    mechanical_interface(id: "blower-to-socket", members: ["FAN", "DUCT", "SCREW"], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
-      requirement: "The blower's outlet frame is pushed into the socket beside the card and rests on the ledges around the opening, label face toward the card and intake facing away from it. One M5 x 10 fan screw through the arm on the label face into the lug of the hole nearer the outlet retains it."),
+    tapping_into(i: mechanical_interface(id: "blower-to-socket", members: ["FAN", "DUCT", "SCREW"], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
+      requirement: "The blower's outlet frame is pushed into the socket beside the card and rests on the ledges around the opening, label face toward the card and intake facing away from it. One M5 x 10 fan screw through the arm on the label face into the lug of the hole nearer the outlet retains it."), members: ["SCREW"]),
   ])
 }
 
