@@ -634,9 +634,9 @@ fn stage0_partition_rebuild_requires_whole_compiler_today(
   unlocatable: List<String>,
   host_shell_modules: List<String>
 ) -> Bool {
-  stage0_partition_rebuild_requires_whole_compiler(decision:
-    stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors,
-      unlocatable: unlocatable, host_shell_modules: host_shell_modules))
+  stage0_partition_rebuild_requires_whole_compiler(decision: stage0_partition_rebuild_decision_today(
+    changed_mirrors: changed_mirrors, unlocatable: unlocatable,
+    host_shell_modules: host_shell_modules))
 }
 
 // THE PACKAGES THAT MUST NOT BE COMPILED. Reported to the host as identities so a build that
