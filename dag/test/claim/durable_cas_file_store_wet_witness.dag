@@ -419,37 +419,31 @@ test fn a_census_of_an_unreadable_store_refuses_naming_the_kind_by_real_executio
   made && locked && answered && restored.exit_code == 0 && removed.success
 }
 
-// R4 absent-changes-nothing: the census is a census, not an actor. Asking it about a store that is
-// not there creates nothing, and asking twice does not change the answer or the file system -- the
-// directory is still absent afterwards, with the host still answering not_found. This is the row
-// that keeps "absence is a census answer, never a release trigger" from becoming words only: a
-// future pass that minted on absence, or freed a charge on it, has to pass through this shape.
+// R4 absent-changes-nothing: the census is a census, not an actor. This row deliberately does NOT
+// assert which arm came back -- it asserts that the answer is STABLE across two readings and that
+// the file system is untouched by asking (the host still answers not_found for the same path). So
+// the ENOENT-collapse mutant leaves it green, which is what makes it the positive control beside R2:
+// if a future pass minted on a census, or freed a charge because a store could not be found, this
+// is the shape it would have to break. The charge-level version of this guard lives in the session
+// lane and needs the settle record's per-arm reading kind, which is named as residue on this PR.
+fn census_shape(c: CasSlotKeys) -> String {
+  match c {
+    CasSlotKeysListed { keys: _ } => "listed"
+    CasSlotKeysAbsent { root: _ } => "absent"
+    CasSlotKeysListingRefused { root: _, detail: _ } => "listing-refused"
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => "subject-refused"
+  }
+}
+
 test fn an_absent_census_creates_nothing_and_leaves_the_answer_unchanged_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let missing = concat(root_path, "/never-created")
   let missing_root = missing as NonEmptyStr
-  let first = match slot_keys(store: file_slot_store(root: missing_root)) {
-    CasSlotKeysAbsent { root: r } => r == missing_root
-    CasSlotKeysListed { keys: _ } => false
-    CasSlotKeysListingRefused { root: _, detail: _ } => false
-    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
-  }
-  let second = slot_keys(store: file_slot_store(root: missing_root))
-  let still_absent = match slot_keys(store: file_slot_store(root: missing_root)) {
-    CasSlotKeysAbsent { root: r } => r == missing_root
-    CasSlotKeysListed { keys: _ } => false
-    CasSlotKeysListingRefused { root: _, detail: _ } => false
-    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
-  }
+  let first = census_shape(c: slot_keys(store: file_slot_store(root: missing_root)))
+  let second = census_shape(c: slot_keys(store: file_slot_store(root: missing_root)))
   let host_still_says_not_found = match Filesystem.List(path: missing) {
     listing => (!listing.success) && listing.error_kind == "not_found"
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  let unchanged = match second {
-    CasSlotKeysAbsent { root: r } => r == missing_root
-    CasSlotKeysListed { keys: _ } => false
-    CasSlotKeysListingRefused { root: _, detail: _ } => false
-    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
-  }
-  first && unchanged && host_still_says_not_found && removed.success
+  first == second && host_still_says_not_found && removed.success
 }
