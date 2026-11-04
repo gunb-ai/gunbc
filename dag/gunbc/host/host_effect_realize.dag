@@ -7007,12 +7007,22 @@ fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
 // rule, extdeps.posix.test_utility). One failed member fails the leg with that leg's argv on the
 // record -- the refusal names the path that was missing, which is the sentence the 127-hours
 // incident never got.
+// ONE CARRIER, BOTH ARMS. The members this asks for are exactly the members the install produces:
+// the declared executable plus release_locus_tree_subdirs -- the same declarations
+// approval_broker_tree_install_at consumes at install time. Adding a fourth payload root to the
+// carrier moves install and verify together; verify can no longer pass over a snapshot missing a
+// root the install copies (review 90757).
 fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
-  concat([
-    DarkLegArgv { step: DarkStepHelperVerify, command: test_executable_command(path: join([dir, "/", gunbc_release_bin_name], "")) },
-    DarkLegArgv { step: DarkStepHelperVerify, command: test_directory_command(path: join([dir, "/dag"], "")) },
-    DarkLegArgv { step: DarkStepHelperVerify, command: test_directory_command(path: join([dir, "/src/v2"], "")) },
-  ], dark_snapshot_readback_legs_at(locus: locus, dir: dir))
+  concat(
+    [DarkLegArgv { step: DarkStepHelperVerify, command: test_executable_command(path: join([dir, "/", gunbc_release_bin_name], "")) }],
+    concat(
+      map(release_locus_tree_subdirs, sub => DarkLegArgv {
+        step: DarkStepHelperVerify,
+        command: test_directory_command(path: join([dir, "/", sub], "")),
+      }),
+      dark_snapshot_readback_legs_at(locus: locus, dir: dir),
+    ),
+  )
 }
 
 // THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the

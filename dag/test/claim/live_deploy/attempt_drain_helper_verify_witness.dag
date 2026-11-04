@@ -19,7 +19,8 @@ import gunbc.live_deploy.apply_legs {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec }
-import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission, helper_locus_dir }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission, helper_locus_dir, release_locus_tree_subdirs }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_locus, attempt_system_unit_launcher_helpers_root }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
 import gunbc.host.host_effect_realize { dark_helper_verify_legs, DarkLeg, DarkLegArgv, DarkLegExpectEmpty, DarkStepHelperVerify }
@@ -121,15 +122,18 @@ test fn an_unknown_instance_resolves_to_no_closure() -> Bool {
 // the three members {gunbc, dag, src/v2} the launcher copy declares. POSIX test as the standalone
 // utility, never a shell. The ownership readback follows the member tests, so verify and install
 // cannot disagree about what "installed" means.
-test fn the_verify_legs_test_the_three_declared_members_at_the_named_path() -> Bool {
+// The expectations read the CARRIER the install reads (release_locus_tree_subdirs + the declared
+// executable), never witness-side literals: renaming or adding a payload root moves install,
+// verify and this claim together (review 90757).
+test fn the_verify_legs_test_the_declared_members_at_the_named_path() -> Bool {
   match dashboard_instance_for_id(instance_id: "srv1-lab") {
     DashboardInstanceForId { instance: instance } =>
       let locus = attempt_system_unit_launcher_locus(instance: instance)
       let dir = helper_locus_dir(locus: locus, revision: revision())
       let legs = dark_helper_verify_legs(locus: locus, dir: dir)
-      member_test(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-x", join([dir, "/", "gunbc"], "")]))
-        && member_test(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/dag"], "")]))
-        && member_test(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/src/v2"], "")]))
+      member_test(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-x", join([dir, "/", gunbc_release_bin_name], "")]))
+        && fold(release_locus_tree_subdirs, init: true, f: (acc, sub) => acc
+          && member_test(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/", sub], "")])))
     DashboardInstanceIdUnknown { instance_id: _ } => false
   }
 }
