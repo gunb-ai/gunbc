@@ -101,10 +101,14 @@ fn witness_scratch_template() -> String {
 // STILL DUPLICATED, NAMED RATHER THAN LEFT QUIET: worker_git_subtree_apply_spawn_wet_witness.dag:106-118
 // keeps its own copies of all three and worker_git_subtree_builder_wet_witness.dag:76 its own `wet_out`
 // (whose body inlines the capture call). They are not migrated here because the spawn witness's entry is
-// refused today by the `circular dependency detected` in the roadmap_dashboard_instance_apply closure
-// (main defect #15790), so an edit to it could not be verified by running anything -- migrating a claim
-// file whose claims cannot execute is exactly how a repair gets asserted without being observed. TRIGGER
-// for the migration: when the spawn witness's entry resolves, i.e. when the apply.dag cycle is fixed.
+// refused today by the `circular dependency detected` in the roadmap_dashboard_instance_apply closure, so
+// an edit to it could not be verified by running anything -- migrating a claim file whose claims cannot
+// execute is exactly how a repair gets asserted without being observed. THE DEFECT IS NOT #15790: that PR
+// landed (1a28f2a1bf01) and, by its own stated control, did NOT clear the refusal. What does not clear is
+// a resolver defect in which a `decl_ref` citation STRING counts as a module-graph edge; it is routed to
+// sleek-owl-397 via stern-bat-401. TRIGGER for the migration: the spawn witness's WHOLE-ENTRY resolve
+// working -- not a two-claim `--functions` selection of that entry resolving, which hides the cycle
+// (measured in the evidence recorded on PR #15794).
 fn wet(command: ArgvCommand) -> ProcessOutcome {
   run_shell_command_capture(command: command, transport: LocalExec)
 }
