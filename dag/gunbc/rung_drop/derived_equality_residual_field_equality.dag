@@ -1,8 +1,7 @@
 module gunbc.rung_drop.derived_equality_residual_field_equality
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DerivedBy, ReplacementStaged }
-import gunbc.instrument_targets { compile_clean_diagnostic_census_label }
+import gunbc.rung_drop { population_from_list, RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 
 // DECLARED 2026-10-25 with derived equality (std.operator_realization EqualityPlan). Every `==` the seed
@@ -18,9 +17,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 // v1.compiler.infer equality_route_declarations (Edge, Node, NodeOccurrence), and the checker reports each residual member
 // where it already decides it, as an advisory diagnostic (EqualityInstantiationBlindGenericSite: a generic `==` whose
 // operand type is a type variable, admitted instantiation-blind with no plan; CollectionKeyReachesEqualityRoute: a Map/Set
-// key type in a declared type that the equality walk finds reaching a routed declaration). Each class has a ceiling row in
-// gunbc.compile_clean_diagnostic_policy advisory_class_ceilings, which the compile-clean diagnostic census conservation
-// check requires of every raw diagnostic class. The key walk covers both the DECLARED positions
+// key type in a declared type that the equality walk finds reaching a routed declaration). The key walk covers both the DECLARED positions
 // (v1.compiler.infer equality_item_collection_key_rows) and the INFERRED ones (equality_body_collection_key_rows). Both
 // advisory classes dissolve with this drop. The leading-edge measurement that motivated the drop (16 E0369
 // derived-PartialEq sites in v2-emitted-policy-unit-2 with the derive stripped) is recorded on the
@@ -33,7 +30,9 @@ data derived_equality_residual_field_equality: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: OutsideTheLadder,
     reason: ReplacementStaged { replacement: "checked == sites compare through the std.operator_realization EqualityPlan; the emitted types keep their derived PartialEq for the uses no == site reaches" },
-    population: DerivedBy { label: compile_clean_diagnostic_census_label() },
+    population: population_from_list(xs: [
+      "v1.compiler.infer equality_route_declarations: Edge, Node, NodeOccurrence (the closed table of routed declarations); the residual members are the advisory diagnostics EqualityInstantiationBlindGenericSite and CollectionKeyReachesEqualityRoute reported at the checker site that decides them"
+    ]),
     restoration_trigger: "a derive-eligibility fixpoint over the type graph -- 'reaches a routed declaration', modelled on v1.compiler.emit_info has_fn_fields / close_fn_fields -- that drops PartialEq, and Eq/PartialOrd/Ord/Hash wherever they depend on it, from every emitted type reaching a routed declaration, sufficient for no emitted use of those traits on such a type to go unrouted: each is routed through the plan or refused by rustc, censused on both required products (self-host, v2-native-cli)",
   } }
 }
