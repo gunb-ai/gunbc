@@ -1,0 +1,15 @@
+module test.claim.runner.scratch_slot_width_probe
+
+import gunbc.runner.runner_slot_allocation { host_memory_admitted_width }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+
+// SCRATCH, NOT FOR MERGE: each claim is false by construction so the refusal prints the Int.
+test fn probe_srv1_memory_width_is_zero() -> Bool {
+  host_memory_admitted_width(host: operator_host_srv1) == 0
+}
+test fn probe_srv3_memory_width_is_zero() -> Bool {
+  host_memory_admitted_width(host: operator_host_srv3) == 0
+}
+test fn probe_srv4_memory_width_is_zero() -> Bool {
+  host_memory_admitted_width(host: operator_host_srv4) == 0
+}
