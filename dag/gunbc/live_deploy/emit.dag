@@ -1481,31 +1481,76 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
 )
 
 fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
-  if install_d_owned_path_is_safe(path: path) {
-    shell_privileged_command_text_of_argv(
-      argv: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: user, group: user, path: path),
-    )
-  } else {
-    install_d_owned_refusal_text
+  render_install_line(render: install_d_owned_render_for(user: user, path: path))
+}
+
+// THE TYPED OUTCOME behind the render surface: an install line is emitted only when the path passes
+// the checked constructor below; otherwise the refusal carries a NAMED cause, not prose. The String
+// surface (install_d_owned_command / install_d_owned_for_user) is the total DISPLAY of this outcome,
+// and its refusal arm is a FALSE COMMAND -- a spliced refusal stops the script at that point (§5: no
+// plausible output fabricated in place of a stop), never a line that installs nothing but looks done.
+type InstallLineRender
+  = InstallLine { text: String }
+  | InstallLineRefused { cause: InstallRefusalCause }
+
+type InstallRefusalCause
+  = RefusalEmpty
+  | RefusalNotAbsolute
+  | RefusalUnsafeBytes
+
+// The checked constructor for the one path shape this surface can express: absolute, non-empty, and
+// free of every byte the shell gives a meaning (control, quote, expansion, glob, whitespace,
+// traversal). One named list; a path needing quoting is REFUSED rather than quoted, because the
+// surface's point is that its output embeds inertly (§5 correctness-by-construction: downstream code
+// only ever sees the carrier or a refusal, never a raw unchecked path).
+type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: String }
+
+fn shell_inert_absolute_path(path: String) -> Optional<ShellInertAbsolutePath> {
+  if path == "" { Absent }
+  else if !starts_with(s: path, prefix: "/") { Absent }
+  else if any(unsafe_install_fragments, u => string_contains(s: path, pattern: u)) { Absent }
+  else { Present { value: ShellInertAbsolutePath { raw: path } } }
+}
+
+data unsafe_install_fragments: List<String> = [
+  " ", "\t", "\n", ";", "|", "&", ">", "<", "$", "`", "\\", "'", "\"",
+  "(", ")", "{", "}", "[", "]", "*", "?", "!", "~", "#", "..",
+]
+
+// The cause is classified from the SAME list the constructor uses -- one authority, two renderings.
+fn install_refusal_cause(path: String) -> InstallRefusalCause {
+  if path == "" { RefusalEmpty }
+  else if !starts_with(s: path, prefix: "/") { RefusalNotAbsolute }
+  else { RefusalUnsafeBytes }
+}
+
+fn install_refusal_cause_label(cause: InstallRefusalCause) -> String {
+  match cause {
+    RefusalEmpty => "path is empty"
+    RefusalNotAbsolute => "path is not absolute"
+    RefusalUnsafeBytes => "path carries shell-active bytes"
   }
 }
 
-// The refusal is a constant: it says a refusal happened and its cause, and can carry no byte of the
-// hazardous path (a refusal that echoed the path would re-smuggle the operator it refused).
-data install_d_owned_refusal_text: String = "install refused: unsafe owned-directory path (fail closed, no bytes of the path are rendered)"
+fn install_d_owned_render_for(user: NonEmptyStr, path: String) -> InstallLineRender {
+  match shell_inert_absolute_path(path: path) {
+    Absent => InstallLineRefused { cause: install_refusal_cause(path: path) }
+    Present { value: inert } => InstallLine {
+      text: shell_privileged_command_text_of_argv(
+        argv: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: user, group: user, path: inert.raw),
+      ),
+    }
+  }
+}
 
-// A safe owned-directory install path is absolute, non-empty, and free of every byte the shell gives
-// a meaning (control, quote, expansion, glob, whitespace, traversal). One named list, checked whole:
-// a path that would need quoting is REFUSED rather than quoted, because this surface's whole point is
-// that its output embeds inertly.
-fn install_d_owned_path_is_safe(path: String) -> Bool {
-  let unsafe_fragments: List<String> = [
-    " ", "\t", "\n", ";", "|", "&", ">", "<", "$", "`", "\\", "'", "\"",
-    "(", ")", "{", "}", "[", "]", "*", "?", "!", "~", "#", "..",
-  ]
-  if path == "" { false }
-  else if !starts_with(s: path, prefix: "/") { false }
-  else { is_empty(filter(unsafe_fragments, u => string_contains(s: path, pattern: u))) }
+// The TOTAL DISPLAY: rendered line, or a false command that fails the script closed at the refusal
+// point. The refusal text is shell-inert (no control word survives it) and carries no byte of the
+// refused path -- a refusal that echoed the path would re-smuggle the operator it refused.
+fn render_install_line(render: InstallLineRender) -> String {
+  match render {
+    InstallLine { text } => text
+    InstallLineRefused { cause } => join(["false # install refused: ", install_refusal_cause_label(cause: cause)], "")
+  }
 }
 
 // WHY THIS INSTALLS WITH -o/-g RATHER THAN WRITING AS ROOT AND FIXING UP, and the history is the
