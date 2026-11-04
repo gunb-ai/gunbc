@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution
 
 import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 import gunbc.guarantee_rung { StructurallyGuaranteed }
@@ -35,8 +36,20 @@ data bare_name_resolved_by_proximity_standing_in_for_resolution: RecurringFailur
 
     "RESIDUE (gunbc#15247, review 90050): the HOMONYM arm of `global_bare_lookup_candidates` under the default ImportScoped policy still calls `global_bare_nearest_ancestor` (longest shared module-path prefix; exact ties refuse). A bare name declared in two modules, neither on the referencing module's chain nor imported, can resolve to the nearer one with no import. The unique arm is gated; this arm is not, so the floor `names resolve` does not yet hold for homonyms in the seed. Its population is not enumerated (the whole-corpus resolve is the unexecuted trigger above). Next rung: the NamespaceOnlyY policy default (namespace-resolution-design.md section 13 step 4, gated on import->alias transmutation) or filtering this arm through `global_bare_declarer_in_scope`; either needs the corpus census the trigger capability provides.",
 
+    "SURVIVING CALL SITES, MEASURED 2026-11-03 (three, not zero; the #15247 residue above is the mechanism, these are where it bites today). Each uses a name declared in another module that the using module does NOT import, so proximity binds it: `gunbc.provisioning.ubuntu_autoinstall_seed.keys_are_the_admitted_authorisation` calls `ssh_ed25519_key_identity` while its `import extdeps.ssh.keys` list carries only `{ SshPublicKey, ssh_public_key_line }`; the same module's `seed_preseed_file` calls `debconf_selection_file`, absent from its `extdeps.debian.debconf` block -- its `import extdeps.debian.debconf` block lists `debconf_selection_answer`, `debconf_selection_kind`, ... without it); and `gunbc.fleet.fleet_converge_workflow.fleet_converge_fleet_identity_auth_step` reads `probe_identity_secret_access_requirement`, a `data` row of `gunbc.fleet.fleet_host_key_enrollment` that this module never imports at all -- `gunbc.fleet.fleet_workflow_steps` spells the same use correctly, in its `ci_wif_auth_step_with_condition` builder, so the corpus already holds the right form. These three also qualify the census claim above: whatever it counted as compiling clean, the pool still carries three proximity-bound uses.",
+
+    "THE CONSUMER THAT NOTICES THEM IS THE EFFECT JOIN, and it refuses where resolve does not. gunbc scheduled drift-watch run **41638998733** (main at `9c0ec5bb3`), job `tier-o-drift`, 13:14:25Z: `error: resolve failed for dag/gunbc/instruments/tier_o_drift_check.dag` -- `cause: dag/gunbc/provisioning/ubuntu_autoinstall_seed.dag:1511:17: error: effect summary incomplete: call to 'ssh_ed25519_key_identity' in gunbc.provisioning.ubuntu_autoinstall_seed.keys_are_the_admitted_authorisation has no established callee identity, so its effects cannot be joined`. The lane has concluded failure on every schedule since at least 2026-10-28, so the refusal has been in a log for a week without being read as a subject defect. The same class stops the compiled route: run **41727757878** (the drift lane converted to a `gunbc test` row at gunbc#15749's head) ends `V2-NATIVE REFUSAL cause=EmissionRefused stage=emit -- compile of dag/gunbc/instruments/tier_o_drift_check_native.dag [rust] produced 3 hard diagnostic(s)` after frontend 1m / normalize 4s / reconcile 16m / analyses 6s, exit 2 -- the two `ubuntu_autoinstall_seed` sites with `has no established callee identity`, plus `fleet_converge_workflow.dag:6087:131` where `probe_identity_secret_access_requirement`'s `identity is established but names no registry row`: proximity handed it an identity *inside the calling module*, where no such declaration exists. One invalid state, two consumers; the class is this row's, not a new one.",
+
+    "WHAT THE EFFECT JOIN NEEDS THAT RESOLVE DOES NOT. Resolve is satisfied by a pool declarer; the join needs the callee's *identity*, which only a lexical binding gives. So the same proximity edge that lets a corpus load makes its effects unjoinable, and a lane whose verdict depends on effects cannot run at all. The repair is lexical -- name the callee in the using module's import list -- the same shape as gunbc#15727 ('import Bearer from its declarer into the 15 extdeps modules that reference it unimported'), and leaves this row's own residual (the ungated homonym arm above) open and unowned. Where the callee is a `data` row the join treats as a callee, an identity from the import list may still not be enough: it will ask for the registry row, which `probe_identity_secret_access_requirement` does not have -- a gap named on the owner's list, not closed here.",
+
     "REVIEW TELL: a reader or resolver that ranks candidate declarers by path similarity, shared prefix or 'closest' instead of refusing; an edge whose only justification is that one pool declarer exists.",
   ],
 
-  evidence: [],
+  evidence: [
+    decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "keys_are_the_admitted_authorisation"),
+    decl_ref(module_path: "extdeps.ssh.keys", decl_name: "ssh_ed25519_key_identity"),
+    decl_ref(module_path: "extdeps.debian.debconf", decl_name: "debconf_selection_file"),
+    decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "probe_identity_secret_access_requirement"),
+    decl_ref(module_path: "gunbc.fleet.fleet_workflow_steps", decl_name: "ci_wif_auth_step_with_condition"),
+  ],
 }
