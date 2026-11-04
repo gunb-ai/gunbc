@@ -282,7 +282,7 @@ test fn the_apply_gate_refuses_while_a_plain_closing_marker_remains_on_the_host(
 // -- the disposition must refuse, and name what it could not establish.
 test fn a_census_that_could_not_be_established_refuses_the_gate() -> Bool {
   let i = srv1_lab_dashboard_instance()
-  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusRefused { cause: "the recursive listing of the attempt-state tree refused: permission denied" })
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusRefused { cause: "the recursive listing of the attempt-state tree refused: permission denied" }) {
     MeteringClosingCutoverRefused { cause: c } =>
       string_contains(s: c, pattern: "census could not be established") && string_contains(s: c, pattern: "permission denied")
     MeteringClosingNoop { reason: _ } => false
@@ -296,7 +296,7 @@ test fn a_census_that_could_not_be_established_refuses_the_gate() -> Bool {
 // this claim goes red, and if the refusal were folded into the count claim 15 goes red.
 test fn an_established_absence_closes_the_gate_a_refusal_cannot() -> Bool {
   let i = srv1_lab_dashboard_instance()
-  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusAbsentEstablished)
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusAbsentEstablished) {
     MeteringClosingNoop { reason: r } =>
       string_contains(s: r, pattern: srv1_dashboard_lab_id as String) && string_contains(s: r, pattern: "metering-roster-closing")
     MeteringClosingCutoverRefused { cause: _ } => false
