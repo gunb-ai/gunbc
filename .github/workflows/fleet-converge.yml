@@ -3383,6 +3383,12 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function verify_checkout_at_plan_revision
         timeout-minutes: 5
+      - name: "Admit the host budget before the fold: a bound must constrain this process (gunbc.host.host_budget_preflight)"
+        id: host_budget_preflight
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host/host_budget_preflight.dag --function admit_host_budget_declared
+        timeout-minutes: 5
       - name: Deploy dashboard to srv1 (live_deploy_apply_prod_role_transaction_wet, receipted)
         id: dashboard_deploy
         run: |-

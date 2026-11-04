@@ -7,7 +7,7 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now_for, apply_complete_object_source_serve }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt, Winget, HomebrewDeFacto }
@@ -398,7 +398,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   let expected = join([
     "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2",
@@ -418,7 +418,7 @@ test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Boo
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   !string_contains(s: unit, pattern: "--port 8080\nRestart=")
     && !string_contains(s: unit, pattern: "--release-revision \n")
@@ -429,12 +429,12 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
   let a = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   let b = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_other_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   a != b
     && string_contains(s: b, pattern: deploy_witness_other_release_revision as String)
@@ -442,7 +442,7 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
 }
 
 test fn witness_systemd_unit_emitted() -> Bool {
-  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now())
+  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()))
   string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 127.0.0.1 --port 8080")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "Group=briansrls")
