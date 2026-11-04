@@ -19,11 +19,11 @@ import gunbc.live_deploy.apply_legs {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec }
-import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission, helper_locus_dir, release_locus_tree_subdirs }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled, helper_locus_dir, release_locus_tree_subdirs }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_locus, attempt_system_unit_launcher_helpers_root }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
-import gunbc.host.host_effect_realize { dark_helper_verify_legs, DarkLeg, DarkLegArgv, DarkLegExpectEmpty, DarkStepHelperVerify }
+import gunbc.host.host_effect_realize { dark_helper_verify_legs, DarkLeg, DarkLegArgv, DarkLegExpectEmpty, DarkLegStdin, DarkStepHelperVerify }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 
@@ -91,6 +91,7 @@ test fn the_lab_verify_leg_is_the_verify_arm_on_the_lab_locus_at_the_acts_revisi
             && string_contains(s: locus.base, pattern: attempt_system_unit_launcher_helpers_root)
             && match rev {
               RevisionBoundAtEmission { revision: r } => r as String == deploy_witness_release_revision as String
+              RevisionNotInstalled => false
             }
         _ => false
       }
@@ -149,6 +150,7 @@ fn member_test(legs: List<DarkLeg>, predicate: fn(List<String>) -> Bool) -> Bool
           member_test(legs: rest, predicate: predicate)
         }
       DarkLegExpectEmpty { step: _, command: _ } => member_test(legs: rest, predicate: predicate)
+      DarkLegStdin { step: _, command: _, payload: _ } => member_test(legs: rest, predicate: predicate)
     }
   }
 }
