@@ -7,7 +7,7 @@ import std.euclidean_geometry { Axis3X, Axis3Y }
 import product.printed_chassis.assembly_geometry { Primitive, AssemblyPart, Metal, FixedFrame, LayOnXY, block, round, part }
 import product.printed_chassis.fit_observations { bfb1012m_received_reading }
 import extdeps.fans.types { RadialBlowerOutlet, RadialBlowerMountingHole }
-import extdeps.fans.delta { delta_bfb1012m_outlet, delta_bfb1012m_outlet_side_hole }
+import extdeps.fans.delta { delta_bfb1012m_outlet, delta_bfb1012m_outlet_side_hole, delta_bfb1012m_outlet_stub_depth }
 
 // ═══ HOW A PRINTED PART HOLDS THE DELTA BFB1012M: A SOCKET ON ITS OUTLET AND ONE SCREW IN ITS LUG ═══
 //
@@ -173,7 +173,7 @@ fn lug_screw_part(m: OutletMount, half: Int, clearance: Micrometer, id: String) 
 // whole edge, from the stub depth up to `rise`. Beyond the frame nothing of the housing lies nearer the outlet face
 // than the stub depth, so a socket no deeper than that does not meet it. The edge is the housing's depth edge.
 fn housing_boxes(m: OutletMount, half: Int, edge_length: Micrometer, rise: Micrometer) -> List<Primitive> {
-  let stub = um(m: delta_bfb1012m_outlet.stub_depth)
+  let stub = um(m: delta_bfb1012m_outlet_stub_depth)
   [
     mount_block(m: m, e_a: m.corner, e_b: frame_end(m: m), t_a: m.centre - half, t_b: m.centre + half, z_a: m.mouth_z, z_b: m.mouth_z + m.body * stub),
     mount_block(m: m, e_a: m.corner, e_b: m.corner + m.run * um(m: edge_length), t_a: m.centre - half, t_b: m.centre + half, z_a: m.mouth_z + m.body * stub, z_b: m.mouth_z + m.body * um(m: rise)),

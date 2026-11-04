@@ -35,9 +35,9 @@ data bay_w: Micrometer = micrometer(count: um(m: tray_w)+48000)
 // The rack's fixed metal runners (product.printed_chassis.rack_assembly) pass beside each tray: one runner of this width per
 // column and side, its centre this far outboard of the tray edge. Declared here so the printed part that must clear a runner
 // and the rack that places it read one figure.
-data fixed_runner_width: Int = 8000
-data fixed_runner_reach: Int = 6000
-fn fixed_runner_x(col: Int, side: Int) -> Int { col * um(m: bay_w) / 2 + side * (um(m: tray_w) / 2 + fixed_runner_reach) }
+data fixed_runner_width: Micrometer = micrometer(count: 8000)
+data fixed_runner_reach: Micrometer = micrometer(count: 6000)
+fn fixed_runner_x(col: Int, side: Int) -> Int { col * um(m: bay_w) / 2 + side * (um(m: tray_w) / 2 + um(m: fixed_runner_reach)) }
 // feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier
 data rear_plate_z: Int = 0-um(m: tray_d)/2-76000
 data rear_beam_z: Int = rear_plate_z+20000
@@ -112,7 +112,7 @@ fn fan_frame(i:Int,id:String) -> AssemblyPart {
  let outer=i!=0
  let base=[block(w:92000,h:8000,d:36000,x:0,y:0,z:20000),block(w:92000,h:14000,d:8000,x:0,y:6000,z:2000)]
  let tab=if outer {[block(w:16000,h:4000,d:24000,x:0-i*53000,y: -2000,z:20000)]} else {[block(w:92000,h:2000,d:36000,x:0,y: -5000,z:20000)]}
- let tracks=if outer {[]} else {concat(flat_map([-1,1],side=>[block(w:16500,h:4500,d:33000,x:side*41000,y: -2000,z:24200)]),[block(w:fixed_runner_width,h:2000,d:36000,x:fixed_runner_x(col:1,side:-1),y: -5000,z:20000),block(w:fixed_runner_width,h:2000,d:36000,x:fixed_runner_x(col:-1,side:1),y: -5000,z:20000)])}
+ let tracks=if outer {[]} else {concat(flat_map([-1,1],side=>[block(w:16500,h:4500,d:33000,x:side*41000,y: -2000,z:24200)]),[block(w:um(m: fixed_runner_width),h:2000,d:36000,x:fixed_runner_x(col:1,side:-1),y: -5000,z:20000),block(w:um(m: fixed_runner_width),h:2000,d:36000,x:fixed_runner_x(col:-1,side:1),y: -5000,z:20000)])}
  let guide=if outer {[block(w:3000,h:80000,d:120000,x:i*49000,y:53000,z:60000),block(w:10000,h:8000,d:12000,x:i*46000,y:17000,z:4000)]} else {[]}
  let space=micrometer_count(m: fan_spacing) as Int
  let arm=if outer {[hole_y(d:4400,x:i*(um(m: tray_w)/2-7000-space),z:20000)]} else {[]}

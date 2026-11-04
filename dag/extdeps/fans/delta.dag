@@ -83,7 +83,6 @@ data delta_bfb1012m_outlet: RadialBlowerOutlet = RadialBlowerOutlet {
   opening_across_thickness: micrometer(count: 29300),
   frame_along_edge: micrometer(count: 57900),
   frame_along_edge_tolerance: micrometer(count: 500),
-  stub_depth: micrometer(count: 11200),
 }
 
 data delta_bfb1012m_outlet_standing: CitedFigureStanding = CitedToAuthority { authority: delta_bfb_series_datasheet }
@@ -92,6 +91,11 @@ data delta_bfb1012m_outlet_standing: CitedFigureStanding = CitedToAuthority { au
 // just past the frame's end (58.1 mm along: 11.2; 62.1: 12.1; 66.0: 12.7; 70.0: 13.4 mm, then out to the
 // lug), measured 2026-11-04 by scale on the front view of the DIMENSIONS DRAWING of the pinned copy
 // (4.56 px/mm, about +/-0.3 mm; corner fillet about 2 mm). A scale reading, so a bet, not a cited figure.
+// How far the housing stands off the outlet face just past the frame's end: beyond the frame along the edge
+// nothing of the housing is nearer than this, so a socket no deeper than this clears it. Its own row, apart
+// from the cited outlet record, because its standing differs.
+data delta_bfb1012m_outlet_stub_depth: Micrometer = micrometer(count: 11200)
+
 data delta_bfb1012m_outlet_stub_depth_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "Undimensioned on the datasheet drawing; read by scale at about +/-0.3 mm. A vendor drawing or caliper reading of the distance from the outlet face to the housing past the frame would cite it."
 }
