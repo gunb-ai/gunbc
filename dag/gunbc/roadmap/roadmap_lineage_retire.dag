@@ -2,8 +2,9 @@ module gunbc.roadmap.roadmap_lineage_retire
 
 import std.types { String }
 
-// THE OPERATOR'S DECISION TO RETIRE AN ENDED LINEAGE (ruling 2026-10-16, LINEAGE-RETIRE-1: "Operator
-// retire-lineage record, then a fresh lineage"). A lineage that ended without an approved candidate
+// THE OPERATOR'S DECISION TO RETIRE AN ENDED LINEAGE (lab-dev decision LINEAGE-RETIRE-1, "Operator
+// retire-lineage record, then a fresh lineage"; NOT YET a gunbc.design_ruling row: the operator ruling is requested, and this
+// module is admitted only once that row exists). A lineage that ended without an approved candidate
 // (gunbc.roadmap.roadmap_attempt_continuation ContinuationEnded) spawns nothing, because starting
 // over from base would discard committed work silently. This record is what makes the discard
 // explicit and attributable: it names the node, the ENDED attempt and its branch, the operator's

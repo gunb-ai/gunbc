@@ -2,7 +2,7 @@ module test.claim.verification_evidence_addressing_witness
 
 import gunbc.roadmap.roadmap_refused_retry {
   RefusalCauseInfrastructure, RefusalCauseCandidate, RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop,
-  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly,
+  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable,
   belt_verification_retry_verdict, refusal_cause_class, refused_retry_standing, refused_retry_bound, refused_retry_wakes, refused_retry_terminal_ordinal, refused_retry_exhausted_reason,
   compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
 }
@@ -878,6 +878,7 @@ test fn c4_a_candidate_refusal_still_holds_without_a_retry() -> Bool {
       RefusedRetryOperatorOnly => true
       RefusedRetryOwed { ordinal: _ } => false
       RefusedRetryExhausted { attempts: _ } => false
+      RefusedRetryUnreadable { reason: _ } => false
     })
 }
 
@@ -925,6 +926,7 @@ test fn resume_never_re_runs_a_passed_or_failed_verdict() -> Bool {
       BeltVerificationDefer { reason: _ } => true
       _ => false
     })
+}
 
 fn wakes_wakes_at(n: Int) -> Bool {
   refused_retry_wakes(standing: refused_retry_standing(class: RefusalCauseInfrastructure, retries_recorded: n))
