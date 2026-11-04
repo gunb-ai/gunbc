@@ -409,8 +409,8 @@ test fn a_credstore_the_worker_cannot_traverse_is_admitted() -> Bool {
 // The directive is the unit-file authority's spelling, and the inputs systemd would misread refuse: an
 // identifier carrying ":" (the directive splits ID from PATH there) or "/", and a source that is not absolute.
 test fn load_credential_renders_id_colon_path_and_refuses_what_systemd_would_misread() -> Bool {
-  (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "gunbc-gpu-pod-api-key" as NonEmptyStr, source: "/etc/credstore/k-i" as NonEmptyStr }) {
-    SystemdRunPropertyAssignmentReady { assignment: a } => a == "LoadCredential=gunbc-gpu-pod-api-key:/etc/credstore/k-i"
+  (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "gunbc-router-client-key" as NonEmptyStr, source: "/etc/credstore/k-i" as NonEmptyStr }) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a == "LoadCredential=gunbc-router-client-key:/etc/credstore/k-i"
     SystemdRunPropertyAssignmentRefused { cause: _ } => false
   })
     && (match systemd_run_property_assignment(property: LoadCredentialSetting { identifier: "a:b" as NonEmptyStr, source: "/etc/credstore/k" as NonEmptyStr }) {

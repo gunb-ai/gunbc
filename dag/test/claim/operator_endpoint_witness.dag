@@ -3,15 +3,19 @@ module test.claim.operator_endpoint_witness
 import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import gunbc.harness.harness_operator_route {
-  harness_operator_route, operator_models_url, operator_chat_completions_url, operator_health_url,
+  operator_pinned_certificate, operator_pin_plan, operator_pinned_post_request, operator_pinned_probe_request,
+  harness_operator_route, harness_router_operator_route, operator_models_url, operator_chat_completions_url, operator_endpoint_origin,
   operator_header_line_from_key_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
-  OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
+  OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
+  operator_certificate_pin_decision, operator_round_fault, operator_round_fault_text, OperatorRoundFault, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost,
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_custody_file_path, operator_credential_custody_of, OperatorCredentialCustody,
   OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
+  router_concurrency_budget_policy,
 }
-import gunbc.harness.harness_operator_credential { operator_route_credential_file }
+import gunbc.harness.harness_operator_credential { operator_route_credential_file, operator_route_certificate_file }
+import gunbc.serving.router_dev_policy { router_dev_srv1_site }
 import gunbc.harness.harness_backend {
   harness_operator_roster_step, harness_roster_of, HarnessRosterFold, HarnessBackendRoster,
   HarnessBackendServing, HarnessBackendModelNotAdmitted,
@@ -21,11 +25,12 @@ import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, B
 import gunbc.harness.harness_turn { harness_backend_header_file }
 import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
 import gunbc.harness.harness_reasoning_wire {
-  Qwen3_8_27bOnNinfer, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
+  Qwen3_8_27bOnNinfer, Qwen38FlashNextOnFabricRouter, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
   harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
   harness_unit_model_id, harness_unit_reasoning_field,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
+import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
 
 // SUPPLIED READINGS ONLY. The /health and /v1/models bodies below are values handed to the pure standing and
 // roster folds; the live probe (harness_observe_operator_reading) is effectful and its live reading is the
@@ -49,16 +54,16 @@ fn w_roster_after(reading: OperatorModelsReading) -> HarnessBackendRoster {
 
 // ── 1. THE ROSTER SEES THE ROUTE ────────────────────────────────────────────────────────────────
 test fn the_roster_sees_the_operator_route_when_models_answers_with_its_model() -> Bool {
-  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "qwen") }) {
+  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "flash-next") }) {
     HarnessRosterServing { serving: s, declined: d, unresolved: _ } =>
       count(s) == 1 && count(d) == 0
     HarnessRosterNoneServing { declined: _, unresolved: _ } => false
   }
 }
 
-// ── 2. A DEAD TUNNEL REFUSES TYPED, A REJECTED KEY IS NOT A DEAD TUNNEL ────────────────────────
-test fn an_unanswered_health_probe_reads_unreachable_and_leaves_none_serving() -> Bool {
-  match w_roster_after(reading: OperatorHealthUnanswered { url: "http://127.0.0.1:18090/health" }) {
+// ── 2. AN UNREACHABLE ROUTER REFUSES TYPED, A REJECTED KEY IS NOT AN UNREACHABLE ROUTER ─────────
+test fn an_unanswered_front_reads_unreachable_and_leaves_none_serving() -> Bool {
+  match w_roster_after(reading: OperatorFrontUnanswered { url: "https://192.168.1.203:18443/v1/models" }) {
     HarnessRosterNoneServing { declined: d, unresolved: _ } =>
       count(d) == 1 && fold(d, init: false, f: (hit, x) => hit || (match x.standing {
         HarnessBackendUnreachable { url: _ } => true
@@ -70,13 +75,29 @@ test fn an_unanswered_health_probe_reads_unreachable_and_leaves_none_serving() -
   }
 }
 
-test fn a_healthy_server_that_refuses_the_authorised_list_reads_unreadable_not_unreachable() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsRefused { url: "http://127.0.0.1:18090/v1/models" }) {
-    OperatorRouteUnreadable { cause: _ } => true
+test fn a_front_that_rejects_the_key_reads_unreadable_not_unreachable() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsRefused { url: "https://192.168.1.203:18443/v1/models", status: "401" }) {
+    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "401")
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
     OperatorRouteUnreachable { url: _ } => false
   }
+}
+
+// A certificate that is not the pinned one, and a probe that was never sent, are each a refusal and never
+// "none serving" or "unreachable": no fallback route is implied.
+test fn a_refused_certificate_and_an_unsent_probe_read_unreadable_and_name_it() -> Bool {
+  (match operator_route_standing(route: harness_operator_route, reading: OperatorFrontCertificateRefused { url: "https://192.168.1.203:18443/v1/models", detail: "curl exit 90" }) {
+    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "not the pinned") && string_contains(s: c, pattern: "nothing was sent")
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  }) && (match operator_route_standing(route: harness_operator_route, reading: OperatorProbeNotSent { url: "https://192.168.1.203:18443/v1/models", detail: "no credential" }) {
+    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "was not sent")
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  })
 }
 
 test fn a_route_advertising_another_model_is_not_admitted_and_names_what_it_advertises() -> Bool {
@@ -141,9 +162,9 @@ test fn handed_credentials_are_read_from_the_managers_directory_and_a_home_only_
   (file.identifier as String) == (operator_route_credential_file.identifier as String)
     && (file.relative_path as String) == (operator_route_credential_file.relative_path as String)
     && custody_path_text(path: operator_custody_file_path(custody: handed, file: file))
-      == "/run/credentials/gunbc-attempt-n-k.service/gunbc-gpu-pod-api-key"
+      == "/run/credentials/gunbc-attempt-n-k.service/gunbc-router-client-key"
     && custody_path_text(path: operator_custody_file_path(custody: home, file: file))
-      == "/home/svc/.config/gunbc-gpu-pod/api-key"
+      == "/home/svc/.config/gunbc-router/client.key"
     && custody_path_text(path: operator_custody_file_path(custody: OperatorCredentialUnlocated, file: file)) == ""
     && custody_text(custody: operator_credential_custody_of(credentials_directory: Present { value: "/run/c" }, home: Present { value: "/home/svc" })) == "handed:/run/c"
     && custody_text(custody: operator_credential_custody_of(credentials_directory: Present { value: "" }, home: Present { value: "/home/svc" })) == "unlocated"
@@ -182,7 +203,7 @@ test fn a_quality_sensitive_any_model_turn_keeps_its_fleet_seat() -> Bool {
 // ── 5. THE QUALITY FLOOR IS NOT SILENT ──────────────────────────────────────────────────────────
 test fn the_floor_refuses_a_quality_sensitive_turn_with_its_consequence_and_admits_batch() -> Bool {
   (match operator_class_admission(route: harness_operator_route, class: InteractiveQualitySensitive) {
-    OperatorClassRefused { detail: d } => string_contains(s: d, pattern: "27B")
+    OperatorClassRefused { detail: d } => string_contains(s: d, pattern: "ANY upstream") && string_contains(s: d, pattern: "quantization")
     OperatorClassAdmitted => false
   }) && (match operator_class_admission(route: harness_operator_route, class: BatchQualityTolerant) {
     OperatorClassAdmitted => true
@@ -191,15 +212,145 @@ test fn the_floor_refuses_a_quality_sensitive_turn_with_its_consequence_and_admi
 }
 
 // ── 6. THE ROUTE'S DECLARED FACTS ───────────────────────────────────────────────────────────────
-test fn the_route_urls_are_the_tunnel_origin_plus_ninfers_declared_paths() -> Bool {
-  (match operator_models_url() { Present { value: u } => (u as String) == "http://127.0.0.1:18090/v1/models"  Absent => false })
-    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "http://127.0.0.1:18090/v1/chat/completions"  Absent => false })
-    && (match operator_health_url() { Present { value: u } => (u as String) == "http://127.0.0.1:18090/health"  Absent => false })
+// The router row's origin is router_dev_srv1_site's listener (not a second spelling), over https; the paths are
+// vLLM's declared routes; the pinned certificate is the listener's, and the unit is the Flash-Next router arm.
+test fn the_route_urls_are_the_routers_origin_plus_its_declared_paths() -> Bool {
+  let site = router_dev_srv1_site()
+  let origin = join(["https://", site.listen_address, ":", to_string(site.listen_port)], "")
+  origin == "https://192.168.1.203:18443"
+    && (match operator_endpoint_origin() { Present { value: o } => (o as String) == origin  Absent => false })
+    && (match operator_models_url() { Present { value: u } => (u as String) == "https://192.168.1.203:18443/v1/models"  Absent => false })
+    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://192.168.1.203:18443/v1/chat/completions"  Absent => false })
 }
 
-test fn the_route_carries_the_servers_concurrency_ceiling_and_the_served_model_id() -> Bool {
-  harness_operator_route.concurrency_ceiling == 8
-    && (harness_unit_model_id(unit: Qwen3_8_27bOnNinfer) as String) == "qwen"
+test fn the_selected_route_is_the_router_row_serving_the_flash_next_alias() -> Bool {
+  (harness_operator_route.group_wire as String) == (harness_router_operator_route.group_wire as String)
+    && (harness_operator_route.group_wire as String) == "operator:fabric-router"
+    && (harness_unit_model_id(unit: harness_operator_route.unit) as String) == router_dev_srv1_site().model_alias
+    && (match harness_operator_route.unit { Qwen38FlashNextOnFabricRouter => true  _ => false })
+}
+
+test fn the_route_carries_the_labs_declared_ceiling_and_its_reason_not_a_reading() -> Bool {
+  harness_operator_route.concurrency_ceiling == router_concurrency_budget_policy.value
+    && router_concurrency_budget_policy.value == 8
+    && string_contains(s: router_concurrency_budget_policy.reason as String, pattern: "policy")
+    && string_contains(s: router_concurrency_budget_policy.reason as String, pattern: "not a reading")
+}
+
+// ── 6b. THE PIN: A DIFFERENT CERTIFICATE IS REFUSED, THE PINNED ONE IS ADMITTED ─────────────────
+// operator_open_header runs this decision on the staged copy of the custody certificate BEFORE any request is
+// built, so a refusal here means no request, and no byte of one, exists. RED: a presented sha256 that is not the
+// pin (a well-formed one, differing in one octet, as well as junk and an empty openssl output). CONTROL: the
+// pinned fingerprint, in openssl's own output form.
+//
+// INHABITANCE FRONTIER: no claim executes the real openssl/curl effects (operator_pin_staged_certificate,
+// operator_open_header); the real-route reading is the first live run on the lab host.
+test fn a_certificate_with_another_fingerprint_is_not_pinned() -> Bool {
+  let pinned = operator_pinned_certificate.sha256_fingerprint as String
+  (operator_certificate_pin_decision(fingerprint_stdout: join(["sha256 Fingerprint=", pinned, "\n"], "")))
+    && !(operator_certificate_pin_decision(fingerprint_stdout: "sha256 Fingerprint=1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:53\n"))
+    && !(operator_certificate_pin_decision(fingerprint_stdout: "sha256 Fingerprint=AA:BB:CC\n"))
+    && !(operator_certificate_pin_decision(fingerprint_stdout: ""))
+    && !(operator_certificate_pin_decision(fingerprint_stdout: "no fingerprint here"))
+}
+
+test fn the_pinned_certificate_is_the_routers_listener_certificate() -> Bool {
+  (operator_pinned_certificate.sha256_fingerprint as String) == "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52"
+    && (operator_pinned_certificate.not_after as String) == "2029-01-27"
+    && (harness_operator_route.certificate.identifier as String) == (operator_route_certificate_file.identifier as String)
+    && (harness_operator_route.certificate.relative_path as String) == (operator_route_certificate_file.relative_path as String)
+}
+
+fn peer_exit_fault(code: Int) -> OperatorRoundFault? {
+  operator_round_fault(success: false, curl_exit: code)
+}
+
+// Curl exit 60 is the chain/expiry/host failing against the anchor, typed apart from the pin firing (exit 90);
+// neither is retried (a fault carries no retry) and neither is routed elsewhere.
+test fn a_curl_exit_60_is_a_host_verification_refusal_typed_apart_from_a_different_certificate() -> Bool {
+  match peer_exit_fault(code: 60) {
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: x } } => x == 60
+    Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
+    Absent => false
+  }
+}
+
+test fn a_pinned_public_key_mismatch_curl_exit_90_is_not_pinned_and_never_retried() -> Bool {
+  (match peer_exit_fault(code: 90) {
+    Present { value: OperatorCertificateNotPinned { curl_exit: x } } => x == 90
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
+    Absent => false
+  }) && string_contains(s: (match peer_exit_fault(code: 90) { Present { value: f } => operator_round_fault_text(fault: f)  Absent => "" }), pattern: "not retried")
+}
+
+// A successful round, and an ordinary transport failure (exit 7, could not connect), carry no certificate fault.
+test fn a_success_and_an_unconnected_transport_carry_no_certificate_fault() -> Bool {
+  (match operator_round_fault(success: true, curl_exit: 0) { Present { value: _ } => false  Absent => true })
+    && (match peer_exit_fault(code: 7) { Present { value: _ } => false  Absent => true })
+}
+
+test fn the_pin_plan_is_the_files_curl_is_handed_and_lies_beside_the_header_file() -> Bool {
+  let plan = operator_pin_plan(header_file: "/s/d/authorization" as NonEmptyStr)
+  (plan.ca_file as String) == "/s/d/pinned-ca.pem"
+    && (plan.pubkey_file as String) == "/s/d/pinned-pubkey.pem"
+}
+
+// The real client argv, materialized from the same request records the call sites take every field from.
+test fn the_real_client_argv_inhabits_the_pinned_request_shape() -> Bool {
+  let req = operator_pinned_post_request(
+    url: "https://192.168.1.203:18443/v1/chat/completions" as NonEmptyStr,
+    request_body_file: "/s/req.json" as NonEmptyStr,
+    response_headers_file: "/s/req.headers" as NonEmptyStr,
+    max_seconds: "600" as NonEmptyStr,
+    hf: "/s/d/authorization" as NonEmptyStr
+  )
+  let argv = join(operation_argv_tokens_or_refusal_label(m: shell_materialize_operation_argv(
+    "dag/extdeps/http/client.dag",
+    "http.Client",
+    "PostJsonFromFileWithHeaderFilePinned",
+    [
+      operation_argv_bind_text(name: "url", text: req.url as String),
+      operation_argv_bind_text(name: "request_body_file", text: req.request_body_file as String),
+      operation_argv_bind_text(name: "header_file", text: req.header_file as String),
+      operation_argv_bind_text(name: "response_headers_file", text: req.response_headers_file as String),
+      operation_argv_bind_text(name: "ca_file", text: req.ca_file as String),
+      operation_argv_bind_text(name: "pinned_pubkey_file", text: req.pinned_pubkey_file as String),
+      operation_argv_bind_text(name: "max_seconds", text: req.max_seconds as String),
+    ]
+  )), " ")
+  string_contains(s: argv, pattern: "https://192.168.1.203:18443/v1/chat/completions")
+    && string_contains(s: argv, pattern: "-H @/s/d/authorization")
+    && string_contains(s: argv, pattern: "--cacert /s/d/pinned-ca.pem")
+    && string_contains(s: argv, pattern: "--pinnedpubkey /s/d/pinned-pubkey.pem")
+    && !string_contains(s: argv, pattern: "--insecure")
+    && !string_contains(s: argv, pattern: " -k ")
+    && !string_contains(s: argv, pattern: "Bearer")
+}
+
+test fn the_probe_argv_trusts_the_pinned_files_beside_the_header_file() -> Bool {
+  let req = operator_pinned_probe_request(
+    url: "https://192.168.1.203:18443/v1/models" as NonEmptyStr,
+    dir: "/s/d" as NonEmptyStr,
+    max_seconds: "10" as NonEmptyStr,
+    hf: "/s/d/authorization" as NonEmptyStr
+  )
+  let argv = join(operation_argv_tokens_or_refusal_label(m: shell_materialize_operation_argv(
+    "dag/extdeps/http/client.dag",
+    "http.Client",
+    "GetBoundedWithHeaderFilePinned",
+    [
+      operation_argv_bind_text(name: "url", text: req.url as String),
+      operation_argv_bind_text(name: "header_file", text: req.header_file as String),
+      operation_argv_bind_text(name: "response_headers_file", text: req.response_headers_file as String),
+      operation_argv_bind_text(name: "ca_file", text: req.ca_file as String),
+      operation_argv_bind_text(name: "pinned_pubkey_file", text: req.pinned_pubkey_file as String),
+      operation_argv_bind_text(name: "max_seconds", text: req.max_seconds as String),
+    ]
+  )), " ")
+  string_contains(s: argv, pattern: "--cacert /s/d/pinned-ca.pem")
+    && string_contains(s: argv, pattern: "--pinnedpubkey /s/d/pinned-pubkey.pem")
+    && string_contains(s: argv, pattern: "-H @/s/d/authorization")
+    && string_contains(s: argv, pattern: "-D /s/d/probe-response-headers")
 }
 
 test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_read() -> Bool {
@@ -210,15 +361,6 @@ test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_re
     ReasoningKwargsAdmitted { kwargs: _ } => true
     ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
   })
-}
-
-test fn a_non_200_health_reading_is_unhealthy_server_not_a_rejected_key() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorHealthUnhealthy { url: "http://127.0.0.1:18090/health", status: "503" }) {
-    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "503") && !string_contains(s: c, pattern: "key may be rejected")
-    OperatorRouteServing { model: _ } => false
-    OperatorRouteModelNotAdmitted { advertised: _ } => false
-    OperatorRouteUnreachable { url: _ } => false
-  }
 }
 
 test fn a_models_document_with_no_data_array_is_unreadable_not_an_empty_list() -> Bool {
