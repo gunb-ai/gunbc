@@ -1,6 +1,6 @@
 module gunbc.whole_corpus_compile_admission
 
-import std.types { Int, String, NonEmptyStr, Bool, List }
+import std.types { String, NonEmptyStr, Bool, List }
 import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
@@ -146,41 +146,12 @@ type WholeCorpusCompileRootIdentity {
   dependency_pools: List<SourceRootIdentity>
 }
 
-// The population the measured run REPORTED as its subject. It is evidence of what was measured and
-// deliberately NOT part of the join: a census key would refuse every commit that changes a byte,
-// and a coefficient derived from it (demand per source, demand per byte) is a DESIGN section 4d bet
-// typed as a fact -- the scaling law whole_corpus_compile_measured_demand_note already declines.
-// Bytes are carried with their standing because the public receipt recorded a count and no bytes.
-type WholeCorpusCompileSourceBytes
-  = SourceBytesRecorded { bytes: ByteSize }
-  | SourceBytesNotRecordedByReceipt
-
-type WholeCorpusCompileSourceCensus {
-  source_count: Int
-  source_bytes: WholeCorpusCompileSourceBytes
-}
-
-// OPTIONAL HISTORICAL PROVENANCE of a declared budget: what was observed when the figure was authored.
-// The admission never reads it; a budget is authored, and nothing requires a measurement or a
-// remeasurement for a row to be admitted.
-type WholeCorpusCompileDemandReceipt {
-  measured_on: NonEmptyStr
-  instrument_run: NonEmptyStr
-  evidence: DeclarationRef
-}
-
 type WholeCorpusCompileDemand
   = BudgetDeclaredForRoot {
       root: WholeCorpusCompileRootIdentity,
       budget: ByteSize,
     }
   | NoBudgetForRoot { root: WholeCorpusCompileRootIdentity }
-
-type WholeCorpusCompileBudgetProvenance {
-  root: WholeCorpusCompileRootIdentity
-  census: WholeCorpusCompileSourceCensus
-  receipt: WholeCorpusCompileDemandReceipt
-}
 
 // Element-wise and ordered: pool order is precedence order under primary-precedence indexing, so
 // [a, b] and [b, a] are different subjects. Structural list equality over the unbranded spellings is
@@ -213,28 +184,11 @@ data whole_corpus_compile_repository: RepositoryIdentity = "gunbc" as Repository
 // whole-gibibyte grain, with the adoption argument and the grain rule in
 // whole_corpus_compile_measured_demand_note. It is a FROZEN DECLARED BUDGET, not a current measured
 // peak and not proof that a whole-root compile fits (an observed run reached at least 19.95 GiB and
-// timed out against it). The census is the subject line the three receipted
-// runs of that note printed; the adopted completing run recorded no census of its own, which the
-// note already discloses as a provenance weakening and this row does not repair.
+// timed out against it).
 data whole_corpus_compile_public_root: WholeCorpusCompileRootIdentity = WholeCorpusCompileRootIdentity {
   repository: whole_corpus_compile_repository,
   primary_root: "dag" as SourceRootIdentity,
   dependency_pools: ["src/v2" as SourceRootIdentity],
-}
-
-data whole_corpus_compile_public_root_census: WholeCorpusCompileSourceCensus = WholeCorpusCompileSourceCensus {
-  source_count: 3109,
-  source_bytes: SourceBytesNotRecordedByReceipt,
-}
-
-data whole_corpus_compile_public_root_receipt: WholeCorpusCompileDemandReceipt = WholeCorpusCompileDemandReceipt {
-  measured_on: "2026-08-28" as NonEmptyStr,
-  instrument_run: "gunbc compile --source-root dag --source-root src/v2 --target dag under /usr/bin/time -v on srv1: completing run by warm-ant-908 at be89e236c9 (exit 0), refusing runs by clever-tern-899 at 91c05c1b34" as NonEmptyStr,
-  evidence: DeclarationRef {
-    module_path: "gunbc.whole_corpus_compile_admission",
-    decl_name: "whole_corpus_compile_measured_demand_note",
-    field: WholeDeclaration
-  },
 }
 
 // THE PUBLIC ROOT'S MEASURED PEAK IS ITS OWN ROW, CONSUMED BY THE DEMAND ROW BELOW AND BY THE
@@ -251,14 +205,8 @@ data whole_corpus_compile_public_root_demand: WholeCorpusCompileDemand = BudgetD
   budget: whole_corpus_compile_public_root_peak,
 }
 
-data whole_corpus_compile_public_root_provenance: WholeCorpusCompileBudgetProvenance = WholeCorpusCompileBudgetProvenance {
-  root: whole_corpus_compile_public_root,
-  census: whole_corpus_compile_public_root_census,
-  receipt: whole_corpus_compile_public_root_receipt,
-}
-
 // THE ROSTER OF MEASURED ROOTS IN THIS REPOSITORY. A repository carries its own roots' rows; another
-// repository's row is added in that repository, as a declared budget with its dated receipt.
+// repository's row is added in that repository, as a declared budget.
 // THE XL-1 TAP'S FIXTURE ROOT. The only root the namespace program's live tap compiles on a
 // required route: the eleven-module reference-derived-graph fixture as primary root with dag as its
 // dependency pool (the fixture imports std.types, so it is not compilable alone; dag/std is the
@@ -266,7 +214,7 @@ data whole_corpus_compile_public_root_provenance: WholeCorpusCompileBudgetProven
 // instrument on a session host whose cgroup memory.max bound the child (the instrument is retired);
 // the peak is at that module's grain (278921216 bytes rounded up to whole gibibytes). Like the
 // public row it is a FROZEN DECLARED BUDGET, not a current measured peak and not proof that a
-// compile fits; the dated receipt below is history and nothing requires remeasuring it.
+// compile fits (measured 2026-09-17, 14 sources, 73093 bytes); nothing requires remeasuring it.
 data whole_corpus_compile_xl1_fixture_root: WholeCorpusCompileRootIdentity = WholeCorpusCompileRootIdentity {
   repository: whole_corpus_compile_repository,
   primary_root: "dag/test/fixture/reference_derived_graph" as SourceRootIdentity,
@@ -276,23 +224,6 @@ data whole_corpus_compile_xl1_fixture_root: WholeCorpusCompileRootIdentity = Who
 data whole_corpus_compile_xl1_fixture_root_demand: WholeCorpusCompileDemand = BudgetDeclaredForRoot {
   root: whole_corpus_compile_xl1_fixture_root,
   budget: byte_size(1073741824),
-}
-
-data whole_corpus_compile_xl1_fixture_root_provenance: WholeCorpusCompileBudgetProvenance = WholeCorpusCompileBudgetProvenance {
-  root: whole_corpus_compile_xl1_fixture_root,
-  census: WholeCorpusCompileSourceCensus {
-    source_count: 14,
-    source_bytes: SourceBytesRecorded { bytes: byte_size(73093) },
-  },
-  receipt: WholeCorpusCompileDemandReceipt {
-    measured_on: "2026-09-17" as NonEmptyStr,
-    instrument_run: "gunbc measure-root-demand --repository gunbc --source-root dag/test/fixture/reference_derived_graph --source-root dag/std (3d35de172cc5c26bce303073efde2a7dfa00efd6-dirty, child pid 737628 at unix 1789616975) on 60e1d18cada1 under cgroup memory.max (/sys/fs/cgroup/), limit 33578549248: completed, exit 0, peak 278921216" as NonEmptyStr,
-    evidence: DeclarationRef {
-      module_path: "gunbc.whole_corpus_compile_admission",
-      decl_name: "whole_corpus_compile_xl1_fixture_root",
-      field: WholeDeclaration
-    },
-  },
 }
 
 data whole_corpus_compile_measured_root_demands: List<WholeCorpusCompileDemand> = [
