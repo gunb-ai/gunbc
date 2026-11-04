@@ -7,13 +7,13 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now_for, apply_complete_object_source_serve }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt, Winget, HomebrewDeFacto }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_store_root, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_file_store { fabric_store_area_paths, fabric_storage_slots }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import std.optional { Present, Absent }
 import gunbc.live_deploy.spec {
@@ -31,6 +31,7 @@ import gunbc.live_deploy.spec {
   deployment_tailnet_door_steps,
   deployment_approval_broker_front_door_steps,
   deployment_oidc_config_steps,
+  deployment_agent_door_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   TailscalePackage,
@@ -101,7 +102,7 @@ import std.materialization_ladder { string_list_contains }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
 import gunbc.live_deploy.operations {
-  systemctl_disable_now_command, systemctl_user_daemon_reload_command, install_directory_owned_command,
+  systemctl_disable_now_command, systemctl_user_daemon_reload_command,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command, systemctl_restart_effect,
@@ -129,6 +130,8 @@ import gunbc.live_deploy.emit {
 import gunbc.live_deploy.emit {
   live_deploy_approval_broker_unit_file, live_deploy_fabric_storage_unit_file, deployment_serve_route_command, install_d_shared_mode, path_parent_dir, live_deploy_systemd_unit_for, live_deploy_remote_mutation_service_op_realization_dissolution_trigger, live_deploy_intent_dependency_graph_emit_dissolution_trigger, live_deploy_publication_path_unit_file,
   live_deploy_belt_service_unit_file, live_deploy_publication_service_unit_file,
+  install_d_owned_render_for, render_install_line, shell_inert_absolute_path,
+  InstallLine, InstallLineRefused, RefusalEmpty, RefusalNotAbsolute, RefusalUnsafeBytes,
 }
 import gunbc.live_deploy.release_locus {
   release_locus_tree_receipt_path,
@@ -397,7 +400,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   let expected = join([
     "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2",
@@ -417,7 +420,7 @@ test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Boo
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   !string_contains(s: unit, pattern: "--port 8080\nRestart=")
     && !string_contains(s: unit, pattern: "--release-revision \n")
@@ -428,12 +431,12 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
   let a = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   let b = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_other_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   a != b
     && string_contains(s: b, pattern: deploy_witness_other_release_revision as String)
@@ -441,7 +444,7 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
 }
 
 test fn witness_systemd_unit_emitted() -> Bool {
-  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now())
+  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()))
   string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 127.0.0.1 --port 8080")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "Group=briansrls")
@@ -517,7 +520,10 @@ fn placement_scoped_paths(spec: DeploymentSpec, instance: HostDashboardInstance)
       deployment_approval_broker_front_door_steps(holding: spec.role_singletons),
       concat(
         deployment_tailnet_door_steps(names: spec.names),
-        deployment_oidc_config_steps(instance: instance),
+        concat(
+          deployment_oidc_config_steps(instance: instance),
+          deployment_agent_door_steps(instance: instance, names: spec.names),
+        ),
       ),
     ),
   ) |> map(s => s.path as String)
@@ -549,10 +555,12 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && count(deployment_tailnet_door_steps(names: twin.names)) == 0
     && count(deployment_oidc_config_steps(instance: live_instance)) == 0
     && count(deployment_oidc_config_steps(instance: lab_instance)) > 0
+    && count(deployment_agent_door_steps(instance: live_instance, names: live.names)) == 0
+    && count(deployment_agent_door_steps(instance: lab_instance, names: twin.names)) > 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
-data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file is the converse: tracker_web_oidc_serve_placement is ServeReady only for the lab instance assigned the realized TEST environment, so the twin carries that member and production none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
+data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file is the converse: tracker_web_oidc_serve_placement is ServeReady only for the lab instance assigned the realized TEST environment, so the twin carries that member and production none. The agent door is the same kind of member: it is decided by the deployment's write policy (deployment_admits_agent_peer, read through the instance's deployment), so the twin carries it and production does not. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
 
 data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
@@ -855,7 +863,10 @@ test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
 // the deployment ensures the root alone, which is the state that refused fleet-converge run
 // 35818578751's host-effect claim with `object publication refused: not_found`.
 test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
-  let files = fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance()))
+  // THE AREAS THE DECLARATION IMPLIES, from the same rows the mint reads: this claim asserts the substrate
+  // demands THOSE paths, and it spells them through fabric_store_area_paths so a change to the declaration
+  // moves the demand and the assertion together.
+  let files = fabric_store_area_paths(members: fabric_storage_slots, instance: srv1_live_dashboard_instance())
   srv1_demands_directory(path: files.objects as String) && srv1_demands_directory(path: files.heads as String)
 }
 
@@ -1052,4 +1063,43 @@ test fn the_retract_plan_never_restarts_the_serve_unit() -> Bool {
   let retract_text = retract_plan_text(spec: spec)
   !string_contains(s: retract_text, pattern: "REFUSED ")
     && !string_contains(s: retract_text, pattern: join(["restart ", unit], ""))
+}
+
+// ── THE TYPED INSTALL-LINE OUTCOME (review 90613): the refusal is a NAMED CAUSE, not prose in a
+// command position, and its total display fails a script closed rather than fabricating a line.
+
+test fn the_typed_render_refuses_a_hazardous_path_with_a_named_cause() -> Bool {
+  match install_d_owned_render_for(user: "briansrls" as NonEmptyStr, path: "/opt/gunbc/attempt-state; rm -rf /opt/gunbc") {
+    InstallLine { text: _ } => false
+    InstallLineRefused { cause } => match cause {
+      RefusalUnsafeBytes => true
+      _ => false
+    }
+  }
+}
+
+test fn a_refused_install_displays_as_a_false_command_carrying_no_path_bytes() -> Bool {
+  let shown: String = render_install_line(render: install_d_owned_render_for(user: "briansrls" as NonEmptyStr, path: "relative/path"))
+  starts_with(s: shown, prefix: "false ")
+    && !string_contains(s: shown, pattern: "relative/path")
+    && !string_contains(s: shown, pattern: ";")
+}
+
+test fn the_checked_constructor_admits_only_inert_absolute_paths() -> Bool {
+  match shell_inert_absolute_path(path: "/opt/gunbc/live/attempt-state") {
+    Present { value: v } => (v.raw as String) == "/opt/gunbc/live/attempt-state"
+    Absent => false
+  }
+    && match shell_inert_absolute_path(path: "/tmp/x;evil") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match shell_inert_absolute_path(path: "") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match shell_inert_absolute_path(path: "tmp/x") {
+      Present { value: _ } => false
+      Absent => true
+    }
 }

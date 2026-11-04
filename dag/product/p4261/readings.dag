@@ -3,6 +3,13 @@ module product.p4261.readings
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_min }
 import std.measure {
+  Milliampere,
+  milliampere_count,
+  Ohm,
+  ohm,
+  Micrometer,
+  micrometer,
+  micrometer_count,
   milliampere,
   millivolt,
   millivolt_count,
@@ -11,6 +18,10 @@ import std.measure {
 }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.electronic_component.types {
+  GatePinStanding,
+  TranslatorPinStanding,
+  gate_pin_standing,
+  translator_pin_standing,
   CapacitorSpec,
   ConnectorSpec,
   ControllerPin,
@@ -46,6 +57,7 @@ import extdeps.electronic_component.types {
   TvsDiodeSpec,
   UndervoltageEnable,
   VoltageWithstand,
+  RectifierSpec,
 }
 import product.electrical.carrier_phase {
   carrier_phase_standing,
@@ -72,6 +84,10 @@ import product.electrical.source_draw {
   SourceDrawStanding,
 }
 import product.electrical.bench_session {
+  PairPolarityStanding,
+  PairRangeStanding,
+  pair_polarity_standing,
+  pair_range_standing,
   DisplayOverRange,
   EventUnresolved,
   intact_state,
@@ -131,16 +147,31 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.p4261.carrier {
-  AwayFromLatch,
+  CaliperSpan,
   CarrierLayoutObservation,
   ConnectorHousing,
   InputConnector,
-  LatchSide,
   MeasuredBoard,
+  RowRead,
   RowSide,
   SideUnrecorded,
+  away_side,
+  housing_admitted_whole,
+  latch_side,
+  row_side_key,
 }
+import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 import product.p4261.e1_b {
+  e1_j24,
+  e1_j24_pin,
+  e1_u43,
+  e1_u500,
+  e1_u500_contacts,
+  e1_u500_pad,
+  e1_u51,
+  e1_u51_pin,
+  e1_u55,
+  e1_u55_pins,
   e1_ground_ref,
   e1_j68,
   e1_j68_points,
@@ -156,6 +187,7 @@ import product.p4261.e1_b {
 
 type PolarityGap
   = SidesUnrecorded
+  | HousingNotMappedWhole
   | NoMeasuredBoard
   | InputUnmapped
   | BeepsNotOfOneState
@@ -168,24 +200,15 @@ type InputPolarity
   | PolarityContradicted { readings: List<ContinuityObservation> }
   | PolarityUnestablished { gaps: List<PolarityGap> }
 
-fn row_side_code(s: RowSide) -> Nat {
-  match s {
-    SideUnrecorded => 0
-    LatchSide => 1
-    AwayFromLatch => 2
-  }
-}
-
 fn other_side(s: RowSide) -> RowSide {
   match s {
-    LatchSide => AwayFromLatch
-    AwayFromLatch => LatchSide
     SideUnrecorded => SideUnrecorded
+    RowRead { row } => match row { LatchRow => away_side(), AwayFromLatchRow => latch_side() }
   }
 }
 
 fn side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminalRef> {
-  map(filter(h.positions, p => row_side_code(s: p.side) == row_side_code(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
+  map(filter(h.positions, p => row_side_key(s: p.side) == row_side_key(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
 }
 
 // ONE BOARD IN ONE PHYSICAL STATE AND MODULE CONFIGURATION. Every fold over a board's readings reads
@@ -329,14 +352,19 @@ fn polarity_with(g: ReachabilityGraph, input: InputConnector, fused: RowSide) ->
   }
 }
 
+// Whole-row polarity rests only on a housing admitted whole (product.p4261.carrier
+// housing_admitted_whole): a partial or inconsistent mapping states no row's conclusion, whatever its
+// observed terminals reach. Placement across the input inherits this through the polarity it reads.
 fn measured_polarity(g: ReachabilityGraph, input: InputConnector) -> InputPolarity {
-  if any(input.housing.positions, p => row_side_code(s: p.side) == 0) {
+  if !housing_admitted_whole(h: input.housing) {
+    PolarityUnestablished { gaps: [HousingNotMappedWhole] }
+  } else if any(input.housing.positions, p => row_side_key(s: p.side) == 0) {
     PolarityUnestablished { gaps: [SidesUnrecorded] }
   } else {
-    if side_reaches_fuse(g: g, input: input, side: LatchSide) && !side_reaches_fuse(g: g, input: input, side: AwayFromLatch) {
-      polarity_with(g: g, input: input, fused: LatchSide)
+    if side_reaches_fuse(g: g, input: input, side: latch_side()) && !side_reaches_fuse(g: g, input: input, side: away_side()) {
+      polarity_with(g: g, input: input, fused: latch_side())
     } else {
-      polarity_with(g: g, input: input, fused: AwayFromLatch)
+      polarity_with(g: g, input: input, fused: away_side())
     }
   }
 }
@@ -701,6 +729,7 @@ fn identified_row(c: InstalledComponent) -> ElectronicComponentRow? {
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }
 
@@ -721,6 +750,10 @@ fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
       SwitchingRegulatorSpec { regulator: _ } => Absent
+      BusMultiplexerSpec { multiplexer: _ } => Absent
+      UsbHubSpec { hub: _ } => Absent
+      ClockFanoutSpec { clock: _ } => Absent
+      RectifierSpec { rectifier: _ } => Absent
     }
   }
 }
@@ -742,6 +775,10 @@ fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
       SwitchingRegulatorSpec { regulator: _ } => Absent
+      BusMultiplexerSpec { multiplexer: _ } => Absent
+      UsbHubSpec { hub: _ } => Absent
+      ClockFanoutSpec { clock: _ } => Absent
+      RectifierSpec { rectifier: _ } => Absent
     }
   }
 }
@@ -769,6 +806,7 @@ fn translator_row_of(c: InstalledComponent) -> ElectronicComponentRow? {
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }
 
@@ -858,8 +896,17 @@ fn j68_plain_volts(phases: List<CarrierPhaseObservation>) -> List<PhaseNodeVolta
   filter(flat_map(phases, p => p.node_voltages), v => any(e1_j68_points, n => terminal_ref_equal(a: v.at, b: e1_terminal(c: e1_j68, name: n))) && match v.certainty { StatedPlainly => true, StatedHedged { verbatim: _ } => false })
 }
 
-fn nat_min_of(vs: List<Nat>) -> Nat {
-  fold(vs, init: 0, f: (acc, v) => if acc == 0 { v } else { nat_min(a: acc, b: v) })
+// The least of a list, or none when the list is empty: never a 0 standing for "nothing to compare".
+fn least_of(vs: List<Nat>) -> Nat? {
+  fold(vs, init: no_least(), f: (acc, v) => match acc { Absent => Present { value: v }, Present { value: a } => Present { value: nat_min(a: a, b: v) } })
+}
+
+fn no_least() -> Nat? {
+  Absent
+}
+
+fn no_ohm_values() -> List<Nat> {
+  []
 }
 
 fn root_of_trust_of(c: InstalledComponent) -> RootOfTrustSpecification? {
@@ -1319,4 +1366,183 @@ fn protected_bus_in(layout: CarrierLayoutObservation, key: NonEmptyStr) -> Prote
 // count that says whether a part meets the gate network at one contact or sits across it.
 fn terminals_reading_at_most(rs: List<ResistanceObservation>, c: ComponentInstanceIdentity, names: List<NonEmptyStr>, ceiling_ohms: Nat) -> List<NonEmptyStr> {
   filter(names, n => any(rs, o => observation_reads_pair(o: o, a: e1_q300_lead_b, b: e1_terminal(c: c, name: n)) && match valued_ohms(o: o) { Present { value: v } => v <= ceiling_ohms, Absent => false }))
+}
+
+// ── READINGS THE REPORT USED TO INTERPRET ITSELF (moved in Stage B4) ───────────────────────────
+//
+// Each derivation below selects its observations and reads them into a typed result; the report only
+// words that result. Interpretation is unchanged from the report's, except where noted.
+
+// The board's observation of one component, if it has one.
+fn installed(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> InstalledComponent? {
+  (filter(layout.components, x => component_identity_eq(a: x.component, b: c))).first()
+}
+
+// CALIPER SPANS AGAINST A PITCH. A span across a row of cavities is so many pitches plus so many cavity
+// widths; it fits a pitch when it lies between the spans that pitch gives at the narrowest and widest
+// cavity. Read against the two pitches a housing of J20's family could have, for a 2.0 to 2.6 mm cavity.
+type PitchFit {
+  pitch: Micrometer
+  fits: Bool
+}
+
+fn span_fits(s: CaliperSpan, pitch: Micrometer, cavity_min: Micrometer, cavity_max: Micrometer) -> Bool {
+  micrometer_count(m: s.measured) >= s.pitches * micrometer_count(m: pitch) + s.cavities * micrometer_count(m: cavity_min)
+    && micrometer_count(m: s.measured) <= s.pitches * micrometer_count(m: pitch) + s.cavities * micrometer_count(m: cavity_max)
+}
+
+fn calipers_fit_pitch(spans: List<CaliperSpan>, pitch: Micrometer, cavity_min: Micrometer, cavity_max: Micrometer) -> Bool {
+  count(spans) > 0 && all(spans, s => span_fits(s: s, pitch: pitch, cavity_min: cavity_min, cavity_max: cavity_max))
+}
+
+fn caliper_pitch_fits(spans: List<CaliperSpan>) -> List<PitchFit> {
+  if count(spans) == 0 { no_pitch_fits() } else {
+    map([3000, 4200], p => PitchFit { pitch: micrometer(count: p), fits: calipers_fit_pitch(spans: spans, pitch: micrometer(count: p), cavity_min: micrometer(count: 2000), cavity_max: micrometer(count: 2600)) })
+  }
+}
+
+fn no_pitch_fits() -> List<PitchFit> {
+  []
+}
+
+// J24'S RECORDED READINGS TO THE RETURN, SUMMARIZED. Its positions, how many DISTINCT positions have a
+// reading to J20's black lead (a position read twice is one position), and the readings themselves by
+// kind: with a value (and the least positive one, none when no reading gave one), reported zero without
+// a baseline, recorded at the shorted-probe baseline. A summary of what was recorded, not a judgment
+// of what joins the return: that is a connectivity conclusion, which only the unpowered, state-selected
+// netlist admits (board_netlist). (Correction in B4: the report stated "none near zero, so no position
+// is read as the return" whatever was read; it now states only these counts.)
+type J24Reading {
+  positions: Nat
+  positions_read: Nat
+  readings: Nat
+  valued: Nat
+  least_positive: Ohm?
+  reported_zero: Nat
+  at_baseline: Nat
+}
+
+type J24Standing
+  = J24NotObserved
+  | J24Unmeasured { positions: Nat }
+  | J24Read { reading: J24Reading }
+
+fn j24_reading(layout: CarrierLayoutObservation) -> J24Standing {
+  match installed(layout: layout, c: e1_j24) {
+    Absent => J24NotObserved
+    Present { value: x } => match layout.measured {
+      Absent => J24Unmeasured { positions: count(x.terminals) }
+      Present { value: b } => {
+        let rs = filter(b.bench.resistances, o => any(x.terminals, t => terminal_ref_equal(a: o.first, b: e1_j24_pin(n: t)) && terminal_ref_equal(a: o.second, b: e1_ground_ref)))
+        let valued = filter(rs, o => match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
+        J24Read { reading: J24Reading {
+          positions: count(x.terminals),
+          positions_read: count(filter(x.terminals, t => any(rs, o => terminal_ref_equal(a: o.first, b: e1_j24_pin(n: t))))),
+          readings: count(rs),
+          valued: count(valued),
+          least_positive: match least_of(vs: filter(flat_map(valued, o => match valued_ohms(o: o) { Present { value: v } => [v], Absent => no_ohm_values() }), v => v > 0)) { Absent => Absent, Present { value: n } => Present { value: ohm(count: n) } },
+          reported_zero: count(filter(rs, o => is_reported_zero(o: o))),
+          at_baseline: count(filter(rs, o => is_at_baseline(o: o))),
+        } }
+      }
+    }
+  }
+}
+
+// J68'S UNPOWERED SHAPE. Its positions' readings to J20's black lead: those reporting zero without a
+// baseline, those over range, and whether L3 and L5 read alike -- with its JTAG standing beside it.
+type J68Shape {
+  read: List<ResistanceObservation>
+  reported_zero: List<ResistanceObservation>
+  over_range: List<ResistanceObservation>
+  l3_l5_alike: Bool
+}
+
+type J68Reading
+  = J68Unmeasured
+  | J68Read { shape: J68Shape, jtag: JtagHeaderStanding }
+
+fn j68_shape(all: List<ResistanceObservation>) -> J68Shape {
+  let rs = filter(all, o => any(e1_j68_points, n => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref)))
+  J68Shape {
+    read: rs,
+    reported_zero: filter(rs, o => is_reported_zero(o: o)),
+    over_range: filter(rs, o => match o.display { DisplayOverRange => true, _ => false }),
+    l3_l5_alike: any(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: "L3")) && match valued_ohms(o: o) { Present { value: v } => any(rs, p => terminal_ref_equal(a: p.first, b: e1_terminal(c: e1_j68, name: "L5")) && match valued_ohms(o: p) { Present { value: w } => w == v, Absent => false }), Absent => false }),
+  }
+}
+
+fn j68_reading(layout: CarrierLayoutObservation) -> J68Reading {
+  match layout.measured {
+    Absent => J68Unmeasured
+    Present { value: b } => J68Read { shape: j68_shape(all: b.bench.resistances), jtag: j68_jtag_standing(rs: b.bench.resistances, vs: j68_plain_volts(phases: b.phases), scans: e1_j68_chain_scans) }
+  }
+}
+
+// A LOGIC PART'S PIN ROLE, read from the component's row: absent from the board, carrying no row of
+// that kind, or the pin's role -- with whether the row is identified or only a candidate.
+type PinRoleReading<S>
+  = PinComponentAbsent
+  | PinNoRowOfKind
+  | PinRole { standing: S, candidate: Bool }
+
+fn gate_pin_reading(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> PinRoleReading<GatePinStanding> {
+  match installed(layout: layout, c: c) {
+    Absent => PinComponentAbsent
+    Present { value: x } => match gate_of(c: x) {
+      Absent => PinNoRowOfKind
+      Present { value: g } => PinRole { standing: gate_pin_standing(spec: g, number: number), candidate: match identified_row(c: x) { Present { value: _ } => false, Absent => true } }
+    }
+  }
+}
+
+fn translator_pin_reading(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> PinRoleReading<TranslatorPinStanding> {
+  match installed(layout: layout, c: c) {
+    Absent => PinComponentAbsent
+    Present { value: x } => match translator_of(c: x) {
+      Absent => PinNoRowOfKind
+      Present { value: t } => PinRole { standing: translator_pin_standing(spec: t, number: number), candidate: match identified_row(c: x) { Present { value: _ } => false, Absent => true } }
+    }
+  }
+}
+
+// Q300 LEAD B TOWARD THE PARTS ITS TRACE PASSES: U51 pin 8 and the return, U500's and U55's pins at or
+// below 500 ohm on the 2k range, the pad above U500, and the roles of U43 pin 4 and U55 pins 13, 16, 12.
+type Q300GatePath {
+  to_u51_pin8: PairRangeStanding
+  to_return: PairRangeStanding
+  u500_at_most_500: List<NonEmptyStr>
+  pad_to_return: PairPolarityStanding
+  lead_to_pad: PairPolarityStanding
+  u55_at_most_500: List<NonEmptyStr>
+  u43_pin4: PinRoleReading<GatePinStanding>
+  u55_pin13: PinRoleReading<TranslatorPinStanding>
+  u55_pin16: PinRoleReading<TranslatorPinStanding>
+  u55_pin12: PinRoleReading<TranslatorPinStanding>
+}
+
+type Q300GatePathReading
+  = Q300U51NotObserved
+  | Q300Unmeasured
+  | Q300PathRead { path: Q300GatePath }
+
+fn q300_gate_path(layout: CarrierLayoutObservation) -> Q300GatePathReading {
+  match installed(layout: layout, c: e1_u51) {
+    Absent => Q300U51NotObserved
+    Present { value: _ } => match layout.measured {
+      Absent => Q300Unmeasured
+      Present { value: b } => Q300PathRead { path: Q300GatePath {
+        to_u51_pin8: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8")),
+        to_return: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_ground_ref),
+        u500_at_most_500: terminals_reading_at_most(rs: b.bench.resistances, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500),
+        pad_to_return: pair_polarity_standing(os: b.bench.resistances, a: e1_u500_pad, b: e1_ground_ref),
+        lead_to_pad: pair_polarity_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u500_pad),
+        u55_at_most_500: terminals_reading_at_most(rs: b.bench.resistances, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 500),
+        u43_pin4: gate_pin_reading(layout: layout, c: e1_u43, number: 4),
+        u55_pin13: translator_pin_reading(layout: layout, c: e1_u55, number: 13),
+        u55_pin16: translator_pin_reading(layout: layout, c: e1_u55, number: 16),
+        u55_pin12: translator_pin_reading(layout: layout, c: e1_u55, number: 12),
+      } }
+    }
+  }
 }

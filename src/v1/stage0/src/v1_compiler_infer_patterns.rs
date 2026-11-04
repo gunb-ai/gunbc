@@ -14,8 +14,8 @@ use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     declaration_ref_of_declaration_node, declaration_ref_of_type_node, lookup_type,
-    lookup_type_by_name, lookup_type_for, substitute_type_slots, substitute_type_slots_scoped,
-    symbol_index_lookup, TypeEnv,
+    lookup_type_by_name, lookup_type_for, node_with_children, substitute_type_slots,
+    substitute_type_slots_scoped, symbol_index_lookup, TypeEnv,
 };
 pub use crate::v1_compiler_infer_resolve::{is_user_generic_use_site, resolve_generic_use_decl};
 pub use crate::v1_compiler_infer_types::{child_type_node, extract_optional_inner_node};

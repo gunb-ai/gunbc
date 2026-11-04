@@ -1948,13 +1948,41 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
     }
 }
 
+pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
+    {
+        let declarer_segs = crate::v1_std_core::module_path_segments(declarer.clone());
+        ((segment_lcp_len(
+            declarer_segs.clone(),
+            crate::v1_std_core::module_path_segments(env.module_path.clone()),
+        ) == (declarer_segs.clone().len() as i64))
+            || (import_visible_name(env.clone(), name) && {
+                let mut __found = false;
+                for p in env.parents.clone().iter().cloned() {
+                    if (p.module_path.clone() == declarer.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }))
+    }
+}
+
 pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-            Some(binding.clone())
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: declarer,
+            binding,
+            ..
+        }) => {
+            if global_bare_declarer_in_scope(env.clone(), name.clone(), declarer.clone()) {
+                Some(binding.clone())
+            } else {
+                std::option::Option::None
+            }
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
@@ -4131,6 +4159,31 @@ pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
             }
             _ => std::option::Option::None,
         }
+    }
+}
+
+pub fn refinement_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    match symbol_index_lookup(
+        env.symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+            item_ref.decl_name.clone(),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(item) => match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rhs, .. }) => {
+                if is_where_refinement_node(rhs.clone()) {
+                    Some(rhs.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            _ => std::option::Option::None,
+        },
     }
 }
 

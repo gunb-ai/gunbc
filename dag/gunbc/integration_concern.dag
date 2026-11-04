@@ -1,0 +1,486 @@
+module gunbc.integration_concern
+
+import std.types { String, List, Bool, Int, NonEmptyStr, CommitSha }
+import std.optional { Optional, Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.list { first_duplicate_by_key, distinct_by_key }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
+import gunbc.target_syntax_transcription { target_syntax_debts, debt_declarations }
+import extdeps.shell
+
+// THE INTEGRATION REGISTER: where an unfinished reconciliation is recorded instead of remembered
+// (DESIGN section 6b, continuous generalization; ruling gunbc.design_ruling
+// continuous_generalization_is_two_sided). A change may leave integration unfinished; a material
+// concern it identified stays discoverable here, with an explicit disposition, after the session
+// that found it ends.
+//
+// WHAT THIS IS NOT. It is not a census and it gates nothing: rows are concerns somebody raised, not
+// a population discovered completely. It is not evidence that pressure is operating: briefing does
+// not read it, nothing schedules a periodic review over it, and no handoff transfers a row's
+// ownership when a session ends. Those three routes are reported as unconnected (`unconnected_routes`)
+// until they exist, and the view prints that list beside every reading.
+//
+// ONE MODULE, NOT ONE FILE PER ROW, DELIBERATELY. The one-row-per-file ledgers
+// (gunbc.recurring_failure_mode, gunbc.rung_drop, gunbc.guarantee_stall) get their rosters from the
+// seed's DERIVED_ROW_ROSTERS table; enrolling a fourth is a seed change this first cut does not
+// need for a handful of rows. The cost is merge contention when two lanes add rows at once; the
+// trigger to move to row files is that contention actually occurring.
+
+// A SUSPECTED FORK NEEDS TWO DISTINCT AUTHORITIES. FreeSemigroup only proves one or more, and two
+// entries need not be two sites, so the checked constructor is `distinct_authorities`, which refuses
+// any repeated declaration. Outside this module the compiler refuses a DistinctAuthorities literal
+// (sole_constructor). Inside it, a row literal cannot call the checked constructor (a data row has no
+// way to unwrap the refusal), so `fork_rows_have_distinct_authorities` re-checks every committed fork
+// row through it and the witness holds that reading -- validation over this module's rows, stated as such. A repeated identity is the module path and declaration name:
+// two fields of one declaration are one authority for this purpose.
+type DistinctAuthorities sole_constructor {
+  first: DeclarationRef
+  second: DeclarationRef
+  rest: List<DeclarationRef>
+}
+
+// The identity key: module path and declaration name, joined by a space, which neither may contain.
+fn declaration_identity(r: DeclarationRef) -> String {
+  concat(r.module_path as String, concat(" ", r.decl_name as String))
+}
+
+fn distinct_authorities(first: DeclarationRef, second: DeclarationRef, rest: List<DeclarationRef>) -> DistinctAuthorities? {
+  match first_duplicate_by_key(xs: concat([first, second], rest), key: r => declaration_identity(r: r)) {
+    Present { value: _ } => Absent
+    Absent => Present { value: DistinctAuthorities { first: first, second: second, rest: rest } }
+  }
+}
+
+fn authorities_list(d: DistinctAuthorities) -> List<DeclarationRef> {
+  concat([d.first, d.second], d.rest)
+}
+
+fn fork_authorities_distinct(c: IntegrationConcern) -> Bool {
+  match c.kind {
+    SuspectedFork { authorities: d } => match distinct_authorities(first: d.first, second: d.second, rest: d.rest) { Present { value: _ } => true Absent => false }
+    SuspectedCapabilityGap { model: _, requirement: _, standing: _ } => true
+  }
+}
+
+// BOTH KINDS ARE SUSPICIONS UNTIL TRIAGE. A fork is two or more authorities that seem to answer one
+// question; a capability gap is one model that seems unable to express a concrete requirement, so
+// pressure can start before anyone writes the second path. Neither is a confirmed defect: triage,
+// not the kind, carries the conclusion.
+type ConcernKind
+  = SuspectedFork { authorities: DistinctAuthorities }
+  | SuspectedCapabilityGap { model: DeclarationRef, requirement: NonEmptyStr, standing: RequirementStanding }
+
+// WHETHER THE REQUIREMENT A GAP NAMES IS ITSELF ESTABLISHED. A gap can be recorded before anyone
+// knows the requirement is real; recording it does not promote it. Unestablished names the reading
+// that would decide it, and the view prints that beside the row.
+type RequirementStanding
+  = RequirementEstablished { by: SightingEvidence }
+  | RequirementUnestablished { decided_by: NonEmptyStr }
+
+// WHERE THE SHARED MEANING BELONGS is a semantic fact, separate from where the affected
+// declarations are stored. Namespace ancestry is never consulted for it.
+type ConceptHome
+  = ExistingHome { model: DeclarationRef }
+  | HomeUnresolved { question: NonEmptyStr }
+
+// A CITATION AT THE REVISION WHERE IT EXISTED. Closing a concern usually deletes its superseded
+// declarations, so these are plain names pinned to a commit and are never resolved against HEAD;
+// a closed record must not break because the integration it records happened.
+type HistoricalDeclaration {
+  at: CommitSha
+  module_path: NonEmptyStr
+  decl_name: NonEmptyStr
+}
+
+// A RETAINED EXECUTION RESULT: which control ran, where the run's record is kept, and what it
+// concluded. A control that merely exists is not a result.
+type RetainedExecutionResult {
+  control: DeclarationRef
+  run: NonEmptyStr
+  conclusion: NonEmptyStr
+}
+
+// WHAT A SIGHTING CITES. Facts with an owner are cited, not restated: a quantity is cited through
+// the declaration that owns it, an output through its digest, a removed declaration at its
+// revision. Nothing here is a second copy of a number another module carries.
+type SightingEvidence
+  = CitesDeclaration { declaration: DeclarationRef }
+  | CitesHistorical { declaration: HistoricalDeclaration }
+  | CitesArtifact { label: NonEmptyStr, sha256: Sha256Digest }
+
+// ONE SIGHTING OF A CONCERN: the main revision it was made against, what it cites, and the account
+// of what was seen -- the one irreducibly prose part. A later sighting of the same concern is
+// appended to the row's `sightings`; it never adds a second row.
+type ConcernSighting {
+  revision: CommitSha
+  evidence: FreeSemigroup<SightingEvidence>
+  account: NonEmptyStr
+}
+
+// AN OBLIGATION A CONSOLIDATION MUST KEEP, held by a declaration, with the control that exercises
+// it where one exists. Its holder is an implicated declaration, so it takes part in relevance.
+type PreservedObligation {
+  holder: DeclarationRef
+  control: DeclarationRef?
+  statement: NonEmptyStr
+}
+
+type IntegrationEvidence {
+  integrated_at: CommitSha
+  superseded: List<HistoricalDeclaration>
+  replacement: FreeSemigroup<DeclarationRef>
+  executions: FreeSemigroup<RetainedExecutionResult>
+}
+
+// THE DISPOSITION. Only Distinct, Withdrawn and Integrated close a row. Triaged carries its next
+// step as gunbc.guarantee_stall NextRungTrigger: the capability owed stands alone and any work item
+// is an `awaiting` referent beside it, so a work item reaching done, being archived or being
+// reassigned closes nothing -- only Integrated evidence does.
+type ConcernDisposition
+  = Open
+  | Triaged { home: ConceptHome, preserve: List<PreservedObligation>, next: NextRungTrigger }
+  | Distinct { reason: NonEmptyStr, scope_examined: NonEmptyStr }
+  | Withdrawn { reason: NonEmptyStr }
+  | Integrated { evidence: IntegrationEvidence }
+
+type IntegrationConcern {
+  identity: NonEmptyStr
+  kind: ConcernKind
+  affected: FreeSemigroup<DeclarationRef>
+  question: NonEmptyStr
+  sightings: FreeSemigroup<ConcernSighting>
+  disposition: ConcernDisposition
+}
+
+fn concern_is_open(c: IntegrationConcern) -> Bool {
+  match c.disposition {
+    Open => true
+    Triaged { home: _, preserve: _, next: _ } => true
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+    Integrated { evidence: _ } => false
+  }
+}
+
+fn kind_label(k: ConcernKind) -> String {
+  match k {
+    SuspectedFork { authorities: _ } => "suspected fork"
+    SuspectedCapabilityGap { model: _, requirement: _, standing: _ } => "suspected capability gap"
+  }
+}
+
+fn disposition_label(d: ConcernDisposition) -> String {
+  match d {
+    Open => "open, untriaged"
+    Triaged { home: _, preserve: _, next: n } => concat("triaged; owed: ", n.capability)
+    Distinct { reason: r, scope_examined: _ } => concat("closed as distinct: ", r as String)
+    Withdrawn { reason: r } => concat("withdrawn: ", r as String)
+    Integrated { evidence: e } => concat("integrated at ", e.integrated_at as String)
+  }
+}
+
+fn kind_declarations(k: ConcernKind) -> List<DeclarationRef> {
+  match k {
+    SuspectedFork { authorities: a } => authorities_list(d: a)
+    SuspectedCapabilityGap { model: m, requirement: _, standing: _ } => [m]
+  }
+}
+
+fn disposition_declarations(d: ConcernDisposition) -> List<DeclarationRef> {
+  match d {
+    Triaged { home: h, preserve: ps, next: _ } => concat(match h { ExistingHome { model: m } => [m] HomeUnresolved { question: _ } => [] }, map(ps, o => o.holder))
+    _ => []
+  }
+}
+
+// Every declaration a concern implicates: its affected locations, the authorities or model its
+// kind names, and, once triaged, an existing semantic home and the holders of preserved obligations.
+// Sighting evidence is cited, not implicated, so it does not take part in relevance.
+fn concern_declarations(c: IntegrationConcern) -> List<DeclarationRef> {
+  concat(concat(concat([c.affected.head], c.affected.tail), kind_declarations(k: c.kind)), disposition_declarations(d: c.disposition))
+}
+
+fn concern_modules(c: IntegrationConcern) -> List<String> {
+  distinct_by_key(xs: map(concern_declarations(c: c), r => r.module_path as String), key: m => m)
+}
+
+// RELEVANCE IS MEMBERSHIP, NOT ANCESTRY. A change is described by the modules it changes and the
+// existing models it references -- a new consumer is relevant to the model it reads even when it
+// changes nothing there. A concern is relevant when one of its declarations lives in one of those
+// modules exactly. Sharing a namespace prefix with a concern never makes it relevant.
+type ConcernScope {
+  changed: List<String>
+  referenced: List<String>
+}
+
+fn concern_relevant(c: IntegrationConcern, s: ConcernScope) -> Bool {
+  let scope_modules = concat(s.changed, s.referenced)
+  any(concern_modules(c: c), m => any(scope_modules, x => x == m))
+}
+
+fn concerns_for(s: ConcernScope, rows: List<IntegrationConcern>) -> List<IntegrationConcern> {
+  filter(rows, c => concern_relevant(c: c, s: s))
+}
+
+// BROWSING, NOT RELEVANCE: every concern with a declaration inside the subtree, including concerns
+// whose other declarations live elsewhere. The match is on whole path segments, so `product.print`
+// does not contain `product.printing`.
+fn module_in_subtree(m: String, prefix: String) -> Bool {
+  m == prefix || starts_with(s: m, prefix: concat(prefix, "."))
+}
+
+fn concerns_in_subtree(prefix: String, rows: List<IntegrationConcern>) -> List<IntegrationConcern> {
+  filter(rows, c => any(concern_modules(c: c), m => module_in_subtree(m: m, prefix: prefix)))
+}
+
+// THE ROUTES THAT WOULD MAKE THIS REGISTER EXERT PRESSURE, AND THAT DO NOT EXIST YET. Printed with
+// every reading so a reader is never told the practice is operating when only the record is.
+data unconnected_routes: List<String> = [
+  "briefing: no work-item brief is generated with the relevant concerns; a brief carries them only if its author ran this view",
+  "periodic review: nothing schedules a bounded integration review over open rows",
+  "ownership handoff: a session or work item closing does not transfer the rows it raised; a row's obligation survives only as the row",
+]
+
+// ---------------------------------------------------------------------------------------------
+// THE ROWS.
+
+data duct_print_source_revision: CommitSha = "799697f5c76b2e86dc34f3408878aef9e0d3d750"
+
+data duct_print_plate: SightingEvidence = CitesArtifact {
+  label: "a16-blower-flat-on-end-duct plate 3MF prepared by product.printed_chassis.print_workflow prepare_request_plate, printed on printer-01 2026-11-01",
+  sha256: Sha256Digest { hex: "7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb" as Sha256DigestHex },
+}
+
+data support_restriction_scope: IntegrationConcern = IntegrationConcern {
+  identity: "support_restriction_scope",
+  kind: SuspectedCapabilityGap {
+    model: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
+    requirement: "a manufacturing restriction scoped to a region of a part, where the part as a whole still needs support",
+    standing: RequirementUnestablished { decided_by: "the A16 duct fit check's head-to-fan gap, read before and after removing support residue from the seat face: if cleanup restores the model-derived clearance, no region restriction is required" },
+  },
+  affected: FreeSemigroup {
+    head: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
+    tail: [
+      decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_blower_bottom_standoff"),
+      decl_ref(module_path: "product.printing.process_geometry", decl_name: "prototype_support_policy"),
+    ],
+  },
+  question: "Does a part need a support restriction finer than whole-part support_free, and if so is it a no-contact region, a permitted post-process, or a tolerance on the resulting geometry?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: duct_print_source_revision,
+      evidence: FreeSemigroup {
+        head: duct_print_plate,
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_blower_bottom_standoff") },
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printing.deposited_geometry", decl_name: "deposited_geometry_source") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.functional_print_features_confused_with_supports", decl_name: "functional_print_features_confused_with_supports") },
+        ],
+      },
+      account: "Printed shoulder-down under the bed-only automatic support policy, the duct's generated support reached the seat face the blower rests on, which sets the model-derived head clearance. The readback's support record is motion centerlines, not a contact surface, so it shows where support was laid, not what it left on the face. The earlier failure-mode row cited is a related lesson about support meeting functional geometry, not the same concern.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data started_operation_ownership: IntegrationConcern = IntegrationConcern {
+  identity: "started_operation_ownership",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
+    requirement: "a started physical operation has an owner through terminal observation and handoff that survives the initiating session and the temporary access it used",
+    standing: RequirementUnestablished { decided_by: "reading whether the in-band converge_print route already carries a started print to terminal observation without its initiating session, and whether physical-machine boot has the same gap" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
+    tail: [decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate")],
+  },
+  question: "Who owns a started physical operation until it is observed to finish and handed off, and does that hold for operations started outside the fleet route?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: duct_print_source_revision,
+      evidence: FreeSemigroup {
+        head: duct_print_plate,
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate") }],
+      },
+      account: "On operator direction the duct was prepared through prepare_request_plate and started on printer-01 outside the fleet route, so no fleet print record exists. The starting session read the printer's access code with an operator-supplied short-lived token; once it expired the session could not observe the job and handed observation back to the operator.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data duct_placement_chosen_by_hand: IntegrationConcern = IntegrationConcern {
+  identity: "duct_placement_chosen_by_hand",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "BlowerHome"),
+    requirement: "a blower placement is selected from candidate placements against the chassis's current arrangement and the operator's stated preference between rear depth and side space, and the selected placement is realized through the printable-assembly route without a new duct root being authored per layout",
+    standing: RequirementUnestablished { decided_by: "an operator ruling recorded in gunbc.design_ruling: the preference was stated in conversation on 2026-11-02 and no ruling row carries it yet" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "a16_route_report"),
+    tail: [
+      decl_ref(module_path: "product.printed_chassis.printable_assembly_selection", decl_name: "duct_root_selection"),
+      decl_ref(module_path: "product.printed_chassis.chassis_clearances", decl_name: "side_lane_width"),
+    ],
+  },
+  question: "How does a card's blower placement follow from the chassis arrangement and the operator's rear-versus-side preference, and how do placement candidates (BlowerHome) relate to printable realizations (DuctRootKind) -- selection and realization between them, or something else?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f441733b7ac73f9e9114fcf1b09bef6e782b66f0",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "beside_the_row_demand") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.chassis_clearances", decl_name: "side_lane_width") },
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.printable_assembly", decl_name: "DuctRootKind") },
+        ],
+      },
+      account: "The operator expected the blower mounted against the card's side with a short turn into the end, and received the flat-on-end duct. At this revision the closest candidate, BesideTheRow, REFUSES: it spends the blower's shorter face across the lane, and the lane row it is judged against is an eye estimate from a two-card row. The operator's described pose instead lays the blower's broad face against the card's side and spends mainly its thickness outward, so no existing candidate models it, and the operator now says nothing sits beside the A16 -- a different arrangement from the one the lane row records. The operator also stated the preference itself: where rear space is available they may prefer to keep side space free for more cards. Which candidate is built is chosen by hand and the preference has no carrier.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// Every module the target-syntax ledger rows implicate, read from the ledger rather than restated, so
+// a row added there widens this concern's relevance with no edit here.
+data target_syntax_ledger_ref: DeclarationRef = decl_ref(module_path: "gunbc.target_syntax_transcription", decl_name: "target_syntax_debts")
+data target_syntax_built_by_hand_in_application_modules: IntegrationConcern = IntegrationConcern {
+  identity: "target_syntax_built_by_hand_in_application_modules",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetValueExpressionProjection"),
+    requirement: "an application written as ordinary .dag is emitted to Swift and TypeScript by the target model and each language's grammar rows, so no application module names a target language's syntax constructors (DESIGN section 4, one grammar read in both directions)",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_transcribed_swift_frontier") } },
+  },
+  affected: FreeSemigroup { head: target_syntax_ledger_ref, tail: flat_map(target_syntax_debts, d => debt_declarations(d: d)) },
+  question: "Which forms must the shared value-expression projection and the declaration door gain -- and which browser and Node surfaces must be modelled as extdeps -- before each ledgered module can be written as ordinary .dag and emitted, and in what order do they unblock the most modules?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "fe796707f7a302c58830523b17b528c02c988f61",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: target_syntax_ledger_ref },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v2.extdeps.languages.swift_expr_door", decl_name: "swift_syntax_forms_outside_value_expression_projection_frontier") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_bodied_member_frontier") },
+        ],
+      },
+      account: "Read with git grep over dag/ and src/ for calls to any function named sw_* or ts_*, excluding the grammars (extdeps/languages and src/v2/extdeps/languages) and the compiler's emit and parse claims, and three name collisions that are not builders (v2.compiler.infer ts_declared_inhabitants_*, gunbc.instruments.emit_host_transport ts_host_stdout_is_the_sum, test.claim.scoped_authorization_scope_wire sw_scope). Swift: the five approve_ios_swift_* printers build every generated app file's tree; three of them are recorded by the app's own frontier rows, the two that print from a model (enrolment machine, operation errors) were recorded nowhere, and six app files are hand-written with retained rows. TypeScript: twelve browser and server client modules build their scripts as ts_* trees -- the largest are gunbc.roadmap.roadmap_component and gunbc.roadmap.roadmap_issue_sort, mostly ts_ident, ts_member, ts_call, ts_binop and string literals over DOM, fetch, timers and storage -- and none carried a dissolution or frontier row, so that debt was an untracked stall until the ledger. On the route side: the Swift door spells only identifiers, positional calls, member access, bool and int literals and memberwise init, and lists the rest at swift_syntax_forms_outside_value_expression_projection_frontier; the TypeScript route already emits closures, enum unions, imports and record construction from ordinary .dag by execution (src/v2/test/claim/execution typescript_*_by_execution), but has no row naming the forms it cannot, and no extdeps model of the browser surfaces the clients call. Not read: other targets (bash, YAML, CSS, HTML), and whether any client could migrate today.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetValueExpressionProjection") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "approve_ios_wire_swift_file"),
+        control: Absent,
+        statement: "a migrated module's emitted file stays what its consumer runs today: the app's Swift files and the served scripts change only where the migration intends, read against the files the printers produce at the revision the migration starts from",
+      },
+    ],
+    next: climbs_when(capability: "the shared value-expression projection and the declaration door print the forms the ledgered modules use (statements, closures, string and collection literals, operators, switch bodies), and the browser and Node surfaces they call are modelled as extdeps, SUFFICIENT FOR one ledgered module per target -- a Swift model printer and a TypeScript client -- to be rewritten as ordinary .dag, emitted by the route, and its ledger row removed"),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules]
+
+fn fork_rows_have_distinct_authorities() -> Bool {
+  all(integration_concerns, c => fork_authorities_distinct(c: c))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE READING PATH.
+//
+//   CONCERN_CHANGED=a.b,c.d CONCERN_REFERENCED=e.f gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern.dag
+//   CONCERN_SUBTREE=product gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern.dag
+//
+// Module paths are comma-separated. With neither variable set it lists every open concern.
+// Deriving `changed` and `referenced` from a diff is not done here; the caller supplies them.
+
+fn env_list(name: String) -> List<String> {
+  match shell.Env.Get(name: name as NonEmptyStr).value {
+    Absent => []
+    Present { value: v } => filter(split(s: v, delimiter: ","), x => x != "")
+  }
+}
+
+fn declaration_text(r: DeclarationRef) -> String {
+  let base = concat(r.module_path as String, concat(" ", r.decl_name as String))
+  match r.field {
+    WholeDeclaration => base
+    NamedField { field_name: f } => concat(base, concat(".", f as String))
+    TypeParameter { name: n } => concat(base, concat("<", concat(n as String, ">")))
+  }
+}
+
+fn evidence_text(e: SightingEvidence) -> String {
+  match e {
+    CitesDeclaration { declaration: d } => concat("declaration ", declaration_text(r: d))
+    CitesHistorical { declaration: h } => join(["declaration ", h.module_path as String, " ", h.decl_name as String, " at ", h.at as String], "")
+    CitesArtifact { label: l, sha256: d } => join(["artifact sha256 ", d.hex as String, " (", l as String, ")"], "")
+  }
+}
+
+fn sighting_lines(g: ConcernSighting) -> List<String> {
+  concat(
+    [concat("  sighting at ", g.revision as String), concat("    account: ", g.account as String)],
+    map(concat([g.evidence.head], g.evidence.tail), e => concat("    cites: ", evidence_text(e: e))),
+  )
+}
+
+fn requirement_lines(k: ConcernKind) -> List<String> {
+  match k {
+    SuspectedFork { authorities: _ } => []
+    SuspectedCapabilityGap { model: m, requirement: r, standing: st } => [
+      concat("  model: ", declaration_text(r: m)),
+      concat("  requirement: ", r as String),
+      match st {
+        RequirementEstablished { by: e } => concat("  requirement established by: ", evidence_text(e: e))
+        RequirementUnestablished { decided_by: d } => concat("  requirement NOT established; decided by: ", d as String)
+      },
+    ]
+  }
+}
+
+fn obligation_lines(d: ConcernDisposition) -> List<String> {
+  match d {
+    Triaged { home: _, preserve: ps, next: _ } => map(ps, o => join(["  preserve (", declaration_text(r: o.holder), "): ", o.statement as String], ""))
+    _ => []
+  }
+}
+
+fn concern_text(c: IntegrationConcern) -> String {
+  join(concat(concat(concat(
+    [
+      concat("- ", c.identity as String),
+      concat("  kind: ", kind_label(k: c.kind)),
+      concat("  disposition: ", disposition_label(d: c.disposition)),
+      concat("  question: ", c.question as String),
+      concat("  modules: ", join(concern_modules(c: c), ", ")),
+    ],
+    requirement_lines(k: c.kind)),
+    obligation_lines(d: c.disposition)),
+    flat_map(concat([c.sightings.head], c.sightings.tail), g => sighting_lines(g: g))), "\n")
+}
+
+fn reading_text(title: String, rows: List<IntegrationConcern>) -> String {
+  join(concat(concat([title], map(rows, c => concern_text(c: c))), concat(["unconnected routes:"], map(unconnected_routes, r => concat("- ", r)))), "\n")
+}
+
+fn main() -> CliWireResponse {
+  let changed = env_list(name: "CONCERN_CHANGED")
+  let referenced = env_list(name: "CONCERN_REFERENCED")
+  let subtree = env_list(name: "CONCERN_SUBTREE")
+  let open_rows = filter(integration_concerns, c => concern_is_open(c: c))
+  let text = if count(subtree) > 0 {
+    reading_text(title: concat("open integration concerns in subtree ", join(subtree, ",")), rows: flat_map(subtree, p => concerns_in_subtree(prefix: p, rows: open_rows)))
+  } else if count(changed) + count(referenced) > 0 {
+    reading_text(title: "open integration concerns relevant to the given scope", rows: concerns_for(s: ConcernScope { changed: changed, referenced: referenced }, rows: open_rows))
+  } else {
+    reading_text(title: "all open integration concerns", rows: open_rows)
+  }
+  CliWirePrintable { bytes: text, exit: ExitSuccess }
+}
