@@ -1,5 +1,6 @@
 module test.claim.c_roadmap2_old_bytes_wet_witness
 
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventId }
 import extdeps.shell
