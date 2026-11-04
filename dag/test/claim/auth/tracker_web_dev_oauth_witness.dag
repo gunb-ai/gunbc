@@ -21,7 +21,6 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_test_oauth_client_binding, tracker_web_test_workspace_identity_binding,
   tracker_web_oidc_serve_placement, tracker_web_oidc_serve_standing,
   TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
-  TrackerWebOidcPlacementMissingRealization, tracker_web_stage_oauth_client_id,
   TrackerWebOidcServeConfigured, TrackerWebOidcConsoleReadbackUnsatisfied,
   tracker_web_oidc_config_document,
   tracker_web_test_lab_redirect_uri, tracker_web_test_oauth_client_secret_host_path,
@@ -95,9 +94,9 @@ test fn lab_serve_unit_refuses_without_an_observer_clock() -> Bool {
   }
 }
 
-test fn stage_srv1_live_refuses_signin_without_redirect_uri() -> Bool {
+test fn stage_srv1_live_serve_unit_carries_no_oidc_env() -> Bool {
   match tracker_web_oidc_serve_placement(instance_id: srv1_dashboard_live_id) {
-    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: GoogleLoginEnvironmentStage } => true
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => true
     _ => false
   }
     && match tracker_web_instance_environment(instance_id: srv1_dashboard_live_id) {
@@ -105,16 +104,17 @@ test fn stage_srv1_live_refuses_signin_without_redirect_uri() -> Bool {
       _ => false
     }
     && match tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironmentStage) {
-      TrackerWebOauthClientBound { binding: b } => (b.client_id as String) == (tracker_web_stage_oauth_client_id as String)
-      TrackerWebOauthClientUnbound { environment: _, reason: _ } => false
+      TrackerWebOauthClientUnbound { environment: _, reason: _ } => true
+      TrackerWebOauthClientBound { binding: _ } => false
     }
     && match live_deploy_serve_unit_emission(
       spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
       revision: witness_revision(),
       now_epoch: claim_oidc_now(),
     ) {
-      LiveDeployServeUnitEmitted { file: _ } => false
-      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => true
+      LiveDeployServeUnitEmitted { file } =>
+        !string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
     }
 }
 
