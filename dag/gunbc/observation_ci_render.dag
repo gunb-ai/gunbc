@@ -940,6 +940,7 @@ type CiWitnessRuntimeCause
   | WitnessCauseStringRealizationStraddle
   | WitnessCauseVariantRealizationRefused
   | WitnessCausePoolRootContributesNothing
+  | WitnessCauseDeclFactsKeyedReadRefused
   | WitnessCausePatternMatchFailure
   | WitnessCauseDivisionByZero
   | WitnessCauseIntegerOverflow
@@ -971,6 +972,7 @@ fn ci_witness_runtime_cause_token(cause: CiWitnessRuntimeCause) -> String {
     WitnessCauseStringRealizationStraddle => "string-realization-straddle"
     WitnessCauseVariantRealizationRefused => "variant-realization-refused"
     WitnessCausePoolRootContributesNothing => "pool-root-contributes-nothing"
+    WitnessCauseDeclFactsKeyedReadRefused => "decl-facts-keyed-read-refused"
     WitnessCausePatternMatchFailure => "pattern-match-failure"
     WitnessCauseDivisionByZero => "division-by-zero"
     WitnessCauseIntegerOverflow => "integer-overflow"

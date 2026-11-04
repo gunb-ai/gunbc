@@ -12,6 +12,13 @@
 
 #![allow(dead_code)]
 
+/// `layout_tree_directory` `LayoutTreeV2`: the v2 tree's directory.
+pub(crate) const LAYOUT_TREE_V2: &str = "src/v2";
+/// `layout_tree_directory` `LayoutTreeDag`: the default tree's directory.
+pub(crate) const LAYOUT_TREE_DAG: &str = "dag";
+/// Every governed tree directory, the set a layout-derived path can lie under.
+pub(crate) const LAYOUT_TREE_DIRECTORIES: [&str; 2] = [LAYOUT_TREE_DAG, LAYOUT_TREE_V2];
+
 /// Relative path of the file that stores `module`, or a refusal if the name is
 /// not a dotted identifier sequence (or is the elided `v2` namespace alone).
 pub(crate) fn module_storage_relative(module: &str) -> Result<String, String> {
@@ -36,9 +43,9 @@ pub(crate) fn module_storage_relative(module: &str) -> Result<String, String> {
                     .to_string(),
             );
         }
-        return Ok(format!("src/v2/{}.dag", segments[1..].join("/")));
+        return Ok(format!("{LAYOUT_TREE_V2}/{}.dag", segments[1..].join("/")));
     }
-    Ok(format!("dag/{}.dag", segments.join("/")))
+    Ok(format!("{LAYOUT_TREE_DAG}/{}.dag", segments.join("/")))
 }
 
 fn module_name_segment_is_identifier(segment: &str) -> bool {
@@ -59,7 +66,7 @@ fn ident_continue(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::module_storage_relative;
+    use super::{module_storage_relative, LAYOUT_TREE_DAG, LAYOUT_TREE_V2};
 
     #[test]
     fn v2_elides_the_namespace_directory() {
@@ -89,11 +96,11 @@ mod tests {
             "/../../../dag/gunbc/source_layout.dag"
         ));
         assert!(
-            policy.contains("LayoutTreeV2 => \"src/v2\""),
+            policy.contains(&format!("LayoutTreeV2 => \"{LAYOUT_TREE_V2}\"")),
             "seed lookup prefixes must match gunbc.source_layout layout_tree_directory"
         );
         assert!(
-            policy.contains("LayoutTreeDag => \"dag\""),
+            policy.contains(&format!("LayoutTreeDag => \"{LAYOUT_TREE_DAG}\"")),
             "seed lookup prefixes must match gunbc.source_layout layout_tree_directory"
         );
         assert!(

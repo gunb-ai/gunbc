@@ -23,12 +23,10 @@ import std.algebra { Cons, Empty, fold_list, is_empty, length, list_map, list_sn
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.optional { Absent, Optional, Present }
+import gunbc.source_layout { layout_governed_roots }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.types { List, Bool }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
-import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
-import std.filesystem { path_parent_directory }
 import v2.workflow.roster_import_sweep {
   ImportDeclFact,
   RosterHeldLock,
@@ -181,40 +179,13 @@ type RehomePairVerdict
   = RehomePairSame
   | RehomePairRefused { reason: RehomeRefusal }
 
-// THE POOL A PAIR IS READ OVER: the directories that hold the two homes, derived forward by the one name-to-path rule
-// (v2.compiler.source_authority module_file over v2.cli.repository_layout). decl_facts_at parses every file under its
-// roots and keeps every declaration before it filters, so reading both governed trees to answer two keys built the whole
-// pool's nodes (the controls leg reached its 16G cap). A file under a home's directory that declares another module is
-// outside the layout, so narrowing to the directories loses no admissible row. A home with no derivable file refuses.
-type RehomePairPool
-  = RehomePoolRoots { roots: List<String> }
-  | RehomePoolRefused { reason: RehomeRefusal }
-
-fn rehome_home_directory(home: String) -> Optional<String> {
-  match module_file(layout: repository_storage_layout(), name: home) {
-    ModuleNameUnderivable { name: _, cause: _ } => Absent
-    ModuleFileDerived { file: file } => Present { value: path_parent_directory(path: repository_path_of_module_file(file: file)) }
-  }
-}
-
-fn rehome_pair_pool(row: RehomeRow) -> RehomePairPool {
-  match rehome_home_directory(home: row.from_home) {
-    Absent => RehomePoolRefused { reason: RehomeTargetUnresolved { qualified_name: row.from_home + "." + row.name } }
-    Present { value: from_dir } =>
-      match rehome_home_directory(home: row.to_home) {
-        Absent => RehomePoolRefused { reason: RehomeTargetUnresolved { qualified_name: row.to_home + "." + row.name } }
-        Present { value: to_dir } => RehomePoolRoots { roots: if from_dir == to_dir { [from_dir] } else { [from_dir, to_dir] } }
-      }
-  }
-}
-
+// THE POOL A PAIR IS READ OVER: the governed trees (gunbc.source_layout layout_governed_roots). decl_facts_at reads
+// only the files the two asked keys derive by the one name-to-path rule, so the pool names where to look and the keys
+// name what to read; a home with no derivable file refuses typed inside decl_facts_at.
 fn rehome_pair_verdict(row: RehomeRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomePairVerdict {
   let from_name = row.from_home + "." + row.name
   let to_name = row.to_home + "." + row.name
-  match rehome_pair_pool(row: row) {
-    RehomePoolRefused { reason: r } => RehomePairRefused { reason: r }
-    RehomePoolRoots { roots: roots } => rehome_pair_verdict_over(row: row, from_name: from_name, to_name: to_name, facts: decl_facts_at(pool_roots: roots, qualified_names: [from_name, to_name], type_names: []), prepared: prepared, lex: lex)
-  }
+  rehome_pair_verdict_over(row: row, from_name: from_name, to_name: to_name, facts: decl_facts_at(pool_roots: layout_governed_roots(), qualified_names: [from_name, to_name], type_names: []), prepared: prepared, lex: lex)
 }
 
 fn rehome_pair_verdict_over(row: RehomeRow, from_name: String, to_name: String, facts: List<DeclFact>, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomePairVerdict {

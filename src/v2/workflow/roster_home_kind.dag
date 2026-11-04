@@ -1,7 +1,6 @@
 module v2.workflow.roster_home_kind
 
 import std.algebra { FreeMonoid, fold_list, list_snoc_item }
-import std.filesystem { path_parent_directory }
 import std.types { Bool, List, String }
 import std.optional { Absent, Optional, Present }
 import std.occurrence_identity {
@@ -23,6 +22,7 @@ import v2.compiler.reference_site_collector {
 }
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
+import gunbc.source_layout { layout_governed_roots }
 
 // THE POSITION-TO-HOME-KIND RULE (tidy-ant-251's roster correction on #14435, msg_66a5409b). A site needs its home's
 // import when its head is unbound AND its reference position is compatible with the KIND its home declaration declares
@@ -155,86 +155,35 @@ fn type_ask_verdict(side: HomeKindSide) -> HomeKindVerdict {
   }
 }
 
-// The keyed census read, opened for the sweep and the controls: the corpus facts under <home>.<import_name>.
-// THE EXACT FILE IS PART OF THE AUTHORITY, NOT ONLY THE DIRECTORY. decl_facts_at's host walk trusts each file's own
-// `module` line and reads every .dag under its root, so a sibling file in the home's directory that declares the home
-// module would contribute rows the compiler never binds. The directory bounds how much source is read; the rows that may
-// classify the home are only those whose rel_path IS the file module_file assigns <home> (side chat on #14870).
+// The keyed census read, opened for the sweep and the controls: the facts under <home>.<import_name>.
+// THE KEY NAMES ITS FILE. decl_facts_at reads only the file the one name-to-path rule assigns each asked key's module, and
+// refuses one whose own module line names another module (v1_compiler.coproduct_reflection keyed_decl_facts). So a sibling
+// file in the home's directory that declares the home module is never read, and no consumer-side file filter or directory
+// narrowing stands in for the rule.
 //
-// ONE READ PER DIRECTORY, NOT PER ROW. Every ask whose home file sits in one directory is a demand on the same pool, so
-// the asks are grouped by that directory and each directory is read once with all of its asks' keys; each ask then joins
-// its own key against that read (DESIGN 2, materialization ladder step 1: share the read at the demands' common
-// ancestor). Reading per row re-walked one directory once per row of it wherever no census provider was registered.
+// ONE READ FOR EVERY ASK. Every ask is a demand on the same read, so all their keys go in one decl_facts_at call and each
+// ask joins its own key against the answer (DESIGN 2, materialization ladder step 1: share the read at the demands'
+// common ancestor).
 type RosterHomeAsk {
   home: String
   import_name: String
-}
-
-type RosterHomeDirectoryRead {
-  directory: String
-  facts: List<DeclFact>
 }
 
 fn roster_home_ask_key(ask: RosterHomeAsk) -> String {
   ask.home + "." + ask.import_name
 }
 
-fn roster_home_ask_directory(ask: RosterHomeAsk) -> Optional<String> {
-  match roster_home_file(home: ask.home) {
-    Present { value: file } => Present { value: path_parent_directory(path: file) }
-    Absent => Absent
-  }
+fn roster_home_keyed_read(asks: List<RosterHomeAsk>) -> List<DeclFact> {
+  decl_facts_at(pool_roots: layout_governed_roots(), qualified_names: fold_list(xs: asks, empty: [], cons: fn(acc, ask) { list_snoc_item(xs: acc, item: roster_home_ask_key(ask: ask)) }), type_names: [])
 }
 
-fn roster_home_directories(asks: List<RosterHomeAsk>) -> List<String> {
-  fold_list(xs: asks, empty: [], cons: fn(acc, ask) {
-    match roster_home_ask_directory(ask: ask) {
-      Present { value: d } =>
-        if fold_list(xs: acc, empty: false, cons: fn(seen, x) { seen || x == d }) { acc } else { list_snoc_item(xs: acc, item: d) }
-      Absent => acc
-    }
-  })
+fn roster_home_side_in(facts: List<DeclFact>, ask: RosterHomeAsk) -> HomeKindSide {
+  let key = roster_home_ask_key(ask: ask)
+  roster_home_side_of_facts(facts: fold_list(xs: facts, empty: [], cons: fn(acc, f) { if f.qualified_name == key { list_snoc_item(xs: acc, item: f) } else { acc } }))
 }
 
-fn roster_home_directory_keys(asks: List<RosterHomeAsk>, directory: String) -> List<String> {
-  fold_list(xs: asks, empty: [], cons: fn(acc, ask) {
-    match roster_home_ask_directory(ask: ask) {
-      Present { value: d } => if d == directory { list_snoc_item(xs: acc, item: roster_home_ask_key(ask: ask)) } else { acc }
-      Absent => acc
-    }
-  })
-}
-
-fn roster_home_directory_reads(asks: List<RosterHomeAsk>) -> List<RosterHomeDirectoryRead> {
-  fold_list(xs: roster_home_directories(asks: asks), empty: [], cons: fn(acc, d) {
-    list_snoc_item(xs: acc, item: RosterHomeDirectoryRead {
-      directory: d,
-      facts: decl_facts_at(pool_roots: [d], qualified_names: roster_home_directory_keys(asks: asks, directory: d), type_names: [])
-    })
-  })
-}
-
-// The side of one ask, joined from the read of its home's directory: its own key, then its home's exact file.
-fn roster_home_side_in(reads: List<RosterHomeDirectoryRead>, ask: RosterHomeAsk) -> HomeKindSide {
-  match roster_home_file(home: ask.home) {
-    Present { value: file } => {
-      let d = path_parent_directory(path: file)
-      let read = fold_list(xs: reads, empty: [], cons: fn(acc, r) { if r.directory == d { r.facts } else { acc } })
-      let key = roster_home_ask_key(ask: ask)
-      roster_home_side_of_facts(facts: fold_list(xs: read, empty: [], cons: fn(acc, f) { if f.qualified_name == key { list_snoc_item(xs: acc, item: f) } else { acc } }), file: file)
-    }
-    Absent => SideNeither
-  }
-}
-
-fn roster_home_facts_in_file(facts: List<DeclFact>, file: String) -> List<DeclFact> {
-  fold_list(xs: facts, empty: [], cons: fn(acc, f) { if f.rel_path == file { list_snoc_item(xs: acc, item: f) } else { acc } })
-}
-
-// The classification of an already-read fact list against the home's exact file: the controls supply facts here (a real
-// row re-pathed to a sibling) so the exact-file filter is exercised without planting a file in the corpus.
-fn roster_home_side_of_facts(facts: List<DeclFact>, file: String) -> HomeKindSide {
-  fold_list(xs: roster_home_facts_in_file(facts: facts, file: file), empty: SideNeither, cons: fn(side, fact) { side_with_kind(side: side, kind: fact.kind) })
+fn roster_home_side_of_facts(facts: List<DeclFact>) -> HomeKindSide {
+  fold_list(xs: facts, empty: SideNeither, cons: fn(side, fact) { side_with_kind(side: side, kind: fact.kind) })
 }
 
 // WHICH SIDE OF THE RULE A HOME'S DECLARATION SITS ON -- the ONE classification of the keyed census rows for
@@ -299,9 +248,9 @@ type RosterHomeSide {
 }
 
 fn roster_home_sides_read(asks: List<RosterHomeAsk>) -> List<RosterHomeSide> {
-  let reads = roster_home_directory_reads(asks: asks)
+  let facts = roster_home_keyed_read(asks: asks)
   fold_list(xs: asks, empty: [], cons: fn(acc, ask) {
-    list_snoc_item(xs: acc, item: RosterHomeSide { home: ask.home, import_name: ask.import_name, side: roster_home_side_in(reads: reads, ask: ask) })
+    list_snoc_item(xs: acc, item: RosterHomeSide { home: ask.home, import_name: ask.import_name, side: roster_home_side_in(facts: facts, ask: ask) })
   })
 }
 
@@ -330,8 +279,7 @@ fn roster_home_side_is_value(side: HomeKindSide) -> Bool {
   }
 }
 
-// THE HOME'S FILE (see the header): the one file the layout assigns <home>. Its directory is the walk's root, and only
-// rows read from this exact file classify the home.
+// THE HOME'S FILE: the one file the layout assigns <home>, named in a failure message.
 fn roster_home_file(home: String) -> Optional<String> {
   match module_file(layout: repository_storage_layout(), name: home) {
     ModuleFileDerived { file: f } => Present { value: repository_path_of_module_file(file: f) }
@@ -339,29 +287,21 @@ fn roster_home_file(home: String) -> Optional<String> {
   }
 }
 
-// THE EXACT-FILE CONTROL (side chat on #14870). The real producer's row for std.host_text.chars, read from its own file,
-// classifies the home as a VALUE (the inhabitance half); the SAME row re-pathed to a sibling in the same directory -- the
-// shape a stray `module std.host_text` file would give the walk -- must classify nothing, so the home refuses rather than
-// being decided by a file the compiler never binds. Deleting the rel_path filter turns the second reading SideValue.
+// THE EXACT-FILE CONTROL (side chat on #14870), now on the real route: the keyed read for std.host_text.chars over the
+// governed trees answers rows from dag/std/host_text.dag alone, and they classify the home as a VALUE. A read that walked
+// the trees and keyed files by their module lines would admit a stray `module std.host_text` sibling; the seed's
+// layout-disagreement refusal and its unit RED (coproduct_reflection keyed_decl_facts_tests) carry that half.
 fn roster_home_exact_file_control() -> String {
   let file = "dag/std/host_text.dag"
-  let real = decl_facts_at(pool_roots: [path_parent_directory(path: file)], qualified_names: ["std.host_text.chars"], type_names: [])
-  let moved = fold_list(xs: real, empty: [], cons: fn(acc, f) {
-    list_snoc_item(xs: acc, item: DeclFact { qualified_name: f.qualified_name, name: f.name, kind: f.kind, node: f.node, rel_path: "dag/std/roster_seat7_sibling.dag" })
-  })
-  let own = match roster_home_side_of_facts(facts: real, file: file) {
+  let real = roster_home_keyed_read(asks: [RosterHomeAsk { home: "std.host_text", import_name: "chars" }])
+  let stray = fold_list(xs: real, empty: "", cons: fn(acc, f) { if f.rel_path == file { acc } else { acc + f.rel_path + " " } })
+  let own = match roster_home_side_of_facts(facts: real) {
     SideValue => ""
     SideBoth => "CONTROL-FAIL exact-file: std.host_text.chars read from its own file is also a type\n"
     SideType => "CONTROL-FAIL exact-file: std.host_text.chars read from its own file is a type\n"
     SideNeither => "CONTROL-FAIL exact-file: std.host_text.chars read from its own file classifies nothing\n"
   }
-  let sibling = match roster_home_side_of_facts(facts: moved, file: file) {
-    SideNeither => ""
-    SideValue => "CONTROL-FAIL exact-file: a sibling file's row classified std.host_text\n"
-    SideType => "CONTROL-FAIL exact-file: a sibling file's row classified std.host_text\n"
-    SideBoth => "CONTROL-FAIL exact-file: a sibling file's row classified std.host_text\n"
-  }
-  own + sibling
+  own + (if stray == "" { "" } else { "CONTROL-FAIL exact-file: the keyed read answered rows from another file: " + stray + "\n" })
 }
 
 fn roster_home_pool_roots(home: String) -> List<String> {

@@ -1552,6 +1552,11 @@ pub enum InterpError {
         declared: usize,
         defects: Vec<(String, crate::coproduct_reflection::PoolRootDefect)>,
     },
+    /// `decl_facts_at`'s keyed read cannot stand behind an answer for the asked keys; typed, so a
+    /// consumer can tell an underivable key from a layout disagreement.
+    DeclFactsKeyedReadRefused {
+        refusal: crate::coproduct_reflection::DeclFactsKeyedRefusal,
+    },
     PatternMatchFailure {
         value: String,
     },
@@ -1866,6 +1871,7 @@ impl fmt::Display for InterpError {
             InterpError::VariantRealizationRefused { detail } => {
                 write!(f, "{}", detail)
             }
+            InterpError::DeclFactsKeyedReadRefused { refusal } => write!(f, "{refusal}"),
             InterpError::PoolRootContributesNothing {
                 caller,
                 declared,
