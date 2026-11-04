@@ -1,0 +1,34 @@
+module extdeps.vendor.onsemi
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-11-04 from onsemi's FSV20100V datasheet (fsv20100v-d.pdf, sha256
+// b91fbaead29316bae6e20d5ebb7794f3fb32c384c5688eedadbac1f1ceb9120d, Rev. 4, September 2024), which
+// prints the issuer as "onsemi" -- 33 occurrences, including the mark's own legend "$Y = onsemi Logo" --
+// while its copyright line names the entity "Semiconductor Components Industries, LLC". The sheet never
+// prints "ON Semiconductor", so the name is carried as the datasheet prints it, as with bourns.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.onsemi.com/pdf/datasheet/fsv20100v-d.pdf"
+  }
+}
+
+data onsemi: Vendor<Hardware> = Vendor { legal_name: "onsemi" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.onsemi",
+      decl_name: "onsemi",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

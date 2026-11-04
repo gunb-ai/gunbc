@@ -30,7 +30,7 @@ import gunbc.fleet.printer_workflow_artifact {printer_starts_member_path,printer
 import gunbc.host_state_root {HostStateTree}
 import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
 import gunbc.owned_directory {OwnedDirectoryTarget}
-import gunbc.durable_cas_file_store {SlotStore,file_slot_store,listed_slot_store,SlotStoreListed,SlotStoreRefused,slot_observe,slot_commit,admit_cas_attempt_for_derived_payload,ExpectSlotAbsent,DefaultAccessCreateOnly,DerivedPayloadAdmitted,DerivedPayloadKeyNotSlotAddressable,CasCommitted,CasPreconditionFailed,CasStoreRefused,CasObservedReadable,CasObservedUnreadable,CasReadablePresent,CasReadableAbsent}
+import gunbc.durable_cas_file_store {SlotStore,file_slot_store,listed_slot_store,SlotStoreListed,SlotStoreAbsent,SlotStoreRefused,slot_observe,slot_commit,admit_cas_attempt_for_derived_payload,ExpectSlotAbsent,DefaultAccessCreateOnly,DerivedPayloadAdmitted,DerivedPayloadKeyNotSlotAddressable,CasCommitted,CasPreconditionFailed,CasStoreRefused,CasObservedReadable,CasObservedUnreadable,CasReadablePresent,CasReadableAbsent}
 import gunbc.fleet.print_request {field}
 import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current}
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_version}
@@ -181,6 +181,7 @@ fn printer_start_claims(tree:HostStateTree) -> PrinterStartClaimsReading {
     PrinterStartsUnreadable {detail:d}=>PrinterStartClaimsUnready {detail:d}
     PrinterStartsLegacyEntries {names:n}=>PrinterStartClaimsUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
     PrinterStartsClean=>match listed_slot_store(member:printer_start_claim_slots.member as String,root:printer_start_claim_path(tree:tree)) {
+      SlotStoreAbsent {member:_,root:_}=>PrinterStartClaimsUnready {detail:"the store's own directory was never created -- admission answers absence, and an absent store is not an empty store"}
       SlotStoreRefused {detail:d}=>PrinterStartClaimsUnready {detail:d}
       SlotStoreListed {root:r}=>PrinterStartClaimsReady {store:PrinterStartClaims {slots:file_slot_store(root:r)}}
     }
