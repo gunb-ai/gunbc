@@ -1,4 +1,5 @@
 module extdeps.fans.arctic
+import std.measure { gram, milliampere, millilitre_per_second, milliwatt }
 
 import std.types { List }
 import std.measure {Celsius,celsius}
@@ -9,6 +10,7 @@ import extdeps.fans.types {
   fan_mounting_pattern,
   ConventionUnverified, ReadFromVendorDrawing,
   FanCatalogRow,
+  FreeAirFlowPublished, FreeAirFlowUnread,
   FanSpeedRangePublished,
   FanStopsBelowPwm,
   FluidDynamicBearing,
@@ -78,6 +80,7 @@ data arctic_p8_pwm_pst_catalog: FanCatalogRow = FanCatalogRow {
     maximum: rpm(3000),
   },
   published_stop_behavior: FanStopsBelowPwm { threshold: percent(5) },
+  free_air_flow: FreeAirFlowPublished { flow: arctic_p8_published_airflow, standing: arctic_p8_published_airflow_standing },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -203,6 +206,7 @@ data arctic_p12_pro_reverse_catalog: FanCatalogRow = FanCatalogRow {
     maximum: rpm(3000),
   },
   published_stop_behavior: FanStopsBelowPwm { threshold: percent(5) },
+  free_air_flow: FreeAirFlowUnread { read_obligation: "Read the free-air flow for ACFAN00331A (m3/h or CFM) from Arctic's own specification sheet and convert it to mL/s." },
 }
 
 data arctic_p12_pro_reverse_figures_standing: CitedFigureStanding = TranscribedUncited {

@@ -1,5 +1,6 @@
 module product.printed_chassis.prepared_bundle_store
 
+import gunbc.durable_create_once { create_once_record, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.types { String, NonEmptyStr, FilePath, List, Bool }
 import std.content_hash { sha256_hex_of_text, Sha256Digest }
 import extdeps.shell
@@ -124,9 +125,11 @@ type PreparedQueuesWrite = PreparedQueuesWritten | PreparedQueuesRefused { cause
 // covered by the publish receipt.
 fn prepared_bundle_stage_queues(staging: PreparedBundleStaging, content: String) -> PreparedQueuesWrite {
   let path = join([staging.root as String, "/", prepared_queues_receipt_name], "")
-  if !Filesystem.WriteCreateNew(path: path, content: content).success { return PreparedQueuesRefused { cause: "Prepared queue receipt already exists or is not writable" } }
-  let back = Filesystem.Read(path: path)
-  if back.success && back.content == content { PreparedQueuesWritten } else { PreparedQueuesRefused { cause: "The prepared queue receipt read back differently from what was written" } }
+  match create_once_record(path: path, content: content) {
+    CreateOnceRecorded { path: _ } => PreparedQueuesWritten
+    CreateOnceAlreadyRecorded { path: _ } => PreparedQueuesRefused { cause: "Prepared queue receipt already exists" }
+    CreateOnceRefused { path: _, cause: c } => PreparedQueuesRefused { cause: join(["Prepared queue receipt is not writable: ", c], "") }
+  }
 }
 
 fn file_sha(path: String) -> String? {

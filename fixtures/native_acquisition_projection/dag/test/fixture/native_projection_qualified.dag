@@ -1,0 +1,12 @@
+module test.fixture.native_projection_qualified
+
+// RETARGETED 2026-11-01 into `test.fixture` for the same reason as native_projection_projected.dag beside
+// it: an entry's namespace must have a row, and `fixture.*` never can. The same-named module this entry
+// names for real stays at product/y.dag, whose namespace `product` is a row.
+
+// THE POSITIVE CONTROL OF THE SAME WALK: `product.y.projection_same_named_value` names no binder -- nothing
+// here binds `product` -- so it IS a qualified module reference, and the module `product.y` is read for
+// it. The walk requires that the closure over a well-formed product/y.dag holds that module and carries its
+// declaration, and that a malformed one refuses the entry naming the file, so the projection control's
+// silence about that file is a fact of the head's binding and not of the file never being read at all.
+data native_projection_qualified_value: Int = product.y.projection_same_named_value

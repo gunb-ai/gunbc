@@ -299,9 +299,8 @@ test fn the_outside_gate_population_is_load_bearing() -> ProcessExit {
 // emission of v2 ... judges this population on the required path with a discriminating red".
 // This claim is therefore a local check at the place the obligation lives, not a gate, and it is written
 // to be honest about that: the alternative was worse than useless. Enrolling it in
-// `local_repo_wet_schedule` would assert a host effect it does not have and would only register it in
-// `gunbc.claim_coverage_census` as enrolled-and-executed-by-nothing (that census's own header: "a roster
-// that names a claim is not an executor of it"); a new instrument label would mint a second consumer of
+// `local_repo_wet_schedule` would assert a host effect it does not have and would claim an
+// executor the claim does not have (a roster that names a claim is not an executor of it); a new instrument label would mint a second consumer of
 // the ledger. Both were considered and rejected, not overlooked.
 //
 // It reads the ADMISSION LEDGER as the single authority (through `quarantine_probe_admissions`, the same

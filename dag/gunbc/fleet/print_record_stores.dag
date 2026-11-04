@@ -1,5 +1,6 @@
 module gunbc.fleet.print_record_stores
 
+import gunbc.durable_create_once { create_once_record, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.types { String, NonEmptyStr, Bool, FilePath, List }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
@@ -162,8 +163,10 @@ fn print_request_read(store: PrintRequestStore, request: PrintRequest) -> Record
 // recorded only when the store's own read returns this record. Another pass that wrote first, or a
 // record that does not read back as this one, refuses (the caller re-runs).
 fn print_request_record(store: PrintRequestStore, record: PrintRequestRecord) -> RecordRead {
-  if !Filesystem.WriteCreateNew(path: request_record_path(store: store, request: record.request), content: record_json(r: record)).success {
-    return RecordRefused { cause: "Cannot write the request record, or another pass wrote it first; re-run" }
+  match create_once_record(path: request_record_path(store: store, request: record.request), content: record_json(r: record)) {
+    CreateOnceAlreadyRecorded { path: _ } => return RecordRefused { cause: "Another pass wrote the request record first; re-run" }
+    CreateOnceRefused { path: _, cause: c } => return RecordRefused { cause: join(["Cannot write the request record: ", c], "") }
+    CreateOnceRecorded { path: _ } => {}
   }
   match print_request_read(store: store, request: record.request) {
     RecordPresent { record: r } => if record_json(r: r) == record_json(r: record) { RecordPresent { record: r } } else { RecordRefused { cause: "The request record read back differently from what was written" } }
@@ -205,7 +208,9 @@ type CompletionWrite = CompletionWritten | CompletionWriteRefused { cause: Strin
 // differently, refuse.
 fn print_completion_record(store: PrintCompletionStore, claim_key: NonEmptyStr, text: String) -> CompletionWrite {
   let path = completion_record_path(store: store, claim_key: claim_key)
-  if !Filesystem.WriteCreateNew(path: path, content: text).success { return CompletionWriteRefused { cause: "Cannot write the completion record, or another pass wrote it first" } }
-  let back = Filesystem.Read(path: path)
-  if back.success && back.content == text { CompletionWritten } else { CompletionWriteRefused { cause: "The completion record read back differently from what was written" } }
+  match create_once_record(path: path, content: text) {
+    CreateOnceRecorded { path: _ } => CompletionWritten
+    CreateOnceAlreadyRecorded { path: _ } => CompletionWriteRefused { cause: "Another pass wrote the completion record first" }
+    CreateOnceRefused { path: _, cause: c } => CompletionWriteRefused { cause: join(["Cannot write the completion record: ", c], "") }
+  }
 }

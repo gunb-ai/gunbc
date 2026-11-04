@@ -1,4 +1,7 @@
 module gunbc.accelerator_demo.accelerator_demo_realize
+import gunbc.accelerator_demo.accelerator_demo_program { AcceleratorDemoProgram, relu_mul_add_effectful_program, relu_mul_add_gather_program, relu_mul_add_incomplete_pure_program, relu_mul_add_pure_program }
+import gunbc.accelerator_demo.accelerator_demo_recognizer { witness_pure_program_structurally_recognized }
+import gunbc.accelerator_demo.accelerator_demo_plan { AcceleratorRefusalReason }
 
 
 type DifferentialVerdict
