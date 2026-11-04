@@ -1,6 +1,7 @@
 module test.claim.serving_caller_backlog_witness
 
-import std.types { Bool, String, NonEmptyStr, Int, List, EpochSecs, list_append }
+import std.types { Bool, String, NonEmptyStr, Int, List, EpochSecs }
+import std.algebra { list_append }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import std.nat { Nat }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
