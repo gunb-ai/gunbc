@@ -68,6 +68,7 @@ import extdeps.tools.gnu_coreutils {
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.test_utility {
+  test_directory_command,
   test_exists_command,
   test_symbolic_link_command,
   entry_existence_reading,
@@ -6067,6 +6068,7 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
 fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
   match (match action {
     HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
+    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, transport: transport)
     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
   }) {
     DarkOk => Absent
@@ -6794,6 +6796,7 @@ type DarkInstallStep
   | DarkStepDaemonReload
   | DarkStepEnable
   | DarkStepRestart
+  | DarkStepHelperVerify
   | DarkStepSliceControl
 
 type DarkInstallVerdict
@@ -6997,6 +7000,31 @@ fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
   }
 }
 
+// THE VERIFY ARM'S LEGS, PURE AND WITNESSABLE: the three members the launcher copy declares
+// ({gunbc, dag, src/v2}) must EXIST -- the binary EXECUTABLE, the payload trees DIRECTORIES -- and
+// then the very same ownership readback the install arm runs, so the two arms cannot disagree
+// about what "installed" means. POSIX `test` as the standalone utility, never a shell (the module
+// rule, extdeps.posix.test_utility). One failed member fails the leg with that leg's argv on the
+// record -- the refusal names the path that was missing, which is the sentence the 127-hours
+// incident never got.
+fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
+  concat([
+    DarkLegArgv { step: DarkStepHelperVerify, command: test_executable_command(path: join([dir, "/", gunbc_release_bin_name], "")) },
+    DarkLegArgv { step: DarkStepHelperVerify, command: test_directory_command(path: join([dir, "/dag"], "")) },
+    DarkLegArgv { step: DarkStepHelperVerify, command: test_directory_command(path: join([dir, "/src/v2"], "")) },
+  ], dark_snapshot_readback_legs_at(locus: locus, dir: dir))
+}
+
+// THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the
+// leg that turns "the drain unit names a snapshot nobody installed" from five hours of exit-127
+// workers into one refused apply step.
+fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+  dark_run_legs(
+    legs: dark_helper_verify_legs(locus: locus, dir: helper_locus_dir(locus: locus, revision: revision)),
+    transport: transport,
+  )
+}
+
 fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
   let dir = helper_locus_dir(locus: locus, revision: revision)
   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
@@ -7141,6 +7169,7 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
     DarkStepDeviceStore => "device-store"
     DarkStepSnapshot => "helper-snapshot"
     DarkStepSnapshotReadback => "helper-snapshot-readback"
+    DarkStepHelperVerify => "helper-snapshot-verify"
     DarkStepRetire => "helper-snapshot-retire"
     DarkStepBrokerTree => "broker-tree"
     DarkStepSidecarDigest => "sidecar-digest"

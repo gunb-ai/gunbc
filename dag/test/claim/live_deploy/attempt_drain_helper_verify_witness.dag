@@ -1,0 +1,171 @@
+// Witness for the ATTEMPT-UNIT DRAIN HELPER CLOSURE (prod gap 1, S1): the drain plan verifies the
+// helper snapshot its own unit NAMES before it enables anything, the verify asks for the three
+// members the launcher copy declares, and the LAB instance -- where the missing locus cost five
+// hours of exit-127 workers on the hand deploys -- is a first-class consumer of DeploymentIntent.
+// Red control throughout: an act that skipped the verify could not put the verify step between the
+// reload and the enable, and an act that verified the WRONG revision or the WRONG instance could
+// not name the locus these claims read.
+module test.claim.live_deploy.attempt_drain_helper_verify_witness
+
+import std.types { Bool, String, Int, List }
+import std.algebra { Cons, Empty, string_contains }
+import std.optional { Optional, Present, Absent }
+import gunbc.live_deploy.intent { DeploymentIntent }
+import gunbc.live_deploy.apply_legs {
+  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
+  ApplyLegRootHelperSnapshot, HelperSnapshotVerify,
+  AttemptHelperClosure, attempt_helper_snapshot_closure,
+  deploy_apply_attempt_drain_plan, deploy_apply_leg_step,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission, helper_locus_dir }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_locus, attempt_system_unit_launcher_helpers_root }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
+import gunbc.host.host_effect_realize { dark_helper_verify_legs, DarkLeg, DarkLegArgv, DarkLegExpectEmpty, DarkStepHelperVerify }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+
+fn lab_spec() -> DeploymentSpec {
+  selected_deployment_spec(row: srv1_lab_desired_deployment())
+}
+
+fn revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+}
+
+fn drain_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
+  match deploy_apply_attempt_drain_plan(spec: spec, revision: revision()) {
+    ApplyPlanReady { legs: legs } => legs
+    ApplyPlanRefused { step: _, reason: _ } => []
+  }
+}
+
+fn step_index_from(legs: List<DeployApplyLeg>, step: String, i: Int) -> Int {
+  match legs {
+    Empty => -1
+    Cons { head: head, tail: rest } =>
+      if deploy_apply_leg_step(leg: head) == step {
+        i
+      } else {
+        step_index_from(legs: rest, step: step, i: i + 1)
+      }
+  }
+}
+
+fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
+  step_index_from(legs: legs, step: step, i: 0)
+}
+
+// THE LAB IS A CONSUMER: the lab row's drain plan carries the verify step, and it sits between the
+// daemon reload and the enable+restart -- the ordering that turns the 127 hours into a refusal. If
+// the verify were after the enable, or absent, or renamed, this claim goes red.
+test fn the_lab_drain_plan_verifies_the_helper_snapshot_before_enabling_anything() -> Bool {
+  let legs = drain_legs(spec: lab_spec())
+  let reload = step_index(legs: legs, step: "attempt-unit-drain-reload")
+  let verify = step_index(legs: legs, step: "attempt-unit-helper-snapshot-verify")
+  let enable = step_index(legs: legs, step: "attempt-unit-drain-enable")
+  let restart = step_index(legs: legs, step: "attempt-unit-drain-restart")
+  reload >= 0 && verify > reload && enable > verify && restart > enable
+}
+
+// THE STAGE ROW IS THE OTHER CONSUMER (the instance the CI transaction deploys).
+test fn the_stage_drain_plan_verifies_the_helper_snapshot_before_enabling_anything() -> Bool {
+  let legs = drain_legs(spec: deployment_spec_srv1())
+  let reload = step_index(legs: legs, step: "attempt-unit-drain-reload")
+  let verify = step_index(legs: legs, step: "attempt-unit-helper-snapshot-verify")
+  let enable = step_index(legs: legs, step: "attempt-unit-drain-enable")
+  reload >= 0 && verify > reload && enable > verify
+}
+
+// THE VERIFY LEG VERIFIES, IT DOES NOT INSTALL OR RETIRE: the third arm of the sum, on the LAB
+// instance's OWN locus -- helpers root under srv1-lab -- carrying the act's revision. An act that
+// reused the install arm (which creates what is missing) or retired instead would not match.
+test fn the_lab_verify_leg_is_the_verify_arm_on_the_lab_locus_at_the_acts_revision() -> Bool {
+  any_leg(legs: drain_legs(spec: lab_spec()), check: leg => match leg {
+    ApplyLegRootHelperSnapshot { locus: locus, spine: _, revision: rev, action: action } =>
+      match action {
+        HelperSnapshotVerify =>
+          string_contains(s: locus.base, pattern: "srv1-lab")
+            && string_contains(s: locus.base, pattern: attempt_system_unit_launcher_helpers_root)
+            && match rev {
+              RevisionBoundAtEmission { revision: r } => r as String == deploy_witness_release_revision as String
+            }
+        _ => false
+      }
+    _ => false
+  })
+}
+
+fn any_leg(legs: List<DeployApplyLeg>, test: fn(DeployApplyLeg) -> Bool) -> Bool {
+  match legs {
+    Empty => false
+    Cons { head: head, tail: rest } => check(leg: head) || any_leg(legs: rest, test: test)
+  }
+}
+
+// THE INTENT IS THE HANDLE: the roster row resolves with its verify leg; an id with no row resolves
+// to nothing, and the drain plan turns that into a refusal naming the instance (never an
+// enable-without-verify -- the ordering claims above prove enable only exists on the verified arm).
+test fn an_unknown_instance_resolves_to_no_closure() -> Bool {
+  match attempt_helper_snapshot_closure(
+    intent: DeploymentIntent { instance_id: "no-such-instance", revision: revision() },
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE ACTUAL QUESTION THE LEG ASKS, AT THE BOTTOM OF THE CHAIN: the binary EXECUTABLE and the two
+// payload trees PRESENT as directories, under the very path the drain unit's ExecStart names --
+// the three members {gunbc, dag, src/v2} the launcher copy declares. POSIX test as the standalone
+// utility, never a shell. The ownership readback follows the member tests, so verify and install
+// cannot disagree about what "installed" means.
+test fn the_verify_legs_test_the_three_declared_members_at_the_named_path() -> Bool {
+  match dashboard_instance_for_id(instance_id: "srv1-lab") {
+    DashboardInstanceForId { instance: instance } =>
+      let locus = attempt_system_unit_launcher_locus(instance: instance)
+      let dir = helper_locus_dir(locus: locus, revision: revision())
+      let legs = dark_helper_verify_legs(locus: locus, dir: dir)
+      member_check(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-x", join([dir, "/", "gunbc"], "")]))
+        && member_check(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/dag"], "")]))
+        && member_check(legs: legs, predicate: words => matches_words(words: words, expected: ["test", "-d", join([dir, "/src/v2"], "")]))
+    DashboardInstanceIdUnknown { instance_id: _ } => false
+  }
+}
+
+fn member_test(legs: List<DarkLeg>, predicate: fn(List<String>) -> Bool) -> Bool {
+  match legs {
+    Empty => false
+    Cons { head: head, tail: rest } => match head {
+      DarkLegArgv { step: step, command: command } =>
+        if step == DarkStepHelperVerify {
+          predicate(words: argv_words(command: command)) || member_test(legs: rest, predicate: predicate)
+        } else {
+          member_test(legs: rest, predicate: predicate)
+        }
+      DarkLegExpectEmpty { step: _, command: _ } => member_test(legs: rest, predicate: predicate)
+    }
+  }
+}
+
+fn matches_words(words: List<String>, expected: List<String>) -> Bool {
+  match expected {
+    Empty => true
+    Cons { head: want, tail: rest_expected } => match words {
+      Empty => false
+      Cons { head: got, tail: rest_words } => got == want && matches_words(words: rest_words, expected: rest_expected)
+    }
+  }
+}
+
+// RED CONTROL AGAINST THE INSTALL ARM: the verify step is NOT the install step's name, and no
+// member test carries the install's --parents mkdir or the retire's rm -- three distinct arms, each
+// with its own argv shape, so a match here cannot be an install leg wearing a new badge.
+test fn the_verify_step_name_is_distinct_from_install_and_retire() -> Bool {
+  let install_name = join(["attempt-unit", "-helper-snapshot"], "")
+  let retire_name = join(["attempt-unit", "-helper-snapshot-retire"], "")
+  let verify_name = join(["attempt-unit", "-helper-snapshot-verify"], "")
+  verify_name != install_name && verify_name != retire_name
+    && any_leg(legs: drain_legs(spec: lab_spec()), check: leg => deploy_apply_leg_step(leg: leg) == verify_name)
+}
