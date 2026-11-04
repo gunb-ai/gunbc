@@ -205,6 +205,76 @@ fn bash_build_assign(name: String, value: Node) -> Node {
   }
 }
 
+// ── THE GRAMMAR READ BACK ────────────────────────────────
+// THE GRAMMAR OWNS ITS OWN READ SIDE. A consumer must not re-match these productions by hand:
+// v2.std.node says as much of its own coproduct ("single accessor: readers import this rather than
+// re-matching the coproduct"), and a checker that hand-rolls the tag and word shapes drifts from the
+// grammar it is supposed to police -- which is how a rule ends up admitting bytes its own language
+// would not have produced. What a step-ordering law needs is exactly three questions: which production
+// built this node, which name does an assignment bind, and which names does a subtree expand.
+
+// The Atom identity carried at positional index `i`, when this node is a Conj with an Atom there.
+fn bash_positional_atom(n: Node, i: Int) -> Optional<String> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: n.children, index: i) {
+        Present { value: edge } =>
+          match edge.target.kind {
+            TypeNode { connective: Atom { identity: v } } => Present { value: v }
+            _ => Absent
+          }
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
+// Was this node built by `production`? Both sides are Symbols, so a production name is compared only
+// where it is spelled -- here, in the module that owns the grammar.
+fn bash_built_by(n: Node, production: Symbol) -> Bool {
+  match bash_positional_atom(n: n, i: 0) {
+    Present { value: p } => p == production
+    Absent => false
+  }
+}
+
+// An assignment as `bash_build_assign` builds it, and the name it binds.
+fn bash_is_assign_stmt(n: Node) -> Bool {
+  bash_built_by(n: n, production: ^bash_production_fold_assign)
+}
+
+fn bash_assign_name(n: Node) -> Optional<String> {
+  if bash_is_assign_stmt(n: n) { bash_positional_atom(n: n, i: 1) } else { Absent }
+}
+
+// A variable word, and the name it expands. A word is a two-Atom Conj (kind, text), so the read is a
+// position read, never a substring of rendered output.
+fn bash_word_is_var(n: Node) -> Bool {
+  bash_built_by(n: n, production: ^bash_fold_word_kind_var)
+}
+
+// Every name this subtree expands, in document order, duplicates kept -- a law that counts reads must
+// not deduplicate them, or it cannot say which read was first. Descent is structural: a var word is a
+// leaf for this purpose, and any other node contributes only what its children carry.
+fn bash_var_reads(n: Node, acc: List<String>) -> List<String> {
+  if bash_word_is_var(n: n) {
+    match bash_positional_atom(n: n, i: 1) {
+      Present { value: name } => concat(acc, [name])
+      Absent => acc
+    }
+  } else {
+    match n.kind {
+      TypeNode { connective: Conj } =>
+        fold(
+          n.children,
+          init: acc,
+          f: (inner, edge) => bash_var_reads(n: edge.target, acc: inner)
+        )
+      _ => acc
+    }
+  }
+}
+
 fn bash_build_assign_lit(name: String, text: String) -> Node {
   bash_build_assign(name: name, value: bash_build_word_lit(text: text))
 }
