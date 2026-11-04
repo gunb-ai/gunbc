@@ -162,20 +162,21 @@ test fn the_session_pool_is_the_instance_belt_width_and_the_appropriation_follow
     Absent => false
     Present { value: live_pool } => match session_placement_pool(instance: lab) {
       Absent => false
-      Present { value: lab_pool } =>
+      Present { value: lab_pool } => {
         let live_slots = nat_to_int(n: host_capacity_pool_slots(pool: live_pool))
         let lab_slots = nat_to_int(n: host_capacity_pool_slots(pool: lab_pool))
         let live_approp = nat_to_int(n: kibibyte_count(k: host_capacity_pool_appropriation(instance: live, pool: live_pool)))
         let lab_approp = nat_to_int(n: kibibyte_count(k: host_capacity_pool_appropriation(instance: lab, pool: lab_pool)))
+        // THE DISCRIMINATORS: the lab's pool is strictly wider, and its appropriation strictly larger.
+        // A shared belt constant -- or a hand-written pool size -- makes both pairs equal and fails here.
         live_slots == belt_max_concurrent_default
           && lab_slots == srv1_lab_belt_max_concurrent
-          // THE DISCRIMINATORS: the lab's pool is strictly wider, and its appropriation strictly larger.
-          // A shared constant -- or a hand-written pool size -- makes both pairs equal and fails here.
           && live_slots != lab_slots
           && live_approp != lab_approp
           // THE APPROPRIATION IS THE CEILING TIMES THE SAME PER-INSTANCE SLOTS: proportional to slots,
           // confirming it derives from the instance figure rather than being authored beside it.
           && lab_approp * live_slots == live_approp * lab_slots
+      }
     }
   }
 }
