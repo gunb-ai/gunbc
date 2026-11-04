@@ -1,3 +1,5 @@
+module test.claim.live_deploy.owned_directory_plan_decision_witness
+
 // R2 WITNESS (one-deploy-path safety, GAP 1): a demanded owned directory whose plan row is absent
 // installs NOTHING. The old arm of gunbc.live_deploy.emit owned_directory_will_install returned true
 // on MemberNotInPlan -- an install with no decision, unblessed by the plan authority yet blessed by

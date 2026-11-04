@@ -116,7 +116,13 @@ fn systemctl_unmask_command(unit: NonEmptyStr, privileged: Bool) -> String {
 // install_directory_owned_command (mode/owner/group/path -> rendered install text) is DELETED here:
 // its one body was the exact composition shell_privileged_command_text_of_argv(coreutils_install_
 // directory_owned_argv(...)) that gunbc.live_deploy.emit install_d_owned_for_user now spells
-// directly against the argv authorities. Keeping this wrapper would be a second spelling of the
-// install words (§3), and the roadmap node "Realize live_deploy's install-owned leaves as typed fs
-// writes with an ownership effect" retires the rendered-text route outright -- the ownership half is
-// typed in gunbc.owned_directory (owned_directory_act_time_handover), not in text.
+// directly against the argv authorities -- a second spelling of the same install words (§3). It had
+// no production consumer (grep-verified). The live ACT on an owned-directory leaf goes through the
+// ONE provider, gunbc.owned_directory owned_directory_ensure -- called for every ApplyLegEnsureDirectory
+// by gunbc.host.host_effect_realize live_deploy_apply_ensure_directory_on_host and by
+// gunbc.roadmap.roadmap_dashboard_instance_apply. The roadmap node "Realize live_deploy's
+// install-owned leaves as typed fs writes with an ownership effect" is realized THERE: the acting
+// route re-observes and re-decides at apply time and refuses a between-readings handover
+// (owned_directory_act_time_handover). What remains in gunbc.live_deploy.emit is a DISPLAY surface --
+// the same argv authority's words rendered as text (kept by the pinned witness, inert by admission,
+// its refusal a false command) -- not an acting route.
