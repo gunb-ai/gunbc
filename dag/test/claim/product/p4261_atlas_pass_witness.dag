@@ -378,6 +378,20 @@ test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
     && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3_2"), b: r.designator))
 }
 
+test fn every_body_sighting_is_at_a_position_the_authority_admitted() -> Bool {
+  // A body sighting states "a body is present at X", so X has to be a designator the position authority
+  // admitted -- not merely a string of the right shape. The generator's contract promises this and
+  // nothing checked it: these 66 rows are component rows, so the position/reading bijection above never
+  // looks at them. A same-shape typo in one of them keeps every number intact -- 66 sightings, 278
+  // components, the frame still resolving in the store, the bijection still total -- while stating
+  // presence beside a position NVIDIA's design list does not carry. So: through the Designator
+  // authority, never a string membership test.
+  e1_body_sightings.all(s => match p4261_position_at(positions: p4261_e1_positions, verbatim: s.designator) {
+    Present { value: _ } => true
+    Absent { } => false
+  })
+}
+
 // ---- what a count is still good for ------------------------------------------------------------------
 //
 // Named as what it is: a per-pass change detector, not a completeness claim (DESIGN §5). The position
