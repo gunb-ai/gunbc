@@ -1044,6 +1044,14 @@ data gunbc_ci_host_memory_envelope_observe_target: GunbcRunStepTarget = GunbcRun
   function: "host_memory_envelope_observe_ci_wet",
 }
 
+// THE DEPLOY PATH'S BUDGET PREFLIGHT (gunbc.host.host_budget_preflight): read the process cgroup and
+// refuse by name, before the fold is paid for, when no limit bounds this process. Read-only; the fold's
+// own budget gate stays authoritative.
+data gunbc_ci_host_budget_preflight_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_budget_preflight.dag",
+  function: "admit_host_budget_declared",
+}
+
 data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_file_converge_ci_wet",
@@ -1061,6 +1069,13 @@ data gunbc_ci_host_primary_network_observe_target: GunbcRunStepTarget = GunbcRun
 data gunbc_ci_host_primary_network_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_primary_network_apply.dag",
   function: "host_primary_network_converge_ci_wet",
+}
+
+// THE BOARD-FUNCTION CONVERGE DELIVERY (gunbc.fleet.board_function_converge_delivery). The receipt path is that
+// module's, so this target names only the entry.
+data gunbc_ci_board_function_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/board_function_converge_delivery.dag",
+  function: "board_function_converge_delivery_ci_wet",
 }
 
 data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1582,10 +1597,12 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_microvm_network_apply_target,
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_host_memory_envelope_observe_target,
+    gunbc_ci_host_budget_preflight_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_host_cap_release_target,
     gunbc_ci_host_primary_network_observe_target,
     gunbc_ci_host_primary_network_converge_target,
+    gunbc_ci_board_function_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
@@ -3360,6 +3377,16 @@ fn gunbc_ci_host_primary_network_converge_invoke() -> String {
   )
 }
 
+fn gunbc_ci_board_function_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_board_function_converge_target.entry,
+    function: gunbc_ci_board_function_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/board-function-converge-delivery-receipt.txt"
+  )
+}
+
 fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -3367,6 +3394,16 @@ fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
     function: gunbc_ci_host_memory_envelope_observe_target.function,
     claim_run: false,
     receipt_rel: host_memory_envelope_receipt_path
+  )
+}
+
+fn gunbc_ci_host_budget_preflight_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_budget_preflight_target.entry,
+    function: gunbc_ci_host_budget_preflight_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

@@ -28,8 +28,9 @@ import product.printed_chassis.exhaust_thermal {exhaust_rise}
 // plus the socket's 10 mm depth and a wall, so the straight-back home asks the chassis for about 108 mm where
 // it has 70. The duct has to curve.
 //
-// WHAT THE CURVE ACTUALLY BUYS, AND WHAT IT COSTS. A radial blower is a box whose intake axis is its
-// thickness axis and whose outlet lies on the periphery. Two orientations are available and each spends
+// WHAT THE CURVE ACTUALLY BUYS, AND WHAT IT COSTS. A radial blower's housing is a scroll inside a bounding
+// rectangle (extdeps.fans.types RadialBlowerEnvelope carries only the rectangle), with its intake axis
+// along its thickness and its outlet on the periphery. Two orientations are available and each spends
 // a DIFFERENT chassis gap -- this is the whole design, and the model says so in the open:
 //
 //   PLANE-ON-END      the fan's face lies parallel to the card's end face, its intake looking straight

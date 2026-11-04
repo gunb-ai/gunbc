@@ -59,6 +59,7 @@ type CgroupMemoryInterfaceFile
   | MemorySwapMax
   | MemorySwapPeak
   | MemoryEvents
+  | MemoryEventsLocal
 
 fn cgroup_memory_interface_file_name(f: CgroupMemoryInterfaceFile) -> NonEmptyStr {
   match f {
@@ -70,6 +71,7 @@ fn cgroup_memory_interface_file_name(f: CgroupMemoryInterfaceFile) -> NonEmptySt
     MemorySwapMax => "memory.swap.max"
     MemorySwapPeak => "memory.swap.peak"
     MemoryEvents => "memory.events"
+    MemoryEventsLocal => "memory.events.local"
   }
 }
 
@@ -83,8 +85,21 @@ fn cgroup_memory_metric_kind(f: CgroupMemoryInterfaceFile) -> CgroupMemoryMetric
     MemorySwapMax => Instantaneous
     MemorySwapPeak => LifetimeEpochScoped
     MemoryEvents => CumulativeCounter
+    MemoryEventsLocal => CumulativeCounter
   }
 }
+
+// THE TWO EVENTS FILES CARRY THE SAME COUNTERS AND DIFFER IN SCOPE, NOT IN KIND, so the difference
+// is carried in the name and nowhere else. cgroup-v2
+// (https://docs.kernel.org/admin-guide/cgroup-v2.html, "memory.events"): "Note that all fields in
+// this file are hierarchical and the file modified event can be generated due to an event down the
+// hierarchy. For the local events at the cgroup level see memory.events.local." And, under
+// "memory.events.local": "Similar to memory.events but the fields in the file are local to the
+// cgroup i.e. not hierarchical. The file modified event generated on this file reflects only the
+// local events." That is why these are two variants of one file type rather than one variant with a
+// scope flag: the kernel names them, and a reader that asks for the wrong one silently charges a
+// descendant's OOM to the level it read -- which is how a parent scope gets blamed for a child's
+// peak, and a child's for a sibling's.
 
 // A NEGATIVE BODY IS MALFORMED, NOT A MAGNITUDE. parse_int admits negatives, and every file modeled
 // here is documented as a non-negative byte count, so a leading minus is a malformed read, not a
@@ -265,3 +280,47 @@ fn parse_cgroup_memory_stat(body: String) -> CgroupMemoryStatReading {
     }
   }
 }
+
+// ── memory.events AND memory.events.local: THE COUNTERS, NARROWED TO WHAT A CONSUMER ASKS ──────
+//
+// cgroup-v2 ("memory.events") defines low, high, max, oom, oom_kill, oom_group_kill and
+// sock_throttled. This record carries the five that answer the question an endpoint observation
+// asks of a build-cache daemon -- was this cgroup throttled, throttled at its own limit, or killed
+// -- and the two the kernel also defines are deliberately NOT modelled. That is a narrowing of the
+// file, not a claim that the file lacks them: the same document warns that a flat-keyed file grows
+// ("new entries can show up in the middle"), so a closed record over every entry would be stale on
+// the kernel's next release, while a named subset says exactly what is read.
+//
+// The five are the same in both events files. WHICH file a count was read from is the interface-file
+// question above, not a field of the record, and it is the question that decides whether an oom_kill
+// is this level's or a descendant's.
+//
+// NO READER OF AN EVENTS BODY EXISTS IN THE CORPUS YET, and this record does not pretend otherwise:
+// it carries no parse and no refusal shape, because a typed refusal with nothing producing it reads as
+// a modeled parse that was never built. The record exists because the endpoint observation already
+// declares the field; a parse joins the authority when a consumer actually reads a body.
+type CgroupMemoryEventCounters {
+  low: Nat
+  high: Nat
+  max: Nat
+  oom: Nat
+  oom_kill: Nat
+}
+
+// ── memory.stat KEYS ARE NOT MODELLED AS KEYS HERE, AND THAT IS A GAP, NOT A DESIGN ─────────────
+//
+// This module models the interface FILES (CgroupMemoryInterfaceFile) and one READING of memory.stat
+// (CgroupMemoryStat, the five keys a residency reading requires). What it does NOT model is the key
+// interface itself -- the kernel's name for each key and which of the three kinds it is. So the only
+// list of those names in the corpus is a consumer's: CGROUP_DIAGNOSTIC_STAT_KEYS plus
+// cgroup_stat_field in src/v1/stage0/src/required_regen_host.rs. A list with no authority beside it
+// cannot refuse a drift, because there is nothing to drift against -- which is why the gap is filed
+// rather than left, with the capability that would close it: a key type that lands WITH an executing
+// consumer, the host deriving its print list from it, which needs the regen host module to join the
+// stage0 crate population.
+// dag/gunbc/recurring_failure_mode/memory_stat_keys_are_unmodelled_in_extdeps_and_the_host_list_is_the_only_one.dag
+//
+// A key list added here WITHOUT such a consumer would be a second list, not an authority, and DESIGN
+// 3c treats a declaration nothing consumes as the red it is. That is the reason this module carries
+// the gap note instead of the keys.
+
