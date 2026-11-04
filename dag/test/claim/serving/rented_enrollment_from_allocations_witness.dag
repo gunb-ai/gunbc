@@ -3,11 +3,9 @@ module test.claim.serving.rented_enrollment_from_allocations_witness
 import std.types { Bool, NonEmptyStr, Port, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
-import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
-import extdeps.network.ipv4 { ipv4_address }
-import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward, RemoteForward }
+import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, RemoteForward }
 import gunbc.serving.serving_enrollment { ServingRoute, ServingRouteUnresolved }
-import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAccessRoute, RentedSshLocalForward, rented_route_lands_off_engine_port_obligation, rented_route_forward_not_local_obligation }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedSshLocalForward, rented_route_lands_off_engine_port_obligation, rented_route_forward_not_local_obligation }
 import gunbc.serving.rented_enrollment { rented_enrolled_routes }
 import gunbc.serving.rented_enrollment_from_allocations {
   RentedCohortFold, rented_cohort_enrollments_from_allocations, rented_cohort_index_from_allocations, rented_cohort_refusal_reports,

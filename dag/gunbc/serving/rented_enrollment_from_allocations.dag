@@ -1,7 +1,7 @@
 module gunbc.serving.rented_enrollment_from_allocations
 
 import std.types { NonEmptyStr, List }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { bound_dissolution }
 import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationIdentity, RentedAllocationEnrollable, RentedAllocationNotEnrollable, rented_allocation_enrollment }
@@ -42,16 +42,17 @@ type RentedEnrollmentRefusal { allocation: RentedAllocationIdentity, obligation:
 type RentedCohortFold { enrollments: List<RentedEnrollment>, refusals: List<RentedEnrollmentRefusal> }
 
 // THE FOLD. Every held allocation is asked what row it implies; an allocation that cannot answer keeps its
-// obligation in the fold instead of vanishing. The fold conses, so the roster reads newest-first: nothing
-// downstream depends on that order, because the index is keyed by replica identity (a host node plus device
-// plus served name) and rented_enrollment_for resolves by identity, never by position.
+// obligation in the fold instead of vanishing. The fold appends, so both lists read in the order the
+// population was given: nothing downstream depends on that order, because the index is keyed by replica
+// identity (a host node plus device plus served name) and rented_enrollment_for resolves by identity, never
+// by position.
 fn rented_cohort_enrollments_from_allocations(held: List<RentedServingAllocation>) -> RentedCohortFold {
   fold(held, init: RentedCohortFold { enrollments: [] as List<RentedEnrollment>, refusals: [] as List<RentedEnrollmentRefusal> }, f: (acc, a) =>
     match rented_allocation_enrollment(a: a) {
       RentedAllocationEnrollable { allocation: _, enrollment: e } =>
-        RentedCohortFold { enrollments: cons(e, acc.enrollments), refusals: acc.refusals }
+        RentedCohortFold { enrollments: append(acc.enrollments, items: [e]), refusals: acc.refusals }
       RentedAllocationNotEnrollable { allocation: id, obligation: o } =>
-        RentedCohortFold { enrollments: acc.enrollments, refusals: cons(RentedEnrollmentRefusal { allocation: id, obligation: o }, acc.refusals) }
+        RentedCohortFold { enrollments: acc.enrollments, refusals: append(acc.refusals, items: [RentedEnrollmentRefusal { allocation: id, obligation: o }]) }
     }
   )
 }
@@ -68,7 +69,7 @@ fn rented_cohort_index_from_allocations(held: List<RentedServingAllocation>) -> 
 // named. An allocation identity is a provider declaration plus the provider's contract id, so a report never
 // collapses two providers' numeric ids into one line.
 fn rented_cohort_refusal_reports(folded: RentedCohortFold) -> List<NonEmptyStr> {
-  map(folded.refusals, r => concat([r.allocation.contract, ": ", r.obligation], ""))
+  map(folded.refusals, r => join([r.allocation.contract as String, ": ", r.obligation as String], "") as NonEmptyStr)
 }
 
 // DECLARED FRONTIER (DESIGN 3c). The subject is the production roster that stays a literal. The trigger is
