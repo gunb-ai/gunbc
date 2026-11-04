@@ -30,6 +30,7 @@ module test.claim.product.p4261_atlas_pass_witness
 // or an observation was promoted into NVIDIA's design.
 // ==================================================================================================
 import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.text { string_eq }
 import std.optional { Absent, Present }
 import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label }
 import product.electrical.identification {
@@ -274,7 +275,7 @@ test fn every_held_receipt_is_recorded_on_the_board() -> Bool {
   // proposed name in the obligation where a reader can find it. Deleting that row would throw away
   // the one observation the C3_F1 correction is about: that a label was seen.
   e1_held_receipts.all(r => match r {
-    HeldDesignatorRead { designator: dn, standing: _, transcription: _, transcription_basis: _, why: _ } =>
+    HeldDesignatorRead { designator: dn, standing: _, legibility: _, legibility_basis: _, why: _ } =>
       any(p4261_e1_layout.unresolved, u => match u.designator {
         Present { value: d } => designator_eq(a: designator_of(verbatim: d), b: dn)
         Absent { } => false
@@ -388,7 +389,7 @@ test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
   // asks the position authority directly whether that text became a designator. Leaving the arm
   // unhandled would make the one row whose name was never read the only row this test cannot see.
   e1_held_receipts.all(r => match r {
-    HeldDesignatorRead { designator: dn, standing: _, transcription: _, transcription_basis: _, why: _ } =>
+    HeldDesignatorRead { designator: dn, standing: _, legibility: _, legibility_basis: _, why: _ } =>
       match p4261_position_at(positions: p4261_e1_positions, verbatim: designator_text(dn)) {
         Present { value: _ } => false
         Absent { } => true
@@ -415,7 +416,7 @@ test fn every_named_exception_reaches_the_board() -> Bool {
   // The generator change is what catches it: the merged row has no designator read at all, so the
   // base rule no longer reaches it and no exception covers it.
   filter(e1_position_receipts, r => match r.rests_on {
-    NamedException { why: _ } => true
+    NamedException { why: _, authority: _ } => true
     RuleRead { } => false
   }).all(r =>
     any(p4261_e1_layout.designator_readings, d =>
@@ -431,14 +432,17 @@ test fn every_named_exception_reaches_the_board() -> Bool {
 // read in full. It is gone, and the reason is worth keeping: `rests_on: RuleRead` now has no field
 // in which to claim a half-read label, so the state it refused has no constructor and a witness
 // would only be checking that a record equals itself. The mutant that used to prove that test --
-// writing `RuleRead { transcription: Partial { } }` into a row -- is now refused by the compiler,
-// and that refusal is what the PR reports. The same applies inside a held read: ReadTranscription
-// has no NotTranscribed arm, so a held row cannot mint a Designator for characters nobody read.)
+// writing `RuleRead { legibility: Partial { } }` into a row -- is now refused by the compiler,
+// and that refusal is what the PR reports. The same applies inside a held read: its legibility type is
+// Legibility minus no arm -- there is no 'nobody read it' member to name -- so a held row cannot mint a
+// Designator for characters nobody read. What the types cannot reach is the CROSS-ROW direction, and the
+// four tests below are what covers it: a reading for every exception, a photograph-dated reading for a
+// photograph authority, and a candidate's proposed name kept off the board.)
 
 test fn the_held_arms_carry_only_what_they_may() -> Bool {
   // The two held shapes are not interchangeable. A held READ was read -- it carries the exact label
-  // and a legibility drawn from ReadTranscription, which has no NotTranscribed arm, so the shape
-  // already refuses the C3_F1 contradiction. A CANDIDATE was never read: it carries a PROPOSED name
+  // and a legibility drawn from Legibility, which has no 'nobody read it' member, so the shape already
+  // refuses the C3_F1 contradiction. A CANDIDATE was never read: it carries a PROPOSED name
   // as plain text, because Designator is the identity the whole model joins on and an unread
   // spelling must not enter it. What still needs a witness is the direction the shape cannot close:
   // a candidate's proposed name reappearing on the board as a read designator, which would undo the
@@ -447,7 +451,7 @@ test fn the_held_arms_carry_only_what_they_may() -> Bool {
     // Nothing to ask of a held read here: every arm of its legibility type is one a read may have,
     // which is the point of giving it its own type. Its designator is checked by the two tests that
     // hold held rows off the design list and off the board's presented names.
-    HeldDesignatorRead { designator: _, standing: _, transcription: _, transcription_basis: _, why: _ } =>
+    HeldDesignatorRead { designator: _, standing: _, legibility: _, legibility_basis: _, why: _ } =>
       true
     UntranscribedCandidate { source_key: _, proposed_name: n, standing: _, why: _ } =>
       // No designator reading presents it...
@@ -473,7 +477,7 @@ test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
         // for the one reason that a Designator is an exact-spelling claim, so it cannot be the
         // receipt behind a board row that presents a name as read.
         || any(e1_held_receipts, h => match h {
-          HeldDesignatorRead { designator: dn, standing: _, transcription: _, transcription_basis: _, why: _ } =>
+          HeldDesignatorRead { designator: dn, standing: _, legibility: _, legibility_basis: _, why: _ } =>
             designator_eq(a: designator_of(verbatim: d), b: dn)
           UntranscribedCandidate { source_key: _, proposed_name: _, standing: _, why: _ } => false
         })
@@ -660,4 +664,37 @@ test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool 
            && u.obligation.contains("sd010.JPG")
          Absent => false
        })
+}
+
+// The photograph-carried authority is the one an atlas receipt cannot supply, so it is the arm a hurried
+// author -- or a generator bug -- would reach for to mint a name nothing ever read. It claims the spelling
+// came off a photograph the operator took on a stated day, and only the board can corroborate that: the
+// position must have a designator reading whose evidence is a photograph citation dated the same day. If
+// the board stops saying it, the position loses its authority. That is what the arm is for -- the receipts
+// do not get to certify a name on their own, which is how C3_F1 came to be a position in the first place.
+test fn a_photograph_carried_name_is_read_on_the_board() -> Bool {
+  e1_position_receipts.all(r =>
+    match r.rests_on {
+      RuleRead { } => true
+      NamedException { why: _, authority: a } => match a {
+        // The atlas read this label on its own frame; the rule that every exception reaches the board
+        // covers it, and the legibility inside is the one that receipt stated.
+        FromReceipt { legibility: _, legibility_basis: _ } => true
+        // The atlas never read it, so the board must have, from that day's photograph. An InStore citation
+        // would not do: it proves the bytes are held, not that a person read this label off them, and every
+        // frame whose bytes we hold is an atlas frame where the designator was never read.
+        FromBoardPhotograph { taken_on: day, why: _ } =>
+          any(xs: p4261_e1_layout.designator_readings, predicate: d =>
+            designator_eq(a: designator_of(verbatim: d.designator), b: r.designator)
+            && match d.evidence {
+              OperatorPhotograph { citation: BytesNotInStore { taken_on: t, locator: _, obligation: _ } } =>
+                string_eq(a: t as String, b: day as String)
+              OperatorPhotograph { citation: InStore { content: _, region: _ } } => false
+              SellerListingPhotograph { listing: _, read_on: _ } => false
+              // A spoken "it says J3" is the shape this arm exists to refuse: it is a name with no image
+              // behind it, which is precisely what the receipts must not be able to lean on.
+              OperatorStatement { stated_on: _, verbatim: _ } => false
+            })
+      }
+    })
 }
