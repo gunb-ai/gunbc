@@ -2,7 +2,7 @@
 
 **Goal:** install through the modeled media and boot workflow, with independent evidence of the resulting OS. Preparation is not installation: `gunbc.srv3.srv3_os_install_actuate_scope` owns that boundary.
 
-**Current gate:** read `gunbc.os_install_mechanism.srv3_install_mechanism_solution`, the seeded-plan standing and `gunbc.os_install_actuator_selection` first. The source currently refuses the mechanism/seeded plan; historical 2.07.00 WebSocket observations do not qualify the later firmware. An unsatisfiable selection supplies no default actuator. The source-declared boot grant is expired; its dissolution requires an out-of-band attempt-bound grant channel, not a re-dated constant.
+**Current gate:** read `gunbc.fleet.fleet_boot_delivery_solution.srv3_boot_delivery_solution`, the seeded-plan standing and `gunbc.os_install_actuator_selection` first. The source currently refuses the mechanism/seeded plan; historical 2.07.00 WebSocket observations do not qualify the later firmware. An unsatisfiable selection supplies no default actuator. The source-declared boot grant is expired; its dissolution requires an out-of-band attempt-bound grant channel, not a re-dated constant.
 
 **Method, once those gates are discharged:** run on the selected actuator, using `gunbc run --source-root dag --entry <module-file> --function <entry>`:
 

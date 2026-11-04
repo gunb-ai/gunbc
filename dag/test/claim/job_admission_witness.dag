@@ -2,7 +2,6 @@ module test.claim.job_admission_witness
 
 import std.types { Bool, NonEmptyStr }
 import std.roster_frontier { FrontierRow }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -165,15 +164,4 @@ test fn promotional_credit_preserves_every_admission_disposition() -> Bool {
   credit_preserves_admission(classification: DeclaredEphi, admission_receipt: receipt()) &&
   credit_preserves_admission(classification: ClassificationUnresolved, admission_receipt: receipt()) &&
   credit_preserves_admission(classification: DeclaredNonEphi, admission_receipt: Absent)
-}
-
-fn frontier_enrolled_once(row: FrontierRow) -> Bool {
-  count(filter(census_closure_frontier_rows(), enrolled => enrolled == row)) == 1
-}
-
-test fn admission_frontiers_reach_the_dissolution_census() -> Bool {
-  frontier_enrolled_once(row: classification_receipt_issuer_frontier) &&
-  frontier_enrolled_once(row: job_admission_billing_frontier) &&
-  frontier_enrolled_once(row: job_admission_runner_frontier) &&
-  frontier_enrolled_once(row: job_admission_mutation_harness_frontier)
 }

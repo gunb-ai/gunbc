@@ -2,8 +2,8 @@ module product.printed_chassis.printable_assembly_selection
 
 import std.types { String, List }
 import product.printed_chassis.printable_assembly {
-  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctCardRoot,
-  DuctRootKind, duct_root_kinds, PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct,
+  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctCardRoot, CardGroupRoot, GroupRootKind, GroupFitPlate, GroupDuct, group_root_kinds,
+  DuctRootKind, duct_root_kinds, PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct, BlowerSideMountDuct, CardFaceSide,
   PrintableAssembly, PrintableAssemblySelection, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_wire,
 }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
@@ -20,7 +20,14 @@ import product.printed_chassis.gpu_duct {
 import std.optional { Present, Absent }
 import product.printed_chassis.duct_review_schema { duct_review_schema }
 import product.printed_chassis.duct_card_catalog { DuctCard, DuctCardDims, duct_cards, duct_card, duct_card_dims, duct_card_unread_reason }
-import product.printed_chassis.card_cooling_route {admit_home, RouteSubject, PlaneOnEnd, RouteAdmission, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, RouteHomeUnmeasured, RouteProposalOnly, RouteAdmitted, demand_display}
+import product.printed_chassis.card_installation { partition_refusal_text }
+import product.printed_chassis.group_duct {
+  GroupDuctPlan, group_duct_plans, group_duct_plan, admit_group_fit_plate, group_fit_plate_readme,
+  GroupFitPlateAdmitted, GroupPartitionRefused, GroupPlanUnresolved, GroupMembersNotSideBySide, GroupMembersMixCardModels, GroupMemberFaceUnfit,
+  GroupMemberConnectorNotClear,
+}
+import product.printed_chassis.side_mount_duct {side_mount_parts, side_mount_joints, side_mount_presentation_members, side_mount_readme}
+import product.printed_chassis.card_cooling_route {admit_home, RouteSubject, PlaneOnEnd, AgainstCardSide, RouteAdmission, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, RouteHomeUnmeasured, RouteProposalOnly, RouteAdmitted, demand_display}
 import product.printed_chassis.assembly_geometry {Printed, Purchased, Metal}
 
 // WHICH ROOTS EXIST, ENUMERATED FROM THE ROSTER: the cassette arms are named, and the duct roots are the
@@ -34,9 +41,14 @@ fn duct_card_root(card: DuctCard, kind: DuctRootKind) -> PrintedAssemblyRoot {
   DuctCardRoot { card: card.row.id, kind: kind }
 }
 
-data printed_assembly_roots: List<PrintedAssemblyRoot> = concat(
+fn group_duct_root(plan: GroupDuctPlan, kind: GroupRootKind) -> PrintedAssemblyRoot {
+  CardGroupRoot { plan: plan.id, kind: kind }
+}
+
+data printed_assembly_roots: List<PrintedAssemblyRoot> = concat(concat(
   [ResidentialCassette, CassetteRackReview],
-  fold(duct_cards, init: [], f: (acc, c) => concat(acc, map(duct_root_kinds, k => duct_card_root(card: c, kind: k)))))
+  fold(duct_cards, init: [], f: (acc, c) => concat(acc, map(duct_root_kinds, k => duct_card_root(card: c, kind: k))))),
+  fold(group_duct_plans, init: [], f: (acc, p) => concat(acc, map(group_root_kinds, k => group_duct_root(plan: p, kind: k)))))
 
 fn printed_assembly_root_from_wire(s: String) -> PrintedAssemblyRoot? {
   fold(printed_assembly_roots, init: none, f: (acc, r) =>
@@ -69,6 +81,13 @@ fn select_printable_assembly(root: PrintedAssemblyRoot) -> PrintableAssemblySele
       Present { value: c } => duct_root_selection(root: root, kind: kind, card: c)
       Absent => PrintableAssemblyRefused { reason: join(["no duct card is catalogued under id \"", card as String, "\"; product.printed_chassis.duct_card_catalog duct_cards is the roster"], "") }
     }
+    CardGroupRoot { plan: plan, kind: kind } => match group_duct_plan(id: plan) {
+      Present { value: p } => match kind {
+        GroupFitPlate => group_fit_plate_selection(root: root, plan: p)
+        GroupDuct => PrintableAssemblyRefused { reason: "the group duct's fan stages are not realized yet; the fit plate is printable on its own" }
+      }
+      Absent => PrintableAssemblyRefused { reason: join(["no group duct plan is declared under id \"", plan as String, "\"; product.printed_chassis.group_duct group_duct_plans is the roster"], "") }
+    }
   }
 }
 
@@ -84,6 +103,7 @@ fn duct_root_selection(root: PrintedAssemblyRoot, kind: DuctRootKind, card: Duct
     SleeveFitRing => duct_selection(root: root, card: card, mount: SleeveOverCardEnd, extent: CardFitRing)
     BlowerDuct => blower_selection(root: root, card: card)
     BlowerFlatOnEndDuct => plane_on_end_selection(root: root, card: card)
+    BlowerSideMountDuct { side: side } => side_mount_selection(root: root, card: card, side: side)
   }
 }
 
@@ -123,6 +143,42 @@ fn plane_on_end_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> P
     RouteProposalOnly {home: _, needs: _, on_estimate: g, margin: _} => PrintableAssemblyRefused { reason: join(["flat-on-end home is only PROPOSED on an estimate of ", demand_display(n: RouteDemand { name: "rear", needed: micrometer(count: 0), of_gap: g.name as String }), "); re-read the gap with an instrument"], "") }
     RouteRefusedByChassis {home: _, unmet: n, gap: _} => PrintableAssemblyRefused { reason: join(["flat-on-end home refused by the chassis: needs ", demand_display(n: n)], "") }
     RouteHomeUnmeasured {home: _, unmet: n, gap: _} => PrintableAssemblyRefused { reason: join(["flat-on-end home refused: the gap it needs is unmeasured -- ", demand_display(n: n)], "") }
+  }
+}
+
+// THE SIDE-MOUNTED HOME, selectable only on the route model's own admission, like the flat-on-end home: the
+// single-card side allowance and the rear span decide it, and a refusal is the route model's verdict.
+fn side_mount_selection(root: PrintedAssemblyRoot, card: DuctCard, side: CardFaceSide) -> PrintableAssemblySelection {
+  match duct_card_dims(card: card) {
+    Present { value: dims } => side_mount_selection_of(root: root, dims: dims, side: side)
+    Absent => PrintableAssemblyRefused { reason: duct_card_unread_reason(card: card) }
+  }
+}
+
+fn side_mount_ready(root: PrintedAssemblyRoot, dims: DuctCardDims, side: CardFaceSide) -> PrintableAssemblySelection {
+  let parts = side_mount_parts(f: dims.face, card: dims.card, d: dims.wall, b: dims.fan, side: side)
+  PrintableAssemblyReady {
+    assembly: PrintableAssembly {
+      root: root,
+      parts: parts,
+      interfaces: side_mount_joints(),
+      required_keepouts: ["POWER-KEEPOUT"],
+      assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
+      package: printed_assembly_root_wire(root: root),
+      schema: duct_review_schema as String,
+      readme: side_mount_readme(d: dims.wall, b: dims.fan, side: side),
+      presentation: side_mount_presentation_members(f: dims.face, d: dims.wall, b: dims.fan, side: side),
+    }
+  }
+}
+
+fn side_mount_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims, side: CardFaceSide) -> PrintableAssemblySelection {
+  match admit_home(s: RouteSubject { face: dims.face, wall: dims.wall, fan: dims.fan }, home: AgainstCardSide { side: side }) {
+    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => side_mount_ready(root: root, dims: dims, side: side)
+    RouteAdmitted {home: _, needs: _} => side_mount_ready(root: root, dims: dims, side: side)
+    RouteProposalOnly {home: _, needs: _, on_estimate: _, margin: _} => PrintableAssemblyRefused { reason: "side-mounted home is only PROPOSED on an estimate; it needs a declared bound or a reading" }
+    RouteRefusedByChassis {home: _, unmet: n, gap: _} => PrintableAssemblyRefused { reason: join(["side-mounted home refused by the chassis: needs ", demand_display(n: n)], "") }
+    RouteHomeUnmeasured {home: _, unmet: n, gap: _} => PrintableAssemblyRefused { reason: join(["side-mounted home refused: the gap it needs is unmeasured -- ", demand_display(n: n)], "") }
   }
 }
 
@@ -186,5 +242,33 @@ fn duct_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims, mount: DuctC
     GpuDuctFanMountRefused { mount: _ } => PrintableAssemblyRefused { reason: "A16 duct fan mount refused" }
     GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => PrintableAssemblyRefused { reason: "A16 fin window deeper than the fan frame" }
     GpuDuctPlugPassageClosed { plug_depth: _, wall: _ } => PrintableAssemblyRefused { reason: "A16 duct plug passage closed" }
+  }
+}
+
+// THE GROUP FIT PLATE: the card interface of a duct serving several installed cards side by side
+// (product.printed_chassis.group_duct). It fastens to no inserts, and its admission refuses any member whose
+// end-face header is present or unobserved, so there is no keep-out to list; its refusals are the
+// realization's own, quoted.
+fn group_fit_plate_selection(root: PrintedAssemblyRoot, plan: GroupDuctPlan) -> PrintableAssemblySelection {
+  match admit_group_fit_plate(p: plan) {
+    GroupFitPlateAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
+      assembly: PrintableAssembly {
+        root: root,
+        parts: parts,
+        interfaces: joints,
+        required_keepouts: [],
+        assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
+        package: printed_assembly_root_wire(root: root),
+        schema: duct_review_schema as String,
+        readme: group_fit_plate_readme(p: plan),
+        presentation: [],
+      }
+    }
+    GroupPartitionRefused { causes: cs } => PrintableAssemblyRefused { reason: join(["the plan's partition is refused: ", join(map(cs, c => partition_refusal_text(r: c)), "; ")], "") }
+    GroupPlanUnresolved { reason: r } => PrintableAssemblyRefused { reason: r }
+    GroupMembersNotSideBySide { reason: r } => PrintableAssemblyRefused { reason: join(["group members are not side by side: ", r], "") }
+    GroupMembersMixCardModels { first: a, other: b } => PrintableAssemblyRefused { reason: join(["one plate cannot align ", a as String, " and ", b as String, " faces: mixed card models are unsupported by this realization"], "") }
+    GroupMemberFaceUnfit { instance: i, reason: r } => PrintableAssemblyRefused { reason: join([i as String, ": ", r], "") }
+    GroupMemberConnectorNotClear { instance: i, reason: r } => PrintableAssemblyRefused { reason: join([i as String, ": ", r], "") }
   }
 }

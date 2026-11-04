@@ -1,11 +1,11 @@
 module extdeps.systemd.systemd_run
 
+import std.algebra { list_append, trim }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
-import std.algebra { trim }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

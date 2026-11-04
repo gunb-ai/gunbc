@@ -100,10 +100,13 @@ data release_locus_tree_subdirs: List<String> = ["dag", "src/v2"]
 data approval_broker_helper_root_principal: NonEmptyStr = "root"
 
 // WHERE A HELPER RUNS FROM, AND WHO CAN WRITE IT. The owner is the principal that owns every entry in
-// the locus (the install makes it so, and the snapshot readback checks it).
+// the locus (the install makes it so, and the snapshot readback checks it). The step stem names the
+// locus's install and retire legs in an apply, so two root-helper loci in one apply are told apart by
+// their steps rather than both reporting under one name.
 type HelperLocus {
   base: String
   owner: NonEmptyStr
+  step_stem: NonEmptyStr
 }
 
 fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> String {

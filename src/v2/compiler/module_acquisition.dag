@@ -1583,11 +1583,17 @@ fn acquire_census_closure_of(layout: SourceStorageLayout, bindings: List<SourceR
 
 // ---- the acquired set as the compiler's source ingest ----------------------------------------------
 
-// The host path an acquired member was read from. It is the artifact id, the artifact path and the
-// compilation unit of the member's witness, so a consumer that names the member's file (a discovery
-// row's entry, a diagnostic locus) names this path and no second spelling of it.
+// The host path an acquired member was read from. It is the artifact id and the artifact path of the
+// member's witness; the witness's compilation unit (what a diagnostic locus names) is the
+// root-relative module_file_key, so a located diagnostic does not depend on where the root is mounted.
 fn acquisition_module_path(module: AcquiredModule) -> String {
   source_root_child_path(directory: module.host_directory, name: module.file.relative_path)
+}
+
+// THE ONE SPELLING OF A MEMBER'S FILE IN A LOCUS: the witness's compilation unit, and so the key every
+// file-refusal index and every consumer that joins a path to a located diagnostic uses.
+fn acquisition_compilation_unit(file: ModuleFileRef) -> Symbol {
+  symbol_intern_lexeme(lexeme: module_file_key(file: file))
 }
 
 fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
@@ -1596,13 +1602,15 @@ fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
 
 // ONE WITNESS SHAPE FOR EVERY READ THE ACQUIRER MADE, admitted or blocked: the path is the host path
 // the bytes came from, and the bytes are the ones read, so a census reporting a blocked member reports
-// it from acquisition's read and never from a second one.
+// it from acquisition's read and never from a second one. The COMPILATION UNIT is the root-relative
+// source identity (module_file_key), not the host path, so a located diagnostic names the same file
+// whatever directory the root is mounted at.
 fn acquisition_read_witness(file: ModuleFileRef, host_directory: String, content: String) -> DagSourceReadWitness {
   let path = source_root_child_path(directory: host_directory, name: file.relative_path)
   DagSourceReadWitness {
     source: Medium { carried: content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    compilation_unit: acquisition_compilation_unit(file: file),
     source_root: file.tree
   }
 }

@@ -1,6 +1,6 @@
 module gunbc.harness.harness_throughput
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
 import std.algebra { trim }
 import extdeps.languages.json.emit { JsonValue, JsonString }
 import extdeps.languages.json.parse {

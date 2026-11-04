@@ -168,7 +168,7 @@ module gunbc.recurring_failure_mode
 import std.types { String, NonEmptyStr, List, Int }
 import std.decl_ref { DeclarationRef }
 import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_index }
-import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding, GroundingAuthority, GroundingDeclared, GroundingUndeclared, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, trigger_capability_admission }
+import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding, GroundingAuthority, GroundingDeclared, GroundingUndeclared, ClimbableButUnbuilt }
 
 // WHERE A CLASS STANDS ON THE GUARANTEE LADDER, TYPED (DESIGN section 4b, the ledger rule's rung
 // found at / ceiling / next trigger). The rung and trigger vocabulary is gunbc.guarantee_rung and
@@ -186,8 +186,8 @@ type RungPosition
 
 // BELOW CEILING WITHOUT A BLOCKER IS UNCONSTRUCTIBLE: BelowCeiling has no arm without a blocker
 // (which of the three section 4b ob.2 cases). The trigger capability (section 4b ob.3) is a bare
-// String, so an empty or referent-spelled one IS constructible and standing_admission REFUSES it
-// (validation, rung 2). AtCeiling carries ONE rung, so at-ceiling-with-a-trigger and
+// String, so an empty or referent-spelled one IS constructible and nothing refuses it
+// now that the retired rung census no longer reads standings. AtCeiling carries ONE rung, so at-ceiling-with-a-trigger and
 // current-above-ceiling have no constructor.
 //
 // `current` is the rung the row's prose last states for the class (a CURRENT RUNG / RUNG NOW /
@@ -229,30 +229,3 @@ fn authored(r: RecurringFailureMode) -> String {
   join(r.receipts, " ")
 }
 
-fn rung_position_index(p: RungPosition) -> Int {
-  match p {
-    FoundBelowTheLadder => -1
-    FoundOnRung { rung: r } => guarantee_rung_index(r: r)
-  }
-}
-
-type StandingAdmission
-  = StandingAdmitted
-  | StandingNotBelowCeiling { subject: String }
-  | StandingTriggerRefused { subject: String, admission: TriggerAdmission }
-
-fn standing_admission(subject: String, s: RungStanding) -> StandingAdmission {
-  match s {
-    AtCeiling { rung: _, ceiling_reason: _ } => StandingAdmitted
-    BelowCeiling { current: c, ceiling: k, blocker: b, trigger_capability: t } =>
-      if rung_position_index(p: c) < guarantee_rung_index(r: k) {
-        let admission = trigger_capability_admission(subject: subject, capability: t)
-        match admission {
-          TriggerAdmitted => StandingAdmitted
-          _ => StandingTriggerRefused { subject: subject, admission: admission }
-        }
-      } else {
-        StandingNotBelowCeiling { subject: subject }
-      }
-  }
-}
