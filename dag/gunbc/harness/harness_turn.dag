@@ -29,6 +29,7 @@ import gunbc.harness.harness_session_recovery {
   SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events, session_conversation_from_request,
   session_conversation_messages, session_validation_interrupted_ids, session_event_resumed, session_resume_bound,
   session_event_request_pending, session_event_request_redelivered, session_request_pending_since_of, session_request_redeliveries_of, SessionRecoveryRequestPending,
+  RequestPendingCause, PendingNoCardServing, PendingCardUnanswered, PendingUpstreamBusy, PendingNoResponse,
 }
 import gunbc.harness.hosted_failure {
   HostedHttpFailure, HostedRateLimited, hosted_classify_round, hosted_http_failure_label, hosted_http_failure_wire,
@@ -1155,7 +1156,7 @@ type HarnessPostedRound {
   unexplained: UnexplainedEngineRefusal?
   // WHY THIS ROUND STANDS PENDING, in the front's own words, or none when the round is not a patient-request
   // case. Read ONCE from the post's evidence, so a reader never has to re-derive a request's standing.
-  pending_cause: String?
+  pending_cause: RequestPendingCause?
 }
 
 // AN IN-FLIGHT SEAT THAT DID NOT RELEASE IS NOT A REFUSAL OF THE ROUND -- the request went out and its
@@ -1421,7 +1422,7 @@ fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
 // compatible upstream busy), and a post that drew no response at all -- including one the client's --max-time
 // window closed -- stands for the same reason. Any other status is the engine refusing THIS request, and a
 // hosted route never holds: today's behaviour stands.
-fn harness_request_pending_cause(access: HarnessBackendAccess, posted: HarnessPostOutcome) -> String? {
+fn harness_request_pending_cause(access: HarnessBackendAccess, posted: HarnessPostOutcome) -> RequestPendingCause? {
   if !harness_route_is_fleet_engine(access: access) || posted.success {
     none
   } else {
@@ -1430,12 +1431,12 @@ fn harness_request_pending_cause(access: HarnessBackendAccess, posted: HarnessPo
       Absent => none
     }
     match status {
-      Present { value: 503 } => Present { value: "the front answered 503 (no card serving)" }
-      Present { value: 502 } => Present { value: "the front answered 502 (the chosen card did not answer)" }
-      Present { value: 429 } => Present { value: "the front answered 429 (every compatible upstream busy)" }
+      Present { value: 503 } => Present { value: PendingNoCardServing }
+      Present { value: 502 } => Present { value: PendingCardUnanswered }
+      Present { value: 429 } => Present { value: PendingUpstreamBusy }
       _ =>
         if harness_post_drew_no_response(posted: posted) {
-          Present { value: "the request drew no response at all; the client's --max-time is only its observation window, and a timeout means stopped watching -- never failed, never cancelled" }
+          Present { value: PendingNoResponse }
         } else {
           none
         }
@@ -1665,7 +1666,7 @@ fn harness_turn_loop(
 // A ROUND WHOSE REQUEST DREW NO ANSWER IS RECORDED AS STANDING PENDING and the worker exits: no sleep,
 // no in-process re-post, no clock on the wait (the patient request contract). ONE durable event opens
 // (or keeps) the round's window; the belt owns the re-delivery schedule.
-fn harness_record_request_pending(config: HarnessTurnConfig, events: List<String>, cause: String, steps_taken: Int, messages: List<JsonValue>) -> HarnessTurnOutcome {
+fn harness_record_request_pending(config: HarnessTurnConfig, events: List<String>, cause: RequestPendingCause, steps_taken: Int, messages: List<JsonValue>) -> HarnessTurnOutcome {
   match now_epoch_seconds() {
     // THE WINDOW CANNOT BE OPENED WITHOUT THE CLOCK. The request still stands; the event that says so must
     // name its opening instant, so this worker stops visibly and the belt re-delivers on its next sweep.

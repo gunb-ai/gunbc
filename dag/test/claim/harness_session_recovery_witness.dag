@@ -8,6 +8,7 @@ import gunbc.harness.harness_turn { HarnessPostOutcome, harness_post_drew_no_res
 import gunbc.harness.harness_transport_retry_policy { harness_transport_retry_policy_now, transport_retry_next_delivery_at }
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryRequestPending,
+  RequestPendingCause, PendingNoCardServing, PendingCardUnanswered, PendingUpstreamBusy, PendingNoResponse, request_pending_cause_wire, request_pending_cause_of_wire,
   session_event_request_pending, session_event_request_redelivered, session_request_pending_since_of, session_request_redeliveries_of,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
   session_event_recovery_needed, session_event_resumed, session_recovery_of_events, session_resume_bound,
@@ -200,7 +201,7 @@ test fn s3_claim_10_a_recovery_needed_line_without_a_cause_refuses_typed() -> Bo
 // instant the policy could change under it.
 // A STANDING PENDING REQUEST, as the worker wrote it: one event, its round, the front's own cause, the instant
 // the window opened, and the resumability of the state it was written from.
-fn pending_lines(request: String, round: Int, cause: String, since: Int) -> List<String> {
+fn pending_lines(request: String, round: Int, cause: RequestPendingCause, since: Int) -> List<String> {
   [session_event_request_pending(round: round, cause: cause, since: since, validation: validation_of(request: request))]
 }
 
@@ -217,11 +218,11 @@ fn decision_at(lines: List<String>, now: Int) -> ContinuationDecision {
 // not serve reads as a standing pending request: its own round, the front's cause, the window it opened, the
 // state's resumability, and zero re-deliveries so far.
 test fn patient_claim_a_pending_round_reads_as_a_standing_request() -> Bool {
-  let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  let lines = pending_lines(request: validated_request(), round: 12, cause: PendingNoCardServing, since: 1000)
   match pending_recovery(lines: lines) {
     SessionRecoveryRequestPending { cause, since, re_deliveries, wakes_made, last_delivery_at, resumable, interrupted_calls: _, resume_round } =>
       resume_round == 12 && since == 1000 && re_deliveries == 0 && last_delivery_at == 1000 && resumable
-        && cause.contains("503") && cause.contains("no TLS card") && cause.contains("it stands")
+        && request_pending_cause_wire(c: cause) == "no_card_serving"
     _ => false
   }
 }
@@ -229,7 +230,7 @@ test fn patient_claim_a_pending_round_reads_as_a_standing_request() -> Bool {
 // CLAIM P-2 (brief 2). PENDING AND NOT DUE: the decision Holds and NAMES THE NEXT INSTANT -- the same instant
 // the schedule computes, so the Hold cannot disagree with the later Resume.
 test fn patient_claim_not_due_holds_naming_the_next_redelivery_instant() -> Bool {
-  let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 502 (the card did not answer)", since: 1000)
+  let lines = pending_lines(request: validated_request(), round: 12, cause: PendingCardUnanswered, since: 1000)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
   (match decision_at(lines: lines, now: next - 1) {
     ContinuationHoldUntil { reason, redeliver_at } => reason.contains(to_string(value: next)) && reason.contains("next re-delivery at") && redeliver_at == next
@@ -241,7 +242,7 @@ test fn patient_claim_not_due_holds_naming_the_next_redelivery_instant() -> Bool
 // session, the same conversation and the same x-pool-session -- and the decision says plainly that the S3
 // resume bound is not spent by a re-delivery.
 test fn patient_claim_due_resumes_the_same_attempt() -> Bool {
-  let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 429 (every compatible upstream busy)", since: 1000)
+  let lines = pending_lines(request: validated_request(), round: 12, cause: PendingUpstreamBusy, since: 1000)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
   match decision_at(lines: lines, now: next) {
     ContinuationResume { reason, attempt_key, ordinal, causes } =>
@@ -266,7 +267,7 @@ fn wake_lines(n: Int, at_every: Int, acc: List<String>) -> List<String> {
 }
 
 test fn patient_claim_ten_days_pending_never_ends_the_request() -> Bool {
-  let first = pending_lines(request: validated_request(), round: 12, cause: "the request drew no response at all", since: 1000)
+  let first = pending_lines(request: validated_request(), round: 12, cause: PendingNoResponse, since: 1000)
   let ten_days = wake_lines(n: 20, at_every: 43200, acc: first)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000 + 20 * 43200, re_deliveries: 20, session_key: "a1")
   let outcomes = map([next - 1, next, 1000 + 864000], at => match decision_at(lines: ten_days, now: at) {
@@ -288,8 +289,8 @@ test fn patient_claim_ten_days_pending_never_ends_the_request() -> Bool {
 // the request first went unserved, and a re-pend does not restart it. (The schedule it doubles from is the
 // last DELIVERY, recorded as turn.request_redelivered, also not restarted by the re-pend.)
 test fn patient_claim_a_re_pend_keeps_the_windows_opening_instant() -> Bool {
-  let first = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
-  let after_a_wake = concat(concat(first, [session_event_request_redelivered(ordinal: 1, round: 12, at: 1500)]), pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 5000))
+  let first = pending_lines(request: validated_request(), round: 12, cause: PendingNoCardServing, since: 1000)
+  let after_a_wake = concat(concat(first, [session_event_request_redelivered(ordinal: 1, round: 12, at: 1500)]), pending_lines(request: validated_request(), round: 12, cause: PendingNoCardServing, since: 5000))
   session_request_pending_since_of(lines: first, round: 12, now: 5000) == 1000
     && session_request_pending_since_of(lines: first, round: 13, now: 5000) == 5000
     && session_request_redeliveries_of(lines: after_a_wake, round: 12) == 1
@@ -304,7 +305,7 @@ test fn patient_claim_a_re_pend_keeps_the_windows_opening_instant() -> Bool {
 // the same round would otherwise be due. The unchanged rule, made discriminating: a decision that resumed on
 // the schedule alone would resume here.
 test fn patient_claim_interrupted_calls_hold_even_when_due() -> Bool {
-  let lines = pending_lines(request: interrupted_request(), round: 7, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  let lines = pending_lines(request: interrupted_request(), round: 7, cause: PendingNoCardServing, since: 1000)
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
   (match decision_at(lines: lines, now: next) {
     ContinuationHold { reason } => reason.contains("c2") && reason.contains("not resumable")
@@ -320,7 +321,7 @@ test fn patient_claim_interrupted_calls_hold_even_when_due() -> Bool {
 // is what ends the wait. A wake that read as an ending would strand every answered session; a completed round
 // that left the request standing would re-deliver answered work forever.
 test fn patient_claim_only_a_completed_round_clears_a_standing_request() -> Bool {
-  let lines = pending_lines(request: validated_request(), round: 12, cause: "the request drew no response at all", since: 1000)
+  let lines = pending_lines(request: validated_request(), round: 12, cause: PendingNoResponse, since: 1000)
   let woken = concat(lines, [session_event_request_redelivered(ordinal: 1, round: 12, at: 1200)])
   let answered = concat(woken, ["\{\"type\":\"turn.completed\"}"])
   (match pending_recovery(lines: woken) {
@@ -338,7 +339,7 @@ test fn patient_claim_only_a_completed_round_clears_a_standing_request() -> Bool
 test fn patient_claim_pending_rounds_never_move_the_s3_bound() -> Bool {
   let needed = recovery_lines(request: validated_request(), rounds: 38)
   let resumed = [session_event_resumed(ordinal: 1, round: 38, cause: "c")]
-  let waited = concat(pending_lines(request: validated_request(), round: 40, cause: "the pool front answered 503 (no TLS card serving)", since: 1), [session_event_request_redelivered(ordinal: 1, round: 40, at: 2)])
+  let waited = concat(pending_lines(request: validated_request(), round: 40, cause: PendingNoCardServing, since: 1), [session_event_request_redelivered(ordinal: 1, round: 40, at: 2)])
   let lines = concat(concat(concat(needed, resumed), waited), concat(concat(concat(needed, resumed), waited), concat(concat(needed, resumed), concat(waited, needed))))
   match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
     ContinuationEnded { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
@@ -368,7 +369,7 @@ test fn patient_claim_an_unreadable_pending_event_refuses_rather_than_guessing()
 // per sweep; a sweep that could not read it Holds -- the request still stands -- rather than guessing an
 // instant or ending the lineage.
 test fn patient_claim_a_sweep_without_a_clock_holds_the_request() -> Bool {
-  let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  let lines = pending_lines(request: validated_request(), round: 12, cause: PendingNoCardServing, since: 1000)
   match continuation_decision(prior: Present { value: prior_without_a_clock(recovery: pending_recovery(lines: lines)) }) {
     ContinuationHold { reason } => reason.contains("could not read the clock")
     _ => false
@@ -386,7 +387,7 @@ fn prior_without_a_clock(recovery: SessionRecovery) -> PriorAttemptFacts {
 // CLAIM P-11 (a pending line is not a recovery_needed line). The two event kinds keep their own tallies: an
 // S3 resume never answers a pending request, and a re-delivery never counts as an S3 resume.
 test fn patient_claim_a_pending_event_is_its_own_kind() -> Bool {
-  let pending = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  let pending = pending_lines(request: validated_request(), round: 12, cause: PendingNoCardServing, since: 1000)
   (match session_recovery_of_events(lines: concat(pending, [session_event_resumed(ordinal: 1, round: 12, cause: "c")])) {
     // A resume of the S3 kind does NOT answer a standing pending request: the round is still owed its answer.
     SessionRecoveryNone => false
@@ -416,7 +417,7 @@ fn mixed_lines() -> List<String> {
     session_event_resumed(ordinal: 2, round: 5, cause: "c2"),
     needed_line(round: 6),
   ]
-  concat(concat(s3_lines, [session_event_request_pending(round: 6, cause: "the pool front answered 503 (no TLS card serving)", since: 1000, validation: validation_of(request: validated_request()))]), [session_event_request_redelivered(ordinal: 3, round: 6, at: 1015)])
+  concat(concat(s3_lines, [session_event_request_pending(round: 6, cause: PendingNoCardServing, since: 1000, validation: validation_of(request: validated_request()))]), [session_event_request_redelivered(ordinal: 3, round: 6, at: 1015)])
 }
 
 test fn patient_claim_the_wake_ordinals_are_one_sequence_across_both_kinds() -> Bool {
@@ -444,18 +445,40 @@ fn posted_with_status(status_line: String) -> HarnessPostOutcome {
 
 fn pending_cause_text(posted: HarnessPostOutcome) -> String {
   match harness_request_pending_cause(access: BackendAdmittedBySeat, posted: posted) {
-    Present { value: c } => c
+    Present { value: c } => request_pending_cause_wire(c: c)
     Absent => ""
   }
 }
 
 test fn patient_claim_the_status_to_class_mapping_is_503_502_429_and_no_response() -> Bool {
-  pending_cause_text(posted: posted_with_status(status_line: "503 Service Unavailable")).contains("503")
-    && pending_cause_text(posted: posted_with_status(status_line: "502 Bad Gateway")).contains("502")
-    && pending_cause_text(posted: posted_with_status(status_line: "429 Too Many Requests")).contains("429")
-    && pending_cause_text(posted: HarnessPostOutcome { body: "", success: false, headers: none }).contains("no response")
+  pending_cause_text(posted: posted_with_status(status_line: "503 Service Unavailable")) == "no_card_serving"
+    && pending_cause_text(posted: posted_with_status(status_line: "502 Bad Gateway")) == "card_unanswered"
+    && pending_cause_text(posted: posted_with_status(status_line: "429 Too Many Requests")) == "upstream_busy"
+    && pending_cause_text(posted: HarnessPostOutcome { body: "", success: false, headers: none }) == "no_response"
     && pending_cause_text(posted: posted_with_status(status_line: "400 Bad Request")) == ""
     && pending_cause_text(posted: posted_with_status(status_line: "500 Internal Server Error")) == ""
     && pending_cause_text(posted: HarnessPostOutcome { body: "ok", success: true, headers: none }) == ""
     && (match harness_request_pending_cause(access: BackendAdmittedByOperatorEndpoint { header_file: "h" as NonEmptyStr }, posted: posted_with_status(status_line: "503 Service Unavailable")) { Present { value: _ } => true Absent => false })
+}
+
+// CLAIM P-14 (review 90607: the cause is a TYPE, not a sentence). The durable event carries the cause's wire
+// tag and recovery reads it back as the variant: every variant round-trips through its tag. RED for a cause kept
+// as free text (there would be no tag to read) or for a tag table that confuses two cases.
+test fn patient_claim_the_pending_cause_round_trips_as_a_variant() -> Bool {
+  let causes = [PendingNoCardServing, PendingCardUnanswered, PendingUpstreamBusy, PendingNoResponse]
+  fold(causes, init: true, f: (acc, c) => acc && (match pending_recovery(lines: pending_lines(request: validated_request(), round: 12, cause: c, since: 1000)) {
+    SessionRecoveryRequestPending { cause: back, since: _, re_deliveries: _, wakes_made: _, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } =>
+      request_pending_cause_wire(c: back) == request_pending_cause_wire(c: c)
+    _ => false
+  }))
+}
+
+// CLAIM P-14 RED CONTROL. A pending event whose cause_class is not a known tag is MALFORMED, never defaulted to
+// some cause: the belt refuses on it rather than guessing why the request stands.
+test fn patient_claim_an_unknown_pending_cause_class_is_malformed() -> Bool {
+  let bad = "{\"type\":\"turn.request_pending\",\"round\":12,\"cause\":\"x\",\"cause_class\":\"invented_cause\",\"since_epoch_seconds\":1000,\"resumable\":true,\"interrupted_calls\":[]}"
+  (match pending_recovery(lines: [bad]) {
+    SessionRecoveryMalformed { mismatch: _ } => true
+    _ => false
+  }) && (match request_pending_cause_of_wire(wire: "invented_cause") { Absent => true, _ => false })
 }

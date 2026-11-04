@@ -360,9 +360,44 @@ fn session_event_recovery_needed(round: Int, refusal: UnexplainedEngineRefusal, 
 // it places by x-pool-session on cards this lab does not enrol). What carries over is the law, not the store:
 // supply zero keeps the work waiting, a probe reading is not a failed request, and only a failed request spends a
 // bound. The lab's durable wait is the session's own event stream, which already survives the worker's exit.
-fn session_request_pending_cause(round: Int, cause: String) -> String {
+// WHY A REQUEST STANDS PENDING, as a closed sum (not a sentence): the four cases the fleet engine front can
+// leave a request in. The durable event carries the wire tag; the sentence below is DISPLAY only, derived
+// from the variant, and nothing parses it back.
+type RequestPendingCause
+  = PendingNoCardServing
+  | PendingCardUnanswered
+  | PendingUpstreamBusy
+  | PendingNoResponse
+
+fn request_pending_cause_wire(c: RequestPendingCause) -> String {
+  match c {
+    PendingNoCardServing => "no_card_serving"
+    PendingCardUnanswered => "card_unanswered"
+    PendingUpstreamBusy => "upstream_busy"
+    PendingNoResponse => "no_response"
+  }
+}
+
+fn request_pending_cause_of_wire(wire: String) -> RequestPendingCause? {
+  if wire == "no_card_serving" { Present { value: PendingNoCardServing } }
+  else if wire == "card_unanswered" { Present { value: PendingCardUnanswered } }
+  else if wire == "upstream_busy" { Present { value: PendingUpstreamBusy } }
+  else if wire == "no_response" { Present { value: PendingNoResponse } }
+  else { none }
+}
+
+fn request_pending_cause_text(c: RequestPendingCause) -> String {
+  match c {
+    PendingNoCardServing => "the front answered 503 (no card serving)"
+    PendingCardUnanswered => "the front answered 502 (the chosen card did not answer)"
+    PendingUpstreamBusy => "the front answered 429 (every compatible upstream busy)"
+    PendingNoResponse => "the request drew no response at all; the client's --max-time is only its observation window, and a timeout means stopped watching -- never failed, never cancelled"
+  }
+}
+
+fn session_request_pending_cause(round: Int, cause: RequestPendingCause) -> String {
   join([
-    "round ", to_string(value: round), ": ", cause,
+    "round ", to_string(value: round), ": ", request_pending_cause_text(c: cause),
     "; no model output came back and the request had no effect, so it stands pending until the belt re-delivers it",
   ], "")
 }
@@ -370,11 +405,12 @@ fn session_request_pending_cause(round: Int, cause: String) -> String {
 // THE ONE DURABLE PENDING EVENT, written by the worker as it exits on a request that drew no answer. Its
 // members are the whole contract: the round, the cause, the window's opening instant, whether the state is
 // resumable, and the tool calls still without a recorded result.
-fn session_event_request_pending(round: Int, cause: String, since: EpochSecs, validation: SessionValidation) -> String {
+fn session_event_request_pending(round: Int, cause: RequestPendingCause, since: EpochSecs, validation: SessionValidation) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "turn.request_pending")),
     json_kv(key: "round", value: json_int(n: round)),
     json_kv(key: "cause", value: json_string(s: session_request_pending_cause(round: round, cause: cause))),
+    json_kv(key: "cause_class", value: json_string(s: request_pending_cause_wire(c: cause))),
     json_kv(key: "since_epoch_seconds", value: json_int(n: since)),
     json_kv(key: "resumable", value: json_bool(b: session_validation_resumable(v: validation))),
     json_kv(key: "interrupted_calls", value: json_array(elements: session_validation_interrupted_ids(v: validation) |> map(id => json_string(s: id)))),
@@ -424,7 +460,7 @@ type SessionRecovery
   // 🟡 feature:measure-instant-carrier dissolve-on: a constructed std.measure instant carrier
   // (ObservationInstant, or an EpochSecs with unit evidence at non-literal positions) that worker, belt,
   // and stream all hand each other; then these fields become it and session_epoch_member deletes.
-  | SessionRecoveryRequestPending { cause: String, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
+  | SessionRecoveryRequestPending { cause: RequestPendingCause, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
   | SessionRecoveryMalformed { mismatch: String }
 
 // THE TYPED RESUMABILITY READING (review 88393: a Bool flattened not-pending, malformed and interrupted into one
@@ -464,7 +500,7 @@ fn session_recovery_resumability(recovery: SessionRecovery) -> SessionResumabili
 
 type SessionRecoveryEvent
   = RecoveryEventNeeded { cause: String, round: Int, interrupted_calls: List<String> }
-  | RecoveryEventRequestPending { cause: String, round: Int, interrupted_calls: List<String>, since: EpochSecs, resumable: Bool }
+  | RecoveryEventRequestPending { cause: RequestPendingCause, round: Int, interrupted_calls: List<String>, since: EpochSecs, resumable: Bool }
   | RecoveryEventRequestRedelivered { round: Int, at: EpochSecs }
   | RecoveryEventCompleted
   | RecoveryEventResumed
@@ -594,13 +630,22 @@ fn session_needed_event_of(doc: JsonValue) -> SessionRecoveryEvent {
 fn session_request_pending_event_of(doc: JsonValue) -> SessionRecoveryEvent {
   match session_needed_event_of(doc: doc) {
     RecoveryEventMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending (read as a recovery event): ", m], "") }
-    RecoveryEventNeeded { cause, round, interrupted_calls } =>
+    RecoveryEventNeeded { cause: _, round, interrupted_calls } =>
       match session_epoch_member(v: doc, key: "since_epoch_seconds") {
         SessionEpochMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
         SessionEpochRead { value: since } =>
           match session_bool_member(v: doc, key: "resumable") {
             SessionBoolMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
-            SessionBoolFound { value: resumable } => RecoveryEventRequestPending { cause: cause, round: round, interrupted_calls: interrupted_calls, since: since, resumable: resumable }
+            SessionBoolFound { value: resumable } =>
+              match session_member_text(v: doc, key: "cause_class") {
+                SessionTextAbsent => RecoveryEventMalformed { mismatch: "turn.request_pending: member cause_class is absent" }
+                SessionTextMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
+                SessionTextFound { value: wire } =>
+                  match request_pending_cause_of_wire(wire: wire) {
+                    Absent => RecoveryEventMalformed { mismatch: join(["turn.request_pending: cause_class '", wire, "' is not a known request-pending cause"], "") }
+                    Present { value: typed } => RecoveryEventRequestPending { cause: typed, round: round, interrupted_calls: interrupted_calls, since: since, resumable: resumable }
+                  }
+              }
           }
       }
     _ => RecoveryEventMalformed { mismatch: "turn.request_pending: read as a different event" }
@@ -794,7 +839,7 @@ fn session_latest_instant(instants: List<EpochSecs>) -> EpochSecs? {
 // re-deliveries are the belt's recorded wakes the schedule doubles from, and the last delivery instant is
 // the latest of them -- or the window's opening, when the round has never been re-delivered and its own
 // worker delivered it before finding it unserved.
-fn session_request_pending_recovery(events: List<SessionRecoveryEvent>, cause: String, round: Int, interrupted_calls: List<String>, resumable: Bool, wakes_made: Int) -> SessionRecovery {
+fn session_request_pending_recovery(events: List<SessionRecoveryEvent>, cause: RequestPendingCause, round: Int, interrupted_calls: List<String>, resumable: Bool, wakes_made: Int) -> SessionRecovery {
   let stamps = session_request_redelivery_stamps_for(events: events, round: round)
   match session_request_pending_since_for(events: events, round: round) {
     // UNREACHABLE BY CONSTRUCTION -- the scan only calls this for a standing pending event, which names
