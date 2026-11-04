@@ -18,7 +18,7 @@ import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_la
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
-  ComputeUnitStopObservationRefused,
+  ComputeUnitStopObservation, ComputeUnitStopObservationRefused,
   NoStopObservation, NoPathVirtualization,
   NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path,
 }

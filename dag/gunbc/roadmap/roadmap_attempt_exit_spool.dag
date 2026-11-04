@@ -29,8 +29,9 @@ import gunbc.systemd_unit_names {
   compute_unit_name, compute_unit_name_admission,
 }
 import extdeps.systemd {
-  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
-  SystemdUnitNameOverlong, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+  SystemdUnitNameAdmission, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty,
+  SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong, systemd_unit_name_wire,
+  systemd_unit_name_refusal_detail,
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
