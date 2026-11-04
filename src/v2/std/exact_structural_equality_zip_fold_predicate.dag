@@ -2,24 +2,81 @@ module v2.std.exact_structural_equality_zip_fold_predicate
 
 import v2.std.node { Node, node_equal_ignoring_provenance, well_formed }
 
+// WHY THE EXACT STRUCTURAL COMPARISON REFUSED IS PART OF THE ANSWER. This predicate is what
+// v2.std.find_witness folds, and a Bool answered five different questions with one word: a malformed
+// source fact, a malformed algebra, a malformed candidate, a root that differs, or an argument that
+// differs. Downstream, a refusal that only says "no candidate matched" gets named after the POSITION it
+// was asked at, so every shape that failed here shares one cause whatever question answered no
+// (gunbc.recurring_failure_mode `declared_type_wall_keyed_on_the_value_being_a_kernel` and its sibling
+// rows name the same cause for different mechanisms). Each conjunct is now an arm of a verdict, decided
+// once here, and the Bool the fold asks for is DERIVED from that verdict -- never the reverse, so the
+// fold and the reason cannot disagree about which question was asked.
+//
+// THE VERDICT'S ARMS FALL INTO TWO REFUSAL CLASSES, and the class is chosen in v2.std.inhabitance, not
+// here (ruling by keen-heron-809 on this PR). `ComparisonRootsDiffer`,
+// `ComparisonArgumentCountDiffers` and `ComparisonArgumentsDiffer` are the arms that ANSWER the
+// inhabitance question: the comparison ran and the produced type does not inhabit the declared one. The
+// rest -- `ComparisonSourceFactsMalformed`, `ComparisonAlgebraMalformed`,
+// `ComparisonCandidateMalformed`, `ComparisonAlgebraNotTheSourceFacts`, and `ComparisonHolds` reached
+// while the witness fold still refused -- say the comparison did not produce a verdict on this pair: an
+// upstream or internal defect. Those refuse under a different diagnostic class, so a reader is never sent
+// to fix a type error the compiler never showed. `inhabitance_structural_decision_reason` in
+// v2.std.inhabitance maps each arm to its refusal symbol and `inhabitance_refusal_diagnostic` gives each
+// family its own class.
+
+type ExactStructuralComparison
+  = ComparisonHolds
+  | ComparisonSourceFactsMalformed
+  | ComparisonAlgebraMalformed
+  | ComparisonCandidateMalformed
+  | ComparisonAlgebraNotTheSourceFacts
+  | ComparisonRootsDiffer
+  | ComparisonArgumentCountDiffers { source_arity: Int, candidate_arity: Int }
+  | ComparisonArgumentsDiffer
+
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
   node_equal_ignoring_provenance(a: source_facts, b: candidate)
 }
+
+// THE ONE DECISION. The arms follow the shape of `node_equal_ignoring_provenance` -- same root, then the
+// labeled children zipped -- so the arms are exhaustive over a refusal rather than a sample of it: with
+// the roots equal and the child counts equal, an unequal pair can only differ in a child edge, which is
+// `ComparisonArgumentsDiffer`. Malformed operands are reported before any comparison: a node that is
+// not well-formed does not get an opinion about which part of it differs.
+fn exact_structural_comparison(
+  source_facts: Node,
+  algebra: Node,
+  candidate: Node
+) -> ExactStructuralComparison {
+  if !well_formed(n: source_facts) {
+    ComparisonSourceFactsMalformed
+  } else if !well_formed(n: algebra) {
+    ComparisonAlgebraMalformed
+  } else if !well_formed(n: candidate) {
+    ComparisonCandidateMalformed
+  } else if !exact_structural_equality_zip_fold(source_facts: algebra, candidate: source_facts) {
+    ComparisonAlgebraNotTheSourceFacts
+  } else if source_facts.kind != candidate.kind {
+    ComparisonRootsDiffer
+  } else if count(source_facts.children) != count(candidate.children) {
+    ComparisonArgumentCountDiffers {
+      source_arity: count(source_facts.children),
+      candidate_arity: count(candidate.children)
+    }
+  } else if exact_structural_equality_zip_fold(source_facts: source_facts, candidate: candidate) {
+    ComparisonHolds
+  } else {
+    ComparisonArgumentsDiffer
+  }
+}
+
 fn exact_structural_equality_zip_fold_preservation_holds(
   source_facts: Node,
   candidate: Node,
   algebra: Node,
 ) -> Bool {
-  well_formed(n: source_facts)
-    && well_formed(n: algebra)
-    && well_formed(n: candidate)
-
-    && exact_structural_equality_zip_fold(
-      source_facts: algebra,
-      candidate: source_facts
-    )
-    && exact_structural_equality_zip_fold(
-      source_facts: source_facts,
-      candidate: candidate
-    )
+  match exact_structural_comparison(source_facts: source_facts, algebra: algebra, candidate: candidate) {
+    ComparisonHolds => true
+    _ => false
+  }
 }
