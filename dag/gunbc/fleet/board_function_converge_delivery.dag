@@ -1,13 +1,12 @@
 module gunbc.fleet.board_function_converge_delivery
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { ArgvCommand, argv_command }
-import extdeps.exec.program { uncataloged_program }
+import extdeps.posix.test_utility { test_exists_command }
 import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
@@ -89,16 +88,26 @@ fn arch_refusal(who: String, arch: MachineArch) -> String? {
   }
 }
 
+// A port this delivery never uses answers its refusal through a fn that declares Optional<String> itself,
+// the shape every other DeployApplyPorts construction uses: a bare Present literal in the closure body
+// takes its expected type only from the ports record's field, declared in gunbc.host.host_effect_realize,
+// and the resolver cannot identify that Optional from here, so it refuses rather than leave the payload
+// unstamped. A declared interim: gunbc.recurring_failure_mode
+// generic_variant_without_expected_type_leaves_a_present_arm_undecided (the fifth unclosed route).
+fn delivery_port_refused(reason: String) -> Optional<String> {
+  Present { value: reason }
+}
+
 // The delivery uses none of the broker-specific ports; each refuses by name if a plan ever reaches one.
 fn delivery_ports(source_root: String, transport: HostEffectTransport) -> DeployApplyPorts {
   DeployApplyPorts {
     command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "the board-function converge delivery ensures no owned directory" } },
-    state_directories: fn(r) { Present { value: "the board-function converge delivery installs no broker state directories" } },
+    state_directories: fn(r) { delivery_port_refused(reason: "the board-function converge delivery installs no broker state directories") },
     root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
-    broker_tree: fn(r) { Present { value: "the board-function converge delivery installs no broker tree" } },
-    dependency: fn(d) { Present { value: "the board-function converge delivery installs no dependency step" } },
+    broker_tree: fn(r) { delivery_port_refused(reason: "the board-function converge delivery installs no broker tree") },
+    dependency: fn(d) { delivery_port_refused(reason: "the board-function converge delivery installs no dependency step") },
     retract: deploy_retract_ports_on_host(transport: transport),
     object_source: fn() { observe_object_source_serve(source: source_root) },
   }
@@ -117,7 +126,7 @@ fn run_delivery_stage(plan: DeployApplyPlan, ports: DeployApplyPorts, stage: Str
 
 fn admission_latch_standing(transport: HostEffectTransport) -> String? {
   match run_argv_over_host_effect_transport(
-    command: argv_command(program: uncataloged_program(invocation: "test"), arguments: ["-e", board_function_converge_admission_marker as String]),
+    command: test_exists_command(path: board_function_converge_admission_marker as String),
     transport: transport,
   ) {
     RunArgvTransportRefused { reason: r } => Present { value: join(["the admission latch read was refused: ", r], "") }

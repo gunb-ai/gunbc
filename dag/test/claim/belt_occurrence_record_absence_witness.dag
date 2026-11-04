@@ -171,10 +171,10 @@ test fn the_real_presence_producer_establishes_a_missing_directory_absent() -> B
   }
 }
 
-test fn the_real_record_producer_reads_a_missing_directory_as_indeterminate_not_absent() -> Bool {
+test fn the_real_record_producer_establishes_a_missing_directory_absent_from_the_ancestor_listing() -> Bool {
   match filesystem_file_observation_of_path(path: join([missing_attempt_directory, "/launch-identity.json"], "")) {
-    FilesystemFileIndeterminate { cause: _ } => true
-    FilesystemFileAbsent(_) => false
+    FilesystemFileAbsent(_) => true
+    FilesystemFileIndeterminate { cause: _ } => false
     FilesystemFileRead { path: _, content: _ } => false
     FilesystemFileObservationsDisagree { path: _, cause: _ } => false
     FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
