@@ -1648,7 +1648,6 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
           // pure lookup over these, so a pass over n claims costs one ledger read and one pane read, not n of each.
           let ledger = belt_attempts_observe_for_instance(instance: instance)
           let panes = belt_attempt_panes_observe_for_instance(instance: instance)
-        Present { value: now } =>
           match worktree_claim_store(instance: instance) {
           WorktreeClaimStoreUnready { detail } => SessionSettlePassRefused { detail: detail }
           WorktreeClaimStoreReady { store: claims } =>
