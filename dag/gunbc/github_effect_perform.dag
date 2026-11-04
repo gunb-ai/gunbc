@@ -1,6 +1,6 @@
 module gunbc.github_effect_perform
 
-import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs, Bytes }
+import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs, Bytes, secret_of_text }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -236,7 +236,7 @@ fn mint_controller_installation_token(installation: GitHubAppInstallationId, key
         AppJwtUnsigned { detail: d } => ControllerTokenNotMinted { performance: JitMintAppJwtUnsigned { detail: d } }
         AppJwtSigned { jwt: jwt } =>
           match github.AppInstallationAccessTokens.Create(
-            app_jwt: jwt as Secret,
+            app_jwt: secret_of_text(jwt as String),
             installation_id: installation.value,
           ) {
             RestAnswered { answer } => ControllerTokenMinted { token: ControllerInstallationToken {
@@ -655,7 +655,7 @@ fn publisher_jwt_after_removal(signed: JitMintAppJwt, removed: Bool, removal_err
   } else {
     match signed {
       AppJwtUnsigned { detail: d } => PublisherJwtNotReady { cause: concat("HealPublisherAppJwtUnsigned: ", d) }
-      AppJwtSigned { jwt: jwt } => PublisherJwtReady { jwt: jwt as Secret }
+      AppJwtSigned { jwt: jwt } => PublisherJwtReady { jwt: secret_of_text(jwt as String) }
     }
   }
 }
@@ -685,7 +685,7 @@ data publication_helper_installation_token_permissions: GitHubInstallationTokenP
 fn publisher_jwt_from_signed(signed: JitMintAppJwt) -> PublisherJwtStaged {
   match signed {
     AppJwtUnsigned { detail: d } => PublisherJwtNotReady { cause: concat("HealPublisherAppJwtUnsigned: ", d) }
-    AppJwtSigned { jwt: jwt } => PublisherJwtReady { jwt: jwt as Secret }
+    AppJwtSigned { jwt: jwt } => PublisherJwtReady { jwt: secret_of_text(jwt as String) }
   }
 }
 

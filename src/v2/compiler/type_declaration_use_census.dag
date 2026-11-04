@@ -175,7 +175,7 @@ fn tdc_member_form(name: Symbol, member: Node, kinds: FreeMonoid<DeclaredTypeKin
     ModuleMemberCoproduct { name: _, coproduct: _ } => FormUndecided
     ModuleMemberAlias => FormUndecided
     ModuleMemberOpaque => FormUndecided
-    ModuleMemberGeneric => FormUndecided
+    ModuleMemberGeneric { name: _, params: _, member: _ } => FormUndecided
   }
 }
 
@@ -239,7 +239,7 @@ fn tdc_member_read(name: Symbol, edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>
     ModuleMemberRecordOrRefinement => TdcTypeDecl { generic: false, form: FormUndecided, member: edge.target }
     ModuleMemberAlias => TdcTypeDecl { generic: false, form: AliasForm, member: edge.target }
     ModuleMemberOpaque => TdcTypeDecl { generic: false, form: BodylessForm, member: edge.target }
-    ModuleMemberGeneric => TdcTypeDecl { generic: true, form: tdc_generic_form(name: name, target: edge.target, kinds: kinds), member: tdc_generic_member(target: edge.target) }
+    ModuleMemberGeneric { name: _, params: _, member: _ } => TdcTypeDecl { generic: true, form: tdc_generic_form(name: name, target: edge.target, kinds: kinds), member: tdc_generic_member(target: edge.target) }
     ModuleMemberUnsupported =>
       if tdc_is_resource(name: name, kinds: kinds) { TdcTypeDecl { generic: false, form: ResourceForm, member: edge.target } } else { TdcNotAType }
   }

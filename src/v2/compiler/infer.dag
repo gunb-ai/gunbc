@@ -7,7 +7,7 @@ import std.primitive_projection { never_type_declaration }
 import v2.std.anonymous_binder { TypeVariableOfBinder, TypeVariableOfConstructorUse, TypeVariableRigid, fresh_constructor_use_variable, type_variable_origin }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceSynthetic, ScopedOccurrenceAllocator, alloc_projected_occurrence, occurrence_id_eq, scoped_occurrence_allocator }
 import v2.std.provenance { node_occurrence_id_optional }
-import std.integer { int_to_decimal_string }
+import std.integer { int_to_decimal_string, Signedness, Signed, Unsigned }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_keys, collection_concat_shape, collection_count_shape }
 import v2.std.bounded_lattice_completeness {
@@ -56,7 +56,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type, declaration_denotation_is_optional }
-import v2.std.node_query { find_core_child, is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
+import v2.std.node_query { find_core_child, is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain, field_projection_optional, named_child_lookup, pattern_wildcard_name }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
@@ -65,7 +65,7 @@ import v2.std.list_introduction { list_introduction_elements_optional, list_intr
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness, canonical_grounding_from_derived_type }
 import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, application_argument_does_not_inhabit_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
-import v2.std.diagnostic { CorrectionNotModeled, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, declaration_locus, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending }
+import v2.std.diagnostic { CorrectionNotModeled, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, declaration_locus, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending, bind_outcome_accepted, non_empty_diagnostics_append }
 import v2.std.logic { Bool, bool_node }
 import v2.std.type_binder { GenericTypeDecl, KindBound, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, RefinementDeclaration, StructureBound, TypeAlias, Unbound, cast_target_optional, declaration_binder_edge, edge_is_type_params, refinement_declaration_of_node, type_annotation_optional, type_decl_view, type_param_bound, type_param_names, where_predicate_set_edge }
 import v2.std.coercion { coercion_cast_crossing }
@@ -73,7 +73,6 @@ import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, wit
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.machine_width_range { machine_width_admits }
-import std.integer { Signedness, Signed, Unsigned }
 
 
 
@@ -4469,8 +4468,13 @@ fn infer_declared_position_undecidable_reason(
   type_params: List<Symbol>,
   rigid_binders: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_params) {
-    Present { value: reason } => optional_present(value: reason)
+  // Only a declared position that IS a bare type variable is undecided here: a variable's own position.
+  // A declared type that merely MENTIONS one (`Pair<K, String>`) goes on to the pair judgment, which
+  // undecides the variable's position alone and judges its concrete siblings
+  // (v2.std.inhabitance inhabitance_pair_undecidable_reason); abstaining the whole position here hid a
+  // concrete sibling mismatch before that judgment could run.
+  match infer_type_variable_binder(t: declared, type_params: type_params) {
+    Present { value: _ } => inhabitance_node_undecidable_reason(n: declared, type_variables: type_params)
     Absent =>
       match declared.kind {
         // A rigid binder of an enclosing declaration is a KNOWN type in its scope (the leaf rule,
@@ -10909,17 +10913,83 @@ fn infer_gather_fold_bind_row_on_entries(
         children_remaining: 0
       )
     Accepted { value: _, diagnostics: d } =>
-      infer_gather_transform_frontier_on_entries(
-        node: node,
-        entries: entries,
-        pending: diagnostics_merge(outer: pending, inner: d),
-        partials: partials,
-        kinds: kinds,
-        resolved: resolved,
-        instances: infer_no_type_variable_instances(),
-        binder_types: infer_no_binder_types(),
-        rigid_binders: rigid_binders
-      )
+      match infer_fold_init_closed(node: node, entries: entries, resolved: resolved) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: closed_entries, diagnostics: cd } =>
+          infer_gather_transform_frontier_on_entries(
+            node: node,
+            entries: closed_entries,
+            pending: diagnostics_merge(outer: diagnostics_merge(outer: pending, inner: d), inner: cd),
+            partials: partials,
+            kinds: kinds,
+            resolved: resolved,
+            instances: infer_no_type_variable_instances(),
+            binder_types: infer_no_binder_types(),
+            rigid_binders: rigid_binders
+          )
+      }
+  }
+}
+
+// THE FOLD'S INIT FACT IS CLOSED WHERE THE FOLD CLOSES IT. infer_fold_bind_check closes an open carrier (`init: []`)
+// at the type the step produces (infer_fold_carrier_closed_at) -- but only to JUDGE; the closed type was dropped and the
+// init node kept the constructor-use variable it was minted with, which native emission then refuses as an unresolved type
+// variable. Every other site that closes an open arm records the closure: a let annotation instantiates its bound value's
+// fact (infer_judge_declared_position_closing) and a branch join replaces the held arm's root fact
+// (infer_close_held_root_closed). The fold is one more declared position for its init, so it records the same closure through
+// the same relation: the instances of the one closing relation, instantiated at the init's entry. A carrier already closed
+// (a typed init) yields no instances and is left as written; so is a fold whose step type is not derived (the counted
+// advisory infer_fold_bind_check already raised).
+fn infer_fold_init_closed(node: Node, entries: Map<Node, List<InferredFacts>>, resolved: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
+  match bind_value(n: node) {
+    Absent => outcome_accepted(entries)
+    Present { value: init } =>
+      match infer_settled_type_at(target: init, entries: entries) {
+        Absent => outcome_accepted(entries)
+        Present { value: carrier } =>
+          if infer_type_is_open(t: carrier) {
+            match bind_slot_target(n: node, slot: BindBodySlot) {
+              Absent => outcome_accepted(entries)
+              Present { value: loop_node } =>
+                match fold_loop_step(loop_node: loop_node) {
+                  Absent => outcome_accepted(entries)
+                  Present { value: step } =>
+                    match infer_fold_step_produced(step: step, entries: entries) {
+                      Absent => outcome_accepted(entries)
+                      Present { value: produced } =>
+                        match infer_close_produced_at_declared(declared: produced, produced: carrier, instances: Empty, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
+                          Empty => outcome_accepted(entries)
+                          Cons { head: h0, tail: ht } => infer_entries_instantiate_at(entries: entries, key: init, instances: Cons { head: h0, tail: ht })
+                        }
+                    }
+                }
+            }
+          } else {
+            outcome_accepted(entries)
+          }
+      }
+  }
+}
+
+// What one step produces, as the fold carrier is judged against it: the declared return when the step has one (the
+// second judgement of infer_fold_bind_check), else the settled type of the step body.
+fn infer_fold_step_produced(step: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
+  match fold_step_declared_return(step: step) {
+    Present { value: declared_return } => Present { value: infer_declared_type_denotation(declared: declared_return) }
+    Absent =>
+      match fold_step_body_node(step: step) {
+        Absent => Absent
+        Present { value: body } => infer_settled_type_at(target: body, entries: entries)
+      }
   }
 }
 

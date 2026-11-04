@@ -81,8 +81,8 @@ import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_ho
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.realization_schedule { RunnableBatchClamp }
-import std.decl_ref { decl_ref }
+import std.realization_schedule { RunnableBatchClamp, ScheduleWitnessEntry }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
 import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
@@ -115,8 +115,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var,
 }
-import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.std.node { Node }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
@@ -132,7 +130,6 @@ import gunbc.commit_workflow {
   project_ci_floor_gates,
   project_ci_floor_witness_entries
 }
-import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
 import gunbc.auth.heal_publisher_federation {
   HealPublisherFederation, public_heal_publisher_federation,
@@ -173,7 +170,6 @@ import std.env_binding { EnvSet, EnvUnset }
 import std.optional { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list, list_map }
 import extdeps.rust.cargo { cargo_default_release_dir }
 
@@ -753,8 +749,8 @@ fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
 // DeclarationRef the substrate resolves) with the entry path derived from the module index rather
 // than authored beside it, at which point a wrong target cannot be written.
 type GunbcRunStepTarget {
-  entry: String
-  function: String
+  entry: NonEmptyStr
+  function: NonEmptyStr
 }
 
 data gunbc_ci_fleet_reach_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -800,6 +796,38 @@ data gunbc_ci_fleet_converge_plan_revision_target: GunbcRunStepTarget = GunbcRun
 data gunbc_ci_fleet_converge_checkout_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
   function: "verify_checkout_at_plan_revision",
+}
+
+// THE RUN POINTER ADMISSIONS (gunbc.fleet.fleet_converge_plan_revision). Each admits what a
+// hand-typed predecessor run id NAMES -- that run exists, is a completed successful dispatch of
+// THIS workflow, and carries the artifact about to be downloaded -- before actions/download-artifact
+// is the first thing to touch the pointer. Refusing by name is the whole step.
+data gunbc_ci_admit_plan_run_pointer_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "admit_plan_run_pointer",
+}
+
+data gunbc_ci_admit_apply_run_pointer_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "admit_apply_run_pointer",
+}
+
+// THE DISPATCH-INPUT FAIL-FAST. The four inputs the dashboard transaction will later refuse on
+// (empty hash, malformed revision, malformed pointers) are refused HERE, in seconds, instead of
+// after the pair build and the ten-minute fold resolve that paid them in runs 39177393512 and
+// 36719161144. It asserts no truth the fold does not also assert; it only moves the same refusal
+// earlier, where it is cheap.
+data gunbc_ci_admit_dashboard_deploy_inputs_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "admit_dashboard_deploy_dispatch_inputs",
+}
+
+// THE JOB-SIDE EXACTLY-ONE-RECEIPT ASSERTION (gunbc.live_deploy.apply_receipt): the rule -- exactly one
+// decodable document, apply XOR refusal, zero never (named), the receipt/conclusion pairing -- lives in
+// the receipt module with the documents it counts, not in shell in the workflow (DESIGN §6).
+data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply_receipt.dag",
+  function: "assert_dashboard_deploy_receipts",
 }
 
 data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1016,6 +1044,14 @@ data gunbc_ci_host_memory_envelope_observe_target: GunbcRunStepTarget = GunbcRun
   function: "host_memory_envelope_observe_ci_wet",
 }
 
+// THE DEPLOY PATH'S BUDGET PREFLIGHT (gunbc.host.host_budget_preflight): read the process cgroup and
+// refuse by name, before the fold is paid for, when no limit bounds this process. Read-only; the fold's
+// own budget gate stays authoritative.
+data gunbc_ci_host_budget_preflight_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_budget_preflight.dag",
+  function: "admit_host_budget_declared",
+}
+
 data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_file_converge_ci_wet",
@@ -1033,6 +1069,13 @@ data gunbc_ci_host_primary_network_observe_target: GunbcRunStepTarget = GunbcRun
 data gunbc_ci_host_primary_network_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_primary_network_apply.dag",
   function: "host_primary_network_converge_ci_wet",
+}
+
+// THE BOARD-FUNCTION CONVERGE DELIVERY (gunbc.fleet.board_function_converge_delivery). The receipt path is that
+// module's, so this target names only the entry.
+data gunbc_ci_board_function_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/board_function_converge_delivery.dag",
+  function: "board_function_converge_delivery_ci_wet",
 }
 
 data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1520,6 +1563,10 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_fleet_converge_plan_revision_target,
     gunbc_ci_fleet_converge_checkout_verify_target,
+    gunbc_ci_admit_plan_run_pointer_target,
+    gunbc_ci_admit_apply_run_pointer_target,
+    gunbc_ci_admit_dashboard_deploy_inputs_target,
+    gunbc_ci_assert_dashboard_deploy_receipts_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
@@ -1550,10 +1597,12 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_microvm_network_apply_target,
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_host_memory_envelope_observe_target,
+    gunbc_ci_host_budget_preflight_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_host_cap_release_target,
     gunbc_ci_host_primary_network_observe_target,
     gunbc_ci_host_primary_network_converge_target,
+    gunbc_ci_board_function_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
@@ -2453,6 +2502,46 @@ fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
   )
 }
 
+fn gunbc_ci_admit_plan_run_pointer_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_admit_plan_run_pointer_target.entry,
+    function: gunbc_ci_admit_plan_run_pointer_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_admit_apply_run_pointer_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_admit_apply_run_pointer_target.entry,
+    function: gunbc_ci_admit_apply_run_pointer_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_admit_dashboard_deploy_inputs_target.entry,
+    function: gunbc_ci_admit_dashboard_deploy_inputs_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_assert_dashboard_deploy_receipts_target.entry,
+    function: gunbc_ci_assert_dashboard_deploy_receipts_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 fn gunbc_ci_fleet_converge_apply_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
@@ -2621,6 +2710,20 @@ fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
       ),
       f: fn(c) { app_mint_step(command: c) },
     )
+  )
+}
+
+// THE MEMORY CEILING ON ITS OWN, rendered for a phase that has a tail of its own between the ceiling and
+// the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
+// go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
+// commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
+fn heal_publisher_cgroup_prelude_script() -> String {
+  concat(
+    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+      steps: heal_publisher_cgroup_prelude(),
+      on_failure: FailFast
+    }),
+    "\n"
   )
 }
 
@@ -3274,6 +3377,16 @@ fn gunbc_ci_host_primary_network_converge_invoke() -> String {
   )
 }
 
+fn gunbc_ci_board_function_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_board_function_converge_target.entry,
+    function: gunbc_ci_board_function_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/board-function-converge-delivery-receipt.txt"
+  )
+}
+
 fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -3281,6 +3394,16 @@ fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
     function: gunbc_ci_host_memory_envelope_observe_target.function,
     claim_run: false,
     receipt_rel: host_memory_envelope_receipt_path
+  )
+}
+
+fn gunbc_ci_host_budget_preflight_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_budget_preflight_target.entry,
+    function: gunbc_ci_host_budget_preflight_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
@@ -4416,30 +4539,6 @@ fn gunbc_ci_seed_build_artifacts_regen_invoke() -> String {
     receipt_rel: none
   )
 }
-
-fn gunbc_ci_tier_o_drift_check_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_tier_o_drift_check_target.entry,
-    function: gunbc_ci_tier_o_drift_check_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
-// THE ADMIT STEP CARRIES NO PRELUDE, AND THAT ABSENCE IS THE POINT: it runs before the publisher
-// federates, so a candidate that does not admit never causes a token to be minted.
-fn gunbc_ci_heal_publication_admit_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: heal_publisher_cgroup_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_publication_admit_target.entry,
-    function: gunbc_ci_heal_publication_admit_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId, f: HealPublisherFederation) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "heal-publisher",
@@ -4482,22 +4581,6 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
     "\n"
   )
 }
-
-// THE PUBLISHER'S ENTRY MINTS ITS OWN TOKEN, in the .dag: gunbc.github_effect_perform
-// mint_publisher_installation_token reads the App key under the workflow's WIF access token, signs,
-// and exchanges for a contents:write token on this repository alone. This step therefore carries only
-// the cgroup prelude; no credential is rendered into shell.
-fn gunbc_ci_heal_publication_publish_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: heal_publisher_cgroup_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_publication_publish_target.entry,
-    function: gunbc_ci_heal_publication_publish_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
-}
-
 
 fn gunbc_ci_namecheap_observe_invoke() -> String {
   gunbc_run_step_script(

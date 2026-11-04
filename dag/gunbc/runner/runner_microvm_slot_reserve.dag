@@ -1,5 +1,6 @@
 module gunbc.runner.runner_microvm_slot_reserve
 
+import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.types { String, NonEmptyStr, Bool, List, Timestamp }
 import std.measure { money_amount_micro, MoneyPerSecond, MoneyOnce, second, Count, One }
 import std.durable_compare_and_set { cas_generation_count }
@@ -63,8 +64,10 @@ import product.fabric.grant_issue {
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.runner.runner_microvm_slot_unit {
-  microvm_slot_reserve_unit_name, microvm_slot_reserve_receipt_prefix, microvm_slot_reserve_wait_bound,
-  microvm_slot_reserve_receipt_path, microvm_unit_receipt_path,
+  microvm_slot_reserve_unit_name, microvm_slot_reserve_wait_bound,
+  microvm_slot_reserve_receipt_path,
+  MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, ReserveReceipts,
+  microvm_receipt_record,
 }
 import gunbc.runner.runner_microvm_slot_start {
   MicrovmUnitStartSubject, MicrovmSlotStartRun, microvm_unit_start_run, microvm_slot_start_text,
@@ -283,7 +286,7 @@ fn microvm_job_candidate_field(slot: RunnerSlotIdentity, job: MicroVmCellJob) ->
     sanctions: microvm_job_sanctions(job: job),
     active: fleet_ci_posture,
     scope: microvm_job_scope(slot: slot, job: job),
-    decision_receipt: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_slot_reserve_receipt_prefix"),
+    decision_receipt: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_receipt_record"),
     exercises: [],
     readiness: ExerciseOfRoute { route: microvm_job_route(job: job), work: work.id },
     at: 0,
@@ -333,14 +336,22 @@ fn microvm_slot_reserve_main() -> ProcessExit {
         issued_at: now,
       )
       let text = shakedown_broker_outcome_text(slot: slot, outcome: outcome)
-      let path = microvm_unit_receipt_path(prefix: microvm_slot_reserve_receipt_prefix(), invocation_id: invocation as NonEmptyStr)
-      let w = Filesystem.Write(path: path, content: concat(text, "\n"))
-      if !w.success {
-        exit_failure(reason: join(["microvm_slot_reserve: receipt write refused at ", path, ": ", w.error, " -- outcome was: ", text], ""))
-      } else if !shakedown_broker_reserved(outcome: outcome) {
-        exit_failure(reason: join(["microvm_slot_reserve: ", text], ""))
-      } else {
-        ExitSuccess
+      match microvm_receipt_store(tree: host_state_tree()) {
+        MicrovmReceiptStoreUnready { detail } =>
+          exit_failure(reason: join(["microvm_slot_reserve: the receipt store is unready: ", detail, " -- outcome was: ", text], ""))
+        MicrovmReceiptStoreReady { store } =>
+          match microvm_receipt_record(store: store, writer: ReserveReceipts, invocation_id: invocation as NonEmptyStr, content: concat(text, "\n")) {
+            CreateOnceRefused { path, cause } =>
+              exit_failure(reason: join(["microvm_slot_reserve: receipt write refused at ", path, ": ", cause, " -- outcome was: ", text], ""))
+            CreateOnceAlreadyRecorded { path } =>
+              exit_failure(reason: join(["microvm_slot_reserve: a receipt already exists at ", path, " and is never overwritten -- outcome was: ", text], ""))
+            CreateOnceRecorded { path: _ } =>
+              if !shakedown_broker_reserved(outcome: outcome) {
+                exit_failure(reason: join(["microvm_slot_reserve: ", text], ""))
+              } else {
+                ExitSuccess
+              }
+          }
       }
       }
       }
@@ -469,7 +480,7 @@ fn shakedown_broker_reserved(outcome: ShakedownBrokerOutcome) -> Bool {
 fn microvm_slot_reserve_subject() -> MicrovmUnitStartSubject {
   MicrovmUnitStartSubject {
     unit: microvm_slot_reserve_unit_name,
-    receipt_prefix: microvm_slot_reserve_receipt_prefix(),
+    writer: ReserveReceipts,
     bound: microvm_slot_reserve_wait_bound,
   }
 }

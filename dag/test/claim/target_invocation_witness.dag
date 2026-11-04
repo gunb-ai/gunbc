@@ -34,8 +34,6 @@ import gunbc.target_binding {
   BehavioralReceiptCensusProducer, BehavioralReceiptSelftestProducer,
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
-  PrimitiveEgressCensusProducer,
-  PrimitiveEgressCensusV2Producer,
   RequiredLaneResolutionCensusProducer,
   CompileCleanDiagnosticCensusStanding, CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused, CompileCleanDiagnosticCensusObservation,
@@ -109,8 +107,6 @@ import gunbc.instrument_targets {
   behavioral_receipt_selftest_label,
   compile_clean_diagnostic_census_label,
   evaluation_store_address_exact_head_label,
-  primitive_egress_census_label,
-  primitive_egress_census_v2_label,
   required_lane_resolution_census_label,
   self_host_behavioral_equivalence_label,
   dependency_demand_census_label,
@@ -228,27 +224,6 @@ test fn the_evaluation_store_address_exact_head_operand_routes_to_its_own_produc
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: evaluation_store_address_exact_head_label())
         && (b.producer == EvaluationStoreAddressExactHeadProducer {})
-    TargetInvocationRouteRefused { cause: _ } => false
-  }
-}
-
-// The bounded projection is its own target: the full label and the v2 label reach DIFFERENT
-// producers, which is what makes a scope a row rather than a flag.
-test fn the_primitive_egress_census_v2_operand_routes_to_its_own_producer() -> Bool {
-  match invoke_target(operand: "//gunbc/instruments:primitive-egress-census-v2") {
-    TargetInvocationRouted { binding: b } =>
-      label_eq(a: b.target, b: primitive_egress_census_v2_label())
-        && (b.producer == PrimitiveEgressCensusV2Producer {})
-        && !(b.producer == PrimitiveEgressCensusProducer {})
-    TargetInvocationRouteRefused { cause: _ } => false
-  }
-}
-
-test fn the_primitive_egress_census_operand_routes_to_its_own_producer() -> Bool {
-  match invoke_target(operand: "//gunbc/instruments:primitive-egress-census") {
-    TargetInvocationRouted { binding: b } =>
-      label_eq(a: b.target, b: primitive_egress_census_label())
-        && (b.producer == PrimitiveEgressCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -926,6 +901,28 @@ test fn operands_outside_the_claim_universe_do_not_admit_to_it() -> Bool {
   })
 }
 
+// A REHOMED CLAIM CHANGES EXECUTOR BY CHANGING ITS MODULE NAME, AND NOTHING ELSE. H6's first member,
+// `wc_byte_count_verification_witness`, moved from `test.claim.*` to `v2.test.claim.*`: its exact label
+// now lies inside the native universe (supplied values at this boundary), while a claim still
+// authored under `test.claim.*` keeps the claim route. The inhabitance half -- that the real native
+// route emits a NativeTestVerdict row for the moved identity -- is the srv1 `gunbc test` receipt in
+// the PR, not this fold (DESIGN section 3, the pairing obligation). The OLD label of the moved claim
+// still lies inside the claim universe, so admission answers ClaimRoute for it; that it then selects
+// no discovered claim is the executor's answer, observed on the real route, not decidable here.
+test fn a_rehomed_claim_admits_native_and_an_unmigrated_one_keeps_the_claim_route() -> Bool {
+  (match admit_test_operand(
+    operand: "//v2/test/claim/wc_byte_count_verification_witness:witness_byte_count_verification_preserves_nonmatching_arms",
+    native_universe: native_universe(),
+    claim_universe: claim_universe()
+  ) {
+    TestOperandNativeRoute { pattern: _ } => true
+    _ => false
+  }) && admits_to_claim_route_as(
+    operand: "//test/claim/namespace_import_closure_witness:namespace_import_closure_receipt_holds",
+    rendered: "//test/claim/namespace_import_closure_witness:namespace_import_closure_receipt_holds"
+  )
+}
+
 // THE PRODUCTION UNIVERSE IS THE SUBTREE THE CENSUS'S OWN LABELS OCCUPY. A claim site labelled by
 // `site_label_text` must lie inside `claim_route_universe`, or the route would refuse the very
 // labels the census mints; and the universe must not reach the native one.
@@ -1048,7 +1045,7 @@ test fn the_required_lane_resolution_census_operand_routes_to_its_own_producer()
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: required_lane_resolution_census_label())
         && (b.producer == RequiredLaneResolutionCensusProducer {})
-        && !(b.producer == PrimitiveEgressCensusV2Producer {})
+        && !(b.producer == SelfHostFrontierProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }

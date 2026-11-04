@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import product.electrical.photograph { PhotographCitation, photograph_citation_text }
 import product.electrical.connectivity {
   ElectricalTerminalRef,
   terminal_ref_equal,
@@ -48,17 +49,21 @@ type BenchConditions {
   module: ModuleState
 }
 
-// What a reading rests on. The words and locators are transcriptions; no derivation reads their text.
+// What a reading rests on. The words are transcriptions; no derivation reads their text. An operator's
+// photograph is cited by REFERENCE, never by a sentence: `citation` names the bytes in the store (and the
+// box inside them) so the claim can be re-checked against the image, or names the gap where the bytes never
+// reached the store -- see product.electrical.photograph. A free-text locator alone used to be this arm's
+// whole content, and it made a marking unverifiable by construction.
 type EvidenceRef
   = OperatorStatement { stated_on: NonEmptyStr, verbatim: NonEmptyStr }
-  | OperatorPhotograph { taken_on: NonEmptyStr, locator: NonEmptyStr }
+  | OperatorPhotograph { citation: PhotographCitation }
   | SellerListingPhotograph { listing: NonEmptyStr, read_on: NonEmptyStr }
 
 // An evidence reference as a report quotes it.
 fn evidence_ref_text(e: EvidenceRef) -> String {
   match e {
     OperatorStatement { stated_on, verbatim } => join(["'", verbatim as String, "' (", stated_on as String, ")"], "")
-    OperatorPhotograph { taken_on, locator } => join(["photograph ", locator as String, " (", taken_on as String, ")"], "")
+    OperatorPhotograph { citation } => photograph_citation_text(citation: citation)
     SellerListingPhotograph { listing, read_on } => join(["listing photograph ", listing as String, " (read ", read_on as String, ")"], "")
   }
 }
@@ -99,6 +104,21 @@ fn point_is_inferred(p: PointProvenance) -> Bool {
   }
 }
 
+// WHERE A READING STANDS AGAINST THE ASSET'S RECORDED EVENTS. An accidental bridge, a short or a part
+// lifted off the board can change what a later reading means, so every reading -- a beep here, a
+// voltage or a resistance in product.electrical.bench_session -- states its order against recorded
+// events: before these, after these, after these and before those, or unrecorded against these. EACH
+// ARM STATES ORDER AGAINST THE EVENTS IT LISTS AND NOTHING ELSE: an event it does not list is of
+// unknown order to the reading, never assumed later. So recording a new event leaves every earlier
+// reading unplaced against it until its order is stated; an event added to the record never
+// manufactures chronology for a reading. The keys are BenchIncident and AssetAlteration keys
+// (product.electrical.bench_session), and a key that resolves to no recorded event is refused there.
+type ReadingOrder
+  = BeforeIncidents { keys: List<NonEmptyStr> }
+  | AfterIncidents { keys: List<NonEmptyStr> }
+  | BetweenIncidents { after: List<NonEmptyStr>, before: List<NonEmptyStr> }
+  | OrderUnrecorded { relative_to: List<NonEmptyStr> }
+
 type ContinuityObservation {
   asset: PhysicalAssetIdentity
   first: ElectricalTerminalRef
@@ -106,6 +126,7 @@ type ContinuityObservation {
   record: ProbeRecord
   conditions: BenchConditions
   result: ContinuityResult
+  order: ReadingOrder
   evidence: EvidenceRef
 }
 

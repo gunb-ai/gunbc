@@ -4,7 +4,7 @@ import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import std.types { Int, String, Bool, HttpStatus }
+import std.types { Int, String, Bool, HttpStatus, Port }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -34,8 +34,21 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.ietf.http_semantics.extdeps_external_authority_anchor,
-  further_citations: [rfc5789_patch_authority, rfc9110_status_codes_authority, rfc9110_retry_after_authority]
+  further_citations: [rfc9110_https_default_port_authority, rfc5789_patch_authority, rfc9110_status_codes_authority, rfc9110_retry_after_authority]
 }
+
+// The https scheme's default port is 443 (RFC 9110 section 4.2.2). A URI that spells the default
+// port is equivalent to one that omits it (RFC 3986 section 6.2.3), but Google compares redirect URIs
+// byte for byte, so the one canonical spelling omits it. The rule belongs to the https scheme, not to
+// any host that happens to serve on it.
+data rfc9110_https_default_port_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-4.2.2"
+  }
+}
+
+data https_scheme_default_port: Port = 443
 
 // PATCH is not an RFC 9110 method: it is defined by RFC 5789, which is why it is cited separately.
 data rfc5789_patch_authority: ExternalAuthority = ExternalAuthority {

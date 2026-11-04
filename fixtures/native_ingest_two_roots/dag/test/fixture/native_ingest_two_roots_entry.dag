@@ -1,0 +1,9 @@
+module test.fixture.native_ingest_two_roots_entry
+
+// RETARGETED 2026-11-01 from `fixture.native_ingest.dag_entry` into `test.fixture`, the namespace family
+// the declared layout has rows for: an acquisition entry must lie in a declared namespace
+// (v2.compiler.module_acquisition acquisition_entry_requests), and rows are emitted from the governed
+// trees, so a fixture namespace can never be one. The emitted value name is unchanged, which is what the
+// two-roots control pins in stdout.
+
+data native_ingest_dag_entry_value: Int = 1

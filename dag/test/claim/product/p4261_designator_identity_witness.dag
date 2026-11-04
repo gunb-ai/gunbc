@@ -1,0 +1,103 @@
+module test.claim.product.p4261_designator_identity_witness
+
+// THE LAW THIS FILE HOLDS, and the accident that made it a law:
+//
+//   A reference designator's exact spelling IS its identity. Normalisation may create a search key; it
+//   may never create identity.
+//
+// The atlas cleanup of 2026-11-03 folded underscores out of designators to tidy the tables. It merged
+// U1_2 into U12, U2_2 into U22 and U3_2 into U32 -- and NOTHING LOOKED WRONG. The merged rows were
+// well-formed, the position count simply went down by three, and a PCA9617A moved from U12 to U1_2 on
+// nothing but a tidied string. Positions NVIDIA may never have placed were minted, and the components
+// that were really in the other footprint were lost. A normalising comparison never fails loudly: it
+// produces a tidy lie. That is why the control lives here rather than in a reviewer's memory, and why
+// `product.p4261.carrier` and `product.p4261.comparison` resolve designators through
+// `extdeps.electronic_component.types.designator_eq` and nothing else -- one place a normalisation could
+// creep back, held to the five pairs below (the operator's, 2026-11-03).
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.electronic_component.types { Designator, designator_eq, designator_of, designator_text }
+import extdeps.nvidia.p4261 { p4261_e1 }
+import extdeps.nvidia.p4261.population { p4261_position }
+import product.electrical.connectivity { ComponentInstanceIdentity }
+import product.electrical.continuity { OperatorStatement }
+import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading, read_under_another_designator }
+import product.p4261.e1_b { p4261_e1_layout }
+
+// The text as read. No case folding, no punctuation removal, no suffix-boundary rewriting, no
+// leading-zero stripping: those are the four operations that made the 2026-11-03 corruption invisible.
+fn d(text: NonEmptyStr) -> Designator {
+  designator_of(verbatim: text)
+}
+
+fn one_body_read_as(text: NonEmptyStr) -> DesignatorReading {
+  DesignatorReading {
+    specimen: ComponentInstanceIdentity { design: p4261_e1_layout.design, local_identity: "the U12 body" },
+    designator: text,
+    evidence: OperatorStatement { stated_on: "2026-11-03", verbatim: "the atlas read this silkscreen" },
+  }
+}
+
+// A board carrying only the readings a test needs. The identity fields come from the real E1, so this is a
+// board and not a bag of parts.
+fn board_read(readings: List<DesignatorReading>) -> CarrierLayoutObservation {
+  let base = p4261_e1_layout
+  CarrierLayoutObservation { ambiguous_designators: [],
+    asset: base.asset, design: base.design, revision: base.revision, markings: base.markings,
+    module_receptacles: base.module_receptacles, backplane_connectors: base.backplane_connectors,
+    j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey, management_io: base.management_io, components: [],
+    measured: base.measured, input: base.input, unresolved: base.unresolved, designator_readings: readings,
+  }
+}
+
+// Did the model treat these two spellings as two designators, on the path that decides a join?
+fn read_as_two_designators(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  let layout = board_read(readings: [one_body_read_as(a), one_body_read_as(b)])
+  match layout.designator_readings.first() {
+    Present { value: r } => read_under_another_designator(layout: layout, r: r)
+    Absent => false
+  }
+}
+
+test fn the_five_pairs_the_atlas_merged_are_two_designators_each() -> Bool {
+  !designator_eq(a: d("U1_2"), b: d("U12"))
+    && !designator_eq(a: d("U2_2"), b: d("U22"))
+    && !designator_eq(a: d("U3_2"), b: d("U32"))
+    && !designator_eq(a: d("U3_P3"), b: d("U3_3"))
+    && !designator_eq(a: d("U1_P1"), b: d("U1_P5"))
+    // Not a guard that simply refuses everything: each spelling is itself ...
+    && designator_eq(a: d("U1_2"), b: d("U1_2"))
+    && designator_eq(a: d("U1_P5"), b: d("U1_P5"))
+    // ... and the verbatim text survives intact, punctuation, suffix boundary and leading zeroes included
+    // -- a designator is printed as it was read, or a reader cannot re-find the silkscreen it came from.
+    && (designator_text(designator: d("C10_P5")) as String) == "C10_P5"
+    && (designator_text(designator: d("0R0")) as String) == "0R0"
+    && (designator_text(designator: d("U1_P1")) as String) == "U1_P1"
+}
+
+// A position IS its revision and its exact spelling: two spellings mint two positions, and the text that
+// comes back out is the text that went in. The merge could not have survived this, because the merged row
+// is a row whose text no longer matches the silkscreen anybody can look at.
+test fn a_position_is_minted_from_the_spelling_and_two_spellings_mint_two_positions() -> Bool {
+  let merged = p4261_position(revision: p4261_e1, designator: "U1_2")
+  let other = p4261_position(revision: p4261_e1, designator: "U12")
+  !designator_eq(a: merged.designator, b: other.designator)
+    && (designator_text(designator: merged.designator) as String) == "U1_2"
+    && (designator_text(designator: other.designator) as String) == "U12"
+    && designator_eq(a: merged.designator, b: p4261_position(revision: p4261_e1, designator: "U1_2").designator)
+}
+
+// The control that bites where it matters: one specimen read under two spellings is TWO readings, refused
+// by the very function that mints a SpecimenPosition. Under the comparison the atlas used, `U1_2` and
+// `U12` were one name, the refusal never fired, and the join was admitted on a merge nobody chose. The
+// last clause keeps that honest -- the same spelling twice is not two designators, so the refusal is
+// about the spelling and not about counting rows.
+test fn one_specimen_under_two_spellings_is_refused_by_the_path_that_mints_a_join() -> Bool {
+  read_as_two_designators(a: "U1_2", b: "U12")
+    && read_as_two_designators(a: "U2_2", b: "U22")
+    && read_as_two_designators(a: "U3_2", b: "U32")
+    && read_as_two_designators(a: "U3_P3", b: "U3_3")
+    && read_as_two_designators(a: "U1_P1", b: "U1_P5")
+    && !read_as_two_designators(a: "U1_2", b: "U1_2")
+}
