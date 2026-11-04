@@ -388,11 +388,11 @@ fn quoted_equals_steps() -> List<Node> {
   ]
 }
 
-// THE COMPOSED-PATH CONTROLS. Both shapes are built from the same statement builders the emitters use;
-// they differ only in whether the tail between $COMPOSE and the directory it names repeats the composed
-// directory name. The first is the shape the seal step shipped when it wrote its overlay one level below
-// where the run read it -- a step whose text reads plausibly either way, which is why the rule reads the
-// statements.
+// THE COMPOSED-PATH CONTROLS. Every statement is built from the builders the emitters use; the shapes
+// differ only in whether the tail between $COMPOSE and the directory it names repeats the composed
+// directory name. Each prefix carries the clean `git worktree add --detach $COMPOSE HEAD` that opens every
+// real composed step, so a sweep that stopped at the first statement expanding COMPOSE would report
+// nothing about the mkdir that follows it and would call a broken step clean.
 fn compose_dir_declaration() -> Node {
   bash_build_assign(
     name: "COMPOSE",
@@ -402,41 +402,48 @@ fn compose_dir_declaration() -> Node {
   )
 }
 
+// The first statement in a composed step that expands COMPOSE, and a clean one: it names the directory,
+// it does not hang anything off it.
+fn worktree_add_statement() -> Node {
+  command(words: [
+    word(text: "git"),
+    word(text: "worktree"),
+    word(text: "add"),
+    word(text: "--detach"),
+    var_word(name: "COMPOSE"),
+    word(text: "HEAD")
+  ])
+}
+
+fn mkdir_under_compose(path_tail: String) -> Node {
+  command(words: [
+    word(text: "mkdir"),
+    word(text: "-p"),
+    bash_build_word_concat_from_nodes(parts: [var_word(name: "COMPOSE"), word(text: path_tail)])
+  ])
+}
+
+fn cd_into_compose() -> Node { command(words: [word(text: "cd"), var_word(name: "COMPOSE")]) }
+
+// Everything before the path being judged: strict mode, the scratch-root declaration, the COMPOSE
+// assignment, and the clean read of it. The expected position of the path under test is DERIVED from this
+// list, so moving a statement here moves the assertion with it instead of silently rotting a number.
+fn compose_plant_prefix() -> List<Node> {
+  concat(
+    concat([set_strict_stmt()], scratch_declaration()),
+    [compose_dir_declaration(), worktree_add_statement()]
+  )
+}
+
 fn doubled_overlay_step() -> List<Node> {
   concat(
-    concat([set_strict_stmt(), scratch_declaration(), compose_dir_declaration()], [
-      command(
-        words: [
-          word(text: "mkdir"),
-          word(text: "-p"),
-          bash_build_word_concat_from_nodes(
-            parts: [
-              var_word(name: "COMPOSE"),
-              word(text: "/gunbc-mirror-compose/private_overlay")
-            ]
-          )
-        ]
-      ),
-      command(words: [word(text: "cd"), var_word(name: "COMPOSE")])
-    ])
+    compose_plant_prefix(),
+    [mkdir_under_compose(path_tail: "/gunbc-mirror-compose/private_overlay"), cd_into_compose()]
   )
 }
 
 fn singly_overlay_step() -> List<Node> {
-  concat(
-    concat([set_strict_stmt(), scratch_declaration(), compose_dir_declaration()], [
-      command(
-        words: [
-          word(text: "mkdir"),
-          word(text: "-p"),
-          bash_build_word_concat_from_nodes(
-            parts: [var_word(name: "COMPOSE"), word(text: "/private_overlay")]
-          )
-        ]
-      ),
-      command(words: [word(text: "cd"), var_word(name: "COMPOSE")])
-    ])
-  )
+  concat(compose_plant_prefix(), [mkdir_under_compose(path_tail: "/private_overlay"), cd_into_compose()])
 }
 
 // ── THE CLAIMS ──────────────────────────────────────
@@ -524,13 +531,34 @@ test fn a_quoted_word_carrying_equals_is_not_an_assignment() -> Bool {
 // of them names the directory COMPOSE was assigned from.
 test fn a_path_that_repeats_the_composed_directory_is_reported() -> Bool {
   let defects = compose_step_path_defects(steps: doubled_overlay_step())
+  // Derived from the fixture, not written: the path is the statement after the prefix.
+  let expected_index = count(compose_plant_prefix()) + 1
   match defect_path_at(defects: defects, i: 0) {
     Present { value: first } =>
       count(defects) == 1
         && first.compose_dir_literal == "/gunbc-mirror-compose"
         && first.literal == "/gunbc-mirror-compose/private_overlay"
-        && first.step_index == 7
+        && first.step_index == expected_index
         && count(compose_step_path_defects(steps: singly_overlay_step())) == 0
+    Absent => false
+  }
+}
+
+// THE SWEEP WALKS PAST THE CLEAN READ. The real seal step's first COMPOSE-expanding statement is
+// `git worktree add --detach $COMPOSE HEAD`, which is clean; a sweep that returned the defects of the
+// first such statement and stopped would find nothing in a step whose next statement is the doubled path,
+// which is the decoration case this control exists to make red.
+test fn the_sweep_walks_past_a_clean_read_of_compose() -> Bool {
+  let prefix = concat([set_strict_stmt(), compose_dir_declaration()], [worktree_add_statement()])
+  match defect_path_at(
+    defects: compose_step_path_defects(
+      steps: concat(prefix, [mkdir_under_compose(path_tail: "/gunbc-mirror-compose/private_overlay")])
+    ),
+    i: 0
+  ) {
+    Present { value: first } =>
+      first.step_index == count(prefix) + 1
+        && first.literal == "/gunbc-mirror-compose/private_overlay"
     Absent => false
   }
 }

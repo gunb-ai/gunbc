@@ -382,7 +382,7 @@ fn head_tree_compose_statements(
         ]),
         command(words: [
           word(text: "cp"), word(text: "-a"), path_under(name: "HEAD_TREE", tail: "dag"),
-          under_compose(tail: concat(concat(overlay.overlay_dir_name as String, "/dag")))
+          under_compose(tail: concat(overlay.overlay_dir_name as String, "/dag"))
         ]),
         command(words: [
           word(text: "ln"), word(text: "-sfn"), var_word(name: "HEAD_TREE"),
@@ -811,13 +811,23 @@ fn compose_step_path_defects_at(
     name: "COMPOSE",
     i: 0
   ) {
-    concat(
-      acc,
-      compose_statement_path_defects(
-        step: compose_statement_required(steps: steps, i: i),
-        step_index: i + 1,
-        compose_dir_literal: compose_dir_literal,
-        i: 0
+    // Concatenate AND continue. Stopping at the first statement that expands COMPOSE would be a sweep in
+    // name only: in every real composed step that first statement is the clean
+    // `git worktree add --detach $COMPOSE HEAD`, so the mkdir, cp and ln that follow -- the ones that can
+    // actually land a path below the read -- would never be looked at, and the law would stay green on a
+    // step that was broken.
+    compose_step_path_defects_at(
+      steps: steps,
+      i: i + 1,
+      compose_dir_literal: compose_dir_literal,
+      acc: concat(
+        acc,
+        compose_statement_path_defects(
+          step: compose_statement_required(steps: steps, i: i),
+          step_index: i + 1,
+          compose_dir_literal: compose_dir_literal,
+          i: 0
+        )
       )
     )
   } else {
