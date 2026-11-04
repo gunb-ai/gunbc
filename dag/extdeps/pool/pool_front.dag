@@ -1,0 +1,39 @@
+module extdeps.pool.pool_front
+
+import std.types { NonEmptyStr, String, Bool }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.http.header_dump { http_ascii_fold }
+
+// THE CERTIFICATE A CLIENT PINS, under the name the lab integration branch (bright-moth-475/lab-dev) gives it
+// in the same module, so the integration merge reconciles rather than forks. Only the shape and the two folds
+// a pin decision needs land here; that branch's pool-front paths, status meanings and cited figures belong to
+// the pool front and are not carried (gunbc.harness.harness_operator_route reads this module for the srv1
+// fabric router's listener certificate, whose value is the deployment's, declared in the route row).
+// A client trusts exactly the pinned certificate: it never turns verification off and never trusts one it
+// has not matched against this fingerprint.
+type PoolFrontCertificate {
+  sha256_fingerprint: NonEmptyStr
+  not_after: NonEmptyStr
+}
+
+fn pool_front_fingerprint_canonical(text: String) -> String {
+  http_ascii_fold(s: trim(s: text))
+}
+
+// WHETHER THE CERTIFICATE A HOST PRESENTED IS THE PINNED ONE. Total on any text: an unreadable or empty
+// fingerprint is a different certificate, never a pass.
+fn pool_front_certificate_is_pinned(pinned: PoolFrontCertificate, presented: String) -> Bool {
+  let p = pool_front_fingerprint_canonical(text: presented)
+  p != "" && p == pool_front_fingerprint_canonical(text: pinned.sha256_fingerprint as String)
+}
+
+// `openssl x509 -noout -fingerprint -sha256` prints `<label> Fingerprint=<AA:BB:...>` (label `sha256` in 3.x,
+// `SHA256` in 1.1). The text after the LAST `=` is the fingerprint; no `=` is no reading.
+fn pool_front_fingerprint_from_openssl_text(stdout: String) -> String? {
+  let line = trim(s: stdout)
+  match split(s: line, delimiter: "=").last() {
+    Absent => none
+    Present { value: f } => if trim(s: f) == "" || trim(s: f) == line { none } else { Present { value: trim(s: f) } }
+  }
+}
