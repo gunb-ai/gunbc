@@ -274,29 +274,8 @@ import v2.compiler.dependency_demand {
   OperationFact,
 }
 import v2.compiler.self_host.seed_retention_frontier { self_host_frontier_report }
-import v2.compiler.dependency_demand_census {
-  AuthoredRowReading,
-  AuthoredTypeUnresolved,
-  AuthoredUsesFunction,
-  DemandCensusAuthoredReading,
-  DemandCensusModuleStanding,
-  DemandCensusReport,
-  DemandCensusUnboundLocus,
-  DemandCensusUnreadable,
-  DemandCensusUnreadableStage,
-  DemandModuleResolveRefused,
-  DemandModuleResolved,
-  UnreadableAtParse,
-  UnreadableAtTokenize,
-  demand_census_authored_readings,
-  demand_census_exit,
-  demand_census_lines,
-  demand_census_module_facts,
-  demand_census_report,
-  demand_census_strip,
-  demand_census_unbound_locus_from_diagnostics,
-  demand_census_unbound_site_text,
-}
+import v2.compiler.dependency_demand_census { DemandCensusReport, demand_census_exit, demand_census_lines, demand_census_report }
+import v2.compiler.dependency_demand_facts { AuthoredRowReading, AuthoredTypeUnresolved, AuthoredUsesFunction, DemandFactsAuthoredReading, DemandFactsModuleStanding, DemandFactsUnboundLocus, DemandFactsUnreadable, DemandFactsUnreadableStage, DemandModuleResolveRefused, DemandModuleResolved, UnreadableAtParse, UnreadableAtTokenize, demand_facts_authored_readings, demand_facts_module_facts, demand_facts_strip, demand_facts_unbound_locus_from_diagnostics, demand_facts_unbound_site_text }
 import v2.compiler.normalized_tree {
   NormalizedTree,
   normalized_tree_import_bindings,
@@ -3056,7 +3035,7 @@ fn native_lane_identity_row(
 // root index -- so in the production context a uses fn's module is absent, and so are the
 // operations and fns it declares. A census that stripped one module at a time would read every edge
 // into such a module as outside the closure. So this route folds the whole ingest once with the
-// clause elided (v2.compiler.dependency_demand_census demand_census_strip, between parse and
+// clause elided (v2.compiler.dependency_demand_facts demand_facts_strip, between parse and
 // normalize) and absorbs each root through the SAME native_test_context_absorb the production fold
 // uses: the only difference from native_test_context_fold_step is the strip, which is why that step
 // is entered phase by phase here rather than through program_assembly_read_to_normalized_root_seeded.
@@ -3070,7 +3049,7 @@ type NativeDemandCensusFoldState {
   context: NativeTestContextFoldState
   authored: List<AuthoredUsesFunction>
   file_refused: List<AuthoredUsesFunction>
-  unreadable: List<DemandCensusUnreadable>
+  unreadable: List<DemandFactsUnreadable>
 }
 
 fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
@@ -3079,10 +3058,10 @@ fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<Author
 
 fn native_demand_census_unreadable(
   read: DagSourceReadWitness,
-  stage: DemandCensusUnreadableStage,
+  stage: DemandFactsUnreadableStage,
   d: NonEmptyDiagnostics
-) -> DemandCensusUnreadable {
-  DemandCensusUnreadable {
+) -> DemandFactsUnreadable {
+  DemandFactsUnreadable {
     file_path: read.artifact.file_path,
     stage: stage,
     reason: diagnostics_fatal_reason(d: d)
@@ -3117,7 +3096,7 @@ fn native_demand_census_read(
             unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d))
           }
         Accepted { value: artifact, diagnostics: _ } =>
-          let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
+          let stripped = demand_facts_strip(tree: artifact.tree, owner: module_qn)
           match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index) {
             Rejected { diagnostics: d } =>
               NativeDemandCensusFoldState {
@@ -3143,7 +3122,7 @@ type NativeDemandCensusWalk {
   functions: List<FunctionFact>
   operations: List<OperationFact>
   audited: List<QualifiedName>
-  standings: List<DemandCensusModuleStanding>
+  standings: List<DemandFactsModuleStanding>
 }
 
 // The module's root scope, as resolution itself built it for the module just resolved: the namespace
@@ -3162,7 +3141,7 @@ fn native_demand_census_module_ctx(context: NativeTestContext, module_qn: Qualif
 
 fn native_demand_census_readings(context: NativeTestContext, module_qn: QualifiedName, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
   match native_demand_census_module_ctx(context: context, module_qn: module_qn) {
-    Present { value: ctx } => demand_census_authored_readings(ctx: ctx, authored: authored)
+    Present { value: ctx } => demand_facts_authored_readings(ctx: ctx, authored: authored)
     Absent => fold_list(xs: authored.types, empty: Empty, cons: fn(acc, t) { list_snoc_item(xs: acc, item: AuthoredTypeUnresolved) })
   }
 }
@@ -3198,7 +3177,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
               true =>
                 list_snoc_item(xs: with_refused, item: DemandModuleResolved {
                   readings: fold_list(xs: split.available, empty: Empty, cons: fn(acc, a) {
-                    list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                    list_snoc_item(xs: acc, item: DemandFactsAuthoredReading {
                       authored: a,
                       readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
                     })
@@ -3208,7 +3187,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             }
           }
         Accepted { value: resolved, diagnostics: _ } =>
-          let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
+          let facts = demand_facts_module_facts(resolved: resolved, module_qn: module_qn)
           NativeDemandCensusWalk {
             context: step.context,
             functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
@@ -3216,7 +3195,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             audited: fold_list(xs: facts.audited, empty: w.audited, cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) }),
             standings: list_snoc_item(xs: w.standings, item: DemandModuleResolved {
               readings: fold_list(xs: mine, empty: Empty, cons: fn(acc, a) {
-                list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                list_snoc_item(xs: acc, item: DemandFactsAuthoredReading {
                   authored: a,
                   readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
                 })
@@ -4328,7 +4307,7 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
 // table gives. WHY IT IS AN ACCESSOR AND NOT A FIELD: the two facts are not derived here. They are the
 // SAME derivation the resolve-standing verdict is made of (native_demand_census_unbound_standing, which is
 // what `gunbc test //gunbc/instruments:dependency-demand-census` prints `at=`/`unbound_ref=` from) --
-// diagnostics_fatal_reason over the fatal plus demand_census_unbound_locus_from_diagnostics, and
+// diagnostics_fatal_reason over the fatal plus demand_facts_unbound_locus_from_diagnostics, and
 // native_census_locate_fatal for the position -- applied to the outcome's fatal. A row-shaped copy of that
 // walk would be a second authority for which refusal is first (DESIGN section 3), and the two could then
 // disagree about the module the census is reporting.
@@ -4339,7 +4318,7 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
 type NativeCensusFirstRefusal {
   module: String
   cause: Symbol
-  unbound: Optional<DemandCensusUnboundLocus>
+  unbound: Optional<DemandFactsUnboundLocus>
   at: FileRefusalAt
 }
 
@@ -4353,7 +4332,7 @@ fn native_census_infer_first_refusal(
       optional_present(value: NativeCensusFirstRefusal {
         module: entry.module,
         cause: diagnostics_fatal_reason(d: first),
-        unbound: demand_census_unbound_locus_from_diagnostics(d: first),
+        unbound: demand_facts_unbound_locus_from_diagnostics(d: first),
         at: native_census_locate_fatal(chain: first, path: entry.path, positions: positions)
       })
     NativeInferCensusFileRefused => Absent
@@ -6453,7 +6432,7 @@ fn census_file_refusal_at_text(at: FileRefusalAt) -> String {
 // THE FIRST REFUSAL AS THE TWO TRAILING FIELDS OF A binding_unreached ROW: the cause's identity and the
 // locus (module line:column, or the declaration/invariant/whole-file arm) the census located it at. It
 // renders the one carrier native_census_infer_first_refusal is -- census_file_refusal_at_text for the
-// position and demand_census_unbound_site_text for the reference the resolver located, the same two
+// position and demand_facts_unbound_site_text for the reference the resolver located, the same two
 // renderers the dependency-demand census prints `at=` and `unbound_ref=` with -- so a wave receipt names
 // the cause BY IDENTITY instead of only saying that resolve refused. A module that did not refuse at
 // resolve prints `-` for both: absence is a fact the row states, not a field it omits.
@@ -6464,7 +6443,7 @@ fn native_census_infer_first_refusal_text(
 ) -> String {
   match native_census_infer_first_refusal(positions: positions, entry: entry, outcome: outcome) {
     Present { value: r } =>
-      concat(symbol_lexeme(sym: r.cause), concat("\t", concat(demand_census_unbound_site_text(u: r.unbound), concat(" ", census_file_refusal_at_text(at: r.at)))))
+      concat(symbol_lexeme(sym: r.cause), concat("\t", concat(demand_facts_unbound_site_text(u: r.unbound), concat(" ", census_file_refusal_at_text(at: r.at)))))
     Absent => "-\t-"
   }
 }
@@ -7088,7 +7067,7 @@ fn native_demand_census_split_authored(
 // the refused importee and its cause (native_import_target_attribution, the same decision the production
 // lane reports as native_prepare_reason_import_target_file_refused); only otherwise is the first unbound
 // name the finding.
-fn native_demand_census_resolve_refused(context: NativeTestContext, module_qn: QualifiedName, authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
+fn native_demand_census_resolve_refused(context: NativeTestContext, module_qn: QualifiedName, authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandFactsModuleStanding {
   match native_import_target_attribution(context: context, module: module_qn) {
     NativeImportTargetRefused { target: t } =>
       DemandModuleImporteeRefused { authored: authored, importee_file: t.path, importee_cause: native_test_file_refusal_fatal_reason(fr: t) }
@@ -7098,8 +7077,8 @@ fn native_demand_census_resolve_refused(context: NativeTestContext, module_qn: Q
   }
 }
 
-fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
-  DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: demand_census_unbound_locus_from_diagnostics(d: d) }
+fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandFactsModuleStanding {
+  DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: demand_facts_unbound_locus_from_diagnostics(d: d) }
 }
 
 fn native_demand_census_closure_outcomes(context: NativeTestContext) -> List<ModuleOutcome> {

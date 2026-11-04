@@ -1614,7 +1614,7 @@ fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) 
       match operator_class_admission(route: harness_operator_route, class: class) {
         OperatorClassRefused { detail: d } => HarnessSeatRefused { detail: d }
         OperatorClassAdmitted =>
-          match operator_chat_completions_url() {
+          match operator_chat_completions_url(route: harness_operator_route) {
             Absent => HarnessSeatRefused { detail: "the operator endpoint URL could not be composed" }
             Present { value: u } =>
               match operator_open_header(route: harness_operator_route) {

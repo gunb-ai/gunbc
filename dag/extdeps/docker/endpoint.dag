@@ -3,8 +3,6 @@ module extdeps.docker.endpoint
 import std.types { String, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -19,19 +17,6 @@ data docker_host_env_var: String = "DOCKER_HOST"
 fn docker_rootless_unix_endpoint(uid: Int) -> String {
   join(["unix:///run/user/", to_string(uid), "/docker.sock"], "")
 }
-
-data endpoint_string_type_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint"),
-    reason: "docker_default_endpoint is typed String but the module imports Uri; endpoint should be grounded as Uri variant (anemic-leaf — bare String cannot encode union of schemes, socket paths, host:port; same file uses Uri for authority anchor)",
-    dissolution: unbound_dissolution(description: "B3 grounds docker endpoint with Uri type carrying socket/http/https/fd schemes"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_rootless_unix_endpoint"),
-    reason: "docker_rootless_unix_endpoint returns String assembled by join; the same anemic-leaf class as docker_default_endpoint. UriScheme has no unix/socket/fd arm, so returning Uri here would mint a scheme the cited URI model does not carry",
-    dissolution: unbound_dissolution(description: "B3 grounds docker endpoint with Uri type carrying socket/http/https/fd schemes"),
-  ),
-]
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
