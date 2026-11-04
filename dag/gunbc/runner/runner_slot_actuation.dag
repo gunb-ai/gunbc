@@ -4,7 +4,7 @@ import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.algebra { trim }
 import extdeps.systemd {
-  IdProperty, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
+  IdProperty, MainPID, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
   SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
   SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state,
 }
@@ -681,5 +681,64 @@ fn slot_current_registration_over_unit(target: SshTarget, context: FleetSshExecu
         SlotRegistrationUnreadable { instance: i, cause: c } =>
           UnitRegistrationUnreadable { unit: unit, cause: join(["the host holds no readable current registration for ", i as String, ": ", c], "") }
       }
+  }
+}
+
+// ── ObserveRunnerLocalState: a read, never an actuation ─────────────────────────────────────────
+
+// THE SLOT'S LOCAL STANDING AS ONE READ-ONLY OBSERVATION over the same administrator edge as the two
+// actuations. It issues only `systemctl show` and `ps`, so it mutates nothing; it is settled when the unit
+// reading AND the worker reading both came back, and any refused leg is a located NotConverged naming the
+// leg, never a default (an unread MainPID is `unread`, not `0`: `0` means "supervises no process").
+type SlotLocalObservation
+  = SlotLocalObserved { unit: NonEmptyStr, reading: SlotActuationReading, worker: SlotActivityObservation, main_pid_raw: String }
+  | SlotLocalUnobserved { unit: NonEmptyStr, step: String, reason: String }
+
+fn slot_main_pid_raw_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [IdProperty, MainPID])) {
+    TypedArgvExecRefused { reason: why } => concat("unread:", why)
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        join(["unread:systemctl show exit=", to_string(r.exit_code)], "")
+      } else {
+        match fold(split(s: r.stdout, delimiter: "\n"), init: none, f: (acc, l) =>
+          if starts_with(s: l, prefix: "MainPID=") { Present { value: trim(s: substring(s: l, start: 8, end: string_length(s: l))) } } else { acc }) {
+          Absent => "unread:no MainPID line"
+          Present { value: v } => v
+        }
+      }
+  }
+}
+
+fn observe_runner_slot_local_state_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotLocalObservation
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotLocalUnobserved { unit: unit, step: "unit-read", reason: why }
+    SlotRead { reading: rd } =>
+      SlotLocalObserved { unit: unit, reading: rd, worker: read_slot_worker_over(target: target, context: context, unit: unit), main_pid_raw: slot_main_pid_raw_over(target: target, context: context, unit: unit) }
+  }
+}
+
+fn slot_activity_wire(a: SlotActivityObservation) -> String {
+  match a {
+    SlotHasLiveWorker => "worker=live"
+    SlotIdle => "worker=idle"
+    SlotActivityUnobserved { cause: c } => join(["worker=unobserved(", c as String, ")"], "")
+  }
+}
+
+fn slot_local_observation_settled(o: SlotLocalObservation) -> Bool {
+  match o {
+    SlotLocalObserved { unit: _, reading: _, worker: w, main_pid_raw: p } =>
+      !starts_with(s: p, prefix: "unread:") && match w { SlotActivityUnobserved { cause: _ } => false SlotHasLiveWorker => true SlotIdle => true }
+    SlotLocalUnobserved { unit: _, step: _, reason: _ } => false
+  }
+}
+
+fn slot_local_observation_wire(o: SlotLocalObservation) -> String {
+  match o {
+    SlotLocalObserved { unit: u, reading: _, worker: w, main_pid_raw: p } => join(["observe ", u as String, " MainPID=", p, " ", slot_activity_wire(a: w)], "")
+    SlotLocalUnobserved { unit: u, step: st, reason: r } => join(["observe ", u as String, " UNOBSERVED step=", st, " ", r], "")
   }
 }
