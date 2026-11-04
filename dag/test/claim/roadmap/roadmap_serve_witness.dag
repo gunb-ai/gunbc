@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_serve {
   roadmap_serve_handle_over,
   RoadmapDailyPageHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
-  BeltDispatchHandler, LineageRetireHandler, DispatchAssetHandler,
+  BeltDispatchHandler, DispatchAssetHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueCreateHandler, IssueCreatePageHandler,
@@ -1222,8 +1222,7 @@ test fn witness_retire_lineage_route_selects_and_refuses_unauthenticated() -> Bo
     tailscale_identity: "",
     release_revision: deploy_witness_release_revision,
   )
-  selects(method: POST, path: "/dispatch/some-node/retire-lineage", want: LineageRetireHandler)
-    && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
+  selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
     && unauthenticated.status == 403
     && string_contains(s: unauthenticated.body, pattern: "tailnet transport is not authentication")
     && unknown.status == 404

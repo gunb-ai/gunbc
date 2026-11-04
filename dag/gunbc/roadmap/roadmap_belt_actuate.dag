@@ -563,18 +563,537 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord, LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded, LineageRetirePanelUnreadable }
-import gunbc.roadmap.roadmap_lineage_retire_record {
-  LineageRetireRead, LineageRetireFound, LineageRetireAbsent, LineageRetireUnreadable,
-  LineageRetireCommit, LineageRetireCommitted, LineageRetireCommitRefused,
-  lineage_retire_read_for_instance, lineage_retire_create_for_instance,
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at }
+import gunbc.dispatch_credential_snapshot {
+  TakenCredentialSnapshot,
+  CredentialSnapshotTombstoned,
+  CredentialSnapshotTombstoneFailed,
 }
+import gunbc.dispatch_credential_acquisition {
+  credential_admit_reader_or_discard, credential_discard_taken_attempt,
+  CredentialLaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
+}
+import gunbc.dispatch_attempt { DispatchAttempt }
+import gunbc.roadmap.dispatch_unit_created_paths {
+  DispatchUnitCreatedPathVerdict,
+  DispatchUnitCreatedPathConsumable,
+  DispatchUnitCreatedPathUnconsumable,
+  dispatch_worker_created_paths,
+  dispatch_unit_created_paths_judge,
+  dispatch_unit_created_path_wire,
+}
+import gunbc.roadmap.dispatch_worker_traversal {
+  dispatch_worker_traversal_for_plan,
+  dispatch_worker_traversal_wire,
+  DispatchWorkerTraversal,
+  DispatchWorkerTraversalAdmitted,
+  DispatchWorkerAncestorNotTraversable,
+  DispatchWorkerTraversalCouldNotLook,
+}
+import gunbc.dispatch_attempt_launch {
+  PreparedAttemptLaunch,
+  SnapshotLaunch,
+  SnapshotFreeLaunch,
+  prepared_attempt,
+  prepared_attempt_launch_alternative,
+  prepared_attempt_process_fingerprint,
+  prepared_attempt_executor_origin,
+  DispatchExecutorOrigin,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerResumed, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv }
+import extdeps.systemd.systemd_run {
+  systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
+  SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
+}
+import extdeps.git { shape_git_merge_base_args, shape_git_worktree_remove_argv, shape_git_branch_remote_contains_head_args }
+import gunbc.roadmap.roadmap_authority {
+  RoadmapAuthorityProjection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  authored_merged_prs,
+}
+import gunbc.roadmap.roadmap_belt {
+  SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label,
+  BeltCapacity,
+  BeltReconcile,
+  belt_reconcile,
+  belt_reconcile_refusal_count,
+  roadmap_belt_default_capacity,
+  roadmap_belt_production_spawn_mode,
+  DispatchMember, DesiredMember, ObservedMember, dispatch_member_key,
+  belt_reconcile_upsert_count,
+}
+import gunbc.roadmap.roadmap_launch_admission {
+  LaunchCause, Operator, Timer,
+  LaunchRefusal,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionNotLanded,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
+  LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
+  LaunchAdmission, LaunchAdmitted, LaunchRefused,
+  LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
+  launch_host_halt_transition, launch_host_stage_revision, launch_gate_landed, LaunchHostRevisionStage, HostRevisionObserved, HostRevisionHalted, HostRevisionGate,
+  LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
+  launch_host_refusal,
+  LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
+  launch_host_with_sessions, LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
+  LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved, launch_graph_of_projection, launch_graph_of_document,
+  LaunchIdentity, launch_identity_json, attempt_launch_record_json, launch_identity_of_json, LaunchIdentityDecode, LaunchIdentityDecoded, LaunchIdentityUnreadable,
+  launch_cause_label, LaunchCensusRow, occurrence_census_row,
+  launch_identity_exemplar,
+  launch_admission, launch_refusal_label, launch_refusal_reason, launch_refusal_exemplars,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonString,
+  JsonArray,
+  serialize_json,
+  json_string,
+  json_int,
+  json_bool,
+  json_array,
+  json_object,
+  json_kv,
+  JsonKeyValue,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentResolution, AlignmentReady, AlignmentUnresolved, AlignmentChainLink,
+  alignment_resolve, alignment_base_cadence_state, alignment_refusal_reason,
+  AlignmentBinding, alignment_binding_text, alignment_binding_decode,
+  AlignmentBindingDecoded, AlignmentBindingNotDecodable,
+  alignment_chain_fingerprint,
+}
+import gunbc.harness.harness_backend {
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
+  harness_observe_roster, harness_declines_detail,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane }
+import extdeps.tmux {
+  classify_tmux_session_list,
+  TmuxSessionsListed,
+  TmuxNoServer,
+  TmuxListUnknowable,
+  TmuxListStdoutRefused,
+  TmuxAttemptPaneEntry,
+  TmuxAttemptPaneAlive,
+  TmuxAttemptPaneExited,
+  TmuxAttemptPaneSignaled,
+  AttemptPanesParsed,
+  AttemptPanesParseRefused,
+  parse_tmux_attempt_panes_output,
+}
+import extdeps.posix.signal { linux_standard_signal_render }
+import extdeps.llm.cli_lifecycle {
+  provider_kind_label,
+  provider_readiness_label,
+  tool_execution_readiness_label,
+}
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence,
+  WorkerProcessUnobserved,
+  WorkerProcessAbsent,
+  WorkerProcessRunning,
+  WorkerProcessExited,
+  WorkerProcessSignaled,
+  worker_phase_label,
+  worker_process_evidence_label,
+  worker_process_evidence_detail,
+  worktree_evidence_label,
+  provider_evidence_label,
+  process_identity_evidence_label,
+  transcript_evidence_label,
+  terminal_outcome_evidence_label,
+}
+import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
+import gunbc.roadmap.roadmap_belt_receipt_store_root {
+  BeltReceiptWritten, BeltReceiptWriteRefused,
+  BeltTickReceiptStoreReady, BeltTickReceiptStoreUnready, belt_tick_receipt_store, belt_tick_receipt_observe, belt_tick_receipt_put,
+  BeltObligationReceiptStoreReady, BeltObligationReceiptStoreUnready, belt_obligation_receipt_store, belt_obligation_receipt_observe, belt_obligation_receipt_put,
+  BeltPublicationReceiptStoreReady, BeltPublicationReceiptStoreUnready, belt_publication_receipt_store, belt_publication_receipt_put,
+  belt_projects_slots_path,
+}
+import gunbc.roadmap.roadmap_belt_attempt_store_root {
+  BeltAttemptEntryRead, BeltAttemptEntryAbsent, BeltAttemptEntryUnreadable,
+  BeltSubmissionStore, BeltSubmissionStoreReady, BeltSubmissionStoreUnready, belt_submission_store, belt_submission_store_ensure_argv,
+  belt_submission_store_roster, BeltCaptureRosterListed, BeltCaptureRosterUnlistable, BeltCaptureRosterEntryRead, BeltCaptureRosterEntryUnreadable,
+  belt_submission_store_observe_head, belt_submission_store_put_head,
+  BeltCaptureIntentStore, BeltCaptureIntentStoreReady, BeltCaptureIntentStoreUnready, belt_capture_intent_store, belt_capture_intent_store_ensure_argv,
+  belt_capture_intent_store_observe, belt_capture_intent_store_put, belt_capture_intent_store_clear, BeltCaptureIntentCleared, BeltCaptureIntentClearRefused,
+  BeltIntegrationStore, BeltIntegrationStoreReady, BeltIntegrationStoreUnready, belt_integration_store, belt_integration_store_ensure_argv,
+  belt_integration_store_observe_head, belt_integration_store_put_head,
+}
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
+import gunbc.roadmap.attempt_system_unit_launch {
+  attempt_system_unit_start_request_from_plan,
+  attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
+  AttemptSystemUnitEnqueueRefused,
+  attempt_system_unit_read_answer,
+  attempt_system_unit_harness_start_from_observation,
+  AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessPending, AttemptSystemUnitHarnessFailed,
+}
+import extdeps.systemd {
+  ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax,
+  systemd_time_span_of_seconds, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong,
+}
+import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
+import std.measure { byte_size_count, kibibyte, Second }
+import gunbc.deploy_transition {
+  ActuationAdmission,
+  ActuationAdmitted,
+  ActuationRefused,
+  actuation_admission,
+  transition_actuation_standing,
+}
+import gunbc.deploy_transition_store { transition_inhibition_store }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardObserveOnly,
+  DashboardActuating,
+  dashboard_instance_for_id,
+  DashboardInstanceForId,
+  DashboardInstanceIdUnknown,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_provider_executable,
+  dashboard_instance_provider_executable_refusal_detail,
+  dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_dispatch_attempt_state_root,
+  DashboardInstanceLookup,
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
+  dispatch_base_branch,
+  dashboard_git_subtree_readback_is_granted_under, dashboard_git_worker_granted_directory_mode,
+  dashboard_git_worker_directory_mode_octal,
+  dashboard_git_worker_entry_writes_files_in_place,
+}
+// THE GROUP ROW, IMPORTED FROM THE ACCOUNT MODEL THAT DECLARES IT. The gate below compares the group
+// find reports on every granted entry against this row, so it has to name the same declaration the
+// spawn's chgrp was told -- two spellings of a group name is how a gate starts a worker unit over a
+// tree it believes is grouped for a different account.
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
+import gunbc.roadmap.roadmap_dispatch_environment {
+  EnvironmentAdmitted,
+  EnvironmentRefused,
+  dispatch_environment_admit,
+  dispatch_environment_admission_json,
+}
+import gunbc.roadmap.roadmap_execution_contract {
+  AttemptStateDirectoryCapability,
+  EnvironmentBindingCapability,
+  GitWorkspaceCapability,
+  GunbcClaimRunnerCapability,
+  WorkItemExecutionContract,
+  ClaimSourceRootLayout,
+  ValidationOperation,
+  ModeledValidationCommand,
+  validation_operation_command,
+  modeled_validation_command_wire,
+  execution_contract_validation_summary,
+  validation_consumes_affected_set_window,
+  execution_contract_needs_diff_window,
+  contract_closure,
+  ContractDeclaresNoValidation,
+  ContractClosesNothing,
+  ContractCloses,
+  ContractNotAgentWork,
+  contract_source_roots,
+}
+import gunbc.repository { gunbc_repository }
+import gunbc.roadmap.roadmap_publication_helper {
+  PublicationAnswerStanding,
+  AnswerReady, AnswerAwaited, AnswerSpoolRefused,
+  publication_answer_standing,
+}
+import gunbc.roadmap.roadmap_publish {
+  RoadmapPublicationSubject,
+  PublicationSubjectObservation,
+  PublicationSubjectObserved, PublicationSubjectUnobserved,
+  PublicationReceipt,
+  publication_receipt_member, ReceiptMemberRead, ReceiptMemberUnreadable,
+  PublicationEvidence, EvidenceForSubject, EvidenceAbsent,
+  EvidenceUnreadable, EvidenceForAnotherSubject,
+  publication_evidence_for,
+  PublicationReceiptSource,
+  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
+  publication_receipt_json,
+  publication_receipt_outcome_key,
+  publication_receipt_offers_the_expected_head,
+}
+import gunbc.roadmap.roadmap_publish_observe {
+  WorktreeRepositoryBinding,
+  WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
+  observe_worktree_repository_binding,
+}
+import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
+import gunbc.compute.attempt_lifecycle { DispatchOwned, attempt_record_json }
+import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
+import gunbc.compute.compute_seat_ensure {
+  SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
+  SeatDischargeStanding, SeatDischargeClean, SeatDischargePassRefused, SeatDischargeHasRefusals, SeatDischargeHasReds, seat_discharge_pass_standing,
+}
+import gunbc.compute.work_provider_local {
+  compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
+  provide_result_host_record, host_record_was_written, host_record_wire,
+  ObserveUnitLifecycle,
+}
+import gunbc.compute.compute_producer_lease { compute_producer_leases, ComputeProducerLeasesReady, ComputeProducerLeasesUnready }
+import gunbc.roadmap.roadmap_refused_retry {
+  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable,
+  RefusalCauseInfrastructure, RefusalCauseCandidate,
+  compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
+  refused_retry_standing, refused_retry_wakes, refused_retry_ledger_entry_name, refused_retry_ledger_count, refused_retry_terminal_ordinal,
+  refused_retry_exhausted_reason, refused_retry_bound,
+  RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop, belt_verification_retry_verdict,
+}
+import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
+  SharedComputationCitation, ComputationAttached, ComputationComputed,
+  VerificationEvidence, VerificationEvidenceForSubject,
+  VerificationSubject,
+  VerificationSubjectObservation,
+  VerificationSubjectObserved,
+  VerificationSubjectUnobserved,
+  ValidationExecution,
+  VerificationReceipt,
+  VerificationReceiptFileSource,
+  VerificationReceiptAbsent,
+  VerificationReceiptPresent,
+  VerificationReceiptUnreadable,
+  verification_receipt_json,
+  verification_receipt_decode,
+  VerificationReceiptDecoded,
+  VerificationReceiptUndecodable,
+  ExactVerificationReceiptAbsent,
+  ExactVerificationReceiptPresent,
+  ExactVerificationReceiptUnreadable,
+  verification_subject_match,
+  VerificationSubjectMatches,
+  VerificationSubjectDiffers,
+  CurrentVerificationSelection,
+  CurrentVerificationSelectionObservation,
+  SelectionAbsent,
+  SelectionUnaddressable,
+  SelectionUnreadable,
+  SelectionMalformed,
+  SelectionObserved,
+  ExactVerificationReceiptSource,
+  current_verification_selection_json,
+  exact_verification_receipt_basename,
+  verification_receipt_file_source_from_exact,
+  belt_verification_decision, belt_verification_resume_decision,
+  BeltVerificationRun,
+  BeltVerificationDefer,
+  BeltVerificationRefuse,
+  BeltVerificationEvidenceUnreadable,
+  VerificationSelectionPublishOutcome,
+  VerificationSelectionPublished,
+  VerificationSelectionPublishRefused,
+  verification_directory_segment,
+  verification_evidence_moves_lamp,
+}
+import extdeps.github.github { Repository }
+import gunbc.roadmap.roadmap_dispatch_destination {
+  DispatchExecutorOriginRead,
+  DispatchExecutorOriginUnreadable,
+  dispatch_executor_origin_of_document,
+  DispatchDestinationResolved,
+  DispatchDestinationMissing,
+  node_dispatch_destination,
+  destination_github_repository,
+  DestinationGithubRepositoryObserved,
+  DestinationGithubRepositoryUnobserved,
+  DispatchSpawnOrigin,
+  dispatch_spawn_origin_json,
+}
+import gunbc.roadmap.roadmap_validation_oracle {
+  ValidationOracleRef,
+  OracleObservation,
+  OraclePinScope,
+  OraclePinnable,
+  OracleNotPinnable,
+  OracleSetObservation,
+  OracleSetObserved,
+  OracleSetIncomplete,
+  ValidationOracleGate,
+  ValidationOracleAdmitted,
+  ValidationOracleGateRefused,
+  ValidationVerdict,
+  ValidationPassed,
+  ValidationFailed,
+  ValidationRefused,
+  ValidationNotRun,
+  ValidationCommandUnrealized,
+  ValidationCommandRefused,
+  ValidationChangeWindowRefused,
+  ValidationContractUnspecified,
+  ValidationContractClosesNothing,
+  ValidationNotAgentWork,
+  validation_oracle_scopes,
+  validation_oracle_observe_from_source,
+  validation_oracle_set_observe,
+  validation_oracle_gate,
+  validation_oracle_parse_pinned_identity_wire,
+  validation_oracle_parse_pinned_revision_wire,
+  validation_oracle_pin_recorded,
+  validation_verdict_key,
+  validation_verdict_detail,
+  validation_receipt_json,
+}
+import gunbc.git_diff_change_window {
+  GitDiffWindowPrepareOutcome,
+  GitDiffWindowPrepared,
+  GitDiffWindowPrepareRefused,
+  GitMergeBaseObservation,
+  GitMergeBaseObserved,
+  GitMergeBaseProgramUnavailable,
+  GitMergeBaseExecutionFailed,
+  GitMergeBaseOutputMalformed,
+  GitTargetGenerationObservation,
+  GitTargetGenerationObserved,
+  GitTargetGenerationProgramUnavailable,
+  GitTargetGenerationExecutionFailed,
+  GitTargetGenerationOutputMalformed,
+  ChangeWindowPreparationRefusal,
+  ChangeWindowMergeBaseRefused,
+  ChangeWindowTargetGenerationRefused,
+  ChangeWindowHeadObjectIdRefused,
+  ChangeWindowPersistenceRefused,
+  git_exact_diff_window_for_verification,
+  git_diff_window_json,
+  git_diff_window_env_assignment,
+  git_diff_window_identity_hex,
+  git_diff_window_absent_identity,
+}
+import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import gunbc.fleet.origin_main_revision_observe {
+  local_tree_revision,
+  landed_on_admitted_standing,
+  FleetRevisionStanding,
+  LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
+}
+import extdeps.git {
+  shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args,
+  shape_git_commit_message_args, git_pathspec_literal, git_command_config_inert_args,
+  git_dir_path_from_gitfile, git_untrusted_config_env_words,
+  git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
+}
+import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision, CandidateCommitSubject, belt_candidate_commit_subject, belt_candidate_commit_message }
+import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
+import gunbc.scm.ancestry { ancestry_walk, AncestryTraced, AncestryBrokenAt, AncestryStartNotInHistory, AncestryRevisitsACommit }
+import gunbc.scm.object_store {
+  ObjectStore, CorpusManifestEntry, authored_source_target_of,
+  store_authored_source, SourceStored, SourceLocatorCollision,
+  store_authored_sources_batch, SourcesBatched, SourceBatchCollision,
+  store_corpus_manifest, CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  find_corpus_manifest_record,
+  CorpusManifestFound, CorpusManifestAbsent, CorpusManifestIsAuthoredSource, CorpusManifestIsSemanticNode,
+  AuthoredSourceEmpty, AuthoredSourceText,
+  PathUniqueManifestEntries,
+  path_unique_of_record, path_unique_with_path_bound, path_unique_with_path_removed,
+  store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
+  find_object, ObjectId, store_rostered_lookup, scm_object_identity, authored_source_object, path_unique_manifest_identity,
+  CorpusManifestRecord, authored_source_target_locator, object_id_eq, CorpusManifestTarget,
+}
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, IntakeNone, IntakeBase, IntakeAdvance, IntakeStaleCapture, IntakeUnrecordedByFormat, intake_revision_eq, encode_commit_intake, CaptureWork, CommitWork, NoWork, WorkCapture, WorkUnrecordedByFormat, encode_commit_work }
+import gunbc.scm.repository_envelope {
+  LineIntake, LineIntakeAt, LineIntakeAbsent, LineIntakeUnrecorded, LineIntakeUnreadable, line_intake,
+  intake_commit_at_revision, IntakeAtRevisionFound, IntakeAtRevisionAbsent, IntakeAtRevisionAmbiguous,
+  intake_tip, IntakeTip, IntakeTipFound, IntakeTipNoLine, IntakeTipAmbiguous,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseLineExists,
+  mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
+  IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
+  line_integration_of, LineIntegration,
+  SupersessionRefusal, SupersessionNotAnIntegration, SupersessionStaleIntegrationIsARoot, SupersessionNotStale,
+  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionSourceNotACapture, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
+  LegacyIntakeRecord, record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
+  LegacyIntakeRefusal, LegacyIntakeUnknownCommit, LegacyIntakeAlreadyRecorded, LegacyIntakeDuplicated, LegacyIntakeUncovered,
+  LegacyIntakeRootNotBase, LegacyIntakeBaseNotRoot, LegacyIntakeNotRecordable, LegacyIntakeCensusRefused,
+}
+import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history,
+  repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat, RepositoryProtocolUnrecognizedIdentityRule, RepositoryProtocolNotAProtocolRefusal }
+import std.list { distinct_by_key }
+import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
+import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
+import gunbc.scm.write_spine {
+  commit_staged, commit_staged_capture, StagedCaptureWithoutBase, StagedCaptureCommitted,
+  StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
+}
+import gunbc.scm.repository_load { load_repository, load_repository_indexed, materialize_objects, materialize_if_rostered, ObjectMaterialization, ObjectsMaterialized, ObjectMaterializationRefused, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
+import gunbc.scm.repository_save {
+  save_repository_sharded_guarded,
+  RepositoryGuardedSaveOutcome,
+  RepositoryStaleGenerationRefused,
+  RepositoryGuardedSaveUnobservable,
+  RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable,
+  RepositoryGenerationExpectation, GenerationExpected, GenerationExpectedAbsent,
+  repository_generation_expected_after_save,
+}
+import gunbc.scm.worktree_inventory {
+  worktree_inventory_args, worktree_inventory_parse, worktree_base_file_args,
+  worktree_base_inventory_args, worktree_changes_since_args, worktree_untracked_args,
+  revision_observable_args, revision_changes_between_args,
+  worktree_changes_parse, WorktreeChange, WorktreeBind, WorktreeDelete,
+}
+import std.minted_identity { MintedId, minted_id_ordinal }
+import gunbc.roadmap.roadmap_project {
+  ProjectMembership, MembershipStandalone, MembershipMember, MembershipAmbiguous,
+  node_project_membership, project_key_for_node, project_member_ids,
+}
+import gunbc.roadmap.roadmap_fanin {
+  FaninOutcome, FaninIntegrated, FaninAlreadyIntegrated, FaninConflicted, FaninRefused,
+  fanin_integrate_candidate,
+  fanin_correct_integration, FaninCorrection, FaninCorrected, FaninSupersessionRefused,
+  IntegrationReceipt, IntegrationReceiptState, IntegrationIntegrated, IntegrationBlocked,
+  integration_receipt_text, integration_receipt_decode,
+  IntegrationReceiptDecoded, IntegrationReceiptNotDecodable,
+  IntegrationReceiptObservation,
+  IntegrationReceiptForHead, IntegrationReceiptAbsent, IntegrationReceiptUnreadable,
+}
+import gunbc.roadmap.roadmap_authority { declared_roadmap_edges }
+import gunbc.roadmap.roadmap_attempt_occurrence {
+  DispatchAttemptOccurrence, AttemptOccurrenceObserved, AttemptOccurrenceUnclassified,
+  AttemptOccurrenceForeign, AttemptOccurrenceMalformed,
+  AttemptContainer, AttemptContainerTmux, AttemptContainerSystemdUnit, attempt_container_name,
+  ObservedContainerRow, DurableAttemptRecord,
+  occurrence_population, occurrence_population_conserved, occurrence_unit_identity,
+  OccurrenceIdentity, OccurrenceIdentityParsed, OccurrenceIdentityUnparseable,
+}
+import gunbc.roadmap.roadmap_submission {
+  WorkerSubmission, SubmissionCapture,
+  SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
+  SubmissionObservation, SubmissionDeclared, SubmissionAbsent, SubmissionUndecodable,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
+  SubmissionDecoded, SubmissionNotDecodable, CaptureDecoded, CaptureNotDecodable,
+  submission_artifact_name, submission_digest, submission_decode,
+  submission_capture_basename, submission_capture_text, submission_capture_decode,
+  submission_readiness_key,
+  SubmissionCandidacy, SubmissionIsCandidate, SubmissionNotCandidate, submission_candidacy,
+  SubmissionCaptureRootBound,
+  submission_capture_binding_refusal, CaptureBindingMismatch, CaptureBindingUnverifiable,
+}
+import gunbc.scm.object_table_json { object_id_key }
+import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
   ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationHoldUntil, ContinuationComplete, ContinuationEnded, ContinuationResume,
-  continuation_decision, continuation_decision_with_retirement,
-  LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
+  continuation_decision,
 }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
@@ -2657,12 +3176,7 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
 fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationDecision {
   let prior = Present { value: belt_prior_attempt_facts(instance: instance, node_id: node.node, progress: progress) }
-  match lineage_retire_read_for_instance(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
-    LineageRetireAbsent => continuation_decision_with_retirement(prior: prior, retire: none)
-    LineageRetireFound { record } => continuation_decision_with_retirement(prior: prior, retire: Present { value: record })
-    LineageRetireUnreadable { reason } =>
-      ContinuationRefused { reason: join(["the lineage's retire record is present but unreadable, so the lineage is neither retired nor trusted: ", reason], "") }
-  }
+  continuation_decision(prior: prior)
 }
 
 fn belt_prior_attempt_facts(instance: HostDashboardInstance, node_id: RoadmapNodeId, progress: WorkflowAttemptProgress) -> PriorAttemptFacts {
@@ -2678,59 +3192,6 @@ fn belt_prior_attempt_facts(instance: HostDashboardInstance, node_id: RoadmapNod
     recovery: belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
     verification_retry: belt_verify_retry_standing(instance: instance, progress: progress),
     now: now_epoch_seconds(),
-  }
-}
-
-// THE OPERATOR'S RETIRE-LINEAGE ENTRY: admit the request over the node's current lineage facts, then
-// commit the create-only record beside the ended attempt's state. The route supplies the authenticated
-// principal and the clock; nothing here reads a caller-claimed identity. The branch is never touched.
-type BeltLineageRetireOutcome
-  = BeltLineageRetired { record: LineageRetireRecord }
-  | BeltLineageRetireRefused { step: String, detail: String }
-
-fn belt_lineage_retire_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, reason: String, decided_by: String, decided_at: String) -> BeltLineageRetireOutcome {
-  match belt_workflow_attempts_observe_for_instance(instance: instance) {
-    WorkflowAttemptsRefused { reason: why } =>
-      BeltLineageRetireRefused { step: "lineage-retire-ledger", detail: join(["the attempts ledger is unobservable: ", why], "") }
-    WorkflowAttemptsObserved { attempts } => {
-      let mine = attempts |> filter(p => p.node_id == node_id as String)
-      let prior = match mine.first() {
-        Absent => none
-        Present { value: p } => Present { value: belt_prior_attempt_facts(instance: instance, node_id: node_id, progress: p) }
-      }
-      match lineage_retire_admission(prior: prior, attempt_key: attempt_key, reason: reason, decided_by: decided_by, decided_at: decided_at) {
-        LineageRetireRefused { reason: why } => BeltLineageRetireRefused { step: "lineage-retire-admission", detail: why }
-        LineageRetireAdmitted { record } =>
-          match lineage_retire_create_for_instance(instance: instance, node_id: node_id, record: record) {
-            LineageRetireCommitted { record: committed } => BeltLineageRetired { record: committed }
-            LineageRetireCommitRefused { step, detail } => BeltLineageRetireRefused { step: step, detail: detail }
-          }
-      }
-    }
-  }
-}
-
-// THE NODE PAGE'S RETIREMENT PANEL over the node's attempts (newest first): a record beside the latest
-// attempt is shown as recorded; with none, the offer exists only when the unretired decision for that
-// attempt is Ended. Every other state shows nothing. It decides nothing: the route re-admits.
-fn belt_lineage_retire_panel_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempts: List<WorkflowAttemptProgress>) -> LineageRetirePanel {
-  match (attempts |> filter(p => p.node_id == node_id as String)).first() {
-    Absent => LineageRetirePanelNone
-    Present { value: p } =>
-      match lineage_retire_read_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key) {
-        LineageRetireFound { record } => LineageRetirePanelRecorded { record: record }
-        LineageRetireUnreadable { reason } => LineageRetirePanelUnreadable { reason: reason }
-        LineageRetireAbsent =>
-          match continuation_decision_with_retirement(prior: Present { value: belt_prior_attempt_facts(instance: instance, node_id: node_id, progress: p) }, retire: none) {
-            ContinuationEnded { reason: _ } => LineageRetirePanelOffer { attempt_key: p.attempt_key, branch: p.branch }
-            ContinuationSpawnFresh { reason: _ } => LineageRetirePanelNone
-            ContinuationRefused { reason: _ } => LineageRetirePanelNone
-            ContinuationHold { reason: _ } => LineageRetirePanelNone
-            ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => LineageRetirePanelNone
-            ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageRetirePanelNone
-            ContinuationComplete { reason: _ } => LineageRetirePanelNone
-          }
-      }
   }
 }
 

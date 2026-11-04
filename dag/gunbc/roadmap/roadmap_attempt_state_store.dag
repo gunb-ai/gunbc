@@ -83,7 +83,6 @@ type AttemptStateMember
   | AttemptReviewRequestScratch { criterion_key: String }
   | AttemptAuditVerdict { head_sha: String }
   | AttemptAuditRequestScratch
-  | AttemptLineageRetired
 
 // THE ATTEMPT-LOG MEMBERS ARE THEIR OWN CLOSED SET (decision A, #15471 seal move): the four `*Events` streams,
 // the four `*Log` stdout streams (the in-place `attempt-wire` record is a directory member reached through the
@@ -161,7 +160,6 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
     AttemptAuditVerdict { head_sha: _ } => AttemptDirectoryAudit
     AttemptAuditRequestScratch => AttemptDirectoryAudit
     AttemptKeyRecord => AttemptDirectoryRoot
-    AttemptLineageRetired => AttemptDirectoryRoot
     AttemptProcessFingerprint => AttemptDirectoryRoot
     AttemptAlignmentBinding => AttemptDirectoryRoot
     AttemptEnvironmentAdmission => AttemptDirectoryRoot
@@ -181,7 +179,6 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
 fn attempt_state_member_name(member: AttemptStateMember) -> String {
   match member {
     AttemptKeyRecord => "attempt-key"
-    AttemptLineageRetired => "lineage-retired.json"
     AttemptProcessFingerprint => "process-fingerprint"
     AttemptAlignmentBinding => "alignment-binding.json"
     AttemptEnvironmentAdmission => "environment-admission.json"
