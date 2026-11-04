@@ -5452,6 +5452,8 @@ struct PartitionRebuildActuation {
     /// The decision is the positively modeled partition-generation class (the partition mirror
     /// moved). Whether that move is EXPLAINED is derived by the host, never read from here.
     partition_generation_move: bool,
+    /// Projection of WholeCompilerRebuildRequired, including shared build inputs.
+    whole_compiler_required: bool,
 }
 
 type ModelValue = crate::v1_interpreter::Value;
@@ -5574,6 +5576,16 @@ fn partition_rebuild_actuation(
                 ))
             }
         };
+    let whole_compiler_required =
+        match call("stage0_partition_rebuild_requires_whole_compiler_today")? {
+            ModelValue::Bool(value) => value,
+            other => {
+                return Err(format!(
+                    "refusal: stage0_partition_rebuild_requires_whole_compiler_today returned {} instead of Bool",
+                    other.type_label_public()
+                ))
+            }
+        };
     Ok(PartitionRebuildActuation {
         actuatable,
         package_closure,
@@ -5581,6 +5593,7 @@ fn partition_rebuild_actuation(
         decision_line,
         release_scope_empty,
         partition_generation_move,
+        whole_compiler_required,
     })
 }
 
@@ -7238,7 +7251,15 @@ fn install_convergence_stage(
         &subject,
         |workspace| match &partition_move {
             Some(outcome) => partition_move_rebuild(workspace, &subject, outcome),
-            None if whole_compiler => seed_cargo_build(workspace, "round.rebuild_from_installed"),
+            // v1 maintenance purpose: realize the model's shared-input whole build so v2
+            // regeneration can converge. Partition moves retain their separate admission above.
+            None if whole_compiler || actuation.whole_compiler_required => {
+                println!(
+                    "partition-rebuild: selected whole-compiler build; boundary_files_changed={whole_compiler}; {}",
+                    actuation.decision_line
+                );
+                seed_cargo_build(workspace, "round.rebuild_from_installed")
+            }
             None => partitioned_rebuild_from_installed(workspace, &actuation),
         },
         || next_pass_executable_digest(workspace),

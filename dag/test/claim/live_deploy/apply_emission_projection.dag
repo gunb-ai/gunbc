@@ -5,7 +5,7 @@ import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import extdeps.git.partial_clone { ObjectSourceCanServe, ObjectSourceServeAdmission }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
-import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_instance_environment, tracker_web_environment_client, tracker_web_console_instant_unix_at }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
 import v2.std.orchestration {
   Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let,
@@ -140,8 +140,21 @@ fn pipeline_steps_text(steps: List<PipelineStep>) -> String {
   fold(steps, init: "", f: (acc, st) => concat(acc, pipeline_step_text(st: st)))
 }
 
-fn claim_oidc_now() -> Second? {
-  tracker_web_test_console_readback_observed_at_epoch
+// The observer clock a witness reads is the INSTANCE'S OWN environment's console readback instant,
+// never another environment's: a Stage instance judged by the Test clock was the per-environment
+// hardcoding the environment-client row removes. An instance with no login row or no client row has
+// no readback and so no clock (its placement emits no OIDC env, which needs none).
+fn claim_oidc_now_for(spec: DeploymentSpec) -> Second? {
+  match tracker_web_instance_environment(instance_id: spec.instance_id) {
+    Absent => Absent
+    Present { value: environment } => match tracker_web_environment_client(environment: environment) {
+      Absent => Absent
+      Present { value: client } => match client.readback {
+        Absent => Absent
+        Present { value: rb } => tracker_web_console_instant_unix_at(at: rb.observed_at)
+      }
+    }
+  }
 }
 
 fn apply_complete_object_source_serve() -> ObjectSourceServeAdmission {
