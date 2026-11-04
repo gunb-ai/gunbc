@@ -59,12 +59,26 @@ data a2_row_fit_plate_second_fit: RecordedFact<GroupFitPlateSecondProposition> =
 data a2_row_fit_plate_second_fit_provenance: EvidenceProvenance = EvidenceProvenance {
  entity:"operator-conversation/a2-row-fit-plate-fit-2026-11-03",activity:"manual-print-and-hand-fit",agent:"operator",
 }
+// THE THIRD A2 ROW FIT PLATE, printed 2026-11-03 on printer-02 (3MF sha256 ad2599f674af9a6bfb6379e30b6ea1ee9a4af55e9ef69b6332e29885e029ddbf),
+// its tabs gripping only the first 1.5 mm of each band's slope. Operator, 2026-11-04: "the a2 plate fits okay,
+// but its still not resting totally flat on the back of the fan" (the plate's face side; no fan is fitted).
+// The tabs were the only part that entered a face; which tab held the plate off is not established.
+type GroupFitPlateThirdProposition { fits_row: Bool, rests_flat: Bool }
+data a2_row_fit_plate_third_fit: RecordedFact<GroupFitPlateThirdProposition> = RecordedFact {
+ id:"a2-row-fit-plate-fit-2026-11-04",value:GroupFitPlateThirdProposition {fits_row:true,rests_flat:false},
+}
+data a2_row_fit_plate_third_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/a2-row-fit-plate-fit-2026-11-04",activity:"manual-print-and-hand-fit",agent:"operator",
+}
 fn a2_row_fit_plate_fit_display() -> String {
  let v=a2_row_fit_plate_fit.value
  let w=a2_row_fit_plate_second_fit.value
+ let x=a2_row_fit_plate_third_fit.value
  join([if v.plate_goes_over_the_row {"The first A2 row fit plate went over all four card ends (2 November 2026): the installed separation and the read openings hold as the datum."} else {"The first A2 row fit plate did not go over the row."},
   if v.lip_too_loose {" Its lip was loose at the 0.3 mm allowance, so the lip clearance is tightened."} else {""},
   if v.top_tabs_seat_flush {""} else {" Its thin band tabs struck the band slope and kept the top from seating, so the tabs follow the read band taper."},
   if w.lip_fits {" The second plate's 0.1 mm lip fits (3 November 2026)."} else {" The second plate's 0.1 mm lip does not fit."},
-  if w.band_tabs_clear_fins {""} else {" Its band tabs, each the band's whole section to within 0.3 mm of the first fin, struck the fins at one end, so the tabs now grip only the start of the slope, well clear of the fins."}],"")
+  if w.band_tabs_clear_fins {""} else {" Its band tabs, each the band's whole section to within 0.3 mm of the first fin, struck the fins at one end, so the tabs were cut to grip only the start of the slope."},
+  if x.fits_row {" The third plate fits the row (4 November 2026)"} else {" The third plate does not fit the row"},
+  if x.rests_flat {"."} else {" but does not rest flat on the faces, so the tabs are removed and a deeper sleeve holds the plate."}],"")
 }

@@ -3,6 +3,7 @@ module gunbc.workspace_commissioning_dispatch_transport
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_operation }
 
 import std.types { String, NonEmptyStr, CommitSha }
+import std.algebra { list_append }
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObservation, WorkspaceCommissioningFleetRefused, workspace_commissioning_basis_from_privileged }
 import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }

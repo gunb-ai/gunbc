@@ -155,6 +155,7 @@ test fn the_worker_unit_stops_with_its_process_and_writes_its_exit_record() -> B
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr)
   !has_property(props: props, needle: "RemainAfterExit")
+    && has_property(props: props, needle: "CollectMode=inactive-or-failed")
     && has_property(props: props, needle: "ExecStopPost=install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/n+k+x")
     && attempt_unit_substate_has_exited(substate: "exited")
     && attempt_unit_substate_has_exited(substate: "failed")
