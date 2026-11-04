@@ -646,6 +646,12 @@ fn prepare_emitted_compiler_for_entry(
     // full-inventory release is the pattern, and a trim that cannot release live memory doubles
     // as the measurement that nothing here is still held.
     drop(run);
+    // THE PROCESS CACHES GO TOO. Owning the index released ~2.5 GB, but gunbc#15848's own run read
+    // rss_kb_after=6630664: the corpus-wide thread-local memos (`take_process_caches`, the same list
+    // the floor runner forgets at exit) still held the rest. Nothing after this point reads them --
+    // every later control runs the emitted binary -- so they are dropped (freed) here, before the
+    // build, not forgotten.
+    drop(super::take_process_caches());
     let rss_before_kb = super::current_rss_bytes().map(|b| b / 1024);
     let trim_reclaimed_kb = super::trim_retained_heap();
     let rss_after_kb = super::current_rss_bytes().map(|b| b / 1024);
