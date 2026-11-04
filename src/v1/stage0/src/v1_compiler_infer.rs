@@ -5470,32 +5470,6 @@ pub fn equality_leaf_admission(
             scope.module_name.clone(),
         );
         let resolved_identity = type_reference_identity(resolved.clone(), source_indices);
-        if std::env::var_os("EQ_ALIAS_PROBE_DIAG").is_some() {
-            let inferred_kind = match peeled.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => format!(
-                    "Resolved(rt.connective={:?} rt.children={} rt_ident={:?})",
-                    rt.connective,
-                    rt.children.len(),
-                    crate::v1_compiler_infer_types::node_declaration_identity(
-                        rt.clone(),
-                        scope.type_env.source_indices.clone()
-                    )
-                ),
-                Some(_) => "NonResolved".to_string(),
-                None => "None".to_string(),
-            };
-            eprintln!(
-                "DIAG-LEAF name={:?} peeled.conn={:?} peeled.children={} peeled_ident={:?} | resolved.conn={:?} resolved.children={} resolved_ident={:?} | inferred={}",
-                name,
-                peeled.connective,
-                peeled.children.len(),
-                ident_key,
-                resolved.connective,
-                resolved.children.len(),
-                resolved_identity,
-                inferred_kind
-            );
-        }
         if (((resolved.connective.clone() != Connective::NoConnective)
             || (resolved_identity.clone() != ident_key.clone()))
             || ((resolved.children.clone().len() as i64) != (peeled.children.clone().len() as i64)))
@@ -5529,76 +5503,13 @@ pub fn equality_leaf_admission(
                         depth.clone(),
                     )
                 }
-                _ => {
-                    if std::env::var_os("EQ_ALIAS_PROBE_DIAG").is_some() {
-                        let si = scope.type_env.source_indices.clone();
-                        match crate::v1_compiler_infer_env::lookup_binding_by_name(
-                            scope.type_env.clone(),
-                            name.clone(),
-                        ) {
-                            Some(b) => {
-                                let (ar_conn, ar_children, ar_auth) = match b.alias_rhs.clone() {
-                                    Some(a) => (
-                                        format!("{:?}", a.connective),
-                                        a.children.len(),
-                                        crate::v1_std_core::authored_name_at(si.clone(), a.clone()),
-                                    ),
-                                    None => ("None".to_string(), 0usize, "".to_string()),
-                                };
-                                let mut ar_res_conn = "None".to_string();
-                                let mut ar_res_children = 0usize;
-                                let mut ar_lookup_conn = "None".to_string();
-                                let mut ar_lookup_children = 0usize;
-                                if let Some(a) = b.alias_rhs.clone() {
-                                    let rr = crate::v1_compiler_infer_resolve::resolve_node_bounded(
-                                        a.clone(),
-                                        scope.type_env.clone(),
-                                        scope.module_name.clone(),
-                                        0,
-                                        false,
-                                    )
-                                    .resolved
-                                    .clone();
-                                    ar_res_conn = format!("{:?}", rr.connective);
-                                    ar_res_children = rr.children.len();
-                                    let an = crate::v1_std_core::authored_name_at(si.clone(), a.clone());
-                                    if let Some(lt) = crate::v1_compiler_infer_env::lookup_type_by_name(
-                                        scope.type_env.clone(),
-                                        an.clone(),
-                                    ) {
-                                        ar_lookup_conn = format!("{:?}", lt.connective);
-                                        ar_lookup_children = lt.children.len();
-                                    }
-                                }
-                                eprintln!(
-                                    "DIAG-BIND name={:?} resolved.conn={:?} resolved.children={} resolved.inferred={} alias_rhs.present={} alias_rhs.conn={} alias_rhs.children={} alias_rhs.auth={:?} alias_rhs.resolve.conn={} alias_rhs.resolve.children={} alias_rhs.lookup.conn={} alias_rhs.lookup.children={}",
-                                    name,
-                                    b.resolved.connective,
-                                    b.resolved.children.len(),
-                                    b.resolved.inferred.is_some(),
-                                    b.alias_rhs.is_some(),
-                                    ar_conn,
-                                    ar_children,
-                                    ar_auth,
-                                    ar_res_conn,
-                                    ar_res_children,
-                                    ar_lookup_conn,
-                                    ar_lookup_children,
-                                );
-                            }
-                            None => {
-                                eprintln!("DIAG-BIND name={:?} NO_BINDING", name);
-                            }
-                        }
-                    }
-                    equality_unresolved_leaf_admission(
-                        peeled.clone(),
-                        name.clone(),
-                        scope.clone(),
-                        visited.clone(),
-                        depth.clone(),
-                    )
-                }
+                _ => equality_unresolved_leaf_admission(
+                    peeled.clone(),
+                    name.clone(),
+                    scope.clone(),
+                    visited.clone(),
+                    depth.clone(),
+                ),
             }
         }
     }
@@ -5776,21 +5687,8 @@ pub fn equality_resolved_declaration_structure(
                         v1_rt::int_add(depth.clone(), 1),
                     )
                 } else {
-                    let exposure = expected_type_head_exposure(peeled.clone(), scope.clone());
-                    if std::env::var_os("EQ_ALIAS_PROBE_DIAG").is_some() {
-                        eprintln!(
-                            "DIAG-STRUCT-ELSE name={:?} rt.connective={:?} rt.children={} rt_ident={:?} peeled_ident={:?} depth={} exposure={:?}",
-                            name,
-                            rt.connective,
-                            rt.children.len(),
-                            crate::v1_compiler_infer_types::node_declaration_identity(rt.clone(), scope.type_env.source_indices.clone()),
-                            crate::v1_compiler_infer_types::node_declaration_identity(peeled.clone(), scope.type_env.source_indices.clone()),
-                            depth,
-                            exposure
-                        );
-                    }
                     equality_exposure_refusal(
-                        exposure,
+                        expected_type_head_exposure(peeled.clone(), scope.clone()),
                         name.clone(),
                         (depth.clone() == 0),
                     )
