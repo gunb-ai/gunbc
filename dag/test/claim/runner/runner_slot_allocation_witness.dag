@@ -364,9 +364,9 @@ test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
 // envelope is no longer this row: it is gunbc.floor.floor_demand gunbc_floor_pinned_memory_max/_high,
 // where the floor's receipts join (test.claim.floor.floor_demand_witness_test). A row that moves
 // again moves by a ruling cited here, never by the last place a pin landed.
-test fn witness_declared_row_pins_22_21_gib_and_no_swap_from_the_2026_10_09_ruling() -> Bool {
-  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(23622320128))
-    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(22548578304))
+test fn witness_declared_row_pins_25_gib_max_equal_high_and_no_swap_from_the_2026_11_04_ruling() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(26843545600))
+    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(26843545600))
     && byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max) == 0
 }
 
