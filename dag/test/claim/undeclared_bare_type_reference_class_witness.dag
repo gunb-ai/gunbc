@@ -41,9 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT THIS DOES AND DOES NOT ANSWER, because the distinction is the whole point. It witnesses THE
 // CLASS: an undeclared bare type reference refuses under a narrower closure, and the SAME source
 // with the import line added compiles clean. It does NOT witness the repair of any particular
-// corpus module -- that is a per-module subject, and the sizing of what remains is recorded at
-// gunbc.compile_clean_diagnostic_policy unlisted_import_use_burndown_sizing beside the enforcement
-// row that consumes it.
+// corpus module -- that is a per-module subject.
 //
 // THE DEFINER IS SUPPLIED IN BOTH MANIFESTS AND DELETING IT IS NOT A SIMPLIFICATION. The unimported
 // name is a REAL declaration of a module present in the same manifest, so the only thing missing

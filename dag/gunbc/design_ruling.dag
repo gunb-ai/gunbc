@@ -28,6 +28,13 @@ type DesignRuling {
   provenance: String
 }
 
+data printer_start_hold_lifted_2026_11_04: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_hold_lifted_2026_11_04"),
+  decided: "2026-11-04",
+  section: "6",
+  provenance: "Operator, relayed by wise-tern-646 to witty-tern-466 on 2026-11-04: the 2026-10-21 standing hold on printer starts (do not touch /var/lib/gunbc/printer-starts) is LIFTED. It is released through the modeled route, the fleet-converge printer mode's hold-release-request operation (gunbc.fleet.printer_execution_hold printer_hold_release_request), which files the operator card and releases nothing by hand. The same day's two PETG prints were started out of band (a hand-run prepare_request_plate and a hand-written MQTT publish after a pasted token); that path is not the modeled route and is superseded by print_converge, whose start now takes its AMS tray from gunbc.fleet.printer_ams_loading select_ams_tray.",
+}
+
 data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
   decided: "2026-10-28",
@@ -707,6 +714,7 @@ fn design_rulings() -> List<DesignRuling> {
     one_serving_context_cap,
     installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
+    printer_start_hold_lifted_2026_11_04,
   ]
 }
 

@@ -98,11 +98,15 @@ fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: S
 type SlotDrainPendingCause
   = DrainPendingJobRunning
   | DrainPendingStopInProgress
+  | DrainPendingJobRunningLeftUnmasked
+  | DrainPendingStopInProgressLeftUnmasked
 
 fn slot_drain_pending_cause_wire(c: SlotDrainPendingCause) -> String {
   match c {
     DrainPendingJobRunning => "a job is running (Runner.Worker in the unit's cgroup); the unit is masked and left running until the job ends"
     DrainPendingStopInProgress => "a stop is already in progress (ActiveState=deactivating); the unit is masked and the stop is not re-issued"
+    DrainPendingJobRunningLeftUnmasked => "a job is running (Runner.Worker in the unit's cgroup); the unit is left untouched and unmasked, and a later pass drains it once it is idle"
+    DrainPendingStopInProgressLeftUnmasked => "a stop is already in progress (ActiveState=deactivating); the unit is left unmasked until it is inactive"
   }
 }
 
@@ -229,8 +233,14 @@ fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
     && slot_is_enabled(r: r) && slot_state_active(active: r.active)
 }
 
-// A DRAINED SLOT IS MASKED AND STOPPED. The mask comes first and is safe at any time: it only stops
-// the unit being started again. Stopping is admitted only when the unit is not executing a job --
+// A DRAINED SLOT IS MASKED AND STOPPED. UNDER MaskWhileRunning the mask comes first, and that is NOT
+// safe at any time, which this comment used to claim: `systemctl mask` reloads the manager, and a unit
+// whose file is masked loads none of its drop-ins, so a unit still RUNNING when it is masked loses its
+// resource-control drop-ins (the template caps on srv1, the per-slot system.control set-property caps on
+// srv4) and its Slice= at that reload. Its live job then runs outside system-actions\x2drunner.slice with
+// no memory.max on its path, and the memory envelope refuses (fleet-converge run 41861708547 on srv4,
+// 2026-11-04: twelve busy slots masked by the slot-tree fold, required v2-bootstrap red on main until the
+// units were unmasked and restarted). NeverMaskARunningUnit (below) is the admission that does not. Stopping is admitted only when the unit is not executing a job --
 // a Runner.Worker present means a job is in flight, so the slot is left masked and running and the
 // effect reports DrainPending; the ephemeral runner exits when its job ends, the mask keeps it down,
 // and the next pass reads it stopped. An unreadable process listing refuses rather than guessing idle.
@@ -247,33 +257,61 @@ type SlotDrainPlan
   | DrainWaitForStop { mask: List<List<String>> }
   | DrainRefused { reason: String }
 
+// HOW A DRAIN CLOSES ADMISSION, AS A CHOICE THE CALLER MAKES BY NAME.
+//   MaskWhileRunning: mask first, at any state. Admission closes immediately, including on a busy unit,
+//     which is what the cap bracket's drain-and-wait relies on; it carries the exposure stated above,
+//     recorded as an open integration concern on the bracket rather than changed under it here.
+//   NeverMaskARunningUnit: a running unit is never masked. An idle one is STOPPED and then masked, so it
+//     is inactive when the mask's reload lands; a busy or stopping one gets no leg at all and is pending
+//     for a later pass. Admission is not closed while it runs, so it may take the next job; that costs a
+//     later pass, never an envelope. The slot-tree rebuild uses this.
+type SlotDrainAdmission
+  = MaskWhileRunning
+  | NeverMaskARunningUnit
+
 fn slot_drain_plan(r: SlotActuationReading, worker: SlotActivityObservation) -> SlotDrainPlan {
+  slot_drain_plan_under(r: r, worker: worker, admission: MaskWhileRunning)
+}
+
+fn slot_drain_plan_under(r: SlotActuationReading, worker: SlotActivityObservation, admission: SlotDrainAdmission) -> SlotDrainPlan {
   let mask = if slot_is_masked(r: r) { [] } else { [systemctl_mask_argv(unit: r.unit)] }
   match r.load {
     UnitLoadNotFound => DrainUnitNotInstalled
     UnitLoadBadSetting => DrainRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
     UnitLoadError => DrainRefused { reason: "the manager failed to load the slot's unit (LoadState=error)" }
-    UnitLoaded => slot_drain_plan_loaded(r: r, worker: worker, mask: mask)
-    UnitLoadMasked => slot_drain_plan_loaded(r: r, worker: worker, mask: mask)
+    UnitLoaded => slot_drain_plan_loaded(r: r, worker: worker, mask: mask, admission: admission)
+    UnitLoadMasked => slot_drain_plan_loaded(r: r, worker: worker, mask: mask, admission: admission)
   }
 }
 
-fn slot_drain_plan_loaded(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>) -> SlotDrainPlan {
+// THE MASK A RUNNING UNIT MAY RECEIVE UNDER THE ADMISSION: all of it under MaskWhileRunning, none under
+// NeverMaskARunningUnit.
+fn slot_drain_running_mask(mask: List<List<String>>, admission: SlotDrainAdmission) -> List<List<String>> {
+  match admission {
+    MaskWhileRunning => mask
+    NeverMaskARunningUnit => []
+  }
+}
+
+fn slot_drain_plan_loaded(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>, admission: SlotDrainAdmission) -> SlotDrainPlan {
   match r.active {
     Inactive => if slot_is_masked(r: r) { DrainAlreadyMasked } else { DrainSteps { steps: mask } }
     Failed => if slot_is_masked(r: r) { DrainAlreadyMasked } else { DrainSteps { steps: mask } }
-    Deactivating => DrainWaitForStop { mask: mask }
-    Active => slot_drain_plan_running(r: r, worker: worker, mask: mask)
-    Activating => slot_drain_plan_running(r: r, worker: worker, mask: mask)
-    Reloading => slot_drain_plan_running(r: r, worker: worker, mask: mask)
+    Deactivating => DrainWaitForStop { mask: slot_drain_running_mask(mask: mask, admission: admission) }
+    Active => slot_drain_plan_running(r: r, worker: worker, mask: mask, admission: admission)
+    Activating => slot_drain_plan_running(r: r, worker: worker, mask: mask, admission: admission)
+    Reloading => slot_drain_plan_running(r: r, worker: worker, mask: mask, admission: admission)
   }
 }
 
-fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>) -> SlotDrainPlan {
+fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>, admission: SlotDrainAdmission) -> SlotDrainPlan {
   match worker {
     SlotActivityUnobserved { cause: c } => DrainRefused { reason: concat("whether the slot is executing a job could not be read, so it is not stopped: ", c as String) }
-    SlotHasLiveWorker => DrainWaitForJob { mask: mask }
-    SlotIdle => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
+    SlotHasLiveWorker => DrainWaitForJob { mask: slot_drain_running_mask(mask: mask, admission: admission) }
+    SlotIdle => match admission {
+      MaskWhileRunning => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
+      NeverMaskARunningUnit => DrainSteps { steps: concat([systemctl_stop_argv(unit: r.unit)], mask) }
+    }
   }
 }
 
@@ -501,23 +539,28 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
 
 fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
 {
+  drain_runner_slot_under_over(target: target, context: context, unit: unit, admission: MaskWhileRunning)
+}
+
+fn drain_runner_slot_under_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, admission: SlotDrainAdmission) -> SlotActuationOutcome
+{
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
     SlotRead { reading: r } => {
       let worker = if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
-      match slot_drain_plan(r: r, worker: worker) {
+      match slot_drain_plan_under(r: r, worker: worker, admission: admission) {
         DrainAlreadyMasked => SlotActuationNoop { unit: unit, state: "masked-and-stopped" }
         DrainUnitNotInstalled => SlotNotInstalled { unit: unit }
         DrainRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         DrainWaitForJob { mask: m } =>
           match run_slot_steps_over(target: target, context: context, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
-            Absent => SlotDrainPending { unit: unit, cause: DrainPendingJobRunning }
+            Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingJobRunning NeverMaskARunningUnit => DrainPendingJobRunningLeftUnmasked } }
           }
         DrainWaitForStop { mask: m } =>
           match run_slot_steps_over(target: target, context: context, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
-            Absent => SlotDrainPending { unit: unit, cause: DrainPendingStopInProgress }
+            Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingStopInProgress NeverMaskARunningUnit => DrainPendingStopInProgressLeftUnmasked } }
           }
         DrainSteps { steps: ss } =>
           match run_slot_steps_over(target: target, context: context, steps: ss) {

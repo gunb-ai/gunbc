@@ -20,7 +20,7 @@ import v2.compiler.resolve {
   ModuleOutcome,
   ModuleUnavailable
 }
-import v2.compiler.dependency_demand_census { AuthoredUsesFunction, UsesAliasBindUnique }
+import v2.compiler.dependency_demand_facts { AuthoredUsesFunction, UsesAliasBindUnique }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }

@@ -1,7 +1,7 @@
 module std.fermi
 
 import std.types { FermiDepth, L, List, M, Milliseconds, S, Xl, Xs }
-import std.algebra { BoundedLattice }
+import std.algebra { BoundedLattice, fold_list }
 import std.optional { Absent, Present }
 
 fn fermi_ordinal(depth: FermiDepth) -> Int {
@@ -46,7 +46,7 @@ fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
 }
 
 fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
-  fold(depths, init: Xs, f: (acc, d) => fermi_lattice_join(lhs: acc, rhs: d))
+  fold_list(xs: depths, empty: Xs, cons: (acc, d) => fermi_lattice_join(lhs: acc, rhs: d))
 }
 
 fn fermi_within_budget(depth: FermiDepth, budget: FermiDepth) -> Bool {

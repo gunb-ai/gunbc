@@ -49,7 +49,7 @@ test fn the_served_roster_holds_exactly_the_observed_logins_once() -> Bool {
   length(roster) == 1 && match first(roster) { Present { value: l } => (l as String) == "writer@example.ts.net"  Absent => false }
 }
 
-fn admitted(a: gunbc.fabric.fabric_writer_roster.FabricDoorWriterAdmission) -> Bool {
+fn admitted(a: gunbc.fabric.fabric_writer_admission.FabricDoorWriterAdmission) -> Bool {
   match a { FabricDoorWriterAdmitted { principal: _ } => true  FabricDoorWriterRefused { refusal: _ } => false }
 }
 
