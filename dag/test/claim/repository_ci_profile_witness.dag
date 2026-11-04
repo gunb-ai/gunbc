@@ -96,7 +96,9 @@ import gunbc.witness.repository_witness_workflow {
 // that its emitters never consult, so it drifts and starts certifying a CI that does not exist. The answer is
 // not a witness holding two descriptions equal - the four workflow emitters read identity, runner, timeout,
 // cadence and source roots out of this row, and the committed bytes are compared with their emission by the
-// authority that owns generated artifacts (dag/gunbc/instruments/tier_o_drift_check.dag). So what is claimed
+// authority that owns generated artifacts
+// (gunbc.instruments.tier_o_drift_check_native.drift_findings, reached as the label
+// //gunbc/instruments:tier-o-drift-check). So what is claimed
 // here is what no emitter can vouch for itself: that gunbc's own row is well formed, that the shapes a
 // repository may not declare are refused before a byte is emitted, and that a declared row becomes a step
 // rather than a comment.
