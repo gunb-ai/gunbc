@@ -1,6 +1,7 @@
 module test.claim.serving_caller_backlog_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List, EpochSecs }
+import std.algebra { list_append }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import std.nat { Nat }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
@@ -46,6 +47,7 @@ import gunbc.harness.harness_seat {
 }
 import std.process { ProcessExit }
 import gunbc.harness.harness_cli { harness_durable_worker_cli, harness_bind_belt_seat }
+import gunbc.harness.harness_tool { ValidationNotOffered }
 import std.decl_ref { DeclarationRef }
 import v2.std.decl_index { decl_facts_at }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
@@ -746,7 +748,7 @@ test fn w_a_durable_turn_placed_on_the_operator_endpoint_is_refused_before_work_
   match harness_caller_turn(dispatch_node: "node", turn_ordinal: 1, state_root: "/tmp/r") {
     none => false
     Present { value: t } =>
-      match harness_bind_belt_seat(role: "worker", system_prompt: "p", brief: "b", actor: "a" as NonEmptyStr, attempt: "k" as NonEmptyStr, turn: Present { value: t }) {
+      match harness_bind_belt_seat(role: "worker", system_prompt: "p", brief: "b", actor: "a" as NonEmptyStr, attempt: "k" as NonEmptyStr, turn: Present { value: t }, validation: ValidationNotOffered) {
         HarnessSeatRefused { detail: d } => string_contains(s: d, pattern: "operator endpoint, which takes no seat")
         _ => false
       }
