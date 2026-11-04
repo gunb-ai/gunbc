@@ -1,0 +1,113 @@
+module test.claim.harness_supervision_test
+
+import std.types { list_length, Bool, String, List }
+import std.process { ExitSuccess, ExitFailure }
+import std.optional { Present, Absent }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.harness.harness_wire { AnthropicMessagesShape, OpenAiChatCompletionsShape }
+import gunbc.roadmap.roadmap_alignment_verdict { Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict }
+import gunbc.harness.harness_turn {
+  HarnessToolResult, HarnessSupervision, Unsupervised, SupervisedRounds,
+  HarnessSupervisionVerdictRead, SupervisionVerdictDecoded, SupervisionVerdictUnreadable,
+  TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnStepBudgetExhausted,
+  harness_supervision_verdict_decode, harness_supervision_counts_down, harness_messages_with_steer,
+  harness_tool_result_messages_json, harness_outcome_label, harness_outcome_detail,
+  harness_event_supervision_verdict, harness_supervision_verdict_name,
+}
+import gunbc.harness.harness_cli { harness_turn_exit, harness_worker_supervision, harness_worker_step_budget }
+
+fn decodes_to_kind(text: String, kind: String) -> Bool {
+  match harness_supervision_verdict_decode(text: text) {
+    SupervisionVerdictUnreadable { cause: _ } => false
+    SupervisionVerdictDecoded { verdict } =>
+      match verdict {
+        Aligned => kind == "aligned"
+        Misaligned { direction } => kind == "misaligned" && direction == "add the regression test first"
+        ExtremelyMisaligned { direction: _ } => kind == "extremely-misaligned"
+        CatastrophicallyMisaligned { reason: _ } => kind == "catastrophically-misaligned"
+        RoutedConflict { conflict: _ } => kind == "routed-conflict"
+      }
+  }
+}
+
+fn refuses(text: String) -> Bool {
+  match harness_supervision_verdict_decode(text: text) {
+    SupervisionVerdictUnreadable { cause: _ } => true
+    SupervisionVerdictDecoded { verdict: _ } => false
+  }
+}
+
+// THE CHECK'S VERDICT FILE IS READ OR REFUSED, NEVER GUESSED. Every kind the check may write decodes
+// to its arm with its payload intact; a malformed file, an unknown kind, or a steer without its
+// direction refuses, because an undecided check must stop the session rather than pass for aligned.
+test fn the_verdict_file_decodes_each_kind_and_refuses_the_rest() -> Bool {
+  decodes_to_kind(text: "\{\"kind\": \"aligned\"}", kind: "aligned")
+    && decodes_to_kind(text: "\{\"kind\": \"misaligned\", \"direction\": \"add the regression test first\"}", kind: "misaligned")
+    && decodes_to_kind(text: "\{\"kind\": \"extremely-misaligned\", \"direction\": \"off contract\"}", kind: "extremely-misaligned")
+    && decodes_to_kind(text: "\{\"kind\": \"catastrophically-misaligned\", \"reason\": \"deletes the gate\"}", kind: "catastrophically-misaligned")
+    && refuses(text: "aligned")
+    && refuses(text: "\{\"kind\": \"looks-fine\"}")
+    && refuses(text: "\{\"kind\": \"misaligned\"}")
+    && refuses(text: "\{\"kind\": \"aligned\"} trailing")
+}
+
+// A SUPERVISED SESSION HEARS NOTHING ABOUT ITS ROUNDS. Only an unsupervised turn, which really ends
+// at zero, gets the countdown after its tool results; a supervised worker's tool results arrive bare.
+test fn only_an_unsupervised_turn_counts_down() -> Bool {
+  let supervised = SupervisedRounds { chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state", round_steps: 40 }
+  let results = [HarnessToolResult { tool_use_id: "call-1", text: "ok\n[exit 0]", is_error: false }]
+  let bare = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: results, steps_remaining: 2, countdown: harness_supervision_counts_down(s: supervised))
+  let counted = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: results, steps_remaining: 2, countdown: harness_supervision_counts_down(s: Unsupervised))
+  list_length(items: bare) == 1
+    && list_length(items: counted) == 2
+    && !join(bare |> map(m => serialize_json(v: m)), "").contains("rounds")
+}
+
+// A STEER IS THE ONLY TEXT A BOUNDARY ADDS: one user message carrying the direction verbatim, on
+// both wire shapes, after everything the worker already had.
+test fn a_steer_appends_one_user_message_with_the_direction() -> Bool {
+  let before = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: [HarnessToolResult { tool_use_id: "call-1", text: "x", is_error: false }], steps_remaining: 0, countdown: false)
+  let chat = harness_messages_with_steer(shape: OpenAiChatCompletionsShape, messages: before, steer: "add the regression test first")
+  let messages = harness_messages_with_steer(shape: AnthropicMessagesShape, messages: [], steer: "add the regression test first")
+  list_length(items: chat) == list_length(items: before) + 1
+    && (match chat.last() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"user\"") && serialize_json(v: m).contains("add the regression test first")  Absent => false })
+    && (match messages.last() { Present { value: m } => serialize_json(v: m).contains("add the regression test first")  Absent => false })
+}
+
+// A SUPERVISION STOP IS A TYPED END, NOT A CONTROL TRANSFER. Its label and detail name the verdict,
+// and it exits as a refusal like every other turn that did not complete -- there is no exit 3 left
+// for a consumer to read as "resume me".
+test fn a_supervision_stop_is_a_named_refusal() -> Bool {
+  let stopped = TurnStoppedBySupervision { verdict: "extremely-misaligned", detail: "off contract", steps_taken: 80 }
+  let undecided = TurnSupervisionUnavailable { cause: "the verdict is not readable as JSON at offset 0", steps_taken: 40 }
+  harness_outcome_label(outcome: stopped) == "stopped-by-supervision"
+    && harness_outcome_label(outcome: undecided) == "supervision-unavailable"
+    && harness_outcome_detail(outcome: stopped).contains("extremely-misaligned")
+    && harness_outcome_detail(outcome: undecided).contains("rather than continue unsupervised")
+    && (match harness_turn_exit(outcome: stopped) { ExitSuccess => false  ExitFailure { code, reason: _ } => code != 3 })
+    && (match harness_turn_exit(outcome: undecided) { ExitSuccess => false  ExitFailure { code, reason: _ } => code != 3 })
+}
+
+// A WORKER IS SUPERVISED EXACTLY WHEN IT CARRIES A CHAIN, and its round is the worker step budget.
+test fn a_worker_is_supervised_exactly_when_it_carries_a_chain() -> Bool {
+  let chained = match harness_worker_supervision(chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state") {
+    Unsupervised => false
+    SupervisedRounds { chain_fingerprint: f, check_prompt: p, check_directory: d, round_steps: n } =>
+      f == "fp" && p == "chain" && d == "/state" && n == harness_worker_step_budget
+  }
+  let chainless = match harness_worker_supervision(chain_fingerprint: "", check_prompt: "chain", check_directory: "/state") {
+    Unsupervised => true
+    SupervisedRounds { chain_fingerprint: _, check_prompt: _, check_directory: _, round_steps: _ } => false
+  }
+  chained && chainless
+}
+
+// THE VERDICT IS RECORDED IN THE WORKER'S EVENT STREAM, keyed by the turn it followed, and each
+// boundary's check writes a distinct verdict file so a later boundary never reads an earlier verdict.
+test fn each_boundary_records_its_own_verdict() -> Bool {
+  let event = harness_event_supervision_verdict(steps_taken: 40, verdict: Misaligned { direction: "add the regression test first" })
+  event.contains("supervision.verdict")
+    && event.contains("40")
+    && event.contains("add the regression test first")
+    && harness_supervision_verdict_name(steps_taken: 40) != harness_supervision_verdict_name(steps_taken: 80)
+}

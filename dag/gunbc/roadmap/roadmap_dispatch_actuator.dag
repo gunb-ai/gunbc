@@ -35,7 +35,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved, alignment_refusal_reason,
-  alignment_chain_fingerprint,
+  alignment_chain_fingerprint, alignment_chain_render,
 }
 import gunbc.roadmap.dispatch_worker_handed_set { dispatch_worker_source_root_words }
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
@@ -1965,6 +1965,8 @@ fn gunbc_harness_spawn_argv(
   events_path: String,
   attempt_identity: String,
   alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
 ) -> List<String> {
   concat(
     [gunbc_program, "run"],
@@ -1982,6 +1984,8 @@ fn gunbc_harness_spawn_argv(
         "--arg", join(["gunbc_program=", gunbc_program], ""),
         "--arg", join(["attempt_identity=", attempt_identity], ""),
         "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
+        "--arg", join(["supervision_prompt=", supervision_prompt], ""),
+        "--arg", join(["supervision_dir=", supervision_dir], ""),
       ],
     ),
   )
@@ -2035,6 +2039,7 @@ fn dispatch_provider_inner_argv_for_launch(
   worktree_path: String,
   brief: String,
   alignment_chain_fingerprint: String,
+  supervision_prompt: String,
 ) -> DispatchProviderInnerArgv {
   let attempt = prepared_attempt(prepared: prepared)
   let instance = attempt.instance
@@ -2124,6 +2129,8 @@ fn dispatch_provider_inner_argv_for_launch(
               events_path: attempt_log_member_text(instance: instance, node_id: attempt.node.node, attempt_key: attempt.attempt_key, member: AttemptWorkerEvents),
               attempt_identity: dispatch_worker_attempt_identity(node_id: attempt.node.node as String, attempt_key: attempt.attempt_key),
               alignment_chain_fingerprint: alignment_chain_fingerprint,
+              supervision_prompt: supervision_prompt,
+              supervision_dir: attempt_state_directory_text(instance: instance, node_id: attempt.node.node, attempt_key: attempt.attempt_key, directory: AttemptDirectoryWorker),
             ),
           }
       }
@@ -3055,6 +3062,7 @@ fn dispatch_spawn_commands_for_launch(
     worktree_path: worktree_path,
     brief: brief,
     alignment_chain_fingerprint: alignment_chain_fingerprint(chain: chain),
+    supervision_prompt: alignment_chain_render(chain: chain),
   ) {
     CursorProviderOffCustodyHost { reason } =>
       DispatchSpawnRefused {
