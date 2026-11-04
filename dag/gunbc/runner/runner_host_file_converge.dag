@@ -1623,7 +1623,6 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
               ] + list_flat_map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)), d => {
                 let dir = runner_slot_dir_path(slot: d) as String
                 [
-                  LegElevated { command: runner_slot_tree_owned_find_argv(slot_dir: dir) },
                   LegElevated { command: argv_words(command: ls_long_numeric_entries_command(paths: concat(path_ancestor_prefixes(path: dir), [dir]))) },
                   LegElevated { command: argv_words(command: ls_long_numeric_listing_command(directory: dir)) },
                 ]
@@ -1633,11 +1632,23 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
                 RunnerHostDeployUnmodeled { host: _ } => []
               }
             } else { [] },
-          ),
+          ) + runner_slot_tree_read_legs(subject: subject),
         ),
       ),
     ),
   )
+}
+
+// EVERY SLOT'S TREE IS READ, NOT ONLY THE DEPLOY SLOT'S: the owner-and-mode find and the release grep
+// run for each target the tree fold judges (converge_runner_slot_trees), at the release the fleet pins.
+fn runner_slot_tree_read_legs(subject: RunnerHostFileSubject) -> List<FleetHostRemoteLeg> {
+  match fleet_runner_slot_artifact() {
+    Absent => list_flat_map(subject.slot_trees, t => [LegElevated { command: runner_slot_tree_owned_find_argv(target: t) }])
+    Present { value: a } => list_flat_map(subject.slot_trees, t => [
+      LegElevated { command: runner_slot_tree_owned_find_argv(target: t) },
+      LegElevated { command: runner_slot_tree_release_argv(target: t, runner_release: a.binary_release) },
+    ])
+  }
 }
 
 fn elevated_argv(command: List<String>) -> List<String> {
