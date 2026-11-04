@@ -1,0 +1,45 @@
+module test.claim.native_serve_headers_witness
+
+import std.types { Bool, String, List }
+import gunbc.native_serve {
+  NativeServeFrame, NativeServeFramed, NativeServeFrameRefused,
+  NativeServeListen, NativeServeStartRefused, native_serve_start,
+  native_serve_frame, native_serve_bad_request,
+}
+import extdeps.http.server {
+  serve_request_header_reading, ServeRequestHeaderRepeated,
+  ServeRequestHeaderAbsent, ServeRequestHeaderSingle,
+}
+
+fn frame(headers: List<String>) -> NativeServeFrame {
+  match native_serve_start(argv: ["--host", "127.0.0.1", "--port", "0", "--release-revision", "0123456789012345678901234567890123456789"]) {
+    NativeServeListen { contract: c } => native_serve_frame(contract: c, request_line: "POST /authz HTTP/1.1", header_lines: headers)
+    NativeServeStartRefused { reason: why } => native_serve_bad_request(reason: why)
+  }
+}
+
+test fn request_headers_preserve_order_value_and_repetition() -> Bool {
+  match frame(headers: ["Authorization:  Bearer opaque:token  ", "X-Pool-Session: first", "x-pool-session: second", "X-Gunbc-Seat-Permit: permit", "Content-Length: 3"]) {
+    NativeServeFrameRefused { response: _ } => false
+    NativeServeFramed { head: h, body_length: n } =>
+      n == 3 && (h.request_headers |> map(f => concat(f.name, concat(":", f.value)))) == [
+        "authorization:Bearer opaque:token", "x-pool-session:first", "x-pool-session:second", "x-gunbc-seat-permit:permit", "content-length:3",
+      ] && match serve_request_header_reading(headers: h.request_headers, name: "x-pool-session") {
+        ServeRequestHeaderRepeated { occurrences: count } => count == 2
+        ServeRequestHeaderAbsent => false
+        ServeRequestHeaderSingle { value: _ } => false
+      }
+  }
+}
+
+test fn missing_headers_are_empty_and_ambiguous_framing_still_refuses() -> Bool {
+  let empty = match frame(headers: []) {
+    NativeServeFramed { head: h, body_length: n } => count(h.request_headers) == 0 && n == 0
+    NativeServeFrameRefused { response: _ } => false
+  }
+  let duplicate = match frame(headers: ["Content-Length: 3", "content-length: 4"]) {
+    NativeServeFrameRefused { response: r } => r.status == 400
+    NativeServeFramed { head: _, body_length: _ } => false
+  }
+  empty && duplicate
+}

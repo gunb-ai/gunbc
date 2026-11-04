@@ -1,8 +1,8 @@
 module gunbc.instruments.native_serve_fixture
 
-import std.types { String, Int, Bool, CommitSha }
+import std.types { String, Int, Bool, CommitSha, List }
 import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
-import extdeps.http.server { ServeWireResponse, ServeResponseHeaderLocation, serve_response_header_wire }
+import extdeps.http.server { ServeWireResponse, ServeRequestHeader, ServeResponseHeaderLocation, serve_response_header_wire }
 import gunbc.native_serve { native_serve_text_plain }
 import extdeps.clock { Clock }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -35,8 +35,10 @@ fn fixture_spin(n: Int, acc: Int) -> Int {
   if n == 0 { acc } else { fixture_spin(n: n - 1, acc: (acc * 31 + n) % 1000003) }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
-  if path == "/hello" && method == "GET" {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, request_headers: List<ServeRequestHeader>) -> ServeWireResponse {
+  if path == "/headers" && method == "GET" {
+    fixture_text(status: 200, body: join(request_headers |> map(h => concat(h.name, concat(":", h.value))), "\n"))
+  } else if path == "/hello" && method == "GET" {
     fixture_text(status: 200, body: concat("hello, ", concat(tailscale_identity, "\n")))
   } else if path == "/redirect" && method == "GET" {
     ServeWireResponse { status: 303, content_type_label: native_serve_text_plain, body: "", headers: [serve_response_header_wire(header: ServeResponseHeaderLocation { location: "/hello" })] }

@@ -1,0 +1,139 @@
+module extdeps.strata.request_bound_save
+
+import std.types { String, NonEmptyStr, Int, Bool, HttpStatus }
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.uri { Uri, Https, File }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound, JsonMemberAbsent }
+import extdeps.strata.session_file { SlotRequest, SlotSave, SlotTransfer, SlotTransferred, SlotRefused, SlotRefusal, SlotReplyUnreadable, slot_reply, slot_request_path, slot_json_field }
+
+// STRATA PLUS A LOCAL PATCH IS A DIFFERENT ENGINE BUILD FROM UPSTREAM STRATA, AND THIS MODULE IS ITS IDENTITY.
+// extdeps.strata.session_file models upstream Strata at its pin and nothing else. The patch below is
+// gunbc-maintained, is not merged upstream, and targets Strata commit 8183c6b6, a different revision from
+// the session_file pin. A stock server ignores expected_request_id and answers a plain 200 with no
+// request_id member, so the same save request means two materially different things on the two builds: an
+// unconditional save upstream, a save conditioned on the completed response here. Two meanings need two
+// names, so the patched contract lives only in this module.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: decl_ref(module_path: "extdeps.strata.request_bound_save", decl_name: "BoundSaveRequest") },
+  first_citation: ExternalAuthority { uri: Uri { scheme: Https,
+    locator: "github.com/Niko1221/Strata/commit/8183c6b67162340c09b67360860177c577a65f2e" } },
+  further_citations: [ExternalAuthority { uri: Uri { scheme: File,
+    locator: "dag/extdeps/strata/patches/request-bound-save-8183c6b6.patch" } }],
+}
+
+// The vendored patch is gunbc-maintained Python with no .dag authority, applied by hand. Two facts end
+// at two different events: the STANDING (not yet offered upstream) and the DEVIATION itself.
+data request_bound_save_patch_build_route: DissolutionCondition = unbound_dissolution(description: "Standing: not yet offered upstream, under rulings gunbc.design_ruling vendored_strata_request_bound_save_patch_is_a_temporary_deviation and gunbc.design_ruling vendored_strata_patch_stays_unoffered_upstream (2026-11-01, no upstream issue or pull request). The standing ends when the operator decides to offer it upstream or an upstream equivalent lands. The deviation dissolves only when an upstream equivalent is merged, or the engine build carrying the patch is produced by a modeled build route, so that no hand-applied vendored patch remains; a decision to offer upstream does not dissolve it.")
+
+data request_bound_save_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when the serving router S3 conditional-save path (gunbc.plans.fabric_serving_router) calls bound_save_reply through a transport exchange in gunbc.serving.strata_checkpoint_transfer and a witness executes that exchange through a supplied transport.")
+
+// Strata 8183c6b6 is 187 commits behind the session_file pin 32057b8c, and the serve/server.py diff between
+// them has no slot-path change, so reusing slot_reply for the upstream-shaped arms is sound.
+
+// expected_request_id names one completed response in one engine process, never a logical turn or retry.
+type BoundSaveRequest {
+  request_id: NonEmptyStr
+  filename: NonEmptyStr
+}
+
+type BoundSaveCondition = RequestNotCurrent | RequestInFlight | EngineChanged
+
+// The capability a build must carry for this contract to hold. One arm today; a closed sum so a second
+// patch-only member is a new arm rather than a boolean.
+type BoundSaveCapability = RequestIdEcho
+
+type BoundSaveReply
+  = BoundSaveTransferred { transfer: SlotTransfer }
+  | BoundSaveConflict { condition: BoundSaveCondition, published: Bool, message: String }
+  | BoundSaveEngineLacksPatch { missing: BoundSaveCapability, unconditional_save_executed: Bool }
+  | BoundSaveUpstreamRefused { refusal: SlotRefusal }
+  | BoundSaveReplyUnreadable { detail: String }
+
+fn bound_save_upstream_request(request: BoundSaveRequest) -> SlotRequest {
+  SlotRequest { action: SlotSave, filename: request.filename }
+}
+
+fn bound_save_path(request: BoundSaveRequest) -> NonEmptyStr {
+  slot_request_path(request: bound_save_upstream_request(request: request))
+}
+
+fn bound_save_body(request: BoundSaveRequest) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "filename", value: json_string(s: request.filename as String)),
+    json_kv(key: "expected_request_id", value: json_string(s: request.request_id as String)),
+  ]))
+}
+
+fn bound_save_condition_wire(condition: BoundSaveCondition) -> String {
+  match condition { RequestNotCurrent => "request_not_current" RequestInFlight => "request_in_flight" EngineChanged => "engine_changed" }
+}
+
+// A 200 whose upstream-shaped fields all hold. The echo then separates the builds: absent means the
+// server never read expected_request_id and has already saved unconditionally.
+fn bound_save_success(request: BoundSaveRequest, transfer: SlotTransfer, value: JsonValue) -> BoundSaveReply {
+  match json_object_unique_member(v: value, key: "request_id") {
+    JsonMemberAbsent => BoundSaveEngineLacksPatch { missing: RequestIdEcho, unconditional_save_executed: true }
+    JsonMemberFound { value: JsonString { value: echoed } } => if echoed == (request.request_id as String) { BoundSaveTransferred { transfer: transfer } }
+      else { BoundSaveReplyUnreadable { detail: "save echoes a different request id" } }
+    _ => BoundSaveReplyUnreadable { detail: "save request id echo is unreadable" }
+  }
+}
+
+fn bound_save_publication(error: JsonValue) -> Bool? {
+  match json_object_unique_member(v: error, key: "published") {
+    JsonMemberAbsent => Present { value: false }
+    JsonMemberFound { value: JsonBool { value: b } } => Present { value: b }
+    _ => none
+  }
+}
+
+fn bound_save_conflict(status: HttpStatus, error: JsonValue, word: String) -> BoundSaveReply {
+  match slot_json_field(value: error, name: "message") {
+    JsonString { value: message } => bound_save_conflict_read(status: status, error: error, word: word, message: message)
+    _ => BoundSaveReplyUnreadable { detail: "save conflict message is unreadable" }
+  }
+}
+
+fn bound_save_conflict_read(status: HttpStatus, error: JsonValue, word: String, message: String) -> BoundSaveReply {
+  match first([RequestNotCurrent, RequestInFlight, EngineChanged] |> filter(c => bound_save_condition_wire(condition: c) == word)) {
+    Absent => BoundSaveReplyUnreadable { detail: "unknown save condition" }
+    Present { value: c } => if (status as Int) != 409 { BoundSaveReplyUnreadable { detail: "save conflict has the wrong HTTP status" } }
+      else { match bound_save_publication(error: error) {
+        Absent => BoundSaveReplyUnreadable { detail: "invalid save publication reading" }
+        Present { value: p } => BoundSaveConflict { condition: c, published: p, message: message }
+      } }
+  }
+}
+
+// Only a patched engine emits a condition member, so its presence selects this contract; every other
+// failure is upstream's own vocabulary and is read by extdeps.strata.session_file.
+fn bound_save_failure(request: BoundSaveRequest, status: HttpStatus, value: JsonValue, body: String) -> BoundSaveReply {
+  let error = slot_json_field(value: value, name: "error")
+  match json_object_unique_member(v: error, key: "condition") {
+    JsonMemberFound { value: JsonString { value: word } } => bound_save_conflict(status: status, error: error, word: word)
+    JsonMemberAbsent => match slot_reply(request: bound_save_upstream_request(request: request), status: status, body: body) {
+      SlotRefused { refusal: r } => BoundSaveUpstreamRefused { refusal: r }
+      SlotReplyUnreadable { detail: d } => BoundSaveReplyUnreadable { detail: d }
+      _ => BoundSaveReplyUnreadable { detail: "failure status read as a transfer" }
+    }
+    _ => BoundSaveReplyUnreadable { detail: "save condition is unreadable" }
+  }
+}
+
+fn bound_save_reply(request: BoundSaveRequest, status: HttpStatus, body: String) -> BoundSaveReply {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => BoundSaveReplyUnreadable { detail: "slot reply is not JSON" }
+    JsonDocumentParsed { value: v } => if (status as Int) == 200 {
+      match slot_reply(request: bound_save_upstream_request(request: request), status: status, body: body) {
+        SlotTransferred { transfer: t } => bound_save_success(request: request, transfer: t, value: v)
+        SlotReplyUnreadable { detail: d } => BoundSaveReplyUnreadable { detail: d }
+        _ => BoundSaveReplyUnreadable { detail: "success status read as a refusal" }
+      }
+    } else if (status as Int) >= 400 { bound_save_failure(request: request, status: status, value: v, body: body) }
+    else { BoundSaveReplyUnreadable { detail: "unexpected slot HTTP status" } }
+  }
+}

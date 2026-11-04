@@ -3,7 +3,8 @@ module gunbc.native_serve
 import std.types { Int, List, String, Bool, CommitSha }
 import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count, Second, second, second_count }
 import std.algebra { Cons, Empty, trim, list_push }
-import extdeps.http.server { ServeWireResponse, ServeWireHeader }
+import extdeps.http.server { ServeWireResponse, ServeWireHeader, ServeRequestHeader }
+import std.unicode.scalar { ascii_lowercase }
 import gunbc.running_release_identity { release_revision_text_valid }
 import extdeps.tailscale.identity { tailscale_user_login_header }
 import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
@@ -17,10 +18,10 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 // those reads and writes is one of the folds below: which address to bind and which release this
 // process is (native_serve_start), whether a request head is admissible and how many body bytes to
 // read (native_serve_frame), and whether the request is answered before the handler is entered
-// (native_serve_route). The handler contract is the seed's `gunbc serve` contract plus one trailing argument --
-// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision[, startup]) ->
-// ServeWireResponse` (startup being the typed value this process's self-check passed with, when the entry declares one) -- so a program served by the seed today is served natively by declaring the
-// arm and naming its handler that.
+// (native_serve_route). The handler contract is:
+// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision[, request_headers][, startup]) ->
+// ServeWireResponse`. A declared request_headers parameter receives List<ServeRequestHeader>;
+// startup is the typed value the entry's self-check passed with, when declared.
 //
 // WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (DESIGN section 7):
 // - the 40-hex release check is gunbc.running_release_identity release_revision_text_valid, the
@@ -242,6 +243,7 @@ type NativeServeRequestHead {
   method: String
   target: String
   tailscale_identity: String
+  request_headers: List<ServeRequestHeader>
 }
 
 type NativeServeFrame
@@ -257,33 +259,8 @@ fn native_serve_bad_request(reason: String) -> NativeServeFrame {
   } }
 }
 
-fn ascii_lower_code_point(cp: Int) -> Int {
-  if cp >= 65 && cp <= 90 { cp + 32 } else { cp }
-}
-
-// RFC 9110 section 5.1: field names are case-insensitive. Compared code point by code point with
-// ASCII case folded on both sides, so no lowercased copy of every header is built.
-fn field_name_is_from(name: String, wanted: String, i: Int) -> Bool {
-  if i >= string_length(s: wanted) {
-    true
-  } else if ascii_lower_code_point(cp: code_point(substring(s: name, start: i, end: i + 1))) != ascii_lower_code_point(cp: code_point(substring(s: wanted, start: i, end: i + 1))) {
-    false
-  } else {
-    field_name_is_from(name: name, wanted: wanted, i: i + 1)
-  }
-}
-
-fn field_name_is(name: String, wanted: String) -> Bool {
-  string_length(s: name) == string_length(s: wanted) && field_name_is_from(name: name, wanted: wanted, i: 0)
-}
-
-type NativeServeHeaderField {
-  name: String
-  value: String
-}
-
 type NativeServeHeaderParse
-  = NativeServeHeaderParsed { field: NativeServeHeaderField }
+  = NativeServeHeaderParsed { field: ServeRequestHeader }
   | NativeServeHeaderMalformed { line: String }
 
 fn native_serve_header(line: String) -> NativeServeHeaderParse {
@@ -295,7 +272,7 @@ fn native_serve_header(line: String) -> NativeServeHeaderParse {
           if name == "" || trim(s: name) != name {
             NativeServeHeaderMalformed { line: line }
           } else {
-            NativeServeHeaderParsed { field: NativeServeHeaderField { name: name, value: trim(s: join(rest, ":")) } }
+            NativeServeHeaderParsed { field: ServeRequestHeader { name: ascii_lowercase(s: name), value: trim(s: join(rest, ":")) } }
           }
       }
     Empty => NativeServeHeaderMalformed { line: line }
@@ -303,10 +280,10 @@ fn native_serve_header(line: String) -> NativeServeHeaderParse {
 }
 
 type NativeServeHeaders
-  = NativeServeHeadersRead { fields: List<NativeServeHeaderField> }
+  = NativeServeHeadersRead { fields: List<ServeRequestHeader> }
   | NativeServeHeadersRefused { reason: String }
 
-fn native_serve_headers(lines: List<String>, acc: List<NativeServeHeaderField>) -> NativeServeHeaders {
+fn native_serve_headers(lines: List<String>, acc: List<ServeRequestHeader>) -> NativeServeHeaders {
   match lines {
     Empty => NativeServeHeadersRead { fields: acc }
     Cons { head: line, tail: rest } =>
@@ -317,11 +294,11 @@ fn native_serve_headers(lines: List<String>, acc: List<NativeServeHeaderField>) 
   }
 }
 
-fn native_serve_named(fields: List<NativeServeHeaderField>, wanted: String) -> List<String> {
-  fields |> filter(f => field_name_is(name: f.name, wanted: wanted)) |> map(f => f.value)
+fn native_serve_named(fields: List<ServeRequestHeader>, wanted: String) -> List<String> {
+  fields |> filter(f => f.name == ascii_lowercase(s: wanted)) |> map(f => f.value)
 }
 
-fn native_serve_frame_fields(method: String, target: String, fields: List<NativeServeHeaderField>, body_limit: Int) -> NativeServeFrame {
+fn native_serve_frame_fields(method: String, target: String, fields: List<ServeRequestHeader>, body_limit: Int) -> NativeServeFrame {
   let identity_header = tailscale_user_login_header as String
   let lengths = native_serve_named(fields: fields, wanted: native_serve_content_length_header)
   let identities = native_serve_named(fields: fields, wanted: identity_header)
@@ -335,7 +312,7 @@ fn native_serve_frame_fields(method: String, target: String, fields: List<Native
       Absent => ""
     }
     match lengths |> first {
-      Absent => NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity }, body_length: 0 }
+      Absent => NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity, request_headers: fields }, body_length: 0 }
       Present { value: text } =>
         match parse_int(s: text) {
           Absent => native_serve_bad_request(reason: concat("bad Content-Length: ", text))
@@ -345,7 +322,7 @@ fn native_serve_frame_fields(method: String, target: String, fields: List<Native
             } else if n > body_limit {
               native_serve_bad_request(reason: concat("body of ", concat(to_string(value: n), concat(" bytes exceeds the ", concat(to_string(value: body_limit), " byte serve limit")))))
             } else {
-              NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity }, body_length: n }
+              NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity, request_headers: fields }, body_length: n }
             }
         }
     }

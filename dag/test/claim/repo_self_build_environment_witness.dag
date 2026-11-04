@@ -1,0 +1,14 @@
+module test.claim.repo_self_build_environment_witness
+
+import std.types { Bool }
+import gunbc.repo.repo_self_build { repo_self_build_env_stmts }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+
+test fn the_seed_build_environment_serializes_without_refusal() -> Bool {
+  match bash_emit_stmts(statements: repo_self_build_env_stmts(), set_e: false) {
+    Accepted { value: _, diagnostics: None } => true
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
+    Rejected { diagnostics: _ } => false
+  }
+}

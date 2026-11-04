@@ -113,6 +113,16 @@ fn native_serve_probe_cases(peer_port: Int) -> List<NativeServeProbeCase> {
 fn native_serve_probe_door_cases() -> List<NativeServeProbeCase> {
   [
     NativeServeProbeCase {
+      identity: "handler_receives_ordered_normalized_headers_without_collapsing_duplicates",
+      request: "GET /headers HTTP/1.1\r\nAuthorization:  Bearer opaque:token  \r\nX-Pool-Session: attempt\r\nX-Pool-Session: second\r\nX-Gunbc-Seat-Permit: permit\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "authorization:Bearer opaque:token\nx-pool-session:attempt\nx-pool-session:second\nx-gunbc-seat-permit:permit" },
+    },
+    NativeServeProbeCase {
+      identity: "handler_receives_no_headers_when_none_were_sent",
+      request: "GET /headers HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "" },
+    },
+    NativeServeProbeCase {
       identity: "handler_route_reads_framed_identity",
       request: "GET /hello HTTP/1.1\r\nHost: probe\r\nTailscale-User-Login: alice@example\r\n\r\n",
       expect: ExpectBody { status: 200, body: "hello, alice@example\n" },

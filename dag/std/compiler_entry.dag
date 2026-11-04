@@ -128,7 +128,7 @@ type NativeClaimReport {
 
 // NativeServeDriver -- a NATIVELY EMITTED HTTP REQUEST/RESPONSE SERVICE, the native route for
 // every program `gunbc serve` (a seed verb, DESIGN section 7) serves today. Its `.dag` entry
-// declares `native_serve_handle(method, path, body, tailscale_identity, release_revision) ->
+// declares `native_serve_handle(method, path, body, tailscale_identity, release_revision[, request_headers]) ->
 // ServeWireResponse` -- the seed's handler contract unchanged -- and imports gunbc.native_serve,
 // whose folds decide everything between the bytes: which address to bind and which release the
 // process is (argv in, a refusal before any bind), whether a request head is admissible and how

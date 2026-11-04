@@ -790,6 +790,7 @@ pub fn crc_serve_before_bind(startup: bool) -> String {
             Rc::new(vec![]),
             startup,
             false,
+            false,
         );
         match Rc::new(
             file.content
@@ -835,6 +836,7 @@ pub fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_
             Rc::new(vec![]),
             true,
             true,
+            false,
         );
         match Rc::new(
             file.content
@@ -867,6 +869,7 @@ pub fn crc_realize_generation_body(startup: bool) -> String {
             "m".to_string(),
             Rc::new(vec![]),
             startup,
+            false,
             false,
         );
         match Rc::new(
