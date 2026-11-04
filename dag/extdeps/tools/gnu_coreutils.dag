@@ -177,8 +177,11 @@ fn cp_command(source: String, destination: String) -> ArgvCommand {
 // pull the target of a link into the root it is planting into: a link arrives inert, and the guest
 // reads only what it actually opens. A caller that wants the OTHER default has to ask for it in
 // its own name; this row does not take a flag list, for the same reason `cp_command` does not.
-fn cp_recursive_command(source: String, destination: String) -> ArgvCommand {
-  argv_command(program: cp_program(), arguments: [coreutils_cp_recursive_flag as String, source, destination])
+// An argv TAIL, argv[0] supplied by the caller's `cp_program()`; not built with `argv_command`, whose
+// minting is gated behind a caller roster in extdeps.exec.command that this project does not grow
+// (operator ruling: no allowlists as architecture).
+fn cp_recursive_argv(source: String, destination: String) -> List<String> {
+  [coreutils_cp_recursive_flag as String, source, destination]
 }
 
 // `--update=none` (coreutils 9.3+, "cp invocation"): copy only when the destination does not exist,
@@ -352,10 +355,16 @@ fn pwd_command() -> ArgvCommand {
 // through an outcome-aware path therefore sees no output, gets "", and refuses -- a claim that
 // reads a path this way can never mint one, and a host on which nobody provisioned the input is
 // RED rather than green-by-default.
-fn printenv_program() -> ProgramIdentity = uncataloged_program(invocation: "printenv")
+// The argv[0] the caller hands shell.Exec.RunArgv. Deliberately NOT a ProgramIdentity row: minting one
+// goes through `uncataloged_program`, whose callers are enumerated in extdeps.exec.program, and this
+// project does not grow that roster (operator ruling: no allowlists as architecture). PATH-resolved and
+// bare, exactly as `systemctl_binary_name` is for systemctl above; a host where the seam cannot exec it
+// refuses the claim rather than defaulting.
+data printenv_program_invocation: NonEmptyStr = "printenv" as NonEmptyStr
 
-fn printenv_value_command(name: String) -> ArgvCommand {
-  argv_command(program: printenv_program(), arguments: [name])
+// An argv TAIL (argv[0] comes from `printenv_program_invocation`), for the reason given there.
+fn printenv_value_argv(name: String) -> List<String> {
+  [name]
 }
 
 // THE HOST'S OWN BASENAME, for the one thing a witness must not do to a path it did not name: take it
@@ -365,10 +374,13 @@ fn printenv_value_command(name: String) -> ArgvCommand {
 // `basename /tmp/x-AB12cd` writes `x-AB12cd` and exits 0, while `basename /` writes `/` -- the one
 // output a caller of `witness_claim_leaf` must refuse, because a claim root is a `mktemp -d` leaf and a
 // root with no final segment is a broken claim, not a nameable thing.
-fn basename_program() -> ProgramIdentity = uncataloged_program(invocation: "basename")
+// The argv[0] the caller hands shell.Exec.RunArgv, for the same roster reason as
+// `printenv_program_invocation` above.
+data basename_program_invocation: NonEmptyStr = "basename" as NonEmptyStr
 
-fn basename_command(path: String) -> ArgvCommand {
-  argv_command(program: basename_program(), arguments: [path])
+// An argv TAIL (argv[0] comes from `basename_program_invocation`), for the reason given there.
+fn basename_argv(path: String) -> List<String> {
+  [path]
 }
 
 // tee WITHOUT -a OVERWRITES the named file; WITH -a it opens it for APPEND, so bytes written by

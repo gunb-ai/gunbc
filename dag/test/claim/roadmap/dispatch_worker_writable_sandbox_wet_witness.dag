@@ -41,7 +41,8 @@ import extdeps.systemd {
 // transient units on the system manager, so a claim that launched one must also put it away.
 import extdeps.systemd.systemctl {
   systemctl_stop_argv, systemctl_reset_failed_argv, systemctl_list_all_service_units_command,
-  systemctl_stop_user_command, systemctl_reset_failed_user_command, systemctl_list_all_user_service_units_command,
+  systemctl_stop_user_argv, systemctl_reset_failed_user_argv, systemctl_list_all_user_service_units_argv,
+  systemctl_path_resolved_program,
 }
 // THE HOST'S OWN ANSWER FOR WHO OWNS THE CLAIM ROOT, so the elevated root side can refuse a
 // principal that was minted rather than read.
@@ -74,14 +75,14 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_supplied_root_is_refused, witness_supplied_roots_are_off_the_live_host,
   witness_refused_instance, witness_unnameable_principal,
   witness_supplied_credstore_dir, witness_supplied_credential_source, witness_supplied_credential_is_confined,
-  wet_ok, wet_out,
+  wet_ok, wet_out, wet_argv_ok, wet_argv_out,
 }
 import extdeps.tools.stat { stat_mode_command }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, tee_append_command,
   install_directory_owned_argv_command,
-  install_empty_file_command, install_file_mode_command, cp_command, cp_recursive_command, pwd_command,
-  printenv_value_command,
+  install_empty_file_command, install_file_mode_command, cp_command, cp_program, cp_recursive_argv, pwd_command,
+  printenv_value_argv, printenv_program_invocation,
 }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
 import gunbc.roadmap.attempt_system_unit_launch {
@@ -280,9 +281,9 @@ fn wet_plant_guest_sources(instance: HostDashboardInstance) -> Bool {
     // this and the copy refused on a missing parent, which is the difference between a plant and
     // an intention.
     && wet_ok(command: mkdir_parents_command(path: repo))
-    && wet_ok(command: cp_recursive_command(source: join([checkout, "/dag"], ""), destination: join([repo, "/dag"], "")))
+    && wet_argv_ok(program: cp_program().invocation as String, arguments: cp_recursive_argv(source: join([checkout, "/dag"], ""), destination: join([repo, "/dag"], "")))
     && wet_ok(command: mkdir_parents_command(path: join([repo, "/src"], "")))
-    && wet_ok(command: cp_recursive_command(source: join([checkout, "/src/v2"], ""), destination: join([repo, "/src/v2"], "")))
+    && wet_argv_ok(program: cp_program().invocation as String, arguments: cp_recursive_argv(source: join([checkout, "/src/v2"], ""), destination: join([repo, "/src/v2"], "")))
     && wet_make_source_repository(instance: instance)
 }
 
@@ -316,7 +317,7 @@ fn wet_make_source_repository(instance: HostDashboardInstance) -> Bool {
 // non-empty, and what it names is executable to the host-said principal. Unset or non-executable
 // refuses the leg; nothing here mints a binary, and no host is required to have a `gunbc` on PATH.
 fn wet_plant_guest_binary(instance: HostDashboardInstance) -> Bool {
-  let named = wet_out(command: printenv_value_command(name: wet_served_binary_env_var))
+  let named = wet_argv_out(program: printenv_program_invocation, arguments: printenv_value_argv(name: wet_served_binary_env_var))
   named != ""
     && wet_path_is_executable(path: named)
     && wet_ok(command: mkdir_parents_command(path: path_parent_directory(path: instance.serve_binary as String)))
@@ -827,7 +828,8 @@ fn wet_control_unit_name(root: NonEmptyStr, label: String) -> NonEmptyStr? {
 // Same readback discipline as `wet_unit_is_gone`, against the manager that actually holds the unit.
 fn wet_user_unit_is_gone(unit: NonEmptyStr) -> Bool {
   !string_contains(
-    s: wet_out(command: systemctl_list_all_user_service_units_command()),
+    s: wet_argv_out(program: systemctl_path_resolved_program().invocation as String,
+      arguments: systemctl_list_all_user_service_units_argv()),
     pattern: unit as String,
   )
 }
@@ -844,8 +846,9 @@ fn wet_retire_user_unit(root: NonEmptyStr, label: String) -> Bool {
       // Both are issued and their outcomes deliberately discarded: a unit that is already gone makes
       // `stop` fail, and that is not a leak. The readback below is what decides, so an unfalsifiable
       // "it stopped, trust me" cannot be the answer.
-      let _ = wet_ok(command: systemctl_stop_user_command(unit: unit))
-      let _ = wet_ok(command: systemctl_reset_failed_user_command(unit: unit))
+      let ctl = systemctl_path_resolved_program().invocation as String
+      let _ = wet_argv_ok(program: ctl as NonEmptyStr, arguments: systemctl_stop_user_argv(unit: unit))
+      let _ = wet_argv_ok(program: ctl as NonEmptyStr, arguments: systemctl_reset_failed_user_argv(unit: unit))
       wet_stage(
         stage: join(["control-unit-retired:", unit as String], ""),
         ok: wet_user_unit_is_gone(unit: unit),

@@ -9,7 +9,9 @@ import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.posix.identity { PosixOwnerNames }
-import extdeps.tools.gnu_coreutils { mktemp_directory_command, whoami_command, basename_command }
+import extdeps.tools.gnu_coreutils {
+  mktemp_directory_command, whoami_command, basename_argv, basename_program_invocation,
+}
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -96,7 +98,7 @@ data witness_scratch_leaf_template: NonEmptyStr = "gunbc-wet-witness-XXXXXX" as 
 // name that must exist, so an unnameable leaf is returned as Absent and the claim that asked for it
 // refuses.
 fn witness_claim_leaf(path: String) -> String? {
-  let leaf = wet_out(command: basename_command(path: path))
+  let leaf = wet_argv_out(program: basename_program_invocation, arguments: basename_argv(path: path))
   // THE REFUSALS ARE THE POINT: an empty read, or the root itself (`basename /` prints `/`), is not a
   // leaf, and a claim that cannot name its own leaf must not go on to name a systemd unit.
   if leaf == "" || leaf == "/" || string_contains(s: leaf, pattern: "/") {
@@ -138,6 +140,19 @@ fn wet_ok(command: ArgvCommand) -> Bool {
     ProcessOutputPresent { text: _ } => true
     ProcessOutputAbsent => true
   }
+}
+
+// THE WORD-LIST SIBLINGS OF wet / wet_ok / wet_out. A host operation modeled as an argv TAIL (the
+// `_argv` rows in the extdeps modules: systemctl_stop_user_argv, cp_recursive_argv, printenv_value_argv,
+// basename_argv) carries no argv[0]; the caller names the program, and shell.Exec.RunArgv is the seam the
+// whole fleet already uses for that shape. They exist here rather than in extdeps.exec.command because
+// sealing the same words into an ArgvCommand needs a caller roster that project does not grow.
+fn wet_argv_ok(program: NonEmptyStr, arguments: List<String>) -> Bool {
+  shell.Exec.RunArgv(program: program as String, arguments: arguments).exit_code == 0
+}
+
+fn wet_argv_out(program: NonEmptyStr, arguments: List<String>) -> String {
+  trim(s: shell.Exec.RunArgv(program: program as String, arguments: arguments).stdout)
 }
 
 fn wet_out(command: ArgvCommand) -> String {
