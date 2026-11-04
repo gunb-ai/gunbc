@@ -1387,7 +1387,7 @@ data e1_blink_videos: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", lo
 
 data e1_u3_leads: List<NonEmptyStr> = ["upper-left lead", "upper-middle lead", "upper-right lead", "lower-right lead", "lower-middle lead", "lower-left lead"]
 
-data e1_module_site_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads 9da5383c (J4, H2, U4), 9cd281be (J3), 1749253a and fe0f5816 (U3 on the back below Q300 and Q301, with the pad group below it) and 376b5588 (U43, Y50 and U500 at the site's corner beside U51 and U49); e8c5473a and its repeat, the operator's 500 marks on the cluster beside J3 (not on Drive)")
+data e1_module_site_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads 9da5383c (J4, H2, U4), 9cd281be (J3, superseded 2026-11-04: the label was read there only from this upload, whose bytes were never supplied, and the board's J3 reading now cites a stored frame with the label boxed on it), 1749253a and fe0f5816 (U3 on the back below Q300 and Q301, with the pad group below it) and 376b5588 (U43, Y50 and U500 at the site's corner beside U51 and U49); e8c5473a and its repeat, the operator's 500 marks on the cluster beside J3 (not on Drive)")
 
 data e1_site_clusters_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "both of the J3/J4 sites have similar clusters under them that both read 500 - there are many pins that i.e. read 500 in that cluster - do you need the exact? my goal isn't to build an exact netlist, unless we really have to -" }
 
