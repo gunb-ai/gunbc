@@ -32,7 +32,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 //
 // dissolve-on: the cutover carry of pre-re-root slots (snappy-carp-24, B') lands, after which every held slot
 // is in a store some settle pass enumerates and an operator release has no case the pass does not cover.
-// SUFFICIENT FOR deleting this module; nothing imports it.
+// SUFFICIENT FOR deleting this module together with its witness rows: its only importer is
+// test.claim.roadmap.session_placement_wet_witness (operator_release_succeeded), which goes with it.
 
 // The command's verdict is taken from the settlement's TYPE, never from its rendered line. A seat that is
 // held in the ledger and now returned is success; a settlement already done (slot closed, release recorded)
