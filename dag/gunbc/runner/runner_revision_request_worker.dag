@@ -1,0 +1,125 @@
+module gunbc.runner.runner_revision_request_worker
+
+import std.types { String, NonEmptyStr, Bool }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_compare_and_set { CasGeneration, ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedReadable, CasReadablePresent }
+import std.content_hash { content_hash_atom }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+import gunbc.durable_cas_file_store { observe_cas_slot_state, file_compare_and_set, OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.durable_handoff_host { host_request_user_read, host_request_identity_wire, host_request_wire, HostRequestPresent }
+import std.error_primitives { Result, Ok, Err }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.durable_handoff_host { HostAcceptedRequest }
+import gunbc.runner.runner_revision_request_context { RevisionRequestContext }
+import gunbc.runner.runner_revision_job_spec { RevisionJobSpec, decode_revision_job_spec, RevisionJobSpecDecoded, RevisionJobSpecRefused }
+import gunbc.runner.runner_revision_job_main { revision_job_slot }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+
+// A worker invocation plan, with no start privilege. An operator-installed
+// systemd path unit activates the declared slot when pending/ is nonempty.
+type RevisionRequestWorkerPlan {
+  request: HostAcceptedRequest
+  spec: RevisionJobSpec
+  slot: RunnerSlotIdentity
+  executor: DeclarationRef
+}
+
+// The API key selects the accepted request's principal, not a root operation.
+// The worker consumes that existing durable acceptance and its exact payload;
+// it cannot substitute a new body when selecting the revision-job executor.
+fn revision_request_worker_plan(context: RevisionRequestContext,
+  request: HostAcceptedRequest, slot_instance: String) -> Result<RevisionRequestWorkerPlan, String> {
+  if (request.root != context.request_root) {
+    return Err { value: "accepted request belongs to another request store" }
+  }
+  let slot = match revision_job_slot(instance: slot_instance) {
+    Absent => { return Err { value: "revision-job slot is not declared" } }
+    Present { value: value } => value
+  }
+  match decode_revision_job_spec(text: request.payload as String) {
+    RevisionJobSpecRefused { refusal: _ } => Err { value: "accepted revision-job payload is no longer admissible" }
+    RevisionJobSpecDecoded { spec: spec } => Ok { value: RevisionRequestWorkerPlan {
+      request: request, spec: spec, slot: slot,
+      executor: decl_ref(module_path: "gunbc.runner.runner_revision_job_main", decl_name: "revision_job_run") } }
+  }
+}
+
+// Execution frontier: an operator-approved install must converge the systemd
+// path unit watching pending/, activating the declared slot. The HTTP service
+// has no sudo/start operation. Controls must reject adding such an operation.
+// The drain binds the full observed invocation in its first request claim and
+// reconciles unfinished bindings before fresh work. Receipt plus owned stop and
+// cleanup readback is required before settlement can free the user slot.
+
+// The execution claim is create-once for the accepted identity, in the same
+// request store. It does not release or replace the per-user responsibility.
+// Restart never reclaims it by worker-name equality; recovery must reconcile.
+type RevisionRequestClaim sole_constructor {
+  request: HostAcceptedRequest
+  worker: DurableHoldOwnerRef
+  key: NonEmptyStr
+  generation: CasGeneration
+}
+
+fn revision_request_claim(context: RevisionRequestContext, request: HostAcceptedRequest,
+  worker: DurableHoldOwnerRef) -> Result<RevisionRequestClaim, String> {
+  if (context.request_root != request.root) { return Err { value: "request claim belongs to another store" } }
+  let outstanding = host_request_user_read(root: request.root, principal: request.identity.principal)
+  match outstanding {
+    HostRequestPresent { request: current } => {
+      if (current.identity != request.identity || current.payload != request.payload) {
+        return Err { value: "request is not the user's outstanding responsibility" }
+      }
+    }
+    _ => { return Err { value: "outstanding request could not be confirmed" } }
+  }
+  let key = concat("worker-", content_hash_atom(value: host_request_identity_wire(identity: request.identity) as NonEmptyStr).digest as String) as NonEmptyStr
+  let bytes = revision_request_claim_wire(request: request, worker: worker)
+  let verified = match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: bytes) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => { return Err { value: "worker claim key refused" } }
+    DerivedPayloadAdmitted { verified: value } => value
+  }
+  match file_compare_and_set(root: request.root, publication: OwnerOnlyCreateOnly, verified: verified) {
+    CasPreconditionFailed { expected: _, observed: _ } => Err { value: "request execution already claimed; recovery is required" }
+    CasStoreRefused { cause: _ } => Err { value: "request execution claim unconfirmed" }
+    CasCommitted { committed: committed } => match observe_cas_slot_state(root: request.root, key: key) {
+      CasObservedReadable { readable: CasReadablePresent { version: readback } } =>
+        if (readback.generation == committed.generation && readback.value == bytes) {
+          Ok { value: RevisionRequestClaim { request: request, worker: worker, key: key, generation: committed.generation } }
+        } else { Err { value: "request execution claim readback mismatch" } }
+      _ => Err { value: "request execution claim readback unavailable" }
+    }
+  }
+}
+
+fn revision_request_claim_wire(request: HostAcceptedRequest, worker: DurableHoldOwnerRef) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "request", value: json_string(s: host_request_wire(identity: request.identity, payload: request.payload))),
+    json_kv(key: "worker", value: json_string(s: worker as String)),
+  ])) as NonEmptyStr
+}
+
+// A sealed acquisition is historical evidence, not a permanently fresh reading.
+// The launch/settlement owner must call this under its execution interlock. This
+// observer does not authorize or start anything, and does not release the slot.
+fn revision_request_claim_is_current(context: RevisionRequestContext,
+  claim: RevisionRequestClaim) -> Result<Bool, String> {
+  if (context.request_root != claim.request.root) { return Err { value: "request claim belongs to another store" } }
+  match host_request_user_read(root: claim.request.root, principal: claim.request.identity.principal) {
+    HostRequestPresent { request: current } => {
+      if (current.identity != claim.request.identity || current.payload != claim.request.payload) {
+        return Err { value: "request is no longer the user's outstanding responsibility" }
+      }
+    }
+    _ => { return Err { value: "outstanding request could not be confirmed" } }
+  }
+  let bytes = revision_request_claim_wire(request: claim.request, worker: claim.worker)
+  match observe_cas_slot_state(root: claim.request.root, key: claim.key) {
+    CasObservedReadable { readable: CasReadablePresent { version: observed } } =>
+      if (observed.generation == claim.generation && observed.value == bytes) {
+        Ok { value: true }
+      } else { Err { value: "request execution claim has changed" } }
+    _ => Err { value: "request execution claim is unavailable" }
+  }
+}
