@@ -789,12 +789,58 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
   }
 }
 
+// THE POSITIONAL ARITIES THE Bind TABLE READS: three (binder, value, body) or two (value, body, NO BINDER).
+// One place answers it; a consumer that preflights a whole Bind asks bind_positional_shape_admitted rather
+// than counting children beside the table (DESIGN 3: the arity fact lives where the roles live).
+fn bind_positional_arity_admitted(n: Node) -> Bool {
+  let arity = count(positional_child_target_nodes(node: n))
+  (arity == 2) || (arity == 3)
+}
+
+// IS THE Bind READABLE AT ALL: the Bind edge discipline AND an admitted positional arity.
+fn bind_positional_shape_admitted(n: Node) -> Bool {
+  edges_conform(children: n.children, d: PositionalPlusNamedMarkerEdges) && bind_positional_arity_admitted(n: n)
+}
+
+// THE ROLE OF A Bind's POSITIONAL CHILD, given how many positionals the Bind has. A three-positional Bind
+// numbers binder, value, body. A TWO-positional Bind has NO BINDER: its first positional is the VALUE and its
+// second is the BODY, so the ordinals shift -- the binder is absent at this table, the way BranchElseSlot is
+// absent on a two-positional Branch. That is how a reader tells "no binder" from "malformed": a
+// binder-absent Bind answers Absent for BindBinderSlot and Present for value and body, a malformed Bind
+// (fewer than two positionals) answers Absent for EVERY slot.
+fn bind_positional_slot_in_arity(ordinal: Int, arity: Int) -> Optional<BindSlot> {
+  if arity == 2 {
+    if ordinal == 0 {
+      optional_present(value: BindValueSlot)
+    } else if ordinal == 1 {
+      optional_present(value: BindBodySlot)
+    } else {
+      optional_absent()
+    }
+  } else if arity == 3 {
+    optional_present(value: bind_positional_slot(ordinal: ordinal))
+  } else {
+    optional_absent()
+  }
+}
+
 // THE NODE A Bind OR A Match HOLDS IN A SLOT: its first positional child whose ordinal the table maps to
 // `slot` -- a Bind's binder, value or (first) body, a Match's scrutinee or first arm. Readers of a node's
 // parts read them here, so the tables are the only place those slots are numbered. One walk serves both:
-// it counts positional ordinals and stops at the first child the table selects.
+// it counts positional ordinals and stops at the first child the table selects. A Bind's walk numbers its
+// ordinals by its own arity (bind_positional_slot_in_arity), so a binder-absent Bind answers Absent at
+// BindBinderSlot and still answers Present for its value and body.
 fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
-  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot(ordinal: i) == slot })
+  if bind_positional_arity_admitted(n: n) {
+    bind_slot_target_in_arity(n: n, slot: slot)
+  } else {
+    optional_absent()
+  }
+}
+
+fn bind_slot_target_in_arity(n: Node, slot: BindSlot) -> Optional<Node> {
+  let arity = count(positional_child_target_nodes(node: n))
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot_in_arity(ordinal: i, arity: arity) == optional_present(value: slot) })
 }
 
 fn match_slot_target(n: Node, slot: MatchSlot) -> Optional<Node> {
@@ -2044,11 +2090,12 @@ fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
     && edge_is_core(e: edge, marker: MatchArmPatternEdge)
 }
 
-// THE KEY EDGE OF A BIND: the first of a Bind's exactly three positionals, when it is an atom -- the shape
-// v2.compiler.lexical_scope bind_binder sites a `let` binder at. The key is a binder NAME, a binding form as a
-// match arm's pattern is, so infer declines it (v2.compiler.infer infer_gather_fold_step) and the walk over
-// the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
-// type is the InferBinderType row its references read, never a fact about the key atom.
+// THE KEY EDGE OF A BIND: the first of a Bind's three positionals, when it is an atom -- the shape
+// v2.compiler.lexical_scope bind_binder sites a `let` binder at. A binder-absent (two-positional) Bind has NO
+// key: its first positional is the value, so this declines it by arity. The key is a binder NAME, a binding
+// form as a match arm's pattern is, so infer declines it (v2.compiler.infer infer_gather_fold_step) and the
+// walk over the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The
+// binder's type is the InferBinderType row its references read, never a fact about the key atom.
 fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
   key.label == edge.label && node_same_occurrence(a: key.target, b: edge.target) && match key.target.kind {
     TypeNode { connective: Atom { identity: _ } } => true
@@ -2113,7 +2160,8 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Branch => edges_conform(children: children, d: PositionalEdges) && ((count(children) == 2) || (count(children) == 3))
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
-      edges_conform(children: children, d: PositionalPlusNamedMarkerEdges) && (positional_child_count(children: children) == 3)
+      edges_conform(children: children, d: PositionalPlusNamedMarkerEdges)
+        && ((positional_child_count(children: children) == 2) || (positional_child_count(children: children) == 3))
     // Scrutinee only is well-formed (Never eliminator). Exhaustiveness is infer, not shape.
     Match =>
       edges_conform(children: children, d: PositionalEdges)

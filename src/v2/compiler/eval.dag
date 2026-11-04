@@ -2138,9 +2138,12 @@ fn eval_bind_node_eval(
     MatchRuntimeInterpreter { interpreter: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     BindRuntimeInterpreter { interpreter: bind } =>
-      bind_outcome(
-        o: eval_bind_key(node: node),
-        f: fn(key) {
+      match bind_slot_target(n: node, slot: BindBinderSlot) {
+        // THE BINDER-ABSENT Bind (the statement Bind the lowering produces for a non-binding statement
+        // followed by more statements): the value is evaluated for its effects and DISCARDED -- there is no
+        // binder to receive it, so the environment is unchanged -- and the body is evaluated in the
+        // environment the Bind arrived with.
+        Absent =>
           bind_outcome(
             o: eval_bind_value(node: node),
             f: fn(value_target) {
@@ -2153,20 +2156,56 @@ fn eval_bind_node_eval(
                   runtime: runtime,
                   effect_io: effect_io
                 ),
-                f: fn(bound_value) {
+                f: fn(_discarded) {
                   bind_outcome(
-                    o: bind.bind_value(key, bound_value, environment),
-                    f: fn(bound_environment) {
+                    o: eval_bind_body(node: node),
+                    f: fn(body) {
+                      eval_runtime_node(
+                        node: body,
+                        tree: tree,
+                        interpretation: interpretation,
+                        environment: environment,
+                        runtime: runtime,
+                        effect_io: effect_io
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        Present { value: _binder } =>
+          bind_outcome(
+            o: eval_bind_key(node: node),
+            f: fn(key) {
+              bind_outcome(
+                o: eval_bind_value(node: node),
+                f: fn(value_target) {
+                  bind_outcome(
+                    o: eval_runtime_node(
+                      node: value_target,
+                      tree: tree,
+                      interpretation: interpretation,
+                      environment: environment,
+                      runtime: runtime,
+                      effect_io: effect_io
+                    ),
+                    f: fn(bound_value) {
                       bind_outcome(
-                        o: eval_bind_body(node: node),
-                        f: fn(body) {
-                          eval_runtime_node(
-                            node: body,
-                            tree: tree,
-                            interpretation: interpretation,
-                            environment: bound_environment,
-                            runtime: runtime,
-                            effect_io: effect_io
+                        o: bind.bind_value(key, bound_value, environment),
+                        f: fn(bound_environment) {
+                          bind_outcome(
+                            o: eval_bind_body(node: node),
+                            f: fn(body) {
+                              eval_runtime_node(
+                                node: body,
+                                tree: tree,
+                                interpretation: interpretation,
+                                environment: bound_environment,
+                                runtime: runtime,
+                                effect_io: effect_io
+                              )
+                            }
                           )
                         }
                       )
@@ -2176,8 +2215,7 @@ fn eval_bind_node_eval(
               )
             }
           )
-        }
-      )
+      }
   }
 }
 

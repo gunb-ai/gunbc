@@ -47,9 +47,13 @@ import v2.std.model_core {
   bool_model_core
 }
 import v2.std.node { node_equal_ignoring_provenance, positional_child_target_nodes,
+  BranchElseSlot,
+  BranchSlot,
+  BranchThenSlot,
+  branch_positional_shape_admitted,
+  branch_slot_target,
   ComputationNode,
   Atom,
-  Edge,
   Node,
   Symbol,
   TypeNode,
@@ -333,18 +337,6 @@ fn v2_eval_runtime_bool_is_false(value: RuntimeValue) -> Bool {
   }
 }
 
-fn v2_eval_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
-  match list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
-      match child {
-        Edge { label: _, target: arm } =>
-          outcome_accepted(value: arm)
-      }
-    Absent =>
-      outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
-  }
-}
-
 fn v2_eval_transform_is_int_add(node: Node) -> Bool {
   match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
     Present { value: op_node } =>
@@ -424,21 +416,33 @@ fn v2_eval_call_primitive(
   }
 }
 
+// The Branch shape and its arms are read at the v2.std.node slot table, not by counting children and taking
+// the nth child beside it: one place answers which Branch this runtime can choose between at all, and which
+// arm a slot holds. This runtime's diagnostics carry no reason, so the else-less and the malformed refusal
+// share one diagnostic here -- the reason split lives in the typed routes (v2.program, v2.compiler.infer,
+// the target model).
 fn v2_eval_choose_branch(
   node: Node,
   condition: RuntimeValue,
   _env: EvaluationEnvironment
 ) -> Outcome<Node> {
-  if count(node.children) == 3 {
+  if branch_positional_shape_admitted(n: node) {
     if v2_eval_runtime_bool_is_true(value: condition) {
-      v2_eval_nth_child_target(node: node, wanted: 1)
+      v2_eval_branch_arm(node: node, slot: BranchThenSlot)
     } else if v2_eval_runtime_bool_is_false(value: condition) {
-      v2_eval_nth_child_target(node: node, wanted: 2)
+      v2_eval_branch_arm(node: node, slot: BranchElseSlot)
     } else {
       outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
     }
   } else {
     outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  }
+}
+
+fn v2_eval_branch_arm(node: Node, slot: BranchSlot) -> Outcome<Node> {
+  match branch_slot_target(n: node, slot: slot) {
+    Present { value: arm } => outcome_accepted(value: arm)
+    Absent => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
   }
 }
 
