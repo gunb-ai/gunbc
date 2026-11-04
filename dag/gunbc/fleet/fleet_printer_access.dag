@@ -24,6 +24,7 @@ import gunbc.auth.access_token_source {
   AccessTokenSource, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
   access_token_upsert_required_reason, ensure_access_token,
 }
+import std.integer { int_to_decimal_string }
 
 // WHERE EACH PRINTER'S ACCESS CODE LIVES, NEVER WHAT IT IS.
 //
@@ -305,7 +306,7 @@ fn classify_container_observation(
           printer: printer,
           cause: concat(concat(
             "Secret Manager did not answer whether this printer's access code exists; it refused the read with HTTP ",
-            to_string(s)),
+            int_to_decimal_string(s)),
             concat(": ", b)) as NonEmptyStr,
         }
       }
@@ -320,7 +321,7 @@ fn classify_container_observation(
       PrinterCredentialObservationRefused {
         printer: printer,
         cause: concat(concat(concat(
-          "Secret Manager answered HTTP ", to_string(s)),
+          "Secret Manager answered HTTP ", int_to_decimal_string(s)),
           " and the body beneath it could not be read, so the answer is unknown rather than absent: "),
           c as String) as NonEmptyStr,
       }

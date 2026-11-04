@@ -43,7 +43,7 @@ fn flex_template_list(api_key: Secret, filter: String) -> FlexTemplateListing us
   match vast_ai.Templates.Search(api_key: api_key, select_filters: filter, select_cols: "[\"*\"]") {
     RestAnswered { answer: a } => FlexTemplateListed { rows: a.templates }
     RestRefused { refusal: RestStatusRefused { status: status, body: _ } } =>
-      FlexTemplateListRefused { cause: concat("the template list answered status ", to_string(status)) }
+      FlexTemplateListRefused { cause: concat("the template list answered status ", int_to_decimal_string(status)) }
     RestRefused { refusal: RestTransportRefused { cause: _ } } =>
       FlexTemplateListRefused { cause: "the template list was not reached" }
     RestRefused { refusal: RestBodyUndecodable { status: _, cause: _ } } =>
