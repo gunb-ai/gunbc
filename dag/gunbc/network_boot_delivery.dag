@@ -17,7 +17,7 @@ import extdeps.provisioning.dhcp_client_arch {
 }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import product.placement_supply { SiteIdentity, site_identity_eq }
-import gunbc.machine_intake.access { BootDeliveryTarget, same_boot_delivery_target }
+import gunbc.machine_intake.access { BootDeliveryTarget, boot_delivery_target_subject, same_boot_delivery_target }
 import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
@@ -704,10 +704,10 @@ fn join_verified_ticket_after_trust(
                         cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
                       }
                     ManifestWindowOpen =>
-                      if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
+                      if (id.target_unit as NonEmptyStr) != (boot_delivery_target_subject(target: inputs.target).subject.unit_key as NonEmptyStr) {
                         NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                       } else {
-                        if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
+                        if (id.attempt_id as NonEmptyStr) != (boot_delivery_target_subject(target: inputs.target).attempt_id as NonEmptyStr) {
                           NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
                         } else {
                           match dhcp_client_processor_architecture(arch: id.architecture, mode: id.boot_mode) {

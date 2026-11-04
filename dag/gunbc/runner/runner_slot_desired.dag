@@ -147,6 +147,17 @@ data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERS
 // under the throttle line and two GiB before it could reach this maximum. MemoryHigh stays the
 // authored max-minus-one line. The 26/25 derivation below this note is superseded and kept as the record of
 // why the number was what it was.
+//
+// WHAT "NO SWAP" BUYS AND WHAT IT DOES NOT (correction, 2026-11-03; gunbc.recurring_failure_mode
+// swap_zero_read_as_a_thrash_refusal). The ruling's intent -- "no thrashing allowed ever" -- is a
+// LIVENESS property, and a slot shape cannot discharge it. MemorySwapMax 0 forbids swap-backed
+// relief: an overrun is never paged to disk beside its neighbours. It does NOT make the overrun
+// end. Above memory.high the kernel throttles and reclaims and never kills for it; with swap
+// refused only file-backed pages can go, so a working set over the line can refault its own text
+// below memory.max indefinitely, with no OOM kill and no swap for the exit-time envelope verdict
+// to read. This row therefore says only what is ADMITTED. Whether a run stays live under it is
+// observed while it runs, from outside it, by gunbc.host.memory_stall_refusal
+// supervised_subject_verdict; terminal evidence at exit stays gunbc.host.memory_envelope's.
 data gunbc_runner_slot_memory_max_bytes: Int = 23622320128
 
 data gunbc_runner_slot_memory_max: ByteSize = byte_size(gunbc_runner_slot_memory_max_bytes)

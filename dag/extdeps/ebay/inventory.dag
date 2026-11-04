@@ -1,4 +1,5 @@
 module extdeps.ebay.inventory
+import std.types { Bearer }
 
 import std.types { NonEmptyStr, AuthScheme }
 import extdeps.currency.currency { CurrencyCode }

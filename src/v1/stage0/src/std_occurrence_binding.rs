@@ -3,7 +3,7 @@
 
 use self::OccurrenceBindingFoldState::*;
 use self::OccurrenceBindingResult::*;
-pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_algebra::{list_reverse, FreeMonoid};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 use crate::v1_rt;
@@ -244,7 +244,7 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
                 candidates: Rc::new(AmbiguousBindingCandidates {
                     first: first.clone(),
                     second: second.clone(),
-                    rest: v1_rt::reverse(rest_reversed.clone()),
+                    rest: crate::std_algebra::list_reverse(rest_reversed.clone()),
                     _phantom: std::marker::PhantomData,
                 }),
             }),

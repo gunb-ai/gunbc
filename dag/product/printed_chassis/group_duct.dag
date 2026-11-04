@@ -1,0 +1,234 @@
+module product.printed_chassis.group_duct
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import std.euclidean_geometry { Axis3Y }
+import product.printed_chassis.assembly_geometry {
+  Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, FixedFrame, LayOnXY, FrictionFitSleeve, Proposed,
+  ProfileVertex, block, part, mechanical_interface, prism,
+}
+import product.printed_chassis.fit_observations { a2_row_fit_plate_fit_display }
+import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
+import product.printed_chassis.card_end_interface {
+  CardEndInterface, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved,
+}
+import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading }
+import product.printed_chassis.gpu_duct { card_envelope_of }
+import product.printed_chassis.card_installation {
+  CardInstallation, InstalledCard, CardGroup, group_members, Partition, Partitioned, PartitionRefused, PartitionRefusal, partition_by_sizes,
+  group_contiguity, group_contiguity_text, card_separation, a2_altra_installation,
+}
+
+// ═══ A DUCT THAT SERVES A GROUP OF INSTALLED CARDS SIDE BY SIDE ═══
+//
+// The first multi-card realization (operator, 2026-11-02, for the four A2s on the ALTRAD8UD): one printed
+// part over every member's end face, held by an outer sleeve around the whole row. Nothing enters the gaps between cards: at 20.32 mm per slot and an 18.62 mm
+// face, a gap is about 1.7 mm, too thin for two printed walls, so the part touches the row only on its
+// outside and on the faces themselves.
+//
+// WHAT IT IS BUILT FROM, AND NOTHING ELSE: the members' read end faces (product.printed_chassis
+// .card_end_interface), their separations from the installation (card_installation card_separation, the
+// board's slot positions times the CEM slot width), and the print-proven wall, flange and sleeve allowances
+// (duct_fit_policy plug_and_flange_print_policy). It fastens to no inserts and enters no face, so it needs
+// neither the inserts nor the fin-free bands. It covers each member's whole end face, so a member must have
+// been OBSERVED to have no header
+// there: a present header, or one nobody looked for, refuses until this realization carries a keep-out.
+// Its members come from a checked partition of the installation (card_installation partition_by_sizes),
+// which refuses an installation that cannot exist, so no geometry is drawn for cards that cannot be there.
+//
+// THIS REALIZATION'S OWN LIMITS, each refused rather than assumed away: its members must be side by side in
+// the installation, and they must be one card model, because the part aligns their faces along the card's
+// height and nothing here reads where two different cards' faces sit relative to each other.
+//
+// THE FIT PLATE comes first (the A16's fit ring did the same): the card interface alone, printed to check the
+// separation and the sleeve before any fan stage is printed. The fan stages are the next kind of root.
+
+// ═══ PLANS: AN INSTALLATION, THE OPERATOR'S GROUPING, AND WHICH GROUP ═══
+
+// fit_record is what earlier prints of this plan's parts showed (product.printed_chassis.fit_observations),
+// carried into the readme so the next print says what it answers.
+type GroupDuctPlan { id: NonEmptyStr, installation: CardInstallation, sizes: List<Int>, group: Int, fit_record: String }
+
+// The four A2s as one group (operator, 2026-11-02: one piece over all four, served by two fans, one per pair).
+data a2_altra_row_plan: GroupDuctPlan = GroupDuctPlan { id: "a2-altra-row", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: a2_row_fit_plate_fit_display() }
+
+data group_duct_plans: List<GroupDuctPlan> = [a2_altra_row_plan]
+
+fn group_duct_plan(id: NonEmptyStr) -> GroupDuctPlan? {
+  fold(group_duct_plans, init: Absent, f: (acc, p) => match acc { Present { value: v } => Present { value: v } Absent => if p.id == id { Present { value: p } } else { Absent } })
+}
+
+type IndexedGroup { index: Int, found: CardGroup? }
+
+fn nth_group(gs: List<CardGroup>, n: Int) -> CardGroup? {
+  let r = fold(gs, init: IndexedGroup { index: 0, found: Absent }, f: (acc, g) => IndexedGroup { index: acc.index + 1, found: match acc.found { Present { value: v } => Present { value: v } Absent => if acc.index == n { Present { value: g } } else { Absent } } })
+  r.found
+}
+
+// ═══ ADMISSION ═══
+
+type GroupMemberFace { member: InstalledCard, face: CardEndInterface, offset: Micrometer, length: Micrometer }
+
+type GroupFitPlateAdmission
+  = GroupFitPlateAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
+  | GroupPartitionRefused { causes: List<PartitionRefusal> }
+  | GroupPlanUnresolved { reason: String }
+  | GroupMembersNotSideBySide { reason: String }
+  | GroupMembersMixCardModels { first: NonEmptyStr, other: NonEmptyStr }
+  | GroupMemberFaceUnfit { instance: NonEmptyStr, reason: String }
+  | GroupMemberConnectorNotClear { instance: NonEmptyStr, reason: String }
+
+fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
+  match m.instance.card.end_face {
+    EndFaceNeedsReading { read_obligation: _ } => Absent
+    EndFaceRead { face: f } => match card_separation(from: first, to: m) {
+      Absent => Absent
+      Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
+        Absent => Absent
+        Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, offset: s.across, length: c.length } }
+      }
+    }
+  }
+}
+
+fn member_unfit_reason(first: InstalledCard, m: InstalledCard) -> String {
+  match m.instance.card.end_face {
+    EndFaceNeedsReading { read_obligation: o } => join(["end face not read: ", o as String], "")
+    EndFaceRead { face: _ } => match card_envelope_of(row: m.instance.card.row) {
+      Absent => "the card row states no length to draw its envelope from"
+      Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
+    }
+  }
+}
+
+// The plate covers the member's whole end face. Only a header OBSERVED absent is clear of it.
+fn connector_not_clear(m: InstalledCard) -> String? {
+  match m.instance.card.end_face {
+    EndFaceNeedsReading { read_obligation: o } => Present { value: join(["end face not read: ", o as String], "") }
+    EndFaceRead { face: f } => match f.connector {
+      FeatureAbsentObserved => Absent
+      FeaturePresent { value: _ } => Present { value: "the end face carries a power header, and this plate covers the whole face with no keep-out for it" }
+      FeatureNotObserved { read_obligation: o } => Present { value: join(["whether the end face carries a power header was not observed: ", o as String], "") }
+    }
+  }
+}
+
+fn admit_group_fit_plate(p: GroupDuctPlan) -> GroupFitPlateAdmission {
+  match partition_by_sizes(inst: p.installation, sizes: p.sizes) {
+    PartitionRefused { causes: cs } => GroupPartitionRefused { causes: cs }
+    Partitioned { groups: gs } => admit_group_member_faces(p: p, chosen: nth_group(gs: gs, n: p.group))
+  }
+}
+
+fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?) -> GroupFitPlateAdmission {
+  match chosen {
+    Absent => GroupPlanUnresolved { reason: join(["plan ", p.id as String, " names group ", to_string(value: p.group), ", which its partition does not have"], "") }
+    Present { value: g } => {
+      match group_contiguity_text(c: group_contiguity(inst: p.installation, g: g)) { Present { value: r } => return GroupMembersNotSideBySide { reason: r } Absent => {} }
+      let first = g.members.head
+      let ms = group_members(g: g)
+      let mixed = fold(ms, init: Absent, f: (acc, m) => match acc { Present { value: v } => Present { value: v } Absent => if m.instance.card.row.id == first.instance.card.row.id { Absent } else { Present { value: m.instance.card.row.id } } })
+      match mixed { Present { value: other } => return GroupMembersMixCardModels { first: first.instance.card.row.id, other: other } Absent => {} }
+      let unfit = fold(ms, init: Absent, f: (acc, m) => match acc { Present { value: v } => Present { value: v } Absent => match member_face(first: first, m: m) { Present { value: _ } => Absent Absent => Present { value: GroupMemberFaceUnfit { instance: m.instance.id, reason: member_unfit_reason(first: first, m: m) } } } })
+      match unfit { Present { value: refused } => return refused Absent => {} }
+      let blocked = fold(ms, init: Absent, f: (acc, m) => match acc { Present { value: v } => Present { value: v } Absent => match connector_not_clear(m: m) { Present { value: r } => Present { value: GroupMemberConnectorNotClear { instance: m.instance.id, reason: r } } Absent => Absent } })
+      match blocked { Present { value: refused } => return refused Absent => {} }
+      let faces = fold(ms, init: [], f: (acc, m) => match member_face(first: first, m: m) { Present { value: mf } => concat(acc, [mf]) Absent => acc })
+      let parts = group_fit_plate_parts(faces: faces)
+      GroupFitPlateAdmitted { parts: parts, interfaces: group_fit_plate_joints(cards: map(filter(parts, x => match x.kind { Purchased => true _ => false }), x => x.id)) }
+    }
+  }
+}
+
+// ═══ GEOMETRY ═══
+//
+// Part frame: Z is the airflow axis; the members' end faces lie in Z = 0 and the cards run toward +Z, so the
+// plate sits below Z = 0 and prints plate-down with its sleeve pointing up, support-free. X runs along
+// each face's length with the TOP end (away from the slot) toward +X and the face centred on X = 0. Y runs
+// across the slots: the first member's PCB-side edge is Y = 0 and each member is offset by its separation.
+
+fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
+
+// NO TABS: THE SLEEVE ALONE HOLDS THE PLATE (fourth fit plate). Three plates carried tabs into each card's
+// fin-free bands: thin blades struck the slope, whole-band wedges struck the fins, and tabs gripping only the
+// start of the slope still left the plate not resting flat on the faces (product.printed_chassis
+// .fit_observations a2_row_fit_plate_fit, a2_row_fit_plate_second_fit, a2_row_fit_plate_third_fit). The tabs
+// were the only part of the plate that entered a face, so they are removed, and the plate is held instead by
+// a sleeve running further along the outside of the row (operator, 2026-11-04: "get rid of those little
+// inlays, and just extend the sleeve onto the cards so it doesn't fall off"). 20 mm is twice the 10 mm sleeve
+// that went on without interference; it is the next trial, not a qualified figure, and what lies along the
+// outside of the row past 10 mm has not been read.
+data group_sleeve_depth: Micrometer = micrometer(count: 20000)
+
+// THE LIP CLEARANCE, per side, around the outside of the row. 0.3 mm (the unqualified sleeve allowance) was
+// loose on the first plate (fit_observations a2_row_fit_plate_fit); this is the next trial, not a qualified
+// figure.
+data group_lip_clearance: Micrometer = micrometer(count: 100)
+
+fn opening_top_x(f: CardEndInterface) -> Int { um(m: f.face_length) / 2 - um(m: f.window_from_top) }
+fn opening_bottom_x(f: CardEndInterface) -> Int { opening_top_x(f: f) - um(m: f.window_length) }
+fn opening_low_y(mf: GroupMemberFace) -> Int { um(m: mf.offset) + um(m: mf.face.window_from_back) }
+
+// The whole read opening: nothing stands on the plate inside it.
+fn fin_window_cut(mf: GroupMemberFace, plate: Micrometer) -> Primitive {
+  let t = um(m: plate)
+  let top = opening_top_x(f: mf.face)
+  let bottom = opening_bottom_x(f: mf.face)
+  let wd = um(m: mf.face.window_depth)
+  block(w: top - bottom, h: wd, d: t + 2000, x: (top + bottom) / 2, y: opening_low_y(mf: mf) + wd / 2, z: 0 - t / 2)
+}
+
+fn card_part(mf: GroupMemberFace, index: Int) -> AssemblyPart {
+  let f = mf.face
+  let len = um(m: mf.length)
+  let th = um(m: f.face_thickness)
+  part(id: join(["CARD-", to_string(value: index + 1)], ""), name: join([mf.member.instance.card.row.product as String, " envelope, ", mf.member.instance.id as String], ""), kind: Purchased, scope: FixedFrame,
+    adds: [block(w: um(m: f.face_length), h: th, d: len, x: 0, y: um(m: mf.offset) + th / 2, z: len / 2)],
+    cuts: [block(w: um(m: f.window_length), h: um(m: f.window_depth), d: um(m: f.fin_setback), x: opening_top_x(f: f) - um(m: f.window_length) / 2, y: opening_low_y(mf: mf) + um(m: f.window_depth) / 2, z: um(m: f.fin_setback) / 2)],
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 60000, plane: LayOnXY,
+    notes: "Envelope only: the read end face and the vendor's stated length, placed at its installed separation. The fin opening is carried as a recess as deep as the read fin setback.")
+}
+
+type IndexedFaces { index: Int, parts: List<AssemblyPart> }
+
+fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
+  let policy = plug_and_flange_print_policy
+  let t = um(m: policy.ring_exercised.flange_thickness)
+  let wall = um(m: policy.ring_exercised.wall)
+  let c = um(m: group_lip_clearance)
+  let sd = um(m: group_sleeve_depth)
+  let half = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.face.face_length) / 2 > acc { um(m: mf.face.face_length) / 2 } else { acc })
+  let y_hi = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.offset) + um(m: mf.face.face_thickness) > acc { um(m: mf.offset) + um(m: mf.face.face_thickness) } else { acc })
+  let x_in = half + c
+  let x_out = x_in + wall
+  let y_lo_in = 0 - c
+  let y_hi_in = y_hi + c
+  let outer_w = 2 * x_out
+  let outer_h = (y_hi_in + wall) - (y_lo_in - wall)
+  let outer_y = ((y_hi_in + wall) + (y_lo_in - wall)) / 2
+  let plate = block(w: outer_w, h: outer_h, d: t, x: 0, y: outer_y, z: 0 - t / 2)
+  let lip = [
+    block(w: wall, h: outer_h, d: sd, x: 0 - x_in - wall / 2, y: outer_y, z: sd / 2),
+    block(w: wall, h: outer_h, d: sd, x: x_in + wall / 2, y: outer_y, z: sd / 2),
+    block(w: outer_w, h: wall, d: sd, x: 0, y: y_lo_in - wall / 2, z: sd / 2),
+    block(w: outer_w, h: wall, d: sd, x: 0, y: y_hi_in + wall / 2, z: sd / 2),
+  ]
+  let windows = map(faces, mf => fin_window_cut(mf: mf, plate: policy.ring_exercised.flange_thickness))
+  let plate_part = part(id: "FIT-PLATE", name: join(["Group fit plate: ", to_string(value: length(list: faces)), " end faces and an outer sleeve"], ""), kind: Printed, scope: FixedFrame,
+    adds: concat([plate], lip),
+    cuts: windows,
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -30000, plane: LayOnXY,
+    notes: "Print plate-down, support-free. Push it onto the row of card ends: the sleeve should slide along the outside of the row and hold by friction, with the plate resting flat on every face. Checks the installed separation and the sleeve before any fan stage is printed.")
+  let cards = fold(faces, init: IndexedFaces { index: 0, parts: [] }, f: (acc, mf) => IndexedFaces { index: acc.index + 1, parts: concat(acc.parts, [card_part(mf: mf, index: acc.index)]) })
+  concat([plate_part], cards.parts)
+}
+
+fn group_fit_plate_joints(cards: List<String>) -> List<MechanicalInterface> {
+  [mechanical_interface(id: "fit-plate-to-row", members: concat(["FIT-PLATE"], cards), fastener: FrictionFitSleeve, quantity: 1, status: Proposed,
+    requirement: join(["The sleeve runs ", to_string(value: um(m: group_sleeve_depth)), " um along the outside of the row, ", to_string(value: um(m: group_lip_clearance)), " um clear of the read faces, and holds the plate flat on every face by friction. Nothing enters a face or the gaps between cards, and nothing touches a PCB."], ""))]
+}
+
+fn group_fit_plate_readme(p: GroupDuctPlan) -> String {
+  join(["Group fit plate for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nThe card interface of the group duct alone: one plate over every member's end face and an outer sleeve around the row.\nPrint plate-down without support. Push it on: check that the plate rests flat on every face, that the sleeve holds it on, and that nothing along the outside of the row stops the sleeve short.\n", p.fit_record, "\n"], "")
+}

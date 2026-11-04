@@ -1,4 +1,5 @@
 module extdeps.github.pulls
+import std.types { Bearer }
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, AuthScheme }

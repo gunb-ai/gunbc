@@ -135,7 +135,10 @@ test fn gpu_sm_cache_levels_integrated_when_cited() -> Bool {
 }
 
 test fn gpu_sm_cache_absent_when_ungranted() -> Bool {
-  list_length(items: shape_from_m5_catalog().domains.first().memory) == 1
+  match shape_from_m5_catalog().domains.first() {
+    Present { value: domain } => list_length(items: domain.memory) == 1
+    Absent => false
+  }
 }
 
 test fn energy_derived_not_stored() -> Bool {

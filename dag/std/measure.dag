@@ -4,7 +4,7 @@ import std.optional { Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import extdeps.currency.currency { CurrencyCode }
-import std.nat { Nat }
+import std.nat { Nat, nat_ceil_div }
 import std.decimal { ExactDecimal, checked_decimal_pow10 }
 import std.checked_arithmetic {
   IntegerOverflow, IntegerAdd, IntegerMultiply, BinaryOperands, int_inclusive_max,
@@ -38,6 +38,7 @@ type Quantity =
   | Frequency
   | Count
   | HardwareThreadTime
+  | CalendarTime
   | Currency
 
   | Power
@@ -264,7 +265,8 @@ fn measure_fit_count_floor<Q: Quantity, S: Scale>(capacity: Measure<Q, S, Nat>, 
 
 fn measure_scale_fraction_ceil<Q: Quantity, S: Scale>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
 
-  Measure { count: if den == 0 { m.count * num } else { ((m.count * num) + (den - 1)) / den } }
+  let scaled = m.count * num
+  Measure { count: match nat_ceil_div(a: scaled, b: den) { Present { value: q } => q  Absent => scaled } }
 }
 
 fn measure_add<Q: Quantity, S: Scale>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
@@ -556,6 +558,8 @@ type Volt = Measure<ElectricPotentialDifference, One, Nat>
 type Millivolt = Measure<ElectricPotentialDifference, Milli, Nat>
 
 type Ampere = Measure<ElectricCurrent, One, Nat>
+
+type Ohm = Measure<Resistance, One, Nat>
 
 // The micrometre exists as a named carrier because EIA-310's rack unit is 44.45 mm - NOT a whole
 // number of millimetres - so any quantity derived from a rack unit count is inexact at millimetre
@@ -954,6 +958,14 @@ fn milliwatt_count(w: Milliwatt) -> Nat {
 
 fn volt(count: Nat) -> Volt {
   Measure { count: count }
+}
+
+fn ohm(count: Nat) -> Ohm {
+  Measure { count: count }
+}
+
+fn ohm_count(r: Ohm) -> Nat {
+  measure_count(r)
 }
 
 fn volt_count(v: Volt) -> Nat {
@@ -1815,6 +1827,23 @@ fn second_displacement(count: Int) -> SecondDisplacement {
 }
 
 fn second_displacement_count(d: SecondDisplacement) -> Int {
+  measure_count(d)
+}
+
+// A SIGNED COUNT OF CALENDAR DAYS: how far apart two civil dates are, negative when the second is
+// earlier. Its quantity is CalendarTime, not Time, on purpose: a difference of calendar dates
+// counts dates, and stating it as Second (days x 86,400) would claim an elapsed-SI-seconds
+// precision a calendar does not carry, since a civil day is not always 86,400 SI seconds. So it has
+// no conversion to Second, and it is not a Count, which would make a gap between dates the same
+// type as a number of things. First consumer: gunbc-private strategy.calendar_date (plan slip, time
+// taken and estimate error, gunbc-private#279).
+type CalendarDayDisplacement = Measure<CalendarTime, One, Int>
+
+fn calendar_day_displacement(count: Int) -> CalendarDayDisplacement {
+  Measure { count: count }
+}
+
+fn calendar_day_displacement_count(d: CalendarDayDisplacement) -> Int {
   measure_count(d)
 }
 

@@ -6,7 +6,7 @@ import std.measure {
   TokenCount, token_count, token_count_value,
   ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
-  AttentionLayerCount, attention_layer_count_value,
+  AttentionLayerCount, attention_layer_count, attention_layer_count_value,
   ByteSize, byte_size, byte_size_count, measure_add,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
