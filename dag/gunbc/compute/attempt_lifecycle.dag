@@ -12,7 +12,7 @@ import std.durable_compare_and_set {
   CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
 }
 import gunbc.durable_cas_file_store {
-  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
+  CasSlotKeysAbsent, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
   CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly, SlotStore, slot_observe, slot_commit, slot_keys,
   CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused,
 }
@@ -388,13 +388,28 @@ fn attempt_payload_read<P>(store: SlotStore, reference: NonEmptyStr, codec: Atte
   }
 }
 
+// THE CENSUS READING OF THE SLOT DIRECTORY, THREE-VALUED ON PURPOSE.
+// Listed says which keys have a slot; Refused says the listing could not be read; ABSENT says the
+// store's slot directory is not there at all. The absent arm carries the SEALED STORE REF, not a root
+// string, so it joins to a lease by store identity -- the same identity the CAS-fenced transition
+// fences on -- and a witness can name which store answered absent.
+// IT IS A CENSUS ANSWER AND NEVER A RELEASE TRIGGER. A slot is released only through the CAS-fenced
+// transition on the lease reference plus the slot generation READ FROM THE SLOT. Nothing in this
+// module frees a charge, retires a lease or licenses a mint from an absent census; absence that
+// releases is hold_recovered_by_age_not_observed_holder_death on new substrate. It exists because a
+// consumer that cannot distinguish "this store was never created" from "I could not read it" cannot
+// PROVE the first case, and a lease whose slots live in a store that no longer exists needs that
+// proof in order to migrate.
 type AttemptSlotKeysReading
   = AttemptSlotKeysListed { keys: List<NonEmptyStr> }
+  | AttemptSlotKeysAbsent { store: SlotStore }
   | AttemptSlotKeysRefused { detail: String }
+
 
 fn attempt_slot_keys(store: SlotStore) -> AttemptSlotKeysReading {
   match slot_keys(store: store) {
     CasSlotKeysListed { keys: ks } => AttemptSlotKeysListed { keys: ks }
+    CasSlotKeysAbsent { root: _ } => AttemptSlotKeysAbsent { store: store }
     CasSlotKeysListingRefused { root: _, detail: d } => AttemptSlotKeysRefused { detail: join(["the attempt store could not be listed: ", d], "") }
     CasSlotKeysSubjectRefused { root: _, cause: c } => AttemptSlotKeysRefused { detail: join(["the attempt store is not admissible: ", c], "") }
   }

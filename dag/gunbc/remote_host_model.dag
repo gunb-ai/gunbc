@@ -1,6 +1,7 @@
 module gunbc.remote_host_model
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { list_snoc_item }
 import std.measure { second }
 import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault, ShellObserved,
@@ -80,7 +81,7 @@ fn remote_request(client_args: List<String>) -> RemoteRequest? {
 
 fn take_while(xs: List<String>, keep: fn(String) -> Bool) -> List<String> {
   fold(xs, init: TakeWhileState { kept: [], open: true }, f: fn(acc, x) {
-    if acc.open && keep(x) { TakeWhileState { kept: list_append(acc.kept, x), open: true } }
+    if acc.open && keep(x) { TakeWhileState { kept: list_snoc_item(xs: acc.kept, item: x), open: true } }
     else { TakeWhileState { kept: acc.kept, open: false } }
   }).kept
 }
