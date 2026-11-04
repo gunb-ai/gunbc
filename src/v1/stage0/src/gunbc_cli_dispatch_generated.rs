@@ -100,38 +100,6 @@ pub enum Commands {
         #[arg(long, default_value = "")]
         candidate_branch: String,
     },
-    /// Long-running HTTP server: compile once, then answer each request by
-    /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
-    /// The seam is parse/write only -- routing and handlers live in .dag.
-    Serve {
-        /// Source root directories (searched recursively for .dag files)
-        #[arg(long = "source-root")]
-        source_roots: Vec<String>,
-        /// Entry `.dag` file: load only this module and its transitive imports
-        #[arg(long)]
-        entry: String,
-        /// Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse
-        #[arg(long)]
-        function: String,
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "8080")]
-        port: u16,
-        /// Listen on this unix socket INSTEAD of --host/--port. Each request's
-        /// kernel-attested peer (SO_PEERCRED) is handed to the handler as peer_user.
-        #[arg(long)]
-        unix_socket: Option<String>,
-        /// Release revision this process serves, bound ONCE at startup and
-        /// immutable for the process lifetime.
-        #[arg(long)]
-        release_revision: String,
-        /// Per-request THREAD-CPU evaluation budget in milliseconds.
-        #[arg(long)]
-        eval_budget_cpu_ms: Option<u64>,
-        /// Per-request MONOTONIC-WALL evaluation budget in milliseconds.
-        #[arg(long)]
-        eval_budget_wall_ms: Option<u64>,
-    },
     /// Run a target named by an absolute label or a bazel-style target PATTERN, and
     /// report the standing its own producer answers in. An exact label routes to
     /// its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is
@@ -166,18 +134,6 @@ pub trait CliDispatchHost {
         entry: Option<String>,
         claim_run: bool,
         args: Vec<String>,
-    ) -> !;
-    fn handle_serve(
-        &self,
-        source_roots: Vec<String>,
-        entry: String,
-        function: String,
-        host: String,
-        port: u16,
-        unix_socket: Option<String>,
-        release_revision: String,
-        eval_budget_cpu_ms: Option<u64>,
-        eval_budget_wall_ms: Option<u64>,
     ) -> !;
     fn invoke_bound_target_producer(&self, target: String) -> !;
 }
@@ -264,30 +220,6 @@ pub fn dispatch<H: CliDispatchHost>(
             ],
             "receipt_path",
             ".gunbc-converge-receipts",
-        ),
-        (
-            Commands::Serve {
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                unix_socket,
-                release_revision,
-                eval_budget_cpu_ms,
-                eval_budget_wall_ms,
-            },
-            _,
-        ) => __gunbc_dispatch_executor_0.handle_serve(
-            source_roots,
-            entry,
-            function,
-            host,
-            port,
-            unix_socket,
-            release_revision,
-            eval_budget_cpu_ms,
-            eval_budget_wall_ms,
         ),
         (Commands::Test { target }, _) => {
             __gunbc_dispatch_executor_0.invoke_bound_target_producer(target)
