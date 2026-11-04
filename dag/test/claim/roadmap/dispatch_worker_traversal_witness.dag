@@ -27,7 +27,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   gunbc_harness_spawn_argv,
 }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_handed_set, dispatch_worker_credentials }
-import gunbc.harness.harness_operator_credential { operator_route_credential_file }
+import gunbc.harness.harness_operator_route { harness_operator_route }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import gunbc.roadmap.dispatch_worker_handed_set {
   HandedEntry,
@@ -261,6 +261,7 @@ test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool
   let repo = srv1_lab_dashboard_instance().repo_root as String
   let roots = dispatch_worker_source_roots(repo_root: repo)
   let argv = gunbc_harness_spawn_argv(
+    function: "harness_worker_cli",
     gunbc_program: "/bin/gunbc",
     repo_root: repo,
     worktree_path: "/wt",
@@ -270,6 +271,11 @@ test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool
     events_path: "/e",
     attempt_identity: "worker:n-k",
     alignment_chain_fingerprint: "f",
+    supervision_prompt: "/sp",
+    supervision_dir: "/sd",
+    handin_inbox: "/hi",
+    node_id: "n",
+    attempt_key: "k",
   )
   count(roots) == 2
     && any(fixture_set(), e => e.path == join([repo, "/dag"], ""))
@@ -345,6 +351,8 @@ fn loads_identifier_from_credstore(props: List<SystemdRunProperty>, identifier: 
   })
 }
 
+// INTEGRATION DEVIATION (silent-bee-845 msg_2d0f8b2f, converging with gunbc#15789): the unit loads the SELECTED
+// route's credential AND certificate, so this row asserts both and no longer names main's single datum.
 // The lab worker runs as the dedicated account, which has no home: its unit loads the operator route's key under
 // the route's own identifier (gunbc.harness.harness_operator_credential, the datum the harness looks up in
 // $CREDENTIALS_DIRECTORY, so the reader and the unit cannot name different files), from a root-owned credstore
@@ -352,8 +360,9 @@ fn loads_identifier_from_credstore(props: List<SystemdRunProperty>, identifier: 
 // nothing (the lab's first harness turn then refused reading /nonexistent/.config/...), or loaded the custody path.
 test fn the_dedicated_worker_unit_loads_the_route_key_from_the_root_credstore() -> Bool {
   let props = loaded_credentials(props: fixture_properties())
-  count(props) == 1
-    && loads_identifier_from_credstore(props: props, identifier: operator_route_credential_file.identifier, instance_id: srv1_lab_dashboard_instance().instance_id as String)
+  count(props) == 2
+    && loads_identifier_from_credstore(props: props, identifier: harness_operator_route.credential.identifier, instance_id: srv1_lab_dashboard_instance().instance_id as String)
+    && loads_identifier_from_credstore(props: props, identifier: harness_operator_route.certificate.identifier, instance_id: srv1_lab_dashboard_instance().instance_id as String)
 }
 
 // The control: a worker that runs as the service user reads its own custody, so its unit is handed nothing.

@@ -1,6 +1,6 @@
 module gunbc.harness.harness_guidance
 
-import std.types { String, Int, List, Bool, NonEmptyStr }
+import std.types { String, Int, List, Bool, NonEmptyStr, list_length }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.harness.harness_tool_kind { HarnessTool, RunCommandTool, HandInTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_submission {

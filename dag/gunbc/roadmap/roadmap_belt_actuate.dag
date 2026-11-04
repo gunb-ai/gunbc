@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchAutonomous, attempt_request_binding_commit_for_instance, RequestBindingCommitted, RequestBindingCommitRefused }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
-import std.algebra { trim, skip }
+import std.algebra { trim, skip, list_append, map_insert, empty_map }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -93,7 +93,7 @@ import extdeps.git {
   shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args, git_pathspec_literal, git_command_config_inert_args,
   git_dir_path_from_gitfile, git_untrusted_config_env_words, git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
 }
-import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused, authored_merged_prs, declared_roadmap_edges }
+import gunbc.roadmap.roadmap_authority { nid, RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused, authored_merged_prs, declared_roadmap_edges }
 import gunbc.roadmap.roadmap_belt {
   SpawnMode, ManualReady, spawn_mode_label, spawn_mode_of_label, BeltCapacity, BeltReconcile, belt_reconcile, belt_reconcile_refusal_count,
   roadmap_belt_default_capacity, roadmap_belt_production_spawn_mode, DispatchMember, DesiredMember, ObservedMember, dispatch_member_key,
@@ -206,13 +206,13 @@ import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire, ObserveUnitLifecycle,
 }
-import gunbc.roadmap.roadmap_refused_retry {
+import gunbc.roadmap.roadmap_refused_retry { refusal_cause_class,
   RefusedRetryStanding, RefusedRetryOperatorOnly, compute_refusal_program, compute_refusal_reason, compute_refusal_cause, refused_retry_standing,
   refused_retry_owed, refused_retry_ledger_entry_name, refused_retry_ledger_count, refused_retry_bound, RefusedRetryPassThrough, RefusedRetryRun,
   RefusedRetryStop, belt_verification_retry_verdict,
 }
 import gunbc.compute.compute_producer_lease { compute_producer_leases, ComputeProducerLeasesReady, ComputeProducerLeasesUnready }
-import gunbc.roadmap.roadmap_verification_receipt {
+import gunbc.roadmap.roadmap_verification_receipt { belt_verification_refused_cause,
   verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent, SharedComputationCitation,
   ComputationAttached, ComputationComputed, VerificationEvidenceForSubject, VerificationSubject, VerificationSubjectObservation,
   VerificationSubjectObserved, VerificationSubjectUnobserved, VerificationSubjectAwaitingSelection, ValidationExecution, VerificationReceipt,
@@ -379,7 +379,7 @@ import gunbc.roadmap.roadmap_session_placement {
   session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch,
   SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten,
   SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead,
-  SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused,
+  SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, SessionSettlementKept,
   session_settle_pass_wire, SessionReviewerGrant, session_reviewer_placement_stores, session_reviewer_placement_acquire,
   SessionReviewerPlacementGranted, SessionReviewerPlacementDeferred, SessionReviewerPlacementRefused, session_reviewer_placement_record_write,
   session_reviewer_placement_begin_launch, SessionReviewerLaunchAdmitted, SessionReviewerLaunchRefused, session_reviewer_placement_abandon,
@@ -416,7 +416,7 @@ import gunbc.roadmap.spool_stall {
   SpoolStallUnrecorded, spool_stall_record_at, SpoolStallNone, SpoolStallHeld, SpoolStallUnreadable, spool_stall_read_at, SpoolStallCleared,
   SpoolStallClearRefused, spool_stall_clear_at,
 }
-import extdeps.filesystem.filesystem_io {
+import extdeps.filesystem.filesystem_io { filesystem_listing_entry_names,
   Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, FilesystemWriteRefused, FilesystemWritten, FilesystemEntryAbsent,
   FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused, FilesystemFileAbsent, FilesystemFileRead,
   FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, filesystem_listing_observation,
@@ -9611,15 +9611,15 @@ fn belt_verify_attempt_in_mode(
                           instance: instance,
                           progress: progress,
                           mode: mode,
-                          receipt_basename: address.receipt_basename,
+                          receipt_basename: exact_verification_receipt_basename(head_sha: head_sha, window_identity_hex: identity_hex),
                           source: exact_source,
                           decision: belt_verify_terminality_guard(
                             provider_ready: provider_ready,
                             evidence: belt_attempt_terminality_evidence(
                               expected: subject,
                               source: attempt_head_receipts_read(
-                                attempt_dir: address.attempt_dir,
-                                verification_dir: address.verification_dir,
+                                attempt_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, directory: AttemptDirectoryRoot),
+                                verification_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, directory: AttemptDirectoryVerification),
                                 head_sha: head_sha,
                               ),
                             ),

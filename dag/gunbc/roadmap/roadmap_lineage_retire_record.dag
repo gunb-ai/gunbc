@@ -13,7 +13,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.roadmap.roadmap_attempt_request_record { binding_member_string }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_attempt_state_store { attempt_state_directory_text, AttemptDirectoryRoot }
 import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord }
 
 // THE RETIRE RECORD'S CARRIER: a create-only file beside the ENDED attempt's own state, so the
@@ -24,7 +24,7 @@ data lineage_retire_schema: String = "roadmap-lineage-retire/v1"
 data lineage_retire_basename: String = "lineage-retired.json"
 
 fn lineage_retire_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", lineage_retire_basename], "")
+  join([attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot), "/", lineage_retire_basename], "")
 }
 
 fn lineage_retire_json(record: LineageRetireRecord) -> String {
