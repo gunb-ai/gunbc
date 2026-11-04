@@ -3129,7 +3129,8 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-keyed-pipe-site-rewrites",
     "occurrences-keyed-negated-pipe-site-rewrites",
     "occurrences-keyed-chained-pipe-refuses-not-skips",
-    "occurrences-keyed-non-head-reference-refuses-arity"
+    "occurrences-keyed-non-head-reference-refuses-arity",
+    "collection-head-get"
   ]
 }
 
@@ -3192,7 +3193,8 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "collection-head-append-foreign-label", fail: roster_append_expect_refusal(name: "collection-head-append-foreign-label", text: append_fn_head + "  append(xs, parts: ys)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-reordered", fail: roster_append_expect_refusal(name: "collection-head-append-reordered", text: append_fn_head + "  append(items: ys, xs)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-arity", fail: roster_append_expect_refusal(name: "collection-head-append-arity", text: append_fn_head + "  append(xs)" + append_fn_tail, keys: append_key, want: "rename-call-arity call=append", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "collection-head-last", fail: roster_head_expect(name: "collection-head-last", row: "last", call: "last", sig: "xs: List<Int>", arg: "xs", to: "list_last", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex))
+    roster_control_verdict(name: "collection-head-last", fail: roster_head_expect(name: "collection-head-last", row: "last", call: "last", sig: "xs: List<Int>", arg: "xs", to: "list_last", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-get", fail: roster_head_expect(name: "collection-head-get", row: "get", call: "get", sig: "xs: List<Int>, i: Int", arg: "xs, i", to: "list_at_optional", out: "Optional<Int>", labeled: "xs: xs, index: i", prepared: prepared, lex: lex))
   ]
 }
 

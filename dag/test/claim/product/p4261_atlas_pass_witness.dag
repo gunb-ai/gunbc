@@ -31,14 +31,18 @@ module test.claim.product.p4261_atlas_pass_witness
 // ==================================================================================================
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label }
 import product.electrical.identification {
+  BodySeenMarkingUnread,
+  ComponentIdentification,
   FootprintUnpopulated,
   IdentifiedByMarking,
   InstalledComponent,
   MarkingCandidate,
   MarkingReading,
   MarkingUnresolved,
+  ObservedPresence,
+  observed_presence,
 }
 import extdeps.nvidia.p4261.population {
   PopulatedPart,
@@ -57,6 +61,7 @@ import product.p4261.e1_position_receipts {
   e1_position_receipts,
 }
 import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.e1_body_sightings { BodySighting, e1_body_sightings }
 import product.p4261.e1_photographs { e1_photographs }
 import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite }
 import product.electrical.continuity { OperatorPhotograph }
@@ -91,6 +96,30 @@ fn identified_as(d: NonEmptyStr, row_name: NonEmptyStr) -> Bool {
 fn stated_empty(d: NonEmptyStr) -> Bool {
   any(component_rows(d), c => match c.identification {
     FootprintUnpopulated { evidence: _ } => true
+    _ => false
+  })
+}
+
+// Does the identification state that a body is fitted? The question is asked of the type, never of a
+// name: a body sighted in a frame and a part merely named in the session must give different answers,
+// which is the whole reason BodySeenMarkingUnread exists instead of a MarkingUnresolved with no text.
+fn presence_is_stated(i: ComponentIdentification) -> Bool {
+  match observed_presence(i: i) {
+    PartPresent => true
+    _ => false
+  }
+}
+
+fn body_seen_rows() -> List<InstalledComponent> {
+  filter(p4261_e1_layout.components, c => match c.identification {
+    BodySeenMarkingUnread { evidence: _ } => true
+    _ => false
+  })
+}
+
+fn named_without_being_seen() -> List<InstalledComponent> {
+  filter(p4261_e1_layout.components, c => match c.identification {
+    MarkingUnresolved { marking: Absent, discriminator: _ } => true
     _ => false
   })
 }
@@ -209,6 +238,9 @@ test fn what_was_refused_is_held_with_an_obligation() -> Bool {
   held_unresolved("DS10-DS13")
     && held_unresolved("U817") && held_unresolved("D5_P1") && held_unresolved("Q5_P1")
     && held_unresolved("U88") && held_unresolved("J3")
+    // the three the body rule refused: two frames disagree about a body at D1_P1 and U3_P3, and U40's
+    // only sighting could not say what kind of thing it saw. Held, with the frames to compare.
+    && held_unresolved("D1_P1") && held_unresolved("U3_P3") && held_unresolved("U40")
 }
 
 // 6b. And the held set is not a rumour. Every designator the receipts say we read and did not
@@ -346,6 +378,20 @@ test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
     && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3_2"), b: r.designator))
 }
 
+test fn every_body_sighting_is_at_a_position_the_authority_admitted() -> Bool {
+  // A body sighting states "a body is present at X", so X has to be a designator the position authority
+  // admitted -- not merely a string of the right shape. The generator's contract promises this and
+  // nothing checked it: these 66 rows are component rows, so the position/reading bijection above never
+  // looks at them. A same-shape typo in one of them keeps every number intact -- 66 sightings, 278
+  // components, the frame still resolving in the store, the bijection still total -- while stating
+  // presence beside a position NVIDIA's design list does not carry. So: through the Designator
+  // authority, never a string membership test.
+  e1_body_sightings.all(s => match p4261_position_at(positions: p4261_e1_positions, verbatim: s.designator) {
+    Present { value: _ } => true
+    Absent { } => false
+  })
+}
+
 // ---- what a count is still good for ------------------------------------------------------------------
 //
 // Named as what it is: a per-pass change detector, not a completeness claim (DESIGN §5). The position
@@ -356,8 +402,20 @@ test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
 // a deleted row or a wrongly merged pair is loud rather than a smaller board.
 
 test fn the_pass_row_counts_are_a_change_detector() -> Bool {
-  count(p4261_e1_layout.components) == 212
-    && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 47
+  // 212 rows written by the atlas pass and the bench work before it, plus the 66 bodies the pass
+  // sighted without reading a marking, generated from the receipts into
+  // product.p4261.e1_body_sightings -- one per position that had neither a body row nor a held row.
+  // A change detector, not a proof: `no_body_row_is_a_second_claim_about_an_instance` is what stops a
+  // 67th row duplicating a claim, and `the_positions_are_the_receipts_and_nothing_else` ties the set
+  // to the receipts.
+  count(p4261_e1_layout.components) == 278
+    // 47 design positions carried a population claim on main. Two came down with this pass: Q300 and
+    // Q301, whose only evidence is the maker-ambiguous mark "K38" -- one cited BSS138 row, so
+    // PartConstrainedToRows had nothing to constrain to, and a claim dressed up as a bet is still a
+    // claim (§4d). Each became an unclaimed position with its obligation kept on the observation that
+    // raised it: 47 - 2 = 45. (Q21_P5 and Q22_P5 carry the same defect and are listed in the PR body
+    // as open; repairing them here would retire two findings the operator measured, pending a ruling.)
+    && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 45
     // The held set keeps its 24 members, and the K1 keeps its own 13 positions: an E1 pass must
     // not reach into another board's design facts. Both are change detectors, not proofs -- the
     // held set's own authority is `every_held_receipt_is_recorded_on_the_board` joined to
@@ -439,4 +497,53 @@ test fn an_unread_vendor_table_is_a_downstream_obligation() -> Bool {
          Absent { } => false
        })
     && all(pi3ch480_positions(), d => print_is_an_observing_receipt(d: d))
+}
+
+// The 66 bodies the atlas sighted and never read. Each states presence and nothing more: the arm is
+// the twin of FootprintUnpopulated, and the pair is what lets the board say "fitted, unidentified" and
+// "pads bare" without either borrowing the other's meaning. The count is the receipts' 66, joined to
+// the generated rows rather than counted against a number.
+test fn the_bodies_sighted_without_a_marking_read_state_presence_and_name_no_part() -> Bool {
+  count(body_seen_rows()) == count(e1_body_sightings)
+    && count(e1_body_sightings) == 66
+    && body_seen_rows().all(c => presence_is_stated(i: c.identification)
+      && match c.identification {
+        // a sighted body carries no component row: a body of a known kind is not an identification
+        BodySeenMarkingUnread { evidence: _ } => true
+        _ => false
+      })
+}
+
+// The other side of the same distinction, and the reason the arm was not folded into MarkingUnresolved:
+// a part named in a session with no marking read is NOT a part we saw fitted. If both read present, the
+// board cannot tell what was looked at from what was only listed.
+test fn a_part_named_without_being_seen_still_reads_presence_unobserved() -> Bool {
+  count(named_without_being_seen()) > 0
+    && named_without_being_seen().all(c => !presence_is_stated(i: c.identification))
+}
+
+// One claim per instance: the pass may not state a body twice, once from the atlas and once from
+// earlier work, because two rows about one footprint read as two observations of it.
+test fn no_body_row_is_a_second_claim_about_an_instance() -> Bool {
+  e1_body_sightings.all(s =>
+    count(filter(p4261_e1_layout.components, c => component_local_label(c.component) == s.designator)) == 1)
+}
+
+// What the body rule refused stays on the board, with the frames that disagree named in the obligation.
+test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool {
+  held_unresolved("D1_P1")
+    && held_unresolved("U3_P3")
+    && held_unresolved("U40")
+    && any(p4261_e1_layout.unresolved, u => match u.designator {
+         Present { value: v } => v == "D1_P1"
+           && u.obligation.contains("2026-11-02_45.jpg")
+           && u.obligation.contains("sd080.JPG")
+         Absent => false
+       })
+    && any(p4261_e1_layout.unresolved, u => match u.designator {
+         Present { value: v } => v == "U3_P3"
+           && u.obligation.contains("2026-11-02_41.jpg")
+           && u.obligation.contains("sd010.JPG")
+         Absent => false
+       })
 }

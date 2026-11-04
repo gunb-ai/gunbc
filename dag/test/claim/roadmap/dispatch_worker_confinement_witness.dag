@@ -1,6 +1,6 @@
 module test.claim.roadmap.dispatch_worker_confinement_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptRequestBindingFile, AttemptDirectoryRoot, AttemptDirectoryVerification, AttemptLaunchIdentity, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptRequestBindingFile, AttemptDirectoryRoot, AttemptDirectoryVerification, AttemptLaunchIdentity, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_git_pointer_files, dispatch_worker_git_pointer_readonly_paths, dispatch_worker_writable_path_list, dispatch_worker_writable_paths, session_process_bounds }
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, dispatch_worker_path_is_writable, dispatch_worker_worktree_config, dispatch_worker_common_git_config, attempt_state_prepare_argvs_for_instance, attempt_unit_substate_has_exited, dispatch_review_unit_properties }
@@ -77,10 +77,10 @@ test fn the_srv1_worker_cannot_write_the_deployed_binary_or_tree() -> Bool {
   let key = "probe-a-key"
   let wt = join([dashboard_instance_dispatch_worktree_root(instance: inst) as String, "/", key], "")
   let attempt = attempt_state_directory_text(instance: inst, node_id: node, attempt_key: key, directory: AttemptDirectoryRoot)
-  let log = attempt_state_text(instance: inst, node_id: node, attempt_key: key, member: AttemptWorkerLog)
+  let log = attempt_log_member_text(instance: inst, node_id: node, attempt_key: key, member: AttemptWorkerLog)
   let scratch = path_parent_directory(path: log)
   let lab_wt = join([dashboard_instance_dispatch_worktree_root(instance: lab) as String, "/", key], "")
-  let lab_log = attempt_state_text(instance: lab, node_id: node, attempt_key: key, member: AttemptWorkerLog)
+  let lab_log = attempt_log_member_text(instance: lab, node_id: node, attempt_key: key, member: AttemptWorkerLog)
   let lab_scratch = path_parent_directory(path: lab_log)
   let lab_props = dispatch_worker_unit_properties(instance: lab, working_directory: lab.repo_root as String, attempt_worktree: lab_wt, worker_log_path: lab_log, granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr)
   string_contains(s: log, pattern: "/worker/worker-stdout.log")
@@ -142,7 +142,7 @@ test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_dir
     && string_contains(s: verification_dir, pattern: "/verification")
     && string_contains(
       s: wire,
-      pattern: path_parent_directory(path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog)),
+      pattern: path_parent_directory(path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog)),
     )
 }
 
