@@ -373,6 +373,10 @@ type RadialBlowerOutlet {
   opening_across_thickness: Micrometer
   frame_along_edge: Micrometer
   frame_along_edge_tolerance: Micrometer
+  // How far the frame's end stands off the housing: beyond the frame along the edge the housing keeps at
+  // least this far from the outlet face (the outline steps inward), so a socket no deeper than this clears
+  // it. A scale reading of the drawing unless its standing row says cited.
+  stub_depth: Micrometer
 }
 
 // A MOUNTING HOLE, located from the outlet: its centre's distance from the outlet edge (into the housing) and
