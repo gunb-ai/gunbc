@@ -3,7 +3,7 @@
 # Question: which unit shape turns an over-envelope job into a bounded-time KILL instead of a throttle stall?
 # Scale-free: envelope E=2 GiB (the mechanism is ratio-based; the live slot's 22/21 or 25/x GiB is the same shape x ~11).
 # Touches nothing persistent: transient units only (slotctl-*), removed on exit; one 1 GiB scratch file in /var/tmp, removed on exit.
-# Bounded: every trial has RuntimeMaxSec=75 (a stall is reported as result=timeout); oomd shapes use a per-unit 15s pressure duration so a kill fits in 75s -> worst case 3 fixtures x 4 shapes x ~80s = 16 min.
+# Bounded: RuntimeMaxSec=75 per trial (150 for oomd shapes: 30s host-default pressure window + build-up). ONLY=CD selects shapes.
 # Host protection: CPUQuota=100%, IOWeight=1, TasksMax=64, MemoryMax=2G so the fixture can never exceed 2 GiB of srv1's RAM.
 set -u
 [ "$(id -u)" = 0 ] || { echo "REFUSE: run as root"; exit 2; }
@@ -36,10 +36,13 @@ if kind == "thrash":     # anon 0.9E + hot file 0.5E > E, anon alone below max: 
 if kind == "grow":       # anon grows to 1.6E: plain allocation overrun
     alloc(int(1.6 * E)); print("grow: SURVIVED (bad)", flush=True); touch(600, int(0.5 * E))
 PY
+ONLY=${ONLY:-ABCD}
 run_case() { # name highcfg oomd fixture
+  case "$ONLY" in *"${1:0:1}"*) ;; *) return 0;; esac
   local shape=$1 high=$2 oomd=$3 fx=$4 unit="slotctl-$1-$4"
-  local props=(-p MemoryMax=2G -p MemorySwapMax=0 -p MemoryHigh="$high" -p CPUQuota=100% -p IOWeight=1 -p TasksMax=64 -p RuntimeMaxSec=75)
-  [ "$oomd" = 1 ] && props+=(-p ManagedOOMMemoryPressure=kill -p ManagedOOMMemoryPressureLimit=40% -p ManagedOOMMemoryPressureDurationSec=15s)
+  local cap=75; [ "$oomd" = 1 ] && cap=150  # oomd 255 has no per-unit duration; host default window is 30s
+  local props=(-p MemoryMax=2G -p MemorySwapMax=0 -p MemoryHigh="$high" -p CPUQuota=100% -p IOWeight=1 -p TasksMax=64 -p RuntimeMaxSec=$cap)
+  [ "$oomd" = 1 ] && props+=(-p ManagedOOMMemoryPressure=kill -p ManagedOOMMemoryPressureLimit=40%)
   python3 -c "import os,sys;fd=os.open(sys.argv[1],os.O_RDONLY);os.fsync(fd) if False else None;os.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)" "$W/hot.bin"
   local cg=/sys/fs/cgroup/system.slice/$unit.service t0=$(date +%s.%N)
   ( while sleep 2; do [ -d "$cg" ] && { cat "$cg/memory.events" > "$W/ev.$unit" 2>/dev/null; cat "$cg/memory.pressure" > "$W/psi.$unit" 2>/dev/null; grep -E "^(anon|file|file_mapped) " "$cg/memory.stat" > "$W/st.$unit" 2>/dev/null; }; done ) & local samp=$!
