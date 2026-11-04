@@ -284,15 +284,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "tier-o-drift-check".to_string(),
-            },
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/tier_o_drift_check_native.dag",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "roster-rehome-controls".to_string(),
             },
             TargetProducer::CliWireProgram {
