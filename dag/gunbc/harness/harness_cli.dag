@@ -1252,7 +1252,8 @@ fn harness_supervisor_cli(
   }
 }
 
-// AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall// with a door beside it.
+// AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall
+// with a door beside it.
 fn harness_probe_report() -> String {
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt, validation: ValidationNotOffered), actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: none)
   match harness_binding_answer(binding: binding) {
