@@ -60,7 +60,7 @@ import product.p4261.k1_a { p4261_k1_layout }
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
 fn with_census(base: CarrierLayoutObservation, census: ConnectorPositionCensus) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors, j20: census, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: base.measured, input: base.input,
@@ -69,7 +69,7 @@ fn with_census(base: CarrierLayoutObservation, census: ConnectorPositionCensus) 
 }
 
 fn unlabelled(base: CarrierLayoutObservation) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: base.revision, markings: [], module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: base.measured, input: base.input,
@@ -79,7 +79,7 @@ fn unlabelled(base: CarrierLayoutObservation) -> CarrierLayoutObservation {
 
 fn second_e1() -> CarrierLayoutObservation {
   let b = p4261_e1_layout
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: "p4261-e1-supplied-second" as PhysicalAssetIdentity, design: "p4261-e1-supplied-second" as ElectricalDesignIdentity, revision: b.revision, markings: b.markings,
     module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors, j20: b.j20, j20_calipers: b.j20_calipers,
     edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey, management_io: b.management_io,
@@ -254,7 +254,7 @@ test fn support_needs_this_connector_this_board_and_our_reading() -> Bool {
 
 fn with_input_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
   let b = p4261_e1_layout
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles,
     backplane_connectors: b.backplane_connectors, j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors,
     management_io_survey: b.management_io_survey, management_io: b.management_io, components: b.components, measured: b.measured,

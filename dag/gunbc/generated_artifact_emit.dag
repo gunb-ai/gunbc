@@ -253,8 +253,12 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     NativeRouteSeedBoundaryGeneratedRsArtifact => true
     InstrumentRegistryGeneratedRsArtifact => true
     // No extra shape test here: the authority itself refuses to render a table whose
-    // arms it cannot spell, and the Rust unit test in the host joins the rendered rows
-    // against the roster it came from.
+    // arms it cannot spell. The Rust unit test in the host (registry_matches_rows)
+    // COMPILES on the required path and does not EXECUTE there -- witnesses.yml runs
+    // cargo test --release -p v1-compiler --lib --no-run and runs no assertion. The
+    // executed control is the claim test.claim.instrument_registry_artifact_rendering_witness,
+    // run only by bounded operator-authorized runs, under gunbc.rung_drop
+    // v1_required_lanes_withdrawn.
     Fci1BoundedExecutionContextArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
