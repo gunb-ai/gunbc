@@ -65,6 +65,11 @@ import gunbc.auth.request_authentication {
   authenticated_viewer_label,
   human_write_admission,
   tracker_write_authorization_policy,
+  write_authorization_policy_for,
+  ServeWriteAuthorizationPolicy,
+  host_account_evidence_of_ingress,
+  HostAccountPeerEvidence,
+  srv1_host_account_enrolments,
   roadmap_deployment_access_policy,
   ServeActionAssignIssue,
   ServeActionCreateIssue,
@@ -284,10 +289,13 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be
 // modeled that way today because gunbc.host.host_effect carries only the LiveDeployApply /
 // LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic
-// service-occurrence member exists. That absence is why BOTH bring-up paths must name a command:
-// the systemd unit through gunbc.live_deploy.emit, and the tmux path through
-// gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is
-// separate work and is the thing that stops this recurring.
+// service-occurrence member exists. That absence is why the ONE bring-up path must name a command:
+// the systemd unit through gunbc.live_deploy.emit. The tmux path's argv builder,
+// dashboard_instance_serve_argv, had no consumer in any lane and was deleted under DESIGN §3c; if a
+// tmux bring-up returns it returns through the live-deploy emit, not through a second argv spelling.
+// Registering that member is separate work and is the thing that stops this recurring. Since the
+// serve verb's deletion (gunbc.plans.converged_ingress M1) the command is `gunbc run` on
+// gunbc.roadmap.roadmap_ingress, the deployment binding of these handlers.
 //
 // THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter
 // load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN
@@ -654,6 +662,7 @@ fn serve_publish_with_follow_ups(instance: HostDashboardInstance, outcome: BeltP
 // run the attempt somewhere the operator did not ask.
 fn serve_after_human_write(
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  authorization_policy: ServeWriteAuthorizationPolicy,
   route_path: NonEmptyStr,
   action: ServeRouteAction,
   proceed: fn() -> ServeHttpResponse,
@@ -663,7 +672,7 @@ fn serve_after_human_write(
     route_path: route_path,
     action: action,
     security: request.security,
-    authorization_policy: tracker_write_authorization_policy,
+    authorization_policy: authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
     csrf_presented: issue_form_field(body: request.body, name: "csrf"),
     observed_at: observed_at,
@@ -684,7 +693,7 @@ fn serve_dispatch_handler_response_over(
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   observed_at: fn() -> Timestamp,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/dispatch" as NonEmptyStr, action: ServeActionDispatchNode, observed_at: observed_at, proceed: fn() {
+  serve_after_human_write(request: request, authorization_policy: write_authorization_policy_for(deployment: instance.deployment), route_path: "/dispatch" as NonEmptyStr, action: ServeActionDispatchNode, observed_at: observed_at, proceed: fn() {
     let node_id = path_param_value(params: params, name: "node_id")
     if node_id == "" {
       serve_text_response(
@@ -726,7 +735,7 @@ fn serve_publish_handler_response_for_instance(
   params: List<PathParamBinding>,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/publish" as NonEmptyStr, action: ServeActionPublishNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
+  serve_after_human_write(request: request, authorization_policy: write_authorization_policy_for(deployment: instance.deployment), route_path: "/publish" as NonEmptyStr, action: ServeActionPublishNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
@@ -873,6 +882,7 @@ fn serve_issue_detail_response_over(
         let context = match request.security.authentication {
           GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
           FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
+          HostAccountPeerEvidence { account: _, principal: _ } => IssueFormContext { operation: "", csrf: "" }
           SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
           AuthAbsent => IssueFormContext { operation: "", csrf: "" }
         }
@@ -955,6 +965,7 @@ fn serve_issue_assignment_context_over(
     AuthAbsent => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Sign in to assign this issue.")
     SessionStandingInvalid { standing: _ } => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Your session has expired or is unavailable. Sign in again.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => serve_text_response(status: 403, content_type: text_plain_utf8, body: "Inline assignment requires a signed-in human session.")
+    HostAccountPeerEvidence { account: _, principal: _ } => serve_text_response(status: 403, content_type: text_plain_utf8, body: "Inline assignment requires a signed-in human session.")
   }
 }
 
@@ -992,6 +1003,7 @@ fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, R
   match security.authentication {
     GoogleOidcSession { session: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => ""
+    HostAccountPeerEvidence { account: _, principal: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
     SessionStandingInvalid { standing: _ } => ""
     AuthAbsent => ""
   }
@@ -1027,7 +1039,7 @@ fn serve_issue_assign_response_over(
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
-    action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    action: ServeActionAssignIssue, security: request.security, authorization_policy: write_authorization_policy_for(deployment: instance.deployment),
     deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
     observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
@@ -1138,6 +1150,7 @@ fn authenticated_write_author_principal(security: RequestSecurityContext<Request
   match security.authentication {
     GoogleOidcSession { session } => Present { value: session.principal }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => Present { value: fabric_workflow_principal }
+    HostAccountPeerEvidence { account: _, principal: who } => Present { value: who }
     SessionStandingInvalid { standing: _ } => none
     AuthAbsent => none
   }
@@ -1150,6 +1163,7 @@ fn authenticated_write_author_label(security: RequestSecurityContext<RequestAcce
   match security.authentication {
     GoogleOidcSession { session } => principal_ref_label(p: session.principal) as NonEmptyStr
     FabricServiceEvidence { kind: _, authenticated_at: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
+    HostAccountPeerEvidence { account: _, principal: who } => principal_ref_label(p: who) as NonEmptyStr
     SessionStandingInvalid { standing: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
     AuthAbsent => "unreachable: admitted human write without a session principal" as NonEmptyStr
   }
@@ -1513,6 +1527,7 @@ fn roadmap_serve_invoke_over(
     IssueCreatePageHandler => serve_page_response(page: issue_create_page(command_context: match request.security.authentication {
       GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
+      HostAccountPeerEvidence { account: _, principal: _ } => IssueFormContext { operation: "", csrf: "" }
       SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
       AuthAbsent => IssueFormContext { operation: "", csrf: "" }
     }))
@@ -1554,7 +1569,7 @@ fn serve_stop_handler_response_for_instance(
   params: List<PathParamBinding>,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/cleanup" as NonEmptyStr, action: ServeActionStopNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
+  serve_after_human_write(request: request, authorization_policy: write_authorization_policy_for(deployment: instance.deployment), route_path: "/cleanup" as NonEmptyStr, action: ServeActionStopNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
     let node_id = path_param_value(params: params, name: "node_id")
     if node_id == "" {
       serve_text_response(
@@ -1723,7 +1738,10 @@ fn roadmap_serve_request_security(
 ) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
     access_path: roadmap_serve_access_path(instance: instance, tailscale_identity: tailscale_identity, ingress: ingress, readback: readback, decided_at: decided_at),
-    authentication: roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header),
+    authentication: match host_account_evidence_of_ingress(ingress: ingress, enrolments: srv1_host_account_enrolments) {
+      Present { value: attested } => attested
+      Absent => roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header)
+    },
   }
 }
 
@@ -1990,10 +2008,10 @@ fn roadmap_serve_handle(
   )
 }
 
-// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by serve entry function. That is a
-// constraint of `gunbc serve`, not a dual: the Serve verb binds method/path/body from the socket
-// and has no `--arg` (handle_serve; Serve flags are function/host/port/release-revision only).
-// `gunbc run --arg name=value` exists for ProcessExit entries and does not apply here. Observing
+// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by handler function: the binding
+// (gunbc.roadmap.roadmap_ingress) names which handler a process serves, and a handler receives only
+// request facts by its declared parameters (gunbc.http_ingress), so an instance is a handler, not an
+// argument. Observing
 // the repo root at request time would make the served identity depend on where the binary happened
 // to be launched, which is an ambient fact, and it would re-answer per request a question that is
 // fixed for a process's whole life.
@@ -2063,6 +2081,34 @@ fn roadmap_serve_handle_srv1_lab(
     body: body,
     tailscale_identity: tailscale_identity,
     ingress: IngressUnattested,
+    request_headers: request_headers,
+    release_revision: release_revision,
+  )
+}
+
+// THE AGENT DOOR: the lab's owning agent's listener (gunbc.live_deploy.spec deployment_agent_door_socket).
+// Same instance and the same routes as roadmap_serve_handle_srv1_lab; the only difference is that the
+// kernel-attested peer user is handed to the seam as the request's ingress, as the tailnet door's entry
+// does, so host_account_evidence_of_ingress can enrol gunbc-lab-agent. A peer that is not enrolled
+// (e.g. the operator's host account) carries no host-account evidence and is refused by the write admission.
+fn roadmap_serve_handle_srv1_lab_agent_door(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  peer_user: String,
+  request_headers: List<ServeRequestHeader>,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv1_lab_dashboard_instance(),
+    plan: fn() { roadmap_plan_projection() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    ingress: IngressAttestedPeer { peer_user: peer_user },
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -2231,6 +2277,11 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
       json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
     ]
+    HostAccountPeerEvidence { account: _, principal: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "a host-account peer is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
     AuthAbsent => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
@@ -2286,6 +2337,11 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
       json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
     ]
+    HostAccountPeerEvidence { account: _, principal: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "a host-account peer is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
     AuthAbsent => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
@@ -2308,6 +2364,7 @@ fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, Re
     AuthAbsent => AllocationViewerSignedOut
     SessionStandingInvalid { standing: _ } => AllocationViewerSignedOut
     FabricServiceEvidence { kind: _, authenticated_at: _ } => AllocationViewerSignedOut
+    HostAccountPeerEvidence { account: _, principal: _ } => AllocationViewerSignedOut
   }
   match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
@@ -2356,6 +2413,7 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
     AuthAbsent => issue_view_response(status: 401, body: "Sign in for account preferences.")
     SessionStandingInvalid { standing: _ } => issue_view_response(status: 401, body: "Sign in for account preferences.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
+    HostAccountPeerEvidence { account: _, principal: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
   }
 }
 

@@ -10,13 +10,14 @@ import gunbc.roadmap.roadmap_attempt_request_binding {
 }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
-import std.algebra { trim, skip }
+import std.algebra { trim, skip, list_append }
 import std.durable_compare_and_set { cas_generation_count }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
+import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, metering_roster_admit,
@@ -91,7 +92,6 @@ import gunbc.roadmap.roadmap_belt {
   BeltReconcile,
   belt_reconcile,
   belt_reconcile_refusal_count,
-  roadmap_belt_default_capacity,
   roadmap_belt_production_spawn_mode,
   DispatchMember, DesiredMember, ObservedMember, dispatch_member_key,
   belt_reconcile_upsert_count,
@@ -4248,6 +4248,7 @@ fn belt_tick_launch_pass_refused(
 
 fn belt_tick_launch_pass_observed(
   standing: LaunchHostStanding,
+  capacity: BeltCapacity,
   state: SpawnMode,
   frontier: SpawnFrontier,
   graph: LaunchGraphStanding,
@@ -4259,7 +4260,7 @@ fn belt_tick_launch_pass_observed(
     state: state,
     frontier: frontier,
     live: classified.running,
-    cap: roadmap_belt_default_capacity,
+    cap: capacity,
   )
   BeltLaunchPass {
     reconcile: r,
@@ -4287,10 +4288,10 @@ fn belt_tick_launch_pass(
       belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: r)
     Absent =>
       match standing {
-        LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions, capacity: _, mode: _ } =>
+        LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions, capacity, mode: _ } =>
           match sessions {
             LaunchSessionsObserved { live: _ } =>
-              belt_tick_launch_pass_observed(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, live: tmux_live)
+              belt_tick_launch_pass_observed(standing: standing, capacity: capacity, state: state, frontier: frontier, graph: graph, merged: merged, live: tmux_live)
             LaunchSessionsUnobserved { reason } =>
               belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: LaunchSessionsUnobservable { reason: reason })
             LaunchSessionsPending =>
@@ -4593,7 +4594,7 @@ fn belt_run_once_in(
         instance: instance,
         state: roadmap_belt_production_spawn_mode,
         frontier: spawn_frontier(doc: doc, merged: authored_merged_prs()),
-        cap: roadmap_belt_default_capacity,
+        cap: belt_capacity_of_instance(instance),
         spawn_workdir: spawn_workdir,
       )
   }
@@ -10687,8 +10688,21 @@ fn belt_launch_host_standing_for_page_over(
   }
 }
 
+// THE BELT CAPACITY FOR ONE INSTANCE, BUILT FROM THE PER-INSTANCE FIGURE. The single authority for the
+// number is the instance row's HostDashboardInstance.belt_max_concurrent; this wraps it as the BeltCapacity
+// the belt and its launch admission take. No production reader of the old shared constant remains -- the
+// launch standing (and so launch_gate_capacity -> belt_free_slots_int) and the timer's reconcile fold all
+// carry this instance-built capacity.
+fn belt_capacity_of_instance(instance: HostDashboardInstance) -> BeltCapacity {
+  // A total Nat -> Int conversion: the field is a Nat (no negative width), and BeltCapacity.max_concurrent
+  // is an Int because the launch-admission fold (belt_free_slots_int) and json_int consume it as an Int.
+  BeltCapacity { max_concurrent: nat_to_int(n: instance.belt_max_concurrent) }
+}
+
 fn belt_launch_host_standing_for_instance(instance: HostDashboardInstance, mode: SpawnMode) -> LaunchHostStanding {
-  belt_launch_host_standing_for_instance_with_capacity(instance: instance, mode: mode, capacity: roadmap_belt_default_capacity)
+  belt_launch_host_standing_for_instance_with_capacity(
+    instance: instance, mode: mode, capacity: belt_capacity_of_instance(instance)
+  )
 }
 
 fn belt_launch_host_standing(instance: HostDashboardInstance) -> LaunchHostStanding {

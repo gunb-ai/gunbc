@@ -293,6 +293,29 @@ type GistId       = String
 type Secret       nominal_opaque = String
 type SecretValue  = Secret where string_non_empty
 
+// ENTERING A SECRET IS A CHANGE OF INTERPRETATION, NOT A COERCION. The value becomes sensitive,
+// so the crossing is not total-and-exact in the sense section 4 requires of an implicit route, and
+// it must be named at the call site. This is that name. It checks nothing and claims nothing: the
+// carrier is String, and what a Secret buys is confinement (the value is not read back into text),
+// not validation -- so a caller holding text it has decided is sensitive says so here, in one
+// place, instead of relying on `as` having let this one crossing through.
+//
+// THIS IS THE ONE ROUTE ONTO SECRET, and it is the only spelling that should survive. `as` still
+// admits the same crossing from a plain text today, and that unevenness - admitted from the carrier,
+// refused from a refined alias to it - is owned by gunbc.recurring_failure_mode
+// .a_cast_admitted_from_a_carrier_refused_from_its_refined_alias, whose trigger migrates those
+// spellings here and tightens the cast rule at v1.compiler.infer grounded_cast_verdict so `as` stops
+// admitting an entry into a nominal. Read that row for the measurement, the count and the standing;
+// nothing is restated here. Do not add a second route beside this one, and do not take `as` for the
+// crossing on the ground that it compiles: it compiles because the rule is uneven, not because the
+// crossing is implicit-safe.
+//
+// A checked constructor belongs here if and when Secret gains a property to check, and then this
+// stays as the total route for callers that have already checked.
+fn secret_of_text(text: String) -> Secret {
+  text as Secret
+}
+
 type SemVer       = String
 type NonEmptyStr     = String where string_non_empty
 

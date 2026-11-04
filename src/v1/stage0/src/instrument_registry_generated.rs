@@ -75,34 +75,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "primitive-egress-census".to_string(),
-            },
-            TargetProducer::PrimitiveEgressCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "primitive-egress-census-v2".to_string(),
-            },
-            TargetProducer::PrimitiveEgressCensusV2,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "primitive-egress-census-dag".to_string(),
-            },
-            TargetProducer::PrimitiveEgressCensusDag,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "primitive-egress-census-seed".to_string(),
-            },
-            TargetProducer::PrimitiveEgressCensusSeed,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "typed-graph-exclusive-bytes".to_string(),
             },
             TargetProducer::TypedGraphExclusiveBytes,
