@@ -1,0 +1,1 @@
+{"id": "8633724c2fe5a0ea", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-live-deploy-install-owned", "author": "principal:google-oidc/accounts/116084671989231734979", "parent": "", "kind": "claimed", "recorded_at": "2026-11-04T20:15:42Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:google-oidc/accounts/116084671989231734979"}}
