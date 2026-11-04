@@ -1,0 +1,108 @@
+module test.claim.host.host_budget_preflight_witness
+
+import std.types { Bool, List, String }
+import std.algebra { length }
+import std.measure { ByteSize, byte_size }
+import gunbc.host.host_budget_preflight { BudgetProbe, BudgetProbeValue, ProbeLimited, ProbeUnlimited, ProbeUnreadable, HostBudgetPreflightVerdict, PreflightAdmitted, PreflightCeilingOverrideRefused, PreflightMembershipAbsent, PreflightNoBoundingBudget, admit_host_budget_probes }
+
+// THE DEPLOY PATH'S BUDGET PREFLIGHT, WITNESSED AT THE DISTINCTIONS IT EXISTS FOR. The admission's
+// whole content is WHICH inputs refuse and which admit -- so every witness below flips exactly one
+// input and expects the verdict to follow. The high-only case is the discriminating one: a limit that
+// allocation walks through is not an envelope, and an implementation that graded "any number" as
+// admitted would pass every other row here and die on this one.
+
+data slot_max_bytes: ByteSize = byte_size(count: 27917287424)
+data slot_high_bytes: ByteSize = byte_size(count: 26843545600)
+
+fn probe_max(dir: String, value: BudgetProbeValue) -> BudgetProbe {
+  BudgetProbe { cgroup_dir: dir, file_name: "memory.max", value: value }
+}
+
+fn probe_high(dir: String, value: BudgetProbeValue) -> BudgetProbe {
+  BudgetProbe { cgroup_dir: dir, file_name: "memory.high", value: value }
+}
+
+fn verdict_tag(v: HostBudgetPreflightVerdict) -> String {
+  match v {
+    PreflightAdmitted { source_label: _, bytes: _ } => "admitted"
+    PreflightCeilingOverrideRefused { env_name: _ } => "ceiling-override"
+    PreflightMembershipAbsent { detail: _ } => "membership-absent"
+    PreflightNoBoundingBudget { probes: _ } => "no-bounding-budget"
+  }
+}
+
+test fn witness_preflight_admits_bound_max() -> Bool {
+  verdict_tag(admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: true,
+    probes: [probe_max("/sys/fs/cgroup/runner", ProbeLimited { bytes: slot_max_bytes }), probe_high("/sys/fs/cgroup/runner", ProbeLimited { bytes: slot_high_bytes })]
+  )) == "admitted"
+}
+
+test fn witness_preflight_refuses_high_only_number() -> Bool {
+  // The discriminating row: memory.high is a real number AND a real throttle, and still not a bound.
+  verdict_tag(admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: true,
+    probes: [probe_max("/sys/fs/cgroup/runner", ProbeUnlimited), probe_high("/sys/fs/cgroup/runner", ProbeLimited { bytes: slot_high_bytes })]
+  )) == "no-bounding-budget"
+}
+
+test fn witness_preflight_refuses_unlimited_everywhere() -> Bool {
+  verdict_tag(admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: true,
+    probes: [probe_max("/sys/fs/cgroup/runner", ProbeUnlimited), probe_high("/sys/fs/cgroup/runner", ProbeUnlimited)]
+  )) == "no-bounding-budget"
+}
+
+test fn witness_preflight_refuses_unreadable_files_with_them_named() -> Bool {
+  // The (c) shape on srv1: the files were not readable/there at all -- the refusal must carry that.
+  match admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: true,
+    probes: [probe_max("/sys/fs/cgroup/user.slice/runner", ProbeUnreadable { detail: "No such file or directory" }), probe_high("/sys/fs/cgroup/user.slice/runner", ProbeUnreadable { detail: "No such file or directory" })]
+  ) {
+    PreflightNoBoundingBudget { probes: lines } =>
+      length(lines) == 2
+    _ => false
+  }
+}
+
+test fn witness_preflight_unreadable_membership_is_named_apart() -> Bool {
+  // No /proc/self/cgroup read is NOT the same failure as a readable membership with unbounded dirs;
+  // the operator reads two different sentences and decides two different fixes.
+  verdict_tag(admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: false,
+    probes: []
+  )) == "membership-absent"
+}
+
+test fn witness_preflight_ceiling_override_refuses_before_any_probe() -> Bool {
+  // GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES hides the fold's budget gate; even with a perfect max
+  // present, a deploy dispatch that sets it is refused by name.
+  verdict_tag(admit_host_budget_probes(
+    ceiling_override_present: true,
+    membership_readable: true,
+    probes: [probe_max("/sys/fs/cgroup/runner", ProbeLimited { bytes: slot_max_bytes })]
+  )) == "ceiling-override"
+}
+
+test fn witness_preflight_admits_inner_bound_despite_outer_noise() -> Bool {
+  // Hierarchy order: the innermost bounding read wins even when an outer dir reads unlimited.
+  verdict_tag(admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: true,
+    probes: [probe_max("/sys/fs/cgroup/runner/slot", ProbeLimited { bytes: slot_max_bytes }), probe_max("/sys/fs/cgroup/runner", ProbeUnlimited)]
+  )) == "admitted"
+}
+
+test fn witness_preflight_empty_probes_refuse_not_admit() -> Bool {
+  // Zero probes is the fold paying nothing and deciding nothing -- never an admit.
+  verdict_tag(admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: true,
+    probes: []
+  )) == "no-bounding-budget"
+}
