@@ -1,4 +1,4 @@
-module test.claim.roadmap.roadmap_attempt_redelivery_wake
+module test.claim.roadmap.roadmap_attempt_redelivery_wake_witness
 
 // THE WAKE FOR A REQUEST-PENDING ATTEMPT, WITNESSED END TO END. The fix must pick up the ALREADY-WEDGED
 // attempt e5a42384c6a5e13d at round 7 (no fresh dispatch on this lab): the projection makes its capture

@@ -1,4 +1,4 @@
-module test.claim.roadmap.belt_worktree_restore_wet_witness
+module test.claim.roadmap.roadmap_belt_worktree_restore_wet_witness
 
 // THE INHABITANCE CLAIM FOR THE REQUEST-PENDING WORKTREE RESTORE (#15362, DESIGN §3 pairing:
 // "supplying inputs may not remove the last execution of the real path").
