@@ -510,18 +510,15 @@ type ServeEntryVerdictDiagnostics
   | DiagnosticsRefused { reason: String }
 
 fn serve_entry_verdict_diagnostic_list(elements: List<JsonValue>) -> ServeEntryVerdictDiagnostics {
-  match elements {
-    [] => DiagnosticsRead { diagnostics: [] as List<String> }
-    head :: rest =>
-      match head {
-        JsonString { value } =>
-          match serve_entry_verdict_diagnostic_list(elements: rest) {
-            DiagnosticsRead { diagnostics } => DiagnosticsRead { diagnostics: concat([value], diagnostics) }
-            DiagnosticsRefused { reason } => DiagnosticsRefused { reason: reason }
-          }
-        _ => DiagnosticsRefused { reason: "a compile diagnostics entry is not a string" }
-      }
-  }
+  fold(elements, init: DiagnosticsRead { diagnostics: [] as List<String> }, f: (acc, e) =>
+    match acc {
+      DiagnosticsRefused { reason } => DiagnosticsRefused { reason: reason }
+      DiagnosticsRead { diagnostics } =>
+        match e {
+          JsonString { value } => DiagnosticsRead { diagnostics: concat(diagnostics, [value]) }
+          _ => DiagnosticsRefused { reason: "a compile diagnostics entry is not a string" }
+        }
+    })
 }
 
 fn serve_entry_verdict_decode(raw: String) -> ServeEntryVerdictDecode {

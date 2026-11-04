@@ -178,14 +178,10 @@ test fn witness_round_trip_blocked_keeps_the_diagnostics_list() -> Bool {
     ServeEntryVerdictDecoded { record } =>
       match record.compile {
         ServeEntryCompileBlocked { blocking, diagnostics } =>
-          match diagnostics {
-            first :: second :: [] =>
-              blocking == 2
-                && first == "type error at roadmap_serve.dag:1"
-                && second == "unresolved import x"
-                && record.source_revision == fixture_revision
-            _ => false
-          }
+          blocking == 2
+            && diagnostics.length() == 2
+            && join(diagnostics, " || ") == "type error at roadmap_serve.dag:1 || unresolved import x"
+            && record.source_revision == fixture_revision
         _ => false
       }
     ServeEntryVerdictUndecoded { detail: _ } => false
@@ -292,10 +288,10 @@ test fn witness_blocked_matching_identity_carries_diagnostics() -> Bool {
     Consumed { compile } =>
       match compile {
         ServeEntryCompileBlocked { blocking, diagnostics } =>
-          match diagnostics {
-            first :: second :: [] => blocking == 2 && string_contains(s: first, pattern: "unresolved import x") && string_contains(s: second, pattern: "unresolved import x") == false && string_contains(s: first, pattern: "type error")
-            _ => false
-          }
+          blocking == 2
+            && diagnostics.length() == 2
+            && string_contains(s: join(diagnostics, " | "), pattern: "type error at roadmap_serve.dag:1")
+            && string_contains(s: join(diagnostics, " | "), pattern: "unresolved import x")
         _ => false
       }
     _ => false

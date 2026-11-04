@@ -162,6 +162,7 @@ import gunbc.live_deploy.emit {
   microvm_controller_vmm_receipt_path, device_crypto_sidecar_binary_path,
 }
 import gunbc.live_deploy.release_locus {
+  release_locus_dir,
   release_locus_tree_receipt_path,
   RevisionBoundAtEmission,
   ReleaseRevisionBinding,
