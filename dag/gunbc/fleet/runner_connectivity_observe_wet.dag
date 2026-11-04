@@ -16,8 +16,7 @@ import gunbc.github_effect_perform {
 }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_report_via_rest }
 import gunbc.fleet.fleet_runner_connectivity {
-  OrganizationRunnerRosterEvidence, github_organization_ref, local_runner_slot_incarnations,
-  observe_slot_registrations, slot_registration_observation_wire,
+  github_organization_ref, runner_connectivity_observation_lines,
 }
 
 // OBSERVE ONLY. This entry reads the organization roster over the typed REST route under the run's federated
@@ -26,11 +25,6 @@ import gunbc.fleet.fleet_runner_connectivity {
 // connectivity reconcile), which reads this receipt's observation before deciding any restart. The per-slot
 // MainPID leg is read by the ObserveRunnerLocalState realization over FleetSsh, not here.
 data runner_connectivity_observe_receipt_path: String = "artifacts/runner-connectivity-observe-receipt.txt"
-
-// THE PURE PART: one line per committed slot, and the same lines for a refused roster (every slot UNOBSERVED).
-fn runner_connectivity_observation_lines(roster: OrganizationRunnerRosterEvidence) -> List<String> {
-  map(local_runner_slot_incarnations(), inc => slot_registration_observation_wire(o: observe_slot_registrations(slot: inc.slot, roster: roster)))
-}
 
 fn runner_connectivity_observe_wet() -> ProcessExit
   uses net: Network

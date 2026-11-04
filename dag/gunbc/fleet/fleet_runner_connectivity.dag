@@ -1078,3 +1078,8 @@ fn slot_registration_observation_wire(o: SlotRegistrationObservation) -> String 
 fn slot_registration_observation_settled(o: SlotRegistrationObservation) -> Bool {
   match o { SlotRegistrationsObserved { slot: _, live: _, dead: _ } => true SlotRegistrationsUnobserved { slot: _, reason: _ } => false }
 }
+
+// THE PURE PART: one line per committed slot, and the same lines for a refused roster (every slot UNOBSERVED).
+fn runner_connectivity_observation_lines(roster: OrganizationRunnerRosterEvidence) -> List<String> {
+  map(local_runner_slot_incarnations(), inc => slot_registration_observation_wire(o: observe_slot_registrations(slot: inc.slot, roster: roster)))
+}
