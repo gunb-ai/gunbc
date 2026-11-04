@@ -1590,9 +1590,9 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
   }
 }
 
-// THE ATTEMPT-SLOT CUTOVER PASS. The frontier attempt_slots_cutover_frontier_rows pointed at THIS name,
-// and that row is retired in the same change that lands it (see the comment on
-// gunbc.roadmap.roadmap_session_attempt_slots_cutover.attempt_slots_cutover_run_ref). One slot root moved
+// THE ATTEMPT-SLOT CUTOVER PASS. A frontier row in the cutover module pointed at this name and is retired
+// by the change that lands the name -- the route exists, so a row tracking its absence would be a lie.
+// One slot root moved
 // under a live instance (gunb-ai/gunbc#14633) while a slot in it was still launching, and the settle pass
 // enumerates only the instance's CURRENT store, so that slot is invisible to every settle pass forever --
 // a lease no pass can reach keeps its charge (srv1's 2026-10-14 lease, 22 GiB, is that case). This pass is

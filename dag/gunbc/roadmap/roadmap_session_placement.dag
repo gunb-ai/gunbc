@@ -1400,7 +1400,7 @@ fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmpt
           SessionSettlementRetiredUncharged {
             unit: key as String,
             attempt: name,
-            detail: join(["slot closed at generation ", to_string(value: cas_generation_count(g: g)), " (state ", attempt_state_wire(state: st), "); charge was already returned at ledger generation ", to_string(value: ledger_generation), ", so no release was issued"], ""),
+            detail: join(["slot closed at generation ", to_string(value: cas_generation_count(g: g)), " (state ", attempt_state_wire(s: st), "); charge was already returned at ledger generation ", to_string(value: ledger_generation), ", so no release was issued"], ""),
           }
       }
   }
