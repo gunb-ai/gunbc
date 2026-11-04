@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Prod Gap Analysis — Daily Workspace (sunny-moth-735)</title>
+<style>
+  :root{--bg:#0f1116;--fg:#d7dbe4;--muted:#8a93a6;--card:#171a22;--line:#262b37;
+        --v:#3ecf8e;--i:#e0a33e;--ref:#e0654f;--p:#6aa9e6;--s:#2b3140;--acc:#7aa2ff;
+        --p0:#ff6b6b;--p1:#e0a33e;--p2:#6aa9e6;}
+  body{font:14px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg);color:var(--fg);margin:0;padding:32px 40px;max-width:1160px}
+  h1{font-size:22px;margin:0 0 4px}
+  h2{font-size:17px;margin:34px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;margin:18px 0 6px;color:var(--acc)}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:20px}
+  code,.sym{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+            background:var(--s);padding:1px 5px;border-radius:4px;color:#cbd4e6}
+  .cmd{display:block;background:#0b0d12;border:1px solid var(--line);border-radius:6px;
+       padding:8px 10px;margin:6px 0;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;
+       font-size:12px;color:#b9c4dc;overflow-x:auto}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+       padding:1px 7px;border-radius:20px;border:1px solid transparent;vertical-align:middle}
+  .V{color:var(--v);border-color:var(--v)} .I{color:var(--i);border-color:var(--i)}
+  .R{color:var(--ref);border-color:var(--ref)} .P{color:var(--p);border-color:var(--p)}
+  .size{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:4px;background:var(--s);color:var(--muted)}
+  .S{color:#9be6bd}.M{color:#e0cf6a}.L{color:#ff9a9a}
+  table{border-collapse:collapse;width:100%;margin:8px 0 4px;font-size:12.5px}
+  th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+  th{background:#12151c;color:var(--muted);font-weight:600}
+  .gap{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--acc);
+       border-radius:8px;padding:14px 16px;margin:14px 0}
+  .gap.p0{border-left-color:var(--p0)} .gap.p1{border-left-color:var(--p1)} .gap.p2{border-left-color:var(--p2)}
+  .gap h3{margin:0 0 4px}
+  .meta{color:var(--muted);font-size:12px;margin:2px 0 10px}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:2px 12px;margin:8px 0}
+  .kv div:nth-child(odd){color:var(--muted)}
+  .pill{font-size:11px;padding:1px 8px;border-radius:20px;background:var(--s);color:var(--fg)}
+  .out{color:#ffb08a;font-weight:600}
+  .note{color:var(--muted);font-size:12px;border-left:3px solid var(--line);padding-left:10px;margin:10px 0}
+  ul{margin:6px 0 6px 18px;padding:0} li{margin:2px 0}
+  .rank{background:#12161f;border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin:16px 0}
+  .rank b{color:var(--acc)}
+</style>
+</head>
+<body>
+
+<h1>Prod Gap Analysis — Daily Workspace vs the srv1 lab</h1>
+<div class="sub">
+  Read-only gap analysis · session <span class="sym">sunny-moth-735</span> · node <span class="sym">adhoc-4ff4a78d-65a</span> · generated 2026-11-04 ·
+  revision <span class="sym">gunbc@fe796707f7a302c58830523b17b528c02c988f61</span> (public main; private main <span class="sym">d71c6e6</span> cited from the audit).
+  Sources allowed: source inspection (<span class="sym">git grep</span>), GitHub API (<span class="sym">gh</span>), CI job logs.
+  No execution on srv1/srv2/prod. Bounded instruments only (DESIGN&nbsp;§6, retired-census ruling).
+</div>
+
+<div class="note">
+<b>Method &amp; epistemic tags (DESIGN&nbsp;§4d).</b> Every claim is tagged:
+<span class="tag V">VERIFIED</span> = observed by this session now, with the symbol cited (not file:line) and the exact command below;
+<span class="tag P">PARTIAL</span> = the cited symbol/mechanism is verified but a sub-claim is not;
+<span class="tag I">INFERRED</span> = carried from deep-pike-741's audit agent-reading, or cross-repo/agent-reading I did not independently re-measure (e.g. exact GB/minute figures, ctrl-side files, the live up-state of a host).
+I did not re-derive the audit's CI-log numbers (1,572 modules / 9.6&nbsp;GB / a literal "30-minute timeout"); I verified the deploy <em>timeline</em>, the <em>missing-plan-artifact</em> failure from a real log, the <em>serve-entry resolve</em> cost from a real log, and that the relevant refusal symbols exist — and marked the rest inferred.
+</div>
+
+<div class="rank">
+<b>Headline ranking (what unblocks the most).</b>
+<ol>
+<li><b>For daily-lab use (start now, time-critical):</b> <b>LB-1</b> — the lab's OIDC console readback <em>expires 2026-11-10 04:00&nbsp;UTC</em>. Past that the lab serve-unit emission refuses and <span class="sym">workspace_admin_assess</span> refuses. Size S, but has an outward-facing operator step (re-read the live Google Workspace console). ~6 days of runway.</li>
+<li><b>For production promotion (close first):</b> <b>GAP&nbsp;1 — a working, receipted CI deploy to prod.</b> It is the delivery channel for every other fix (2, 5, 6, 7 and the lab-only promotions) and its absence is today papered over by an <em>unreceipted tree-sync hand-recovery</em> — a latent-incident risk. Size L.</li>
+<li><b>Raise the operator action for GAP&nbsp;2 now (lead time), close in code after GAP&nbsp;1:</b> prod sign-in is <span class="sym">TrackerWebOauthClientUnbound</span> <em>by construction</em>; closing it needs an outward, irreversible operator action — creating a Google OAuth PROD client. Start the outward work early even though GAP&nbsp;1 is the code gap to close first.</li>
+</ol>
+</div>
+
+<!-- ============================ PART A ============================ -->
+<h2>Part A — Daily-lab blockers <span style="color:var(--muted);font-weight:400;font-size:13px">(what stops the operator using the srv1 lab daily)</span></h2>
+
+<div class="gap p0">
+<h3>LB-1 — The lab's OIDC console readback expires 2026-11-10 04:00&nbsp;UTC <span class="tag V">VERIFIED</span></h3>
+<div class="meta">Rank P0 · imminent (~6 days) · unblocks the most for the lab</div>
+<div class="kv">
+  <div>Current state</div><div>Module <span class="sym">gunbc.auth.tracker_web_oauth_client</span> pins <span class="sym">tracker_web_test_console_readback_valid_until</span> = <b>2026-11-10, 04:00:00 UTC</b> (observed 2026-10-11 04:00, transcribed from the bright-moth-475 console). Once <span class="sym">now ≥ valid_until</span>, <span class="sym">workspace_admin_assess</span> (module <span class="sym">gunbc.auth.google_workspace_admin_convergence</span>) returns <span class="sym">GoalAssessmentRefused{"readback is future-dated, expired, or has no bounded lifetime"}</span>. The lab serve-unit emission consumes it: <span class="sym">live_deploy_serve_unit_emission</span> (module <span class="sym">gunbc.live_deploy.emit</span>) maps <span class="sym">TrackerWebOidcConsoleReadbackUnsatisfied → LiveDeployServeUnitOidcReadbackRefused</span>. So the sign-in assessment <em>and</em> the (re)emission of the lab serve both refuse.</div>
+  <div>Closed means</div><div>A fresh Google-Workspace-console readback receipt re-pinned with <span class="sym">valid_until &gt; now</span>, so the serve keeps emitting and admin assesses. (Longer term this is the same hole as GAP&nbsp;2: prod must not be gated on a transcribed TEST receipt.)</div>
+  <div>Executing check</div><div>A <span class="sym">claim_executor</span> claim (not a typecheck) that runs <span class="sym">tracker_web_test_auth_platform_client_assessment(now_epoch)</span> and returns <span class="sym">GoalSatisfied</span> for <span class="sym">now &lt; valid_until</span> and <span class="sym">GoalAssessmentRefused</span> for <span class="sym">now &gt; valid_until</span> — a discriminating pair straddling the expiry, the way the live deploy consumes it.</div>
+  <div>Depends on</div><div>None upstream (it gates LB-1 onward).</div>
+  <div>Size</div><div><span class="size S">S</span> — the machinery exists; it is a re-read + re-pin + one claim.</div>
+  <div>Operator action</div><div><span class="out">Yes — outward-facing.</span> Re-reading the operator's live Google Workspace Admin (the URI set) and re-deploying with a new receipt. Not irreversible, but it leaves the lab.</div>
+</div>
+<span class="cmd">git grep -n "tracker_web_test_console_readback_valid_until" dag/gunbc/auth/tracker_web_oauth_client.dag   # 2026-11-10, 04:00 UTC
+git grep -n "valid_until_epoch <= now_epoch\|readback is future-dated" dag/gunbc/auth/google_workspace_admin_convergence.dag   # refusal
+git grep -n "LiveDeployServeUnitOidcReadbackRefused\|ConsoleReadbackUnsatisfied =>" dag/gunbc/live_deploy/emit.dag   # emission consumer</span>
+</div>
+
+<div class="gap p1">
+<h3>LB-2 — Default model route is a hand-rented Vast card whose up-state is unobserved <span class="tag V">VERIFIED</span> (standing) · <span class="tag I">INFERRED</span> (is-it-up)</h3>
+<div class="meta">Rank P1 · blocks every dispatch that calls a model</div>
+<div class="kv">
+  <div>Current state</div><div>Module <span class="sym">gunbc.harness.harness_operator_route</span> reaches the model over <span class="sym">operator_endpoint_url</span> / <span class="sym">operator_pod_listen_port</span> from <span class="sym">gunbc.harness.operator_pod_launch</span>. The row's standing is <span class="sym">TranscribedUncited{read_obligation: operator_pod_launch_read_obligation}</span>, whose text says "Replace this standing with a receipt once the operator route is <em>observed by a modeled probe</em>." No such probe exists, so whether the rented card is up is not observed by any consumer.</div>
+  <div>Closed means</div><div>A modeled probe (ninfer health / models-list, already imported from <span class="sym">extdeps.ninfer.ninfer_serve</span>) as a real consumer producing a receipted standing, and dispatch admission reading that standing.</div>
+  <div>Executing check</div><div>A claim: <span class="sym">ninfer_models_list(...)</span> returns <span class="sym">NinferModelsAdvertised</span> when the route is live and <span class="sym">NinferModelsUnreadable</span>/refused when it is down — observed on the live route, not unit-tested.</div>
+  <div>Depends on</div><div>Independent, but gates all worker dispatch (lab and prod).</div>
+  <div>Size</div><div><span class="size M">M</span> — a probe module + admission wiring; the ninfer extdeps are already imported.</div>
+  <div>Operator action</div><div>Partly (<span class="out">renting/starting a GPU card</span> is outward); the code gap (no probe) is internal.</div>
+</div>
+<span class="cmd">git grep -n "TranscribedUncited\|read_obligation\|operator_pod_listen_port" dag/gunbc/harness/operator_pod_launch.dag
+git grep -n "operator_endpoint_url\|ninfer_models_list\|harness_operator_route" dag/gunbc/harness/harness_operator_route.dag</span>
+</div>
+
+<div class="gap p2">
+<h3>LB-3 — Landing &amp; closing live outside the loop <span class="tag V">VERIFIED</span> <span class="pill">operator: OK for now</span></h3>
+<div class="meta">Rank P2 · listed, not designed (post-merge close/advance is a separate track)</div>
+<div class="kv">
+  <div>Current state</div><div><span class="sym">gunbc.roadmap.roadmap_authority</span> defines <span class="sym">authored_merged_prs() -&gt; List&lt;Int&gt;</span> as the literal constant <span class="sym">{ [] }</span>. Close is an append to <span class="sym">roadmap_acceptance_event_history.jsonl</span> (18 events; the newest date in it is <b>2026-10-11</b>); <span class="sym">roadmap_acceptance_event_history_load()</span> is declared "the single authority for acceptance facts." Merge readiness is <span class="sym">gunbc.merge_admission</span> here, plus <span class="sym">ctrl: pr_merge_ready_digest.mjs</span> (rung drop <span class="sym">dashboard_merge_ready_semantic_admissibility</span>) on the ctrl side <span class="tag I">INFERRED</span> (cross-repo).</div>
+  <div>Closed means</div><div><span class="sym">authored_merged_prs()</span> reads real merged PR numbers, and there is a close <em>route</em> (not a manual jsonl commit). Post-merge node close/advance is being built separately — listed, not designed.</div>
+  <div>Executing check</div><div>A claim: given a merged PR in the stream, <span class="sym">authored_merged_prs()</span> returns non-empty; and a witness that closes a node through the route (goes red if the route is bypassed).</div>
+  <div>Depends on</div><div>The separate post-merge close/advance track.</div>
+  <div>Size</div><div><span class="size M">M</span>–<span class="size L">L</span>.</div>
+  <div>Operator action</div><div>Merging stays manual (operator decision).</div>
+</div>
+<span class="cmd">git grep -n "fn authored_merged_prs" dag/gunbc/roadmap/roadmap_authority.dag   # -> List<Int> { [] }
+wc -l dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl   # 18 ; newest date 2026-10-11</span>
+</div>
+
+<div class="gap p2">
+<h3>LB-4 — Restart persistence is witnesses-only, not in the deployed tree <span class="tag I">INFERRED</span></h3>
+<div class="meta">Rank P2 · carried from the audit trace; not deep-verified by this session</div>
+<div class="kv">
+  <div>Current state</div><div>Restart-persistence is exercised by witnesses (<span class="sym">restart_persistence_witness.dag</span>, <span class="sym">belt_restart_persistence_witness.dag</span>) but, per the audit trace, is <em>not</em> in the deployed tree — so a host restart may not restore serve/dispatch state. <span class="tag I">INFERRED</span>: I confirmed the witnesses exist, not their absence from the deploy path.</div>
+  <div>Closed means</div><div>A deployed-tree persistence path (not only a witness) so a restart restores the serve unit and in-flight dispatch state.</div>
+  <div>Executing check</div><div>A restart-and-resume claim on the lab instance: state before == state after, observed by execution.</div>
+  <div>Depends on</div><div>LB-1 (the serve must keep being emitted first).</div>
+  <div>Size</div><div><span class="size M">M</span>.</div>
+  <div>Operator action</div><div>No.</div>
+</div>
+</div>
+
+<div class="gap p1">
+<h3>LB-5 — The working loop and its fixes live only on <span class="sym">lab-dev</span> (0 hits on main) <span class="tag V">VERIFIED</span> (absence)</h3>
+<div class="meta">Rank P1 for robustness · see Part C triage</div>
+<div class="kv">
+  <div>Current state</div><div>The lab "works" because it runs on <span class="sym">bright-moth-475/lab-dev</span>. The loop-critical fixes are lab-only modules with <b>0 hits on main</b> (verified by bounded grep): <span class="sym">harness_session_recovery</span>, <span class="sym">attempt_redelivery_wake</span>, <span class="sym">lineage_retire_record</span>, <span class="sym">dispatch_replay_worker</span>, <span class="sym">harness_shell_job</span>, <span class="sym">compute_store_owned_directories</span>, <span class="sym">pool_front</span>, <span class="sym">strata_server</span>, <span class="sym">srv4_strata_wire_qualification</span>. If daily lab use drifts onto <span class="sym">main</span>, the pending-attempt wedge / session-loss / OOM-lease behaviours return.</div>
+  <div>Closed means</div><div>Promote the loop-critical subset (Part C, "prod-need = Yes") onto main, or reconcile the lab's base branch so the lab isn't secretly a different program.</div>
+  <div>Executing check</div><div>Each promoted fix has a real consumer on main green by execution and a discriminating input that goes red (DESIGN §5), e.g. the wedge claim.</div>
+  <div>Depends on</div><div>Coordination with GAP&nbsp;4 (branch consolidation).</div>
+  <div>Size</div><div><span class="size M">M</span> aggregate; several S/M per fix.</div>
+  <div>Operator action</div><div>No.</div>
+</div>
+<span class="cmd"># absence on main = the defensible witness that these are lab-only
+for s in harness_session_recovery attempt_redelivery_wake lineage_retire_record \
+         dispatch_replay_worker harness_shell_job compute_store_owned_directories \
+         pool_front strata_server srv4_strata_wire_qualification; do \
+  printf "%-32s main-hits=%s\n" "$s" "$(git grep -l "$s" -- 'dag/**' 'src/**' | wc -l)"; done   # all 0</span>
+</div>
+
+<!-- ============================ PART B ============================ -->
+<h2>Part B — Production-promotion gaps <span style="color:var(--muted);font-weight:400;font-size:13px">(the seven, numbered as in the audit)</span></h2>
+
+<table>
+<tr><th>#</th><th>Gap (audit numbering)</th><th>Verdict</th><th>Size</th><th>Operator&nbsp;action</th><th>Primary dep</th></tr>
+<tr><td>1</td><td>No working prod deploy (CI <span class="sym">dashboard_deploy</span>)</td><td><span class="tag V">VERIFIED</span> (timeline+cause) / <span class="tag I">INFERRED</span> figures</td><td><span class="size L">L</span></td><td>—</td><td>— <b>(close first)</b></td></tr>
+<tr><td>2</td><td>Prod cannot sign in (<span class="sym">TrackerWebOauthClientUnbound</span>)</td><td><span class="tag V">VERIFIED</span></td><td><span class="size M">M</span></td><td><span class="out">Yes — create Google OAuth PROD client</span></td><td>1</td></tr>
+<tr><td>3</td><td>Lab TEST readback expiry (2026-11-10)</td><td><span class="tag V">VERIFIED</span></td><td><span class="size S">S</span></td><td><span class="out">Yes — outward console read</span></td><td>2</td></tr>
+<tr><td>4</td><td>Loop only on <span class="sym">lab-dev</span>; srv2 → stale <span class="sym">test/main-plus-roadmap-daily</span></td><td><span class="tag V">VERIFIED</span></td><td><span class="size M">M</span></td><td>—</td><td>1</td></tr>
+<tr><td>5</td><td>Landing/closing outside loop (<span class="sym">authored_merged_prs()==[]</span>)</td><td><span class="tag V">VERIFIED</span></td><td><span class="size L">L</span></td><td>Merge stays manual</td><td>separate track</td></tr>
+<tr><td>6</td><td>Three plan authorities; <span class="sym">host_standup P4</span> DeclaredGap</td><td><span class="tag P">PARTIAL</span></td><td><span class="size L">L</span></td><td>—</td><td>5</td></tr>
+<tr><td>7</td><td>Model route hand-rented; G0 draft no consumer; <span class="sym">WorkerIsServiceUser</span></td><td><span class="tag V">VERIFIED</span></td><td><span class="size L">L</span></td><td>Partly (rent a card)</td><td>2 (writes)</td></tr>
+<tr><td colspan="6" style="background:#12151c;color:var(--muted)">Further gaps beyond the seven (Part B2)</td></tr>
+<tr><td>F1</td><td>Deploy implemented 3×; <span class="sym">dashboard_instance_serve_argv</span> has no caller</td><td><span class="tag V">VERIFIED</span></td><td><span class="size M">M</span></td><td>—</td><td>1</td></tr>
+<tr><td>F2</td><td>Session placement implemented 2× (ctrl .mjs vs belt)</td><td><span class="tag V">VERIFIED</span></td><td><span class="size M">M</span></td><td>—</td><td>6</td></tr>
+<tr><td>F3</td><td>Three code lines (main / lab-dev / test branch)</td><td><span class="tag V">VERIFIED</span></td><td><span class="size M">M</span></td><td>—</td><td>4</td></tr>
+<tr><td>F4</td><td>Post-merge node close/advance (list only — built separately)</td><td><span class="tag I">OUT-OF-SCOPE</span></td><td>—</td><td>—</td><td>—</td></tr>
+</table>
+
+<div class="gap p0">
+<h3>GAP 1 — Production has no working CI deploy path <span class="tag V">VERIFIED</span> (timeline, missing-plan cause, resolve cost) · <span class="tag I">INFERRED</span> (the 9.6 GB / "30-min" figures)</h3>
+<div class="meta">Rank <b>1 for promotion</b> · unblocks every other fix · currently papered over by an unreceipted hand-recovery</div>
+<div class="kv">
+  <div>Current state</div><div><span class="sym">fleet-converge</span> job <span class="sym">dashboard-deploy</span> (mode <span class="sym">dashboard_deploy</span>, <span class="sym">.github/workflows/fleet-converge.yml</span>) has not succeeded on srv1 since <b>2026-09-29 16:25:39&nbsp;UTC</b> (nonce <span class="sym">jolly-owl-rollback-dash2-1790699137</span> — itself a rollback to a 09-26 tree). Later srv1 attempts failed/cancelled (09-30×2, 10-16, 10-18 <span class="sym">a3-prod-redeploy-20261018c</span>); srv3/srv4 failed 10-18/19. Concrete causes seen in CI: (a) <b>missing plan artifact</b> — run 39172318149 failed at step "Download the plan artifact (carries the plan receipt) from the plan run" (<span class="tag V">VERIFIED</span>); (b) the <b>serve-entry resolve</b> under <span class="sym">pre_swap_admission</span> is heavy — run 39177393512 log shows <span class="sym">[pre-entry] phase=resolve_entry_graph_inclusive ms=614964</span> (~10&nbsp;min) then exit&nbsp;1 (<span class="tag V">VERIFIED</span>); (c) <b>budget-unreadable at resolve</b> is a real variant <span class="sym">HostBudgetUnreadable</span> in <span class="sym">gunbc.host.host_budget_source</span> whose own comment records an OS kill when the resolve was unbounded (<span class="tag V">VERIFIED</span> as symbol/semantics; the specific 10-16 occurrence <span class="tag I">INFERRED</span>). The 09-30 srv1 failure was in the <span class="sym">dashboard-deploy</span> job at "live_deploy_apply_srv1_transaction_wet … receipted / Upload live-deploy transaction receipt" — the wet apply failed to produce a receipt (<span class="tag V">VERIFIED</span>).</div>
+  <div>Closed means</div><div>A green CI <span class="sym">dashboard_deploy srv1</span> run <em>on a post-09-29 tree</em> that (i) produces the plan artifact/receipt, (ii) resolves the serve entry within the step budget (e.g. a prebuilt serve binary rather than a full interpreted re-resolve), and (iii) produces the live-deploy transaction receipt — i.e. the prod tree carries a receipt, not a hand-sync.</div>
+  <div>Executing check</div><div><span class="sym">gh run view --repo gunb-ai/gunbc --job &lt;id&gt; --log</span> on a fresh <span class="sym">dashboard_deploy srv1</span> dispatch: plan artifact downloaded, serve-entry resolve within budget, transaction receipt uploaded, job conclusion <span class="sym">success</span> — and a rollback to the prior receipt on any refusal.</div>
+  <div>Depends on</div><div>None — it is the prerequisite for shipping fixes for GAPs 2, 5, 6, 7 and the lab-only promotions.</div>
+  <div>Size</div><div><span class="size L">L</span> — plan-artifact producer, budget-safe serve-entry resolve/binary, receipted wet apply.</div>
+  <div>Operator action</div><div>No outward action to close it, but the current <em>workaround</em> (hand tree-sync) is the risk that makes it urgent.</div>
+</div>
+<span class="cmd">gh api "repos/gunb-ai/gunbc/actions/runs?created=2026-09-29T00:00:00Z..2026-09-30T00:00:00Z&per_page=100" --paginate \
+  --jq '.workflow_runs[]|select(.display_title|test("dashboard_deploy"))|[.created_at,(.conclusion//.status),.id,.display_title]|@tsv'   # last success 09-29 16:25 srv1
+gh api repos/gunb-ai/gunbc/actions/runs/39172318149/jobs --jq '.jobs[]|select(.conclusion=="failure")|.name'   # plan-revision
+gh run view --repo gunb-ai/gunbc --job 117824998335 --log | grep -iE "resolve_entry_graph_inclusive|exit code"   # ms=614964 then exit 1
+git grep -n "HostBudgetUnreadable\|nothing bounded the resolve\|OS ended the process" dag/gunbc/host/host_budget_source.dag</span>
+</div>
+
+<div class="gap p1">
+<h3>GAP 2 — Prod cannot sign in <span class="tag V">VERIFIED</span> (by construction)</h3>
+<div class="kv">
+  <div>Current state</div><div>Module <span class="sym">gunbc.auth.tracker_web_oauth_client</span>: <span class="sym">tracker_web_oauth_standing_for_environment</span> returns <span class="sym">TrackerWebOauthClientBound</span> only for <span class="sym">GoogleLoginEnvironmentTest</span>; <span class="sym">Stage</span> and <span class="sym">Prod</span> return <span class="sym">TrackerWebOauthClientUnbound{reason:"no tracker-web PROD OAuth client is declared…"}</span>. The module comment states Bound "is constructed only for Test… that pair has no constructor here." <span class="sym">tracker_web_oidc_serve_placement</span> therefore yields <span class="sym">TrackerWebOidcPlacementUnbound</span> for prod, so <span class="sym">/auth/login</span> cannot mint a session (audit: 503), and the write handlers are refused with <span class="sym">AuthAbsent</span>. <span class="tag I">INFERRED</span>: the literal "503 / AuthAbsent on create-assign-comment-dispatch-stop-publish" is the audit's reading; the unbound construction is the verified root.</div>
+  <div>Closed means</div><div>A bound PROD OAuth client (an operator-created Google OAuth PROD client + secret materialized), so <span class="sym">tracker_web_oauth_standing_for_environment(Prod) → Bound</span>.</div>
+  <div>Executing check</div><div>A claim: prod instance's <span class="sym">tracker_web_oidc_serve_placement</span> → <span class="sym">TrackerWebOidcPlacementPlaced{client_id}</span> (not Unbound), and a real sign-in round-trip reaches the callback and mints a session; with no session, the write handlers return <span class="sym">AuthAbsent</span> (both directions).</div>
+  <div>Depends on</div><div>GAP&nbsp;1 (to deploy the bound config to prod).</div>
+  <div>Size</div><div><span class="size M">M</span> in code; the operator's Google-console work is the long pole.</div>
+  <div>Operator action</div><div><span class="out">Yes — outward-facing and effectively irreversible</span>: creating a Google OAuth PROD client (and its secret). Start this in parallel with GAP&nbsp;1 for lead time.</div>
+</div>
+<span class="cmd">git grep -n "TrackerWebOauthClientUnbound\|GoogleLoginEnvironmentProd\|constructed only for Test" dag/gunbc/auth/tracker_web_oauth_client.dag</span>
+</div>
+
+<div class="gap p1">
+<h3>GAP 3 — Lab TEST readback expiry (same event as LB-1, seen from prod) <span class="tag V">VERIFIED</span></h3>
+<div class="kv">
+  <div>Current state</div><div>Because prod has no bound client (GAP&nbsp;2), the whole system's sign-in/serve-emission correctness currently rides on the <em>TEST</em> readback, whose <span class="sym">valid_until = 2026-11-10 04:00 UTC</span>. This is a lab blocker (LB-1) and a prod gap: prod being gated on a transcribed TEST receipt is not a production posture.</div>
+  <div>Closed means</div><div>For prod: GAP&nbsp;2's bound PROD client removes the dependence. For the lab: re-pin the test readback (LB-1).</div>
+  <div>Executing check</div><div>After GAP&nbsp;2, prod serve/emission no longer consumes the TEST readback path; after the LB-1 re-pin, the lab claim (LB-1's) passes on the new date.</div>
+  <div>Depends on</div><div>GAP&nbsp;2 (prod), LB-1 (lab).</div>
+  <div>Size</div><div><span class="size S">S</span> (a consequence, not separate work).</div>
+  <div>Operator action</div><div><span class="out">Yes — same outward console read as LB-1.</span></div>
+</div>
+</div>
+
+<div class="gap p1">
+<h3>GAP 4 — The working loop is only in the srv1 lab; srv2 publishes into a stale branch <span class="tag V">VERIFIED</span></h3>
+<div class="kv">
+  <div>Current state</div><div>The loop runs in the srv1 lab on <span class="sym">bright-moth-475/lab-dev</span> and publishes into lab-dev. The srv2 instance publishes into <span class="sym">test/main-plus-roadmap-daily</span>, which is <b>271 ahead / 2,892 behind</b> <span class="sym">main</span>, tip <span class="sym">cc5bbdcccd1f</span> at <b>2026-09-30 20:37:03&nbsp;UTC</b> (measured by the compare API). The head date here supersedes the audit's "09-30" with the exact tip.</div>
+  <div>Closed means</div><div>The published lines converge toward <span class="sym">main</span> (or a single publication base), so the lab and the promoted line are the same program; srv2's publication base is not a near-3-month-stale branch.</div>
+  <div>Executing check</div><div><span class="sym">gh api repos/gunb-ai/gunbc/compare/main...test/main-plus-roadmap-daily</span> shows <span class="sym">behind_by ≈ 0</span> (or the branch is retired and srv2 publishes into main), observed by execution of the publish route.</div>
+  <div>Depends on</div><div>GAP&nbsp;1 (a deploy that can carry a merged tree), and the loop-critical promotions (LB-5 / Part C).</div>
+  <div>Size</div><div><span class="size M">M</span>.</div>
+  <div>Operator action</div><div>No outward action (branch hygiene).</div>
+</div>
+<span class="cmd">gh api repos/gunb-ai/gunbc/compare/main...test/main-plus-roadmap-daily --jq '{ahead_by:.ahead_by,behind_by:.behind_by}'   # 271 / 2892
+gh api "repos/gunb-ai/gunbc/commits?sha=test/main-plus-roadmap-daily&per_page=1" --jq '.[0].sha[0:12]+" "+.commit.committer.date'   # cc5bbdcc 2026-09-30T20:37Z</span>
+</div>
+
+<div class="gap p2">
+<h3>GAP 5 — Landing &amp; closing are outside the loop <span class="tag V">VERIFIED</span></h3>
+<div class="kv">
+  <div>Current state</div><div>Same facts as LB-3: <span class="sym">authored_merged_prs()</span> is <span class="sym">{ [] }</span>; close is a manual append to <span class="sym">roadmap_acceptance_event_history.jsonl</span> (18 events, newest 2026-10-11); merge admission is <span class="sym">gunbc.merge_admission</span> + ctrl <span class="sym">pr_merge_ready_digest.mjs</span>. Operator ruling: merging outside the loop is OK for now; post-merge close/advance is a separate build.</div>
+  <div>Closed means</div><div><span class="sym">authored_merged_prs()</span> returns real merged PRs; a close route (not a jsonl commit) drives acceptance. Listed for the separate post-merge track.</div>
+  <div>Executing check</div><div>Given a merged PR, <span class="sym">authored_merged_prs()</span> is non-empty and a close-route witness turns a node terminality; goes red if the route is bypassed.</div>
+  <div>Depends on</div><div>The separate post-merge node close/advance track (do not design here).</div>
+  <div>Size</div><div><span class="size L">L</span>.</div>
+  <div>Operator action</div><div>Merging manual (operator).</div>
+</div>
+<span class="cmd">git grep -n "fn authored_merged_prs" dag/gunbc/roadmap/roadmap_authority.dag   # -> List<Int> { [] }</span>
+</div>
+
+<div class="gap p2">
+<h3>GAP 6 — Three plan authorities; placement enrollment is a DeclaredGap <span class="tag P">PARTIAL</span></h3>
+<div class="kv">
+  <div>Verified</div><div><span class="sym">host_standup.dag</span> declares <span class="sym">label:"P4:session-placement-enrollment"</span> with <span class="sym">disposition: DeclaredGap{ interim_realization:"ctrl:scripts/session-dashboard/lib/spawn_placement.mjs;…/placement_query.mjs", refusal:"…refuse until placement enrollment has a .dag authority (interim ctrl .mjs only)"}</span>. On the gunbc side, acceptance facts flow from <span class="sym">roadmap_acceptance_event_history_load()</span> (module <span class="sym">gunbc.roadmap.roadmap_authority</span>) — one of the "three plans". Belt-side placement authority <span class="sym">gunbc.roadmap.roadmap_session_placement</span> exists.</div>
+  <div>Not independently verified</div><div>The <em>private clock</em> plan lives in <span class="sym">ctrl</span> (cross-repo, not inspected), and the claim that the public <span class="sym">gunbc.roadmap</span> "has no date carrier" (bands only, no date) is the audit's reading — <span class="tag I">INFERRED</span>.</div>
+  <div>Closed means</div><div>One plan authority wins; agent-session placement enrollment has a <span class="sym">.dag</span> authority (P4 leaves DeclaredGap), retiring the ctrl <span class="sym">.mjs</span> interim.</div>
+  <div>Executing check</div><div>The P4 node leaves <span class="sym">DeclaredGap</span> for a modeled disposition whose carriers execute; the ctrl placement interim is no longer referenced.</div>
+  <div>Depends on</div><div>GAP&nbsp;5 (plan/terminality authority) and the placement consolidation (F2).</div>
+  <div>Size</div><div><span class="size L">L</span>.</div>
+  <div>Operator action</div><div>No.</div>
+</div>
+<span class="cmd">git grep -n "P4:session-placement-enrollment\|DeclaredGap\|spawn_placement.mjs\|refuse until placement enrollment" dag/gunbc/host/host_standup.dag</span>
+</div>
+
+<div class="gap p1">
+<h3>GAP 7 — Execution rests on hand-held pieces <span class="tag V">VERIFIED</span> (all three)</h3>
+<div class="kv">
+  <div>7a model route</div><div><span class="sym">gunbc.harness.operator_pod_launch</span> standing is <span class="sym">TranscribedUncited{read_obligation}</span> (see LB-2); the runtime default route is the operator-rented Vast card. (Provisioning <em>is</em> modeled — <span class="sym">host_standup P4b:inference-serving-provision</span> is <span class="sym">ModeledCompose</span> over <span class="sym">gunbc.serving.*</span> — but the live default is the hand-placed card with no receipt.)</div>
+  <div>7b containment gate G0</div><div>Node <span class="sym">id:"contained-development-execution"</span> (<span class="sym">rn_A9QSP5ZMHYH0WDJR571D78N439</span>) is a <span class="sym">DRAFT portfolio gate</span> — headline/boundary/approach/red_control/handback all "DRAFT: pending the reviewed contracts document." Its named carrier <span class="sym">roadmap_dispatch_actuator.dag</span> contains <b>no consumer</b> of the node id/identity (bounded grep empty).</div>
+  <div>7c worker principal</div><div><span class="sym">WorkerIsServiceUser</span> is the srv1_live/Prod worker identity (variant in <span class="sym">gunbc.live_deploy</span>; comments: "Prod (WorkerIsServiceUser) mints no such dedicated worker member"). Prod workers run as the service user, not a dedicated principal.</div>
+  <div>Closed means</div><div>(a) a modeled probe receipts the model route (LB-2); (b) the reviewed contracts document turns G0 from draft into an enforced consumer that blocks dispatch when containment is unproven; (c) workers run as a dedicated principal behind a store the service user cannot read.</div>
+  <div>Executing check</div><div>(a) model-route probe claim; (b) with the containment node <em>not</em> satisfied, the dispatch claim refuses (goes red), and passes only when the proof is present; (c) a worker claim runs as the dedicated principal and is refused if the principal lacks the store.</div>
+  <div>Depends on</div><div>(c) needs the service-user materialization store fix (Part C, #15194); all gated by GAP&nbsp;2 for prod writes.</div>
+  <div>Size</div><div><span class="size L">L</span> aggregate (three sub-gaps).</div>
+  <div>Operator action</div><div>Partly <span class="out">(renting/starting a card)</span>; G0 depends on the operator's reviewed contracts document.</div>
+</div>
+<span class="cmd">git grep -n "TranscribedUncited\|read_obligation" dag/gunbc/harness/operator_pod_launch.dag
+git grep -n "contained-development-execution\|rn_A9QSP5ZMHYH0WDJR571D78N439\|DRAFT portfolio gate" dag/gunbc/roadmap/roadmap_authority.dag   # declared DRAFT
+git grep -n "contained-development-execution\|A9QSP5ZMHYH0WDJR571D78N439" dag/gunbc/roadmap/roadmap_dispatch_actuator.dag   # (empty => no consumer)
+git grep -n "WorkerIsServiceUser" dag/gunbc/live_deploy/   # srv1_live / Prod worker identity</span>
+</div>
+
+<h3>Part B2 — Further gaps beyond the seven</h3>
+
+<div class="gap p1">
+<h3>F1 — Deploy is implemented three ways; one path has no caller <span class="tag V">VERIFIED</span></h3>
+<div class="kv">
+  <div>Current state</div><div>Three live deploy implementations coexist: (1) CI <span class="sym">dashboard-deploy</span> job (fleet-converge mode <span class="sym">dashboard_deploy</span>); (2) operator-local wet apply <span class="sym">live_deploy_apply_srv1_transaction_wet</span> (seen failing at the srv1 09-30 job step); (3) <span class="sym">roadmap_dashboard_instance_apply</span> (wet) in module <span class="sym">gunbc.roadmap.roadmap_dashboard_instance</span>. Additionally <span class="sym">dashboard_instance_serve_argv</span> (same module) has <b>no caller</b> — only its definition plus one comment mention in <span class="sym">roadmap_serve.dag</span> (bounded grep).</div>
+  <div>Closed means</div><div>One deploy path wins (a "one concept, one executor" consolidation); the orphan <span class="sym">dashboard_instance_serve_argv</span> is either consumed or deleted.</div>
+  <div>Executing check</div><div>The chosen path's <span class="sym">.dag</span> consumer is green by execution; grep shows <span class="sym">dashboard_instance_serve_argv</span> either called or gone.</div>
+  <div>Depends on</div><div>GAP&nbsp;1 (pick the winner while making deploy work).</div>
+  <div>Size</div><div><span class="size M">M</span>.</div>
+  <div>Operator action</div><div>No.</div>
+</div>
+<span class="cmd">git grep -n "dashboard_instance_serve_argv"   # only def + a comment; no caller
+git grep -ln "live_deploy_apply_srv1_transaction_wet\|roadmap_dashboard_instance_apply" -- 'dag/**' '.github/**'</span>
+</div>
+
+<div class="gap p2">
+<h3>F2 — Session placement implemented two ways <span class="tag V">VERIFIED</span></h3>
+<div class="kv">
+  <div>Current state</div><div><span class="sym">ctrl</span> <span class="sym">session-dashboard</span> (<span class="sym">spawn_placement.mjs</span>, per the P4 DeclaredGap interim) vs belt-side <span class="sym">gunbc.roadmap.roadmap_session_placement</span>. Two authorities place the same sessions (DESIGN §2 one-concept-one-executor violation).</div>
+  <div>Closed means</div><div>A <span class="sym">.dag</span> authority owns placement; the ctrl <span class="sym">.mjs</span> interim retires.</div>
+  <div>Executing check</div><div>P4 leaves DeclaredGap; a placement claim executes against the <span class="sym">.dag</span> authority; ctrl <span class="sym">.mjs</span> is unreferenced.</div>
+  <div>Depends on</div><div>GAP&nbsp;6.</div>
+  <div>Size</div><div><span class="size M">M</span>.</div>
+  <div>Operator action</div><div>No.</div>
+</div>
+</div>
+
+<div class="gap p2">
+<h3>F3 — Three code lines persist <span class="tag V">VERIFIED</span></h3>
+<div class="kv">
+  <div>Current state</div><div><span class="sym">main</span>, <span class="sym">lab-dev</span>, and <span class="sym">test/main-plus-roadmap-daily</span> are three divergent lines (the last: 271 ahead / 2,892 behind, tip 2026-09-30). The "working loop" and its fixes straddle lines (LB-5, GAP&nbsp;4).</div>
+  <div>Closed means</div><div>A single publication base, or a reconciliation policy, so the loop is one program.</div>
+  <div>Executing check</div><div>Compare API shows the lines converged / stale line retired, observed via the publish route.</div>
+  <div>Depends on</div><div>GAP&nbsp;4.</div>
+  <div>Size</div><div><span class="size M">M</span>.</div>
+  <div>Operator action</div><div>No.</div>
+</div>
+</div>
+
+<div class="gap p2">
+<h3>F4 — Post-merge node close/advance <span class="tag I">LISTED ONLY</span></h3>
+<div class="kv">
+  <div>Note</div><div>Being built separately (per manager direction). Listed here so it is not lost; deliberately not designed in this analysis. It is the counterpart to GAP&nbsp;5/LB-3.</div>
+</div>
+</div>
+
+<!-- ============================ PART C ============================ -->
+<h2>Part C — Lab-only fixes: does prod need it too?</h2>
+<div class="note">
+Every "lab-only" claim below is <span class="tag V">VERIFIED</span> in the sense that the named module has 0 hits on <span class="sym">main</span> (bounded grep). The <b>"prod-need"</b> column is <span class="tag I">INFERRED</span> reasoning (why prod would need it), because lab-dev commit contents were not inspected here. "Wedge" = a lineage/attempt held forever; "OOM" = killed by the memory slice.
+</div>
+
+<table>
+<tr><th>Lab PR / module</th><th>What it fixes</th><th>Prod-need</th><th>Why (inferred)</th></tr>
+<tr><td>#15342 · <span class="sym">attempt_redelivery_wake</span> (#15313/#15386/#15461)</td><td>Re-deliver a wedged request-pending attempt; wake carries WorkingDirectory + restores first</td><td><b>Yes</b></td><td>Without it prod lineages wedge under real load; the pending-attempt wedge is the loop-stopping class.</td></tr>
+<tr><td>#14208 · <span class="sym">harness_session_recovery</span></td><td>S3 recovery of sessions ended by an unexplained engine refusal</td><td><b>Yes</b></td><td>Engine refusals are not lab-specific; recovery keeps prod throughput.</td></tr>
+<tr><td>#15340 · reviewers lease memory via <span class="sym">host_capacity</span></td><td>17×22GiB reviewers killed in a 44GiB slice</td><td><b>Yes</b> (worse on prod)</td><td>Prod has more concurrency; unbounded reviewer memory is an OOM incident waiting. Ties to GAP&nbsp;7 budget path.</td></tr>
+<tr><td>#14188</td><td>Refused-verification retry bound + operator resume</td><td><b>Yes</b></td><td>An un-retried refused acceptance holds a lineage forever (a listed recurring-failure mode).</td></tr>
+<tr><td>#13945/#14025 · <span class="sym">roadmap_acceptance_outcome</span></td><td>S2 AcceptanceOutcome from hand_in / last verdict</td><td><b>Yes</b></td><td>Capture/verify correctness is core to the loop's promises.</td></tr>
+<tr><td>#15194</td><td>Service-user materialization store; worker refused by principal</td><td><b>Yes</b></td><td>Directly the GAP&nbsp;7c <span class="sym">WorkerIsServiceUser</span> containment gap.</td></tr>
+<tr><td>#14244 · <span class="sym">pool_front</span></td><td>Workers reach the inference pool via its pinned TLS front</td><td><b>Yes</b></td><td>Prod must not depend on a hand-placed single card (GAP&nbsp;7a/LB-2).</td></tr>
+<tr><td>#15357</td><td>Belt settles before acquisition</td><td><b>Yes</b></td><td>Acquire-before-settle is a concurrency race; prod amplifies it.</td></tr>
+<tr><td>#15362</td><td>A request-pending lineage keeps its worktree claim</td><td><b>Yes</b></td><td>Same wedge family; claim loss is worse with more workers.</td></tr>
+<tr><td>#14239</td><td>Terminality evidence</td><td><b>Yes</b></td><td>Evidence integrity feeds acceptance/close (GAP&nbsp;5).</td></tr>
+<tr><td>#13984 · <span class="sym">harness_shell_job</span></td><td>Harness shell jobs</td><td>Conditional</td><td>Needed only if prod worker classes run shell jobs.</td></tr>
+<tr><td>#14189/#14236 · <span class="sym">lineage_retire_record</span></td><td>Retire lineages as itself; visible sign-in</td><td>Conditional</td><td>Governance/hygiene; matters once volume is prod-scale.</td></tr>
+<tr><td>#15183</td><td>Rung readings</td><td>Conditional</td><td>Depends on whether prod consumers gate on rung readings.</td></tr>
+<tr><td><span class="sym">strata_server</span> / extdeps pool_front</td><td>Serving pool front</td><td>Conditional</td><td>Needed if prod serves from the pool rather than the single card (GAP&nbsp;7a).</td></tr>
+<tr><td><span class="sym">srv4_strata_wire_qualification</span></td><td>srv4 host wire qualification</td><td>Host-specific</td><td>Host-topology specific; only for the hosts that use that path.</td></tr>
+</table>
+<div class="note">
+<b>Recurring-failure-mode rows present on lab-dev, absent on main</b> (a readback that these behaviours are not yet policed on main): the pending-attempt wedge, ended-lineage-no-operator-route, refused-acceptance-never-retried, engine-refusal-ends-session, labs-only hand-placed single-card model route, attempt-evidence-keyed-by-a-moving-subject-identity, compute-route-excludes-principal-by-absent-store, transcribed-figure-consumed-bare. Each maps to a "prod-need = Yes" row above; closing those PRs into the promoted line should carry the matching failure-mode rows with them.
+</div>
+
+<h2>What to close first</h2>
+<div class="rank">
+<p><b>1 · LB-1 / GAP-3 (re-pin the lab readback)</b> — the only time-critical item; ~6 days to 2026-11-10 04:00&nbsp;UTC, small, but needs the outward console read. Do it now so the lab keeps running.</p>
+<p><b>2 · GAP-1 (working, receipted CI deploy to prod)</b> — the code gap that unblocks the most: it is the delivery channel for GAPs 2/5/6/7 and every lab-only promotion, and today prod is kept alive by an <em>unreceipted</em> tree-sync hand-recovery (a latent-incident risk). Start the plan-artifact + budget-safe serve-entry resolve + receipted wet-apply work now.</p>
+<p><b>3 · GAP-2 operator action (create the Google OAuth PROD client)</b> — in parallel with GAP-1, because it is outward-facing/irreversible and has external lead time; the code (binding a Prod client + a sign-in round-trip claim) lands right after GAP-1 gives you a way to deploy it.</p>
+<p>Then GAP-7a/7c (model-route probe + dedicated worker principal, together with the Part-C "Yes" promotions), then GAP-4/F3 branch convergence, with GAP-5/F4 (close/advance) following the separate post-merge track. GAP-6/F2 (plan + placement authority) is the slowest and least blocking of the L's.</p>
+</div>
+
+<div class="note" style="margin-top:26px">
+<b>Read-only attestation.</b> No PRs opened; no commands executed on srv1/srv2/prod hosts; only bounded <span class="sym">git grep</span> / source inspection, GitHub API reads (<span class="sym">gh api</span>, <span class="sym">gh run</span>), and CI job-log reads — within the DESIGN §6 retired-census ruling. <b>Not inspected</b> (so anything about them is <span class="tag I">INFERRED</span>): ctrl code (incl. <span class="sym">spawn_placement.mjs</span>, <span class="sym">pr_merge_ready_digest.mjs</span>), live host state, lab-dev commit contents, most of <span class="sym">roadmap_belt_actuate</span>, review threads, and the model card's live up-state.
+</div>
+
+</body>
+</html>
