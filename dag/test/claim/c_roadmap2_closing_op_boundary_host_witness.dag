@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { String, FilePath, NonEmptyStr, List }
 import std.algebra { string_contains }
 import extdeps.shell
+import extdeps.tools.gnu_coreutils { rm_force_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -71,11 +72,18 @@ test fn the_real_first_gate_op_refuses_a_stopped_masked_writer_that_left_a_plain
   planted && !result.success && string_contains(s: result.stderr, pattern: "1 plain metering-roster-closing entries")
 }
 
+// The marker is removed through the DECLARED exec surface -- `extdeps.shell`'s `shell.Exec.RunArgv` with the
+// argv built by `gunbc.extdeps.tools.gnu_coreutils.rm_force_command` (so the words `-f` and the program `rm`
+// have their one home upstream, and this file authors no command of its own). This is executing a declared
+// program, not authoring a shell script: #15574 adds no shell SCRIPT text anywhere, which is the precise claim
+// the body makes after review 90693.
+
 // 2. THE CONTROL, LIVE: remove the marker and the SAME op, against the SAME still-stopped-and-masked unit, now
 // proceeds -- so the refusal above came from the bytes, not from the setup refusing everything.
 test fn removing_the_marker_lets_the_same_real_op_proceed() -> Bool {
   let fence = op_boundary_fence()
-  let removed = shell.Exec.run(program: "/bin/rm", args: ["-f", op_boundary_marker_file() as String], env: []).success
+  let cmd = rm_force_command(path: op_boundary_marker_file() as String)
+  let removed = shell.Exec.RunArgv(program: cmd.program.invocation as NonEmptyStr, arguments: cmd.arguments).exit_code == 0
   let result = dashboard_apply_provision_op(
     instance: srv1_lab_dashboard_instance(),
     op: DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: op_boundary_attempt_state_root },
@@ -91,7 +99,8 @@ test fn removing_the_marker_lets_the_same_real_op_proceed() -> Bool {
 // here it is shown to run at all against real systemd and real bytes.
 test fn the_real_final_recheck_op_passes_against_live_systemd_with_no_marker_left() -> Bool {
   let fence = op_boundary_fence()
-  let removed = shell.Exec.run(program: "/bin/rm", args: ["-f", op_boundary_marker_file() as String], env: []).success
+  let cmd = rm_force_command(path: op_boundary_marker_file() as String)
+  let removed = shell.Exec.RunArgv(program: cmd.program.invocation as NonEmptyStr, arguments: cmd.arguments).exit_code == 0
   let result = dashboard_apply_provision_op(
     instance: srv1_lab_dashboard_instance(),
     op: DashboardAssertMeteringClosingCutoverFinal { fence: fence, attempt_state_root: op_boundary_attempt_state_root },

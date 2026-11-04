@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
   metering_closing_unit_exclusion, metering_closing_cutover_disposition,
 }
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
-import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show }
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show, SystemdUnitProperty, MainPID, ControlGroup }
 
 // THE CLOSING-MARKER CUTOVER BOUNDARY, EXECUTED (blocker 1 of stern-ram-763's review of #15574, and review 89888's
 // two findings on it). The roster closing marker changed shape -- a plain metering-roster-closing entry became the
@@ -278,7 +278,7 @@ test fn the_live_census_counts_zero_for_a_marker_planted_under_the_wrong_name() 
 // the arm the pre-PR code collapsed onto "0 markers", and it is exercised here against a real failing ls.
 test fn the_live_census_refuses_when_the_walk_cannot_be_performed() -> Bool {
   let i = fx_instance(tag: "census-enotdir")
-  let blocker = join([i.root as String, "/not-a-directory"], "")
+  let blocker = join([i.instance_root as String, "/not-a-directory"], "")
   let planted = Filesystem.Write(path: blocker as FilePath, content: "x").success
   let census = dashboard_metering_closing_marker_census(instance: i, root: join([blocker, "/sub"], "") as FilePath)
   planted && match census {
@@ -291,7 +291,7 @@ test fn the_live_census_refuses_when_the_walk_cannot_be_performed() -> Bool {
 // the two arms cannot collapse into one another again.
 test fn the_live_census_reports_established_absence_when_the_root_is_positively_gone() -> Bool {
   let i = fx_instance(tag: "census-enoent")
-  let census = dashboard_metering_closing_marker_census(instance: i, root: join([i.root as String, "/never-created"], "") as FilePath)
+  let census = dashboard_metering_closing_marker_census(instance: i, root: join([i.instance_root as String, "/never-created"], "") as FilePath)
   match census { CensusAbsentEstablished => true, _ => false }
 }
 
@@ -302,7 +302,9 @@ test fn the_live_census_reports_established_absence_when_the_root_is_positively_
 // rows, and `show` must be exactly `systemctl_user_show_properties_argv` over MainPID+ControlGroup: drop
 // ControlGroup from the producer and this goes red while every word-parse stays green.
 test fn the_observation_asks_systemctl_exactly_what_the_upstream_builders_compose() -> Bool {
-  let u = belt_instance_obligation_unit_name(instance: srv1_lab_dashboard_instance(), obligation: "metering")
+  // The unit the fence row actually holds -- the same derivation fx_unit uses, which is the name
+  // the real producer is handed by the fence, so the equality below is about the producer's request.
+  let u = fx_unit(i: fx_instance(tag: "argv-inhabitance"))
   let active_ok = join(systemctl_user_closing_active_args(unit: u), "\n") == join(["--user", systemctl_is_active_verb as String, u as String], "\n")
   let enabled_ok = join(systemctl_user_closing_enabled_args(unit: u), "\n") == join(["--user", systemctl_is_enabled_verb as String, u as String], "\n")
   let show_ok = join(systemctl_user_closing_show_args(unit: u), "\n") == join(systemctl_user_show_properties_argv(unit: u, properties: [MainPID, ControlGroup]), "\n")

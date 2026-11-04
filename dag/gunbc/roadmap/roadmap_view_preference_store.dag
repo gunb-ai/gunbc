@@ -9,7 +9,7 @@ import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused, slot_observe, slot_commit, admit_cas_attempt_for_derived_payload, OwnerOnlyCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, slot_observe, slot_commit, admit_cas_attempt_for_derived_payload, OwnerOnlyCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import std.durable_compare_and_set { CasExpectation, CasObservedUnreadable, CasObservedReadable, CasReadableAbsent, CasReadablePresent, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, CasCommitted, CasPreconditionFailed, CasStoreRefused }
 
 type IssueViewStored = IssueViewAbsent | IssueViewFound { prefs: IssueViewPreferences, revision: Int, expected: CasExpectation } | IssueViewUnread
@@ -61,6 +61,14 @@ fn issue_view_preference_store(instance: HostDashboardInstance) -> IssueViewPref
   if !shell.Mkdir.Parents(path: root as FilePath).success { return IssueViewPreferenceStoreUnready { detail: concat("Cannot create the issue view preference directory ", root) } }
   match listed_slot_store(member: issue_view_preference_slots.member as String, root: root) {
     SlotStoreRefused { detail: d } => IssueViewPreferenceStoreUnready { detail: d }
+    // ABSENT IS NOT LISTED, AND THE MINT'S OWN ENSURE DOES NOT EXCUSE IT. The mint calls Mkdir.Parents on this
+    // exact path first, so a successful ensure followed by an Absent listing means the directory the mint
+    // created is not there by the time admission observes it -- a vanished or racily-removed root. That is a
+    // refusal with a cause, never a store: an absent store is not an empty store (the same reading main's own
+    // compute_attempt_slots_root and dispatch_credential_acquisition give).
+    SlotStoreAbsent { member: m, root: r } => IssueViewPreferenceStoreUnready {
+      detail: join(["the ", m, " directory was created and then could not be listed at ", r, " -- admission answers absence, and an absent store is not an empty store"], "")
+    }
     SlotStoreListed { root: r } => IssueViewPreferenceStoreReady { store: IssueViewPreferenceStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
   }
 }
