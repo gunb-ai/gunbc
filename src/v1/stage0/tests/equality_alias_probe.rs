@@ -26,7 +26,7 @@ const A2PRIME_LOCAL_GENERIC_PLAIN_CELL: &str = "module eq_probe_alias_local_gene
 //   forces the coproduct head-name readers to classify the alias; if classified it is accepted.
 const ARG_SAME_RECORD: &str = "module eq_fixture_arg_same\ntype Point {\n  x: Int\n}\ntype PointAlias = Point\nfn takes(p: Point) -> Int { p.x }\nfn run(q: PointAlias) -> Int { takes(q) }\n";
 const ARG_DIFF_RECORD: &str = "module eq_fixture_arg_diff\ntype Point {\n  x: Int\n}\ntype Other {\n  y: Int\n}\ntype PointAlias = Point\nfn takes(o: Other) -> Int { o.y }\nfn run(q: PointAlias) -> Int { takes(q) }\n";
-const COPRODUCT_ALIAS_MATCH: &str = "module eq_fixture_coproduct\ntype Shape {\n  Circle {\n    r: Int\n  }\n  Square {\n    s: Int\n  }\n}\ntype ShapeAlias = Shape\nfn area(sh: ShapeAlias) -> Int { match sh { Circle { r } => r, Square { s } => s } }\n";
+const COPRODUCT_ALIAS_MATCH: &str = "module eq_fixture_coproduct\ntype Shape = Circle { r: Int } | Square { s: Int }\ntype ShapeAlias = Shape\nfn area(sh: ShapeAlias) -> Int {\n  match sh {\n    Circle { r: _ } => 1\n    Square { s: _ } => 2\n  }\n}\n";
 
 fn report(label: &str, source: &str) {
     // SAFETY: the row runs tests with --test-threads=1; the flag only gates diagnostic eprintlns.
