@@ -218,6 +218,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
         RealizedAdministratorEdge => false
+        RealizedHostAccountPeer => false
       }
   }
 }

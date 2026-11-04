@@ -3,7 +3,8 @@ module gunbc.recurring_failure_mode.a_compute_route_excludes_an_untrusted_princi
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
 import gunbc.guarantee_rung { GuaranteeRung, MechanicallyPreventable, StructurallyGuaranteed }
-import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding }
+import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding, GroundingDeclared }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // A COMPUTE ROUTE WHOSE ONLY EXCLUSION OF AN UNTRUSTED PRINCIPAL IS THE ABSENCE OF A DECLARED STORE.
 // The exclusion an ABSENCE performs disappears the moment the absence is repaired for the OTHER
@@ -24,7 +25,7 @@ data a_compute_route_excludes_an_untrusted_principal_by_an_absent_store: Recurri
     standing: BelowCeiling {
       current: FoundOnRung { rung: MechanicallyPreventable },
       ceiling: StructurallyGuaranteed,
-      blocker: AwaitsOneGrounding { grounding: "the required path evaluates a claim at all (gunbc.rung_drop v1_required_lanes_withdrawn's restoration trigger); until then the gate is carried by this route's own first arm plus a witness run" },
+      blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn", field: WholeDeclaration } } },
       trigger_capability: "the required-lane claim harness, restored, evaluating the witness module's RED-control row",
     },
   },
