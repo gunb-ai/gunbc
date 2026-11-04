@@ -274,12 +274,12 @@ impl WholeCorpusCompileRootIdentity {
     }
 }
 
-/// One projected `BudgetDeclaredForRoot` row: the identity key and the peak the admission compares to.
+/// One projected `BudgetDeclaredForRoot` row: the identity key and the declared budget the admission compares to.
 /// The census and receipt travel in the projection for the reader and are not re-typed here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeasuredRootDemandRow {
     pub root: WholeCorpusCompileRootIdentity,
-    pub peak_bytes: u64,
+    pub budget_bytes: u64,
 }
 
 /// Where the rows were read from, as an outcome — the seed realization of
@@ -350,8 +350,8 @@ pub fn parse_whole_corpus_compile_demand_projection(
                 None => return unreadable(format!("row {index} has a non-string pool")),
             }
         }
-        let Some(peak_bytes) = row.get("peak_bytes").and_then(|v| v.as_u64()) else {
-            return unreadable(format!("row {index} lacks an unsigned peak_bytes"));
+        let Some(budget_bytes) = row.get("budget_bytes").and_then(|v| v.as_u64()) else {
+            return unreadable(format!("row {index} lacks an unsigned budget_bytes"));
         };
         rows.push(MeasuredRootDemandRow {
             root: WholeCorpusCompileRootIdentity {
@@ -359,7 +359,7 @@ pub fn parse_whole_corpus_compile_demand_projection(
                 primary_root,
                 dependency_pools,
             },
-            peak_bytes,
+            budget_bytes,
         });
     }
     WholeCorpusCompileDemandsRead::Read {
@@ -466,7 +466,7 @@ pub fn whole_corpus_compile_admission(
             location: location.clone(),
         });
     };
-    let required_bytes = row.peak_bytes;
+    let required_bytes = row.budget_bytes;
     // A DECLARED budget refuses exactly as an unreadable one does, as in the model
     // (`whole_corpus_compile_admission` maps HostBudgetDeclaredUnverified to the unreadable
     // refusal). This arm once took `(Option<u64>, label)`, which admitted on a declared
@@ -2090,7 +2090,7 @@ mod tests {
                 rows.iter()
                     .find(|r| r.root == public_root())
                     .expect("the committed projection carries the public root's row")
-                    .peak_bytes
+                    .budget_bytes
             }
             other => panic!("committed projection must read: {other:?}"),
         }

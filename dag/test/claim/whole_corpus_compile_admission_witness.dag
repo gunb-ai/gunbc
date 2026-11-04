@@ -34,8 +34,6 @@ import gunbc.whole_corpus_compile_admission {
   whole_corpus_compile_demand_for_root,
   whole_corpus_compile_public_root,
   whole_corpus_compile_public_root_demand,
-  whole_corpus_compile_public_root_census,
-  whole_corpus_compile_public_root_receipt,
   whole_corpus_compile_measured_root_demands,
   whole_corpus_compile_observed_runner_budget_lower_bound,
 }
@@ -49,7 +47,7 @@ data witness_subject_note: String = "BOTH ARMS STAND ON INDEPENDENTLY MEASURED M
 // a relation to the row and survives a re-measure without an edit.
 fn public_root_peak() -> Int {
   match whole_corpus_compile_public_root_demand {
-    BudgetDeclaredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p)
+    BudgetDeclaredForRoot { root: _, budget: p } => byte_size_count(b: p)
     NoBudgetForRoot { root: _ } => 0
   }
 }
@@ -347,9 +345,7 @@ test fn a_row_for_a_different_root_never_admits_this_one() -> Bool {
       primary_root: "src/v2" as SourceRootIdentity,
       dependency_pools: ["dag" as SourceRootIdentity],
     },
-    census: whole_corpus_compile_public_root_census,
-    peak: byte_size(1),
-    receipt: whole_corpus_compile_public_root_receipt,
+    budget: byte_size(1),
   }
   refuses_as_unmeasured(
     a: whole_corpus_compile_admission(
@@ -370,15 +366,13 @@ test fn the_public_root_resolves_to_its_own_row_past_another_roots_row() -> Bool
       primary_root: "src/v2" as SourceRootIdentity,
       dependency_pools: ["dag" as SourceRootIdentity],
     },
-    census: whole_corpus_compile_public_root_census,
-    peak: byte_size(1),
-    receipt: whole_corpus_compile_public_root_receipt,
+    budget: byte_size(1),
   }
   match whole_corpus_compile_demand_for_root(
     root: whole_corpus_compile_public_root,
     demands: [other, whole_corpus_compile_public_root_demand],
   ) {
-    BudgetDeclaredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p) == public_root_peak()
+    BudgetDeclaredForRoot { root: _, budget: p } => byte_size_count(b: p) == public_root_peak()
     NoBudgetForRoot { root: _ } => false
   }
 }
@@ -403,9 +397,7 @@ test fn pool_order_and_element_boundaries_are_part_of_the_key() -> Bool {
   }
   let row = BudgetDeclaredForRoot {
     root: listed,
-    census: whole_corpus_compile_public_root_census,
-    peak: byte_size(1),
-    receipt: whole_corpus_compile_public_root_receipt,
+    budget: byte_size(1),
   }
   whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: ample_budget(), root: listed, read: read_of(demands: [row])))
     && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: reversed, read: read_of(demands: [row])), root: reversed)
@@ -473,9 +465,7 @@ test fn another_repositorys_projection_refuses_with_a_typed_mismatch() -> Bool {
       primary_root: "dag" as SourceRootIdentity,
       dependency_pools: ["src/v2" as SourceRootIdentity],
     },
-    census: whole_corpus_compile_public_root_census,
-    peak: byte_size(1),
-    receipt: whole_corpus_compile_public_root_receipt,
+    budget: byte_size(1),
   }
   match whole_corpus_compile_admission(
     budget: ample_budget(),

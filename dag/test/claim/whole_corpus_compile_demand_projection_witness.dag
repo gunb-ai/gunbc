@@ -8,8 +8,6 @@ import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileRootIdentity,
   BudgetDeclaredForRoot,
   NoBudgetForRoot,
-  whole_corpus_compile_public_root_census,
-  whole_corpus_compile_public_root_receipt,
 }
 import gunbc.whole_corpus_compile_demand_projection {
   whole_corpus_compile_demand_projection_json,
@@ -25,7 +23,7 @@ test fn the_public_projection_carries_the_identity_key_and_peak() -> Bool {
   string_contains(s: j, pattern: "\"repository\": \"gunbc\"")
     && string_contains(s: j, pattern: "\"primary_root\": \"dag\"")
     && string_contains(s: j, pattern: "\"dependency_pools\": [\"src/v2\"]")
-    && string_contains(s: j, pattern: "\"peak_bytes\": 17179869184")
+    && string_contains(s: j, pattern: "\"budget_bytes\": 17179869184")
     && string_contains(s: j, pattern: "\"schema\": \"gunbc.whole_corpus_compile_demand_projection/1\"")
 }
 
@@ -39,10 +37,10 @@ test fn an_unmeasured_root_projects_no_row_and_a_measured_one_projects_one() -> 
   }
   let unmeasured = whole_corpus_compile_demand_projection_json(demands: [NoBudgetForRoot { root: root }])
   let measured = whole_corpus_compile_demand_projection_json(demands: [
-    BudgetDeclaredForRoot { root: root, census: whole_corpus_compile_public_root_census, peak: byte_size(6442450944), receipt: whole_corpus_compile_public_root_receipt }
+    BudgetDeclaredForRoot { root: root, budget: byte_size(6442450944) }
   ])
   string_contains(s: unmeasured, pattern: "\"rows\": []")
     && string_contains(s: measured, pattern: "\"repository\": \"gunbc-private\"")
     && string_contains(s: measured, pattern: "\"dependency_pools\": []")
-    && string_contains(s: measured, pattern: "\"peak_bytes\": 6442450944")
+    && string_contains(s: measured, pattern: "\"budget_bytes\": 6442450944")
 }
