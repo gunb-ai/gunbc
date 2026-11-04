@@ -175,7 +175,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             // THE PARTITION-MOVE EXPLANATION, AS ITS OWN PROCESS: the heal round's orchestrator
             // spawns this so the whole-corpus closure index the decision demands lives and dies here,
-            // never in the orchestrator (gunbc.regen_receipt RegenPartitionMoveExplanation).
+            // never in the orchestrator (required_regen_host PartitionMoveExplanationReceipt).
             "--regen-partition-move-explanation" => {
                 regen_partition_move_explanation_mode = true;
             }

@@ -5678,8 +5678,12 @@ fn admit_derived_partition_move(
     Ok((*outcome).clone())
 }
 
-/// `gunbc.regen_receipt` `RegenPartitionMoveExplanation`: the one answer the explanation child hands
-/// back. Three arms, none conflated -- a refusal carries its cause and is neither answer.
+/// THE ONE ANSWER THE EXPLANATION CHILD HANDS BACK, and this enum is its only definition: it is a
+/// host process-boundary carrier, encoded and decoded here and nowhere else, so no `.dag` type stands
+/// beside it (review 90466: a model with no executing route would be a second, drifting authority).
+/// The decision it carries is the model's -- `stage0_partition_move_explained_by_affected_inputs` --
+/// and the three arms keep its outcomes apart: explained, unexplained (the decision answered no),
+/// and refused (the decision could not be taken, with its cause), which is neither answer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(tag = "answer", deny_unknown_fields)]
 pub enum PartitionMoveExplanationReceipt {
@@ -12059,7 +12063,7 @@ mod surface_roles_receipt_tests {
 }
 
 /// THE PARTITION-MOVE EXPLANATION CROSSES A PROCESS BOUNDARY AS ONE TYPED ANSWER
-/// (`gunbc.regen_receipt` `RegenPartitionMoveExplanation`). The spawn itself needs the real
+/// (`PartitionMoveExplanationReceipt`, its only definition). The spawn itself needs the real
 /// `claim_executor` binary and is exercised by the heal round; these pin the carrier, the readback's
 /// refusals, and the child entry's write.
 #[cfg(test)]

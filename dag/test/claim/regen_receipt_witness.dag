@@ -1,7 +1,7 @@
 module test.claim.regen_receipt_witness
 
 import std.types { Bool, String, List }
-import gunbc.regen_receipt { RegenReceipt, FirstGeneration, Refused, RegenSurfaceRoles, RegenSurfaceOwner, RegenGeneratedProductRole, RegenPartitionMoveExplanation, PartitionMoveExplained, PartitionMoveUnexplained, PartitionMoveExplanationRefused, refusal_reason }
+import gunbc.regen_receipt { RegenReceipt, FirstGeneration, Refused, RegenSurfaceRoles, RegenSurfaceOwner, RegenGeneratedProductRole, refusal_reason }
 import gunbc.regen_affected_set { AggregateGenerationInput, AggregateOutsideSeed }
 
 // THE REFUSED VARIANT, AND WHAT THESE WITNESSES CAN AND CANNOT ESTABLISH.
@@ -60,19 +60,4 @@ test fn a_first_generation_receipt_carries_no_refusal_cause() -> Bool {
       }
     }
   ) == ""
-}
-
-// The explanation's three answers stay three: a refusal carries its cause and is neither answer.
-fn explanation_label(e: RegenPartitionMoveExplanation) -> String {
-  match e {
-    PartitionMoveExplained => "explained"
-    PartitionMoveUnexplained => "unexplained"
-    PartitionMoveExplanationRefused { reason: r } => concat("refused: ", r)
-  }
-}
-
-test fn a_refused_explanation_is_neither_answer_and_carries_its_cause() -> Bool {
-  explanation_label(e: PartitionMoveExplanationRefused { reason: "diff range unreadable" }) == "refused: diff range unreadable"
-    && explanation_label(e: PartitionMoveExplained) == "explained"
-    && explanation_label(e: PartitionMoveUnexplained) == "unexplained"
 }

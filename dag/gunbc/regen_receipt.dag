@@ -91,18 +91,3 @@ fn refusal_reason(receipt: RegenReceipt) -> String {
     Refused { commit_sha: _, authority_digest: _, reason, candidate_artifact: _ } => reason
   }
 }
-
-// THE PARTITION-MOVE EXPLANATION, ANSWERED BY ITS OWN PROCESS. Whether a moved partition mirror is
-// explained by this change's edits (v2.workflow.required_regen's affected-set decision,
-// stage0_partition_move_explained_by_affected_inputs) is a reverse closure from the edited modules
-// over the whole corpus's dependency edges: an in-edge to a module can come from any file, so the
-// demand is whole-corpus by nature. Building that index (about 5.5 GB of per-file heads readings plus
-// about 2.5 GB of edges on main c0a1ba43) inside the orchestrator gave it a generation-sized lifetime
-// it did not need, so under generation-state lifetime isolation it is computed in a child process and
-// only this answer crosses back. Three arms, none conflated: explained, unexplained (the decision
-// answered no), and refused (the decision could not be taken -- carried with its cause, never read as
-// either answer).
-type RegenPartitionMoveExplanation
-  = PartitionMoveExplained
-  | PartitionMoveUnexplained
-  | PartitionMoveExplanationRefused { reason: String }
