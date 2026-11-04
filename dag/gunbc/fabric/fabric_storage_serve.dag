@@ -88,6 +88,7 @@ fn fabric_storage_protected_door_over(store: FabricStateStorage, rosters: Fabric
   method: String, path: String, body: String, tailscale_identity: String, peer_user: String) -> ServeWireResponse {
   let principal = fabric_door_principal_of(tailscale_identity: tailscale_identity, peer_user: peer_user)
   let transport_admitted = match principal {
+    DoorApiKeyUser { verified: _ } => false
     DoorProxied { identity: _ } => true
     DoorLocalPeer { user: _ } => fabric_door_rostered(rosters: rosters, principal: principal)
     DoorUnattested => fabric_door_rostered(rosters: rosters, principal: principal)

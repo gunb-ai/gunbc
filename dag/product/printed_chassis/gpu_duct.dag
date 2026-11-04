@@ -41,7 +41,7 @@ import product.printed_chassis.assembly_review_checks { review_model_checks }
 import product.printed_chassis.chassis_clearances { plugged_head_worst_case_reach }
 import product.printed_chassis.print_preparation { deposited_path_edge_allowance_um }
 import product.printed_chassis.cadquery_realization { realize_review_parts, ReviewCadQueryEmitted, ReviewCadQueryRefused, review_program_source }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_array, json_string, json_int }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_array, json_string, json_int, json_bool }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess, exit_failure }
 
