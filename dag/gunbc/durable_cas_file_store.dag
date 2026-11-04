@@ -1056,8 +1056,16 @@ fn cas_compare_and_set_outcome(
               target: cas_generation_first(),
             }
           )
-        ExpectSlotGeneration { generation: _ } =>
-          CasPreconditionFailed { expected: attempt.expected, observed: CasReadableAbsent }
+        ExpectSlotGeneration { generation: e } =>
+          match cas_generation_successor(g: e) {
+            CasSuccessorGeneration { generation: next } => cas_commit_at(
+              admitted: AdmittedCasPublication {
+                root: root, publication: publication, retention: retention, attempt: attempt,
+                target: next,
+              }
+            )
+            CasSuccessorExhausted { head: last } => cas_generation_exhausted(head: last)
+          }
       }
     ProbedHead { generation: h, value: v } =>
       match attempt.expected {
