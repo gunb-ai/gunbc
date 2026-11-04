@@ -1,9 +1,10 @@
 module test.claim.host.host_budget_preflight_witness
 
-import std.types { Bool, List, String }
-import std.algebra { length }
+import std.types { Bool, Int, List, String }
+import std.algebra { length, join }
+import std.optional { Present, Absent }
 import std.measure { ByteSize, byte_size }
-import gunbc.host.host_budget_preflight { BudgetProbe, BudgetProbeValue, ProbeLimited, ProbeUnlimited, ProbeUnreadable, HostBudgetPreflightVerdict, PreflightAdmitted, PreflightCeilingOverrideRefused, PreflightMembershipAbsent, PreflightNoBoundingBudget, admit_host_budget_probes }
+import gunbc.host.host_budget_preflight { BudgetProbe, BudgetProbeValue, ProbeLimited, ProbeUnlimited, ProbeUnreadable, HostBudgetPreflightVerdict, PreflightAdmitted, PreflightCeilingOverrideRefused, PreflightMembershipAbsent, PreflightNoBoundingBudget, admit_host_budget_probes, cgroup_ancestors, cgroup_parent_dir }
 
 // THE DEPLOY PATH'S BUDGET PREFLIGHT, WITNESSED AT THE DISTINCTIONS IT EXISTS FOR. The admission's
 // whole content is WHICH inputs refuse and which admit -- so every witness below flips exactly one
@@ -105,4 +106,86 @@ test fn witness_preflight_empty_probes_refuse_not_admit() -> Bool {
     membership_readable: true,
     probes: []
   )) == "no-bounding-budget"
+}
+
+// ─────────────── the leaf-to-root walk: the gate's question, not a narrower one ───────────────
+// The fold's gate walks the ancestor chain to the root because the slot's memory.max sits on the
+// UNIT directory and a step may run in a child of it. A preflight that probed only the leaf would
+// refuse deploys the gate admits -- so the walk is pinned at the shape, and admission is pinned
+// with the bound sitting ONLY on a parent.
+
+data cgroup_mount: String = "/sys/fs/cgroup"
+data unit_dir: String = "/sys/fs/cgroup/system.slice/actions-runner@srv1.service"
+data leaf_dir: String = "/sys/fs/cgroup/system.slice/actions-runner@srv1.service/step"
+
+test fn witness_ancestors_walk_leaf_to_root() -> Bool {
+  cgroup_ancestors(dir: leaf_dir, mount: cgroup_mount) == [leaf_dir, unit_dir, cgroup_mount] as List<String>
+}
+
+test fn witness_ancestors_at_mount_stop_at_mount() -> Bool {
+  cgroup_ancestors(dir: cgroup_mount, mount: cgroup_mount) == [cgroup_mount] as List<String>
+}
+
+test fn witness_parent_dir_truncates_at_last_slash_above_mount() -> Bool {
+  cgroup_parent_dir(path: leaf_dir, mount: cgroup_mount) == unit_dir
+}
+
+// The discriminating row: every file in the LEAF says unlimited; the unit directory carries the
+// slot's memory.max. Leaf-only probing refused this run; the gate admits it, so the preflight
+// must too.
+test fn witness_bound_on_parent_only_admits() -> Bool {
+  verdict_tag(admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: true,
+    probes: [
+      probe_max(leaf_dir, ProbeUnlimited),
+      probe_high(leaf_dir, ProbeUnlimited),
+      probe_max(unit_dir, ProbeUnlimited),
+      probe_high(unit_dir, ProbeUnlimited),
+      probe_max(cgroup_mount, ProbeLimited { bytes: slot_max_bytes }),
+      probe_high(cgroup_mount, ProbeUnlimited)
+    ]
+  )) == "admitted"
+}
+
+// Nothing on the whole chain bounds: the refusal must carry EVERY probed file, leaf and ancestors,
+// so the operator sees the whole shape that needs converging.
+test fn witness_chain_without_bound_refuses_with_all_probes() -> Bool {
+  match admit_host_budget_probes(
+    ceiling_override_present: false,
+    membership_readable: true,
+    probes: [
+      probe_max(leaf_dir, ProbeUnlimited),
+      probe_high(leaf_dir, ProbeUnlimited),
+      probe_max(unit_dir, ProbeUnlimited),
+      probe_high(unit_dir, ProbeUnlimited),
+      probe_max(cgroup_mount, ProbeUnlimited),
+      probe_high(cgroup_mount, ProbeUnlimited)
+    ]
+  ) {
+    PreflightNoBoundingBudget { probes: lines } =>
+      length(lines) == 6
+        && string_contains(text: join(lines, " | "), needle: "system.slice/actions-runner@srv1.service/step/memory.max")
+        && string_contains(text: join(lines, " | "), needle: "system.slice/actions-runner@srv1.service/memory.high")
+        && string_contains(text: join(lines, " | "), needle: "/sys/fs/cgroup/memory.max")
+    _ => false
+  }
+}
+
+fn contains_at(text: String, needle: String, index: Int, limit: Int) -> Bool {
+  if index + needle.length() > limit {
+    false
+  } else if text.substring(start: index, end: index + needle.length()) == needle {
+    true
+  } else {
+    contains_at(text: text, needle: needle, index: index + 1, limit: limit)
+  }
+}
+
+fn string_contains(text: String, needle: String) -> Bool {
+  if needle.length() > text.length() {
+    false
+  } else {
+    contains_at(text: text, needle: needle, index: 0, limit: text.length())
+  }
 }

@@ -54,6 +54,7 @@ module gunbc.host.host_budget_preflight
 // seed's arms imply.
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { length }
 import std.optional { Optional, Present, Absent }
 import std.measure { ByteSize, byte_size_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -180,23 +181,63 @@ fn probe_cgroup_memory_file(cgroup_dir: String, file_name: String) -> BudgetProb
   }
 }
 
-fn probe_cgroup_dirs(dirs: List<String>) -> List<BudgetProbe> {
-  concat(map(dirs, d => [
-    probe_cgroup_memory_file(cgroup_dir: d, file_name: cgroup_memory_max_file_name),
-    probe_cgroup_memory_file(cgroup_dir: d, file_name: cgroup_memory_high_file_name)
-  ]))
+// THE WALK, LEAF TO ROOT. The fold's gate does not ask only the cgroup the process sits IN; it
+// walks the ancestor chain to the mount root, because the slot's memory.max is declared on the
+// UNIT directory (actions-runner@srv1.service) and a step process may sit in a child of it
+// (gunbc.host.memory_envelope: the governor's leaf-to-root binding-cap walk). Asking only the leaf
+// here would refuse deploys the authoritative gate admits -- answering a NARROWER question than
+// the gate is exactly the §3 drift this step exists to prevent. Pure so the witness pins the
+// shape without a host: parent(dir) truncates at the last '/' above the mount, and the chain
+// always terminates at the mount itself.
+fn cgroup_parent_dir(path: String, mount: String) -> String {
+  match last_slash_index(path: path, from: path.length() - 1, floor: length(mount)) {
+    Present { value: cut } => path.substring(start: 0, end: cut)
+    Absent => mount
+  }
 }
 
-// THE STEP'S ENTRY. Reads only: /proc/self/cgroup, the two interface files per bounding dir, and two
-// environment names. Exits 0 exactly when a bounding limit is present; every refusal names itself and
-// carries the probe lines.
+fn last_slash_index(path: String, from: Int, floor: Int) -> Optional<Int> {
+  if from < floor {
+    Absent
+  } else if path.substring(start: from, end: from + 1) == "/" {
+    Present { value: from }
+  } else {
+    last_slash_index(path: path, from: from - 1, floor: floor)
+  }
+}
+
+fn cgroup_ancestors(dir: String, mount: String) -> List<String> {
+  if dir == mount {
+    [mount] as List<String>
+  } else {
+    concat([
+      [dir] as List<String>,
+      cgroup_ancestors(dir: cgroup_parent_dir(path: dir, mount: mount), mount: mount),
+    ])
+  }
+}
+
+fn probe_cgroup_dirs(dirs: List<String>) -> List<BudgetProbe> {
+  concat(map(dirs, d => concat([
+    [probe_cgroup_memory_file(cgroup_dir: d, file_name: cgroup_memory_max_file_name)] as List<BudgetProbe>,
+    [probe_cgroup_memory_file(cgroup_dir: d, file_name: cgroup_memory_high_file_name)] as List<BudgetProbe>,
+  ])))
+}
+
+// THE STEP'S ENTRY. Reads only: /proc/self/cgroup, the two interface files per cgroup on each
+// membership line's leaf-to-root chain, and two environment names. Exits 0 exactly when a bounding
+// limit is present anywhere on those chains -- the same shape as the fold's walk, so the step can
+// never refuse a run the gate would admit; every refusal names itself and carries the probe lines.
 fn admit_host_budget_declared() -> ProcessExit {
   let ceiling_override = actions_variable_trimmed(name: gunbc_typed_module_cache_max_entries_env_name as NonEmptyStr) != ""
   let membership = Filesystem.Read(path: proc_self_cgroup_path)
   let dirs = if membership.success {
-    map(proc_self_cgroup_unified_hierarchy_paths(content: membership.content), p => concat(cgroup_v2_mount_point as String, p as String))
+    concat(map(proc_self_cgroup_unified_hierarchy_paths(content: membership.content), p => cgroup_ancestors(
+      dir: concat(cgroup_v2_mount_point as String, p as String),
+      mount: cgroup_v2_mount_point as String,
+    )))
   } else {
-    []
+    [] as List<String>
   }
   let verdict = admit_host_budget_probes(
     ceiling_override_present: ceiling_override,
