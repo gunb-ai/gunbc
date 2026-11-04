@@ -17,7 +17,7 @@ import gunbc.spool_queue {
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key_parts, spool_entry_key, spool_entry_key_of_name, spool_entry_wire_name, spool_entry_key_of_wire_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 import gunbc.spool_queue {
-  spool_open, spool_entry_path, spool_queue_observe, spool_queue_enqueue, spool_queue_claim, spool_queue_complete, spool_queue_requeue_on_evidence,
+  spool_open, spool_entry_path, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, spool_queue_observe, spool_queue_enqueue, spool_queue_claim, spool_queue_complete, spool_queue_requeue_on_evidence,
   SpoolEnqueueNotDone, SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
 }
 
@@ -375,6 +375,20 @@ test fn the_stale_stop_effect_resolves() -> ProcessExit {
 // PERMANENT CONTROL (was expecting-red): HostSpoolStage dissolved into SpoolRole (consumers moved: gunbc.durable_handoff_host,
 // gunbc.roadmap.spool_stall, gunbc.roadmap.roadmap_attempt_exit_spool, gunbc.roadmap.roadmap_belt_actuate,
 // gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). It is a MissingExport.
+// MUTANT: a consumer that collapses the typed path result back to an Optional (the kind refusal read as "no entry")
+// does not typecheck, and the three-armed twin does.
+data collapse_mutant_source: String = "module probe_collapse\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { spool_entry_key, SpoolKind, SpoolAttemptUnit, SpoolEntryPath, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, RolePending, spool_open, spool_entry_path, SpoolKeyMinted, SpoolKeyRefused }\nfn f(p: SpoolEntryPath) -> String {\n  match p {\n    Absent => \"collapsed\"\n    Present { value: _ } => \"ready\"\n  }\n}\n"
+
+data collapse_typed_twin_source: String = "module probe_collapse\nimport std.types { String }\nimport std.optional { Present, Absent }\nimport gunbc.spool_queue { spool_entry_key, SpoolKind, SpoolAttemptUnit, SpoolEntryPath, SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, RolePending, spool_open, spool_entry_path, SpoolKeyMinted, SpoolKeyRefused }\nfn f(p: SpoolEntryPath) -> String {\n  match p {\n    SpoolEntryPathReady { path: _ } => \"ready\"\n    SpoolEntryRoleUndeclared { role: _ } => \"undeclared\"\n    SpoolEntryKindRefused { detail: d } => d\n  }\n}\n"
+
+test fn collapsing_the_path_result_to_an_optional_is_refused_at_compile() -> ProcessExit {
+  census_exit(blocking_delta(hostile: collapse_mutant_source, safe: collapse_typed_twin_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn the_typed_path_result_consumer_compiles_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: collapse_typed_twin_source), holds: fn(n) { n == 0 }))
+}
+
 test fn the_host_spool_stage_enum_is_gone() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: raw_host_spool_stage_source, wanted_class: "MissingExport", wanted_subject: "HostSpoolStage"), holds: fn(n) { n == 1 }))
 }
@@ -456,8 +470,9 @@ test fn a_key_of_another_kind_cannot_address_a_path_in_the_store() -> ProcessExi
     SpoolKeyMinted { key: k } => {
       let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
       match spool_entry_path(store: st, role: RolePending, key: k) {
-        Absent => ExitSuccess
-        Present { value: _ } => exit_failure(reason: "a cross-kind key addressed a path")
+        SpoolEntryKindRefused { detail: d } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
+        SpoolEntryRoleUndeclared { role: _ } => exit_failure(reason: "a cross-kind key read as an undeclared role")
+        SpoolEntryPathReady { path: _ } => exit_failure(reason: "a cross-kind key addressed a path")
       }
     }
   }

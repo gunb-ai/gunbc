@@ -58,7 +58,7 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.shell
 import gunbc.spool_queue {
   SpoolAttemptUnit, RolePending, RoleClaimed, SpoolRole, SpoolStore, SpoolEntryKey, SpoolListed, SpoolListingUnreadable, SpoolKeyMinted, SpoolKeyRefused,
-  SpoolClaimWon, SpoolClaimWonUnrecorded, SpoolClaimLost, SpoolClaimAbsentEntry, SpoolClaimNotDone, SpoolClaimUnmovable,
+  SpoolEntryPathReady, SpoolEntryRoleUndeclared, SpoolEntryKindRefused, SpoolClaimWon, SpoolClaimWonUnrecorded, SpoolClaimLost, SpoolClaimAbsentEntry, SpoolClaimNotDone, SpoolClaimUnmovable,
   spool_open, spool_queue_list, spool_queue_claim, spool_entry_key_of_name, spool_entry_path,
 }
 import extdeps.tools.stat {
@@ -154,13 +154,6 @@ fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
 
 fn attempt_system_unit_request_entry_name(node_id: String, attempt_key: String) -> String {
   join([node_id, attempt_exit_entry_separator, attempt_key], "")
-}
-
-fn attempt_system_unit_role_path(instance_root: String, role: SpoolRole, entry: String) -> String? {
-  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: entry) {
-    SpoolKeyMinted { key } => spool_entry_path(store: spool_open(kind: SpoolAttemptUnit, instance_root: instance_root), role: role, key: key)
-    SpoolKeyRefused { detail: _ } => Absent
-  }
 }
 
 fn attempt_system_unit_staging_path(instance_root: String, entry: String) -> String {
@@ -637,9 +630,13 @@ fn attempt_system_unit_enqueue_request(instance_root: String, node_id: String, a
   } else {
     let entry = attempt_system_unit_request_entry_name(node_id: node_id, attempt_key: attempt_key)
     let staging = attempt_system_unit_staging_path(instance_root: instance_root, entry: entry)
-    match attempt_system_unit_role_path(instance_root: instance_root, role: RolePending, entry: entry) {
-     Absent => AttemptSystemUnitEnqueueRefused { detail: "request entry name is not a spool entry key of the attempt-unit spool" }
-     Present { value: dest } =>
+    match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: entry) {
+     SpoolKeyRefused { detail: d } => AttemptSystemUnitEnqueueRefused { detail: join(["request entry name is not a spool entry key of the attempt-unit spool: ", d], "") }
+     SpoolKeyMinted { key: request_key } =>
+    match spool_entry_path(store: spool_open(kind: SpoolAttemptUnit, instance_root: instance_root), role: RolePending, key: request_key) {
+     SpoolEntryRoleUndeclared { role: _ } => AttemptSystemUnitEnqueueRefused { detail: "the attempt-unit spool declares no pending directory" }
+     SpoolEntryKindRefused { detail: d } => AttemptSystemUnitEnqueueRefused { detail: d }
+     SpoolEntryPathReady { path: dest } =>
     if !shell.Mkdir.NewOwnerOnly(path: staging as FilePath).success {
       AttemptSystemUnitEnqueueRefused { detail: join(["could not create-only the staging directory ", staging], "") }
     } else {
@@ -651,6 +648,7 @@ fn attempt_system_unit_enqueue_request(instance_root: String, node_id: String, a
       } else {
         AttemptSystemUnitEnqueueOccupied { entry: entry }
       }
+    }
     }
     }
   }
@@ -768,8 +766,9 @@ fn attempt_system_unit_claim_entry(instance_root: String, entry: String) -> Atte
 
 fn attempt_system_unit_claimed_entry(store: SpoolStore, key: SpoolEntryKey, entry: String) -> AttemptSystemUnitClaim {
   match spool_entry_path(store: store, role: RoleClaimed, key: key) {
-    Absent => AttemptSystemUnitClaimRefused { entry: entry, reason: "the attempt-unit spool declares no claimed directory" }
-    Present { value: dest } =>
+    SpoolEntryRoleUndeclared { role: _ } => AttemptSystemUnitClaimRefused { entry: entry, reason: "the attempt-unit spool declares no claimed directory" }
+    SpoolEntryKindRefused { detail: d } => AttemptSystemUnitClaimRefused { entry: entry, reason: d }
+    SpoolEntryPathReady { path: dest } =>
       if attempt_system_unit_claimed_kind_is_symlink(path: dest) {
         AttemptSystemUnitClaimSymlink { entry: entry }
       } else if !attempt_system_unit_claimed_kind_is_directory(path: dest) {

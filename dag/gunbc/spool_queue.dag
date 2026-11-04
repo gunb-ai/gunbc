@@ -581,13 +581,20 @@ fn spool_key_kind_refusal(store: SpoolStore, key: SpoolEntryKey) -> String? {
   }
 }
 
-fn spool_entry_path(store: SpoolStore, role: SpoolRole, key: SpoolEntryKey) -> Optional<String> {
+// WHAT ADDRESSING AN ENTRY ANSWERS. A kind mismatch and a role the spool never declared are different facts: the
+// first is a refusal of the presented key, the second says the role holds no entry. Neither is an empty value.
+type SpoolEntryPath
+  = SpoolEntryPathReady { path: String }
+  | SpoolEntryRoleUndeclared { role: SpoolRole }
+  | SpoolEntryKindRefused { detail: String }
+
+fn spool_entry_path(store: SpoolStore, role: SpoolRole, key: SpoolEntryKey) -> SpoolEntryPath {
   match spool_key_kind_refusal(store: store, key: key) {
-    Present { value: _ } => Absent
+    Present { value: d } => SpoolEntryKindRefused { detail: d }
     Absent =>
       match spool_role_path(store: store, role: role) {
-        Present { value: d } => Present { value: join([d, "/", spool_entry_wire_name(key: key)], "") }
-        Absent => Absent
+        Present { value: d } => SpoolEntryPathReady { path: join([d, "/", spool_entry_wire_name(key: key)], "") }
+        Absent => SpoolEntryRoleUndeclared { role: role }
       }
   }
 }
@@ -620,8 +627,9 @@ type SpoolPresence
 
 fn spool_role_presence(store: SpoolStore, role: SpoolRole, key: SpoolEntryKey) -> SpoolPresence {
   match spool_entry_path(store: store, role: role, key: key) {
-    Absent => PresenceNone
-    Present { value: path } =>
+    SpoolEntryRoleUndeclared { role: _ } => PresenceNone
+    SpoolEntryKindRefused { detail: d } => PresenceUnknown { detail: d }
+    SpoolEntryPathReady { path: path } =>
       match filesystem_entry_presence_of_path(path: path) {
         FilesystemEntryAbsent(_) => PresenceNone
         FilesystemEntryListed { directory: _, name: _ } => PresenceAt { role: role }
@@ -689,11 +697,13 @@ fn spool_queue_observe_admitted(store: SpoolStore, key: SpoolEntryKey) -> SpoolE
 // THE ONE RENAME. A directory entry moves by NoReplaceDirectory (a destination that exists refuses); a file entry by Move.File.
 fn spool_move_between(store: SpoolStore, key: SpoolEntryKey, from: SpoolRole, into: SpoolRole) -> String? {
   match spool_entry_path(store: store, role: from, key: key) {
-    Absent => Present { value: "the source role has no directory" }
-    Present { value: source } =>
+    SpoolEntryRoleUndeclared { role: _ } => Present { value: "the source role has no directory" }
+    SpoolEntryKindRefused { detail: d } => Present { value: d }
+    SpoolEntryPathReady { path: source } =>
       match spool_entry_path(store: store, role: into, key: key) {
-        Absent => Present { value: "the destination role has no directory" }
-        Present { value: destination } => {
+        SpoolEntryRoleUndeclared { role: _ } => Present { value: "the destination role has no directory" }
+        SpoolEntryKindRefused { detail: d } => Present { value: d }
+        SpoolEntryPathReady { path: destination } => {
           let moved = match spool_declaration(kind: store.kind).entry_kind {
             SpoolEntryDirectory => shell.Move.NoReplaceDirectory(source: source as FilePath, destination: destination as FilePath).success
             SpoolEntryFile => shell.Move.File(source: source as FilePath, destination: destination as FilePath).success
@@ -701,15 +711,6 @@ fn spool_move_between(store: SpoolStore, key: SpoolEntryKey, from: SpoolRole, in
           if moved { Absent } else { Present { value: join(["the rename ", source, " -> ", destination, " failed"], "") } }
         }
       }
-  }
-}
-
-// THE REQUESTER'S ENQUEUE AS A COMMAND, for a requester that renders a script (the exit hook) rather than running
-// an effect: the same create-only mkdir into the first role, at the path the declaration names.
-fn spool_enqueue_command(store: SpoolStore, key: SpoolEntryKey) -> ArgvCommand? {
-  match spool_entry_path(store: store, role: RolePending, key: key) {
-    Present { value: path } => Present { value: mkdir_create_only_command(path: path) }
-    Absent => Absent
   }
 }
 
@@ -726,8 +727,9 @@ fn spool_queue_enqueue(store: SpoolStore, key: SpoolEntryKey) -> SpoolEnqueueOut
     EnqueueRefused { detail } => SpoolEnqueueNotDone { detail: detail }
     EnqueueEligible { into } =>
       match spool_entry_path(store: store, role: into, key: key) {
-        Absent => SpoolEnqueueNotDone { detail: "the first role has no directory" }
-        Present { value: path } =>
+        SpoolEntryRoleUndeclared { role: _ } => SpoolEnqueueNotDone { detail: "the first role has no directory" }
+        SpoolEntryKindRefused { detail: d } => SpoolEnqueueNotDone { detail: d }
+        SpoolEntryPathReady { path: path } =>
           match spool_declaration(kind: store.kind).entry_kind {
             SpoolEntryFile => SpoolEnqueueNotDone { detail: "a file entry is written create-new by its requester, not made here" }
             SpoolEntryDirectory =>
@@ -769,8 +771,9 @@ fn spool_claim_record_boot(store: SpoolStore, key: SpoolEntryKey, into: SpoolRol
       SpoolEntryFile => Absent
       SpoolEntryDirectory =>
         match spool_entry_path(store: store, role: into, key: key) {
-          Absent => Present { value: "the claimed role has no directory" }
-          Present { value: entry } =>
+          SpoolEntryRoleUndeclared { role: _ } => Present { value: "the claimed role has no directory" }
+          SpoolEntryKindRefused { detail: d } => Present { value: d }
+          SpoolEntryPathReady { path: entry } =>
             match spool_current_boot_id() {
               Absent => Present { value: "the current boot id could not be read" }
               Present { value: boot } => {
@@ -845,8 +848,9 @@ type SpoolRequeueOutcome
 // No record or no readable current boot id is NoClaimantObservation, never BootsObserved.
 fn spool_queue_boot_evidence(store: SpoolStore, key: SpoolEntryKey) -> SpoolRequeueEvidence {
   match spool_entry_path(store: store, role: RoleClaimed, key: key) {
-    Absent => NoClaimantObservation { cause: "the spool has no claimed role" as NonEmptyStr }
-    Present { value: entry } => {
+    SpoolEntryRoleUndeclared { role: _ } => NoClaimantObservation { cause: "the spool has no claimed role" as NonEmptyStr }
+    SpoolEntryKindRefused { detail: d } => NoClaimantObservation { cause: d as NonEmptyStr }
+    SpoolEntryPathReady { path: entry } => {
       let path = join([entry, "/", spool_claim_boot_file], "")
       let read = Filesystem.Read(path: path)
       match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
@@ -871,8 +875,9 @@ fn spool_queue_requeue_on_evidence(store: SpoolStore, key: SpoolEntryKey, eviden
   match spool_requeue_assess(kind: store.kind, observed: observed, evidence: evidence) {
     RequeueEligible { from, into } =>
       match spool_entry_path(store: store, role: from, key: key) {
-        Absent => SpoolRequeueUnmovable { cause: "the claimed role has no directory" }
-        Present { value: entry } => {
+        SpoolEntryRoleUndeclared { role: _ } => SpoolRequeueUnmovable { cause: "the claimed role has no directory" }
+        SpoolEntryKindRefused { detail: d } => SpoolRequeueUnmovable { cause: d }
+        SpoolEntryPathReady { path: entry } => {
           let record = join([entry, "/", spool_claim_boot_file], "")
           let gone = Filesystem.Delete(path: record)
           match filesystem_delete(path: record, success: gone.success, error: gone.error, error_kind: gone.error_kind) {

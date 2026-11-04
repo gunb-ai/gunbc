@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.types { Bool, String, List, Int, FilePath }
 import gunbc.spool_queue {
   SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, SpoolPublication, SpoolRole, RolePending, RoleClaimed,
-  spool_open, spool_role_path, spool_declared_roles, spool_queue_list, spool_queue_observe, spool_entry_key_of_name,
+  spool_open, spool_role_path, spool_role_presence, PresenceNone, PresenceAt, PresenceUnknown, spool_declared_roles, spool_queue_list, spool_queue_observe, spool_entry_key_of_name,
   SpoolListed, SpoolListingUnreadable, SpoolKeyMinted, SpoolKeyRefused, EntryStanding, EntryAbsent, EntryAmbiguous, EntryObservationUnavailable,
 }
 
@@ -92,3 +92,33 @@ test fn an_old_publication_request_file_reads_back_as_pending() -> Bool {
   }
 }
 
+
+// DIRECT CONTROL on the lower boundary (independently callable, so the guarded outer ops do not cover it): a key
+// minted for ANOTHER kind must never read as "no entry here". Same store, same root, same wire name: the
+// same-kind twin reads PresenceNone and the foreign key reads PresenceUnknown carrying the typed cause.
+test fn a_foreign_kind_key_cannot_read_as_no_presence_while_its_same_kind_twin_does() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_old_bytes.XXXXXX").path
+  if root == "" {
+    false
+  } else {
+    let made = make_role_dirs(kind: SpoolAttemptUnit, root: root)
+    let store = spool_open(kind: SpoolAttemptUnit, instance_root: root)
+    made && (match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: "twin-node+feedfacefeedface") {
+      SpoolKeyRefused { detail: _ } => false
+      SpoolKeyMinted { key: twin } =>
+        (match spool_role_presence(store: store, role: RolePending, key: twin) {
+          PresenceNone => true
+          PresenceAt { role: _ } => false
+          PresenceUnknown { detail: _ } => false
+        })
+    }) && (match spool_entry_key_of_name(kind: SpoolPublication, name: "0123456789abcdef") {
+      SpoolKeyRefused { detail: _ } => false
+      SpoolKeyMinted { key: foreign } =>
+        (match spool_role_presence(store: store, role: RolePending, key: foreign) {
+          PresenceUnknown { detail: _ } => true
+          PresenceNone => false
+          PresenceAt { role: _ } => false
+        })
+    })
+  }
+}

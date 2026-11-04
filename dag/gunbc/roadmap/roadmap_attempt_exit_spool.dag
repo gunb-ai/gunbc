@@ -9,7 +9,7 @@ import extdeps.tools.gnu_coreutils { install_directory_owned_argv_command, mkdir
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
 import gunbc.spool_queue {
   SpoolAttemptExit, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
-  SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_role_path, spool_enqueue_command, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
+  SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_role_path, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
