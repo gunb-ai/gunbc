@@ -69,7 +69,7 @@ import product.p4261.e1_position_receipts {
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.e1_body_sightings { BodySighting, e1_body_sightings }
 import product.p4261.e1_photographs { e1_photographs }
-import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite }
+import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store }
 import product.electrical.continuity { OperatorPhotograph }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 
@@ -680,16 +680,32 @@ test fn a_photograph_carried_name_is_read_on_the_board() -> Bool {
         // The atlas read this label on its own frame; the rule that every exception reaches the board
         // covers it, and the legibility inside is the one that receipt stated.
         FromReceipt { legibility: _, legibility_basis: _ } => true
-        // The atlas never read it, so the board must have, from that day's photograph. An InStore citation
-        // would not do: it proves the bytes are held, not that a person read this label off them, and every
-        // frame whose bytes we hold is an atlas frame where the designator was never read.
+        // The atlas never read it, so the board must have, from that day's photograph. The date is the
+        // whole check: the authority may not point at one frame while the board's reading rests on
+        // another. Both citation shapes are accepted, because refusing the stored one would mean J3 lost
+        // its corroboration on the very day the operator re-supplied the upload and the gap closed.
         FromBoardPhotograph { taken_on: day, why: _ } =>
           any(xs: p4261_e1_layout.designator_readings, predicate: d =>
             designator_eq(a: designator_of(verbatim: d.designator), b: r.designator)
             && match d.evidence {
+              // The bytes never reached the store, so the day the bench recorded is all there is to match.
               OperatorPhotograph { citation: BytesNotInStore { taken_on: t, locator: _, obligation: _ } } =>
                 string_eq(a: t as String, b: day as String)
-              OperatorPhotograph { citation: InStore { content: _, region: _ } } => false
+              // Stored bytes are dated by the store's own row, resolved by content: a row that cannot be
+              // found, or that says its capture day was never recorded, does not corroborate a date.
+              OperatorPhotograph { citation: InStore { content: c, region: _ } } =>
+                match photograph_in_store(store: e1_photographs, content: c) {
+                  Absent { } => false
+                  Present { value: p } => match p.origin {
+                    CapturedFrame { surface: _, capture: _, taken_on: CapturedOn { on: stored_day } } =>
+                      string_eq(a: stored_day as String, b: day as String)
+                    CapturedFrame {
+                      surface: _, capture: _, taken_on: CaptureDateUnrecorded { obligation: _ }
+                    } => false
+                    // A frame somebody drew is not a photograph the operator took, whatever its date says.
+                    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
+                  }
+                }
               SellerListingPhotograph { listing: _, read_on: _ } => false
               // A spoken "it says J3" is the shape this arm exists to refuse: it is a name with no image
               // behind it, which is precisely what the receipts must not be able to lean on.
