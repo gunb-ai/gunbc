@@ -282,11 +282,11 @@ fn custom_root_module_census(
         if source_root_is_governed_layout(root) {
             continue;
         }
-        let anchored = super::anchor_source_root(root);
+        // A ROOT THAT IS NOT A DIRECTORY REFUSES; IT IS NOT SKIPPED. Skipping dropped a typo'd or
+        // uncommitted root from the population silently (review 90892); the admission is the
+        // whole-tree builder's own (`admit_source_root`).
+        let anchored = super::admit_source_root(root)?;
         let root_path = Path::new(&anchored);
-        if !root_path.is_dir() {
-            continue;
-        }
         let mut files = Vec::new();
         super::collect_dag_files_result(root_path, &mut files)?;
         for acquired in files {

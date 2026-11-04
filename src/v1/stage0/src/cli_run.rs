@@ -2795,73 +2795,68 @@ fn module_index_path_key(path: &Path) -> String {
 /// instead of panicking mid-floor. CLI-provided roots keep the strict panicking contract - a
 /// typo'd argument must refuse, never skip.
 fn try_anchor_source_root(root: &str) -> Option<String> {
-    let p = Path::new(root);
-    let ws = process_workspace_root();
-    if p.is_absolute() {
-        if p.is_dir() {
-            return Some(root.to_string());
-        }
-        let baked = workspace_root();
-        if let Ok(rel) = p.strip_prefix(&baked) {
-            let reanchored = ws.join(rel);
-            if reanchored.is_dir() {
-                return Some(reanchored.to_string_lossy().into_owned());
-            }
-        }
-        if let Ok(rel) = repo_relative_path(p) {
-            let reanchored = ws.join(&rel);
-            if reanchored.is_dir() {
-                return Some(reanchored.to_string_lossy().into_owned());
-            }
-        }
-        return None;
-    }
-    let anchored = ws.join(p);
-    if anchored.is_dir() {
-        Some(anchored.to_string_lossy().into_owned())
-    } else {
-        None
-    }
+    anchor_source_root_typed(root).ok()
 }
 
+/// THE PANICKING FORM, for the callers that hold a root already admitted. A caller that must refuse
+/// an ordinary user-caused root (missing, or a file) asks `admit_source_root`; a DECLARED root whose
+/// absence is legitimate asks `try_anchor_source_root`. All three read `anchor_source_root_typed`.
 fn anchor_source_root(root: &str) -> String {
+    anchor_source_root_typed(root).unwrap_or_else(|cause| panic!("anchor_source_root: {cause}"))
+}
+
+/// ANCHORING IS FALLIBLE: a root that cannot be resolved to a directory is a typed refusal, not a
+/// panic. The checks `try_build_module_index` ran AFTER anchoring were unreachable, because this
+/// panicked first -- so `a_missing_source_root_refuses_at_source_discovery_instead_of_panicking`
+/// and its file-root twin were red on main (the v1 unit tests do not run on the required path).
+fn anchor_source_root_typed(root: &str) -> Result<String, String> {
     let p = Path::new(root);
     let ws = process_workspace_root();
     if p.is_absolute() {
         if p.is_dir() {
-            return root.to_string();
+            return Ok(root.to_string());
+        }
+        if p.exists() {
+            return Err(format!(
+                "source root is not a directory: {root} -- --source-root names a directory to \
+                 walk, not a file"
+            ));
         }
         let baked = workspace_root();
         if let Ok(rel) = p.strip_prefix(&baked) {
             let reanchored = ws.join(rel);
             if reanchored.is_dir() {
-                return reanchored.to_string_lossy().into_owned();
+                return Ok(reanchored.to_string_lossy().into_owned());
             }
         }
         if let Ok(rel) = repo_relative_path(p) {
             let reanchored = ws.join(&rel);
             if reanchored.is_dir() {
-                return reanchored.to_string_lossy().into_owned();
+                return Ok(reanchored.to_string_lossy().into_owned());
             }
         }
-        panic!(
-            "anchor_source_root: absolute source root {} does not exist and cannot be \
-             re-anchored under process workspace {} (compiled-in root was {})",
-            root,
+        return Err(format!(
+            "source root does not exist: {root} (not re-anchorable under process workspace {}; \
+             compiled-in root was {})",
             ws.display(),
             baked.display()
-        );
+        ));
     }
     let anchored = ws.join(p);
-    if !anchored.is_dir() {
-        panic!(
-            "anchor_source_root: source root {root} resolved to {} which is not a directory \
-             (process workspace {})",
-            anchored.display(),
-            ws.display()
-        );
+    if !anchored.exists() {
+        return Err(format!(
+            "source root does not exist: {root} (anchored to {})",
+            anchored.display()
+        ));
     }
-    anchored.to_string_lossy().into_owned()
+    if !anchored.is_dir() {
+        return Err(format!(
+            "source root is not a directory: {root} (anchored to {}) -- --source-root names a \
+             directory to walk, not a file",
+            anchored.display()
+        ));
+    }
+    Ok(anchored.to_string_lossy().into_owned())
 }
 
 /// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
@@ -5055,24 +5050,19 @@ pub(crate) type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::Sour
 
 /// The fallible core. Every filesystem condition and every corpus-authority violation
 /// returns a located `Err` instead of unwinding.
+/// WHETHER ONE `--source-root` IS A DIRECTORY TO WALK, as a typed refusal. The one admission every
+/// index builder asks -- the whole-tree builder below and the demand-acquired route
+/// (`demand_acquire`) -- so a missing root, or a file where a directory belongs, refuses on both
+/// rather than being skipped on one (review 90892 on the demand-acquired entry compile).
+pub(crate) fn admit_source_root(root: &str) -> Result<String, String> {
+    anchor_source_root_typed(root)
+}
+
 fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots.iter() {
-        let anchored_root = anchor_source_root(root);
+        let anchored_root = admit_source_root(root)?;
         let root_path = std::path::Path::new(&anchored_root);
-        if !root_path.exists() {
-            return Err(format!(
-                "source root does not exist: {root} (anchored to {})",
-                root_path.display()
-            ));
-        }
-        if !root_path.is_dir() {
-            return Err(format!(
-                "source root is not a directory: {root} (anchored to {}) -- --source-root names \
-                 a directory to walk, not a file",
-                root_path.display()
-            ));
-        }
         let mut dag_files = Vec::new();
         collect_dag_files_result(root_path, &mut dag_files)?;
         for source in dag_files {
@@ -7512,6 +7502,9 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // gunbc PR "compile --entry resolves over the demand-acquired closure"). A whole-root subject
     // still indexes its root: that subject IS the tree.
     let index: Rc<MultiEntryIndex> = if let CompileSubject::Entry(path) = &request.subject {
+        if let Some(cause) = source_roots.iter().find_map(|r| admit_source_root(r).err()) {
+            return compile_not_executed(&request.subject, started, "source-discovery", cause);
+        }
         match demand_acquire::demand_acquired_index_for_entry(source_roots, path) {
             Ok(index) => index,
             Err(cause) => {
