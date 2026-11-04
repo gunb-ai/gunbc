@@ -10,17 +10,30 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // byte-offset implementation returns the wrong character at index 1 on "aéb" (continuation byte
 // U+00A9 misread as ©) while code-point indexing returns U+00E9.
 //
-// THE SWITCHED CONSUMER (2026-11-01, valiant-deer-27 on tidy-ant-251's F5 ruling). The `char_at`
-// measured here is std.host_text's declared operation, named by import -- NOT the ambient builtin the
-// rest of the corpus still calls, and not `string_length`, which is also ambient (its egress is a
-// separate row of gunbc.primitive_egress.dispositions_text). That declaration returns
-// std.optional Optional of the one-code-point host text, so absence is an arm to match rather than a
-// value to compare against, and its position is a std.nat Nat, so nothing in this file can ask for a
-// negative index. Before the switch the last arm below asserted that reading past the end yields the
-// EMPTY TEXT: a claim about a sentinel (src/v1/runtime_rust.dag answered an empty host text at or past
-// the end and clamped a negative position to 0), which is
-// gunbc.recurring_failure_mode `absence_carried_by_a_second_representation` in its plainest form. It
-// now asserts Absent. Every other assertion in this file keeps its meaning.
+// WHAT THIS SWITCHES, AND WHAT IT DOES NOT BUY (2026-11-01, valiant-deer-27 on tidy-ant-251's F5
+// ruling; scope corrected 2026-11-04 after review 90474, which caught the earlier wording claiming
+// more than the claims measure). The switch is at the CHECKER: `char_at` here names std.host_text's
+// declaration by import (result std.optional Optional of the one-code-point host text, position a
+// std.nat Nat), not the ambient builtin the rest of the corpus still calls, and the module only
+// TYPE-CHECKS against that declaration -- an ambient String result refuses in the helper's `HostText?`
+// parameter, which is the executed half of this claim. Absence becomes an arm to match rather than a
+// value to compare against (the old last arm asserted the sentinel: src/v1/runtime_rust.dag answered an
+// empty host text at or past the end and clamped a negative position to 0 --
+// gunbc.recurring_failure_mode `absence_carried_by_a_second_representation` in its plainest form); the
+// file now asserts Absent, and every other assertion keeps its meaning.
+//
+// WHAT IS NOT ESTABLISHED HERE, STATED PLAINLY: these claims do NOT show that the declared operation
+// EXECUTES. The interpreter still answers a free call's VALUE by SPELLING -- the `free_call.char_at` arm
+// of gunbc.v1.v1_interpreter_primitive_surface, keyed by the primitive spelling (see the block above
+// `char_at_past_the_multibyte_char_is_not_a_byte_offset`, and
+// gunbc.recurring_failure_mode `host_seam_realization_is_keyed_by_primitive_spelling`) -- so the value
+// that reaches `at_is` is the ambient builtin's bare host text while the checker typed the call
+// `HostText?`. The green claims therefore measure the AMBIENT REALIZATION behind a declared name: one
+// name, two meanings on one route (DESIGN section 3, a witness discriminates at one interface -- this one
+// discriminates the checking interface only). `std.host_text`'s `char_at` still has NO executing
+// consumer, which is a frontier this PR states rather than closes; step 2 of the egress (resolved-target
+// dispatch, src/v1/04_lookup.dag `resolved_declaration_call_target`) is what makes these claims read the
+// declared operation's value, and it is claimed as that PR's target, not this one's.
 //
 // The samples are host texts by construction: a literal denotes HostText, so no argument reaches
 // char_at's HostText parameter through an undeclared crossing (DESIGN section 4: text crossings go
