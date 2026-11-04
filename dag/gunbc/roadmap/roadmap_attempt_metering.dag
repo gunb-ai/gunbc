@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_metering
 
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents, attempt_state_directory_text, attempt_log_member_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptWorkerEvents, attempt_state_directory_text, attempt_log_member_text }
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs, list_length }
 import std.algebra { trim }
 import std.types { path_segment_is_safe }
@@ -48,7 +48,7 @@ import gunbc.harness.harness_seat_pointer {
   harness_seat_pointer_path, harness_seat_pointer_reference_names_owner,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_attempt_identity, dispatch_reviewer_attempt_identity, dispatch_auditor_attempt_identity, dispatch_supervisor_attempt_identity }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_attempt_identity, dispatch_reviewer_attempt_identity, dispatch_auditor_attempt_identity }
 
 // ONE PER-ATTEMPT METERING RECORD (dogfood stage G3). The usage receipt the corpus already carries,
 // gunbc.runner.runner_usage_receipt RunnerUsageReceipt, meters ONE microVM: configured vCPUs times
@@ -134,8 +134,6 @@ fn metered_role_events_path(instance: HostDashboardInstance, node_id: RoadmapNod
       attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewEvents { criterion_key: c as String, head_sha: h as String })
     MeteredAuditor { head: h } =>
       attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditEvents { head_sha: h as String })
-    MeteredSupervisor { turn: t } =>
-      attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorEvents { turn: t })
   }
 }
 

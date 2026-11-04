@@ -176,19 +176,11 @@ data append_log_member_census: List<MemberCensusRow> = [
     disposition: MigrateToCreateOnceMember {},
   },
   MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorRequestScratch" as NonEmptyStr,
-    disposition: MigrateToCreateOnceMember {},
-  },
-  MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewVerdict" as NonEmptyStr,
     disposition: MigrateToCreateOnceMember {},
   },
   MemberCensusRow {
     row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditVerdict" as NonEmptyStr,
-    disposition: MigrateToCreateOnceMember {},
-  },
-  MemberCensusRow {
-    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorVerdict" as NonEmptyStr,
     disposition: MigrateToCreateOnceMember {},
   },
   MemberCensusRow {

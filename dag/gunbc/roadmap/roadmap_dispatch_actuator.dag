@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptAuditLog, AttemptAuditVerdict, AttemptDirectoryAudit, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectoryRoot, AttemptDirectorySupervisor, AttemptDirectoryVerification, AttemptDirectoryWire, AttemptDirectoryWorker, AttemptReviewEvents, AttemptReviewLog, AttemptReviewRequestScratch, AttemptReviewVerdict, AttemptSupervisorEvents, AttemptSupervisorLog, AttemptWorkerEvents, AttemptWorkerLog, AttemptWorkerRequestScratch, attempt_state_current_directory_text, attempt_state_current_text, attempt_state_directory_text, attempt_state_member_name, attempt_state_text, attempt_log_member_text, attempt_log_current_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptAuditLog, AttemptAuditVerdict, AttemptDirectoryAudit, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectoryRoot, AttemptDirectoryVerification, AttemptDirectoryWire, AttemptDirectoryWorker, AttemptReviewEvents, AttemptReviewLog, AttemptReviewRequestScratch, AttemptReviewVerdict, AttemptWorkerEvents, AttemptWorkerLog, AttemptWorkerRequestScratch, attempt_state_current_directory_text, attempt_state_current_text, attempt_state_directory_text, attempt_state_member_name, attempt_state_text, attempt_log_member_text, attempt_log_current_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_unit_stem, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
 import gunbc.managed_directory { declared_directory_mode, DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
@@ -1342,12 +1342,8 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key
 // event the attempt's next obligation waits on, and a unit that stays `active (exited)` never stops,
 // so its stop hook could not fire at that moment. With an exit hook the unit stops with its process
 // and its record carries the exit; the belt reads a collected reviewer from that record
-// (gunbc.roadmap.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and now carries the same
-// hook (AttemptSupervisorRole): its convene gate reads the exit record, not a retained unit, so a
-// finished supervisor no longer stays loaded and blocks the continuation it authorized
-// (gunbc.recurring_failure_mode an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable).
-// ExecStopPost runs after a failed unit too, so a failed supervisor records its failure; RemainAfterExit
-// is gone from every role.
+// (gunbc.roadmap.roadmap_belt_actuate belt_review_process).
+// RemainAfterExit is gone from every role.
 fn dispatch_review_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
