@@ -4,6 +4,7 @@ import extdeps.bmc.types { BootTargetCd, BootTargetPxe, BootTargetUefiHttp, Redf
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_equal }
+import std.list { first_where }
 import extdeps.uri { Uri }
 import product.placement_supply { SiteIdentity }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
@@ -926,12 +927,10 @@ fn network_addressed_candidate_verdicts(ev: BoundBootDeliveryEvidence, request: 
   ]
 }
 
+// One lookup answers which standing a candidate was given; eligibility reads it rather than
+// walking the verdicts a second way. A candidate never considered is not eligible.
 fn candidate_is_eligible(verdicts: List<BootDeliveryCandidateVerdict>, candidate: BootDeliveryCandidate) -> Bool {
-  fold(
-    verdicts,
-    init: false,
-    f: (acc, v) => acc || (v.candidate == candidate && v.standing == CandidateEligible),
-  )
+  boot_delivery_candidate_standing_of(verdicts: verdicts, candidate: candidate) == Present { value: CandidateEligible }
 }
 
 // Build the delivery an ELIGIBLE candidate names. Every BMC-side parameter is
@@ -1307,13 +1306,16 @@ fn solve_controller_addressed_delivery(
   }
 }
 
+// THE STANDING ONE CANDIDATE WAS GIVEN, or Absent when the verdicts never considered it. A
+// candidate that was not judged has no cause to report: answering CandidateCapabilityAbsent for
+// it would fabricate a finding about a capability nobody read (DESIGN.md Sec 5), and a caller
+// matching on that cause could not tell "the gate refused" from "the gate never ran".
 fn boot_delivery_candidate_standing_of(
   verdicts: List<BootDeliveryCandidateVerdict>,
   candidate: BootDeliveryCandidate,
-) -> BootDeliveryCandidateStanding {
-  fold(
-    verdicts,
-    init: CandidateIneligible { cause: CandidateCapabilityAbsent },
-    f: (acc, v) => if v.candidate == candidate { v.standing } else { acc },
-  )
+) -> BootDeliveryCandidateStanding? {
+  match first_where(verdicts, v => v.candidate == candidate) {
+    Present { value: v } => Present { value: v.standing }
+    Absent => none
+  }
 }
