@@ -93,7 +93,7 @@ fn section_4_targets() -> List<MarkdownBlock> {
     ]),
     h3(text: "4.E Seed-growth rows, retriggered or retired (M1)"),
     ul(items: [
-      li(text: "`gunbc.serve_declared_binding_seed_growth`, `gunbc.serve_cookie_header_seed_growth`, `gunbc.fabric_door_socket_seed_growth`: their declarations are deleted with the verb, so the rows are deleted, and the hand Rust that replaces them (the ingress host's socket operations) is rostered once in `gunbc.http_ingress_host_seed_growth`, whose trigger is M2."),
+      li(text: "`gunbc.serve_declared_binding_seed_growth`, `gunbc.serve_cookie_header_seed_growth`, `gunbc.fabric_door_socket_seed_growth`: their declarations are deleted with the verb, so the rows are deleted, and the hand Rust that replaces them (the ingress host's socket operations) is rostered once in `gunbc.http_ingress_host_seed_growth`, whose trigger is the native realization of every served closure (section 3, frontier: served closures realized natively); M2 alone does not fire it."),
       li(text: "`gunbc.serve_liveness_seed_growth`: retired on its own trigger. The pre-evaluation route table is a compiled value the graph produces once at startup (`gunbc.http_ingress` `http_ingress_pre_evaluation_routes`), and the host answers /livez from its rendered bytes without entering the evaluator."),
     ]),
     h3(text: "4.F Plans, ledgers and lens rows, re-pointed"),
