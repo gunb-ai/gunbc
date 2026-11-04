@@ -621,3 +621,147 @@ fn observe_candidate_root_tree_oid(repo: String) -> CandidateTreeOidObservation 
     }
   }
 }
+
+// THE TRANSACTION'S REFUSAL RECEIPT.
+//
+// WHY THIS EXISTS. The transaction entry names itself receipted -- the CI step that runs it says
+// "receipted" -- yet until 2026-11-04 only one writer existed (live_deploy_receipted_decided's
+// arms), downstream of EVERY admission. A run refused by RunUnbound, FleetProvenanceAbsent,
+// CandidateNotExpected or PreSwapRefused left the receipt directory empty, and the job's visible
+// failure was the upload action's generic "No files were found with the provided path" (runs
+// 36719161144 and 39177393512: a ten-word fold refusal cost the operator an unreadable job). A
+// refusal is an output of the transaction (§5: it must name its path), so the transaction writes a
+// receipt for it. This is the shape the repo already repaired twice: the role-singletons arm writes
+// a receipt on refusal (apply.dag assess_and_admitted), and the roster step writes an interrupted
+// Unavailable receipt before its first request (#15735).
+//
+// WHY A SEPARATE DOCUMENT RATHER THAN A NEW MEMBER OF live-deploy-apply-receipt/v4. The apply
+// receipt records what APPLY did; its members (candidate identity, tree, role-singleton
+// disposition, readiness) are observations that a refusal before those steps never made, and
+// encoding their absence as placeholder strings would put invented facts in the record (§1).
+// A refusal says what refused -- nothing more. Consumers: the upload artifact (a refused run's
+// receipt is downloadable, which is the point), the exactly-one-receipt assertion step, and the
+// operator. The rollback readback keeps reading ONLY the apply-receipt filename and cannot mistake
+// this document for one.
+//
+// THE WITNESS IS dag/test/claim/live_deploy/apply_receipt_witness: encode/decode round trip,
+// schema refusal, identity mismatch, and the exactly-one naming.
+
+data live_deploy_transaction_refusal_schema: String = "live-deploy-transaction-refusal/v1"
+
+data live_deploy_transaction_refusal_json_name: String = "live_deploy_transaction_refusal.json"
+
+fn live_deploy_transaction_refusal_path_for(instance_id: String) -> String {
+  join([live_deploy_apply_receipt_dir_for(instance_id: instance_id), "/", live_deploy_transaction_refusal_json_name], "")
+}
+
+type LiveDeployTransactionRefusalReceipt {
+  schema: String
+  transaction: String
+  target: String
+  instance_id: String
+  arm: String
+  detail: String
+  completed_at: String
+  receipt_identity: String
+}
+
+fn live_deploy_transaction_refusal_identity_text(r: LiveDeployTransactionRefusalReceipt) -> String {
+  join([
+    r.schema, "|", r.transaction, "|", r.target, "|", r.instance_id, "|",
+    r.arm, "|", r.detail, "|", r.completed_at,
+  ], "")
+}
+
+fn live_deploy_transaction_refusal_identity_hex(r: LiveDeployTransactionRefusalReceipt) -> String {
+  content_hash_tagged_structural(
+    tag: "live-deploy-transaction-refusal-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: live_deploy_transaction_refusal_identity_text(r: r) as NonEmptyStr),
+  ).digest as String
+}
+
+fn live_deploy_transaction_refusal_json(r: LiveDeployTransactionRefusalReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: live_deploy_transaction_refusal_schema)),
+    json_kv(key: "transaction", value: json_string(s: r.transaction)),
+    json_kv(key: "target", value: json_string(s: r.target)),
+    json_kv(key: "instance_id", value: json_string(s: r.instance_id)),
+    json_kv(key: "arm", value: json_string(s: r.arm)),
+    json_kv(key: "detail", value: json_string(s: r.detail)),
+    json_kv(key: "completed_at", value: json_string(s: r.completed_at)),
+    json_kv(key: "receipt_identity", value: json_string(s: live_deploy_transaction_refusal_identity_hex(r: r))),
+  ])
+}
+
+type LiveDeployTransactionRefusalReceiptDecode
+  = LiveDeployTransactionRefusalReceiptDecoded { receipt: LiveDeployTransactionRefusalReceipt }
+  | LiveDeployTransactionRefusalReceiptUnreadable { reason: String }
+
+fn live_deploy_transaction_refusal_receipt_decode(raw: String) -> LiveDeployTransactionRefusalReceiptDecode {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: gap } =>
+      LiveDeployTransactionRefusalReceiptUnreadable { reason: join(["transaction refusal receipt is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_required_string_member(doc: doc, key: "schema") {
+        JsonStringMemberRefused { reason: r } => LiveDeployTransactionRefusalReceiptUnreadable { reason: r }
+        JsonStringMemberFound { value: schema } =>
+          if schema != live_deploy_transaction_refusal_schema {
+            LiveDeployTransactionRefusalReceiptUnreadable { reason: join(["transaction refusal receipt schema is not ", live_deploy_transaction_refusal_schema, ": ", schema], "") }
+          } else {
+            match json_required_string_member(doc: doc, key: "transaction") {
+              JsonStringMemberRefused { reason: r } => LiveDeployTransactionRefusalReceiptUnreadable { reason: r }
+              JsonStringMemberFound { value: transaction } =>
+                match json_required_string_member(doc: doc, key: "target") {
+                  JsonStringMemberRefused { reason: r } => LiveDeployTransactionRefusalReceiptUnreadable { reason: r }
+                  JsonStringMemberFound { value: target } =>
+                    match json_required_string_member(doc: doc, key: "instance_id") {
+                      JsonStringMemberRefused { reason: r } => LiveDeployTransactionRefusalReceiptUnreadable { reason: r }
+                      JsonStringMemberFound { value: instance_id } =>
+                        match json_required_string_member(doc: doc, key: "arm") {
+                          JsonStringMemberRefused { reason: r } => LiveDeployTransactionRefusalReceiptUnreadable { reason: r }
+                          JsonStringMemberFound { value: arm } =>
+                            match json_required_string_member(doc: doc, key: "detail") {
+                              JsonStringMemberRefused { reason: r } => LiveDeployTransactionRefusalReceiptUnreadable { reason: r }
+                              JsonStringMemberFound { value: detail } =>
+                                match json_required_string_member(doc: doc, key: "completed_at") {
+                                  JsonStringMemberRefused { reason: r } => LiveDeployTransactionRefusalReceiptUnreadable { reason: r }
+                                  JsonStringMemberFound { value: completed_at } =>
+                                    match json_required_string_member(doc: doc, key: "receipt_identity") {
+                                      JsonStringMemberRefused { reason: r } => LiveDeployTransactionRefusalReceiptUnreadable { reason: r }
+                                      JsonStringMemberFound { value: claimed } => {
+                                        let receipt = LiveDeployTransactionRefusalReceipt {
+                                          schema: schema,
+                                          transaction: transaction,
+                                          target: target,
+                                          instance_id: instance_id,
+                                          arm: arm,
+                                          detail: detail,
+                                          completed_at: completed_at,
+                                          receipt_identity: claimed,
+                                        }
+                                        if claimed != live_deploy_transaction_refusal_identity_hex(r: receipt) {
+                                          LiveDeployTransactionRefusalReceiptUnreadable { reason: "transaction refusal receipt identity does not match its members" }
+                                        } else {
+                                          LiveDeployTransactionRefusalReceiptDecoded { receipt: receipt }
+                                        }
+                                      }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn read_live_deploy_transaction_refusal_receipt_at(path: String) -> LiveDeployTransactionRefusalReceiptDecode {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    LiveDeployTransactionRefusalReceiptUnreadable { reason: join(["transaction refusal receipt could not be read at ", path, ": ", read.error], "") }
+  } else {
+    live_deploy_transaction_refusal_receipt_decode(raw: read.content)
+  }
+}

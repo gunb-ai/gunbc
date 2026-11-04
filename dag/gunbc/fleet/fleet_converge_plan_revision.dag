@@ -8,7 +8,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.github.actions_environment { github_output_variable_name }
 import extdeps.github.workflow_runs
-import extdeps.transports.rest { RestAnswered, RestRefused }
+import extdeps.github.actions_artifacts
+import extdeps.transports.rest { RestAnswered, RestRefused, RestResult }
 import gunbc.repository { gunbc_repository }
 import gunbc.actions_run_binding {
   actions_variable_trimmed,
@@ -17,8 +18,11 @@ import gunbc.actions_run_binding {
   ActionsRunBindingObservation,
   ActionsRunBound,
   ActionsRunUnbound,
+  rlm_expected_revision_env_name,
 }
 import gunbc.running_release_identity { release_revision_text_valid }
+import gunbc.live_deploy.apply_receipt { rlm_plan_artifact_hash_env_name }
+import gunbc.ci.ci_spec { gunbc_fleet_converge_plan_artifact_name, gunbc_fleet_converge_apply_receipt_artifact_name }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.fleet.fleet_converge_receipt {
   FleetConvergePlanReceipt,
@@ -198,5 +202,216 @@ fn verify_checkout_at_plan_revision() -> ProcessExit {
       CheckoutHeadAdmitted { revision: _ } => ExitSuccess
       refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", checkout_head_admission_text(a: refused)], ""))
     }
+  }
+}
+
+// ============================================================================
+// THE RUN POINTER ADMISSION -- WHAT THE TYPED-IN RUN ID IS ADMITTED TO BE, BEFORE ANYTHING DOWNLOADS
+// FROM IT.
+//
+// WHY THIS EXISTS. The dispatch names its predecessor runs by hand-typed workflow run ids. Until
+// 2026-11-04 NOTHING checked what those ids named: the first thing to touch them was
+// actions/download-artifact, so a pointer to a run that does not exist, is not a fleet-converge
+// run, is still in progress, or never published the plan artifact surfaced as the download action's
+// "Unable to download artifact(s): Not Found" ten minutes into the run (run 39172318149: the named
+// plan run 39172181613 does not exist at all -- the pointer was never a run). The receipt join
+// downstream is faithful, but a download that 404s is not an admission: it cannot tell a stale
+// pointer from a real plan that never published, and it runs before any typed text exists. This is
+// the same boundary a449d3215 admitted for the checkout ("an unverified checkout that passed"); the
+// pointer was the same boundary still unadmitted.
+//
+// WHAT IS ADMITTED, AND WHAT DELIBERATELY IS NOT. The named run must: be well-formed; exist; BE A
+// RUN OF THIS WORKFLOW FILE (path, not name -- names are cosmetic); be a workflow_dispatch (a push
+// run of fleet-converge is not a plan somebody dispatched); have COMPLETED with conclusion success
+// (a run that died before its upload step has no artifact to cite -- and a failed plan run is not a
+// plan, §5, so a red plan is refused here rather than argued with later); sit on the default branch;
+// and carry the expected artifact, unexpired. What is NOT admitted here: the CONTENT of the receipt
+// inside that artifact -- resolve_plan_revision and the transaction admissions read the receipt
+// itself and refuse by its own fields, and this step cannot open the artifact it is only about to
+// authorize a download of. WHAT IS NOT INVENTED: the run inputs (mode, host, expected_revision) are
+// deliberately not checked here -- the REST run record does not expose dispatch inputs (verified
+// against the live API 2026-11-04: run.inputs is absent for workflow_dispatch runs), so the mode is
+// certified by what the run actually carries (the artifact only a plan-mode run uploads) plus the
+// receipt's own typed fields downstream, not by a string scraped off display_title.
+// ============================================================================
+
+data fleet_converge_plan_pointer_env_name: String = "FLEET_CONVERGE_PLAN_RUN_POINTER"
+
+data fleet_converge_apply_pointer_env_name: String = "FLEET_CONVERGE_APPLY_RUN_POINTER"
+
+data fleet_converge_workflow_path: String = ".github/workflows/fleet-converge.yml"
+
+type RunPointerAdmission
+  = RunPointerAdmitted { run_id: String, head_sha: String, artifact_name: String }
+  | RunPointerMalformed { value: String }
+  | RunPointerRunRefused { run_id: String, cause: String }
+  | RunPointerWrongWorkflow { run_id: String, observed_path: String }
+  | RunPointerWrongEvent { run_id: String, observed_event: String }
+  | RunPointerIncomplete { run_id: String, status: String, conclusion: String }
+  | RunPointerOffDefaultBranch { run_id: String, branch: String, default_branch: String }
+  | RunPointerArtifactsRefused { run_id: String, cause: String }
+  | RunPointerArtifactAbsent { run_id: String, artifact: String }
+  | RunPointerArtifactExpired { run_id: String, artifact: String }
+
+fn run_pointer_admission_text(a: RunPointerAdmission) -> String {
+  match a {
+    RunPointerAdmitted { run_id: r, head_sha: s, artifact_name: a_name } =>
+      join(["run pointer ", r, " admitted: ", fleet_converge_workflow_path, " at ", s, " carries ", a_name], "")
+    RunPointerMalformed { value: v } =>
+      join(["run pointer is malformed: '", v, "' is not a workflow run id (decimal digits)"], "")
+    RunPointerRunRefused { run_id: r, cause: c } =>
+      join(["named run ", r, " is not readable: ", c, " -- a plan/apply run id that was never dispatched cannot name provenance"], "")
+    RunPointerWrongWorkflow { run_id: r, observed_path: p } =>
+      join(["named run ", r, " is not a run of ", fleet_converge_workflow_path, " (it is a run of ", p, ")"], "")
+    RunPointerWrongEvent { run_id: r, observed_event: e } =>
+      join(["named run ", r, " was not dispatched (event ", e, "); only a dispatched plan/apply run names provenance"], "")
+    RunPointerIncomplete { run_id: r, status: s, conclusion: c } =>
+      join(["named run ", r, " is not a completed successful run (status ", s, ", conclusion ", c, ")"], "")
+    RunPointerOffDefaultBranch { run_id: r, branch: b, default_branch: d } =>
+      join(["named run ", r, " runs ", b, ", not the default branch ", d], "")
+    RunPointerArtifactsRefused { run_id: r, cause: c } =>
+      join(["artifact list of named run ", r, " is not readable: ", c], "")
+    RunPointerArtifactAbsent { run_id: r, artifact: a_name } =>
+      join(["named run ", r, " carries no artifact named ", a_name, "; was it a mode that produces one?"], "")
+    RunPointerArtifactExpired { run_id: r, artifact: a_name } =>
+      join(["named run ", r, " carries ", a_name, " but it is expired; re-dispatch the plan/apply run"], "")
+  }
+}
+
+// PURE: takes what the GitHub API said, returns the verdict. The entry does the two reads; the
+// witness drives every arm without the network. Order is the cheapest subject first: a malformed
+// pointer needs no read at all (the entry refuses before calling), and within the record the
+// identity checks (which workflow, which event) precede the liveness checks (completed, artifact),
+// because 'that run is not the thing you meant' is a different answer than 'the thing you meant is
+// not ready'.
+fn run_pointer_text_ok(text: String) -> Bool {
+  match github_workflow_run_id_from_wire_text(text: text) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn admit_run_pointer(
+  pointer: String,
+  run_result: RestResult<WorkflowRun>,
+  artifacts_result: RestResult<ActionsArtifactList>,
+  default_branch: String,
+  artifact_name: String,
+) -> RunPointerAdmission {
+  match run_result {
+    RestRefused { refusal: refusal } => RunPointerRunRefused { run_id: pointer, cause: rest_refusal_text(refusal: refusal) }
+    RestAnswered { answer: run } =>
+      if run.path != fleet_converge_workflow_path {
+        RunPointerWrongWorkflow { run_id: pointer, observed_path: run.path }
+      } else if run.event != "workflow_dispatch" {
+        RunPointerWrongEvent { run_id: pointer, observed_event: run.event }
+      } else {
+        match run.status {
+          Completed =>
+            match run.conclusion {
+              Absent => RunPointerIncomplete { run_id: pointer, status: workflow_run_status_wire_label(status: run.status), conclusion: "(none)" }
+              Present { value: Success } =>
+                match artifacts_result {
+                  RestRefused { refusal: refusal } => RunPointerArtifactsRefused { run_id: pointer, cause: rest_refusal_text(refusal: refusal) }
+                  RestAnswered { answer: listed } => {
+                    let matching = filter(listed.artifacts, a => a.name == artifact_name)
+                    match matching.first() {
+                      Absent => RunPointerArtifactAbsent { run_id: pointer, artifact: artifact_name }
+                      Present { value: artifact } =>
+                        if artifact.expired {
+                          RunPointerArtifactExpired { run_id: pointer, artifact: artifact_name }
+                        } else if run.head_branch != default_branch {
+                          RunPointerOffDefaultBranch { run_id: pointer, branch: run.head_branch, default_branch: default_branch }
+                        } else {
+                          RunPointerAdmitted { run_id: pointer, head_sha: run.head_sha as String, artifact_name: artifact_name }
+                        }
+                    }
+                  }
+                }
+              Present { value: c } => RunPointerIncomplete { run_id: pointer, status: workflow_run_status_wire_label(status: run.status), conclusion: workflow_run_conclusion_wire_label(conclusion: c) }
+            }
+          s => RunPointerIncomplete { run_id: pointer, status: workflow_run_status_wire_label(status: s), conclusion: "(not concluded)" }
+        }
+      }
+  }
+}
+
+// THE ENTRY BOTH JOB STEPS RUN. Reads the pointer from its env (bound to the same
+// github.event.inputs expression the download step consumes -- one input, one reading), refuses by
+// name before either API read when the pointer is malformed, and otherwise lets the pure admission
+// answer. On success it prints what was admitted, so the artifact the download is about to fetch has
+// a named owner in the log.
+fn admit_run_pointer_step(pointer_env: String, artifact_name: String) -> ProcessExit {
+  let pointer = actions_variable_trimmed(name: pointer_env as NonEmptyStr)
+  if !run_pointer_text_ok(text: pointer) {
+    exit_failure(reason: run_pointer_admission_text(a: RunPointerMalformed { value: pointer }))
+  } else {
+    let run_result = match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: pointer) {
+      RestAnswered { answer: answered } => RestAnswered { answer: answered.run }
+      RestRefused { refusal: refusal } => RestRefused { refusal: refusal }
+    }
+    let artifacts_result = match github.Artifacts.ListWorkflowRunArtifacts(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: pointer) {
+      RestAnswered { answer: answered } => RestAnswered { answer: answered.result }
+      RestRefused { refusal: refusal } => RestRefused { refusal: refusal }
+    }
+    let verdict = admit_run_pointer(
+      pointer: pointer,
+      run_result: run_result,
+      artifacts_result: artifacts_result,
+      default_branch: gunbc_repository.default_branch,
+      artifact_name: artifact_name,
+    )
+    match verdict {
+      RunPointerAdmitted { run_id: r, head_sha: s, artifact_name: a_name } =>
+        ExitSuccess
+      _ => exit_failure(reason: run_pointer_admission_text(a: verdict))
+    }
+  }
+}
+
+fn admit_plan_run_pointer() -> ProcessExit {
+  admit_run_pointer_step(pointer_env: fleet_converge_plan_pointer_env_name, artifact_name: fleet_converge_plan_artifact_name)
+}
+
+fn admit_apply_run_pointer() -> ProcessExit {
+  admit_run_pointer_step(pointer_env: fleet_converge_apply_pointer_env_name, artifact_name: fleet_converge_apply_receipt_artifact_name)
+}
+
+// ============================================================================
+// THE DISPATCH-INPUT FAIL-FAST -- REFUSE A DISPATCH THAT CANNOT DEPLOY IN SECONDS, NOT IN TEN MINUTES.
+//
+// WHY THIS EXISTS. Run 39177393512 dispatched dashboard_deploy with plan_artifact_hash empty. The
+// workflow built the compiler pair, paid a full-closure resolve of the transaction fold
+// (resolve_entry_graph_inclusive ms=614964, max_rss 9.7 GiB), and only THEN the fold read its env
+// and refused: FleetProvenanceAbsent -- RLM_PLAN_ARTIFACT_HASH not set. Ten minutes bought a
+// ten-word refusal, and the job's visible failure became the receipt upload's "No files were found"
+// (repaired separately: every refusal arm now writes a transaction receipt). The fold's refusal is
+// correct and stays; what was missing is that nothing checked at the top of the job what the fold
+// would check after being paid for. This step asserts NO new truth -- every check here is the same
+// admission the fold makes, moved to where it is cheap -- and so it cannot pass a dispatch the fold
+// would refuse. (Naming DESIGN §6b's tell: a budget or timeout bolted onto the resolve would have
+// been the wrong repair; the missing admission was one link earlier, at the step that starts the
+// ten-minute process.)
+// ============================================================================
+
+fn dashboard_deploy_dispatch_input_admission_text(failure: String) -> String {
+  join(["dashboard_deploy dispatch input refused: ", failure, " -- fix the dispatch inputs and re-dispatch"], "")
+}
+
+fn admit_dashboard_deploy_dispatch_inputs() -> ProcessExit {
+  let revision = actions_variable_trimmed(name: rlm_expected_revision_env_name as NonEmptyStr)
+  let plan_hash = actions_variable_trimmed(name: rlm_plan_artifact_hash_env_name as NonEmptyStr)
+  let plan_pointer = actions_variable_trimmed(name: fleet_converge_plan_pointer_env_name as NonEmptyStr)
+  let apply_pointer = actions_variable_trimmed(name: fleet_converge_apply_pointer_env_name as NonEmptyStr)
+  if !release_revision_text_valid(text: revision) {
+    exit_failure(reason: dashboard_deploy_dispatch_input_admission_text(failure: join(["expected_revision '", revision, "' is not a revision the release can be built from"], "")))
+  } else if plan_hash == "" {
+    exit_failure(reason: dashboard_deploy_dispatch_input_admission_text(failure: join([rlm_plan_artifact_hash_env_name, " is empty; the transaction cites the plan artifact by hash and will refuse without it"], "")))
+  } else if !run_pointer_text_ok(text: plan_pointer) {
+    exit_failure(reason: run_pointer_admission_text(a: RunPointerMalformed { value: plan_pointer }))
+  } else if !run_pointer_text_ok(text: apply_pointer) {
+    exit_failure(reason: run_pointer_admission_text(a: RunPointerMalformed { value: apply_pointer }))
+  } else {
+    ExitSuccess
   }
 }

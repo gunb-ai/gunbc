@@ -143,3 +143,90 @@ test fn witness_v3_apply_receipt_schema_is_unreadable() -> Bool {
           && string_contains(s: r, pattern: "live-deploy-apply-receipt/v3")
     })
 }
+
+// THE TRANSACTION REFUSAL RECEIPT. Every refusal arm of the CI transaction writes this document
+// (gunbc.live_deploy.apply live_deploy_transaction_refused), so the job's failure is readable from
+// an artifact instead of an empty receipt directory and a generic upload error. These witnesses pin
+// the record itself: it round-trips, it is tamper-evident, it refuses a foreign schema, and it
+// shares the receipt DIRECTORY with the apply receipt while remaining a distinct FILE -- the
+// rollback readback reads only the apply-receipt filename and must never mistake one for the other.
+
+fn fixture_transaction_refusal() -> LiveDeployTransactionRefusalReceipt {
+  LiveDeployTransactionRefusalReceipt {
+    schema: live_deploy_transaction_refusal_schema,
+    transaction: "live_deploy_apply_prod_role_transaction_wet",
+    target: "srv1",
+    instance_id: "srv1-live",
+    arm: "FleetProvenanceAbsent",
+    detail: "live_deploy transaction: FleetProvenanceAbsent — RLM_PLAN_ARTIFACT_HASH not set",
+    completed_at: "2026-11-04T12:00:00Z",
+    receipt_identity: "",
+  }
+}
+
+test fn witness_transaction_refusal_round_trips() -> Bool {
+  let r = fixture_transaction_refusal()
+  let raw = serialize_json(v: live_deploy_transaction_refusal_json(r: r))
+  match live_deploy_transaction_refusal_receipt_decode(raw: raw) {
+    LiveDeployTransactionRefusalReceiptDecoded { receipt: back } =>
+      back.transaction == r.transaction && back.target == r.target && back.instance_id == r.instance_id
+        && back.arm == r.arm && back.detail == r.detail && back.completed_at == r.completed_at
+    LiveDeployTransactionRefusalReceiptUnreadable { reason: _ } => false
+  }
+}
+
+test fn witness_transaction_refusal_forged_identity_refuses() -> Bool {
+  let r = fixture_transaction_refusal()
+  let forged = join([
+    "{\"schema\": \"", live_deploy_transaction_refusal_schema, "\", \"transaction\": \"", r.transaction,
+    "\", \"target\": \"", r.target, "\", \"instance_id\": \"", r.instance_id,
+    "\", \"arm\": \"RunUnbound\", \"detail\": \"", r.detail,
+    "\", \"completed_at\": \"", r.completed_at, "\", \"receipt_identity\": \"0000000000000000000000000000000000000000000000000000000000000000\"}",
+  ], "")
+  match live_deploy_transaction_refusal_receipt_decode(raw: forged) {
+    LiveDeployTransactionRefusalReceiptUnreadable { reason: reason } => string_has_prefix(text: reason, prefix: "transaction refusal receipt identity does not match")
+    LiveDeployTransactionRefusalReceiptDecoded { receipt: _ } => false
+  }
+}
+
+test fn witness_transaction_refusal_foreign_schema_refuses() -> Bool {
+  let r = fixture_transaction_refusal()
+  let foreign = join([
+    "{\"schema\": \"live-deploy-apply-receipt/v4\", \"transaction\": \"", r.transaction,
+    "\", \"target\": \"", r.target, "\", \"instance_id\": \"", r.instance_id,
+    "\", \"arm\": \"", r.arm, "\", \"detail\": \"", r.detail,
+    "\", \"completed_at\": \"", r.completed_at, "\", \"receipt_identity\": \"0000000000000000000000000000000000000000000000000000000000000000\"}",
+  ], "")
+  match live_deploy_transaction_refusal_receipt_decode(raw: foreign) {
+    LiveDeployTransactionRefusalReceiptUnreadable { reason: reason } => string_has_prefix(text: reason, prefix: "transaction refusal receipt schema is not ")
+    LiveDeployTransactionRefusalReceiptDecoded { receipt: _ } => false
+  }
+}
+
+test fn witness_transaction_refusal_arm_changes_identity() -> Bool {
+  let r = fixture_transaction_refusal()
+  let other = LiveDeployTransactionRefusalReceipt {
+    schema: r.schema,
+    transaction: r.transaction,
+    target: r.target,
+    instance_id: r.instance_id,
+    arm: "PreSwapRefused",
+    detail: r.detail,
+    completed_at: r.completed_at,
+    receipt_identity: r.receipt_identity,
+  }
+  live_deploy_transaction_refusal_identity_hex(r: r) != live_deploy_transaction_refusal_identity_hex(r: other)
+}
+
+test fn witness_transaction_refusal_shares_dir_not_file_with_apply_receipt() -> Bool {
+  let dir = live_deploy_apply_receipt_dir_for(instance_id: "srv1-live")
+  let refusal = live_deploy_transaction_refusal_path_for(instance_id: "srv1-live")
+  let apply = live_deploy_apply_receipt_artifact_path_for(instance_id: "srv1-live")
+  string_has_prefix(text: refusal, prefix: dir)
+    && string_has_prefix(text: apply, prefix: dir)
+    && refusal != apply
+}
+
+fn string_has_prefix(text: String, prefix: String) -> Bool {
+  text.length() >= prefix.length() && text.substring(start: 0, end: prefix.length()) == prefix
+}

@@ -798,6 +798,30 @@ data gunbc_ci_fleet_converge_checkout_verify_target: GunbcRunStepTarget = GunbcR
   function: "verify_checkout_at_plan_revision",
 }
 
+// THE RUN POINTER ADMISSIONS (gunbc.fleet.fleet_converge_plan_revision). Each admits what a
+// hand-typed predecessor run id NAMES -- that run exists, is a completed successful dispatch of
+// THIS workflow, and carries the artifact about to be downloaded -- before actions/download-artifact
+// is the first thing to touch the pointer. Refusing by name is the whole step.
+data gunbc_ci_admit_plan_run_pointer_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "admit_plan_run_pointer",
+}
+
+data gunbc_ci_admit_apply_run_pointer_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "admit_apply_run_pointer",
+}
+
+// THE DISPATCH-INPUT FAIL-FAST. The four inputs the dashboard transaction will later refuse on
+// (empty hash, malformed revision, malformed pointers) are refused HERE, in seconds, instead of
+// after the pair build and the ten-minute fold resolve that paid them in runs 39177393512 and
+// 36719161144. It asserts no truth the fold does not also assert; it only moves the same refusal
+// earlier, where it is cheap.
+data gunbc_ci_admit_dashboard_deploy_inputs_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+  function: "admit_dashboard_deploy_dispatch_inputs",
+}
+
 data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/org_actions_inspection.dag",
   function: "org_actions_inspect_wet",
@@ -1516,6 +1540,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_fleet_converge_plan_revision_target,
     gunbc_ci_fleet_converge_checkout_verify_target,
+    gunbc_ci_admit_plan_run_pointer_target,
+    gunbc_ci_admit_apply_run_pointer_target,
+    gunbc_ci_admit_dashboard_deploy_inputs_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
@@ -2444,6 +2471,36 @@ fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_fleet_converge_checkout_verify_target.entry,
     function: gunbc_ci_fleet_converge_checkout_verify_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_admit_plan_run_pointer_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_admit_plan_run_pointer_target.entry,
+    function: gunbc_ci_admit_plan_run_pointer_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_admit_apply_run_pointer_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_admit_apply_run_pointer_target.entry,
+    function: gunbc_ci_admit_apply_run_pointer_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_admit_dashboard_deploy_inputs_target.entry,
+    function: gunbc_ci_admit_dashboard_deploy_inputs_target.function,
     claim_run: false,
     receipt_rel: none
   )
