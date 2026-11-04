@@ -108,7 +108,6 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     BehavioralReceiptPlanProducer => "TargetProducer::BehavioralReceiptPlan"
     BehavioralReceiptCensusProducer => "TargetProducer::BehavioralReceiptCensus"
     BehavioralReceiptSelftestProducer => "TargetProducer::BehavioralReceiptSelftest"
-    CompileCleanDiagnosticCensusProducer => "TargetProducer::CompileCleanDiagnosticCensus"
     EvaluationStoreAddressExactHeadProducer => "TargetProducer::EvaluationStoreAddressExactHead"
     TypedGraphExclusiveBytesProducer => "TargetProducer::TypedGraphExclusiveBytes"
     TypedGraphExclusiveBytesFloorSubjectProducer => "TargetProducer::TypedGraphExclusiveBytesFloorSubject"
