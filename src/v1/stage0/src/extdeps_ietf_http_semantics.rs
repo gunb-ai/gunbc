@@ -16,7 +16,7 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_measure::{second, second_count, Second};
 pub use crate::std_nat::{nat_range_inclusive, Nat};
 pub use crate::std_optional::Optional;
-pub use crate::std_types::{Bool, HttpStatus};
+pub use crate::std_types::{Bool, HttpStatus, Port};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -50,11 +50,29 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     }),
     }),
         first_citation: crate::extdeps_ietf_http_semantics::extdeps_external_authority_anchor(),
-        further_citations: Rc::new(vec![rfc5789_patch_authority(), rfc9110_status_codes_authority(), rfc9110_retry_after_authority()]),
+        further_citations: Rc::new(vec![rfc9110_https_default_port_authority(), rfc5789_patch_authority(), rfc9110_status_codes_authority(), rfc9110_retry_after_authority()]),
     })
             };
         }
     CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
+}
+
+pub fn rfc9110_https_default_port_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "www.rfc-editor.org/rfc/rfc9110#section-4.2.2".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn https_scheme_default_port() -> Port {
+    443
 }
 
 pub fn rfc5789_patch_authority() -> Rc<ExternalAuthority> {

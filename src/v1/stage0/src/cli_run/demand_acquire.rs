@@ -44,6 +44,24 @@ pub fn resolve_entry_graph_demand_acquired(
     ),
     String,
 > {
+    resolve_entry_graph_demand_acquired_with_diagnostics(source_roots, entry_file)
+        .map(|(graph, si, _)| (graph, si))
+}
+
+/// The demand-acquired resolve with the compile-clean diagnostics the core produced. `gunbc serve`
+/// gates on them (`is_interpreter_blocking_diagnostic`); `gunbc run` gates on the graph's own. One
+/// resolve, two consumers: the closure is the layout closure for both, never the whole-tree index.
+pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
+    source_roots: &[String],
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<crate::v1_std_core::ErrorNode>>>,
+    ),
+    String,
+> {
     // GENERATED PROVIDERS ON THE DEMAND-ACQUIRED PATH. The acquired closure holds only what the entry's
     // authored references reach, so a provider a generated reference demands is outside it. The index
     // carries the layout's answer for such a module (provider_layout); the resolve core records every
@@ -60,7 +78,9 @@ pub fn resolve_entry_graph_demand_acquired(
             layout_provider_answer(&roots, &census, module)
         }));
         match super::entry_resolve::resolve_entry_typed(&index, entry_file)? {
-            super::entry_resolve::CoreResolve::Resolved(graph, si, _) => return Ok((graph, si)),
+            super::entry_resolve::CoreResolve::Resolved(graph, si, diags) => {
+                return Ok((graph, si, diags))
+            }
             super::entry_resolve::CoreResolve::NeedsAcquisition(providers) => {
                 let fresh: Vec<_> = providers
                     .into_iter()

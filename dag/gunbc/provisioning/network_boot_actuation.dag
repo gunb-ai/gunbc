@@ -1,6 +1,5 @@
 module gunbc.provisioning.network_boot_actuation
 
-import gunbc.boot_artifact_delivery { BootDeliverySolution }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
@@ -25,13 +24,16 @@ import gunbc.provisioning.provisioning_arm {
   ArmUnobserved,
   ArmRefused,
   SeedBindingRefused,
+  BootDeliveryPlanNotCoherent,
+  EvidenceNotForThisPlan,
+  ShapeForOtherDelivery,
   DeliveryEvidence,
   provisioning_arm_derive,
   provisioning_arm_attempt,
   solution_attempt,
   FirmwarePreparation,
 }
-import gunbc.os_install_mechanism { OsInstallMechanism, PxeHttpInstall, VirtualMediaInstall, install_boot_target_for }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliveryPlanAdmitted, BootArtifactDelivery, BootDeliveryPlanIncoherent, BootDeliverySolution, MegaRacRestRemoteMedia, OpenBmcConfigfsUsbGadget, OpenBmcNbdProxyWebsocket, PxeChainBoot, RedfishVirtualMediaPull, UefiHttpBoot, admit_boot_delivery_plan, redfish_boot_target_of_control }
 
 // THE EXECUTING CONSUMER OF AN ArmShape (the frontier gunbc.provisioning.provisioning_arm
 // `provisioning_arm_consumer_frontier` binds to `network_boot_arm_actuator_steps`). It runs nothing:
@@ -57,7 +59,7 @@ import gunbc.os_install_mechanism { OsInstallMechanism, PxeHttpInstall, VirtualM
 type NetworkBootActuation
   = ArmActuationPxe {
       attempt: AttemptBinding
-      mechanism: OsInstallMechanism
+      boot_control: BootControlTarget
       boot_target: RedfishBootSourceOverrideTarget
       chain: SitePxeEdgePinnedChain
       firmware: FirmwarePreparation
@@ -66,7 +68,7 @@ type NetworkBootActuation
     }
   | ArmActuationVirtualMedia {
       attempt: AttemptBinding
-      mechanism: OsInstallMechanism
+      boot_control: BootControlTarget
       boot_target: RedfishBootSourceOverrideTarget
       media_observation: DeclarationRef
       origin: UbuntuNetworkOrigin
@@ -77,31 +79,64 @@ type NetworkBootActuation
       shape: ArmShape
     }
 
+// THE CONTROL TARGET IS THE ADMITTED PLAN'S, never a constant of the arm's family: a UEFI HTTP plan arms as
+// ArmedPxeOrUefiHttp too, and a hard-coded BootFromNetworkPxe would stage the wrong boot source for it. The
+// plan is admitted again here because ProvisioningArm is a value any caller can build; an arm whose plan is
+// absent or incoherent is Withheld, never actuated from the shape alone.
+// ProvisioningArm's plan and shape are free fields, so the shape is accepted only for the delivery family the
+// admitted plan names: a network-boot shape with a media plan (or the reverse) would pair one family's
+// artifacts with the other's boot target.
+fn delivery_is_network_boot(delivery: BootArtifactDelivery) -> Bool {
+  match delivery {
+    PxeChainBoot { evidence: _ } => true
+    UefiHttpBoot { params: _ } => true
+    RedfishVirtualMediaPull { params: _ } => false
+    MegaRacRestRemoteMedia { params: _ } => false
+    OpenBmcNbdProxyWebsocket { params: _ } => false
+    OpenBmcConfigfsUsbGadget { params: _ } => false
+  }
+}
+
+fn shape_for_other_delivery(attempt: AttemptBinding, delivery: BootArtifactDelivery) -> NetworkBootActuation {
+  ArmActuationWithheld { attempt: Present { value: attempt }, shape: ArmRefused { cause: EvidenceNotForThisPlan { axis: ShapeForOtherDelivery { delivery: delivery } } } }
+}
+
 fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation {
   match provisioning_arm_attempt(arm: arm) {
     Absent => ArmActuationWithheld { attempt: none, shape: arm.shape }
-    Present { value: attempt } => match arm.shape {
-      ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
-        ArmActuationPxe {
-          attempt: attempt,
-          mechanism: PxeHttpInstall,
-          boot_target: install_boot_target_for(mechanism: PxeHttpInstall),
-          chain: c,
-          firmware: f,
-          origin: o,
-          seed: s,
+    Present { value: attempt } => match arm.plan {
+      Absent => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
+      Present { value: unadmitted } => match admit_boot_delivery_plan(plan: unadmitted) {
+        BootDeliveryPlanIncoherent { cause: c } =>
+          ArmActuationWithheld { attempt: Present { value: attempt }, shape: ArmRefused { cause: BootDeliveryPlanNotCoherent { cause: c } } }
+        BootDeliveryPlanAdmitted { plan: admitted } => match arm.shape {
+          ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
+            if delivery_is_network_boot(delivery: admitted.delivery) == false {
+              shape_for_other_delivery(attempt: attempt, delivery: admitted.delivery)
+            } else { ArmActuationPxe {
+              attempt: attempt,
+              boot_control: admitted.boot_control,
+              boot_target: redfish_boot_target_of_control(control: admitted.boot_control),
+              chain: c,
+              firmware: f,
+              origin: o,
+              seed: s,
+            } }
+          ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
+            if delivery_is_network_boot(delivery: admitted.delivery) {
+              shape_for_other_delivery(attempt: attempt, delivery: admitted.delivery)
+            } else { ArmActuationVirtualMedia {
+              attempt: attempt,
+              boot_control: admitted.boot_control,
+              boot_target: redfish_boot_target_of_control(control: admitted.boot_control),
+              media_observation: m,
+              origin: o,
+              seed: s,
+            } }
+          ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
+          ArmRefused { cause: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
         }
-      ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
-        ArmActuationVirtualMedia {
-          attempt: attempt,
-          mechanism: VirtualMediaInstall,
-          boot_target: install_boot_target_for(mechanism: VirtualMediaInstall),
-          media_observation: m,
-          origin: o,
-          seed: s,
-        }
-      ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
-      ArmRefused { cause: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
+      }
     }
   }
 }
