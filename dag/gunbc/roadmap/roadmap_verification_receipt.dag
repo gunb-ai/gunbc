@@ -53,8 +53,6 @@ import gunbc.roadmap.roadmap_validation_oracle {
   ValidationFailed,
   ValidationRefused,
   ValidationNotRun,
-  ValidationPassed,
-  ValidationFailed,
   ValidationRefusalCause,
   ValidationContractUnspecified,
   ValidationOracleUnpinnable,
