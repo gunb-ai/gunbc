@@ -28,7 +28,8 @@ import gunbc.runner.runner_registration_labels {
 }
 import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
-import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
+import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation, JitRegistrationName, parse_jit_registration_name }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess }
 
 data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
@@ -574,12 +575,14 @@ fn partial_roster_unseen_reason(observed_count: Int, authority_total: Int) -> St
 fn registration_verdict_or(
   registrations: List<GitHubSelfHostedRunnerRegistration>,
   incarnation: LocalRunnerSlotIncarnation,
+  main: RunnerUnitMainProcess,
   unseen: RunnerSlotConnectivityVerdict,
   receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerSlotConnectivityVerdict {
-  match find_registration_by_name(registrations: registrations, name: incarnation.registration_name) {
-    Absent => unseen
-    Present { value: reg } =>
+  match slot_incarnation_registration(registrations: registrations, incarnation: incarnation, main: main) {
+    IncarnationRegistrationNone => unseen
+    IncarnationRegistrationUnresolved { reason: r } => SlotConnectivityUnknown { slot: incarnation.slot, reason: r }
+    IncarnationRegistrationFound { registration: reg } =>
       match reg.status {
         GitHubRunnerOnline =>
           match runner_slot_labels_conform(slot: incarnation.slot, observed: map(reg.labels, l => l as String), receipt: receipt) {
@@ -596,6 +599,101 @@ fn registration_verdict_or(
   }
 }
 
+// WHICH REGISTRATION IS THIS INCARNATION'S. A statically configured slot registers under its instance
+// name and that exact row is its registration. A JIT slot registers once per incarnation
+// (gunbc.runner.runner_incarnation parse_jit_registration_name), so the slot's rows are its current
+// incarnation's plus every earlier one's left offline, and only the unit's main process says which
+// is current: the wrapper names its registration with its own pid, the pid systemd supervises.
+//   - main process read: the current registration is the row carrying that pid (the newest such, if a
+//     pid recurs). No such row is the current incarnation having no registration, however many
+//     earlier ones the slot left -- the absence a complete roster may call Orphaned.
+//   - main process not read: only the current incarnation can be online, so exactly one online row is
+//     it. Otherwise the current one cannot be picked out, and that is Unresolved, never absence: an
+//     offline row might be the live incarnation's (Detached) or a dead one's, and guessing either way
+//     is the false verdict the hand-installed reconcile produced.
+// What is left out: a pid reused across a reboot against a row GitHub has not yet removed. The name
+// carries the minted epoch but the main process's start time is not compared to it here.
+// A COMMITTED INCARNATION HAS NO MAIN PROCESS TO READ. local_runner_slot_incarnations is the committed
+// width, not an observation of any unit, so its callers pass this: the join then answers a JIT slot
+// from an online row or Unresolved, never by reading an offline row as the current one.
+data committed_incarnation_main_process_unread: RunnerUnitMainProcess = MainProcessUnread {
+  cause: "the incarnation is the committed width, not a unit read on the host" as NonEmptyStr,
+}
+
+type SlotIncarnationRegistration
+  = IncarnationRegistrationFound { registration: GitHubSelfHostedRunnerRegistration }
+  | IncarnationRegistrationNone
+  | IncarnationRegistrationUnresolved { reason: String }
+
+fn registration_jit_name(reg: GitHubSelfHostedRunnerRegistration, incarnation: LocalRunnerSlotIncarnation) -> JitRegistrationName? {
+  parse_jit_registration_name(name: reg.name as String, slot_instance: incarnation.registration_name as String)
+}
+
+fn newest_registration(regs: List<GitHubSelfHostedRunnerRegistration>, incarnation: LocalRunnerSlotIncarnation) -> GitHubSelfHostedRunnerRegistration? {
+  fold(regs, init: none, f: (acc, r) =>
+    match acc {
+      Absent => Present { value: r }
+      Present { value: best } =>
+        match registration_jit_name(reg: r, incarnation: incarnation) {
+          Absent => acc
+          Present { value: rn } =>
+            match registration_jit_name(reg: best, incarnation: incarnation) {
+              Absent => Present { value: r }
+              Present { value: bn } => if rn.minted_epoch > bn.minted_epoch { Present { value: r } } else { acc }
+            }
+        }
+    })
+}
+
+fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incarnation: LocalRunnerSlotIncarnation, pid: Int) -> SlotIncarnationRegistration {
+  match newest_registration(regs: filter(jit, r => match registration_jit_name(reg: r, incarnation: incarnation) {
+      Present { value: n } => n.wrapper_pid == pid
+      Absent => false
+    }), incarnation: incarnation) {
+    Present { value: reg } => IncarnationRegistrationFound { registration: reg }
+    Absent => IncarnationRegistrationNone
+  }
+}
+
+fn jit_registration_without_pid(jit: List<GitHubSelfHostedRunnerRegistration>, why: String) -> SlotIncarnationRegistration {
+  let online = filter(jit, r => github_runner_registration_is_online(reg: r))
+  match online {
+    Cons { head: reg, tail: Empty } => IncarnationRegistrationFound { registration: reg }
+    Empty => IncarnationRegistrationUnresolved {
+      reason: join([to_string(length(xs: jit)), " registrations under this slot, none online, and ", why, ", so the current incarnation's cannot be picked out"], "")
+    }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => IncarnationRegistrationUnresolved {
+      reason: join([to_string(length(xs: online)), " registrations under this slot are online at once"], "")
+    }
+  }
+}
+
+fn slot_incarnation_registration(
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  incarnation: LocalRunnerSlotIncarnation,
+  main: RunnerUnitMainProcess,
+) -> SlotIncarnationRegistration {
+  match find_registration_by_name(registrations: registrations, name: incarnation.registration_name) {
+    Present { value: reg } => IncarnationRegistrationFound { registration: reg }
+    Absent => {
+      let jit = filter(registrations, r => match registration_jit_name(reg: r, incarnation: incarnation) {
+        Present { value: _ } => true
+        Absent => false
+      })
+      match jit {
+        Empty => IncarnationRegistrationNone
+        Cons { head: _, tail: _ } =>
+          match main {
+            MainProcess { process: p } => jit_registration_for_pid(jit: jit, incarnation: incarnation, pid: p.pid as Int)
+            MainProcessUnread { cause: c } => jit_registration_without_pid(jit: jit, why: concat("the unit's main process was not read: ", c as String))
+            NoMainProcess => jit_registration_without_pid(jit: jit, why: "the unit has no main process")
+            MainProcessUngrounded { pid: _, cause: c } => jit_registration_without_pid(jit: jit, why: concat("the unit's main pid is ungrounded: ", c as String))
+          }
+      }
+    }
+  }
+}
+
 // THE REFUSAL IS PER-QUESTION, NOT PER-ROSTER. A truncated read still answers exactly about every
 // slot INSIDE the prefix, so refusing the whole roster would be a widen (DESIGN section 5: a
 // failure arm must refuse, never widen) and would stop reconciliation on hosts this read covered
@@ -604,6 +702,7 @@ fn registration_verdict_or(
 // as the verdict "it is gone", whose remedy is a restart at connectivity_replace_action.
 fn runner_slot_connectivity_verdict_for_incarnation(
   incarnation: LocalRunnerSlotIncarnation,
+  main: RunnerUnitMainProcess,
   roster: OrganizationRunnerRosterEvidence,
   receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerSlotConnectivityVerdict {
@@ -620,6 +719,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
         registration_verdict_or(
           registrations: regs,
           incarnation: incarnation,
+          main: main,
           receipt: receipt,
           unseen: SlotConnectivityOrphaned { slot: incarnation.slot },
         )
@@ -632,6 +732,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
         registration_verdict_or(
           registrations: regs,
           incarnation: incarnation,
+          main: main,
           receipt: receipt,
           unseen: SlotConnectivityUnknown {
             slot: incarnation.slot,
@@ -651,7 +752,7 @@ fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity, receipt: RunnerUse
     f: (acc, inc) =>
       if (inc.slot.host as String) == (slot.host as String) && inc.slot.slot_index == slot.slot_index {
         Present {
-          value: runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster, receipt: receipt)
+          value: runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, main: committed_incarnation_main_process_unread, roster: roster, receipt: receipt)
         }
       } else {
         acc
@@ -804,7 +905,7 @@ fn connectivity_verdicts_for_active_incarnations(
 ) -> List<RunnerSlotConnectivityVerdict> {
   map(
     local_runner_slot_incarnations(),
-    inc => runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster, receipt: receipt)
+    inc => runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, main: committed_incarnation_main_process_unread, roster: roster, receipt: receipt)
   )
 }
 
