@@ -34,7 +34,7 @@ import gunbc.compute.compute_producer_lease {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token,
-  SpoolListing, SpoolListed, SpoolListingUnreadable, attempt_exit_stage_listings,
+  attempt_exit_stage_listings,
   AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
 }
 
