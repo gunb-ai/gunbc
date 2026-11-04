@@ -290,10 +290,11 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be
 // modeled that way today because gunbc.host.host_effect carries only the LiveDeployApply /
 // LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic
-// service-occurrence member exists. That absence is why BOTH bring-up paths must name a command:
-// the systemd unit through gunbc.live_deploy.emit, and the tmux path through
-// gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is
-// separate work and is the thing that stops this recurring.
+// service-occurrence member exists. That absence is why the ONE bring-up path must name a command:
+// the systemd unit through gunbc.live_deploy.emit. The tmux path's argv builder,
+// dashboard_instance_serve_argv, had no consumer in any lane and was deleted under DESIGN §3c; if a
+// tmux bring-up returns it returns through the live-deploy emit, not through a second argv spelling.
+// Registering that member is separate work and is the thing that stops this recurring.
 //
 // THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter
 // load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN

@@ -57,6 +57,7 @@ import extdeps.electronic_component.types {
   TvsDiodeSpec,
   UndervoltageEnable,
   VoltageWithstand,
+  RectifierSpec,
 }
 import product.electrical.carrier_phase {
   carrier_phase_standing,
@@ -752,6 +753,7 @@ fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
       BusMultiplexerSpec { multiplexer: _ } => Absent
       UsbHubSpec { hub: _ } => Absent
       ClockFanoutSpec { clock: _ } => Absent
+      RectifierSpec { rectifier: _ } => Absent
     }
   }
 }
@@ -776,6 +778,7 @@ fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
       BusMultiplexerSpec { multiplexer: _ } => Absent
       UsbHubSpec { hub: _ } => Absent
       ClockFanoutSpec { clock: _ } => Absent
+      RectifierSpec { rectifier: _ } => Absent
     }
   }
 }
