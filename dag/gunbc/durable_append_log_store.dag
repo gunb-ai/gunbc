@@ -141,10 +141,12 @@ fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: 
 // THE GROUNDING THAT CHANGED THE SHAPE (historic: the raw events initializer, deleted by #15576; its absence is
 // pinned by test.claim.durable_append_log_witness the_raw_events_initializer_is_gone. That callable created the
 // events file create-new group-writable under a dedicated worker account and the sandboxed worker then appended
-// it). What the grounding established still holds:
-// `attempt_state_prepare_argvs_for_instance` creates the wire directory the harness writes
-// `<events>.wire/<round>.{request,response}.json` into. So every `multi-writer` member is a host create
-// followed by ONE sandbox window, and the contract is a sequence of exclusive windows, not concurrent writers.
+// it). What it established holds for the eight attempt log streams #15576 migrated (the AttemptLogMember
+// members): each is a host create followed by ONE sandbox window, so their contract is a sequence of
+// exclusive windows, not concurrent writers. It does NOT hold for AttemptDirectoryWire, whose row is still
+// MigrateToLogStore { InPlaceRecordFile }: `attempt_state_prepare_argvs_for_instance` only provisions the
+// `<events>.wire/` directory, and gunbc.harness.harness_turn writes each `<round>.{request,response}.json`
+// itself with Filesystem.Write at `harness_wire_log_path`; nothing host-creates those per-round records.
 type MemberDisposition
   = MigrateToLogStore { framing: AppendFraming, principal: DurableHoldOwnerRef }
   | MigrateToCreateOnceMember {}
