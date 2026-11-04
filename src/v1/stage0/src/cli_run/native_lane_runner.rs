@@ -596,10 +596,9 @@ fn prepare_emitted_compiler_for_entry(
     // THE EMISSION OWNS ITS INDEX, BECAUSE NOTHING IN THIS PROCESS READS THE POOL AFTER IT.
     // `compile_entry_emission` routes through `IndexResidency::SharedProcessPool`, whose index
     // lives in the thread's shared memo and so SURVIVES `drop(run)` below: the trim then reclaims
-    // only freed arena and the whole-tree index stays live under the cargo build. Measured on
-    // v2-bootstrap run 41884608125 (srv4-13): rss_kb_before=10960804, trim_reclaimed_kb=1844232,
-    // rss_kb_after=9116572, slot memory.peak 15.3 GB with the build stacked on that 9.1 GB. A
-    // lane process prepares exactly one entry and every later control runs the EMITTED binary,
+    // only freed arena and the whole-tree index stays live under the cargo build (the receipt
+    // that measured it is gunbc#15848's; the line printed after the drop below is the standing
+    // measurement). A lane process prepares exactly one entry and every later control runs the EMITTED binary,
     // so `OwnedByThisCompile` -- the residency for "a pool compiled once and read by nothing
     // after", as required_regen_host's fixture compile uses it -- costs no second index, and the
     // drop below releases it. The receipt line after the drop is the measurement.
