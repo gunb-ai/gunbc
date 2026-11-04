@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_dashboard_instance_apply
 
 import std.algebra { trim, is_empty }
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.gunbc
@@ -67,6 +67,9 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
   dashboard_target_run,
   dashboard_exec_result_of_ran,
   TargetExec,
+  DashboardTargetRan,
+  TargetRan,
+  TargetNotRun,
   DashboardPathObservation,
   PathObservedPresent,
   PathObservedAbsent,
@@ -674,12 +677,17 @@ fn dashboard_ensure_source_repo(
       // ensure-source-repo second. A reset target that does not exist in the owned repo is refused
       // by NAME, typed; falling back to origin/main would reintroduce exactly the shared-ref meaning
       // collapse R3 removes (§5: a typed, located refusal, never a fabricated default).
-      let anchor_verify = dashboard_target_exec(
+      let anchor_verify = dashboard_target_run(
         instance: instance,
         program: "/usr/bin/git" as FilePath,
         args: shape_git_rev_parse_verify_quiet_argv(repo: repo, ref_name: anchor_ref as GitRef),
+        mode: TargetExec,
       )
-      match dashboard_source_repo_reset_admission(repo: repo as String, anchor_ref: anchor_ref as String, anchor_present: anchor_verify.success) {
+      match dashboard_source_repo_reset_admission(
+        repo: repo as String,
+        anchor_ref: anchor_ref as String,
+        verify: dashboard_anchor_verify_of_ran(ran: anchor_verify),
+      ) {
         Present { value: detail } => dashboard_exec_refused(detail: detail)
         Absent => dashboard_run_target_argvs(instance: instance, commands: [
           DashboardArgv {
@@ -703,18 +711,55 @@ fn dashboard_ensure_source_repo(
 }
 }
 
+// What `git rev-parse --verify --quiet <anchor>` MEANS on the target. The exit code is the only
+// witness that separates "the ref is absent" (exit 1, the case the guard exists for) from "the
+// command could not speak" (transport died, repo missing, permissions) -- collapsing both into one
+// Bool would tell the operator to run convergence when the real fault is elsewhere (§5: a typed,
+// located diagnostic; no fabricated cause).
+type DashboardAnchorVerification
+  = AnchorPresent
+  | AnchorAbsent
+  | AnchorUnverifiable { exit_code: Int, detail: String }
+
+fn dashboard_anchor_verify_of_ran(ran: DashboardTargetRan) -> DashboardAnchorVerification {
+  match ran {
+    TargetRan { exit_code: exit_code, success: _, stdout: _, stderr: stderr } =>
+      if exit_code == 0 {
+        AnchorPresent
+      } else if exit_code == 1 {
+        AnchorAbsent
+      } else {
+        AnchorUnverifiable { exit_code: exit_code, detail: stderr }
+      }
+    TargetNotRun { reason } => AnchorUnverifiable { exit_code: -1, detail: reason }
+  }
+}
+
 // The reset admission as a PURE decision (witnessable without host IO): an anchor ref the owned repo
-// does not carry refuses the reset by NAME, stating the cutover order; a present anchor lets it run.
-fn dashboard_source_repo_reset_admission(repo: String, anchor_ref: String, anchor_present: Bool) -> Optional<String> {
-  if anchor_present {
-    Absent
-  } else {
-    Present {
+// does not carry refuses the reset by NAME, stating the cutover order; an anchor the verify command
+// could not report refuses with the command's OWN failure passed through, never the absent-ref text;
+// a present anchor lets it run.
+fn dashboard_source_repo_reset_admission(
+  repo: String,
+  anchor_ref: String,
+  verify: DashboardAnchorVerification,
+) -> Optional<String> {
+  match verify {
+    AnchorPresent => Absent
+    AnchorAbsent => Present {
       value: join([
         "admitted anchor ref `", anchor_ref, "` does not exist in the owned repo ", repo,
         "; convergence must populate it before any provision apply runs ensure-source-repo",
         " (R3 cutover order); refusing rather than resetting to a missing ref or falling back",
         " to a shared default",
+      ], ""),
+    }
+    AnchorUnverifiable { exit_code: exit_code, detail: detail } => Present {
+      value: join([
+        "could not verify anchor ref `", anchor_ref, "` in the owned repo ", repo,
+        ": rev-parse failed with exit ", to_string(value: exit_code),
+        " (not the absent-ref exit 1), so the fault is not the cutover order: ", detail,
+        "; refusing to reset without a witnessed anchor",
       ], ""),
     }
   }

@@ -1,8 +1,15 @@
 module test.claim.roadmap.roadmap_dashboard_instance_apply_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath, GitRef }
+import std.types { Bool, String, NonEmptyStr, FilePath, GitRef, Int }
 import std.optional { Present, Absent }
-import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_source_repo_reset_admission }
+import gunbc.roadmap.roadmap_dashboard_instance_apply {
+  dashboard_source_repo_reset_admission,
+  dashboard_anchor_verify_of_ran,
+  DashboardAnchorVerification,
+  AnchorPresent,
+  AnchorAbsent,
+  AnchorUnverifiable,
+}
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_is_shallow_repository_argv,
@@ -67,6 +74,9 @@ import gunbc.roadmap.roadmap_dashboard_instance_apply {
 }
 import gunbc.roadmap.roadmap_dashboard_instance_observe {
   DashboardExecResult,
+  DashboardTargetRan,
+  TargetRan,
+  TargetNotRun,
   DashboardPathObservation,
   PathObservedPresent,
   PathObservedAbsent,
@@ -652,7 +662,7 @@ test fn a_missing_anchor_ref_refuses_the_reset_by_name() -> Bool {
   match dashboard_source_repo_reset_admission(
     repo: "/srv/gunbc/instances/srv1-live/source",
     anchor_ref: "refs/gunbc/srv1-lab-admitted",
-    anchor_present: false,
+    verify: AnchorAbsent,
   ) {
     Present { value: detail } =>
       string_contains(s: detail, pattern: "refs/gunbc/srv1-lab-admitted")
@@ -666,9 +676,55 @@ test fn a_present_anchor_ref_lets_the_reset_run() -> Bool {
   match dashboard_source_repo_reset_admission(
     repo: "/srv/gunbc/instances/srv1-live/source",
     anchor_ref: "refs/gunbc/srv1-lab-admitted",
-    anchor_present: true,
+    verify: AnchorPresent,
   ) {
     Present { value: _ } => false
     Absent => true
   }
+}
+
+// review 90636: a verify command that could not speak (transport died, repo missing, permissions)
+// must NOT be reported as the absent-ref case -- the operator would be sent to run convergence for
+// a fault that is elsewhere. The command's own failure passes through, with its exit code.
+test fn an_unverifiable_anchor_passes_the_command_failure_through_not_the_absent_text() -> Bool {
+  match dashboard_source_repo_reset_admission(
+    repo: "/srv/gunbc/instances/srv1-live/source",
+    anchor_ref: "refs/gunbc/srv1-lab-admitted",
+    verify: AnchorUnverifiable { exit_code: 128, detail: "fatal: not a git repository" },
+  ) {
+    Present { value: detail } =>
+      string_contains(s: detail, pattern: "could not verify anchor ref")
+        && string_contains(s: detail, pattern: "exit 128")
+        && string_contains(s: detail, pattern: "not a git repository")
+        && !string_contains(s: detail, pattern: "convergence must populate")
+    Absent => false
+  }
+}
+
+// The exit code is the discriminator: 0 is present, 1 is the witnessed absence, anything else
+// (and a command that never ran) is unverifiable with the raw detail kept.
+test fn the_verify_exit_code_discriminates_absence_from_unverifiable() -> Bool {
+  let present = match dashboard_anchor_verify_of_ran(
+    ran: TargetRan { exit_code: 0, success: true, stdout: "abc123\n", stderr: "" },
+  ) {
+    AnchorPresent => true
+    _ => false
+  }
+  let absent = match dashboard_anchor_verify_of_ran(
+    ran: TargetRan { exit_code: 1, success: false, stdout: "", stderr: "" },
+  ) {
+    AnchorAbsent => true
+    _ => false
+  }
+  let broken = match dashboard_anchor_verify_of_ran(
+    ran: TargetRan { exit_code: 128, success: false, stdout: "", stderr: "ssh: exit" },
+  ) {
+    AnchorUnverifiable { exit_code: code, detail: detail } => code == 128 && detail == "ssh: exit"
+    _ => false
+  }
+  let not_run = match dashboard_anchor_verify_of_ran(ran: TargetNotRun { reason: "transport down" }) {
+    AnchorUnverifiable { exit_code: _, detail: detail } => detail == "transport down"
+    _ => false
+  }
+  present && absent && broken && not_run
 }
