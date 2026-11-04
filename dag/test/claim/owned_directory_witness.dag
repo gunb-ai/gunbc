@@ -9,7 +9,7 @@ import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryReading,
   owned_directory_decide, owned_directory_reading_of_stat_line, owned_directory_observe,
   ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverFailure, ObserverNotSpawned, ObserverExited, ObserverTransportRefused,
-  owned_directory_ensure, OwnedDirectoryEnsured, OwnedDirectoryEnsureRefused,
+  owned_directory_ensure, owned_directory_ensure_observed, OwnedDirectoryEnsured, OwnedDirectoryEnsureRefused,
   owned_directory_act_time_handover, HandoverOwnerChanged, HandoverAppeared,
   SameUserRegroupToDeclaredGroup,
 }
@@ -106,11 +106,11 @@ test fn a_missing_observer_executable_is_inaccessible_and_installs_nothing() -> 
   let exited = p => ObserverReadFailed { origin: ObserverExited { exit_code: 127, stderr: "env: '/usr/bin/ls': No such file or directory" } }
   starts_with(s: decision_label(o: observe_with(list: unread, stat: unread), may_apply: true), prefix: "refuse:")
     && starts_with(s: decision_label(o: observe_with(list: exited, stat: exited), may_apply: true), prefix: "refuse:")
-    && match owned_directory_ensure(policy: EnsureMayApply, target: target(), observe: p => observe_with(list: unread, stat: unread), run: plan => false) {
+    && match owned_directory_ensure_observed(policy: EnsureMayApply, target: target(), observe: p => observe_with(list: unread, stat: unread), run: plan => false) {
       OwnedDirectoryEnsured { target: _, converged: _ } => false
       OwnedDirectoryEnsureRefused { target: _, reason } => !string_contains(s: reason, pattern: "Apply was paired with NotApplied")
     }
-    && match owned_directory_ensure(policy: EnsureMayApply, target: target(), observe: p => observe_with(list: q => listing(stdout: ""), stat: q => listing(stdout: "")), run: plan => false) {
+    && match owned_directory_ensure_observed(policy: EnsureMayApply, target: target(), observe: p => observe_with(list: q => listing(stdout: ""), stat: q => listing(stdout: "")), run: plan => false) {
       OwnedDirectoryEnsured { target: _, converged: _ } => false
       OwnedDirectoryEnsureRefused { target: _, reason } => string_contains(s: reason, pattern: "Apply was paired with NotApplied")
     }
@@ -219,7 +219,7 @@ test fn an_unreadable_plan_time_reading_never_fabricates_a_handover() -> Bool {
 // not-converged reason, never the handover text. Pre-fix, this claim is red: the act check refused
 // the regroup and the reason said "changed hands".
 test fn a_stable_regroup_target_is_acted_on_not_refused_as_a_handover() -> Bool {
-  match owned_directory_ensure(
+  match owned_directory_ensure_observed(
     policy: EnsureMayApply,
     target: OwnedDirectoryDeclared {
       member: "auth-sessions" as NonEmptyStr,
@@ -241,11 +241,55 @@ test fn a_stable_regroup_target_is_acted_on_not_refused_as_a_handover() -> Bool 
 // plan-time foreign-owner refusal -- never a converged receipt: that would mean the install ran and
 // the readback blessed it.
 test fn the_provider_installs_nothing_over_a_foreign_owner_at_act_time() -> Bool {
-  match owned_directory_ensure(
+  match owned_directory_ensure_observed(
     policy: EnsureMayApply,
     target: target(),
     observe: p => observed(line: "directory|root|root|700"),
     run: plan => true,
+  ) {
+    OwnedDirectoryEnsured { target: _, converged: _ } => false
+    OwnedDirectoryEnsureRefused { target: _, reason } =>
+      string_contains(s: reason, pattern: "never adopted") && !string_contains(s: reason, pattern: "changed hands")
+  }
+}
+
+// ── THE ACT-TIME WINDOW, ON THE PROVIDER'S REAL ROUTE (review 90635) ──────────────────────────
+//
+// The pure handover decision above is witnessable directly; what these claims add is the ROUTE:
+// the provider body executes its re-read, the handover check, the install skip and the reconcile,
+// and the refusal text distinguishes which check stopped the install. The pair doubles as each
+// other's RED CONTROL: a build where the handover check is removed would report "Apply was paired
+// with NotApplied" (the install ran and the after-read disagrees) on the first claim, and a build
+// where the check wrongly consults the declaration would report "changed hands" on the second.
+//
+// The observations are positional by CALL ORDER, not scripted: the handover baseline is the
+// caller-carried plan reading (Present arm -- exactly what release_member_plan's own observation
+// will feed when the apply legs thread it, the node's next rung), and every observe() call of the
+// provider (act re-read, after-readback) returns the same post-plan reading.
+
+test fn the_provider_refuses_a_handover_before_the_install_runs() -> Bool {
+  match owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: target(),
+    plan_reading: Present { value: observed(line: "directory|svc|svc|700") },
+    observe: p => observed(line: "directory|root|root|700"),
+    run: plan => false,
+  ) {
+    OwnedDirectoryEnsured { target: _, converged: _ } => false
+    OwnedDirectoryEnsureRefused { target: _, reason } =>
+      string_contains(s: reason, pattern: "changed hands")
+        && !string_contains(s: reason, pattern: "Apply was paired with NotApplied")
+        && !string_contains(s: reason, pattern: "never adopted")
+  }
+}
+
+test fn the_provider_refuses_a_foreign_baseline_as_foreign_never_as_a_handover() -> Bool {
+  match owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: target(),
+    plan_reading: Present { value: observed(line: "directory|root|root|700") },
+    observe: p => observed(line: "directory|root|root|700"),
+    run: plan => false,
   ) {
     OwnedDirectoryEnsured { target: _, converged: _ } => false
     OwnedDirectoryEnsureRefused { target: _, reason } =>

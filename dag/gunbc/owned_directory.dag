@@ -500,18 +500,31 @@ type OwnedDirectoryEnsureOutcome
 fn owned_directory_ensure(
   policy: EnsurePolicy,
   target: OwnedDirectoryTarget,
+  plan_reading: Optional<EnsureObservation<OwnedDirectoryReading>>,
   observe: fn(FilePath) -> EnsureObservation<OwnedDirectoryReading>,
   run: fn(OwnedDirectoryInstallPlan) -> Bool,
 ) -> OwnedDirectoryEnsureOutcome {
-  let before = observe(owned_directory_path(t: target))
+  // The HANDOVER baseline is the reading the PLAN was built from when a caller carries it in
+  // (release_member_plan carries its observation; callers without one pass Absent and get the
+  // fresh-read rung established by owned_directory_ensure_observed). Feeding the plan's own
+  // reading as input removes no execution: decide, the act re-read, the install and the
+  // after-readback all still run on the real route (DESIGN §3b's last-execution rule).
+  let before = match plan_reading {
+    Present { value: reading } => reading
+    Absent => observe(owned_directory_path(t: target))
+  }
   let decision = owned_directory_decide(policy: policy, target: target, observation: before)
   // ACT-TIME OWNERSHIP EFFECT (roadmap node "Realize live_deploy's install-owned leaves as typed fs
   // writes with an ownership effect"). Plan-time observation and the install are separated in time: a
   // directory that CHANGED HANDS between the decide and the act must not be silently re-owned -- the
   // post-apply readback would report convergence over a directory someone else came to own. The effect
   // re-reads the path at act time and refuses BEFORE any install runs when the act-time reading
-  // differs from the PLAN-TIME reading (owner or file-ness changed, or the path appeared where none
-  // was). It compares OBSERVATION AGAINST OBSERVATION -- never against the declared owner: closing a
+  // differs from the baseline reading. RUNG HONESTY (review 90635, §4b): the covered window runs from
+  // WHENEVER THE BASELINE WAS TAKEN to the act re-read. With plan_reading supplied by the caller that
+  // is the full plan-to-act window; with Absent (every caller today) the baseline is the read taken
+  // here, so the established rung is the decide-to-act window inside this call -- the plan-to-apply
+  // window closes when the release_member_plan's own observation is threaded through the apply legs
+  // (next rung, tracked by the node's trigger; NOT claimed closed here). It compares OBSERVATION AGAINST OBSERVATION -- never against the declared owner: closing a
   // gap toward the declaration is exactly what Apply exists to do (the SameUserRegroupToDeclaredGroup
   // posture relies on that; review 90625), and the foreign-vs-declared rule has its single home in
   // owned_directory_present_owner_is_foreign at decide time. It lives in the ONE provider so every
@@ -561,6 +574,25 @@ fn owned_directory_ensure(
       },
     }
   }
+}
+
+// The one admitted entry point for callers with no carried plan reading: the handover baseline is a
+// fresh observation of the path, so the rung established is the decide-to-act window inside this call
+// (see the rung-honesty note in owned_directory_ensure; the plan-to-apply rung needs the plan's own
+// observation threaded through, tracked as the node's next rung).
+fn owned_directory_ensure_observed(
+  policy: EnsurePolicy,
+  target: OwnedDirectoryTarget,
+  observe: fn(FilePath) -> EnsureObservation<OwnedDirectoryReading>,
+  run: fn(OwnedDirectoryInstallPlan) -> Bool,
+) -> OwnedDirectoryEnsureOutcome {
+  owned_directory_ensure(
+    policy: policy,
+    target: target,
+    plan_reading: Absent,
+    observe: observe,
+    run: run,
+  )
 }
 
 // The act-time ownership check as a PURE decision over the TWO OBSERVATIONS: what changed hands
