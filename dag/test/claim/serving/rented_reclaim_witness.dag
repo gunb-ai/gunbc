@@ -1,14 +1,13 @@
 module test.claim.serving.rented_reclaim_witness
 
 import std.types { Bool, NonEmptyStr, EpochSecs, List }
-import std.nat { Nat }
 import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
-import gunbc.harness.harness_seat { HarnessSeatReference, harness_seat_reference_record }
+import gunbc.harness.harness_seat { harness_seat_reference_record }
 import gunbc.serving.rented_allocation { RentedAllocationIdentity, rented_allocation_identity }
 import gunbc.serving.rented_reclaim {
-  RentedReclaimLoss, RentedReclaimSeat, RentedReclaimHandoff, RentedEndpointsLost, RentedNothingEnrolled,
+  RentedReclaimLoss, RentedReclaimSeat, RentedEndpointsLost, RentedNothingEnrolled,
   rented_reclaim_loss, rented_reclaim_orphaned_seats, rented_reclaim_handoffs, rented_reclaim_replacement_obligation,
 }
 import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
@@ -25,7 +24,7 @@ data same_device_other_model: RentedReplicaIdentity = RentedReplicaIdentity { no
 data reclaimed_allocation: RentedAllocationIdentity = rented_allocation_identity(provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"), contract: "reclaim-contract" as NonEmptyStr)
 
 fn r_seat(replica: RentedReplicaIdentity, attempt: NonEmptyStr) -> RentedReclaimSeat {
-  RentedReclaimSeat { replica: replica, seat: harness_seat_reference_record(attempt: attempt, offer_key: "offer-1" as NonEmptyStr, now: 1700000000 as EpochSecs, round: 0 as Nat, head: "head-1" as NonEmptyStr) }
+  RentedReclaimSeat { replica: replica, seat: harness_seat_reference_record(attempt: attempt, offer_key: "offer-1" as NonEmptyStr, now: 1700000000 as EpochSecs, round: 0, head: "head-1" as NonEmptyStr) }
 }
 
 data lost_loss: RentedReclaimLoss = RentedEndpointsLost { allocation: reclaimed_allocation, replica: reclaimed_replica }

@@ -1,7 +1,7 @@
 module gunbc.serving.rented_reclaim
 
 import std.types { NonEmptyStr, List }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationIdentity, RentedAllocationEnrollable, RentedAllocationNotEnrollable, rented_allocation_enrollment }
