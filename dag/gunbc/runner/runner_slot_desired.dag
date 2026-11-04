@@ -170,6 +170,7 @@ data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERS
 // (qual/slot-overrun-control, srv1 2026-11-04, scaled to a 2 GiB envelope, swap 0) read:
 //   today's shape (high < max)   plain overrun: throttled 23 s (5083 high events) THEN killed;
 //                                reclaim-thrash: TIMEOUT 75 s, 135044 high events, NO OOM  <- the bug
+//   MemoryHigh == MemoryMax     (the representation below) plain overrun killed in 1 s, no throttle phase
 //   MemoryHigh removed           plain overrun: killed in 1 s;
 //                                reclaim-thrash: TIMEOUT 75 s, 0 high events, NO OOM
 //   oomd pressure kill, 40%      plain overrun: kernel kill (oomd silent); reclaim-thrash: TIMEOUT
