@@ -1187,6 +1187,28 @@ test fn the_seal_step_is_invoked_through_the_rows_roots() -> Bool {
   }
 }
 
+// THE MIRROR LANE CANNOT TURN THE PUBLIC INSTRUMENT INTO ITS OWN GREEN. A mirror drift step runs in a lane
+// where a `gunbc test` process resolves its subject in the PUBLIC checkout the profile pins, so a step that
+// invoked the drift label would report a public verdict under the mirror name and read as a pass. The emitter
+// refuses instead, and this control is what keeps the refusal load-bearing rather than decorative: the step
+// must print the reason, name the capability that would retire it, name the subject it refused (the row own
+// label, so a `check` field that stopped being consumed is caught here), and carry a failing word pair. It
+// goes red the moment anyone wires the label route back into this lane.
+test fn the_mirror_drift_check_refuses_rather_than_judging_the_public_tree() -> Bool {
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerated { content: text } =>
+      string_contains(s: text, pattern: "the mirror lane cannot invoke a labelled subject") &&
+      string_contains(s: text, pattern: "gunbc.target_invocation") &&
+      string_contains(s: text, pattern: "//gunbc/instruments:tier-o-drift-check") &&
+      string_contains(s: text, pattern: "'exit' '1'") &&
+      !(string_contains(s: text, pattern: "'test' '//gunbc/instruments:tier-o-drift-check'"))
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+  }
+}
+
 // THE COMPOSED ROOT MUST BE COMPOSABLE BY THE SHELL THAT COMPOSES IT. The compose step assigns PRIVATE_ROOT
 // from a command substitution. When that substitution's body was wrapped in a subshell the rendering came
 // out `PRIVATE_ROOT=$(('cd' '..'; 'pwd'))`, and bash reads the adjacent `((` as the opening of an arithmetic

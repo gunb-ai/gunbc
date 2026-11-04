@@ -2,9 +2,6 @@ module gunbc.ci.repository_compose_overlay
 
 import std.types { NonEmptyStr, String, List }
 import gunbc.ci.repository_ci_profile { PublicSeed, OverlayIngest }
-import gunbc.cli_invoke { invocation_words_bare }
-import gunbc.gunbc_cli_command { gunbc_test_invocation_words }
-import extdeps.bazel.label { Label, render_label }
 import std.dissolution { DissolutionCondition, dissolution_description }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome }
@@ -302,28 +299,22 @@ fn compose_gunbc_run_statements(overlay: OverlayIngest, source_roots: List<Strin
 }
 
 
-// THE COMPILED VERDICT OVER THE COMPOSED ROOT — one `gunbc test <label>` process, spelled once here for
-// the same reason compose_gunbc_run_command is spelled once: a second spelling of a launcher is how a
-// verdict ends up judging a corpus other than the one it composed. The verb and label words come from
-// gunbc.gunbc_cli_command, which owns the `test` shape, and the label arrives as the declaration in
-// gunbc.instrument_targets rendered by extdeps.bazel.label — a caller cannot type a label here, because
-// `gunbc test` refuses an unknown label only inside a child process, after a runner has been paid for.
-// This is the shape DESIGN 'Building & checks' requires of a verdict lane: the seed emits and builds the
-// native instrument the label names (its producer row lives in gunbc.target_binding) and THAT binary, not
-// the v1 interpreter, judges the bytes.
-fn compose_gunbc_test_command(label: Label) -> Node {
-  let verb_words = fold(
-    invocation_words_bare(words: gunbc_test_invocation_words(label: render_label(l: label))),
+// A LANE THAT CANNOT RUN ITS SUBJECT SAYS SO, AND FAILS. The refusal is emitted as a STEP rather than as a
+// generation refusal on purpose: a lane that emits no workflow at all hides its missing capability behind
+// an absence nobody reads, which is the silent path DESIGN refuses; a step that prints the reason and exits
+// non-zero turns the gap into a red an operator can act on. bash_emit_stmts supplies `set -e`, and the
+// `exit` word is what carries the verdict -- echo alone would be a green that only mentions the problem.
+// The notes print first, so a reader sees what the step was for before it sees why it stopped. The
+// failing word pair is built with the same word() builders the rest of this module uses, so the step
+// renders in the one quoting style every other emitted word here already has.
+fn compose_refusal_statements(notes: List<String>, reason: String) -> List<Node> {
+  let note_stmts = fold(
+    notes,
     init: [] as List<Node>,
-    f: (acc, s) => concat(acc, [word(text: s)])
+    f: (acc, n) => concat(acc, [echo_stmt(text: n)])
   )
-  command(words: concat([var_word(name: "GUNBC")] as List<Node>, verb_words))
+  concat(note_stmts, [echo_stmt(text: reason), command(words: [word(text: "exit"), word(text: "1")])])
 }
-
-fn compose_gunbc_test_statements(label: Label) -> List<Node> {
-  [compose_gunbc_test_command(label: label)]
-}
-
 
 // THE SOURCE ROOTS OF A COMPOSED RUN: the repository's own roots, plus the overlay copy the composition
 // made. Derived rather than written into a row, because a row that lists the overlay root can go stale
