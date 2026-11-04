@@ -80,14 +80,6 @@ const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/source_root_eval.dag";
 /// than this file growing a second copy of that sequence.
 const V2_NATIVE_CLI_ENTRY: &str = "src/v2/cli/compile_cli.dag";
 
-pub(crate) fn native_compile_entry() -> &'static str {
-    NATIVE_COMPILE_ENTRY
-}
-
-pub(crate) fn v2_native_cli_entry() -> &'static str {
-    V2_NATIVE_CLI_ENTRY
-}
-
 /// The malformed control: deliberately unterminating bytes any honest front-end must refuse at
 /// tokenize. THE COMMITTED CARRIER IS NOT A `.dag` FILE — the bytes are not a dag program, and
 /// carrying the extension put them in the changed-witness observation's parse path, where the

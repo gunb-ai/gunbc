@@ -160,15 +160,12 @@
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
 // src/v1_tests_claim_escape_json_string_differential.rs
-// src/v1_tests_claim_generic_identity_census.rs
-// src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
 // src/v1_tests_claim_keyword_pattern_binder_refusal_test.rs
 // src/v1_tests_claim_parse_allocator_postcondition_test.rs
 // src/v1_tests_claim_parse_source_extent_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
-// src/v1_tests_claim_shared_type_leaf_collision_census.rs
 // src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
 // src/v1_tests_claim_type_declaration_occurrence_control_test.rs
