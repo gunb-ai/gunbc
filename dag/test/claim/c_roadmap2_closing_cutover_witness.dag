@@ -24,6 +24,7 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
   metering_closing_unit_exclusion, metering_closing_cutover_disposition,
 }
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show }
 
 // THE CLOSING-MARKER CUTOVER BOUNDARY, EXECUTED (blocker 1 of stern-ram-763's review of #15574, and review 89888's
 // two findings on it). The roster closing marker changed shape -- a plain metering-roster-closing entry became the
@@ -46,17 +47,19 @@ fn fx_unit(i: HostDashboardInstance) -> NonEmptyStr {
   belt_instance_obligation_unit_name(instance_id: i.instance_id as String, kind: MeteringObligation)
 }
 
-// The observation as the apply route's own producer builds it, with the four fields blocker 2(c) added.
-// Only active_state and enabled_state vary between the claims below, so the cgroup answer and the pid are
-// pinned to the QUIESCENT baseline here: main pid 0, an established read of cgroup.events saying nothing
-// is populated, and no process in the unit's cgroup. A claim that wanted to test the process axis would
-// have to vary them, and none of these do.
+// The observation as the apply route's own producer builds it, with blocker 2(c)'s four fields -- and with
+// review 90637's typed systemd answers. The words systemd prints are parsed here by the UPSTREAM parsers
+// (extdeps.systemd), so this witness exercises the same parse the real producer runs instead of assuming it.
+// Only the active/enabled words vary between the claims below, so the main pid and the cgroup answer are
+// pinned to the QUIESCENT baseline: MainPID "0" (systemd's own answer for no main process), an established
+// read of cgroup.events saying nothing is populated, and no process in the unit's cgroup. A claim that
+// wanted the process axis would vary them, and none of these do.
 fn fx_observed(unit: NonEmptyStr, active: String, enabled: String) -> List<MeteringClosingWriterObservation> {
   [MeteringClosingWriterObservation {
     unit: unit,
-    active_state: active,
-    enabled_state: enabled,
-    main_pid: "0",
+    active_state: parse_systemd_unit_active_state(raw: active),
+    unit_file_state: parse_systemd_unit_file_state(raw: enabled),
+    main_pid: parse_systemd_main_pid_show(raw: "0"),
     control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service",
     cgroup_events: CgroupEventsDecoded { populated: false },
     cgroup_read_established: true,

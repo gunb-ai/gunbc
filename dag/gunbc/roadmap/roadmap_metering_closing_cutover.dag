@@ -6,8 +6,8 @@ import std.types { String, Bool, NonEmptyStr, List, Int }
 import std.algebra { trim }
 import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import gunbc.roadmap.roadmap_attempt_state_layout_move {
-  LegacyWriterFence, LegacyWriterUnits, LegacyWriterExclusion, LegacyWriterNotExcluded,
-  LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion, legacy_writer_exclusion_all,
+  LegacyWriterFence, LegacyWriterUnits, LegacyWriterExclusion, LegacyWriterExcluded, LegacyWriterNotExcluded,
+  LegacyWriterUndeclared, LegacyWriterFenceConflict,
 }
 // THE CGROUP AUTHORITY. The gate asks the kernel whether anything is alive under the writer's cgroup, so it takes
 // the mount point, the file names and the decoder from the module that owns cgroup v2 rather than spelling any of
@@ -16,6 +16,20 @@ import extdeps.linux.cgroup_v2 {
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
   decode_cgroup_procs, cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
   cgroup_v2_procs_interface_file,
+}
+// THE SYSTEMD AUTHORITY. The gate asks systemd three questions -- is the unit running, is it masked, does it
+// have a main process -- so the three vocabularies it answers in are taken from the module that owns them
+// rather than re-spelled as strings here. A string word list of systemd's states would be a second name for
+// an upstream fact (DESIGN §3) and would drift the first time systemd's answer set changed; worse, a word
+// list can admit a word that is not a stop ("deactivating" -- the unit's processes are still running) or
+// treat a failed read ("" ) as one. Parsing is `parse_systemd_unit_active_state`,
+// `parse_systemd_unit_file_state` and `parse_systemd_main_pid_show`; each answers NOTHING (or its own
+// unreadable case) for text outside systemd's set, which is what makes the refusal below reachable.
+import extdeps.systemd {
+  SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed,
+  parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
+  SystemdUnitFileState, UnitFileMasked, parse_systemd_unit_file_state, systemd_unit_file_state_wire_label,
+  SystemdMainPidReading, MainPidRunning, MainPidNoneEstablished, MainPidUnreadable, parse_systemd_main_pid_show,
 }
 
 // THE CLOSING-MARKER MOVE, AND THE WRITER IT MUST EXCLUDE (stern-ram-763 on #15574, 2026-11-01).
@@ -104,33 +118,29 @@ data metering_closing_legacy_marker_name: NonEmptyStr = attempt_metering_slots.r
 // writer. The unit's own cgroup can.
 type MeteringClosingWriterObservation {
   unit: NonEmptyStr,
-  active_state: String,
-  enabled_state: String,
-  main_pid: String,
+  // What `systemctl is-active` printed, ALREADY PARSED by extdeps.systemd.parse_systemd_unit_active_state.
+  // `none` is not a state: it is the empty answer, the failed read, or text outside systemd's set. It is
+  // carried rather than defaulted because the difference decides the gate -- see the refusal below.
+  active_state: SystemdUnitActiveState?,
+  // What `systemctl is-enabled` printed, ALREADY PARSED by extdeps.systemd.parse_systemd_unit_file_state.
+  // UnitFileMasked is the state that makes the writer unstartable by fragment (systemd.unit(5), the
+  // /dev/null link); every other state -- including `static`, which srv1 measures as exit 0 -- leaves the
+  // unit startable and therefore unexcluded.
+  unit_file_state: SystemdUnitFileState?,
+  // What `systemctl show -p MainPID` answered, ALREADY PARSED by extdeps.systemd.parse_systemd_main_pid_show:
+  // a positive pid, the established 0, or an unreadable answer. Only the middle one is "no main process".
+  main_pid: SystemdMainPidReading,
   control_group: String,
   cgroup_events: CgroupEventsDecoding,
   cgroup_read_established: Bool,
   writer_process_count: Int,
 }
 
-// THE WORDS THE OBSERVATION ASKS FOR, declared once so no call site spells a flag. `--value` prints the value and
-// nothing else, so nothing here has to parse a `NAME=` prefix; this is the shape the landed wet witness already
-// uses (test.claim.dispatch_credential_acquisition_witness systemd_user_active_state,
-// systemd_user_main_pid, systemd_user_control_group).
 // THE READ USED FOR THE TWO CGROUP FILES. `cat`, the same argv the cgroup v2 interface declares for
 // `ReadEvents` (extdeps.linux.cgroup_v2 `ReadEvents { transport shell { argv: ["cat", "{events_path}"] } }`), so
 // this gate is not inventing a second way to open a kernel file.
 data metering_closing_file_read_program: NonEmptyStr = "/bin/cat" as NonEmptyStr
 
-data metering_closing_show_property_flag: String = "-p"
-data metering_closing_show_value_flag: String = "--value"
-data metering_closing_main_pid_property: String = "MainPID"
-data metering_closing_control_group_property: String = "ControlGroup"
-// A unit with no main process answers "0", or nothing at all. Neither names a live writer.
-data metering_closing_no_main_pid_values: List<String> = ["", "0"]
-// The unit states that mean "not running now". `failed` and `deactivating` are stopped-or-stopping, and the
-// cgroup below decides; the word alone never certifies quiescence.
-data metering_closing_stopped_states: List<String> = ["inactive", "failed", "deactivating", ""]
 
 // THE PATH TO A UNIT'S OWN CGROUP FILES. systemd reports ControlGroup relative to the unified mount, so the
 // mount point comes from the module that owns cgroup v2 (`cgroup_v2_mount_point`) and the file names come from
@@ -156,27 +166,110 @@ type MeteringClosingWriterQuiescence
   = WriterQuiescent { unit: NonEmptyStr }
   | WriterNotQuiescent { unit: NonEmptyStr, reason: String }
 
-fn metering_closing_writer_quiescent_one(o: MeteringClosingWriterObservation) -> MeteringClosingWriterQuiescence {
-  if !any(metering_closing_stopped_states, word => word == o.active_state) {
-    WriterNotQuiescent { unit: o.unit, reason: join(["the writer unit ", o.unit as String, " reports ActiveState=", o.active_state, "; a writer is running now, so the cutover waits instead of instructing a drain"], "") }
-  } else if !any(metering_closing_no_main_pid_values, v => v == o.main_pid) {
-    WriterNotQuiescent { unit: o.unit, reason: join(["the writer unit ", o.unit as String, " still has main pid ", o.main_pid, "; words that read stopped do not outvote a live main process"], "") }
-  } else if o.writer_process_count > 0 {
-    WriterNotQuiescent { unit: o.unit, reason: join([to_string(value: o.writer_process_count), " process(es) are attached to ", o.unit as String, "'s own cgroup"], "") }
-  } else if o.control_group == "" {
-    // No cgroup at all: systemd has removed it, which is the positive absence the landed note prefers over a zero.
-    WriterQuiescent { unit: o.unit }
+// WHAT STILL HAS TO BE TRUE, as a reason or nothing. The order is deliberate: a systemd answer that never
+// arrived is refused BEFORE anything is inferred from the kernel's side, because a unit whose state is
+// unknown is a unit that may be running, and the cgroup can be empty a moment before a process attaches.
+// Each refusal quotes the word systemd printed (through the upstream label function, not a copy of it).
+fn metering_closing_writer_refusal(o: MeteringClosingWriterObservation) -> String? {
+  match o.active_state {
+    // NO READING IS NOT A STOPPED STATE. This arm is the one the pre-fix code did not have: an empty or
+    // unparseable `systemctl is-active` used to fall into the same bucket as "inactive".
+    Absent => Present { value: join(["the writer unit ", o.unit as String, " gave no ActiveState systemd understands (an empty or unparseable `systemctl is-active` answer); a read that failed is not a stopped state and cannot certify the writer idle", ""]) }
+    Present { value: s } =>
+      if !metering_closing_active_state_stopped(state: s) {
+        Present { value: join(["the writer unit ", o.unit as String, " reports ActiveState=", systemd_unit_active_state_wire_label(s: s), "; only `inactive` and `failed` are stopped, and `deactivating` in particular is NOT -- its processes are still running while systemd tears them down"]) }
+      } else {
+        metering_closing_unit_file_refusal(o: o)
+      }
+  }
+}
+
+// THE MASK, next. `is-enabled` is the only thing that says whether systemd would still start this name.
+fn metering_closing_unit_file_refusal(o: MeteringClosingWriterObservation) -> String? {
+  match o.unit_file_state {
+    Absent => Present { value: join(["the writer unit ", o.unit as String, " gave no is-enabled state systemd understands; the mask is what makes the transient writer unstartable, so an unreadable file state refuses the gate rather than being assumed", ""]) }
+    Present { value: f } =>
+      if !metering_closing_unit_file_masked(state: f) {
+        Present { value: join(["the writer unit ", o.unit as String, " is not masked (is-enabled printed `", systemd_unit_file_state_wire_label(s: f), "`); without the /dev/null fragment (systemd.unit(5)) systemd will still create the belt's transient unit of that name, and srv1 measures that is-enabled exits 0 even on a `static` unit, so the word -- not the status -- is the evidence"]) }
+      } else {
+        metering_closing_main_pid_refusal(o: o)
+      }
+  }
+}
+
+// AND THE MAIN PROCESS, last of systemd's three answers.
+fn metering_closing_main_pid_refusal(o: MeteringClosingWriterObservation) -> String? {
+  match o.main_pid {
+    MainPidRunning { pid: n } =>
+      Present { value: join(["the writer unit ", o.unit as String, " still has main pid ", to_string(value: n), "; a stopped unit answers MainPID=0, so a positive pid is a live writer however the words read"]) }
+    MainPidUnreadable { raw: r } =>
+      Present { value: join(["the writer unit ", o.unit as String, " answered MainPID with '", r, "', which is neither a pid nor systemd's 0 for no main process; a corrupt read is not evidence that no process exists"]) }
+    MainPidNoneEstablished =>
+      metering_closing_cgroup_refusal(o: o)
+  }
+}
+
+// ONLY `inactive` AND `failed` STOP THE WRITER. `deactivating` is a unit still holding its processes,
+// `activating`/`active`/`reloading` need no argument, and the list is exhaustive over the upstream sum so a
+// new systemd state is a compile error here rather than a silent "not stopped" -- or worse, a silent pass.
+fn metering_closing_active_state_stopped(state: SystemdUnitActiveState) -> Bool {
+  match state {
+    Inactive => true
+    Failed => true
+    Active => false
+    Activating => false
+    Deactivating => false
+    Reloading => false
+  }
+}
+
+// `masked` is the only file state that removes the writer's ability to be started by name; every other
+// state leaves systemd free to create the belt's transient unit, so each is named rather than wildcased.
+fn metering_closing_unit_file_masked(state: SystemdUnitFileState) -> Bool {
+  match state {
+    UnitFileMasked => true
+    UnitFileEnabled => false
+    UnitFileEnabledRuntime => false
+    UnitFileLinked => false
+    UnitFileLinkedRuntime => false
+    UnitFileDisabled => false
+    UnitFileStatic => false
+    UnitFileIndirect => false
+    UnitFileGenerated => false
+    UnitFileTransient => false
+    UnitFileBad => false
+    UnitFileNotFound => false
+  }
+}
+
+// THE KERNEL'S SIDE OF THE ANSWER, which is the only side that can see a process the unit itself did not
+// expect: the cgroup. An unanswered read refuses; `populated` refuses; only a decoded, established
+// not-populated answer -- or the positive absence of a cgroup whose ControlGroup read SUCCEEDED -- is idle.
+fn metering_closing_cgroup_refusal(o: MeteringClosingWriterObservation) -> String? {
+  if o.writer_process_count > 0 {
+    Present { value: join([to_string(value: o.writer_process_count), " process(es) are attached to ", o.unit as String, "; a running writer needs no argument"]) }
   } else if !o.cgroup_read_established {
-    WriterNotQuiescent { unit: o.unit, reason: join(["cgroup.events of ", o.unit as String, " could not be read; an unanswered question is not evidence that no writer process exists"], "") }
+    Present { value: join(["the cgroup files of ", o.unit as String, " could not be read; an unanswered question is not evidence of absence (gunbc.runner.runner_slot_retirement CgroupOccupancy: an empty cgroup.procs is not positive absence, still less a read that failed)"]) }
+  } else if o.control_group == "" {
+    // systemd was ASKED and answered with no control group, and the read succeeded: the cgroup is gone,
+    // which is the positive absence the landed note describes. A failed read lands in the arm above.
+    none
   } else {
     match o.cgroup_events {
       CgroupEventsUnparseable { cause: c } =>
-        WriterNotQuiescent { unit: o.unit, reason: join(["cgroup.events of ", o.unit as String, " did not answer the populated question (", c, "); the subtree cannot be certified empty from a file that will not say"], "") }
+        Present { value: join(["cgroup.events of ", o.unit as String, " did not answer the populated question (", c, "); a file that will not decode is not a file that says nobody is home"]) }
       CgroupEventsDecoded { populated: true } =>
-        WriterNotQuiescent { unit: o.unit, reason: join(["the kernel reports the cgroup of ", o.unit as String, " populated: a writer, or one of its descendants, is alive below the unit"], "") }
+        Present { value: join(["the kernel reports the cgroup of ", o.unit as String, " populated: a writer, or one of its children, is alive under it", ""]) }
       CgroupEventsDecoded { populated: false } =>
-        WriterQuiescent { unit: o.unit }
+        none
     }
+  }
+}
+
+fn metering_closing_writer_quiescent_one(o: MeteringClosingWriterObservation) -> MeteringClosingWriterQuiescence {
+  match metering_closing_writer_refusal(o: o) {
+    Absent => WriterQuiescent { unit: o.unit }
+    Present { value: r } => WriterNotQuiescent { unit: o.unit, reason: r }
   }
 }
 
@@ -221,7 +314,15 @@ fn metering_closing_unit_exclusion(unit: NonEmptyStr, observed: List<MeteringClo
     // hold lands, and the census would then count a marker the cutover believed excluded.
     match metering_closing_writer_process_quiescence(unit: unit, observed: observed) {
       WriterNotQuiescent { unit: _, reason: why } => LegacyWriterNotExcluded { reason: why }
-      WriterQuiescent { unit: _ } => legacy_writer_exclusion_all(exclusions: map(states, o => legacy_writer_exclusion(unit: unit as String, active_state: o.active_state, enabled_state: o.enabled_state)))
+      // THE TYPED CHECK SUBSUMES THE WORD CHECK. `legacy_writer_exclusion` in
+      // gunbc.roadmap.roadmap_attempt_state_layout_move decides exclusion from the STRINGS is-active and
+      // is-enabled printed, which is the shape review 90637 removed from this module: a word list can admit
+      // `deactivating`, and an empty read can be read as stopped. `metering_closing_writer_process_quiescence`
+      // above already required a parsed Inactive or Failed, a parsed UnitFileMasked, MainPID established at
+      // 0 and an established unpopulated cgroup -- every demand the legacy helper makes, and more -- so
+      // re-asking it here with words would only reopen the hole. It stays where it is used: the legacy
+      // dispatcher's own gate, for that unit family.
+      WriterQuiescent { unit: _ } => LegacyWriterExcluded
     }
   }
 }

@@ -7,6 +7,9 @@ import gunbc.roadmap.roadmap_attempt_state_layout_move {
   LegacyWriterUndeclared, LegacyWriterFenceConflict,
 }
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable }
+// THE SAME PARSERS THE PRODUCER USES. The claims hand the gate the WORDS systemd prints and let these
+// functions decide the state, so a claim can never certify a parse it never ran.
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show }
 import gunbc.roadmap.roadmap_metering_closing_cutover {
   MeteringClosingWriterObservation, MeteringClosingWriterQuiescence, WriterQuiescent, WriterNotQuiescent,
   MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
@@ -59,11 +62,18 @@ data fx_systemctl: NonEmptyStr = "/usr/bin/systemctl" as NonEmptyStr
 // ONE OBSERVATION, ALL EIGHT FIELDS, so a claim states what it varies and inherits a certified baseline for the
 // rest. The baseline is the fully-excluded host: inactive, masked, no main pid, a cgroup the kernel reports
 // unpopulated, and the read established.
+// ONE OBSERVATION, ALL EIGHT FIELDS, so a claim states what it varies and inherits a certified base rest.
+// The three systemd answers are given HERE AS THE WORDS SYSTEMD PRINTS and parsed by the same upstream
+// parsers the producer uses (extdeps.systemd parse_systemd_unit_active_state, parse_systemd_unit_file_state,
+// parse_systemd_main_pid_show). That is deliberate: a claim that hand-built a typed state would certify the
+// gate while never touching the parse that decides it, and the two controls that matter -- the empty read and
+// `deactivating` -- are facts about WORDS, not about variants. A word outside systemd's set parses to nothing
+// and the gate must refuse it.
 fn fx_obs(
   unit: NonEmptyStr,
-  active_state: String,
-  enabled_state: String,
-  main_pid: String,
+  active_word: String,
+  enabled_word: String,
+  main_pid_word: String,
   control_group: String,
   cgroup_events: CgroupEventsDecoding,
   cgroup_read_established: Bool,
@@ -71,9 +81,9 @@ fn fx_obs(
 ) -> MeteringClosingWriterObservation {
   MeteringClosingWriterObservation {
     unit: unit,
-    active_state: active_state,
-    enabled_state: enabled_state,
-    main_pid: main_pid,
+    active_state: parse_systemd_unit_active_state(raw: active_word),
+    unit_file_state: parse_systemd_unit_file_state(raw: enabled_word),
+    main_pid: parse_systemd_main_pid_show(raw: main_pid_word),
     control_group: control_group,
     cgroup_events: cgroup_events,
     cgroup_read_established: cgroup_read_established,
@@ -81,9 +91,8 @@ fn fx_obs(
   }
 }
 
-// THE CERTIFIED-BASELINE OBSERVATION, and the two cgroup answers, so no claim hand-builds a kernel file.
 fn fx_quiescent(unit: NonEmptyStr) -> MeteringClosingWriterObservation {
-  fx_obs(unit: unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  fx_obs(unit: unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
 }
 
 fn fx_populated() -> CgroupEventsDecoding { CgroupEventsDecoded { populated: true } }
@@ -97,7 +106,7 @@ fn fx_fence(units: List<NonEmptyStr>) -> LegacyWriterFence {
 
 test fn the_running_unit_is_refused_not_drained() -> Bool {
   // 1. ActiveState=active is a writer running NOW. The answer refuses; it never tells anyone to drain.
-  let o = fx_obs(unit: fx_unit, active_state: "active", enabled_state: "masked", main_pid: "4242", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  let o = fx_obs(unit: fx_unit, active_word: "active", enabled_word: "masked", main_pid_word: "4242", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_writer_quiescent_one(o: o) {
     WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "ActiveState=active") && string_contains(s: r, pattern: "waits instead of instructing a drain")
     WriterQuiescent { unit: _ } => false
@@ -107,7 +116,7 @@ test fn the_running_unit_is_refused_not_drained() -> Bool {
 test fn a_live_main_pid_outvotes_the_stopped_word() -> Bool {
   // 2. The words say inactive; MainPID says otherwise. The live pid wins -- this is the arm a word-only
   // observation would get wrong in the dangerous direction.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "99", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "99", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_writer_quiescent_one(o: o) {
     WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "main pid 99")
     WriterQuiescent { unit: _ } => false
@@ -117,7 +126,7 @@ test fn a_live_main_pid_outvotes_the_stopped_word() -> Bool {
 test fn attached_processes_refuse_even_with_no_main_pid() -> Bool {
   // 3. MainPID is 0 (systemd's answer for a unit with no main process) and yet the unit's OWN cgroup has
   // processes. Only the cgroup can see this, which is why pgrep was dropped.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: true }, cgroup_read_established: true, writer_process_count: 3)
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: true }, cgroup_read_established: true, writer_process_count: 3)
   match metering_closing_writer_quiescent_one(o: o) {
     WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "3 process(es) are attached to")
     WriterQuiescent { unit: _ } => false
@@ -128,7 +137,7 @@ test fn an_unanswered_cgroup_read_is_never_quiescence() -> Bool {
   // 4. THE FAIL-CLOSED ARM. Everything reads stopped and masked, the process count is 0, and the cgroup file was
   // never answered at all. Absence of an answer is not evidence of absence: this is the exact fail-open the
   // blocker is about, in the process arm.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsUnparseable { cause: "unread" }, cgroup_read_established: false, writer_process_count: 0)
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsUnparseable { cause: "unread" }, cgroup_read_established: false, writer_process_count: 0)
   match metering_closing_writer_quiescent_one(o: o) {
     WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "could not be read") && string_contains(s: r, pattern: "an unanswered question is not evidence")
     WriterQuiescent { unit: _ } => false
@@ -137,7 +146,7 @@ test fn an_unanswered_cgroup_read_is_never_quiescence() -> Bool {
 
 test fn an_unparseable_cgroup_events_file_refuses() -> Bool {
   // 5. The file answered but never said `populated`. A file that will not say cannot certify an empty subtree.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: fx_unparseable(), cgroup_read_established: true, writer_process_count: 0)
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/x", cgroup_events: fx_unparseable(), cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_writer_quiescent_one(o: o) {
     WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "did not answer the populated question")
     WriterQuiescent { unit: _ } => false
@@ -146,7 +155,7 @@ test fn an_unparseable_cgroup_events_file_refuses() -> Bool {
 
 test fn the_kernel_saying_populated_refuses_a_stopped_masked_unit() -> Bool {
   // 6. stopped + masked + a populated cgroup: the words and the kernel disagree, and the kernel is the authority.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: fx_populated(), cgroup_read_established: true, writer_process_count: 0)
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/x", cgroup_events: fx_populated(), cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_writer_quiescent_one(o: o) {
     WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "populated")
     WriterQuiescent { unit: _ } => false
@@ -164,7 +173,10 @@ test fn an_unpopulated_cgroup_of_a_stopped_masked_unit_is_quiescent() -> Bool {
 test fn a_removed_cgroup_is_positive_absence_not_a_missing_answer() -> Bool {
   // 8. ControlGroup empty means systemd removed the unit's cgroup. That is an established absence, distinct from
   // claim 4 where the file exists but never answered -- both are "no processes", only one is a fact.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "", control_group: "", cgroup_events: fx_unparseable(), cgroup_read_established: false, writer_process_count: 0)
+  // MainPID is "0": systemd's own answer for a unit with no main process (org.freedesktop.systemd1(5)
+  // Unit.MainPID, systemd.service(5)). The empty string is NOT that answer -- review 90637 rules a failed
+  // read that must refuse. An empty ControlGroup is a different fact again: a cgroup systemd has removed.
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "", cgroup_events: fx_unparseable(), cgroup_read_established: false, writer_process_count: 0)
   match metering_closing_writer_quiescent_one(o: o) {
     WriterQuiescent { unit: u } => u == fx_unit
     WriterNotQuiescent { unit: _, reason: _ } => false
@@ -192,7 +204,7 @@ test fn stopped_masked_and_quiet_is_excluded() -> Bool {
 
 test fn stopped_but_not_masked_is_not_excluded() -> Bool {
   // 11. Stopped alone can be started again, so the mask is required -- the accepted rule, not a stricter one.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "enabled", main_pid: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "enabled", main_pid_word: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_unit_exclusion(unit: fx_unit, observed: [o]) {
     LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "not masked")
     LegacyWriterExcluded => false
@@ -203,7 +215,7 @@ test fn a_populated_cgroup_defeats_stopped_and_masked_together() -> Bool {
   // 12. THE POINT OF 2(c) AS AN OBSERVATION. stopped AND masked -- everything the old instruction-based gate
   // asked for -- and a live process below the unit still refuses the exclusion. An instruction to drain would
   // have passed here; an observation does not.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: fx_populated(), cgroup_read_established: true, writer_process_count: 0)
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/x", cgroup_events: fx_populated(), cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_unit_exclusion(unit: fx_unit, observed: [o]) {
     LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "populated")
     LegacyWriterExcluded => false
@@ -214,7 +226,7 @@ test fn one_refusal_among_observations_of_the_same_unit_wins() -> Bool {
   // 13. Two observations of one unit, one quiet and one not: the refusal survives the fold. A later quiescent
   // row must never overwrite an earlier refusal.
   let quiet = fx_quiescent(unit: fx_unit)
-  let live = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "7", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  let live = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "7", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_writer_process_quiescence(unit: fx_unit, observed: [quiet, live]) {
     WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "main pid 7")
     WriterQuiescent { unit: _ } => false
@@ -223,7 +235,7 @@ test fn one_refusal_among_observations_of_the_same_unit_wins() -> Bool {
 
 test fn held_back_units_names_only_the_unit_that_is_not_excluded() -> Bool {
   // 14. The list the disposition keys on: exactly one of two units is held back, and it is the right one.
-  let held = metering_closing_held_back_units(declared: [fx_unit, fx_unit_two], observed: [fx_quiescent(unit: fx_unit), fx_obs(unit: fx_unit_two, active_state: "active", enabled_state: "masked", main_pid: "5", control_group: "/u", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)])
+  let held = metering_closing_held_back_units(declared: [fx_unit, fx_unit_two], observed: [fx_quiescent(unit: fx_unit), fx_obs(unit: fx_unit_two, active_word: "active", enabled_word: "masked", main_pid_word: "5", control_group: "/u", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)])
   // Indexing yields an Optional, so the element is matched rather than compared: a bare `==` against a
   // required NonEmptyStr has no single meaning, and `Absent => false` keeps a missing element a refusal.
   let exactly_one = length(xs: held) == 1
@@ -291,7 +303,7 @@ test fn the_final_gate_refuses_markers_that_appeared_after_the_first_gate() -> B
 test fn the_final_gate_rechecks_the_exclusion_and_not_only_the_census() -> Bool {
   // 21. THE POINT OF 2(d): the exclusion has to hold at the LAST check. Everything quiet, census clean, and one
   // unit unmasked between the gates -- the recheck refuses on the exclusion, not on the markers.
-  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "enabled", main_pid: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)], census: CensusCounted { count: 0 }) {
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "enabled", main_pid_word: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)], census: CensusCounted { count: 0 }) {
     MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "no longer excluded") && string_contains(s: c, pattern: "at the LAST check")
     MeteringClosingFinalGatePassed { reason: _ } => false
   }
@@ -308,7 +320,7 @@ test fn the_final_gate_refuses_a_unit_that_lost_its_observation_entirely() -> Bo
 
 test fn the_gate_refuses_when_one_of_two_declared_units_is_live() -> Bool {
   // 23. Two declared units; one quiet, one with a live main pid. A partial exclusion is not an exclusion.
-  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit, fx_unit_two]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit), fx_obs(unit: fx_unit_two, active_state: "inactive", enabled_state: "masked", main_pid: "31", control_group: "/u", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)], census: CensusAbsentEstablished) {
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit, fx_unit_two]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit), fx_obs(unit: fx_unit_two, active_word: "inactive", enabled_word: "masked", main_pid_word: "31", control_group: "/u", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)], census: CensusAbsentEstablished) {
     MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "1 declared closing-marker writer unit(s) no longer excluded") && string_contains(s: c, pattern: "gunbc-obligation-srv2probe-second.service")
     MeteringClosingFinalGatePassed { reason: _ } => false
   }
@@ -321,16 +333,75 @@ test fn the_gate_refuses_when_one_of_two_declared_units_is_live() -> Bool {
 // asks for -- the SECOND row here wins, the unit reads as quiescent, the gate closes, and this claim goes red.
 // The refusal is placed FIRST on purpose: a fold that keeps the LAST value passes a claim that only ever has
 // one row, and passes this one too unless the order is pinned.
+// The gate's own refusal cause counts the units it held back; the REASON a unit was held back lives one
+// layer down, in the fold over that unit's rows. Both are asserted here, against the text the production
+// code actually produces: the fold must keep the kernel's populated answer, and the gate must refuse.
+fn fx_final_gate_refuses(rows: List<MeteringClosingWriterObservation>) -> Bool {
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: rows, census: CensusAbsentEstablished) {
+    MeteringClosingFinalGateRefused { cause: _ } => true
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}
+
 test fn a_later_quiescent_row_of_the_same_unit_does_not_erase_a_refusal() -> Bool {
   // The kernel says the unit still has a process attached.
-  let refusing = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: true }, cgroup_read_established: true, writer_process_count: 0)
+  let refusing = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: true }, cgroup_read_established: true, writer_process_count: 0)
   // A second reading of the same unit says it is idle.
   let idle = fx_quiescent(unit: fx_unit)
   // The refusal is FIRST on purpose: a fold that keeps the LAST row passes a one-row claim and fails
-  // this one, so the order is what makes the refusal-wins arm observable.
+  // this one, so the order is what makes the refusal-wins arm observable. Under the BROKEN mutant that
+  // collapses that arm to a quiescent answer, the second row wins, the unit reads idle, and both halves
+  // below go false.
   let both = [refusing, idle]
-  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: both, census: CensusAbsentEstablished) {
-    MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "populated") && string_contains(s: c, pattern: "gunbc-obligation-srv2probe-metering.service")
-    MeteringClosingFinalGatePassed { reason: _ } => false
+  match metering_closing_writer_process_quiescence(unit: fx_unit, observed: both) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "populated") && string_contains(s: r, pattern: "gunbc-obligation-srv2probe-metering.service") && fx_final_gate_refuses(rows: both)
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+// 25. AN EMPTY ACTIVE-STATE READ REFUSES; IT IS NOT "INACTIVE" (blocker from review 90637). The pre-fix
+// gate kept `metering_closing_stopped_states = ["inactive", "failed", "deactivating", ""]`, so the empty
+// answer -- the failed read, the unit that was not there to ask, the truncated line -- sat in the same list
+// as a genuine stop and CLOSED THE GATE. Now the word goes through the upstream parser, an empty or
+// unrecognised word parses to nothing, and nothing refuses. The same claim holds for a MainPID that is not
+// decimal and for an is-enabled line that is not a file state: each is a refusal, never an idle.
+test fn an_empty_active_state_read_refuses_rather_than_reading_as_inactive() -> Bool {
+  let o = fx_obs(unit: fx_unit, active_word: "", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "no ActiveState systemd understands")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+// 26. `deactivating` IS NOT STOPPED. systemd is still tearing the unit's processes down in that state, and
+// the pre-fix word list called it stopped-or-stopping and let the cgroup decide -- which, a moment before
+// the last process exits, says empty. It now refuses, by name, whatever the kernel reports.
+test fn a_deactivating_unit_is_not_stopped_even_with_an_empty_cgroup() -> Bool {
+  let o = fx_obs(unit: fx_unit, active_word: "deactivating", enabled_word: "masked", main_pid_word: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "deactivating") && string_contains(s: r, pattern: "processes are still running")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+// 27. A MAINPID THAT IS NOT DECIMAL IS NOT "NO PROCESS". org.freedesktop.systemd1(5) answers 0 when a unit
+// has no main process, so 0 is an answer and this is not one.
+test fn an_unparseable_main_pid_refuses_rather_than_reading_as_no_process() -> Bool {
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "31x", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "31x") && string_contains(s: r, pattern: "not evidence that no process exists")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+// 28. `static` IS NOT MASKED, EVEN THOUGH `is-enabled` EXITS 0 ON IT. extdeps.systemd.systemctl records the
+// srv1 measurement that a loaded unit with no install symlink prints `static` and still exits 0, which is
+// exactly why the gate reads the printed word through parse_systemd_unit_file_state instead of trusting a
+// status: an unmasked unit can still be started by name, so the belt's transient writer survives the "mask".
+test fn a_static_unit_is_not_masked_though_is_enabled_exits_zero() -> Bool {
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "static", main_pid_word: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "static") && string_contains(s: r, pattern: "not masked")
+    WriterQuiescent { unit: _ } => false
   }
 }
