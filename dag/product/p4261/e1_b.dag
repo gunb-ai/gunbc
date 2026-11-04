@@ -2598,12 +2598,21 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { seen: seen_unordered(), component: e1_input_fet, terminals: names(ns: e1_fet_terminal_names), identification: MarkingUnresolved { marking: Absent, discriminator: "read its designator and top marking; the K1's input-stage MOSFETs read 017N10LF (IPB017N10N5LF), a lead for this one, not its identity" } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U522"), terminals: names(ns: ["1", "2", "3", "4", "5", "6", "7", "8"]), identification: IdentifiedByMarking { row: tmp275_dgk, marking: MarkingReading { text: "TI 31 / T275", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "U522 close-up sent in the session") } } },
     InstalledComponent { seen: seen_unordered(), component: e1_u1_p5, terminals: [], identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { text: "[N-style logo]28A025U?3 / LM5066I", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "d1187d9758c9fca2911fbbdec7ca326b835f686aa0fb81c1d9efb2baeba81eb6" as Sha256DigestHex }, frame: "2020_0112_042939_078.JPG", left: 679, top: 2590, width: 1731, height: 434) } } }},
-    // OPEN DEFECT, NOT REPAIRED HERE: one photograph of this stacked pair yielded one print and
-    // both rows were read from it, so the print cannot be attributed to a body (the 2026-11-03 pass
-    // records it under an unread designator). Downgrading both to MarkingCandidate was therefore right on
-    // the evidence -- but the input-switch BLOCKING finding and the protected-bus downstream-terminal read
-    // are both derived from these rows' typed roles, so it also retires two findings the operator
-    // measured. Held pending a ruling; see the OPEN DEFECT note in extdeps.nvidia.p4261.population.
+    // OPEN QUESTION, Q21_P5 AND Q22_P5 -- WHICH BODY CARRIES THE PRINT.
+    // What the bench recorded, 2026-10-19: "017N10LF / HAD228" read on both bodies of the stacked _P5
+    // input pair, from one photograph ("_P5 input-stage photograph, sent in the session") whose bytes are
+    // not in the photograph store, so neither reading can be checked against an image today.
+    // What the 2026-11-03 atlas pass recorded: the same print under the unread designator "?1_P5", with the
+    // note that it sits on the stacked pair; "0?7N10LF" read tentatively at Q21_P5; and in the Q22_P5
+    // region the silkscreen only -- "Label only... no separate part sits next to it in frame". That neither
+    // confirms nor contradicts the bench record: a different angle, on a body the pass could not resolve.
+    // So both rows keep IdentifiedByMarking and both positions keep their claim in
+    // extdeps.nvidia.p4261.population. What settles it: the operator stating whether they read that print
+    // on BOTH bodies on 2026-10-19, and which two bodies the drain/source probes touched; or a frame with
+    // the pair separated, or that upload re-supplied. If the print proves to sit on only one body, the
+    // consequence is not just this row: the input-switch BLOCKING finding and the protected-bus
+    // downstream-terminal read are both derived from these rows' typed roles, so the reading that cannot be
+    // placed takes those two findings with it.
     InstalledComponent { seen: seen_unordered(), component: e1_q21, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
     InstalledComponent { seen: seen_unordered(), component: e1_q22, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q4_P5"), terminals: names(ns: ["single lead", "pair, lead nearer U1_P5", "pair, lead farther from U1_P5"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a SOT-23 beside Q21_P5 with a capacitor across two leads (see p4261_q4_temperature_diode_hypothesis)" } },

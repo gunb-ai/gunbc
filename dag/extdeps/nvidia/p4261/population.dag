@@ -155,23 +155,14 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   reconstructed(revision: p4261_e1, designator: "D5", part: PartConstrainedToRows { rows: [tvs_5_0smdj60a, aos_tvs_5_0smdj60a] }),
   e1_part(designator: "C10_P5", row: eeh_zu1j151),
   e1_part(designator: "C12_P5", row: eeh_zu1j151),
-  // Q21_P5 AND Q22_P5 CARRY NO CLAIM. Both were claimed as Infineon's IPB017N10N5LF on one print,
-  // "017N10LF / HAD228", read 2026-10-19 from a single photograph of the stacked pair that is not on
-  // Drive. The 2026-11-03 pass cannot say which body carries it: it records that print under an unread
-  // designator, reads "0?7N10LF" tentatively at Q21_P5, and sees the Q22_P5 label with no separate body
-  // beside it. A print that cannot be attributed to one body is a lead, not a design fact (§4d). What
-  // settles it: a frame with the pair separated, or that upload re-supplied. Both board rows stay
-  // MarkingCandidate in product.p4261.e1_b, where each reading keeps its own frame.
-  // OPEN DEFECT, NOT REPAIRED HERE (see the PR body). These two positions claim Infineon's
-  // IPB017N10N5LF on ONE print, "017N10LF / HAD228", read 2026-10-19 from ONE photograph of the stacked
-  // pair whose bytes are not in the store. The 2026-11-03 pass cannot say which body carries the print:
-  // it records that print under an unread designator, reads "0?7N10LF" tentatively at Q21_P5, and sees
-  // the Q22_P5 label with no separate body beside it. A print that cannot be attributed to one body is a
-  // lead, not a design fact (§4d), so the honest standing for both is no claim at all. It is not done
-  // here because two findings the operator measured hang off those rows -- the input switches reading
-  // BLOCKING and the protected input bus reading its downstream terminals -- and both are derived from
-  // the identified row's typed roles, so downgrading the rows retires the findings. What settles it: a
-  // frame with the pair separated, or the 2026-10-19 upload re-supplied. Ruling pending from swift-owl-113.
+  // OPEN QUESTION on Q21_P5 and Q22_P5 (the note on the two rows in product.p4261.e1_b holds both
+  // records; it is not restated here). The bench read "017N10LF / HAD228" on both bodies of the stacked
+  // pair from one 2026-10-19 photograph, whose bytes are not in the photograph store; the 2026-11-03
+  // atlas pass did not contradict that, it simply did not repeat it. Until the operator settles it, both
+  // positions keep their claim and both board rows keep their identification, because two findings the
+  // operator measured are derived from those rows -- if the print turns out to sit on only one body, the
+  // input-switch BLOCKING reading and the protected-bus downstream-terminal read become unestablished.
+  // What settles it is in the e1_b note.
   e1_part(designator: "Q21_P5", row: ipb017n10n5lf),
   e1_part(designator: "Q22_P5", row: ipb017n10n5lf),
   e1_part(designator: "U1_P5", row: lm5066i_pwp),
