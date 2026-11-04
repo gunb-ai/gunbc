@@ -226,7 +226,7 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
 
 fn group_fit_plate_joints(cards: List<String>) -> List<MechanicalInterface> {
   [mechanical_interface(id: "fit-plate-to-row", members: concat(["FIT-PLATE"], cards), fastener: FrictionFitSleeve, quantity: 1, status: Proposed,
-    requirement: "The sleeve runs 20 mm along the outside of the row, 0.1 mm clear of the read faces, and holds the plate flat on every face by friction. Nothing enters a face or the 1.7 mm gaps between cards, and nothing touches a PCB.")]
+    requirement: join(["The sleeve runs ", to_string(value: um(m: group_sleeve_depth)), " um along the outside of the row, ", to_string(value: um(m: group_lip_clearance)), " um clear of the read faces, and holds the plate flat on every face by friction. Nothing enters a face or the gaps between cards, and nothing touches a PCB."], ""))]
 }
 
 fn group_fit_plate_readme(p: GroupDuctPlan) -> String {
