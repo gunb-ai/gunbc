@@ -2,10 +2,10 @@ module test.claim.durable_handoff_host_witness
 
 import std.types { Bool, List }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused }
 import std.measure { second, second_count }
 import gunbc.durable_handoff_host {
-  HostSpoolEntryCreated, HostSpoolEntryAlreadyPresent, HostSpoolEnqueueRefused, host_spool_enqueue,
+  host_request_create_only,
   HostSpoolHealthEntry, HostSpoolHealthBound,
   HostSpoolHealthClear, HostSpoolHealthStale, HostSpoolHealthUnobserved, host_spool_health_judge,
 }
@@ -61,17 +61,17 @@ test fn a_stage_with_no_bound_is_unobserved_never_silently_young() -> Bool {
 test fn file_request_acceptance_preserves_the_first_payload_and_refuses_missing_storage() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-handoff.XXXXXX").path
   let path = concat(root, "/request")
-  let accepted = match host_spool_enqueue(path: path, content: "first request") {
-    HostSpoolEntryCreated { name: n } => n == path
+  let accepted = match host_request_create_only(path: path, content: "first request") {
+    FilesystemCreated { path: n } => n == path
     _ => false
   }
-  let repeated = match host_spool_enqueue(path: path, content: "replacement request") {
-    HostSpoolEntryAlreadyPresent { name: n } => n == path
+  let repeated = match host_request_create_only(path: path, content: "replacement request") {
+    FilesystemCreateTargetOccupied { path: n } => n == path
     _ => false
   }
   let stored = Filesystem.Read(path: path)
-  let refused = match host_spool_enqueue(path: concat(root, "/absent/request"), content: "unaccepted") {
-    HostSpoolEnqueueRefused { name: _, detail: _ } => true
+  let refused = match host_request_create_only(path: concat(root, "/absent/request"), content: "unaccepted") {
+    FilesystemCreateRefused { path: _, kind: _, error: _ } => true
     _ => false
   }
   let removed = shell.Remove.RecursiveForce(path: root)

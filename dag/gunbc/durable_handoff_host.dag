@@ -39,34 +39,13 @@ import extdeps.filesystem.filesystem_io {
 // Standings of the item the entry names are Wave C's projection; this module does not invent
 // them. A stage is responsibility for the ENTRY, not the work's standing.
 //
-// ENQUEUE IS CREATE-ONLY. A spool's law is gunbc.spool_queue spool_enqueue_assess; host_spool_enqueue below is the
-// create-only publication of a private request root's files (the request acceptance layer), not a spool stage.
-
-type HostSpoolEnqueue
-  = HostSpoolEntryCreated { name: String }
-  | HostSpoolEntryAlreadyPresent { name: String }
-  | HostSpoolEnqueueRefused { name: String, detail: String }
-
-// Acceptance is shared by every file-backed request, independently of its codec.
-// Publish the complete payload create-only before acknowledging responsibility.
-// Occupancy is an existing entry, never permission to replace its payload, and
-// acceptance says nothing about execution or the caller's continued observation.
-fn host_spool_enqueue_from_create(created: FilesystemCreateNew) -> HostSpoolEnqueue {
-  match created {
-    FilesystemCreated { path: p } => HostSpoolEntryCreated { name: p }
-    FilesystemCreateTargetOccupied { path: p } => HostSpoolEntryAlreadyPresent { name: p }
-    FilesystemCreateRefused { path: p, kind: _, error: e } =>
-      HostSpoolEnqueueRefused { name: p, detail: e }
-    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
-      HostSpoolEnqueueRefused { name: p, detail: join([o, ": ", e], "") }
-  }
-}
-
-fn host_spool_enqueue(path: String, content: String) -> HostSpoolEnqueue {
+// CREATE-ONLY PUBLICATION OF A REQUEST ROOT'S FILES. A spool's enqueue law is gunbc.spool_queue spool_enqueue_assess;
+// the request acceptance layer below publishes files in a private root that is NOT a spool, and its outcome is
+// extdeps.filesystem.filesystem_io FilesystemCreateNew itself (created / occupied / refused / kind-unrecognized):
+// no second enqueue vocabulary is declared here.
+fn host_request_create_only(path: String, content: String) -> FilesystemCreateNew {
   let write = Filesystem.WriteCreateNew(path: path, content: content)
-  host_spool_enqueue_from_create(created: filesystem_create_new(
-    path: write.path, success: write.success, error: write.error, error_kind: write.error_kind,
-  ))
+  filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
 }
 
 
@@ -324,12 +303,14 @@ fn host_request_observe(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr,
 }
 
 fn host_request_materialize_history(request: HostAcceptedRequest) -> HostRequestSubmission {
-  match host_spool_enqueue(path: host_request_path(root: request.root, identity: request.identity),
+  let unconfirmed = HostRequestAcceptanceUnknown { detail: "request accepted; immutable history publication unconfirmed; retry the same identity" }
+  match host_request_create_only(path: host_request_path(root: request.root, identity: request.identity),
     content: host_request_wire(identity: request.identity, payload: request.payload)) {
-    HostSpoolEntryCreated { name: _ } => HostRequestAccepted { request: request }
-    HostSpoolEntryAlreadyPresent { name: _ } => host_request_reconcile(
+    FilesystemCreated { path: _ } => HostRequestAccepted { request: request }
+    FilesystemCreateTargetOccupied { path: _ } => host_request_reconcile(
       observed: host_request_history_observe(root: request.root, identity: request.identity), payload: request.payload)
-    HostSpoolEnqueueRefused { name: _, detail: _ } => HostRequestAcceptanceUnknown { detail: "request accepted; immutable history publication unconfirmed; retry the same identity" }
+    FilesystemCreateRefused { path: _, kind: _, error: _ } => unconfirmed
+    FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => unconfirmed
   }
 }
 
@@ -365,8 +346,8 @@ fn host_request_stage(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, D
   if (!made.success || (made.path as String) == "") { return Err { value: "request staging directory unavailable" } }
   let path = concat(made.path as String, "/request")
   let bytes = host_request_wire(identity: identity, payload: payload)
-  match host_spool_enqueue(path: path, content: bytes) {
-    HostSpoolEntryCreated { name: _ } => match host_request_exact_read(path: path) {
+  match host_request_create_only(path: path, content: bytes) {
+    FilesystemCreated { path: _ } => match host_request_exact_read(path: path) {
       FilesystemExactPathRead { path: _, content: readback } => if readback == bytes {
         Ok { value: HostRequestStaged { root: root, identity: identity, payload: payload,
           directory: made.path as String as NonEmptyStr, path: path as NonEmptyStr } }
@@ -485,10 +466,11 @@ fn host_request_result(request: HostAcceptedRequest) -> HostRequestResult {
 // REST write. Execution/grant authority stays with that consumer. Publication
 // retains the first reply; an incompatible second answer is not a last-writer win.
 fn host_request_publish_reply(request: HostAcceptedRequest, result: JsonValue) -> HostRequestReplyPublication {
-  match host_spool_enqueue(path: host_request_reply_path(request: request), content: host_request_reply_wire(request: request, result: result)) {
-    HostSpoolEntryCreated { name: _ } => HostRequestReplyPublished
-    HostSpoolEnqueueRefused { name: _, detail: d } => HostRequestReplyUnknown { detail: d }
-    HostSpoolEntryAlreadyPresent { name: _ } => match host_request_result(request: request) {
+  match host_request_create_only(path: host_request_reply_path(request: request), content: host_request_reply_wire(request: request, result: result)) {
+    FilesystemCreated { path: _ } => HostRequestReplyPublished
+    FilesystemCreateRefused { path: _, kind: _, error: d } => HostRequestReplyUnknown { detail: d }
+    FilesystemCreateKindUnrecognized { path: _, observed: o, error: d } => HostRequestReplyUnknown { detail: join([o, ": ", d], "") }
+    FilesystemCreateTargetOccupied { path: _ } => match host_request_result(request: request) {
       HostRequestResultReady { result: stored } => if serialize_json(v: stored) == serialize_json(v: result) {
         HostRequestReplyPublished
       } else { HostRequestReplyConflict }
