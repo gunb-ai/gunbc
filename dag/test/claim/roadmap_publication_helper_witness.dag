@@ -3,7 +3,7 @@ module test.claim.roadmap_publication_helper_witness
 import std.optional { Present, Absent }
 import std.types { Bool, String, NonEmptyStr, CommitSha, FilePath }
 import extdeps.filesystem.filesystem_io {
-  FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemOtherFailure,
+  FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateKindUnrecognized, FilesystemCreateRefused, FilesystemOtherFailure,
 }
 import std.layout { render }
 import gunbc.repository { gunbc_repository }
@@ -523,6 +523,15 @@ test fn a_second_write_of_the_same_publication_request_key_is_refused_not_overwr
     RequestNotEnqueued { detail: d } => string_contains(s: d, pattern: "eacces")
     _ => false
   })
+}
+
+// The fourth outcome of filesystem_create_new refuses: it is neither a created entry nor an occupied name, and its
+// observed kind and error are carried in the refusal.
+test fn an_unrecognized_create_failure_kind_is_refused_not_enqueued_nor_already_present() -> Bool {
+  match publication_request_from_create(created: FilesystemCreateKindUnrecognized { path: "/spool/k.json", observed: "weird_kind", error: "boom" }) {
+    RequestNotEnqueued { detail: d } => string_contains(s: d, pattern: "weird_kind") && string_contains(s: d, pattern: "boom")
+    _ => false
+  }
 }
 
 fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
