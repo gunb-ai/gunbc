@@ -585,7 +585,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
-  AttemptWorkerRole, attempt_unit_role_token, attempt_role_token_is_worker,
+  AttemptWorkerRole, attempt_unit_role_token,
   attempt_exit_record_put_worker_exited, attempt_exit_record_put_vendor_pane_death,
   AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
   VendorPaneDeath, VendorPaneExited, VendorPaneSignaled,
@@ -14647,7 +14647,11 @@ fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String
 
 fn belt_exit_entry_is_worker(entry: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
-    AttemptExitEntryDecoded { record } => attempt_role_token_is_worker(token: record.role)
+    AttemptExitEntryDecoded { record } =>
+      match record.worker_invocation {
+        Present { value: _ } => true
+        Absent => false
+      }
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }

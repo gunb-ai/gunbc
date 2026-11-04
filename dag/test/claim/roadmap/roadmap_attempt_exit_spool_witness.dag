@@ -249,3 +249,27 @@ test fn linux_standard_signal_lookups_invert_the_one_name_and_number_tables() ->
       Present { value: _ } => false
     }
 }
+
+// THE WORKER INVOCATION IS READ ONCE AT DECODE (review 90556): a first worker is invocation 0, a resumed
+// worker its ordinal, a reviewer is no worker, and a worker-shaped word that does not decode is a
+// Malformed entry -- never silently an "other role" that drops out of the seat owners and the latest-end
+// reader. The malformed control is RED against a reader that parses the word with parse_int and treats Absent as not-a-worker.
+test fn a_worker_role_word_decodes_to_its_invocation_and_a_malformed_one_is_refused() -> Bool {
+  let first = match attempt_exit_entry_decode(entry_name: "n+k+worker+0123456789abcdef0123456789abcdef+success+exited+0") {
+    AttemptExitEntryDecoded { record } => (match record.worker_invocation { Present { value: n } => n == 0 Absent => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  let resumed = match attempt_exit_entry_decode(entry_name: "n+k+worker-resumed-2+0123456789abcdef0123456789abcdef+success+exited+0") {
+    AttemptExitEntryDecoded { record } => (match record.worker_invocation { Present { value: n } => n == 2 Absent => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  let reviewer = match attempt_exit_entry_decode(entry_name: "n+k+obligation+0123456789abcdef0123456789abcdef+success+exited+0") {
+    AttemptExitEntryDecoded { record } => (match record.worker_invocation { Present { value: _ } => false Absent => true })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  let malformed = match attempt_exit_entry_decode(entry_name: "n+k+worker-resumed-x+0123456789abcdef0123456789abcdef+success+exited+0") {
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => true
+    AttemptExitEntryDecoded { record: _ } => false
+  }
+  first && resumed && reviewer && malformed
+}
