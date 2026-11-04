@@ -117,6 +117,7 @@ type FleetAchievedRunnerWidths
 // planning on the three hosts that have nothing wrong with them.
 type RegistrationSlotDecoding
   = RegistrationNamesCommittedSlot { slot: RunnerSlotIdentity }
+  | RegistrationNamesDeadIncarnation { slot: RunnerSlotIdentity }
   | RegistrationNamesNoCommittedSlot { registration_name: NonEmptyStr }
   | RegistrationHostWidthUnresolved {
       registration_name: NonEmptyStr
@@ -131,6 +132,9 @@ type RegistrationSlotDecoding
 // forward naming authority read backward (DESIGN section 4, one grammar in both directions), not
 // an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
 // the answer RegistrationNamesNoCommittedSlot, a fact about the fleet rather than about text.
+// The one parse it does take is the JIT incarnation grammar, owned by gunbc.runner.runner_incarnation
+// parse_jit_registration_name and asked per committed slot: an ONLINE row is that slot's registration,
+// an OFFLINE one is RegistrationNamesDeadIncarnation (a prior incarnation, never a population member).
 //
 // THE FORK IS DISSOLVED, AND IT WAS FIVE SITES RATHER THAN THE THREE AN EARLIER REVISION OF THIS
 // NOTE CLAIMED. One rule -- pad a slot index to two digits -- had four independent implementations
@@ -241,15 +245,49 @@ fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> Registra
   ) {
     Present { value: id } => RegistrationNamesCommittedSlot { slot: id }
     Absent =>
-      match registration_names_unresolved_host(reg: reg, unresolved: population.unresolved_hosts) {
-        Present { value: u } =>
-          RegistrationHostWidthUnresolved {
-            registration_name: reg.name,
-            host: u.host,
-            cause: u.cause,
+      match registration_jit_slot(reg: reg, members: population.members) {
+        Present { value: id } =>
+          if github_runner_registration_is_online(reg: reg) {
+            RegistrationNamesCommittedSlot { slot: id }
+          } else {
+            RegistrationNamesDeadIncarnation { slot: id }
           }
-        Absent => RegistrationNamesNoCommittedSlot { registration_name: reg.name }
+        Absent => decode_registration_slot_unresolved(reg: reg, population: population)
       }
+  }
+}
+
+fn registration_jit_slot(
+  reg: GitHubSelfHostedRunnerRegistration,
+  members: List<RunnerSlotIdentity>,
+) -> RunnerSlotIdentity? {
+  fold(
+    members,
+    init: none,
+    f: (acc, id) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          match parse_jit_registration_name(name: reg.name as String, slot_instance: runner_slot_instance_name(slot: id)) {
+            Present { value: _ } => Present { value: id }
+            Absent => none
+          }
+      }
+  )
+}
+
+fn decode_registration_slot_unresolved(
+  reg: GitHubSelfHostedRunnerRegistration,
+  population: FleetCommittedSlotPopulation,
+) -> RegistrationSlotDecoding {
+  match registration_names_unresolved_host(reg: reg, unresolved: population.unresolved_hosts) {
+    Present { value: u } =>
+      RegistrationHostWidthUnresolved {
+        registration_name: reg.name,
+        host: u.host,
+        cause: u.cause,
+      }
+    Absent => RegistrationNamesNoCommittedSlot { registration_name: reg.name }
   }
 }
 

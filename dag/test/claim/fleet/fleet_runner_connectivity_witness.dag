@@ -43,6 +43,10 @@ import gunbc.fleet.fleet_runner_connectivity {
   SlotConnectivityOrphaned,
   SlotConnectivityUnknown,
   FleetRunnerCapacityWidthSnapshot,
+  decode_registration_slot,
+  RegistrationNamesCommittedSlot,
+  RegistrationNamesDeadIncarnation,
+  RegistrationNamesNoCommittedSlot,
 }
 import extdeps.github.ci_runner {
   GitHubSelfHostedRunnerRegistration,
@@ -447,4 +451,35 @@ test fn with_no_pid_the_single_online_jit_row_is_the_current_incarnation() -> Bo
 // A truncated roster that does not reach the current incarnation's row is Unknown, never Orphaned.
 test fn a_partial_roster_without_the_current_row_is_unknown() -> Bool {
   connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main(pid: 333), roster: RosterObservedPartial { observed_on: "2026-11-04" as NonEmptyStr, registrations: concat(jit_other_slot_rows, jit_ghost_rows), observed_count: 102, authority_total: 2028 }))
+}
+
+fn decodes_as_live_slot(reg: GitHubSelfHostedRunnerRegistration) -> Bool {
+  match decode_registration_slot(reg: reg) {
+    RegistrationNamesCommittedSlot { slot: _ } => true
+    _ => false
+  }
+}
+
+fn decodes_as_dead_incarnation(reg: GitHubSelfHostedRunnerRegistration) -> Bool {
+  match decode_registration_slot(reg: reg) {
+    RegistrationNamesDeadIncarnation { slot: _ } => true
+    _ => false
+  }
+}
+
+fn decodes_as_foreign(reg: GitHubSelfHostedRunnerRegistration) -> Bool {
+  match decode_registration_slot(reg: reg) {
+    RegistrationNamesNoCommittedSlot { registration_name: _ } => true
+    _ => false
+  }
+}
+
+// The capacity plan's population decode over a JIT fleet: an online `<slot>-<epoch>-<pid>` row IS the slot's
+// registration, an offline one is a dead incarnation (no population member, no Foreign refusal), and a name
+// that fits no committed slot's grammar stays Foreign.
+test fn a_jit_registration_decodes_to_its_slot_live_or_dead_and_a_stranger_stays_foreign() -> Bool {
+  decodes_as_live_slot(reg: jit_row(id: 1, name: "srv4-01-1793701320-333", online: true))
+    && decodes_as_dead_incarnation(reg: jit_row(id: 2, name: "srv4-01-1793701320-333", online: false))
+    && decodes_as_foreign(reg: jit_row(id: 3, name: "srv4-01-notanumber-333", online: true))
+    && decodes_as_foreign(reg: jit_row(id: 4, name: "elsewhere-01-1793701320-333", online: false))
 }
