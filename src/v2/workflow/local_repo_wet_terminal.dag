@@ -3998,13 +3998,16 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // existed in dag/ with ZERO rows here, so `claim_batch` was skipping every claim in it -- the
     // exact silent-skip the spawn witness's own header records ("my earlier 11-fn run missed 8
     // claims that way"). Scheduling them is what makes them run; it is not new coverage, and the
-    // propositions are the ones those claims already stated. These are the fifteen that hold on a
-    // host with NO systemd user manager and ONE principal. The ten that launch a unit, plus the
-    // unsandboxed control (which reaches the launcher through the same helper and so dies on the
-    // absent `systemd-run`), are deliberately NOT scheduled: on a host without systemd-run they
-    // are unrunnable, not false, and a lane full of unrunnable-red rows tells the join nothing.
-    // They are named one by one under "Known gaps, NOT covered" in the PR body of the follow-up
-    // that moved them off the live lab root, and they run on the two-principal srv2 host.
+    // propositions are the ones those claims already stated. These are the NINETEEN that hold on a
+    // host with NO systemd at all and ONE principal -- measured wet, one process, at the head they
+    // are scheduled at. The ELEVEN that are NOT scheduled are the nine whose verdict needs a root
+    // launcher (the production system-manager route: sudo, `systemd-run`, `User=` from the row), the
+    // unsandboxed control (it reaches the launcher through the same helper and so dies on the absent
+    // `systemd-run`), and the serve-binary claim, which needs a binary the operator names in the
+    // environment. On a host without them those eleven are unrunnable, not false, and a lane full of
+    // unrunnable-red rows tells the join nothing. All eleven are named one by one under "Known gaps,
+    // NOT covered" in the PR body of the follow-up that moved them off the live lab root, and they run
+    // on the srv2 host, which answers `sudo -n true` with rc=0.
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_inconclusive" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",

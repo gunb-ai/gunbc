@@ -293,6 +293,12 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_units_properties_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_daemon_reload_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_start_command"),
+    // The user manager's stop / reset-failed / list-units, the three verbs a transient's owner needs to
+    // put its own unit away (see the block above them in extdeps.systemd.systemctl for why `--user` is a
+    // different manager and not a flag on the same query).
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_stop_user_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_reset_failed_user_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_list_all_user_service_units_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_attach_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_disconnect_command"),

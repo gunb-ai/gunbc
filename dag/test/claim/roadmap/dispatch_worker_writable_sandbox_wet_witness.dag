@@ -39,7 +39,10 @@ import extdeps.systemd {
 }
 // Retirement, by exact unit name, through the module that owns systemctl's argv: root now creates
 // transient units on the system manager, so a claim that launched one must also put it away.
-import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_reset_failed_argv, systemctl_list_all_service_units_command }
+import extdeps.systemd.systemctl {
+  systemctl_stop_argv, systemctl_reset_failed_argv, systemctl_list_all_service_units_command,
+  systemctl_stop_user_command, systemctl_reset_failed_user_command, systemctl_list_all_user_service_units_command,
+}
 // THE HOST'S OWN ANSWER FOR WHO OWNS THE CLAIM ROOT, so the elevated root side can refuse a
 // principal that was minted rather than read.
 import extdeps.tools.coreutils_stat { coreutils_stat_path_ownership, PathOwnershipObserved, PathOwnershipUnobservable }
@@ -799,6 +802,58 @@ fn wet_unit_is_gone(unit: NonEmptyStr) -> Bool {
   !string_contains(s: listing, pattern: unit as String)
 }
 
+// THE CONTROL UNITS ARE NOT ATTEMPT UNITS. The sandboxed leg's unit is named by production's own
+// derivation (`wet_unit_name_for`), because that is the name production would give it; the
+// unsandboxed sibling is a probe with no attempt behind it, and handing it production's
+// `gunbc-attempt-*` shape would put a witness unit inside the namespace a real attempt owns -- the
+// collision the retirement duty exists to prevent. So the sibling gets its own stem, still rendered
+// by the host's name authority (`systemd_service_unit_name`: the [A-Za-z0-9-._:] charset and the
+// 255-byte bound) and still carrying the claim's mktemp leaf, so two runs of one claim can never
+// name the same unit.
+fn wet_control_unit_name(root: NonEmptyStr, label: String) -> NonEmptyStr? {
+  match witness_claim_leaf(path: root as String) {
+    Absent => Absent
+    Present { value: leaf } => match systemd_service_unit_name(
+      stem: join(["gunbc-sandbox-control-", leaf, "-", label], "") as NonEmptyStr,
+    ) {
+      SystemdUnitNameAdmitted { name: name } => Present { value: systemd_unit_name_wire(name: name) }
+      SystemdUnitNameStemEmpty => Absent
+      SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => Absent
+      SystemdUnitNameOverlong { length: _ } => Absent
+    }
+  }
+}
+
+// Same readback discipline as `wet_unit_is_gone`, against the manager that actually holds the unit.
+fn wet_user_unit_is_gone(unit: NonEmptyStr) -> Bool {
+  !string_contains(
+    s: wet_out(command: systemctl_list_all_user_service_units_command()),
+    pattern: unit as String,
+  )
+}
+
+// The unsandboxed sibling is a transient too, and a FAILED one is retained until someone resets it;
+// two of its three cells are supposed to fail, so without this the run would leave gunbc-named units
+// in the principal's user manager and stern's `systemctl list-units --all` readback could not tell a
+// probe leak from a host that still has a unit. No elevation: this is the invoking principal's own
+// manager, the same one `systemd-run --user` reached.
+fn wet_retire_user_unit(root: NonEmptyStr, label: String) -> Bool {
+  match wet_control_unit_name(root: root, label: label) {
+    Absent => wet_stage(stage: join(["control-unit-name-underivable:", label], ""), ok: false)
+    Present { value: unit } => {
+      // Both are issued and their outcomes deliberately discarded: a unit that is already gone makes
+      // `stop` fail, and that is not a leak. The readback below is what decides, so an unfalsifiable
+      // "it stopped, trust me" cannot be the answer.
+      let _ = wet_ok(command: systemctl_stop_user_command(unit: unit))
+      let _ = wet_ok(command: systemctl_reset_failed_user_command(unit: unit))
+      wet_stage(
+        stage: join(["control-unit-retired:", unit as String], ""),
+        ok: wet_user_unit_is_gone(unit: unit),
+      )
+    }
+  }
+}
+
 // Root writes into the claim's tree (the claimed/answer files are created by the elevated root side),
 // so removing it sometimes needs the same elevation the writing needed.
 fn wet_rm_elevated(root: NonEmptyStr) -> Bool {
@@ -1024,8 +1079,14 @@ fn sandbox_touch_read(instance: HostDashboardInstance, unit: NonEmptyStr, path: 
 // ssh session carries groups the long-running user manager lacks), so a target writable only through
 // such a group would refuse the sandboxed touch by permission while the control wrote, and the
 // refusal would be credited to the sandbox. The pair differs in exactly one variable. quick-bee-65
-fn unsandboxed_sibling_write_ok(unit: NonEmptyStr, path: String) -> Bool {
-  match systemd_run_user_wait_command(
+// The verdict of the sibling cell ONLY: whether this principal, with no sandbox property in front of
+// it, can write this path at all. The unit it creates is put away by the caller through
+// `wet_retire_user_unit`, as a conjunct of its own -- so a probe that leaked a unit goes red instead
+// of leaving the host holding it, and a failed cell's verdict is not masked by its cleanup.
+fn unsandboxed_sibling_write_ok(root: NonEmptyStr, label: String, path: String) -> Bool {
+  match wet_control_unit_name(root: root, label: label) {
+    Absent => wet_stage(stage: join(["control-unit-name-underivable:", label], ""), ok: false)
+    Present { value: unit } => match systemd_run_user_wait_command(
     unit: unit,
     properties: [],
     setenv_bindings: [],
@@ -1040,6 +1101,7 @@ fn unsandboxed_sibling_write_ok(unit: NonEmptyStr, path: String) -> Bool {
         program: "systemd-run",
         arguments: systemd_run_command_argument_words(command: wait.command),
       ).exit_code == 0
+    }
   }
 }
 
@@ -1053,11 +1115,10 @@ fn refusal_reading_after_control(control_wrote: Bool, reading: SandboxTouchReadi
 }
 
 fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr) -> Bool {
-  match refusal_reading_after_control(
-    control_wrote: unsandboxed_sibling_write_ok(
-      unit: join([unit as String, "-control"], "") as NonEmptyStr,
-      path: path,
-    ),
+  let control_label = join(["sibling-", unit as String], "")
+  let control_ran = unsandboxed_sibling_write_ok(root: root, label: control_label, path: path)
+  let verdict = match refusal_reading_after_control(
+    control_wrote: control_ran,
     reading: sandbox_touch_read(instance: instance, unit: unit, path: path, root: root),
   ) {
     SandboxTouchRefusedReading => true
@@ -1065,6 +1126,8 @@ fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptySt
     SandboxTouchWroteReading => false
     SandboxTouchInconclusive => false
   }
+  // The control's unit is retired as a conjunct of THIS leg, whatever the reading said.
+  verdict && wet_retire_user_unit(root: root, label: control_label)
 }
 
 fn reading_is_inconclusive(reading: SandboxTouchReading) -> Bool {
@@ -1096,10 +1159,21 @@ test fn a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_incon
 // EACCES directories read false, a writable one true. The EACCES half is unobservable as root, so the
 // claim requires a non-root principal and is false on a root runner rather than passing without it.
 test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
-  shell.Exec.RunArgv(program: "sh", arguments: ["-c", "test \"$(id -u)\" -ne 0"]).exit_code == 0
-    && !unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-enoent.service" as NonEmptyStr, path: "/proc/gunbc-no-such-dir/target")
-    && !unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-eacces.service" as NonEmptyStr, path: "/usr/gunbc-control-target")
-    && unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-ok.service" as NonEmptyStr, path: "/tmp/gunbc-control-inhabitance-target")
+  let root = wet_claim_root(tag: "unsandboxed-control" as NonEmptyStr)
+  let principal_is_not_root =
+    shell.Exec.RunArgv(program: "sh", arguments: ["-c", "test \"$(id -u)\" -ne 0"]).exit_code == 0
+  // Each cell's verdict is bound BEFORE its unit is retired, and the retirement is then a conjunct of
+  // its own: a leaked unit turns the claim red without being able to flip what the cell measured.
+  let enoent = !unsandboxed_sibling_write_ok(root: root, label: "inhabit-enoent", path: "/proc/gunbc-no-such-dir/target")
+    && wet_retire_user_unit(root: root, label: "inhabit-enoent")
+  let eacces = !unsandboxed_sibling_write_ok(root: root, label: "inhabit-eacces", path: "/usr/gunbc-control-target")
+    && wet_retire_user_unit(root: root, label: "inhabit-eacces")
+  let writable = unsandboxed_sibling_write_ok(root: root, label: "inhabit-ok", path: "/tmp/gunbc-control-inhabitance-target")
+    && wet_retire_user_unit(root: root, label: "inhabit-ok")
+  wet_launch_claim_verdict(
+    verdict: principal_is_not_root && enoent && eacces && writable,
+    root: root,
+  )
 }
 
 fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr) -> Bool {
