@@ -60,7 +60,6 @@ import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
 import extdeps.electronic_component.types { designator_eq, designator_of, designator_text }
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_position_receipts {
-  DesignatorTranscription,
   HeldReceipt,
   ReceiptBasis,
   e1_held_receipts,
@@ -130,20 +129,6 @@ fn named_without_being_seen() -> List<InstalledComponent> {
   })
 }
 
-// A marking text is what one body says about itself in one frame. A text that compares the body to
-// something else is not a read of that body: it is another part's read, copied. That is exactly how
-// C3_F1 reached the record -- its installed row carried "150 / J ZU / 26AL (as its three neighbours)",
-// a sentence whose own parenthetical admits the copying, and the model had no test that could see it
-// (DESIGN §5, §4d: a marking candidate is not an identification, and nothing here may inherit an
-// identity by sitting nearby). The comparison is a legitimate thing to SAY -- it belongs in a
-// discriminator, an obligation or a comment, where it is visibly an inference -- and is never
-// legitimate as the text itself.
-fn text_compares_rather_than_reads(t: NonEmptyStr) -> Bool {
-  string_contains(s: t, pattern: "as its")
-    || string_contains(s: t, pattern: "same as")
-    || string_contains(s: t, pattern: "like its")
-    || string_contains(s: t, pattern: "as the other")
-}
 
 fn held_unresolved(d: NonEmptyStr) -> Bool {
   any(p4261_e1_layout.unresolved, u => match u.designator {
@@ -367,8 +352,10 @@ test fn every_reading_cites_a_frame_or_names_a_gap() -> Bool {
 // in this file stays where it was; these two directions do not.
 //
 // The base rule the generator applies is stated in its own header -- a designated part above the
-// passive level, its `transcription` the `Clear` arm, standing 'confirmed' or 'final-pass critic', no
-// unreadable character. 249 of the 261 positions come from that rule alone. The other 12 are named
+// passive level, its own label read in full, standing 'confirmed' or 'final-pass critic', no
+// unreadable character. The legibility is something the generator CHECKS and, on a rule row, no
+// longer stores: 'read in full' is what resting on the rule means, so the row has no field to say
+// it in. 249 of the 261 positions come from that rule alone. The other 12 are named
 // exceptions carrying the receipt that justifies them (a per-photo sighting the merged inventory
 // lost, an entry on the atlas's own anomaly list, a bench read the atlas could not repeat, the bulk
 // capacitors the handoff puts in scope), and 5 more reads the rule reaches were refused anyway and
@@ -439,99 +426,29 @@ test fn every_named_exception_reaches_the_board() -> Bool {
       }))
 }
 
-test fn no_marking_text_describes_a_comparison() -> Bool {
-  // Every marking text on the board -- on an installed part or on an unresolved row -- has to be a
-  // read of that body, not a comparison with another one.
-  //
-  // What this is, stated plainly, because it is easy to over-read a test like it: it is a TRIPWIRE over
-  // the one shape the defect actually took. Four phrases ("as its", "same as", "like its", "as the
-  // other") catch a reading that explains itself by pointing at its neighbours. A differently worded
-  // borrowing would walk straight past it, and this test does not prove that a marking text matches its
-  // part -- only that no text admits it was copied.
-  //
-  // The defence with teeth is upstream of it. The generator emits a marking only from the designator's
-  // OWN receipt column, so no row acquires a neighbour's text by the ordinary path; and the offline
-  // audit (`.scratch/cited_csv_audit.py`, printed in the PR) compares every marking text against that
-  // designator's receipts and reports a BORROWED bucket, which is where a copy from another part
-  // actually shows up. What neither can see is a hand-written row, and C3_F1's marking was one: the
-  // receipts carry the very CSV column the text came from, so every join over them stayed green while
-  // the board asserted glyphs nobody read. That is the gap this tripwire sits in -- the shape of the
-  // sentence was the only thing that betrayed it, and the shape is visible here and nowhere in the
-  // receipts.
-  p4261_e1_layout.components.all(c => match c.identification {
-    IdentifiedByMarking { row: _, marking: m } => !text_compares_rather_than_reads(t: m.text)
-    MarkingSharedByMakers { rows: _, marking: m } => !text_compares_rather_than_reads(t: m.text)
-    MarkingCandidate { row: _, marking: m, discriminator: _ } => !text_compares_rather_than_reads(t: m.text)
-    RatingPrintedOnBody { rating: _, marking: m } => !text_compares_rather_than_reads(t: m.text)
-    ResistanceCodeRead { milliohms: _, marking: m } => !text_compares_rather_than_reads(t: m.text)
-    MarkingUnresolved { marking: m, discriminator: _ } => match m {
-      Present { value: r } => !text_compares_rather_than_reads(t: r.text)
-      Absent { } => true
-    }
-    // Written out rather than left to a wildcard, so an arm added to ComponentIdentification later has
-    // to be considered here instead of passing silently -- and so it is on the record that these two
-    // carry evidence and no marking text at all, which is why they have nothing to check.
-    FootprintUnpopulated { evidence: _ } => true
-    BodySeenMarkingUnread { evidence: _ } => true
-  })
-    && p4261_e1_layout.unresolved.all(u => match u.marking {
-      Present { value: t } => !text_compares_rather_than_reads(t: t)
-      Absent { } => true
-    })
-}
 
-test fn a_rule_read_states_a_label_it_read_in_full() -> Bool {
-  // `transcription` is the semantic state: how well the strongest receipt read this position's own
-  // label, as one of five typed arms. `transcription_basis` is the sentence beside it -- the frame
-  // the read came from when a frame carried it, with the merged column quoted so the two disagree in
-  // the open. The rule's precondition has to be a match on the ARM, not a search inside the
-  // sentence: a check over prose works only while someone keeps writing that sentence in that shape,
-  // and a witness is supposed to rest on nothing that a rewording can move.
-  //
-  // So this states what the generator's base rule actually is. RuleRead is the arm for a row the
-  // rule admitted, and the rule admits a label read IN FULL -- J2 is the case that made the
-  // distinction worth having: its merged row's designator_read column is empty while its per-photo
-  // item on frame p007 reads it clear and confirmed, so the frame wins and says so in the basis. A
-  // row that rests on the rule alone and then carries anything but Clear is claiming the rule could
-  // read a label it is also saying was not read. Named exceptions are exempt by design: J3 sits
-  // under one precisely because no receipt ever transcribed its label, and it is admitted on an
-  // obligation to go and read it.
-  //
-  // The type ALLOWS the contradiction -- `rests_on: RuleRead { }` beside `transcription: Partial { }`
-  // is writable, and all 249 rule reads happen to be Clear today -- which is exactly why the test
-  // exists. The mutant that sets one rule-read row's transcription to Partial has to turn this red.
-  filter(e1_position_receipts, r => match r.rests_on {
-    RuleRead { } => true
-    NamedException { why: _ } => false
-  }).all(r => match r.transcription {
-    Clear { } => true
-    Partial { } => false
-    Unreadable { } => false
-    NotVisible { } => false
-    NotTranscribed { } => false
-  })
-}
+// (This is where a test used to sit which asked every rule-admitted row to state a label it had
+// read in full. It is gone, and the reason is worth keeping: `rests_on: RuleRead` now has no field
+// in which to claim a half-read label, so the state it refused has no constructor and a witness
+// would only be checking that a record equals itself. The mutant that used to prove that test --
+// writing `RuleRead { transcription: Partial { } }` into a row -- is now refused by the compiler,
+// and that refusal is what the PR reports. The same applies inside a held read: ReadTranscription
+// has no NotTranscribed arm, so a held row cannot mint a Designator for characters nobody read.)
 
 test fn the_held_arms_carry_only_what_they_may() -> Bool {
-  // The two held shapes are not interchangeable, and nothing but this test stops one being written
-  // as the other. A held READ was read: it carries the exact label, so a transcription state has to
-  // exist for it -- NotTranscribed there would mint a Designator for characters nobody read, which is
-  // the C3_F1 contradiction wearing a different coat. A CANDIDATE was never read: it carries a
-  // PROPOSED name as plain text, because Designator is the identity the whole model joins on and an
-  // unread spelling must not enter it.
-  //
-  // Both directions are checked, because the regression could go either way: a candidate's proposed
-  // name reappearing on the board as a read designator would undo the correction just as thoroughly
-  // as a held read that admitted it was never transcribed.
+  // The two held shapes are not interchangeable. A held READ was read -- it carries the exact label
+  // and a legibility drawn from ReadTranscription, which has no NotTranscribed arm, so the shape
+  // already refuses the C3_F1 contradiction. A CANDIDATE was never read: it carries a PROPOSED name
+  // as plain text, because Designator is the identity the whole model joins on and an unread
+  // spelling must not enter it. What still needs a witness is the direction the shape cannot close:
+  // a candidate's proposed name reappearing on the board as a read designator, which would undo the
+  // correction exactly as thoroughly as a held read that admitted it was never transcribed.
   e1_held_receipts.all(h => match h {
-    HeldDesignatorRead { designator: _, standing: _, transcription: t, transcription_basis: _, why: _ } =>
-      match t {
-        Clear { } => true
-        Partial { } => true
-        Unreadable { } => true
-        NotVisible { } => true
-        NotTranscribed { } => false
-      }
+    // Nothing to ask of a held read here: every arm of its legibility type is one a read may have,
+    // which is the point of giving it its own type. Its designator is checked by the two tests that
+    // hold held rows off the design list and off the board's presented names.
+    HeldDesignatorRead { designator: _, standing: _, transcription: _, transcription_basis: _, why: _ } =>
+      true
     UntranscribedCandidate { source_key: _, proposed_name: n, standing: _, why: _ } =>
       // No designator reading presents it...
       !any(p4261_e1_layout.designator_readings, d =>
