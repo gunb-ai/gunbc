@@ -686,7 +686,7 @@ test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool 
 // carry no decidable order and this test does not pretend to compare them.
 test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
   e1_position_receipts.all(rec => authority_is_checkable(name: rec.designator.verbatim, basis: rec.rests_on))
-  && any(e1_position_receipts, rec => candidate_cites_what_it_sees(rec))
+    && any(e1_held_receipts, held => candidate_cites_what_it_sees(held))
 }
 
 // One frame the authority or the candidate names, checked against the store by content: a digest typed
@@ -728,7 +728,7 @@ fn authority_is_checkable(name: NonEmptyStr, basis: ReceiptBasis) -> Bool {
         // nothing is read off frames nobody has named
         count(frames) > 0
         // every frame named is one the store holds, by content
-        && all(frames, s => frame_is_held(s))
+        && frames.all(s => frame_is_held(s))
         // a read claimed clear states where on the image it happened
         && (match leg {
              Clear { } => any(frames, s => match s.box {
@@ -749,18 +749,19 @@ fn authority_is_checkable(name: NonEmptyStr, basis: ReceiptBasis) -> Bool {
 // frame. Both halves have to be in the row. 'No receipt read it' is not 'no frame shows it', and a row
 // that says only one of the two leaves a reader guessing which gap they are looking at -- which is how
 // this row came to be described as a label nobody had ever seen.
-fn candidate_cites_what_it_sees(rec: PositionReceipt) -> Bool {
-  match rec.rests_on {
-    RuleRead { } => false
-    NamedException { why: _, authority: _ } => false
-    Held { held: UntranscribedCandidate {
-      source_key: k, proposed_name: n, standing: _, partly_legible_in: frames, obligation: o, why: _
-    } } =>
+fn candidate_cites_what_it_sees(held: HeldReceipt) -> Bool {
+  match held {
+    UntranscribedCandidate {
+      source_key: k, proposed_name: n, standing: _, partly_legible_in: frames, obligation: _, why: _
+    } =>
       string_eq(a: k as String, b: C3_F1_SOURCE_KEY)
       && string_eq(a: n as String, b: "C3_F1")
+      // 'no receipt read it' without 'and here is the frame that shows it' is the half-truth this row
+      // carried before; a row that cites a frame the store does not hold is the same lie with a digest
       && count(frames) > 0
-      && all(frames, s => frame_is_held(s))
-      && count(o as String) > 0
-    Held { held: HeldDesignatorRead { } } => false
+      && frames.all(s => frame_is_held(s))
+      // `obligation` says what would close it and is prose for a reader, like `why` and `read_by`: the
+      // frame citation is the checkable half, and no amount of text-searching the sentence proves it
+    HeldDesignatorRead { } => false
   }
 }
