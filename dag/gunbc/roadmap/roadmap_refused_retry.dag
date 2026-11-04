@@ -94,12 +94,20 @@ fn refused_retry_standing(class: RefusalCauseClass, retries_recorded: Int) -> Re
   }
 }
 
-fn refused_retry_owed(standing: RefusedRetryStanding) -> Bool {
+// WHETHER THE BELT WAKES the verify obligation: while a retry is owed, and ONCE MORE at exactly the bound,
+// so the gate reaches its typed RetryExhausted terminal. That terminal is recorded as ledger entry
+// bound+1 (refused_retry_terminal_ordinal); with it recorded, the count is past the bound and no wake
+// remains, so the terminal is reached once and the lineage does not re-fire every tick.
+fn refused_retry_wakes(standing: RefusedRetryStanding) -> Bool {
   match standing {
     RefusedRetryOwed { ordinal: _ } => true
-    RefusedRetryExhausted { attempts: _ } => false
+    RefusedRetryExhausted { attempts } => attempts == refused_retry_bound
     RefusedRetryOperatorOnly => false
   }
+}
+
+fn refused_retry_terminal_ordinal() -> Int {
+  refused_retry_bound + 1
 }
 
 // ONE LEDGER FILE PER RETRY beside the receipt it retries: the count is the number of entries, so no
@@ -121,7 +129,7 @@ fn refused_retry_ledger_count(entries: String, receipt_basename: String) -> Int 
 
 fn refused_retry_exhausted_reason(attempts: Int) -> String {
   join([
-    "RetryExhausted: the verification was refused by its infrastructure ", to_string(attempts),
+    "RetryExhausted: the verification was refused by its infrastructure ", to_string(if attempts > refused_retry_bound { refused_retry_bound } else { attempts }),
     " time(s) and the belt's bound of ", to_string(refused_retry_bound),
     " retries is spent; the operator decides",
   ], "")
