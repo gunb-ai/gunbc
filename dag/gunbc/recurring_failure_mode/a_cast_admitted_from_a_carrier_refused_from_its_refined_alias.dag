@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.a_cast_admitted_from_a_carrier_refused_from_its_refined_alias
 
 import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 // FILED 2026-11-04 by clever-carp-493 on stern-bat-401's ruling, while implementing the declared
@@ -26,9 +26,9 @@ data a_cast_admitted_from_a_carrier_refused_from_its_refined_alias: RecurringFai
   ],
 
   evidence: [
-    DeclarationRef { module_path: "std.types", decl_name: "secret_of_text" },
-    DeclarationRef { module_path: "extdeps.auth.jws", decl_name: "JwsSerializationOutcome" },
-    DeclarationRef { module_path: "gunbc.github_effect_perform", decl_name: "JitMintAppJwt" },
-    DeclarationRef { module_path: "std.coercion", decl_name: "refinement_cast_rules" },
+    DeclarationRef { module_path: "std.types", decl_name: "secret_of_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.auth.jws", decl_name: "JwsSerializationOutcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.github_effect_perform", decl_name: "JitMintAppJwt", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.coercion", decl_name: "refinement_cast_rules", field: WholeDeclaration },
   ],
 }
