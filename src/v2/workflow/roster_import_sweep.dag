@@ -3042,6 +3042,7 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-keyed-chained-pipe-refuses-not-skips",
     "occurrences-keyed-non-head-reference-refuses-arity",
     "collection-head-get",
+    "collection-head-fold",
     "renamed-labels-are-the-declared-slots",
     "renamed-labels-unlabelled-extra-slot-refuses-arity",
     "renamed-labels-unmapped-label-refuses"
@@ -3066,6 +3067,7 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "collection-head-flat_map", fail: roster_head_expect(name: "collection-head-flat_map", call: "flat_map", sig: "xs: List<Int>", arg: "xs, fn(s) { [s] }", to: "list_flat_map", out: "List<Int>", labeled: "xs: xs, f: fn(s) { [s] }", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-last", fail: roster_head_expect(name: "collection-head-last", call: "last", sig: "xs: List<Int>", arg: "xs", to: "list_last", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-get", fail: roster_head_expect(name: "collection-head-get", call: "get", sig: "xs: List<Int>, i: Int", arg: "xs, i", to: "list_at_optional", out: "Optional<Int>", labeled: "xs: xs, index: i", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-fold", fail: roster_head_expect(name: "collection-head-fold", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", to: "fold_list", out: "Int", labeled: "xs: xs, empty: 0, cons: fn(a, x) { a + x }", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "renamed-labels-are-the-declared-slots", fail: roster_head_expect_in(rows: [roster_relabel_fixture_row()], name: "renamed-labels-are-the-declared-slots", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", to: "fold_list", out: "Int", labeled: "xs: xs, empty: 0, cons: fn(a, x) { a + x }", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "renamed-labels-unlabelled-extra-slot-refuses-arity", fail: roster_head_expect_refusal_in(rows: [roster_relabel_fixture_row()], name: "renamed-labels-unlabelled-extra-slot-refuses-arity", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }, 1", out: "Int", want: "rename-call-arity call=fold", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "renamed-labels-unmapped-label-refuses", fail: roster_head_expect_refusal_in(rows: [roster_relabel_partial_fixture_row()], name: "renamed-labels-unmapped-label-refuses", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", out: "Int", want: "rename-call-named-argument call=fold", prepared: prepared, lex: lex))
