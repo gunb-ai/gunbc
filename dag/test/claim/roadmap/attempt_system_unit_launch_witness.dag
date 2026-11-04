@@ -1194,7 +1194,7 @@ test fn the_lab_apply_installs_exactly_the_credstore_file_the_worker_start_loads
   let creds = dispatch_worker_credentials(instance: lab)
   let words = worker_start_words(instance: lab)
   let loads = filter(words, w => starts_with(s: w, prefix: "LoadCredential="))
-  count(creds) == 2 && count(copies) == count(creds) && count(loads) == count(creds)
+  count(creds) == 3 && count(copies) == count(creds) && count(loads) == count(creds)
     && leg_index(legs: legs, step: "worker-credstore-dir") >= 0
     && leg_index(legs: legs, step: "worker-credstore-dir") < leg_index(legs: legs, step: "worker-credstore-copy")
     && all(copies, l => match l {
@@ -1214,10 +1214,10 @@ test fn the_lab_apply_installs_exactly_the_credstore_file_the_worker_start_loads
 // than 0600, or a removal that is recursive (rmdir is the check that the stage ended empty).
 test fn the_credstore_copy_stages_copies_as_the_user_installs_as_root_and_removes_the_stage() -> Bool {
   let stage = "/tmp/gunbc-credstore.abc123" as NonEmptyStr
-  let source = "/home/svc/.config/gunbc-srv4-strata/api-key" as NonEmptyStr
-  let dest = "/etc/credstore/gunbc-srv4-strata-api-key-lab" as NonEmptyStr
-  let cmds = credstore_copy_commands(stage: stage, source: source, dest: dest, file_name: "gunbc-srv4-strata-api-key" as NonEmptyStr)
-  let staged = join([stage as String, "/gunbc-srv4-strata-api-key"], "")
+  let source = "/home/svc/.config/gunbc-gpu-pod/api-key" as NonEmptyStr
+  let dest = "/etc/credstore/gunbc-gpu-pod-api-key-lab" as NonEmptyStr
+  let cmds = credstore_copy_commands(stage: stage, source: source, dest: dest, file_name: "gunbc-gpu-pod-api-key" as NonEmptyStr)
+  let staged = join([stage as String, "/gunbc-gpu-pod-api-key"], "")
   let mk = argv_words(command: credstore_copy_stage_command())
   let user = argv_words(command: cmds.user_copy)
   let root = argv_words(command: cmds.root_install)
