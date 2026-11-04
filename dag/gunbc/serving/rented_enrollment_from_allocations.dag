@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { bound_dissolution }
 import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationIdentity, RentedAllocationEnrollable, RentedAllocationNotEnrollable, rented_allocation_enrollment }
-import gunbc.serving.rented_enrollment { RentedEnrollment, RentedEnrollmentIndex, rented_enrollment_index }
+import gunbc.serving.rented_enrollment { RentedEnrollment }
 
 // THE ROSTER OF RENTED ENROLLMENTS IS A FOLD OVER THE ALLOCATIONS THE FLEET HOLDS, NOT A LIST SOMEONE TYPES.
 //
@@ -21,7 +21,7 @@ import gunbc.serving.rented_enrollment { RentedEnrollment, RentedEnrollmentIndex
 // WHY THIS LIVES HERE AND NOT IN gunbc.serving.rented_enrollment, where the name was cited before: the
 // enrollment module is imported BY rented_allocation (it supplies RentedEnrollment), and this fold consumes
 // RentedServingAllocation, so the cited home would be a module cycle. The two carriers that cited it --
-// gunbc.serving.router_dev_scaffold's scaffold row 3 dissolution and the decl-ref census disposition that held
+// gunbc.serving.router_dev_scaffold's scaffold row 3 dissolution and the decl-ref disposition that held
 // it as a capability not yet authored -- are re-pointed here in the same change, to ONE obligation. Their
 // trigger names the FED fold (rented_cohort_enrollments_from_production_allocations) rather than this
 // derivation, for the reason stated at the frontier row below: a trigger that this same PR satisfies is a
@@ -57,13 +57,18 @@ fn rented_cohort_enrollments_from_allocations(held: List<RentedServingAllocation
   )
 }
 
-// THE CONSUMER SHAPE: the harness reads an INDEX, not a list (gunbc.harness.harness_backend
-// harness_observe_roster and gunbc.harness.harness_seat ask the index for a replica's enrollment and routes).
-// Feeding production is that fold over this -- once a population exists.
-fn rented_cohort_index_from_allocations(held: List<RentedServingAllocation>) -> RentedEnrollmentIndex {
-  let folded = rented_cohort_enrollments_from_allocations(held: held)
-  rented_enrollment_index(rows: folded.enrollments)
-}
+// THE CONSUMER SHAPE IS DELIBERATELY NOT OFFERED HERE. The harness reads an INDEX, not a list
+// (gunbc.harness.harness_backend harness_observe_roster and gunbc.harness.harness_seat ask the index for a
+// replica's enrollment and routes), so the tempting shape is one call from a population to that index. It was
+// written that way and removed, because the only honest way to write it is a route that DROPS the refusals:
+// `rented_enrollment_index(rows: folded.enrollments)` returns a RentedEnrollmentIndex with no place for the
+// allocations the derivation refused, so a caller asking for "the index from these allocations" gets a
+// narrower index that looks valid even when a paid-for card could not be enrolled -- a public route on which
+// a refused allocation disappears, which DESIGN section 5 refuses. Whoever feeds production has to hold the
+// RentedCohortFold and decide in the open what happens to its refusals: report them, or refuse to publish the
+// roster at all. That decision is the consumer's to make visibly, not this module's to make silently.
+// (Nothing consumed the shortcut: its only callers were this module's own witnesses, which now build the
+// index from the fold and assert the refusal beside it.)
 
 // THE REFUSALS AS THEY ARE REPORTED: the allocation's own contract id plus the obligation the derivation
 // named. An allocation identity is a provider declaration plus the provider's contract id, so a report never

@@ -108,10 +108,13 @@ data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
 }
 
 // THE FIVE DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
-// declaration that does not exist yet, so gunbc.census_closure_frontier (where these rows are enrolled)
-// reports each as pending until its replacement lands. The S3 trigger names the plan's callout module
-// (plan gunbc.plans.fabric_serving_router S3, gunbc.serving.serving_router) and a declaration only that
-// service will carry, not a generic entry-point name.
+// declaration that does not exist yet, so each row stays pending until its replacement lands. Nothing
+// aggregates them any more: the repo-wide fold that used to enroll these (gunbc.census_closure_frontier) was
+// retired by #15531 at aac228c337f3, so a row is read, if at all, by the module that declares it -- the route
+// gunbc.fleet.fleet_endpoint and four other modules take, running std.roster_frontier's frontier_rows_well_formed
+// in their own claim. These five are not checked that way today, and this module does not claim they are.
+// The S3 trigger names the plan's callout module (plan gunbc.plans.fabric_serving_router S3,
+// gunbc.serving.serving_router) and a declaration only that service will carry, not a generic entry-point name.
 data router_dev_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
