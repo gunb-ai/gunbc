@@ -29,8 +29,21 @@ module test.claim.container_alias_empty_collection_witness
 // aarch64 build, not by the bootstrap. See the PR body for the command, the three oracle binaries
 // (flip 09118b0f, flip-parent b944f16c, fix 421e5f6702de) and the per-row results.
 
-import gunbc.compile_census_probe { census_exit, census_verdict, total_blocking_census, blocking_subject_census }
+import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_all, total_blocking_census, blocking_class_census, blocking_subject_census }
 
+// THE IMPORTED FACE NOW HAS AN EXECUTABLE ROW. The paragraph above NAMES the imported shape
+// (gunbc.scm.object_table_json.DecodePositions at repository_envelope.dag) but every fixture below is a
+// SINGLE module with a module-local alias, so #15660's claim for the imported shape was asserted, not
+// executed. an_imported_carrier_alias_at_an_empty_map_formal_is_clean below is that shape at probe size:
+// the alias is imported from the corpus's own module, and the row is paired on srv2 -- REFUSED at the
+// #15539 head d0969ea38a80, which carries the authored-leaf rule, and CLEAN at a head that carries the
+// #15660 repair. The pair, not this file alone, is the evidence; the run id is in the PR body.
+//
+// A probe compiles ONE source string, so the importing module is the fixture and the DECLARING module is
+// the corpus's own. The row cannot be satisfied by renaming or localizing the alias, and its
+// UnresolvedImport guard makes a probe that cannot see the corpus fail as itself rather than pass as a
+// clean compile.
+//
 // ---- PASS rows (zero blocking diagnostics) ----
 
 data local_map_alias_empty_map_source: String = "module ca_local_map\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map }\ntype LocalMap = Map<String, Int>\nfn use_map(positions: LocalMap) -> Bool { true }\nfn probe() -> Bool { use_map(positions: empty_map()) }\n"
@@ -53,6 +66,19 @@ test fn a_concrete_map_at_empty_map_is_clean() -> ProcessExit {
   census_exit(census_verdict(census: total_blocking_census(source: concrete_map_empty_map_source), holds: fn(n) { n == 0 }))
 }
 
+// The imported carrier alias at a call formal, with empty_map() at the actual. `DecodePositions =
+// Map<String, ScmObjectRef>` is declared at dag/gunbc/scm/object_table_json.dag:969 and imported at
+// dag/gunbc/scm/repository_envelope.dag:173, where the same shape -- a `positions: DecodePositions`
+// formal given `empty_map()`, repository_envelope.dag:4174 -- is the corpus site #15660's receipt names.
+data imported_carrier_alias_empty_map_source: String = "module ca_imported_alias\nimport std.types { Bool, String, Map }\nimport std.algebra { empty_map }\nimport gunbc.scm.object_table_json { DecodePositions }\nfn use_positions(positions: DecodePositions) -> Bool { true }\nfn probe() -> Bool { use_positions(positions: empty_map()) }\n"
+
+test fn an_imported_carrier_alias_at_an_empty_map_formal_is_clean() -> ProcessExit {
+  census_verdict_all([
+    census_verdict(census: blocking_class_census(source: imported_carrier_alias_empty_map_source, wanted_class: "UnresolvedImport"), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: imported_carrier_alias_empty_map_source), holds: fn(n) { n == 0 }),
+  ])
+}
+
 data well_typed_map_source: String = "module ca_well_typed\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map, map_insert }\nfn probe() -> Map<String, Int> { map_insert(m: empty_map(), key: \"k\", value: 1) }\n"
 
 test fn the_well_typed_map_call_is_clean() -> ProcessExit {
@@ -73,6 +99,20 @@ data map_alias_at_empty_set_source: String = "module ca_map_set\nimport std.type
 
 test fn a_map_alias_at_empty_set_is_refused() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: map_alias_at_empty_set_source, wanted_class: "InternalError", wanted_subject: "empty_set(): expected type is not Set<...>"), holds: fn(n) { n >= 1 }))
+}
+
+// CONTROL (kept per the ruling): a corpus alias whose carrier is NOT keyed still refuses, so a repair
+// that unfolded an alias to ANY carrier would not pass here. Class and subject are the family the corpus
+// refusal itself carries: v1.compiler.infer inference_error builds InternalError, and the census subject
+// of an InternalError is its message. The total is asserted >= 1, not == 1, because this site also emits
+// the paired `type mismatch` row; the count is not what this control witnesses.
+data local_list_alias_empty_map_source: String = "module ca_local_list\nimport std.types { Bool, String, Int, List }\nimport std.algebra { empty_map }\ntype LocalList = List<Int>\nfn use_list(xs: LocalList) -> Bool { true }\nfn probe() -> Bool { use_list(xs: empty_map()) }\n"
+
+test fn a_local_list_alias_at_empty_map_is_refused() -> ProcessExit {
+  census_verdict_all([
+    census_verdict(census: blocking_subject_census(source: local_list_alias_empty_map_source, wanted_class: "InternalError", wanted_subject: "empty_map(): expected type is not a keyed collection"), holds: fn(n) { n >= 1 }),
+    census_verdict(census: total_blocking_census(source: local_list_alias_empty_map_source), holds: fn(n) { n >= 1 }),
+  ])
 }
 
 // ARITY / SHADOW control (the condition the pre-#15539 `core.children|count == 2` disjunct carried): a
