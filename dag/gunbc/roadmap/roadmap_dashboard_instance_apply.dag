@@ -8,6 +8,7 @@ import extdeps.shell
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.filesystem.filesystem_io
+import std.optional { Present, Absent }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_bundle_verify_argv,
@@ -21,6 +22,7 @@ import extdeps.git {
   shape_git_status_porcelain_argv,
   shape_git_fetch_remote_argv,
   shape_git_reset_hard_argv,
+  shape_git_rev_parse_verify_quiet_argv,
   shape_git_rev_parse_argv,
   git_local_config_get_command, git_shared_repository_posture_readbacks,
 }
@@ -667,25 +669,55 @@ fn dashboard_ensure_source_repo(
         ], ""),
       )
     } else {
-      dashboard_run_target_argvs(instance: instance, commands: [
-        DashboardArgv {
-          program: "/usr/bin/git" as FilePath,
-          args: shape_git_fetch_remote_argv(
-            repo: repo,
-            remote: "origin" as NonEmptyStr,
-          ),
-        },
-        DashboardArgv {
-          program: "/usr/bin/git" as FilePath,
-          args: shape_git_reset_hard_argv(
-            repo: repo,
-            target: anchor_ref as GitRef,
-          ),
-        },
-      ])
+      // R3 ORDERING GUARD (loyal-deer-449): the lab's anchor (remote '.') is NOT brought in by
+      // `git fetch origin` -- CONVERGENCE populates it, so the cutover order is convergence first,
+      // ensure-source-repo second. A reset target that does not exist in the owned repo is refused
+      // by NAME, typed; falling back to origin/main would reintroduce exactly the shared-ref meaning
+      // collapse R3 removes (§5: a typed, located refusal, never a fabricated default).
+      let anchor_verify = dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/git" as FilePath,
+        args: shape_git_rev_parse_verify_quiet_argv(repo: repo, ref_name: anchor_ref as GitRef),
+      )
+      match dashboard_source_repo_reset_admission(repo: repo as String, anchor_ref: anchor_ref as String, anchor_present: anchor_verify.success) {
+        Present { value: detail } => dashboard_exec_refused(detail: detail)
+        Absent => dashboard_run_target_argvs(instance: instance, commands: [
+          DashboardArgv {
+            program: "/usr/bin/git" as FilePath,
+            args: shape_git_fetch_remote_argv(
+              repo: repo,
+              remote: "origin" as NonEmptyStr,
+            ),
+          },
+          DashboardArgv {
+            program: "/usr/bin/git" as FilePath,
+            args: shape_git_reset_hard_argv(
+              repo: repo,
+              target: anchor_ref as GitRef,
+            ),
+          },
+        ])
+      }
     }
   }
 }
+}
+
+// The reset admission as a PURE decision (witnessable without host IO): an anchor ref the owned repo
+// does not carry refuses the reset by NAME, stating the cutover order; a present anchor lets it run.
+fn dashboard_source_repo_reset_admission(repo: String, anchor_ref: String, anchor_present: Bool) -> Optional<String> {
+  if anchor_present {
+    Absent
+  } else {
+    Present {
+      value: join([
+        "admitted anchor ref `", anchor_ref, "` does not exist in the owned repo ", repo,
+        "; convergence must populate it before any provision apply runs ensure-source-repo",
+        " (R3 cutover order); refusing rather than resetting to a missing ref or falling back",
+        " to a shared default",
+      ], ""),
+    }
+  }
 }
 
 data dashboard_health_loopback_host: String = "127.0.0.1"
