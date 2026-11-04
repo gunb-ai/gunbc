@@ -8,7 +8,8 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem { path_parent_directory }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
+  Filesystem, filesystem_exact_read, FilesystemExactPathRead,
+  filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
 }
 import extdeps.shell
 import extdeps.systemd.systemd_run {
@@ -20,7 +21,7 @@ import extdeps.systemd.systemd_run {
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argvs_for_instance }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_git, ExecOk, ExecFailed, ExecRefused,
 }
@@ -28,8 +29,26 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   WorkerIsServiceUser,
   HostDashboardInstance,
   srv1_live_dashboard_instance,
-  srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
+}
+// THE SUPPLIED-ROOT FIXTURE (PR #15627). Every claim in this file builds its lab row
+// through it, so no claim's effects land under the live lab root the srv1 row points at.
+import test.claim.roadmap.witness_supplied_instance {
+  WitnessSuppliedPrincipal, is_under, witness_scratch_prefix,
+  witness_supplied_instance, witness_principal_from_texts, witness_uid_command,
+  witness_gid_command, witness_group_name_command, witness_effective_user_command,
+  witness_supplied_root_is_refused, witness_supplied_roots_are_off_the_live_host,
+  witness_refused_instance, witness_unnameable_principal,
+}
+import std.algebra { trim }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessOutcome }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.tools.stat { stat_mode_command }
+import extdeps.tools.gnu_coreutils {
+  mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command,
+  install_empty_file_command, install_file_mode_command, cp_command, cp_recursive_command, pwd_command,
+  printenv_value_command,
 }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartRequest,
@@ -88,6 +107,217 @@ data wet_probe_key: String = "wetprobe"
 // recipe: claim_batch --wet --source-root dag
 // --source-root src/v2 --entry dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag
 // Requires a user systemd manager (srv1).
+
+// ── EVERY CLAIM RUNS AGAINST A LAB ROW IT BUILT ITSELF (the #15627 supplied-root fixture) ──
+//
+// WHY NOT THE LIVE ROW. `srv1_lab_dashboard_instance()` is the deployment's own row: its
+// provision parent, instance root, repo root, origin and serve binary ARE the lab's real
+// install paths. A claim that binds it performs its effects on the host that serves the
+// roadmap, and then its refusal readbacks prove nothing: the write the sandbox was supposed
+// to refuse is a write the claim itself just made, in the one place it should never have
+// touched. That is the RFM row `a_confinement_witness_whose_only_writable_root_is_the_live_host`,
+// and this file was the open instance of it below the row's ceiling: ten bindings to the live
+// row, two of them in claims that create directories.
+//
+// THE GUARD IS THE FIXTURE'S, NOT A RESTATEMENT OF IT. Both root arms run against the row's
+// OWN writable list, and the row is compared against the live roots by name through
+// `witness_supplied_roots_are_off_the_live_host`. The off-the-live-host arm is not optional
+// dressing: a first guard that only re-checked the claim's own scratch leaf left two execution
+// claims GREEN while nine installs wrote /opt/gunbc-lab, which is what commit 8cf8a03a7c5
+// closed. An arm that merely restates `!witness_supplied_root_is_refused` over the writable
+// list is worthless the same way (review 89877 finding 2) -- it is true of a live-root row too,
+// because the live roots are IN the writable list. Only the fixture's arms name the live roots.
+//
+// THE PRINCIPAL IS HOST-SAID, NEVER MINTED. `useradd`, `groupadd` and `systemd-run` are all
+// absent in this container (the host answers `uid=1000(node) gid=1000(node)`), so a fixture
+// that created accounts would be RED on every host that cannot create them and GREEN only
+// where someone pre-provisioned -- the reachability trap the RFM row files, re-opened. Host-said
+// is also what gives the confinement readbacks their oracle: uid, gid, octal mode and the
+// names `find -printf '%u %g'` prints are all compared against the host's own answer.
+fn wet(command: ArgvCommand) -> ProcessOutcome {
+  run_shell_command_capture(command: command, transport: LocalExec)
+}
+
+fn wet_ok(command: ArgvCommand) -> Bool {
+  match wet(command: command) {
+    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+  }
+}
+
+fn wet_out(command: ArgvCommand) -> String {
+  match wet(command: command) {
+    ProcessOutputPresent { text: text } => trim(s: text)
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
+  }
+}
+
+// THE ROOT THIS CLAIM OWNS: the host's own `mktemp -d`, under the fixture's prefix, with a
+// per-claim tag so two claims in one batch can never share a tree. An empty answer is the
+// refusal -- never a fallback to a fixed path, which is how a witness ends up writing the
+// same directory on every host and calling the agreement evidence.
+fn wet_claim_root(tag: NonEmptyStr) -> String {
+  wet_out(
+    command: mktemp_directory_command(
+      template: join([witness_scratch_prefix as String, "/gunbc-sandbox-", tag, "-XXXXXX"], "") as NonEmptyStr,
+    ),
+  )
+}
+
+// THE HOST-SAID PRINCIPAL. Empty text or an unparseable uid/gid yields the fixture's unnameable
+// sentinel (uid/gid -1), and every claim that takes a row refuses on it rather than proceeding:
+// an unknown principal is exactly the state in which a confinement claim can be GREEN for no
+// reason. No uid is ever minted, and uid 0 is refused by the fixture itself.
+fn wet_principal() -> WitnessSuppliedPrincipal {
+  match witness_principal_from_texts(
+    uid_text: wet_out(command: witness_uid_command()),
+    gid_text: wet_out(command: witness_gid_command()),
+    user_text: wet_out(command: witness_effective_user_command()),
+    group_text: wet_out(command: witness_group_name_command()),
+  ) {
+    Present { value: principal } => principal
+    Absent => witness_unnameable_principal()
+  }
+}
+
+// THE ROW, GUARDED BEFORE ANY CLAIM SEES IT. The off-the-live-host arm runs against the row the
+// fixture would actually hand back, so a row that resolves into the lab is refused rather than
+// returned for a claim to walk into.
+fn wet_supplied_lab_instance(scratch_parent: String) -> HostDashboardInstance {
+  let repo = join([scratch_parent, "/source"], "")
+  let principal = wet_principal()
+  if scratch_parent == "" || principal.uid < 0 || principal.gid < 0 {
+    witness_refused_instance(repo: repo as FilePath)
+  } else {
+    let candidate = witness_supplied_instance(
+      scratch_parent: scratch_parent as FilePath,
+      repo: repo as FilePath,
+      principal: principal,
+    )
+    if witness_supplied_root_is_refused(candidate: scratch_parent)
+      || witness_supplied_root_is_refused(candidate: repo)
+      || !witness_supplied_roots_are_off_the_live_host(instance: candidate) {
+      witness_refused_instance(repo: repo as FilePath)
+    } else {
+      candidate
+    }
+  }
+}
+
+// THE CONFINEMENT READBACK, ASSERTED INSIDE THE CLAIM AND NOT ONLY GUARDED IN THE BUILDER.
+//
+// Guarding is not enough to make this file falsifiable. Most claims here are root-independent in
+// their LOGIC -- a refusal is a refusal whichever directory the path names -- so a mutant that
+// binds `srv1_lab_dashboard_instance()` again and bypasses the guarded builder would stay GREEN
+// on the guard alone. This conjunct is what makes that revert RED: every field the claim can
+// write through is re-derived from the row it was actually handed and must sit under the root
+// the claim itself created. It is also what makes a deleted derivation RED: replace an accessor
+// over `inst` with a literal path and the containment check no longer describes the row.
+fn wet_claim_is_confined(instance: HostDashboardInstance, root: String) -> Bool {
+  root != ""
+    && witness_supplied_roots_are_off_the_live_host(instance: instance)
+    && is_under(text: instance.provision_parent_root as String, root: root)
+    && is_under(text: instance.instance_root as String, root: root)
+    && is_under(text: instance.local_origin_root as String, root: root)
+    && is_under(text: instance.repo_root as String, root: root)
+    && is_under(text: instance.serve_binary as String, root: root)
+}
+
+// THE GUEST'S READ INPUTS, PLANTED INSIDE THE CLAIM'S ROOT.
+//
+// The launcher legs exec `serve_binary run --source-root <repo>/dag --source-root <repo>/src/v2
+// --entry <repo>/dag/...` -- every one of those paths is derived from the supplied row, so under
+// a supplied root none of them exist yet and the leg would go RED for a reason that has nothing
+// to do with confinement (the guest cannot find its entry). Nothing on main establishes whether
+// a worker unit may read an operator checkout -- ProtectHome enforcement is an unobserved
+// per-host obligation (`gunbc.host.host_software_surface`
+// user_manager_protect_home_enforcement_read_obligation) -- so reading the checkout in place
+// would make the leg depend on an unread host fact. The tree is copied in instead, from sources
+// the HOST reports: `pwd` for the checkout that holds this witness and `command -v` for one
+// executable to serve as the instance binary. Both are asserted present, so a host that cannot
+// supply them is RED rather than vacuously GREEN; nothing here is minted. Only the copies are
+// written -- the checkout and the binary are read, never touched, which is what keeps this
+// inside the rule the whole file exists for.
+//
+// The copy is the WHOLE `dag/` and `src/v2/` tree, not the entry's import closure: the closure is
+// not derivable from inside a claim (no claim-side module resolver is exposed), and a partial
+// plant that missed one transitive import would fail as a confusing guest-side error. Recorded
+// in the PR body for the same reason.
+fn wet_plant_guest_sources(instance: HostDashboardInstance) -> Bool {
+  let checkout = wet_out(command: pwd_command())
+  let repo = instance.repo_root as String
+  // THE CHECKOUT IS HOST-SAID, NOT ASSUMED. `pwd` is the batch's own working directory as the
+  // host reports it; an empty reading refuses the plant rather than copying a guessed path.
+  checkout != ""
+    // `repo` itself has to exist before `cp` can put a tree in it -- the first attempt missed
+    // this and the copy refused on a missing parent, which is the difference between a plant and
+    // an intention.
+    && wet_ok(command: mkdir_parents_command(path: repo))
+    && wet_ok(command: cp_recursive_command(source: join([checkout, "/dag"], ""), destination: join([repo, "/dag"], "")))
+    && wet_ok(command: mkdir_parents_command(path: join([repo, "/src"], "")))
+    && wet_ok(command: cp_recursive_command(source: join([checkout, "/src/v2"], ""), destination: join([repo, "/src/v2"], "")))
+}
+
+// THE SERVED BINARY IS THE ONE THE OPERATOR NAMED, OR THE LEG REFUSES. There is no honest way for
+// a claim to name the running image by itself: `/proc/self/exe` resolves against the process that
+// OPENS it, so an `install -m 0755 /proc/self/exe <dst>` copies `/usr/bin/install`, not the guest
+// -- a planted binary of the wrong identity would make every launcher leg refuse for a reason that
+// has nothing to do with confinement. So the path comes from the environment through `printenv`
+// (no shell expansion), and BOTH readings are required before anything is written: the name is
+// non-empty, and what it names is executable to the host-said principal. Unset or non-executable
+// refuses the leg; nothing here mints a binary, and no host is required to have a `gunbc` on PATH.
+fn wet_plant_guest_binary(instance: HostDashboardInstance) -> Bool {
+  let named = wet_out(command: printenv_value_command(name: wet_served_binary_env_var))
+  named != ""
+    && wet_path_is_executable(path: named)
+    && wet_ok(command: mkdir_parents_command(path: path_parent_directory(path: instance.serve_binary as String)))
+    && wet_ok(command: install_file_mode_command(
+      source: named,
+      destination: instance.serve_binary as String,
+      mode: "0755" as NonEmptyStr,
+    ))
+}
+
+data wet_served_binary_env_var: NonEmptyStr = "GUNBC_WET_SERVE_BINARY"
+
+fn wet_plant_guest_runtime(instance: HostDashboardInstance) -> Bool {
+  wet_plant_guest_sources(instance: instance) && wet_plant_guest_binary(instance: instance)
+}
+
+// THE TREE A REFUSAL LEG NEEDS BEFORE IT CAN MEAN ANYTHING. A refusal leg whose parent
+// directory does not exist is not a confinement result at all: `touch` in a missing directory
+// fails with ENOENT for a reason the sandbox had nothing to do with, and the claim goes GREEN
+// about nothing -- the exact shape this RFM row exists to catch. So the directories the claims
+// here name as confined are created, and the file one of them names is planted, all of them
+// under the claim's own root and owned by the host-said principal. The unsandboxed control leg
+// inside `sandbox_touch_write_refused` then answers the prior question -- if the principal can
+// write there OUTSIDE the sandbox, the refusal INSIDE it is the sandbox's doing and nothing
+// else's. Every path here is an accessor over the row, never a restated literal, so deleting
+// the derivation takes the claim red instead of leaving it standing on a guess.
+fn wet_plant_confined_tree(instance: HostDashboardInstance) -> Bool {
+  let principal = wet_principal()
+  let repo = instance.repo_root as String
+  wet_ok(command: mkdir_parents_command(path: path_parent_directory(path: instance.serve_binary as String)))
+    && wet_ok(
+      command: install_empty_file_command(
+        path: instance.serve_binary as String,
+        octal_mode: "0755" as NonEmptyStr,
+        uid: principal.uid,
+        gid: principal.gid,
+      ),
+    )
+    && wet_ok(command: mkdir_parents_command(path: repo))
+    && wet_ok(command: mkdir_parents_command(path: join([repo, "/.git/hooks"], "")))
+    && wet_ok(command: mkdir_parents_command(path: join([repo, "/.git/objects"], "")))
+}
+
+// THE WAY OUT: the claim's own root is removed, and the removal is ANDed into the claim, so a
+// claim that leaves its tree behind is RED rather than tidy.
+fn wet_clean_claim_root(root: String) -> Bool {
+  root != "" && wet_ok(command: rm_recursive_force_command(path: root))
+}
 
 fn prepare_probe_attempt(instance: HostDashboardInstance) -> Bool {
   let preps = attempt_state_prepare_argvs_for_instance(
@@ -255,9 +485,17 @@ fn worker_shape_runs_an_allowed_touch(instance: HostDashboardInstance) -> Bool {
 }
 
 test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
+  // THE DEPLOYED BINARY AND TREE ARE THE CLAIM'S OWN NOW. The claim's whole subject is a write
+  // the sandbox refuses; against the live row that write was one this witness made itself in
+  // /opt/gunbc-lab, so a refusal proved the sandbox worked only on the assumption that the
+  // directory it refused was not the one being served. The row is supplied, the tree is planted
+  // under it, and the five targets below stay accessors over the row.
+  let root = wet_claim_root(tag: "deployed-writes" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
   let attempt = probe_attempt_dir(instance: inst)
-  prepare_probe_attempt(instance: inst)
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && prepare_probe_attempt(instance: inst)
     && worker_shape_runs_an_allowed_touch(instance: inst)
     && sandbox_touch_write_refused(
       instance: inst,
@@ -284,15 +522,23 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
       unit: "gunbc-writable-probe-hook.service" as NonEmptyStr,
       path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
     )
+    && wet_clean_claim_root(root: root)
 }
 
 test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
+  // THE WRITABLE SIDE OF THE SAME PAIR. A sandbox that refused everything would satisfy the
+  // refusal claims above by accident, so this claim is the reason the refusals mean anything --
+  // and it can only say that about a worktree the claim created. Under the live row the granted
+  // tree was the deployment's, which is the half of the pair the confinement witness had no
+  // business writing to.
+  let root = wet_claim_root(tag: "worktree-writable" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
   let wt = probe_attempt_worktree(instance: inst)
   let scratch = probe_worker_dir(instance: inst)
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
   let log_probe = join([scratch, "/.gunbc-worker-write-probe"], "")
-  prepare_probe_attempt(instance: inst)
+  wet_claim_is_confined(instance: inst, root: root)
+    && prepare_probe_attempt(instance: inst)
     && sandbox_touch_wrote(
       instance: inst,
       unit: "gunbc-writable-probe-wt.service" as NonEmptyStr,
@@ -304,6 +550,7 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
       path: log_probe,
     )
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe]).exit_code == 0
+    && wet_clean_claim_root(root: root)
 }
 
 fn sandbox_touch_cli(path: String) -> ProcessExit {
@@ -375,9 +622,93 @@ fn launcher_wrote(instance: HostDashboardInstance, unit_key: String, path: Strin
   }
 }
 
+// The two readbacks the plant claim needs, BOTH through declared effect sites: `Filesystem.Read`
+// for the entry's bytes and `stat -c %a` for the served binary's mode. A `cmp`/`test` via
+// shell.Exec.RunArgv would be an undeclared dispatch (the run reports it on the expectation
+// frontier) and would answer with a spawn refusal rather than a reading.
+fn wet_file_text(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  match filesystem_exact_read(
+    path: path,
+    content: r.content,
+    success: r.success,
+    error: r.error,
+    error_kind: r.error_kind,
+  ) {
+    FilesystemExactPathRead { path: _, content: text } => text
+    unreadable => ""
+  }
+}
+
+fn wet_octal_mode(path: String) -> String {
+  wet_out(command: stat_mode_command(path: path))
+}
+
+test fn the_planted_guest_inputs_reach_the_paths_the_row_derives() -> Bool {
+  // WHY THIS CLAIM EXISTS HERE AND NOT ONLY ON SRV2. Six of the legs below exec the guest binary
+  // the row derives (`serve_binary run --source-root <repo>/dag --entry <repo>/dag/...`), and the
+  // launch itself needs `systemd-run`, which this container does not have. Without a readback
+  // that runs in this lane the plant would never be checked anywhere the wet lane can see, and a
+  // plant that copied the wrong tree would surface on srv2 as a guest-side parse error rather
+  // than as a witness failure. This is the single-principal half of that path: the guest's READ
+  // inputs, at the paths the row derives. The guest is not exec'd here -- a second cold entry
+  // parse nested in this process does not fit the container's 24 GiB memory cgroup when one entry
+  // parse alone measures 16 GiB -- so the exec itself stays queued for srv2, where the launcher
+  // legs go with it.
+  let root = wet_claim_root(tag: "plant" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let checkout = wet_out(command: pwd_command())
+  // The launcher is handed `wet_witness_entry(instance: inst)` -- an accessor over the row, so
+  // if the row's repo_root derivation changes this leg moves with it instead of passing on a
+  // restated literal.
+  let entry = wet_witness_entry(instance: inst)
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_guest_sources(instance: inst)
+    && wet_path_exists(path: entry)
+    // BYTES, not just existence: a plant that copied a stale or different `dag/` would leave the
+    // path present and the leg vacuous, so the planted entry is compared against the checkout the
+    // host reports it was copied from. An EMPTY read is refused too -- both sides unreadable would
+    // otherwise compare equal and pass.
+    && checkout != ""
+    && wet_file_text(path: entry) != ""
+    && wet_file_text(path: entry)
+         == wet_file_text(path: join([checkout, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], ""))
+    && wet_path_exists(path: join([inst.repo_root as String, "/dag"], ""))
+    && wet_path_exists(path: join([inst.repo_root as String, "/src/v2"], ""))
+    && wet_clean_claim_root(root: root)
+}
+
+
+// THE OTHER HALF OF THE PLANT, RUN WHERE THE OPERATOR NAMES THE BINARY. This claim is deliberately
+// NOT scheduled in `src/v2/workflow/local_repo_wet_terminal.dag`: its precondition is that the
+// operator running the batch has exported `GUNBC_WET_SERVE_BINARY`, and a scheduled row that is
+// green only where someone pre-provisioned an input is the exact defect this RFM row files. It is
+// executed here (the lane's own binary) and on srv2 (the binary that run builds), and the gap is
+// named in the PR body's "Known gaps, NOT covered".
+test fn the_planted_serve_binary_is_the_image_the_operator_named() -> Bool {
+  let root = wet_claim_root(tag: "plant-bin" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_guest_binary(instance: inst)
+    // The mode is read back, not trusted from the `install -m` that wrote it: a served binary that
+    // is not executable makes every launcher leg refuse for a reason that is not confinement.
+    && wet_octal_mode(path: inst.serve_binary as String) == "755"
+    && wet_path_is_executable(path: inst.serve_binary as String)
+    && wet_clean_claim_root(root: root)
+}
+
 test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
+  // THE LAUNCHER IS REFUSED THE SAME TWO PLACES the shape path is. Under the live row the two
+  // paths named below were the deployment's own bin directory and the deployment's own source
+  // hooks, so "refused" was a statement about where the witness had been writing, not about the
+  // launcher's policy. The launcher's guest runs `run --source-root <repo>/dag --entry ...` from
+  // the supplied row, so the tree has to be planted for the leg to reach the policy at all.
+  let root = wet_claim_root(tag: "launcher-refused" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
   prepare_probe_attempt(instance: inst)
+    && wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && wet_plant_guest_runtime(instance: inst)
     && launcher_write_refused(
       instance: inst,
       unit_key: "bin",
@@ -388,6 +719,7 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
       unit_key: "hooks",
       path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
     )
+    && wet_clean_claim_root(root: root)
 }
 
 // THE LAUNCHER DERIVES THE WORKTREE, LOG DIRECTORY AND EXIT HOOK from the attempt identity (review
@@ -478,33 +810,60 @@ fn launcher_sudo_n_touch(instance: HostDashboardInstance, path: String) -> Sandb
 }
 
 test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
+  // THE UNIT CANNOT ESCALATE. The leg is only evidence if the unit it launched was launched
+  // against a lab the claim made: under the live row the escalation attempt ran with the live
+  // install as its subject, and the tree it could have touched afterwards was the served one.
+  let root = wet_claim_root(tag: "sudo-true" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
   prepare_probe_attempt(instance: inst)
+    && wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && wet_plant_guest_runtime(instance: inst)
     && match launcher_sudo_n_true(instance: inst) {
       SandboxTouchUnrunnable => false
       SandboxTouchRan { exit_code } => exit_code != 0
     }
+    && wet_clean_claim_root(root: root)
 }
 
 test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
+  // ESCALATION DOES NOT BUY THE DEPLOYED TREE EITHER. The path is an accessor over the row --
+  // the bin directory of the instance the claim supplied -- and the directory is planted, so the
+  // refusal is the unit's filesystem policy rather than a missing parent.
+  let root = wet_claim_root(tag: "sudo-touch" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let escaped_target = join([path_parent_directory(path: inst.serve_binary as String), "/x"], "")
   prepare_probe_attempt(instance: inst)
+    && wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && wet_plant_guest_runtime(instance: inst)
     && wet_write_refused(
-      touch: launcher_sudo_n_touch(instance: inst, path: join([path_parent_directory(path: inst.serve_binary as String), "/x"], "")),
-      existed_before: wet_path_exists(path: join([path_parent_directory(path: inst.serve_binary as String), "/x"], "")),
-      path: join([path_parent_directory(path: inst.serve_binary as String), "/x"], ""),
+      touch: launcher_sudo_n_touch(instance: inst, path: escaped_target),
+      existed_before: wet_path_exists(path: escaped_target),
+      path: escaped_target,
     )
+    && wet_clean_claim_root(root: root)
 }
 
 test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
+  // THE ALLOWED SIDE OF THE LAUNCHER POLICY. These are the writes the launcher is supposed to
+  // let through, so they are the half that keeps the refusals above from being a sandbox that
+  // simply blocks everything -- and a sandbox that writes the deployment's own worktree, log
+  // directory and object store proves nothing about what it would allow. The three targets are
+  // accessors over the supplied row; the directories under them are planted by the claim.
+  let root = wet_claim_root(tag: "launcher-allowed" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
   let objects = join([inst.repo_root as String, "/.git/objects/.gunbc-worker-write-probe"], "")
   let probe = join([launcher_probe_worktree(instance: inst, unit_key: "wt"), "/.gunbc-launcher-write-probe"], "")
   let log_probe = join([launcher_probe_worker_dir(instance: inst, unit_key: "log"), "/.gunbc-launcher-log-probe"], "")
-  launcher_wrote(instance: inst, unit_key: "wt", path: probe)
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && wet_plant_guest_runtime(instance: inst)
+    && launcher_wrote(instance: inst, unit_key: "wt", path: probe)
     && launcher_wrote(instance: inst, unit_key: "log", path: log_probe)
     && launcher_wrote(instance: inst, unit_key: "objects", path: objects)
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe, objects]).exit_code == 0
+    && wet_clean_claim_root(root: root)
 }
 
 fn exit_success_cli() -> ProcessExit {
@@ -550,19 +909,28 @@ fn launcher_exit_record_is_expanded(name: String) -> Bool {
 }
 
 test fn a_launched_unit_exit_record_names_the_expanded_invocation_and_result() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
-  match launcher_inner_start(
-    instance: inst,
-    unit_key: "exitrec",
-    inner: launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []),
-  ) {
-    SandboxTouchUnrunnable => false
-    SandboxTouchRan { exit_code: _ } =>
-      match launcher_exit_record_names(instance: inst).first() {
-        Absent => false
-        Present { value: name } => launcher_exit_record_is_expanded(name: name)
-      }
-  }
+  // THE EXIT RECORD IS READ BACK FROM THE CLAIM'S OWN INBOX. The record has to name the expanded
+  // invocation of a guest the claim installed; under the live row the "expanded invocation" was
+  // the deployment's, and the inbox the record was read out of was the served one -- an exit
+  // record written into the live lab is an effect, not an observation.
+  let root = wet_claim_root(tag: "exit-record" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && wet_plant_guest_runtime(instance: inst)
+    && match launcher_inner_start(
+      instance: inst,
+      unit_key: "exitrec",
+      inner: launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []),
+    ) {
+      SandboxTouchUnrunnable => false
+      SandboxTouchRan { exit_code: _ } =>
+        match launcher_exit_record_names(instance: inst).first() {
+          Absent => false
+          Present { value: name } => launcher_exit_record_is_expanded(name: name)
+        }
+    }
+    && wet_clean_claim_root(root: root)
 }
 
 // THE ROOT-EXEC SHAPE IS REFUSED ON THE REAL PATH (review 80324). Before the launcher derived the exit
@@ -577,7 +945,12 @@ fn launcher_marker_absent() -> Bool {
 }
 
 test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
+  // THE WIDE BODY NAMES THE CLAIM'S ROW, NOT THE DEPLOYMENT'S. The forged ExecStopPost and the
+  // inner invocation are both built from the supplied row, so the refusal is the launcher
+  // refusing a root-exec shape aimed at a lab this claim made -- and the marker it must not
+  // leave behind is checked against a tree the claim owns.
+  let root = wet_claim_root(tag: "root-hook-refusal" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
   let wide = join([
     "start-wait", wet_probe_node as String, launcher_probe_key(unit_key: "roothook"),
     inst.directory_owner.user as String, inst.repo_root as String,
@@ -586,7 +959,10 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
     join(launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []), "\u{1f}"),
     wet_run_nonce(),
   ], "\n")
-  launcher_marker_absent()
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && wet_plant_guest_runtime(instance: inst)
+    && launcher_marker_absent()
     && prepare_launcher_probe(instance: inst, unit_key: "roothook")
     && match attempt_system_unit_enqueue_request(
       instance_root: inst.instance_root as String,
@@ -600,6 +976,7 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
       AttemptSystemUnitEnqueueOccupied { entry: _ } => false
       AttemptSystemUnitEnqueueRefused { detail: _ } => false
     }
+    && wet_clean_claim_root(root: root)
 }
 
 // THE ROOT SIDE RUNS WHEN THE REQUEST DIRECTORY FILLS (the drain .path unit starts the system
@@ -758,6 +1135,10 @@ test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
 // allowed cells catch a shape-wide failure, not a per-cell one. The exit-status classification is modelled
 // for the direct probes in #14655 and is not written a second time here; the launcher cells consume it once
 // both land.
+fn wet_path_is_executable(path: String) -> Bool {
+  shell.Exec.RunArgv(program: "test", arguments: ["-x", path]).exit_code == 0
+}
+
 fn wet_path_exists(path: String) -> Bool {
   shell.Exec.RunArgv(program: "test", arguments: ["-e", path]).exit_code == 0
 }
@@ -995,74 +1376,55 @@ fn launcher_worktree_commit(instance: HostDashboardInstance, unit_key: String) -
   }
 }
 
-fn lab_instance_at_repo(root: FilePath) -> HostDashboardInstance {
-  let lab = srv1_lab_dashboard_instance()
-  HostDashboardInstance {
-    deployment: lab.deployment,
-    instance_id: lab.instance_id,
-    host_identity: lab.host_identity,
-    provision_parent_root: lab.provision_parent_root,
-    instance_root: lab.instance_root,
-    local_origin_root: lab.local_origin_root,
-    local_origin_publish_ref: lab.local_origin_publish_ref,
-    repo_root: root,
-    dispatch_base_ref: lab.dispatch_base_ref,
-    dispatch_state_scope: lab.dispatch_state_scope,
-    execution_environment: lab.execution_environment,
-    provider_state: lab.provider_state,
-    serve_binary: lab.serve_binary,
-    serve_function: lab.serve_function,
-    listen_host: lab.listen_host,
-    listen_port: lab.listen_port,
-    tmux_server: lab.tmux_server,
-    actuation: lab.actuation,
-    provision_transport: lab.provision_transport,
-    source_seed: lab.source_seed,
-    admitted_revision: lab.admitted_revision,
-    toolchain: lab.toolchain,
-    dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
-    directory_owner: lab.directory_owner,
-    worker: WorkerIsServiceUser,
-    materialization_store_root: lab.materialization_store_root,
-    publication_base_branch: lab.publication_base_branch,
-  }
-}
 
 test fn writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds() -> Bool {
-  let inst = srv1_lab_dashboard_instance()
+  // THE GIT POINTER FILES BELONG TO A LAB THE CLAIM MADE. Under the live row the two refused
+  // paths were the deployment's own gitfile and commondir, and the commit that is supposed to
+  // SUCCEED ran in the deployment's worktree -- so this claim both proved a refusal by writing
+  // where it should not have, and performed a real commit against the served repository.
+  let root = wet_claim_root(tag: "git-pointer" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
   let unit_key = "gitptr"
   let wt = launcher_probe_worktree(instance: inst, unit_key: unit_key)
   let pointers = dispatch_worker_git_pointer_files(instance: inst, attempt_worktree: wt)
-  prepare_launcher_linked_worktree(instance: inst, unit_key: unit_key)
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && wet_plant_guest_runtime(instance: inst)
+    && prepare_launcher_linked_worktree(instance: inst, unit_key: unit_key)
     && launcher_write_refused(instance: inst, unit_key: "gitfile", path: pointers.gitfile)
     && launcher_write_refused(instance: inst, unit_key: "commondir", path: pointers.commondir)
     && match launcher_worktree_commit(instance: inst, unit_key: unit_key) {
       SandboxTouchUnrunnable => false
       SandboxTouchRan { exit_code } => exit_code == 0
     }
+    && wet_clean_claim_root(root: root)
 }
 
 test fn belt_commit_refuses_a_planted_commondir_without_running_git() -> Bool {
-  let tmp = shell.Mktemp.Dir()
-  if !tmp.success {
-    false
-  } else {
-    let root = tmp.path as String
-    let repo = join([root, "/repo"], "")
-    let wt = join([root, "/wt"], "")
-    let inst = lab_instance_at_repo(root: repo as FilePath)
-    let pointers = dispatch_worker_git_pointer_files(instance: inst, attempt_worktree: wt)
-    let expected_git_dir = dispatch_attempt_private_git_dir(instance: inst, attempt_worktree: wt)
-    shell.Mkdir.Parents(path: path_parent_directory(path: pointers.gitfile) as FilePath).success
-      && shell.Mkdir.Parents(path: path_parent_directory(path: pointers.commondir) as FilePath).success
-      && Filesystem.Write(path: pointers.gitfile, content: join(["gitdir: ", expected_git_dir, "\n"], "")).success
-      && Filesystem.Write(path: pointers.commondir, content: "/tmp/gunbc-planted-commondir\n").success
-      && match belt_commit_git(instance: inst, worktree: wt, args: ["status"]) {
-        ExecRefused { program: _, reason } => string_contains(s: reason, pattern: "commondir")
-        ExecOk { stdout: _ } => false
-        ExecFailed { program: _, exit_code: _, stderr: _ } => false
-      }
-  }
+  // THE PLANTED COMMONDIR IS PLANTED IN A LAB THE CLAIM OWNS. This is the model-side half of the
+  // pair: the belt must refuse a commit whose worktree carries a commondir pointer, without
+  // running git at all. It took its row from `lab_instance_at_repo`, which grafted the claim's
+  // temp repository onto the LIVE lab row -- so the repository was the claim's but the instance
+  // root, the private git dir the gitfile names, and the serve binary were the deployment's, and
+  // the refusal it reported was read off a row this witness had no business standing on. That
+  // builder is retired; the row is supplied and every path below, including the gitdir the
+  // planted gitfile names, is an accessor over it.
+  let root = wet_claim_root(tag: "belt-commondir" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let wt = join([root, "/wt"], "")
+  let pointers = dispatch_worker_git_pointer_files(instance: inst, attempt_worktree: wt)
+  let expected_git_dir = dispatch_attempt_private_git_dir(instance: inst, attempt_worktree: wt)
+  wet_claim_is_confined(instance: inst, root: root)
+    && shell.Mkdir.Parents(path: path_parent_directory(path: pointers.gitfile) as FilePath).success
+    && shell.Mkdir.Parents(path: path_parent_directory(path: pointers.commondir) as FilePath).success
+    && Filesystem.Write(path: pointers.gitfile, content: join(["gitdir: ", expected_git_dir, "\n"], "")).success
+    && Filesystem.Write(path: pointers.commondir, content: join([root, "/planted-commondir\n"], "")).success
+    && match belt_commit_git(instance: inst, worktree: wt, args: ["status"]) {
+      ExecRefused { program: _, reason } => string_contains(s: reason, pattern: "commondir")
+      ExecOk { stdout: _ } => false
+      ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    }
+    && wet_clean_claim_root(root: root)
 }
 
 // THE ATTEMPT-UNIT DRAIN'S LINE STOP. The drain's .path unit is a level on requests/, so every entry a pass

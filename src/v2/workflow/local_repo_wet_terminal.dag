@@ -3987,6 +3987,107 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
       function: "an_inherited_runner_temp_leaves_the_outside_tree_untouched",
       expectation: ExpectedToHold {}
+    },
+    // THE DISPATCH WORKER'S WRITABLE-SANDBOX WITNESS, scheduled for the first time. The file
+    // existed in dag/ with ZERO rows here, so `claim_batch` was skipping every claim in it -- the
+    // exact silent-skip the spawn witness's own header records ("my earlier 11-fn run missed 8
+    // claims that way"). Scheduling them is what makes them run; it is not new coverage, and the
+    // propositions are the ones those claims already stated. These are the fifteen that hold on a
+    // host with NO systemd user manager and ONE principal. The ten that launch a unit, plus the
+    // unsandboxed control (which reaches the launcher through the same helper and so dies on the
+    // absent `systemd-run`), are deliberately NOT scheduled: on a host without systemd-run they
+    // are unrunnable, not false, and a lane full of unrunnable-red rows tells the join nothing.
+    // They are named one by one under "Known gaps, NOT covered" in the PR body of the follow-up
+    // that moved them off the live lab root, and they run on the two-principal srv2 host.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_inconclusive" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_inconclusive",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_prior_run_record_for_the_key_is_not_read_as_this_runs" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_prior_run_record_for_the_key_is_not_read_as_this_runs",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "two_request_entries_keep_distinct_bodies" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "two_request_entries_keep_distinct_bodies",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_second_request_for_the_same_attempt_is_occupied" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_second_request_for_the_same_attempt_is_occupied",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_claimed_entry_is_processed_once_across_two_claim_runs" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_claimed_entry_is_processed_once_across_two_claim_runs",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_symlinked_request_entry_is_refused_by_the_claim" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_symlinked_request_entry_is_refused_by_the_claim",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_fifo_request_body_is_refused_without_reading" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_fifo_request_body_is_refused_without_reading",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_symlinked_request_body_is_refused_without_following" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_symlinked_request_body_is_refused_without_following",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "belt_commit_refuses_a_planted_commondir_without_running_git" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "belt_commit_refuses_a_planted_commondir_without_running_git",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_planted_guest_inputs_reach_the_paths_the_row_derives" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_planted_guest_inputs_reach_the_paths_the_row_derives",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "an_unlistable_request_directory_stalls_the_drain" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "an_unlistable_request_directory_stalls_the_drain",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_retired_request_and_an_empty_spool_do_not_stall_the_drain" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_retired_request_and_an_empty_spool_do_not_stall_the_drain",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_refused_request_does_not_fail_the_drain_unit" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_refused_request_does_not_fail_the_drain_unit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_request_the_drain_cannot_answer_fails_the_drain_unit" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_request_the_drain_cannot_answer_fails_the_drain_unit",
+      expectation: ExpectedToHold {}
     }
   ]
 }
