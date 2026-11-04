@@ -18,7 +18,7 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 // process is (native_serve_start), whether a request head is admissible and how many body bytes to
 // read (native_serve_frame), and whether the request is answered before the handler is entered
 // (native_serve_route). The handler contract is the seed's `gunbc serve` contract plus one trailing argument --
-// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision[, startup]) ->
+// `fn native_serve_handle(method, path, body, tailscale_identity, authorization, release_revision[, startup]) ->
 // ServeWireResponse` (startup being the typed value this process's self-check passed with, when the entry declares one) -- so a program served by the seed today is served natively by declaring the
 // arm and naming its handler that.
 //
@@ -248,6 +248,13 @@ type NativeServeRequestHead {
   headers: List<NativeServeHeaderField>
 }
 
+// The Authorization value a handler receives is DERIVED from the head's header fields, never
+// stored beside them (one authority for one fact). The framing fold has already refused a
+// duplicated Authorization header, so the first value is the only one; absent is "".
+fn native_serve_authorization(head: NativeServeRequestHead) -> String {
+  match native_serve_named(fields: head.headers, wanted: "Authorization") |> first { Present { value: v } => v Absent => "" }
+}
+
 type NativeServeFrame
   = NativeServeFramed { head: NativeServeRequestHead, body_length: Int }
   | NativeServeFrameRefused { response: ServeWireResponse }
@@ -316,7 +323,7 @@ fn native_serve_headers(lines: List<String>, acc: List<NativeServeHeaderField>) 
     Cons { head: line, tail: rest } =>
       match native_serve_header(line: line) {
         NativeServeHeaderParsed { field: f } => native_serve_headers(lines: rest, acc: acc |> list_push(f))
-        NativeServeHeaderMalformed { line: bad } => NativeServeHeadersRefused { reason: concat("malformed header line: ", bad) }
+        NativeServeHeaderMalformed { line: _ } => NativeServeHeadersRefused { reason: "malformed header line" }
       }
   }
 }
@@ -329,8 +336,11 @@ fn native_serve_frame_fields(method: String, target: String, fields: List<Native
   let identity_header = tailscale_user_login_header as String
   let lengths = native_serve_named(fields: fields, wanted: native_serve_content_length_header)
   let identities = native_serve_named(fields: fields, wanted: identity_header)
+  let authorizations = native_serve_named(fields: fields, wanted: "Authorization")
   if (lengths |> count) > 1 {
     native_serve_bad_request(reason: "duplicate Content-Length header")
+  } else if (authorizations |> count) > 1 {
+    native_serve_bad_request(reason: "duplicate Authorization header")
   } else if (identities |> count) > 1 {
     native_serve_bad_request(reason: concat("duplicate ", concat(identity_header, " header")))
   } else {
