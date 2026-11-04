@@ -72,6 +72,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_facts_for_request, attempt_system_unit_start_admitted,
   attempt_system_unit_plan_from_facts, attempt_system_unit_systemd_run_command,
   attempt_system_unit_properties, attempt_system_unit_launch_named_argument,
+  attempt_system_unit_request_path,
   attempt_system_unit_enqueue_start, attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
   AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied, AttemptSystemUnitEnqueueRefused,
   attempt_system_unit_claim_entry,
@@ -1931,6 +1932,32 @@ test fn the_supplied_root_carries_the_attempt_unit_spool_tree() -> Bool {
     && prepare_probe_attempt(instance: inst)
     && fold(dirs, init: true, f: (ok, dir) => ok && wet_path_exists(path: dir))
     && wet_octal_mode(path: attempt_unit_spool_staging_dir(instance_root: inst.instance_root as String)) == "700"
+    // EVERY ROUTE, NOT ONLY THE ONE THAT FAILED FIRST. The srv2 ENOENT came out of the ENQUEUE
+    // itself -- attempt_system_unit_enqueue_request makes the staging leaf with
+    // shell.Mkdir.NewOwnerOnly (no -p), so it dies when requests-staging is absent -- and the
+    // launcher legs reach this tree through their own preamble, not through prepare_probe_attempt.
+    // So the control performs the write that actually failed, on the launcher route's own sequence,
+    // and reads the queued body back at the path the row derives.
+    && prepare_launcher_probe(instance: inst, unit_key: "spool-control")
+    && wet_stage(
+      stage: "spool-tree-prepared:spool-control",
+      ok: wet_prepare_attempt_unit_spool(instance: inst),
+    )
+    && match attempt_system_unit_enqueue_request(
+      instance_root: inst.instance_root as String,
+      node_id: wet_probe_node as String,
+      attempt_key: launcher_probe_key(unit_key: "spool-control"),
+      body: wet_word_request(
+        node_id: wet_probe_node as String,
+        attempt_key: launcher_probe_key(unit_key: "spool-control"),
+        argv_word: "x",
+      ),
+    ) {
+      AttemptSystemUnitEnqueued { entry: entry, body: _ } =>
+        wet_path_exists(path: attempt_system_unit_request_path(instance_root: inst.instance_root as String, entry: entry))
+      AttemptSystemUnitEnqueueOccupied { entry: _ } => false
+      AttemptSystemUnitEnqueueRefused { detail: _ } => false
+    }
     && wet_clean_claim_root(root: root)
 }
 
