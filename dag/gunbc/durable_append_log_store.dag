@@ -138,7 +138,7 @@ fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: 
 // transition lease) are blocked on other capabilities and are NOT this contract's: capacity store (S9892f19f), fabric cleanup authority (S703c0e8e), tailnet door cutover journal (S78f330a6), deploy transition lease (S33f05980; the ReleasedOnEvidence arm now exists, so its own trigger should be re-read by that lane).
 //
 // THE GROUNDING THAT CHANGED THE SHAPE (historic: the raw events initializer, deleted by #15576; its absence is
-// pinned by test.claim.durable_append_log_witness deleted_callable_route_is_gone. That callable created the
+// pinned by test.claim.durable_append_log_witness the_raw_events_initializer_is_gone. That callable created the
 // events file create-new group-writable under a dedicated worker account and the sandboxed worker then appended
 // it). What the grounding established still holds:
 // `attempt_state_prepare_argvs_for_instance` creates the wire directory the harness writes
