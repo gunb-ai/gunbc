@@ -92,7 +92,7 @@ fn dispatch_emit_site_key(site: InterpreterDispatchEmitSite) -> String {
     EvalAlgebraMethodInnerSite => "eval_algebra_method_inner"
     EvalCallBridgeFamilySite { module } => concat("eval_call_bridge::", qualified_name_to_dotted_string(qn: module))
     EvalCallNativeInterceptSite => "eval_call_native_intercept"
-    TryV2StdCollectionMapPrimitiveGroundingSite => "try_v2_std_collection_map_primitive_grounding"
+    TryV2StdCollectionPrimitiveGroundingSite => "try_v2_std_collection_primitive_grounding"
     EvalMethodCallShortCircuitSite => "eval_method_call_short_circuit"
     EvalServiceCallCarveOutSite => "eval_service_call_carve_out"
   }
@@ -212,7 +212,7 @@ fn site_enum_name(site: InterpreterDispatchEmitSite) -> String {
     EvalAlgebraMethodInnerSite => "EvalAlgebraMethodArm"
     EvalCallBridgeFamilySite { module } => concat("EvalCallBridge", concat(module_pascal_after_domain_prefix(module: module), "Arm"))
     EvalCallNativeInterceptSite => "EvalCallNativeInterceptArm"
-    TryV2StdCollectionMapPrimitiveGroundingSite => "TryV2StdCollectionMapPrimitiveGroundingArm"
+    TryV2StdCollectionPrimitiveGroundingSite => "TryV2StdCollectionPrimitiveGroundingArm"
     EvalMethodCallShortCircuitSite => "EvalMethodCallShortCircuitArm"
     EvalServiceCallCarveOutSite => "EvalServiceCallCarveOutArm"
   }
@@ -224,7 +224,7 @@ fn site_lookup_name(site: InterpreterDispatchEmitSite) -> String {
     EvalAlgebraMethodInnerSite => "lookup_eval_algebra_method_inner"
     EvalCallBridgeFamilySite { module } => concat("lookup_eval_call_bridge_", module_slug_after_domain_prefix(module: module))
     EvalCallNativeInterceptSite => "lookup_eval_call_native_intercept"
-    TryV2StdCollectionMapPrimitiveGroundingSite => "lookup_try_v2_std_collection_map_primitive_grounding"
+    TryV2StdCollectionPrimitiveGroundingSite => "lookup_try_v2_std_collection_primitive_grounding"
     EvalMethodCallShortCircuitSite => "lookup_eval_method_call_short_circuit"
     EvalServiceCallCarveOutSite => "lookup_eval_service_call_carve_out"
   }
@@ -372,7 +372,7 @@ fn bridge_family_module_of(row: InterpreterPrimitiveDispatchArm) -> Optional<Qua
     EvalBuiltinInnerSite => optional_absent()
     EvalAlgebraMethodInnerSite => optional_absent()
     EvalCallNativeInterceptSite => optional_absent()
-    TryV2StdCollectionMapPrimitiveGroundingSite => optional_absent()
+    TryV2StdCollectionPrimitiveGroundingSite => optional_absent()
     EvalMethodCallShortCircuitSite => optional_absent()
     EvalServiceCallCarveOutSite => optional_absent()
   }

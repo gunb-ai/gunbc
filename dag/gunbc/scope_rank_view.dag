@@ -197,11 +197,11 @@ data scope_rank_view_readers: List<ScopeMapReader> = [
     after_cutover: "same -- the declarer's module is part of the resolution result",
   },
   {
-    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "is_v2_std_collection_map_grounded_fn"),
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "is_v2_std_collection_grounded_fn"),
     reads: "the scope item_registry, for the entry's module_name",
     demand: ProvenanceTest {
       what_is_read: "info.module_name, compared against the v2 std collection module",
-      decides: "whether a call takes the primitive map grounding instead of evaluating the authored body",
+      decides: "whether a call takes the primitive collection grounding (map or set) instead of evaluating the authored body",
     },
     after_cutover: "same -- the declarer's module is part of the resolution result",
   },

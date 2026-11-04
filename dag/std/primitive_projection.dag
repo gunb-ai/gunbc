@@ -88,6 +88,15 @@ data primitive_bytes_octets: PrimitiveIdentity = primitive_identity_slug(name: "
 data primitive_utf8_encode_bytes: PrimitiveIdentity = primitive_identity_slug(name: "utf8_encode_bytes")
 data primitive_octets_bytes: PrimitiveIdentity = primitive_identity_slug(name: "octets_bytes")
 data primitive_pure_dag_seam_unreachable: PrimitiveIdentity = primitive_identity_slug(name: "pure_dag_seam_unreachable")
+// THE SET CLUSTER, rostered as host seams beside the map cluster it resembles. The three names are the
+// seed's free_call.set_* arms and, on Rust, v1_rt::rc_empty_set / rc_set_insert / set_contains over
+// Rc<BTreeSet<T>> under T: Ord -- so they are HostRealizedSeam, not ModeledProjection: nothing here models
+// membership, it declares which host operation a call means. The two disagreements the surfaces carry are
+// filed as gunbc.recurring_failure_mode.set_membership_declared_by_equality_realized_by_ord and
+// .set_element_kind_interpreted_native_divergence.
+data primitive_empty_set: PrimitiveIdentity = primitive_identity_slug(name: "empty_set")
+data primitive_set_insert: PrimitiveIdentity = primitive_identity_slug(name: "set_insert")
+data primitive_set_contains: PrimitiveIdentity = primitive_identity_slug(name: "set_contains")
 data primitive_to_string: PrimitiveIdentity = primitive_identity_slug(name: "to_string")
 // THE SIX HOST-BOUNDARY OPERATION SEAMS (M2V two-keyings / D16 part 1; relocated from
 // v2.compiler.primitive_execution_semantics's slug roster, which keyed by the bare primitive name and so
@@ -163,6 +172,9 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_map_insert, module_path: "std.algebra", decl_name: "map_insert_primitive_delegate", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_lookup, module_path: "std.algebra", decl_name: "map_lookup_primitive_delegate", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_get, module_path: "std.algebra", decl_name: "list_at_primitive_delegate", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_empty_set, module_path: "std.algebra", decl_name: "empty_set_primitive_delegate", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_set_insert, module_path: "std.algebra", decl_name: "set_insert_primitive_delegate", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_set_contains, module_path: "std.algebra", decl_name: "set_contains_primitive_delegate", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_symbol_lexeme, module_path: "v2.std.node", decl_name: "symbol_lexeme", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_symbol_intern_lexeme, module_path: "v2.std.node", decl_name: "symbol_intern_lexeme", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_data_init_decl_facts_live, module_path: "v2.std.data_index", decl_name: "data_init_decl_facts_live", fidelity: HostRealizedSeam),

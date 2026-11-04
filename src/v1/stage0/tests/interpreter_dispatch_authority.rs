@@ -7,9 +7,9 @@
 
 use v1_compiler::v1_interpreter_dispatch_generated::{
     lookup_eval_algebra_method_inner, lookup_eval_builtin_inner, lookup_eval_call_bridge_std_node,
-    lookup_eval_call_native_intercept, lookup_try_v2_std_collection_map_primitive_grounding,
+    lookup_eval_call_native_intercept, lookup_try_v2_std_collection_primitive_grounding,
     EvalAlgebraMethodArm, EvalBuiltinArm, EvalCallBridgeStdNodeArm, EvalCallNativeInterceptArm,
-    TryV2StdCollectionMapPrimitiveGroundingArm,
+    TryV2StdCollectionPrimitiveGroundingArm,
 };
 
 fn all_eval_builtin_variants_reachable() {
@@ -44,14 +44,28 @@ fn generated_lookup_covers_representative_spellings_per_site() {
     all_eval_builtin_variants_reachable();
     all_eval_algebra_variants_reachable();
     all_bridge_variants_reachable();
-    assert!(lookup_try_v2_std_collection_map_primitive_grounding("map_insert").is_some());
+    assert!(lookup_try_v2_std_collection_primitive_grounding("map_insert").is_some());
     assert!(
-        lookup_try_v2_std_collection_map_primitive_grounding("map_insert_primitive_delegate")
-            .is_some()
+        lookup_try_v2_std_collection_primitive_grounding("map_insert_primitive_delegate").is_some()
     );
-    assert!(lookup_try_v2_std_collection_map_primitive_grounding("map_lookup").is_some());
+    assert!(lookup_try_v2_std_collection_primitive_grounding("map_lookup").is_some());
     assert!(
-        lookup_try_v2_std_collection_map_primitive_grounding("map_lookup_primitive_delegate")
+        lookup_try_v2_std_collection_primitive_grounding("map_lookup_primitive_delegate").is_some()
+    );
+    // The set cluster is grounded by the same site, so its six spellings must route through the
+    // same generated lookup: a roster row missing for a set spelling shows up here as `None`, not
+    // as a silently smaller enum.
+    assert!(lookup_try_v2_std_collection_primitive_grounding("empty_set").is_some());
+    assert!(
+        lookup_try_v2_std_collection_primitive_grounding("empty_set_primitive_delegate").is_some()
+    );
+    assert!(lookup_try_v2_std_collection_primitive_grounding("set_insert").is_some());
+    assert!(
+        lookup_try_v2_std_collection_primitive_grounding("set_insert_primitive_delegate").is_some()
+    );
+    assert!(lookup_try_v2_std_collection_primitive_grounding("set_contains").is_some());
+    assert!(
+        lookup_try_v2_std_collection_primitive_grounding("set_contains_primitive_delegate")
             .is_some()
     );
     assert!(lookup_eval_call_native_intercept("fold_list").is_some());
@@ -72,8 +86,16 @@ fn generated_enums_are_copy_and_distinct() {
         EvalCallBridgeStdNodeArm::V4BridgeSymbolLexeme
     );
     assert_ne!(
-        TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert,
-        TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap
+        TryV2StdCollectionPrimitiveGroundingArm::CollectionGroundingMapInsert,
+        TryV2StdCollectionPrimitiveGroundingArm::CollectionGroundingEmptyMap
+    );
+    assert_ne!(
+        TryV2StdCollectionPrimitiveGroundingArm::CollectionGroundingSetInsert,
+        TryV2StdCollectionPrimitiveGroundingArm::CollectionGroundingEmptySet
+    );
+    assert_ne!(
+        TryV2StdCollectionPrimitiveGroundingArm::CollectionGroundingSetContains,
+        TryV2StdCollectionPrimitiveGroundingArm::CollectionGroundingMapInsert
     );
     assert_ne!(
         EvalCallNativeInterceptArm::NativeInterceptFoldList,

@@ -7935,7 +7935,7 @@ fn call_function_inner(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
+    if let Some(result) = try_v2_std_collection_primitive_grounding(ctx, fn_node, args) {
         return result;
     }
 
@@ -11339,36 +11339,40 @@ fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], mod
         .is_some_and(|info| info.module_name == module)
 }
 
-/// Handler bodies for v2.std.collection map grounding. Roster authority is
+/// Handler bodies for v2.std.collection grounding -- the map primitives over the host map builtins and
+/// the set primitives over the host set builtins, one seam for both families. Roster authority is
 /// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
 /// before this macro matches on the generated enum variant.
-macro_rules! v1_map_grounding_arms {
+macro_rules! v1_collection_grounding_arms {
     ($cb:ident, $fname:ident) => {
         $cb! {
             $fname;
-            arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
-            arm "map_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
-            arm "map_grounding.lookup" { "map_lookup_primitive_delegate" | "map_lookup" } => "lookup",
-            arm "map_grounding.list_at" { "list_at_primitive_delegate" | "list_at_optional" } => "get",
+            arm "collection_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
+            arm "collection_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
+            arm "collection_grounding.lookup" { "map_lookup_primitive_delegate" | "map_lookup" } => "lookup",
+            arm "collection_grounding.list_at" { "list_at_primitive_delegate" | "list_at_optional" } => "get",
+            arm "collection_grounding.empty_set" { "empty_set_primitive_delegate" | "empty_set" } => "empty_set",
+            arm "collection_grounding.set_insert" { "set_insert_primitive_delegate" | "set_insert" } => "set_insert",
+            arm "collection_grounding.set_contains" { "set_contains_primitive_delegate" | "set_contains" } => "set_contains",
         }
     };
 }
 
 /// Expansion 1: the name list the guard predicate tests.
-macro_rules! v1_map_grounding_names {
+macro_rules! v1_collection_grounding_names {
     ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
-        const STD_COLLECTION_MAP_GROUNDED_FNS: &[&str] = &[$($($lit),+),*];
+        const STD_COLLECTION_GROUNDED_FNS: &[&str] = &[$($($lit),+),*];
     };
 }
 
-v1_map_grounding_arms!(v1_map_grounding_names, name);
+v1_collection_grounding_arms!(v1_collection_grounding_names, name);
 
 /// Expansion 2: the spelling -> builtin mapping (R1: roster-generated lookup).
-macro_rules! v1_map_grounding_dispatch {
+macro_rules! v1_collection_grounding_dispatch {
     ($f:ident; $(arm $id:tt { $($lit:literal)|+ } => $body:expr ,)*) => {
-        match $crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_map_primitive_grounding($f) {
+        match $crate::v1_interpreter_dispatch_generated::lookup_try_v2_std_collection_primitive_grounding($f) {
             Some(arm) => match arm {
-                $( try_v2_std_collection_map_primitive_grounding_arm!($id) => $body , )*
+                $( try_v2_std_collection_primitive_grounding_arm!($id) => $body , )*
             },
             None => return None,
         }
@@ -11397,8 +11401,8 @@ pub fn std_qualified_name_bridge_fn_names() -> &'static [&'static str] {
     STD_QUALIFIED_NAME_BRIDGE_FNS
 }
 
-fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
-    if !STD_COLLECTION_MAP_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
+fn is_v2_std_collection_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
+    if !STD_COLLECTION_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
         return false;
     }
     ctx.item_registry
@@ -11455,27 +11459,62 @@ fn list_at_as_optional(
     })
 }
 
-fn try_v2_std_collection_map_primitive_grounding(
+fn try_v2_std_collection_primitive_grounding(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
 ) -> Option<InterpResult<Value>> {
-    if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
+    if !is_v2_std_collection_grounded_fn(ctx, fn_node) {
         return None;
     }
     let grounded_name = fn_node.name.as_str();
-    let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
+    let builtin_name =
+        v1_collection_grounding_arms!(v1_collection_grounding_dispatch, grounded_name);
     if builtin_name == "get" {
         return Some(list_at_as_optional(args, ctx));
     }
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
-        Ok(None) => Some(Err(InterpError::TypeError {
-            msg: format!(
-                "{V2_STD_COLLECTION_MODULE}.{}: native map primitive refused this argument shape (host misconfiguration, or a non-native map carrier reached a HostRealizedSeam)",
-                fn_node.name
-            ),
-        })),
+        Ok(None) => {
+            // The fall-through used to be silent: an argument shape the native carrier cannot
+            // realize returned `Ok(None)`, which the caller read as "no builtin matched" and
+            // resolved on the interpreted route, where the same primitive's authored body called
+            // back into it. The refusal is named here instead: the seam, the primitive and the
+            // argument kinds. The CAUSE is stated per family rather than shared, because the two
+            // families genuinely differ and one sentence about both would be a fabricated cause:
+            // the set carrier is `Rc<OrdSet<String>>`, so a non-String item is unreachable there,
+            // while `map_insert` takes any key that has a decidable identity through `CanonKey`
+            // and refuses an undecidable key itself, so a map call reaching this arm is not an
+            // element-kind problem at all.
+            let arg_kinds = args
+                .iter()
+                .map(|(_, v)| v.type_label_public())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let cause = match builtin_name {
+                "set_insert" | "set_contains" => {
+                    "the native set carrier is realized over String elements only, so an item of \
+                     another kind is refused at the seam rather than falling through to the \
+                     authored body"
+                }
+                "empty_set" => {
+                    "empty_set's builtin answers unconditionally, so reaching this arm is a host \
+                     misconfiguration"
+                }
+                _ => {
+                    "host misconfiguration, or a carrier the native map realization cannot carry \
+                     reached the seam"
+                }
+            };
+            Some(Err(InterpError::TypeError {
+                msg: format!(
+                    "{V2_STD_COLLECTION_MODULE}.{}: native collection primitive refused this \
+                     argument shape at the HostRealizedSeam seam (argument kinds [{arg_kinds}]; \
+                     {cause}; a typed refusal at the seam, not a divergent call chain)",
+                    fn_node.name
+                ),
+            }))
+        }
         Err(e) => Some(Err(e)),
     }
 }
