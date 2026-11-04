@@ -165,10 +165,6 @@ import gunbc.machine_intake.ampere_checkpoint_console_observation {
 }
 import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_stem }
 import extdeps.linux.efi_stub { linux_efi_stub_initrd_load_failed_prefix, linux_efi_stub_line_prefix }
-import gunbc.machine_intake.ampere_checkpoint_console_observation { ampere_checkpoint_console_text, ampere_checkpoint_relation, ampere_checkpoint_relation_unread }
-import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_observation, ampere_dram_console_text }
-import gunbc.machine_intake.ampere_socket_console_observation { ampere_socket_console_observation, ampere_socket_console_text, ampere_socket_reference_comparison_text }
-import extdeps.bootloader.grub { grub_error_text }
 import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_end_marker, linux_kernel_panic_prefix }
 
 
