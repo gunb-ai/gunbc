@@ -8,8 +8,8 @@ import product.printed_chassis.assembly_geometry {
   M5FanScrewIntoBlowerLug, part, round, mechanical_interface, prism, rounded_rectangle, ProfileVertex,
 }
 import product.printed_chassis.blower_outlet_mount {
-  OutletMount, label_normal_y, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
-  opening_x_lo, opening_x_hi, lug_arm_protrusion, outlet_mount_note, lug_screw_part,
+  OutletMount, EdgeAlongX, run_for_label, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
+  opening_edge_lo, opening_edge_hi, lug_arm_protrusion, outlet_mount_note, lug_screw_part,
 }
 import product.printed_chassis.printable_assembly { CardFaceSide, BackFaceSide, FrontFaceSide, card_face_side_wire }
 import product.printed_chassis.gpu_duct {
@@ -139,9 +139,8 @@ fn side_mount_parts(f: EndFaceMeasurement, card: CardEnvelope, d: GpuDuctDesign,
   let sx_hi = hl / 2 + sc
   let passage_half = th / 2 - um(m: side_mount_ledge)
   let toward_card = match side { FrontFaceSide => 1 BackFaceSide => 0 - 1 }
-  let probe = OutletMount { corner_x: 0, run: toward_card, fan_y: fan_y, mouth_z: face_z, body: 1 }
-  let run = if label_normal_y(m: probe) == toward_card { toward_card } else { 0 - toward_card }
-  let mount = OutletMount { corner_x: 0 - run * hl / 2, run: run, fan_y: fan_y, mouth_z: face_z, body: 1 }
+  let run = run_for_label(edge: EdgeAlongX, body: 1, toward: toward_card)
+  let mount = OutletMount { edge: EdgeAlongX, corner: 0 - run * hl / 2, run: run, centre: fan_y, mouth_z: face_z, body: 1 }
   let half = housing_half(thickness: b.blower.thickness, tolerance: b.blower.thickness_tolerance)
   let bore_x_lo = window_x - (plug_w - 2 * wall) / 2
   let bore_y_lo = window_y - (plug_h - 2 * wall) / 2
@@ -184,7 +183,7 @@ fn side_mount_parts(f: EndFaceMeasurement, card: CardEnvelope, d: GpuDuctDesign,
     kind: Printed, scope: FixedFrame,
     adds: concat(concat(concat(back_wall, body_adds), interface.adds), concat(outlet_socket_adds(m: mount, half: half, clearance: b.socket_clearance, wall: d.wall, depth: side_mount_socket_depth), lug_arm_adds(m: mount, half: half, clearance: b.socket_clearance, wall: d.wall))),
     cuts: concat(concat(concat(concat(chamber_cuts, [
-      plane_on_end_slab(x_lo: opening_x_lo(m: mount), x_hi: opening_x_hi(m: mount), y_lo: fan_y - passage_half, y_hi: fan_y + passage_half, z_lo: chamber_top - 1000, z_hi: face_z + 1000),
+      plane_on_end_slab(x_lo: opening_edge_lo(m: mount), x_hi: opening_edge_hi(m: mount), y_lo: fan_y - passage_half, y_hi: fan_y + passage_half, z_lo: chamber_top - 1000, z_hi: face_z + 1000),
     ]), outlet_socket_cuts(m: mount, half: half, clearance: b.socket_clearance, depth: side_mount_socket_depth)), interface.cuts), concat(card_screw_holes(f: f, d: d, face_z: face_z), lug_arm_cuts(m: mount, half: half, clearance: b.socket_clearance))),
     x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -60000, plane: side_mount_duct_print_plane,
     notes: join(["One piece. Prints ", print_plane_pose(plane: side_mount_duct_print_plane), ", as exported: nothing inside the closed chamber needs support, and bed-only supports carry the plug lip and flange overhangs outside. Screw the blower in BEFORE the duct goes on the card: ", outlet_mount_note(), " Then drive both M3 x 4 card screws with the duct seated (front side: from behind the flange; back side: through the two access holes in the back wall). PLA for an unpowered fit prototype only; PETG or ASA for service."], ""))

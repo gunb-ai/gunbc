@@ -24,7 +24,7 @@ import product.printed_chassis.duct_card_catalog { DuctCard, DuctCardDims, duct_
 import product.printed_chassis.card_installation { partition_refusal_text }
 import product.printed_chassis.group_duct {
   GroupDuctPlan, group_duct_plans, group_duct_plan, admit_group_fit_plate, group_fit_plate_readme, admit_group_duct, group_duct_readme,
-  GroupDuctAdmitted, GroupMembersNotPaired, GroupBlowerUnfit, GroupFitPlateAdmission,
+  GroupDuctAdmitted, GroupBlowerUnfit, GroupFitPlateAdmission,
   GroupFitPlateAdmitted, GroupPartitionRefused, GroupPlanUnresolved, GroupMembersNotSideBySide, GroupMembersMixCardModels, GroupMemberFaceUnfit,
   GroupMemberConnectorNotClear,
 }
@@ -263,7 +263,7 @@ fn group_ready(root: PrintedAssemblyRoot, parts: List<AssemblyPart>, joints: Lis
         root: root,
         parts: parts,
         interfaces: joints,
-        required_keepouts: [],
+        required_keepouts: map(filter(parts, p => match p.kind { Clearance => true Printed => false Purchased => false Metal => false }), p => p.id),
         assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
         package: printed_assembly_root_wire(root: root),
         schema: duct_review_schema as String,
@@ -276,7 +276,6 @@ fn group_ready(root: PrintedAssemblyRoot, parts: List<AssemblyPart>, joints: Lis
 fn group_admission_selection(root: PrintedAssemblyRoot, admission: GroupFitPlateAdmission, readme: String) -> PrintableAssemblySelection {
   match admission {
     GroupDuctAdmitted { parts: parts, interfaces: joints } => group_ready(root: root, parts: parts, joints: joints, readme: readme)
-    GroupMembersNotPaired { count: n } => PrintableAssemblyRefused { reason: join(["the group duct serves cards in pairs, one blower per pair, and this group has ", to_string(value: n), " members"], "") }
     GroupBlowerUnfit { reason: r } => PrintableAssemblyRefused { reason: r }
     GroupFitPlateAdmitted { parts: parts, interfaces: joints } => group_ready(root: root, parts: parts, joints: joints, readme: readme)
     GroupPartitionRefused { causes: cs } => PrintableAssemblyRefused { reason: join(["the plan's partition is refused: ", join(map(cs, c => partition_refusal_text(r: c)), "; ")], "") }
