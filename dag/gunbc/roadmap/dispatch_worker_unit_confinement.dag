@@ -60,6 +60,7 @@ type DispatchCliProvider
   | CodexDispatchProvider
   | CursorDispatchProvider
   | GunbcHarnessProvider
+  | ReplayDispatchProvider
 
 // ONE OWNER FOR THE PROVIDER WORD. The word is what the dispatch actuator spells in its provider labels and
 // what the credential snapshot store spells in the snapshot file name it derives (gunbc.dispatch_credential_snapshot
@@ -75,6 +76,7 @@ type DispatchProviderWordsDeclaration {
   codex: NonEmptyStr
   cursor: NonEmptyStr
   gunbc_harness: NonEmptyStr
+  gunbc_replay: NonEmptyStr
 }
 
 data dispatch_provider_words: DispatchProviderWordsDeclaration = DispatchProviderWordsDeclaration {
@@ -82,6 +84,7 @@ data dispatch_provider_words: DispatchProviderWordsDeclaration = DispatchProvide
   codex: "codex" as NonEmptyStr,
   cursor: "cursor" as NonEmptyStr,
   gunbc_harness: "gunbc-harness" as NonEmptyStr,
+  gunbc_replay: "gunbc-replay" as NonEmptyStr,
 }
 
 // The word for a provider, read from the row above. This is not a second map of literals: the literals are the
@@ -92,6 +95,10 @@ fn dispatch_provider_word(provider: DispatchCliProvider) -> NonEmptyStr {
     CodexDispatchProvider => dispatch_provider_words.codex
     CursorDispatchProvider => dispatch_provider_words.cursor
     GunbcHarnessProvider => dispatch_provider_words.gunbc_harness
+    // Added with the merge of #14396, which introduced the replay executor and spelled its word in the
+    // actuator's own copy of the map. Read here instead: this row is the one owner, and a provider whose word
+    // lived only in one of the two readers is exactly the drift the row exists to prevent.
+    ReplayDispatchProvider => dispatch_provider_words.gunbc_replay
   }
 }
 
@@ -236,6 +243,7 @@ fn dispatch_pane_working_directory(
 ) -> String {
   match provider {
     GunbcHarnessProvider => instance.repo_root as String
+    ReplayDispatchProvider => instance.repo_root as String
     ClaudeCodeProvider => worktree_path
     CodexDispatchProvider => worktree_path
     CursorDispatchProvider => worktree_path
