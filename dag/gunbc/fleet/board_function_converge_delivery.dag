@@ -1,0 +1,185 @@
+module gunbc.fleet.board_function_converge_delivery
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import product.host_identity { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { uncataloged_program }
+import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_converge_executor_subject_split {
+  fleet_converge_split_read, SplitOk, SplitRefused, fleet_converge_split_refusal_line,
+}
+import gunbc.fleet.machine_board { machine_board_rows, MachineBoardCatalogued }
+import gunbc.fleet.board_function_admission_marker { board_function_converge_admission_marker }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
+import gunbc.host.host_effect_realize {
+  RunArgvTransportObserved, RunArgvTransportRefused, run_argv_over_host_effect_transport,
+  DeployApplyPorts, deploy_apply_run_legs, ApplyRunOk, ApplyRunFailed,
+  live_deploy_apply_root_helper_snapshot_on_host, deploy_retract_ports_on_host,
+  run_argv_stdin_over_host_effect_transport,
+}
+import gunbc.owned_directory { OwnedDirectoryEnsureRefused }
+import extdeps.git.partial_clone { observe_object_source_serve }
+import gunbc.live_deploy.apply_legs {
+  DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, board_function_converge_install_plan,
+  BoardFunctionConvergeUngatedStage, BoardFunctionConvergeGateStage,
+}
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+
+// HOW THE CONVERGE REACHES A HOST THAT RUNS NO LIVE DEPLOYMENT (srv2-srv4, the other ALTRAD8UD-1L2T hosts),
+// which is the frontier row of gunbc.fleet.board_function_admission. The fleet-converge job runs on a fleet
+// runner (an Altra host, arm64), builds the seed in its own checkout, and installs over fleet ssh the same
+// legs live_deploy installs on srv1 (gunbc.live_deploy.apply_legs board_function_converge_install_plan), in
+// two stages so a refusal is loud and recoverable rather than a CI outage:
+//
+//   1. UNGATED: the per-revision root-owned snapshot (the tree install digests every file and the binary on
+//      the host and writes the receipt last, so a torn transfer is refused, never run), the unit, and a run
+//      of the unit. The unit's entry writes only when the live tree matches the route, and refuses without
+//      writing otherwise; the workloads are not gated yet, so a refusal leaves docker and the runners up.
+//   2. GATED: the drop-ins on docker, containerd and the runner template, installed only when the unit's
+//      run left the admission latch (gunbc.fleet.board_function_admission_marker). A host that refused stays
+//      ungated and the run fails naming it; the gate is never loosened to fit a host.
+//
+// REFUSALS BEFORE ANY HOST WRITE: the subject is not a machine_board row whose catalogued board is the
+// ALTRAD8UD-1L2T; the executor is a slot on the subject (the shared split); the runner or the subject is not
+// aarch64, because the binary installed is the one this run built and cross-building is not done.
+
+data board_function_converge_delivery_receipt_path: String = "target/board-function-converge-delivery-receipt.txt"
+
+data board_function_converge_delivery_attempt_raw: String = "board-function-converge-delivery-ci"
+
+fn delivery_board_admitted(host: HostIdentity) -> Bool {
+  length(filter(machine_board_rows, r => r.host == host && match r.board {
+    MachineBoardCatalogued { catalog: c, source: _ } => c.model_label == asrock_altrad8ud_1l2t_catalog.model_label
+    _ => false
+  })) > 0
+}
+
+type MachineArch
+  = MachineArchRead { spelling: String }
+  | MachineArchUnread { cause: String }
+
+fn read_machine_arch(transport: HostEffectTransport) -> MachineArch {
+  match run_argv_over_host_effect_transport(command: uname_machine_command(), transport: transport) {
+    RunArgvTransportRefused { reason: r } => MachineArchUnread { cause: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 { MachineArchUnread { cause: join(["uname -m exited ", to_string(o.exit_code), ": ", o.stderr], "") } }
+      else { MachineArchRead { spelling: trim(s: o.stdout) } }
+  }
+}
+
+fn arch_refusal(who: String, arch: MachineArch) -> String? {
+  match arch {
+    MachineArchUnread { cause: c } => Present { value: join([who, " architecture unread: ", c], "") }
+    MachineArchRead { spelling: s } =>
+      match uname_linux_machine_architecture(spelling: s) {
+        Present { value: a } => if a == Aarch64 { none } else { Present { value: join([who, " is ", s, ", not aarch64"], "") } }
+        Absent => Present { value: join([who, " reports an unrecognised architecture ", s], "") }
+      }
+  }
+}
+
+// The delivery uses none of the broker-specific ports; each refuses by name if a plan ever reaches one.
+fn delivery_ports(source_root: String, transport: HostEffectTransport) -> DeployApplyPorts {
+  DeployApplyPorts {
+    command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
+    stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
+    ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "the board-function converge delivery ensures no owned directory" } },
+    state_directories: fn(r) { Present { value: "the board-function converge delivery installs no broker state directories" } },
+    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
+    broker_tree: fn(r) { Present { value: "the board-function converge delivery installs no broker tree" } },
+    dependency: fn(d) { Present { value: "the board-function converge delivery installs no dependency step" } },
+    retract: deploy_retract_ports_on_host(transport: transport),
+    object_source: fn() { observe_object_source_serve(source: source_root) },
+  }
+}
+
+fn run_delivery_stage(plan: DeployApplyPlan, ports: DeployApplyPorts, stage: String) -> String? {
+  match plan {
+    ApplyPlanRefused { step: s, reason: r } => Present { value: join([stage, " refused at ", s, ": ", r], "") }
+    ApplyPlanReady { legs: legs } =>
+      match deploy_apply_run_legs(legs: legs, ports: ports) {
+        ApplyRunOk { legs_run: _, reports: _ } => none
+        ApplyRunFailed { step: s, reason: r, legs_run: n } => Present { value: join([stage, " failed at ", s, " after ", to_string(n), " legs: ", r], "") }
+      }
+  }
+}
+
+fn admission_latch_standing(transport: HostEffectTransport) -> String? {
+  match run_argv_over_host_effect_transport(
+    command: argv_command(program: uncataloged_program(invocation: "test"), arguments: ["-e", board_function_converge_admission_marker as String]),
+    transport: transport,
+  ) {
+    RunArgvTransportRefused { reason: r } => Present { value: join(["the admission latch read was refused: ", r], "") }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 { none }
+      else { Present { value: "the converge left no admission latch: the host's tree did not match the route, the unit refused, and the workloads stay ungated (read the unit's journal)" } }
+  }
+}
+
+fn deliver_to_host(host: HostIdentity, transport: HostEffectTransport, source_root: String, revision_text: String) -> String {
+  let revision = RevisionBoundAtEmission { revision: revision_text }
+  let ports = delivery_ports(source_root: source_root, transport: transport)
+  match arch_refusal(who: "the subject", arch: read_machine_arch(transport: transport)) {
+    Present { value: why } => join(["refused before any write: ", why], "")
+    Absent =>
+      match run_delivery_stage(plan: board_function_converge_install_plan(host: host, revision: revision, stage: BoardFunctionConvergeUngatedStage), ports: ports, stage: "ungated stage") {
+        Present { value: why } => join(["FAILED (workloads left ungated and running): ", why], "")
+        Absent =>
+          match admission_latch_standing(transport: transport) {
+            Present { value: why } => join(["REFUSED (workloads left ungated and running): ", why], "")
+            Absent =>
+              match run_delivery_stage(plan: board_function_converge_install_plan(host: host, revision: revision, stage: BoardFunctionConvergeGateStage), ports: ports, stage: "gate stage") {
+                Present { value: why } => join(["FAILED after the converge read back: ", why], "")
+                Absent => "DELIVERED: converge read back and the gate is installed"
+              }
+          }
+      }
+  }
+}
+
+fn board_function_converge_delivery_ci_wet() -> ProcessExit
+{
+  match fleet_converge_split_read() {
+    SplitRefused { reason: why } => exit_failure(reason: fleet_converge_split_refusal_line(reason: why))
+    SplitOk { executor_runner_name: _, subject_host: raw_host } => {
+      let host = raw_host as HostIdentity
+      if !delivery_board_admitted(host: host) {
+        exit_failure(reason: join(["board_function_converge_delivery: ", raw_host, " is not a machine_board row catalogued as the ALTRAD8UD-1L2T"], ""))
+      } else {
+        match arch_refusal(who: "the executor", arch: read_machine_arch(transport: LocalShell)) {
+          Present { value: why } => exit_failure(reason: join(["board_function_converge_delivery: ", why], ""))
+          Absent =>
+            match administrator_ssh_target(host: host) {
+              SshTargetRefused { endpoint: e, refusal: why } => exit_failure(reason: ssh_target_refusal_text(endpoint: e, refusal: why))
+              SshTargetResolved { target: target } =>
+                match prepare_fleet_ssh_agent_context(attempt_raw: board_function_converge_delivery_attempt_raw) {
+                  FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+                  FleetSshContextReady { context: context, receipt: context_receipt } => {
+                    let outcome = deliver_to_host(host: host, transport: FleetSsh { target: target, context: context }, source_root: actions_variable_trimmed(name: "GITHUB_WORKSPACE"), revision_text: actions_variable_trimmed(name: "GITHUB_SHA"))
+                    let body = join([
+                      "board_function_converge_delivery probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, " host=", raw_host, "\n",
+                      context_receipt, "outcome ", outcome, "\n",
+                    ], "")
+                    let w = Filesystem.Write(path: board_function_converge_delivery_receipt_path, content: body)
+                    if !w.success { exit_failure(reason: join(["board_function_converge_delivery: receipt write failed: ", w.error, "\n", body], "")) }
+                    else if !starts_with(s: outcome, prefix: "DELIVERED") { exit_failure(reason: body) }
+                    else { ExitSuccess }
+                  }
+                }
+            }
+        }
+      }
+    }
+  }
+}
