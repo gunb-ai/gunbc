@@ -7505,7 +7505,12 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         if let Some(cause) = source_roots.iter().find_map(|r| admit_source_root(r).err()) {
             return compile_not_executed(&request.subject, started, "source-discovery", cause);
         }
-        match demand_acquire::demand_acquired_index_for_entry(source_roots, path) {
+        let duplicates = if primary_precedence {
+            demand_acquire::CustomRootDuplicate::FirstRootWins
+        } else {
+            demand_acquire::CustomRootDuplicate::Refuse
+        };
+        match demand_acquire::demand_acquired_index_for_entry(source_roots, path, duplicates) {
             Ok(index) => index,
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "demand-acquire", cause)

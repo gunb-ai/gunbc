@@ -102,8 +102,9 @@ pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
 pub(crate) fn demand_acquired_index_for_entry(
     source_roots: &[String],
     entry_file: &str,
+    duplicates: CustomRootDuplicate,
 ) -> Result<Rc<MultiEntryIndex>, String> {
-    let custom = custom_root_module_census(source_roots)?;
+    let custom = custom_root_module_census_under(source_roots, duplicates)?;
     let index = build_demand_acquired_index(source_roots, entry_file, &custom, &[])?;
     let roots = source_roots.to_vec();
     let census = Rc::new(custom);
@@ -273,8 +274,25 @@ fn source_root_is_governed_layout(root: &str) -> bool {
 
 /// Walk only non-governed roots. A wet `gunbc run --source-root dag --source-root src/v2`
 /// never enters this walk.
+/// WHAT A MODULE DECLARED IN TWO NON-GOVERNED ROOTS MEANS. `gunbc run` has no precedence policy, so
+/// it refuses. A compile whose request declares `primary_precedence` keeps the FIRST root's
+/// declaration, which is what the whole-tree index did for it (review 90897): the acquired route
+/// honours the field the caller declared rather than silently changing its meaning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CustomRootDuplicate {
+    Refuse,
+    FirstRootWins,
+}
+
 fn custom_root_module_census(
     source_roots: &[String],
+) -> Result<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>, String> {
+    custom_root_module_census_under(source_roots, CustomRootDuplicate::Refuse)
+}
+
+fn custom_root_module_census_under(
+    source_roots: &[String],
+    duplicates: CustomRootDuplicate,
 ) -> Result<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>, String> {
     let mut by_module: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
         std::collections::HashMap::new();
@@ -303,10 +321,15 @@ fn custom_root_module_census(
             });
             if let Some(existing) = by_module.get(&name) {
                 if existing.path != src.path {
-                    return Err(format!(
-                        "module {name} is declared in both {} and {}",
-                        existing.path, src.path
-                    ));
+                    match duplicates {
+                        CustomRootDuplicate::Refuse => {
+                            return Err(format!(
+                                "module {name} is declared in both {} and {}",
+                                existing.path, src.path
+                            ))
+                        }
+                        CustomRootDuplicate::FirstRootWins => continue,
+                    }
                 }
             }
             by_module.insert(name, src);
@@ -802,6 +825,46 @@ mod tests {
             "an unreadable module must be Unreadable, not Lacks"
         );
         assert!(lacks, "an absent module must be Lacks");
+    }
+
+    /// A MODULE DECLARED IN TWO CUSTOM ROOTS: `gunbc run` (Refuse) refuses and names both files; an
+    /// entry compile declaring primary precedence (FirstRootWins) keeps the FIRST root's file, as the
+    /// whole-tree index did (review 90897). RED: drop the FirstRootWins arm and the second assertion
+    /// fails with the duplicate refusal.
+    #[test]
+    fn a_module_in_two_custom_roots_refuses_on_run_and_keeps_the_first_root_under_precedence() {
+        let first = fixture_dir();
+        let second = fixture_dir();
+        std::fs::write(
+            first.join("m.dag"),
+            "module dup_probe\n\nfn which() -> Int { 1 }\n",
+        )
+        .expect("first");
+        std::fs::write(
+            second.join("m.dag"),
+            "module dup_probe\n\nfn which() -> Int { 2 }\n",
+        )
+        .expect("second");
+        let roots = vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ];
+        let refused =
+            super::custom_root_module_census_under(&roots, super::CustomRootDuplicate::Refuse);
+        assert!(
+            matches!(&refused, Err(cause) if cause.contains("module dup_probe is declared in both")),
+            "run must refuse a module declared in two roots: {refused:?}"
+        );
+        let kept = super::custom_root_module_census_under(
+            &roots,
+            super::CustomRootDuplicate::FirstRootWins,
+        )
+        .expect("primary precedence admits the duplicate");
+        assert!(
+            kept.get("dup_probe")
+                .is_some_and(|src| src.content.contains("{ 1 }")),
+            "primary precedence keeps the first root's declaration"
+        );
     }
 
     /// The seeded rebuild under a custom source root uses the retained snapshot: the provider's file
