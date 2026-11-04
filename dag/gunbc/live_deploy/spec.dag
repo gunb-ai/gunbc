@@ -741,14 +741,13 @@ fn deployment_tailnet_door_steps(names: DeploymentNames) -> List<DeploymentArtif
   }
 }
 
-// THE LAB AGENT'S DOOR (LAB-AGENT-OPERATOR-1). A second unix-socket `gunbc serve` beside the
-// loopback one, launched on the lab's agent-door entry, whose only reader is the host account the
-// lab's write policy rosters (gunbc.auth.request_authentication lab_agent_host_account). WHETHER a
-// deployment has one is the write policy's own answer (deployment_admits_agent_peer), read through
-// the instance's deployment, so a deployment whose policy rosters no agent derives no socket, no
-// unit and no directory: there is no second list of lab deployments here. The socket is opened to
-// every class by the seed's listener and its directory is traversable by every class; the kernel
-// peer uid, not the mode, decides.
+// THE LAB AGENT'S DOOR. A second unix-socket `gunbc serve` beside the loopback one, launched on the
+// lab's agent-door entry, whose only reader is the host account the lab's write policy rosters
+// (gunbc.auth.request_authentication lab_agent_host_account). WHETHER a deployment has one is the
+// write policy's own answer (deployment_admits_agent_peer), read through the instance's deployment,
+// so a deployment whose policy rosters no agent derives no socket, no unit and no directory: there is
+// no second list of lab deployments here. The socket is opened to every class by the seed's listener
+// and its directory is traversable by every class; the kernel peer uid, not the mode, decides.
 fn deployment_agent_door_socket(instance: HostDashboardInstance) -> NonEmptyStr? {
   if deployment_admits_agent_peer(deployment: instance.deployment) {
     Present { value: dashboard_instance_agent_door_socket(instance: instance) }

@@ -15,7 +15,7 @@ import std.measure { Kibibyte, millicore }
 import std.filesystem { path_parent_directory }
 import extdeps.git { git_non_bare_git_dir_name, SafeDirectoryGrant, GitEnvironmentSetting, git_safe_directory_environment }
 import extdeps.systemd {
-  ExecStopPostProperty, NoNewPrivilegesProperty, PrivateTmpProperty, ProtectHomeProperty, ProtectSystemProperty,
+  CollectModeProperty, ExecStopPostProperty, NoNewPrivilegesProperty, PrivateTmpProperty, ProtectHomeProperty, ProtectSystemProperty,
   ReadOnlyPathsProperty, ReadWritePathsProperty, RestrictSUIDSGIDProperty, StandardErrorProperty, StandardOutputProperty,
   UMaskProperty,
 }
@@ -124,9 +124,11 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
 // which is why every receipt looked right while nothing ran.
 // THE ATTEMPT'S UNIT NAME. Per attempt, not per node: the attempt key is a content hash, so two
 // attempts on one node get distinct units and the collision the tmux path reports as
-// `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
-// `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
-// explicit act rather than a side effect of starting the next attempt.
+// `duplicate session` has no spelling here. A unit that has exited is collected (CollectMode below), so
+// its exit record, written by ExecStopPost before the unit unloads, is the evidence the next step reads.
+// THE NAME IS PER ATTEMPT, NOT PER DELIVERY: re-delivery restarts the SAME attempt (same node, same key),
+// so the name recurs, and a failed unit under the default CollectMode keeps it loaded and refuses the
+// re-run. dispatch_worker_unit_stream_properties therefore sets CollectMode=inactive-or-failed.
 fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
   join(["gunbc-attempt-", node_id, "-", attempt_key], "")
 }
@@ -318,6 +320,7 @@ fn dispatch_worker_unit_stream_properties(
         NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
         NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
         NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
+        NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
       ],
       dispatch_worker_set_credential_settings(set: set),
     ),

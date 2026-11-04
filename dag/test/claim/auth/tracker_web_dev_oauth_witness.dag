@@ -177,8 +177,8 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
 test fn console_readback_epochs_are_the_2026_calendar_receipt() -> Bool {
   let observed_unix = tracker_web_test_console_readback_unix_int(at: tracker_web_test_console_readback_observed_at)
   let until_unix = tracker_web_test_console_readback_unix_int(at: tracker_web_test_console_readback_valid_until)
-  iso8601_utc_text(unix: observed_unix) == "2026-10-11T04:00:00Z"
-    && iso8601_utc_text(unix: until_unix) == "2026-11-10T04:00:00Z"
+  iso8601_utc_text(unix: observed_unix) == "2026-11-04T07:45:00Z"
+    && iso8601_utc_text(unix: until_unix) == "2026-12-04T07:45:00Z"
     && match tracker_web_test_console_readback_observed_at_epoch {
       Absent => false
       Present { value: s } => (second_count(s: s) as Int) == observed_unix

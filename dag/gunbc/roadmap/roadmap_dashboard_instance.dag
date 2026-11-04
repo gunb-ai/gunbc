@@ -433,7 +433,9 @@ fn dashboard_instance_tailnet_door_socket(instance: HostDashboardInstance) -> No
 
 // THE LAB AGENT'S DOOR directory, beside the tailnet door's and with the same traverse-for-all mode:
 // the socket the seed opens to every class is walled by nothing but the kernel peer uid the handler
-// is handed, so the account that connects needs only to reach it.
+// is handed, so the account that connects needs only to reach it. LAB-ONLY SITE, adopting no
+// foreign ownership (group_adoption ForeignOwnershipRefuses): the directory is host-prepared, so a
+// pre-existing group the deploy did not create is refused, never adopted.
 fn dashboard_instance_agent_door_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
   OwnedDirectoryDeclared {
     member: "agent-door" as NonEmptyStr,

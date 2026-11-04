@@ -559,7 +559,8 @@ fn live_deploy_tailnet_door_unit_file(
 }
 
 // THE LAB AGENT'S DOOR UNIT: the same server on the agent-door entry, bound to the socket the
-// spec's agent-door directory demand names. Emitted only for a spec that carries that demand.
+// spec's agent-door directory demand names. Emitted only for a spec that carries that demand; the
+// emission type is the tailnet door's, because the three outcomes are the same.
 fn live_deploy_agent_door_unit_file(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployTailnetDoorUnitEmission {

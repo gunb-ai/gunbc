@@ -33,6 +33,7 @@ import gunbc.principal_projection {
   host_account_principal_authority, srv1_host_accounts_principal_namespace,
 }
 import gunbc.deployment_risk { DeploymentId, srv1_lab_codex_feedback_deployment }
+import std.algebra { non_empty }
 
 // THE ACCESS-PATH VOCABULARY, owned here and supplied to extdeps.http.server RequestSecurityContext
 // as its AccessPath type argument. It moved from that module because which front doors this
