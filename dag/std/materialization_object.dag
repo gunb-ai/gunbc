@@ -16,11 +16,13 @@ import std.content_hash {
   Sha256Digest, sha256_hex_digest,
 }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
-import std.judgment_contract { ComputedContent, ExactByteContent }
+import std.judgment_contract { ComputedContent, ExactByteContent, length_prefixed_encode }
 import std.algebra { empty_map, map_insert, map_lookup }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.materialization_provider {
+import gunbc.fabric.fabric_storage_protocol { malformed }
+import product.printed_chassis.assembly_geometry { part }
   ArtifactRequest,
   ArtifactOutputId,
   CarriedOutput,

@@ -122,6 +122,7 @@ import gunbc.ci.ci_runner_target {
   ci_runner_target_spec
 }
 import gunbc.ci.repository_seed_steps {
+import std.algebra { list_flat_map }
   repository_checkout_step,
   SeedLaneSteps,
   seed_lane_steps,

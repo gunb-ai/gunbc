@@ -26,7 +26,7 @@ import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal, read_mac_keyring,
   approval_capability_issuer, approval_capability_authority,
 }
-import gunbc.auth.mac_keyring { approval_mac_key_suite }
+import gunbc.auth.mac_keyring { approval_mac_key_suite, read_mac_keyring }
 
 // ── THE STORE RECEIPT KEY ─────────────────────────────────────────────────────────────────────
 //
