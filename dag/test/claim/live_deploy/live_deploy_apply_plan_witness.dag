@@ -878,6 +878,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
           match a {
             HelperSnapshotInstall => l.owner as String
             HelperSnapshotRetireSuperseded => launcher_snapshot_owner(legs: rest)
+            HelperSnapshotVerify => launcher_snapshot_owner(legs: rest)
           }
         ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegInstallFile { step: _, command: _, payload: _ } => launcher_snapshot_owner(legs: rest)
