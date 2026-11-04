@@ -93,6 +93,7 @@ import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default
 import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_name }
 
 import v1.compiler.dag_collect { is_module_shell_node, dag_node_key, collect_dag_nodes }
+import std.types { Map }
 type SourceFile {
   path: String
   content: String
