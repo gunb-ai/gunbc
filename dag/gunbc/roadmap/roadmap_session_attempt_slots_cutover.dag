@@ -442,15 +442,15 @@ fn attempt_slots_census(target: SessionAttemptSlotsStore, moved: ReplacedAttempt
   match attempt_slots_row_check(target: target, moved: moved) {
     Present { value: refusal } => AttemptSlotsCensusRowRefused { refusal: refusal }
     Absent =>
-      match attempt_slots_source_admission(moved: moved) {
-        SlotStoreAbsent { root: _, member: _ } => AttemptSlotsCensusSourceProvenAbsent { old_root: moved.old_slots_root }
+      match attempt_slots_source_store(moved: moved) {
+        SlotStoreAbsent { member: _, root: _ } => AttemptSlotsCensusSourceProvenAbsent { old_root: moved.old_slots_root }
         SlotStoreRefused { detail: d } => AttemptSlotsCensusSourceUnreadable { old_root: moved.old_slots_root, detail: d }
-        SlotStoreListed { root: r } =>
-          match attempt_slot_keys(store: file_slot_store(root: r)) {
+        SlotStoreListed { root: listed_root } =>
+          match attempt_slot_keys(store: file_slot_store(root: listed_root)) {
             AttemptSlotKeysAbsent { store: _ } => AttemptSlotsCensusSourceProvenAbsent { old_root: moved.old_slots_root }
             AttemptSlotKeysRefused { detail: d } => AttemptSlotsCensusKeysRefused { old_root: moved.old_slots_root, detail: d }
             AttemptSlotKeysListed { keys: keys } => {
-              let entries = map(keys, k => attempt_slots_census_entry(source: file_slot_store(root: r), target: target.slots, reference: k))
+              let entries = map(keys, k => attempt_slots_census_entry(source: file_slot_store(root: listed_root), target: target.slots, reference: k))
               AttemptSlotsCensusOf {
                 old_root: moved.old_slots_root,
                 entries: entries,
@@ -538,15 +538,16 @@ fn attempt_slots_carry_refused_detail(cause: CasStoreFailure) -> String {
   }
 }
 
-// The source store, minted from the declared row: listed first, so readiness is evidence the directory
-// was observed rather than a caller's assertion (the same list-then-fold every sealed store uses).
-// It answers the store's OWN admission coproduct (gunbc.durable_cas_file_store.SlotStoreAdmission) and
-// mints nothing of its own: an Optional here would collapse "the replaced root is provably not there"
-// (SlotStoreAbsent) into "it could not be read" (SlotStoreRefused), which is the ENOENT collapse that
-// makes a finished cutover indistinguishable from a broken one -- and this fold's own comment at that
-// arm said the distinction must survive to this module's census/carry coproducts. It does, unchanged,
-// because this wrapper no longer re-answers anything.
-fn attempt_slots_source_admission(moved: ReplacedAttemptSlotsRoot) -> SlotStoreAdmission {
+// The source store, listed from the declared row: readiness is evidence the directory was observed
+// rather than a caller's assertion, the same list-then-fold every sealed store uses. It hands back the
+// ADMISSION answer rather than an Optional, because an Optional has two cases and this fact has three:
+// wrapping it was the conflation this module exists to remove -- "the replaced root is provably not
+// there" (SlotStoreAbsent) and "it could not be read" (SlotStoreRefused) are the state a COMPLETED
+// cutover ends in and the state a broken one is in, and they must not share an answer. The fold mints
+// nothing of its own; the census and the carry answer the distinction as their own outcomes
+// (AttemptSlotsCensusSourceProvenAbsent / SourceUnreadable, AttemptSlotsCarrySourceProvenAbsent /
+// SourceUnreadable), which is the mint attempt_slots_source_absent_frontier_ref used to carry as a
+// frontier. That row is retired by this change.
   listed_slot_store(member: session_attempt_slots.member as String, root: moved.old_slots_root)
 }
 
@@ -566,11 +567,11 @@ fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptS
   match attempt_slots_row_check(target: target, moved: moved) {
     Present { value: refusal } => AttemptSlotsCarryRowRefused { refusal: refusal }
     Absent =>
-      match attempt_slots_source_admission(moved: moved) {
-        SlotStoreAbsent { root: _, member: _ } => AttemptSlotsCarrySourceProvenAbsent { old_root: moved.old_slots_root }
+      match attempt_slots_source_store(moved: moved) {
+        SlotStoreAbsent { member: _, root: _ } => AttemptSlotsCarrySourceProvenAbsent { old_root: moved.old_slots_root }
         SlotStoreRefused { detail: d } => AttemptSlotsCarrySourceUnreadable { old_root: moved.old_slots_root, detail: d }
-        SlotStoreListed { root: r } =>
-          match attempt_slot_keys(store: file_slot_store(root: r)) {
+        SlotStoreListed { root: listed_root } =>
+          match attempt_slot_keys(store: file_slot_store(root: listed_root)) {
             AttemptSlotKeysAbsent { store: _ } => AttemptSlotsCarrySourceProvenAbsent { old_root: moved.old_slots_root }
             AttemptSlotKeysRefused { detail: d } => AttemptSlotsCarryKeysRefused { old_root: moved.old_slots_root, detail: d }
             AttemptSlotKeysListed { keys: keys } =>
@@ -579,7 +580,7 @@ fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptS
                   instance_id: moved.instance_id,
                   old_root: moved.old_slots_root,
                   new_root: target.slots.root,
-                  outcomes: map(keys, k => attempt_slots_carry_one(source: file_slot_store(root: r), target: target.slots, reference: k)),
+                  outcomes: map(keys, k => attempt_slots_carry_one(source: file_slot_store(root: listed_root), target: target.slots, reference: k)),
                 },
               }
           }
