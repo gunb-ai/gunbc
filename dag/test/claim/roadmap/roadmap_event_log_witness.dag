@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
   roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
-  IssueAssignmentProjection, roadmap_issue_assignment,
+  IssueAssignmentProjection, roadmap_issue_assignment, roadmap_assignment_held_by,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present, issue_comment_anchor,
   roadmap_recent_claimed_assignees, roadmap_events_newest_first, roadmap_result_returned_event, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack, NodeReadyForReview,
   roadmap_event_admitted_after, roadmap_results_for_attempt,
@@ -519,4 +519,14 @@ test fn unassigned_progress_does_not_create_an_assignment() -> Bool {
   let progress = ev(kind: Progress { note: "observation without a claim" }, parent: none, author: human_principal(), at: "t1")
   let state = roadmap_issue_state(envs: [progress])
   state.assignment.holder == none && roadmap_node_standing_key(s: state.standing) == "in_progress"
+}
+
+// A RE-ASSIGN OF AN ALREADY-RECORDED ASSIGNMENT RE-RUNS THE LAUNCH ONLY WHILE IT IS STILL THE HOLD.
+test fn an_already_recorded_assignment_is_current_only_for_its_holder_and_until_released() -> Bool {
+  let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
+  let e1 = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let e2 = ev(kind: Released, parent: Present { value: e1.id }, author: human_principal(), at: "t2")
+  roadmap_assignment_held_by(envs: [e1], assignee: fabric_workflow_principal())
+    && !roadmap_assignment_held_by(envs: [e1, e2], assignee: fabric_workflow_principal())
+    && !roadmap_assignment_held_by(envs: [], assignee: fabric_workflow_principal())
 }
