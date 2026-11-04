@@ -207,7 +207,9 @@ mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
 mod source_layout_lookup;
-pub use demand_acquire::resolve_entry_graph_demand_acquired;
+pub use demand_acquire::{
+    resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_with_diagnostics,
+};
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -18235,29 +18237,19 @@ pub fn handle_serve(
         );
         std::process::exit(1);
     }
-    let index = process_shared_index_or_refuse(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
-        Ok(sources) => sources,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    eprintln!("resolved {} sources", sources.len());
-    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
-        &index,
-        sources,
-        &entry_file,
-        ResolvedGraphMemoShare::Memoize,
-    )
-    .map_err(ResolveFailure::into_message)
-    {
-        Ok(parts) => parts,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
+    // THE DEMAND-ACQUIRED RESOLVE, the same route `gunbc run` takes (#14046): the closure is found by
+    // source-layout lookup from the entry, so the whole-tree index (a parse of every module in the
+    // pool for a name census, ~2m15s of the lab's restart) is never built. Serving is not a reason
+    // to resolve a wider population than running.
+    let (graph, source_indices, compile_clean_diags) =
+        match resolve_entry_graph_demand_acquired_with_diagnostics(&source_roots, &entry_file) {
+            Ok(parts) => parts,
+            Err(msg) => {
+                eprintln!("error: {}", msg);
+                std::process::exit(1);
+            }
+        };
+    eprintln!("resolved {} sources", source_indices.len());
     if compile_clean_diags
         .iter()
         .any(|d| compile_clean_diagnostic_is_hard(d))
