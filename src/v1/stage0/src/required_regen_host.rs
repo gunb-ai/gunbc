@@ -7254,6 +7254,10 @@ fn install_convergence_stage(
             // v1 maintenance purpose: realize the model's shared-input whole build so v2
             // regeneration can converge. Partition moves retain their separate admission above.
             None if whole_compiler || actuation.whole_compiler_required => {
+                println!(
+                    "partition-rebuild: selected whole-compiler build; boundary_files_changed={whole_compiler}; {}",
+                    actuation.decision_line
+                );
                 seed_cargo_build(workspace, "round.rebuild_from_installed")
             }
             None => partitioned_rebuild_from_installed(workspace, &actuation),
