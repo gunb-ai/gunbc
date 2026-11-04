@@ -215,8 +215,6 @@ fn test_run_succeeded(r: TestRunReport) -> Bool {
 // THE COMMAND A WORKER RUNS, spelled once here so the guidance that tells the worker and the CLI that
 // answers it cannot disagree. The pattern is the worker's to choose: the package under dag/test/claim
 // that mirrors what it changed, as a subtree pattern.
-data test_process_entry: String = "dag/gunbc/compute/test_run.dag"
-data test_process_function: String = "test_pattern_cli"
 data test_process_receipt_name: String = ".gunbc-test-receipt.json"
 data test_process_pattern_placeholder: String = "//dag/test/claim/<package>/..."
 
@@ -224,43 +222,14 @@ fn test_process_receipt_path(worktree: String) -> String {
   join([worktree, "/", test_process_receipt_name], "")
 }
 
-fn test_process_command(gunbc_program: String, repo_root: String, worktree: String, pattern: String) -> String {
-  join([
-    gunbc_program, " run",
-    " --source-root ", repo_root, "/dag",
-    " --source-root ", repo_root, "/src/v2",
-    " --entry ", repo_root, "/", test_process_entry,
-    " --function ", test_process_function,
-    " --arg repo_root=", repo_root,
-    " --arg worktree=", worktree,
-    " --arg pattern=", pattern,
-    " --arg receipt_path=", test_process_receipt_path(worktree: worktree),
-  ], "")
-}
-
 // COMPILING A CLOSURE IS THE SAME SHAPE: snapshot the worktree, ask the provider for CompileEntry of
 // the snapshot, hand back the outcome. The bar a worker reads from the receipt is the compiler's own:
 // zero blocking diagnostics (advisories are not the bar, and the count of them is not a score).
-data compile_process_function: String = "compile_entry_cli"
 data compile_process_receipt_name: String = ".gunbc-compile-receipt.json"
 data compile_process_entry_placeholder: String = "<entry .dag whose closure includes your change, e.g. dag/gunbc/roadmap/roadmap_serve.dag>"
 
 fn compile_process_receipt_path(worktree: String) -> String {
   join([worktree, "/", compile_process_receipt_name], "")
-}
-
-fn compile_process_command(gunbc_program: String, repo_root: String, worktree: String, entry: String) -> String {
-  join([
-    gunbc_program, " run",
-    " --source-root ", repo_root, "/dag",
-    " --source-root ", repo_root, "/src/v2",
-    " --entry ", repo_root, "/", test_process_entry,
-    " --function ", compile_process_function,
-    " --arg repo_root=", repo_root,
-    " --arg worktree=", worktree,
-    " --arg entry=", entry,
-    " --arg receipt_path=", compile_process_receipt_path(worktree: worktree),
-  ], "")
 }
 
 fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt_path: String) -> ProcessExit {

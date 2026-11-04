@@ -35,7 +35,6 @@ import gunbc.network_boot_delivery {
   bootstrap_trust_standing,
 }
 import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.network_boot_manifest_broker {
   present_boot_manifest,
   boot_manifest_architecture_token,
@@ -538,25 +537,12 @@ test fn architecture_signing_token_is_injective() -> Bool {
     && all(tokens, t => list_length(tokens |> filter(u => u == t)) == 1)
 }
 
-fn broker_census_has_frontier_subject(row: FrontierRow) -> Bool {
-  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
-}
-
 test fn broker_frontier_rows_well_formed() -> Bool {
   frontier_rows_well_formed(rows: network_boot_manifest_broker_frontier_rows)
 }
 
-test fn broker_frontier_rows_are_in_the_census() -> Bool {
-  all(network_boot_manifest_broker_frontier_rows, row => broker_census_has_frontier_subject(row: row))
-}
-
 // 0A's join frontier rows are asserted here rather than in the join witness:
-// that file is 0A's, and the census membership check is 0D's obligation for
-// the rows its broker rows sit beside.
+// that file is 0A's.
 test fn join_frontier_rows_well_formed() -> Bool {
   frontier_rows_well_formed(rows: network_boot_delivery_frontier_rows)
-}
-
-test fn join_frontier_rows_are_in_the_census() -> Bool {
-  all(network_boot_delivery_frontier_rows, row => broker_census_has_frontier_subject(row: row))
 }

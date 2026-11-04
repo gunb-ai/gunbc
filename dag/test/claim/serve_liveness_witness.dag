@@ -9,6 +9,7 @@ import gunbc.serve_liveness {
   ServeLivenessRevisionAbsent, ServeLivenessRevisionDuplicated, ServeLivenessRevisionNotAString,
   ServeLivenessRevisionMalformed,
   observe_serve_liveness,
+  serve_liveness_document,
 }
 import gunbc.running_release_identity { running_release_revision_key }
 import gunbc.auth.approval_broker_cutover {
@@ -21,12 +22,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data liveness_fixture_revision: String = "0123456789abcdef0123456789abcdef01234567"
 
-// ── THE FIXTURE IS A TRANSCRIPTION OF WHAT THE SEED WRITES, AND IT IS LABELLED AS ONE ────────
-// The producer is `gunbc serve`'s liveness branch in v1_compiler.cli_run, which answers this path
-// before entering the evaluator -- so no fold in this corpus can produce these bytes and no claim
-// here can execute the producer. What this module owns is the READER, and these are the bytes it
-// reads (review 68036 corrected the inverse arrangement, where a `.dag` producer was declared, the
-// seed forked it, and the claim asserted against the copy nobody served).
+// ── THE FIXTURE IS A TRANSCRIPTION OF WHAT THE DELETED SEED BRANCH WROTE, LABELLED AS ONE ────
+// The producer was `gunbc serve`'s liveness branch in v1_compiler.cli_run, whose `format!` no fold
+// could execute. That verb is deleted: every served process now answers /livez with
+// gunbc.serve_liveness serve_liveness_document (the native door directly, the seed's ingress
+// realization through gunbc.http_ingress http_ingress_pre_evaluation_routes), so the claim after
+// this one executes the producer itself. This transcription stays as the reader's control over the
+// compact spelling a deployed process of an earlier release still writes.
 //
 // WHAT THAT MEANS FOR THIS CLAIM, stated rather than glossed: it establishes that the reader
 // accepts the document shape the seed writes TODAY, and it would not notice the seed changing that
@@ -45,6 +47,15 @@ data seed_liveness_body: String = join([
 // than silently producing a document this reader cannot parse.
 test fn the_liveness_reader_accepts_the_served_document() -> Bool {
   match observe_serve_liveness(body: seed_liveness_body) {
+    ServeLivenessObserved { revision: rev } => rev as String == liveness_fixture_revision
+    _ => false
+  }
+}
+
+// THE PRODUCER EVERY SERVED PROCESS NOW WRITES, executed rather than transcribed: the reader reads
+// back the release the document was produced for.
+test fn the_liveness_reader_accepts_the_document_the_producer_writes() -> Bool {
+  match observe_serve_liveness(body: serve_liveness_document(revision: liveness_fixture_revision as CommitSha, entry_function: "approval_broker_handle", bound_host: "127.0.0.1", bound_port: 8085)) {
     ServeLivenessObserved { revision: rev } => rev as String == liveness_fixture_revision
     _ => false
   }
