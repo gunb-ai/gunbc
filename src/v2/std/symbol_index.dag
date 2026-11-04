@@ -176,13 +176,8 @@ fn symbol_index_position_owned_by_claimant(
 }
 
 fn symbol_index_lookup(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
-  let claimants = symbol_index_bound_declarings(index: index, binding_path: qualified_path)
-  if length(xs: claimants) > 1 {
-    if symbol_index_position_owned_by_claimant(claimants: claimants, target: qualified_path) {
-      symbol_index_entry_at(index: index, qualified_path: qualified_path)
-    } else {
-      optional_absent()
-    }
+  if length(xs: symbol_index_bound_declarings(index: index, binding_path: qualified_path)) > 1 {
+    optional_absent()
   } else {
     symbol_index_entry_at(index: index, qualified_path: qualified_path)
   }

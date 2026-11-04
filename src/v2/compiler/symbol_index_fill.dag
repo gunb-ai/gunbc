@@ -509,6 +509,25 @@ fn symbol_index_bind_claimants(index: SymbolIndex, binding_path: QualifiedName, 
   )
 }
 
+// A CLAIMANT WITH NO STORED DECLARATION YET DEFERS THE ROW rather than binding a strict subset: a later
+// reference would read Unique off the survivor, a silent narrowing.
+fn symbol_index_every_claimant_stored(index: SymbolIndex, claimants: FreeMonoid<QualifiedName>) -> Bool {
+  fold_list(
+    xs: claimants,
+    empty: true,
+    cons: fn(acc, c) {
+      if acc {
+        match symbol_index_entry_at(index: index, qualified_path: c) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      } else {
+        false
+      }
+    }
+  )
+}
+
 fn symbol_index_bind_pending_round(
   index: SymbolIndex,
   pending: FreeMonoid<PendingBinding>
@@ -520,9 +539,16 @@ fn symbol_index_bind_pending_round(
       let binding_path = qualified_name_snoc(qn: p.module_qn, segment: p.row.binding)
       match symbol_index_declaring_path_of(index: acc.index, target: p.row.target) {
         MentionDeclaringContested { claimants: claimants } =>
-          BindRound {
-            index: symbol_index_bind_claimants(index: acc.index, binding_path: binding_path, claimants: claimants),
-            deferred: acc.deferred
+          if symbol_index_every_claimant_stored(index: acc.index, claimants: claimants) {
+            BindRound {
+              index: symbol_index_bind_claimants(index: acc.index, binding_path: binding_path, claimants: claimants),
+              deferred: acc.deferred
+            }
+          } else {
+            BindRound {
+              index: acc.index,
+              deferred: list_snoc_item(xs: acc.deferred, item: p)
+            }
           }
         MentionDeclaringUnavailable =>
           BindRound {
