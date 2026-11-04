@@ -26,6 +26,8 @@ import extdeps.electronic_component.types {
   voltage_withstand,
   VoltageWithstand,
   VoltageWithstandKind,
+  RectifierSpec,
+  RectifierRepetitivePeak,
 }
 import product.electrical.connectivity { ComponentInstanceIdentity, TerminalIdentity }
 import product.electrical.continuity { EvidenceRef, OrderUnrecorded, ReadingOrder }
@@ -127,6 +129,7 @@ fn withstand_kind_key(k: VoltageWithstandKind) -> Nat {
     CapacitorRatedVoltage => 1
     DrainSourceMaximum => 2
     FuseInterruptRating => 3
+    RectifierRepetitivePeak => 4
   }
 }
 
@@ -217,6 +220,7 @@ fn no_pin_numbers() -> List<Nat> {
 fn numbered_pins(row: ElectronicComponentRow) -> List<Nat> {
   match row.specification {
     TvsDiodeSpec { tvs: _ } => no_pin_numbers()
+    RectifierSpec { rectifier: _ } => no_pin_numbers()
     CapacitorSpec { capacitor: _ } => no_pin_numbers()
     MosfetSpec { mosfet: _ } => no_pin_numbers()
     TemperatureSensorSpec { sensor } => map(sensor.pins, p => p.number)
