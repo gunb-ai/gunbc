@@ -15,8 +15,8 @@ import extdeps.languages.json.emit {
 }
 import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileDemand,
-  MeasuredForRoot,
-  UnmeasuredRoot,
+  BudgetDeclaredForRoot,
+  NoBudgetForRoot,
   WholeCorpusCompileSourceBytes,
   SourceBytesRecorded,
   SourceBytesNotRecordedByReceipt,
@@ -30,7 +30,7 @@ import gunbc.whole_corpus_compile_admission {
 // THE ROWS TRAVEL AS DATA BECAUSE THE DECISION RUNS BEFORE THEY COULD BE RESOLVED. A whole-root
 // compile is admitted before any source is indexed, so the v1 seed cannot read a .dag row; it reads
 // this projection instead, from a location the run is handed. The authority stays the repository's
-// own MeasuredForRoot rows -- this module only renders them -- so a new root is a row in the
+// own BudgetDeclaredForRoot rows -- this module only renders them -- so a new root is a row in the
 // repository that owns the fact, never a change to the seed, and a private repository's rows never
 // enter the public seed.
 //
@@ -38,7 +38,7 @@ import gunbc.whole_corpus_compile_admission {
 // reader JOINS on the identity it observes at run time: a projection handed to the wrong
 // repository's compile must be refusable from its own rows, not trusted from its location.
 //
-// UnmeasuredRoot rows are not projected: an unmeasured root is the ABSENCE of a row, and the reader
+// NoBudgetForRoot rows are not projected: an unmeasured root is the ABSENCE of a row, and the reader
 // derives it from absence rather than from an authored negative.
 
 // WHERE THIS REPOSITORY COMMITS ITS PROJECTION: read by the generated-artifact registry that writes
@@ -61,8 +61,8 @@ fn whole_corpus_compile_source_bytes_json(b: WholeCorpusCompileSourceBytes) -> J
 
 fn whole_corpus_compile_demand_row_json(d: WholeCorpusCompileDemand) -> List<JsonValue> {
   match d {
-    UnmeasuredRoot { root: _ } => []
-    MeasuredForRoot { root: r, census: c, peak: p, receipt: rc } => [
+    NoBudgetForRoot { root: _ } => []
+    BudgetDeclaredForRoot { root: r, census: c, peak: p, receipt: rc } => [
       json_object(members: [
         json_kv(key: "repository", value: json_string(s: r.repository as String)),
         json_kv(key: "primary_root", value: json_string(s: r.primary_root as String)),

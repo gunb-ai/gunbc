@@ -274,7 +274,7 @@ impl WholeCorpusCompileRootIdentity {
     }
 }
 
-/// One projected `MeasuredForRoot` row: the identity key and the peak the admission compares to.
+/// One projected `BudgetDeclaredForRoot` row: the identity key and the peak the admission compares to.
 /// The census and receipt travel in the projection for the reader and are not re-typed here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeasuredRootDemandRow {
@@ -409,7 +409,7 @@ pub enum WholeCorpusCompileAdmission {
         budget_bytes: u64,
         required_bytes: u64,
     },
-    RefusedBudgetBelowMeasuredDemand {
+    RefusedBudgetBelowDeclaredDemand {
         budget_bytes: u64,
         required_bytes: u64,
         source: String,
@@ -417,7 +417,7 @@ pub enum WholeCorpusCompileAdmission {
     RefusedBudgetUnreadable {
         source: String,
     },
-    RefusedUnmeasuredRoot {
+    RefusedNoBudgetForRoot {
         root: WholeCorpusCompileRootIdentity,
         cause: WholeCorpusCompileUnmeasuredCause,
     },
@@ -436,7 +436,7 @@ pub fn whole_corpus_compile_admission(
     root: &WholeCorpusCompileRootIdentity,
     read: &WholeCorpusCompileDemandsRead,
 ) -> WholeCorpusCompileAdmission {
-    let unmeasured = |cause| WholeCorpusCompileAdmission::RefusedUnmeasuredRoot {
+    let unmeasured = |cause| WholeCorpusCompileAdmission::RefusedNoBudgetForRoot {
         root: root.clone(),
         cause,
     };
@@ -485,7 +485,7 @@ pub fn whole_corpus_compile_admission(
     };
     let source = source.as_str();
     if budget_bytes < required_bytes {
-        WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand {
+        WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand {
             budget_bytes,
             required_bytes,
             source: source.to_string(),
@@ -504,7 +504,7 @@ pub fn whole_corpus_compile_admission(
 /// authored row, never a measurement run.
 fn whole_corpus_compile_measurement_recipe(root: &WholeCorpusCompileRootIdentity) -> String {
     format!(
-        "this root has no declared budget row; author a MeasuredForRoot row for {} with a declared \
+        "this root has no declared budget row; author a BudgetDeclaredForRoot row for {} with a declared \
          peak in gunbc.whole_corpus_compile_admission whole_corpus_compile_measured_root_demands \
          (a declared budget, not a measured peak and not proof that a whole-root compile fits), \
          regenerate the repository's demand projection, and hand its location to the compile",
@@ -524,14 +524,14 @@ pub fn whole_corpus_compile_refusal_diagnostic(
 ) -> Option<String> {
     match admission {
         WholeCorpusCompileAdmission::Admitted { .. } => None,
-        WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand {
+        WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand {
             budget_bytes,
             required_bytes,
             source,
         } => Some(format!(
-            "WholeCorpusCompileBudgetBelowMeasuredDemand: host memory budget={budget_bytes} \
+            "WholeCorpusCompileBudgetBelowDeclaredDemand: host memory budget={budget_bytes} \
              bytes (source={source}) is below this root's measured whole-root compile demand of \
-             {required_bytes} bytes (its MeasuredForRoot row, gunbc.whole_corpus_compile_admission). \
+             {required_bytes} bytes (its BudgetDeclaredForRoot row, gunbc.whole_corpus_compile_admission). \
              Refusing to start a run that is provably below measured demand — the previous \
              behaviour was to start it and be SIGKILLed, which reports as a silent exit-137 zero \
              rather than a diagnostic. Remedy: scope the compile with --entry <file.dag>, or run \
@@ -544,7 +544,7 @@ pub fn whole_corpus_compile_refusal_diagnostic(
              host is the OOM-kill this arm exists to prevent. Model this platform's memory source \
              (dag/gunbc/host/host_budget_source.dag)."
         )),
-        WholeCorpusCompileAdmission::RefusedUnmeasuredRoot { root, cause } => {
+        WholeCorpusCompileAdmission::RefusedNoBudgetForRoot { root, cause } => {
             let why = match cause {
                 WholeCorpusCompileUnmeasuredCause::NoDemandsProjectionDeclared => {
                     "no demand projection was declared (--measured-root-demands)".to_string()
@@ -557,7 +557,7 @@ pub fn whole_corpus_compile_refusal_diagnostic(
                 }
             };
             Some(format!(
-                "WholeCorpusCompileUnmeasuredRoot: {} has no measured whole-root compile demand — \
+                "WholeCorpusCompileNoBudgetForRoot: {} has no declared whole-root compile budget — \
                  {why}. Refusing rather than admitting on another root's number or extrapolating \
                  one. Remedy: {}.",
                 root.label(),
@@ -2125,10 +2125,10 @@ mod tests {
         );
         assert!(matches!(
             doomed,
-            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
+            WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand { .. }
         ));
         let msg = whole_corpus_compile_refusal_diagnostic(&doomed).expect("refusal must diagnose");
-        assert!(msg.contains("WholeCorpusCompileBudgetBelowMeasuredDemand"));
+        assert!(msg.contains("WholeCorpusCompileBudgetBelowDeclaredDemand"));
         assert!(msg.contains("cgroup memory.high (/sys/fs/cgroup/runner.slice)"));
         assert!(msg.contains("--entry"));
         // THE OLD EFFECTIVE SLOT STILL REFUSES, AND THIS IS THE CONTROL THAT MUST SURVIVE THE
@@ -2138,7 +2138,7 @@ mod tests {
         let old_effective_slot = admit(Some(16_106_127_360), &public_root());
         assert!(matches!(
             old_effective_slot,
-            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
+            WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand { .. }
         ));
         assert!(whole_corpus_compile_refusal_diagnostic(&old_effective_slot).is_some());
 
@@ -2166,7 +2166,7 @@ mod tests {
         );
         assert!(matches!(
             admit(Some(peak - 1), &public_root()),
-            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { required_bytes, .. }
+            WholeCorpusCompileAdmission::RefusedBudgetBelowDeclaredDemand { required_bytes, .. }
                 if required_bytes == peak
         ));
     }
@@ -2174,7 +2174,7 @@ mod tests {
     /// A root with no row refuses at a budget four times the public peak, naming the recipe —
     /// never admitted on the public root's number. The same budget admits the public root.
     #[test]
-    fn whole_corpus_compile_unmeasured_root_refuses_naming_the_recipe() {
+    fn whole_corpus_compile_no_budget_root_refuses_naming_the_recipe() {
         let ample = Some(public_peak() * 4);
         assert!(matches!(
             admit(ample, &public_root()),
@@ -2199,7 +2199,7 @@ mod tests {
             assert!(
                 matches!(
                     &refused,
-                    WholeCorpusCompileAdmission::RefusedUnmeasuredRoot {
+                    WholeCorpusCompileAdmission::RefusedNoBudgetForRoot {
                         cause: WholeCorpusCompileUnmeasuredCause::NoRowForRoot { .. },
                         ..
                     }
@@ -2208,8 +2208,8 @@ mod tests {
             );
             let msg =
                 whole_corpus_compile_refusal_diagnostic(&refused).expect("refusal must diagnose");
-            assert!(msg.contains("WholeCorpusCompileUnmeasuredRoot"));
-            assert!(msg.contains("MeasuredForRoot"), "{msg}");
+            assert!(msg.contains("WholeCorpusCompileNoBudgetForRoot"));
+            assert!(msg.contains("BudgetDeclaredForRoot"), "{msg}");
             assert!(!msg.contains("measure-root-demand"), "{msg}");
         }
     }
@@ -2252,7 +2252,7 @@ mod tests {
                 &root,
                 &read_whole_corpus_compile_demands(None)
             ),
-            WholeCorpusCompileAdmission::RefusedUnmeasuredRoot {
+            WholeCorpusCompileAdmission::RefusedNoBudgetForRoot {
                 cause: WholeCorpusCompileUnmeasuredCause::NoDemandsProjectionDeclared,
                 ..
             }
@@ -2260,7 +2260,7 @@ mod tests {
         let missing = read_whole_corpus_compile_demands(Some("/nonexistent/demands.json"));
         assert!(matches!(
             whole_corpus_compile_admission(&cgroup_budget(ample), &root, &missing),
-            WholeCorpusCompileAdmission::RefusedUnmeasuredRoot {
+            WholeCorpusCompileAdmission::RefusedNoBudgetForRoot {
                 cause: WholeCorpusCompileUnmeasuredCause::DemandsProjectionNotRead { .. },
                 ..
             }
@@ -2289,7 +2289,7 @@ mod tests {
                 },
                 &public_read()
             ),
-            WholeCorpusCompileAdmission::RefusedUnmeasuredRoot { .. }
+            WholeCorpusCompileAdmission::RefusedNoBudgetForRoot { .. }
         ));
     }
 

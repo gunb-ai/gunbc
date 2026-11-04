@@ -6,8 +6,8 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
 import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileRootIdentity,
-  MeasuredForRoot,
-  UnmeasuredRoot,
+  BudgetDeclaredForRoot,
+  NoBudgetForRoot,
   whole_corpus_compile_public_root_census,
   whole_corpus_compile_public_root_receipt,
 }
@@ -37,9 +37,9 @@ test fn an_unmeasured_root_projects_no_row_and_a_measured_one_projects_one() -> 
     primary_root: "strategy" as SourceRootIdentity,
     dependency_pools: [],
   }
-  let unmeasured = whole_corpus_compile_demand_projection_json(demands: [UnmeasuredRoot { root: root }])
+  let unmeasured = whole_corpus_compile_demand_projection_json(demands: [NoBudgetForRoot { root: root }])
   let measured = whole_corpus_compile_demand_projection_json(demands: [
-    MeasuredForRoot { root: root, census: whole_corpus_compile_public_root_census, peak: byte_size(6442450944), receipt: whole_corpus_compile_public_root_receipt }
+    BudgetDeclaredForRoot { root: root, census: whole_corpus_compile_public_root_census, peak: byte_size(6442450944), receipt: whole_corpus_compile_public_root_receipt }
   ])
   string_contains(s: unmeasured, pattern: "\"rows\": []")
     && string_contains(s: measured, pattern: "\"repository\": \"gunbc-private\"")

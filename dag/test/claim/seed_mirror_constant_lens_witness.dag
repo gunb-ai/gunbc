@@ -109,7 +109,7 @@ data seed_mirror_lens_floor_execution_note: String = "THIS LENS IS STILL DISCOVE
 
 // THE WHOLE-CORPUS DEMAND ROW IS DELETED, NOT RE-PINNED. The seed no longer carries
 // DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: a whole-root compile is admitted on its root's
-// own MeasuredForRoot row, read from the repository's generated projection
+// own BudgetDeclaredForRoot row, read from the repository's generated projection
 // (gunbc.whole_corpus_compile_demand_projection), so there is no seed constant for this lens to join.
 // The seed is held to that row by v1_compiler.memory_governor's tests over the committed projection,
 // and the projection to its rows by the generated-artifact drift gate.

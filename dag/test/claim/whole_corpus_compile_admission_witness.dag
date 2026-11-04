@@ -14,9 +14,9 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileAdmission,
   WholeCorpusCompileAdmitted,
-  WholeCorpusCompileRefusedBudgetBelowMeasuredDemand,
+  WholeCorpusCompileRefusedBudgetBelowDeclaredDemand,
   WholeCorpusCompileRefusedBudgetUnreadable,
-  WholeCorpusCompileRefusedUnmeasuredRoot,
+  WholeCorpusCompileRefusedNoBudgetForRoot,
   WholeCorpusCompileRefusedDemandsForAnotherRepository,
   WholeCorpusCompileDemand,
   WholeCorpusCompileDemandsRead,
@@ -27,8 +27,8 @@ import gunbc.whole_corpus_compile_admission {
   DemandsProjectionNotRead,
   NoRowForRoot,
   WholeCorpusCompileRootIdentity,
-  MeasuredForRoot,
-  UnmeasuredRoot,
+  BudgetDeclaredForRoot,
+  NoBudgetForRoot,
   whole_corpus_compile_admission,
   whole_corpus_compile_admits,
   whole_corpus_compile_demand_for_root,
@@ -49,8 +49,8 @@ data witness_subject_note: String = "BOTH ARMS STAND ON INDEPENDENTLY MEASURED M
 // a relation to the row and survives a re-measure without an edit.
 fn public_root_peak() -> Int {
   match whole_corpus_compile_public_root_demand {
-    MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p)
-    UnmeasuredRoot { root: _ } => 0
+    BudgetDeclaredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p)
+    NoBudgetForRoot { root: _ } => 0
   }
 }
 
@@ -125,7 +125,7 @@ fn fleet_runner_slot_desired_budget() -> HostBudgetResolution {
 // and the refusal still names where the number came from rather than reporting a bare figure.
 test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
   match admit_public_root(budget: observed_doomed_budget()) {
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+    WholeCorpusCompileRefusedBudgetBelowDeclaredDemand {
       budget: b,
       required: r,
       source: s,
@@ -134,7 +134,7 @@ test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
       && string_contains(s: s as String, pattern: "memory.high")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+    WholeCorpusCompileRefusedNoBudgetForRoot { root: _, cause: _, recipe: _ } => false
     WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
 }
@@ -229,8 +229,8 @@ test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> B
   ) {
     WholeCorpusCompileRefusedBudgetUnreadable { reason: r } => !((r as String) == "")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowDeclaredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedNoBudgetForRoot { root: _, cause: _, recipe: _ } => false
     WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
 }
@@ -248,14 +248,14 @@ fn ample_budget() -> HostBudgetResolution {
 
 fn refuses_as_unmeasured(a: WholeCorpusCompileAdmission, root: WholeCorpusCompileRootIdentity) -> Bool {
   match a {
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: r, cause: _, recipe: rc } =>
+    WholeCorpusCompileRefusedNoBudgetForRoot { root: r, cause: _, recipe: rc } =>
       (r.repository as String) == (root.repository as String)
         && (r.primary_root as String) == (root.primary_root as String)
         && string_contains(s: rc as String, pattern: root.primary_root as String)
-        && string_contains(s: rc as String, pattern: "MeasuredForRoot")
+        && string_contains(s: rc as String, pattern: "BudgetDeclaredForRoot")
         && string_contains(s: rc as String, pattern: "declared budget")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowDeclaredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
     WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
@@ -292,9 +292,9 @@ fn refuses_as_another_repository(a: WholeCorpusCompileAdmission, expect_projecte
     WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: rs } =>
       count(rs) > 0 && fold(rs, init: true, f: fn(acc, r) { acc && (r as String) == expect_projected })
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowDeclaredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+    WholeCorpusCompileRefusedNoBudgetForRoot { root: _, cause: _, recipe: _ } => false
   }
 }
 
@@ -337,11 +337,11 @@ test fn the_public_primary_root_with_different_pools_is_unmeasured() -> Bool {
     )
 }
 
-// A MeasuredForRoot row for a DIFFERENT root does not admit this one at any budget: the roster here
+// A BudgetDeclaredForRoot row for a DIFFERENT root does not admit this one at any budget: the roster here
 // holds ONLY a row for another root, with a peak far below the budget, and the public root still
 // refuses as unmeasured. Root identity is the join, not a label on a number.
 test fn a_row_for_a_different_root_never_admits_this_one() -> Bool {
-  let other_root_row = MeasuredForRoot {
+  let other_root_row = BudgetDeclaredForRoot {
     root: WholeCorpusCompileRootIdentity {
       repository: "gunbc" as RepositoryIdentity,
       primary_root: "src/v2" as SourceRootIdentity,
@@ -364,7 +364,7 @@ test fn a_row_for_a_different_root_never_admits_this_one() -> Bool {
 // Pinned by the join and not by position: with the other root's row FIRST, the public root still
 // resolves to its own row.
 test fn the_public_root_resolves_to_its_own_row_past_another_roots_row() -> Bool {
-  let other = MeasuredForRoot {
+  let other = BudgetDeclaredForRoot {
     root: WholeCorpusCompileRootIdentity {
       repository: "gunbc" as RepositoryIdentity,
       primary_root: "src/v2" as SourceRootIdentity,
@@ -378,8 +378,8 @@ test fn the_public_root_resolves_to_its_own_row_past_another_roots_row() -> Bool
     root: whole_corpus_compile_public_root,
     demands: [other, whole_corpus_compile_public_root_demand],
   ) {
-    MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p) == public_root_peak()
-    UnmeasuredRoot { root: _ } => false
+    BudgetDeclaredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p) == public_root_peak()
+    NoBudgetForRoot { root: _ } => false
   }
 }
 
@@ -401,7 +401,7 @@ test fn pool_order_and_element_boundaries_are_part_of_the_key() -> Bool {
     primary_root: "dag" as SourceRootIdentity,
     dependency_pools: ["extdeps, src/v2" as SourceRootIdentity],
   }
-  let row = MeasuredForRoot {
+  let row = BudgetDeclaredForRoot {
     root: listed,
     census: whole_corpus_compile_public_root_census,
     peak: byte_size(1),
@@ -417,13 +417,13 @@ test fn pool_order_and_element_boundaries_are_part_of_the_key() -> Bool {
 // ample and the root at the public root, whose row the positive control admits.
 fn unmeasured_cause_is(a: WholeCorpusCompileAdmission, expect: String) -> Bool {
   match a {
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: c, recipe: _ } => match c {
+    WholeCorpusCompileRefusedNoBudgetForRoot { root: _, cause: c, recipe: _ } => match c {
       NoDemandsProjectionDeclared => expect == "not-declared"
       DemandsProjectionNotRead { location: l, reason: _ } => expect == concat("not-read:", l as String)
       NoRowForRoot { location: l } => expect == concat("no-row:", l as String)
     }
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowDeclaredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
     WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
@@ -467,7 +467,7 @@ test fn a_read_projection_with_no_row_for_the_root_names_where_it_looked() -> Bo
 // root's in every coordinate but the repository, with a peak far below the budget, refuses with
 // the repository it carried rather than admitting or reading as merely unmeasured.
 test fn another_repositorys_projection_refuses_with_a_typed_mismatch() -> Bool {
-  let private_row = MeasuredForRoot {
+  let private_row = BudgetDeclaredForRoot {
     root: WholeCorpusCompileRootIdentity {
       repository: "gunbc-private" as RepositoryIdentity,
       primary_root: "dag" as SourceRootIdentity,
@@ -485,9 +485,9 @@ test fn another_repositorys_projection_refuses_with_a_typed_mismatch() -> Bool {
     WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: rs } =>
       count(rs) == 1 && fold(rs, init: true, f: fn(acc, r) { acc && (r as String) == "gunbc-private" })
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowDeclaredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+    WholeCorpusCompileRefusedNoBudgetForRoot { root: _, cause: _, recipe: _ } => false
   }
 }
 

@@ -78,12 +78,12 @@ data whole_corpus_compile_measured_demand_note: String = "PROVENANCE, READ THIS 
 // demand note. A run that clears this and dies anyway is expected (an observed run exceeded 19.95 GiB), not a
 // defect in the refusal: the figure is a declared budget and not proof that a compile fits.
 //
-// NO NEXT-RUNG TRIGGER: the instrument that minted a MeasuredForRoot row from a run is retired
+// NO NEXT-RUNG TRIGGER: the instrument that minted a BudgetDeclaredForRoot row from a run is retired
 // (the retire-by-default ruling, gunbc.design_ruling bad_process_is_worse_than_no_process), and
-// nothing requires remeasuring a root. A row here is an authored budget; the variant keeps its
-// historical name MeasuredForRoot because renaming it across the seed mirror is a separate
-// change. A resident-set prediction scaled from a root's source census is a DESIGN section 4d
-// bet, and this admission refuses an unmeasured root rather than admitting on one.
+// nothing requires remeasuring a root. A row here is an authored budget, and the variants say so:
+// BudgetDeclaredForRoot or NoBudgetForRoot. A resident-set prediction scaled from a root's source
+// census is a DESIGN section 4d bet, and this admission refuses a root with no declared budget
+// rather than admitting on one.
 
 // SCOPED COMPILES REACH NO ADMISSION ARM AT ALL, and that placement is unchanged — but THE
 // ASYMMETRY THIS NOTE USED TO REST ON HAS CLOSED, and saying so is the point of this paragraph. It
@@ -167,13 +167,13 @@ type WholeCorpusCompileDemandReceipt {
 }
 
 type WholeCorpusCompileDemand
-  = MeasuredForRoot {
+  = BudgetDeclaredForRoot {
       root: WholeCorpusCompileRootIdentity,
       census: WholeCorpusCompileSourceCensus,
       peak: ByteSize,
       receipt: WholeCorpusCompileDemandReceipt,
     }
-  | UnmeasuredRoot { root: WholeCorpusCompileRootIdentity }
+  | NoBudgetForRoot { root: WholeCorpusCompileRootIdentity }
 
 // Element-wise and ordered: pool order is precedence order under primary-precedence indexing, so
 // [a, b] and [b, a] are different subjects. Structural list equality over the unbranded spellings is
@@ -218,7 +218,7 @@ data whole_corpus_compile_public_root: WholeCorpusCompileRootIdentity = WholeCor
 data whole_corpus_compile_public_root_census: WholeCorpusCompileSourceCensus = WholeCorpusCompileSourceCensus {
   source_count: 3109,
   source_bytes: SourceBytesNotRecordedByReceipt {
-    read_obligation: "the next public MeasuredForRoot receipt records the subject's source bytes beside its count, read from the same run that reports the peak" as NonEmptyStr,
+    read_obligation: "the next public BudgetDeclaredForRoot receipt records the subject's source bytes beside its count, read from the same run that reports the peak" as NonEmptyStr,
   },
 }
 
@@ -236,12 +236,12 @@ data whole_corpus_compile_public_root_receipt: WholeCorpusCompileDemandReceipt =
 // ONE CONSUMER THAT SIZES A PROCESS BY IT (gunbc.runner.runner_slot_allocation
 // microvm_controller_slice_memory_max: the microVM slot controller resolves the same
 // closure this row measured). A projection that matched the demand's arms would have needed an
-// answer for UnmeasuredRoot, and there is none that is not fabricated (review 69931); reading the
+// answer for NoBudgetForRoot, and there is none that is not fabricated (review 69931); reading the
 // figure as the row the measured arm is BUILT FROM leaves nothing to answer -- if this root ever
-// becomes UnmeasuredRoot, this row is deleted with the arm and every consumer refuses to compile.
+// becomes NoBudgetForRoot, this row is deleted with the arm and every consumer refuses to compile.
 data whole_corpus_compile_public_root_peak: ByteSize = byte_size(17179869184)
 
-data whole_corpus_compile_public_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {
+data whole_corpus_compile_public_root_demand: WholeCorpusCompileDemand = BudgetDeclaredForRoot {
   root: whole_corpus_compile_public_root,
   census: whole_corpus_compile_public_root_census,
   peak: whole_corpus_compile_public_root_peak,
@@ -264,7 +264,7 @@ data whole_corpus_compile_xl1_fixture_root: WholeCorpusCompileRootIdentity = Who
   dependency_pools: ["dag/std" as SourceRootIdentity],
 }
 
-data whole_corpus_compile_xl1_fixture_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {
+data whole_corpus_compile_xl1_fixture_root_demand: WholeCorpusCompileDemand = BudgetDeclaredForRoot {
   root: whole_corpus_compile_xl1_fixture_root,
   census: WholeCorpusCompileSourceCensus {
     source_count: 14,
@@ -287,31 +287,31 @@ data whole_corpus_compile_measured_root_demands: List<WholeCorpusCompileDemand> 
   whole_corpus_compile_xl1_fixture_root_demand,
 ]
 
-// THE JOIN. A root with no MeasuredForRoot row in the roster is UnmeasuredRoot -- never the nearest
+// THE JOIN. A root with no BudgetDeclaredForRoot row in the roster is NoBudgetForRoot -- never the nearest
 // row, never a scaled row. Root identity is the whole join, so a row for a different root is not a
 // candidate at any budget.
 fn whole_corpus_compile_demand_for_root(
   root: WholeCorpusCompileRootIdentity,
   demands: List<WholeCorpusCompileDemand>
 ) -> WholeCorpusCompileDemand {
-  fold(demands, init: UnmeasuredRoot { root: root }, f: fn(acc, d) {
+  fold(demands, init: NoBudgetForRoot { root: root }, f: fn(acc, d) {
     match acc {
-      MeasuredForRoot { root: _, census: _, peak: _, receipt: _ } => acc
-      UnmeasuredRoot { root: _ } => match d {
-        MeasuredForRoot { root: r, census: _, peak: _, receipt: _ } =>
+      BudgetDeclaredForRoot { root: _, census: _, peak: _, receipt: _ } => acc
+      NoBudgetForRoot { root: _ } => match d {
+        BudgetDeclaredForRoot { root: r, census: _, peak: _, receipt: _ } =>
           if whole_corpus_compile_root_identity_eq(a: r, b: root) { d } else { acc }
-        UnmeasuredRoot { root: _ } => acc
+        NoBudgetForRoot { root: _ } => acc
       }
     }
   })
 }
 
-// THE RECIPE an UnmeasuredRoot refusal names, rendered from the root. There is no measuring
+// THE RECIPE an NoBudgetForRoot refusal names, rendered from the root. There is no measuring
 // instrument: the remedy is to AUTHOR a declared budget row for that root, which is a declared
 // budget and not a measured peak and not proof that a whole-root compile fits.
 fn whole_corpus_compile_measurement_recipe(root: WholeCorpusCompileRootIdentity) -> NonEmptyStr {
   concat(
-    "this root has no declared budget row; author a MeasuredForRoot row for ",
+    "this root has no declared budget row; author a BudgetDeclaredForRoot row for ",
     concat(whole_corpus_compile_root_identity_label(r: root) as String,
       " with a declared peak in gunbc.whole_corpus_compile_admission whole_corpus_compile_measured_root_demands (a declared budget, not a measured peak and not proof that a whole-root compile fits), regenerate the repository's demand projection, and hand its location to the compile")
   ) as NonEmptyStr
@@ -338,13 +338,13 @@ type WholeCorpusCompileUnmeasuredCause
 // refuses with the repositories it did carry rather than reading as merely unmeasured.
 type WholeCorpusCompileAdmission
   = WholeCorpusCompileAdmitted { budget: ByteSize, required: ByteSize }
-  | WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+  | WholeCorpusCompileRefusedBudgetBelowDeclaredDemand {
       budget: ByteSize,
       required: ByteSize,
       source: NonEmptyStr,
     }
   | WholeCorpusCompileRefusedBudgetUnreadable { reason: NonEmptyStr }
-  | WholeCorpusCompileRefusedUnmeasuredRoot {
+  | WholeCorpusCompileRefusedNoBudgetForRoot {
       root: WholeCorpusCompileRootIdentity,
       cause: WholeCorpusCompileUnmeasuredCause,
       recipe: NonEmptyStr,
@@ -361,7 +361,7 @@ fn whole_corpus_compile_admission_at_budget(
   peak: ByteSize
 ) -> WholeCorpusCompileAdmission {
   if byte_size_count(b: bytes) < byte_size_count(b: peak) {
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+    WholeCorpusCompileRefusedBudgetBelowDeclaredDemand {
       budget: bytes,
       required: peak,
       source: host_budget_source_label(s: source),
@@ -371,11 +371,11 @@ fn whole_corpus_compile_admission_at_budget(
   }
 }
 
-fn whole_corpus_compile_unmeasured(
+fn whole_corpus_compile_no_budget(
   root: WholeCorpusCompileRootIdentity,
   cause: WholeCorpusCompileUnmeasuredCause
 ) -> WholeCorpusCompileAdmission {
-  WholeCorpusCompileRefusedUnmeasuredRoot {
+  WholeCorpusCompileRefusedNoBudgetForRoot {
     root: root,
     cause: cause,
     recipe: whole_corpus_compile_measurement_recipe(root: root),
@@ -384,8 +384,8 @@ fn whole_corpus_compile_unmeasured(
 
 fn whole_corpus_compile_demand_repositories(demands: List<WholeCorpusCompileDemand>) -> List<RepositoryIdentity> {
   demands |> flat_map(d => match d {
-    MeasuredForRoot { root: r, census: _, peak: _, receipt: _ } => [r.repository]
-    UnmeasuredRoot { root: r } => [r.repository]
+    BudgetDeclaredForRoot { root: r, census: _, peak: _, receipt: _ } => [r.repository]
+    NoBudgetForRoot { root: r } => [r.repository]
   })
 }
 
@@ -417,9 +417,9 @@ fn whole_corpus_compile_admission(
   read: WholeCorpusCompileDemandsRead
 ) -> WholeCorpusCompileAdmission {
   match read {
-    DemandsProjectionNotDeclared => whole_corpus_compile_unmeasured(root: root, cause: NoDemandsProjectionDeclared)
+    DemandsProjectionNotDeclared => whole_corpus_compile_no_budget(root: root, cause: NoDemandsProjectionDeclared)
     DemandsProjectionUnreadable { location: l, reason: why } =>
-      whole_corpus_compile_unmeasured(root: root, cause: DemandsProjectionNotRead { location: l, reason: why })
+      whole_corpus_compile_no_budget(root: root, cause: DemandsProjectionNotRead { location: l, reason: why })
     DemandsProjectionRead { location: l, demands: ds } => {
       let repositories = whole_corpus_compile_demand_repositories(demands: ds)
       let ours = count(filter(repositories, r => (r as String) == (root.repository as String)))
@@ -431,8 +431,8 @@ fn whole_corpus_compile_admission(
         }
       } else {
         match whole_corpus_compile_demand_for_root(root: root, demands: ds) {
-          UnmeasuredRoot { root: _ } => whole_corpus_compile_unmeasured(root: root, cause: NoRowForRoot { location: l })
-          MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } =>
+          NoBudgetForRoot { root: _ } => whole_corpus_compile_no_budget(root: root, cause: NoRowForRoot { location: l })
+          BudgetDeclaredForRoot { root: _, census: _, peak: p, receipt: _ } =>
             whole_corpus_compile_budget_against_peak(budget: budget, peak: p)
         }
       }
@@ -443,9 +443,9 @@ fn whole_corpus_compile_admission(
 fn whole_corpus_compile_admits(a: WholeCorpusCompileAdmission) -> Bool {
   match a {
     WholeCorpusCompileAdmitted { budget: _, required: _ } => true
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowDeclaredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
-    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, cause: _, recipe: _ } => false
+    WholeCorpusCompileRefusedNoBudgetForRoot { root: _, cause: _, recipe: _ } => false
     WholeCorpusCompileRefusedDemandsForAnotherRepository { root: _, location: _, projected_repositories: _ } => false
   }
 }
@@ -465,7 +465,7 @@ data whole_corpus_compile_seed_mirror_disposition: Disposition = Scaffold {
   }
 }
 
-data whole_corpus_compile_seed_mirror_note: String = "v1 HAND-REALIZES THE ADMISSION, FOR THE BOOTSTRAP REASON gunbc.host.host_budget_source host_budget_source_seed_mirror_note gives and no other: the decision runs BEFORE any .dag value could exist, because it decides whether resolving the corpus may begin. The mirror is v1_compiler.memory_governor whole_corpus_compile_admission over the budget authority read_host_budget_bytes, joined in v1_compiler.cli_run compile_emission on that transaction's PrimaryRoot arm before the module index is built, and deliberately not asked of Entry.\n\nTHE SEED CARRIES NO DEMAND FIGURE. Until 2026-09-13 it mirrored one population-blind constant, DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES, pinned by a seed-mirror lens row; both are deleted. The rows are facts of the repository that owns them, so they reach the seed as DATA: gunbc.whole_corpus_compile_demand_projection renders a repository's MeasuredForRoot rows, the generated-artifact registry commits this repository's projection under the drift gate, and the compile is handed its location (--measured-root-demands) and the repository's declared identity (--repository). A new root is a row in its own repository and never a seed change; another repository's rows never enter this seed. What pins the seed to the rows ON THE ACCEPTANCE PATH is structural: the seed holds no figure, it reads the committed projection at run time, and the generated-artifact drift gate holds that projection to the rows. The seed's unit tests also read the committed projection, but cargo unit tests run on no CI step (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so they are local evidence and are not cited as the executing pin -- which is why gunbc.rung_drop.seed_whole_corpus_demand_population_blind stays Standing.\n\nWHAT REMAINS HAND-REALIZED is the join and its refusal arms, arm for arm with whole_corpus_compile_admission, and the projection parser. Its dissolution is the one the sibling mirrors carry: the emit path bakes the modeled admission into the seed and the seed stops composing it."
+data whole_corpus_compile_seed_mirror_note: String = "v1 HAND-REALIZES THE ADMISSION, FOR THE BOOTSTRAP REASON gunbc.host.host_budget_source host_budget_source_seed_mirror_note gives and no other: the decision runs BEFORE any .dag value could exist, because it decides whether resolving the corpus may begin. The mirror is v1_compiler.memory_governor whole_corpus_compile_admission over the budget authority read_host_budget_bytes, joined in v1_compiler.cli_run compile_emission on that transaction's PrimaryRoot arm before the module index is built, and deliberately not asked of Entry.\n\nTHE SEED CARRIES NO DEMAND FIGURE. Until 2026-09-13 it mirrored one population-blind constant, DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES, pinned by a seed-mirror lens row; both are deleted. The rows are facts of the repository that owns them, so they reach the seed as DATA: gunbc.whole_corpus_compile_demand_projection renders a repository's BudgetDeclaredForRoot rows, the generated-artifact registry commits this repository's projection under the drift gate, and the compile is handed its location (--measured-root-demands) and the repository's declared identity (--repository). A new root is a row in its own repository and never a seed change; another repository's rows never enter this seed. What pins the seed to the rows ON THE ACCEPTANCE PATH is structural: the seed holds no figure, it reads the committed projection at run time, and the generated-artifact drift gate holds that projection to the rows. The seed's unit tests also read the committed projection, but cargo unit tests run on no CI step (gunbc.rung_drop rust_unit_tests_off_the_merge_path), so they are local evidence and are not cited as the executing pin -- which is why gunbc.rung_drop.seed_whole_corpus_demand_population_blind stays Standing.\n\nWHAT REMAINS HAND-REALIZED is the join and its refusal arms, arm for arm with whole_corpus_compile_admission, and the projection parser. Its dissolution is the one the sibling mirrors carry: the emit path bakes the modeled admission into the seed and the seed stops composing it."
 
 data whole_corpus_compile_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
@@ -484,7 +484,7 @@ data whole_corpus_compile_seed_growth_justification: SeedGrowthJustification = S
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_declared_budget_refuses_as_the_model_does", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_refuses_the_ci_runner", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_admission_is_tight_at_the_measured_demand", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_unmeasured_root_refuses_naming_the_recipe", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_no_budget_root_refuses_naming_the_recipe", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_another_repositorys_projection_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_undeclared_or_unreadable_projection_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_unreadable_budget_refuses_rather_than_widening", field: WholeDeclaration }
