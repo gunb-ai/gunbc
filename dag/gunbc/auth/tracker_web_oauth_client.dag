@@ -51,6 +51,8 @@ import extdeps.units.iso8601_calendar {
 
 data tracker_web_test_oauth_client_id: NonEmptyStr = "433089409875-2c1u5obhaeafee9ve7igpopt5oiqoa8k.apps.googleusercontent.com" as NonEmptyStr
 
+data tracker_web_stage_oauth_client_id: NonEmptyStr = "433089409875-q072i67ddv7fghlpf978cbi8bv6r5pql.apps.googleusercontent.com" as NonEmptyStr
+
 data tracker_web_test_oauth_console_project: NonEmptyStr = "433089409875" as NonEmptyStr
 
 data tracker_web_test_oauth_workspace_customer: NonEmptyStr = "gunb.ai" as NonEmptyStr
@@ -198,15 +200,23 @@ fn tracker_web_test_oauth_client_binding() -> TrackerWebOauthClientBinding {
   }
 }
 
-// Bound is constructed only for Test. Stage and Prod are Unbound until those clients exist, so
-// placement/standing do not match Bound × Stage/Prod — that pair has no constructor here.
+fn tracker_web_stage_oauth_client_binding() -> TrackerWebOauthClientBinding {
+  TrackerWebOauthClientBinding {
+    client: GoogleLoginClientTrackerWeb,
+    environment: GoogleLoginEnvironmentStage,
+    client_id: tracker_web_stage_oauth_client_id,
+    redirect_uris: tracker_web_environment_redirect_uris(environment: GoogleLoginEnvironmentStage),
+    hosted_domain: gunb_ai_hosted_domain,
+    admitted_audiences: [tracker_web_stage_oauth_client_id],
+  }
+}
+
+// Bound is constructed for Test and Stage. Prod is Unbound until its client exists. A Stage instance
+// with no redirect URI places as MissingRealization (no stage public address yet).
 fn tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironment) -> TrackerWebOauthClientStanding {
   match environment {
     GoogleLoginEnvironmentTest => TrackerWebOauthClientBound { binding: tracker_web_test_oauth_client_binding() }
-    GoogleLoginEnvironmentStage => TrackerWebOauthClientUnbound {
-      environment: environment,
-      reason: "no tracker-web STAGE OAuth client is declared; instances assigned stage stay unconfigured until one exists" as NonEmptyStr,
-    }
+    GoogleLoginEnvironmentStage => TrackerWebOauthClientBound { binding: tracker_web_stage_oauth_client_binding() }
     GoogleLoginEnvironmentProd => TrackerWebOauthClientUnbound {
       environment: environment,
       reason: "no tracker-web PROD OAuth client is declared; production serve stays unconfigured until one exists" as NonEmptyStr,
@@ -315,6 +325,12 @@ fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminRe
 
 // Secret Manager id as already provisioned. The "dev" token is that upstream resource's
 // spelling, kept for compatibility; the client this pin admits is GoogleLoginEnvironmentTest.
+// Project 582015116396 (gunbai-secrets), version 1 enabled 2026-11-04T07:45:56Z (operator-confirmed).
+data tracker_web_stage_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "tracker-web-stage-oauth-client-secret"),
+  version: "1",
+)
+
 data tracker_web_test_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
   ref: fleet_secret_ref(secret_id: "tracker-web-dev-oauth-client-secret"),
   version: "1",
