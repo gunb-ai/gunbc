@@ -52,6 +52,7 @@ fn request_api_key_store(tree: HostStateTree) -> Result<RequestApiKeyStore, Stri
   match listed_slot_store(member: request_api_key_store_member as String, root: request_api_key_store_path(tree: tree)) {
     SlotStoreRefused { detail: why } => Err { value: why }
     SlotStoreListed { root: root } => Ok { value: RequestApiKeyStore { slots: file_slot_store(root: root), publication: publication } }
+    SlotStoreAbsent { member: _, root: _ } => Err { value: "the request API key store directory is absent" }
   }
 }
 
