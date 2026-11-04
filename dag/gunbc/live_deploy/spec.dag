@@ -73,6 +73,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_tailnet_door_socket,
   dashboard_instance_tailnet_door_directory,
   dashboard_instance_agent_door_directory,
+  dashboard_instance_agent_door_socket,
   agent_door_socket_in,
   owned_directory_is_agent_door,
 }

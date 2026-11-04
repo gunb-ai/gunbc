@@ -533,6 +533,16 @@ fn human_write_admission(
         csrf_presented: csrf_presented,
         observed_at: observed_at,
       )
+    HostAccountPeerEvidence { account: _, principal: _ } =>
+      human_write_admission_non_session(
+        route_path: route_path,
+        action: action,
+        security: security,
+        authorization_policy: authorization_policy,
+        deployment_policy: deployment_policy,
+        csrf_presented: csrf_presented,
+        observed_at: observed_at,
+      )
   }
 }
 

@@ -63,13 +63,13 @@ import extdeps.systemd.systemctl
 import extdeps.systemd.systemd_run { systemd_formatted_bytes_parse, systemd_formatted_bytes_upper, FormattedBytesRead, FormattedBytesUnparseable }
 import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_unit_name,
+  dispatch_attempt_unit_name, dispatch_review_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation, attempt_unit_property,
   attempt_unit_manager_is_system,
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of, attempt_unit_from_exit_record,
 }
-import gunbc.roadmap.roadmap_attempt_exit_spool {
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_reviewer_role_token_prefix,
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_worker_record_matching, attempt_exit_stage_listings,
   AttemptWorkerRole, attempt_unit_role_token,
@@ -2125,6 +2125,11 @@ fn session_reviewer_unit_lifecycle_for_instance(instance: HostDashboardInstance,
               && starts_with(s: r, prefix: attempt_reviewer_role_token_prefix(criterion_key: name.criterion_key)),
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
+        evidence: match session_placement_stores(instance: instance) {
+          SessionStoresUnresolved { detail } =>
+            SessionHolderEvidenceRefused { detail: join(["the session ledger is not resolvable, so the instant this hold was acquired cannot be read: ", detail], "") }
+          SessionStoresResolved { stores } => session_holder_evidence(stores: stores, unit: unit)
+        },
       )
     AttemptUnitActive => session_unit_lifecycle(o: loaded)
     AttemptUnitFinished { exit_status: _ } => session_unit_lifecycle(o: loaded)

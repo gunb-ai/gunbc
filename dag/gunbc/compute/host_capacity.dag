@@ -751,44 +751,52 @@ fn host_capacity_reserve_reviewer(
   term_seconds: Duration,
   request: Kibibyte,
 ) -> ComputeReservation {
-  match host_capacity_subject(instance: instance, pool: ReviewerSessionPool { slots: reviewer_slots }, request: request) {
+  match host_capacity_subject(instance: instance, pool: ReviewerSessionPool { slots: reviewer_slots }) {
     ComputeSubjectHostUnresolved { host: h } => ComputeReservationRefused { detail: join(["no dashboard instance is registered for host ", h as String], "") }
-    ComputeSubjectResolved { subject: subject } =>
-      match host_capacity_subject(instance: instance, pool: AgentSessionPool { slots: agent_slots }, request: request) {
+    ComputeSubjectResolved { subject: subject, appropriation: appropriation } =>
+      match host_capacity_subject(instance: instance, pool: AgentSessionPool { slots: agent_slots }) {
         ComputeSubjectHostUnresolved { host: h } => ComputeReservationRefused { detail: join(["no dashboard instance is registered for host ", h as String], "") }
-        ComputeSubjectResolved { subject: agent_subject } =>
-          match host_capacity_subject(instance: instance, pool: ComputeBuildPool, request: request) {
+        ComputeSubjectResolved { subject: agent_subject, appropriation: agent_appropriation } =>
+          match host_capacity_subject(instance: instance, pool: ComputeBuildPool) {
             ComputeSubjectHostUnresolved { host: h } => ComputeReservationRefused { detail: join(["no dashboard instance is registered for host ", h as String], "") }
-            ComputeSubjectResolved { subject: build_subject } =>
+            ComputeSubjectResolved { subject: build_subject, appropriation: build_appropriation } =>
               match observe_host_memory() {
                 HostMemoryUnobserved { detail: d } => ComputeReservationRefused { detail: join(["the host's memory could not be observed, so nothing was reserved: ", d], "") }
                 HostMemoryObserved { total: total, available: available } =>
-                  if kibibyte_count(k: subject.appropriation) > kibibyte_count(k: total) {
+                  if kibibyte_count(k: appropriation) > kibibyte_count(k: total) {
                     ComputeReservationRefused {
                       detail: join([
-                        "the reviewer share is ", to_string(value: kibibyte_count(k: subject.appropriation)),
+                        "the reviewer share is ", to_string(value: kibibyte_count(k: appropriation)),
                         " KiB and this host has ", to_string(value: kibibyte_count(k: total)),
                         " KiB installed, so the share was never backed by the machine",
                       ], ""),
                     }
-                  } else if kibibyte_count(k: available) < kibibyte_count(k: subject.request) {
-                    ComputeHostBelowFloor { requested: subject.request, available: available }
+                  } else if kibibyte_count(k: available) < kibibyte_count(k: request) {
+                    ComputeHostBelowFloor { requested: request, available: available }
                   } else {
-                    match compute_capacity_store_ensure(subject: subject) {
-                      FabricStorageRootRefused { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger could not be prepared at ", a, ": ", d], "") }
-                      FabricStorageRootReady =>
+                    match compute_capacity_store(subject: subject) {
+                      ComputeCapacityStoreUnready { area: a, detail: d } => ComputeReservationRefused { detail: join(["the capacity ledger is not standing at ", a, ": ", d], "") }
+                      ComputeCapacityStoreReady { store: store } =>
                         match now_epoch_seconds() {
                           Absent => ComputeReservationRefused { detail: "the clock could not be read as epoch seconds" }
                           Present { value: now } =>
-                            match reviewer_committed_standings(subject: subject, agent_subject: agent_subject, build_subject: build_subject, available: available, now: now) {
+                            match reviewer_committed_standings(
+                              store: store,
+                              own: ComputeCapacityLedger { subject: subject, appropriation: appropriation },
+                              siblings: [
+                                ComputeCapacityLedger { subject: agent_subject, appropriation: agent_appropriation },
+                                ComputeCapacityLedger { subject: build_subject, appropriation: build_appropriation },
+                              ],
+                              available: available, now: now,
+                            ) {
                               ReviewerRoomUnestablished { why: w } => ComputeCapacityFull { wire: join(["slice room could not be established: ", w], "") }
                               ReviewerRoomEstablished { budget: budget, sibling: sibling, own: own } =>
-                                match compute_slice_leg(budget: budget, sibling_committed: sibling, own_committed: own, request: subject.request) {
+                                match compute_slice_leg(budget: budget, sibling_committed: sibling, own_committed: own, request: request) {
                                   ComputeSliceRefusedForRoom { detail: d } => ComputeCapacityFull { wire: d }
                                   ComputeSliceRoom { budget: b } => compute_seat(
-                                    subject: subject, reference: reference, now: now, term_seconds: term_seconds,
+                                    subject: subject, store: store, request: request, reference: reference, now: now, term_seconds: term_seconds,
                                     ceiling: reviewer_seat_ceiling(
-                                      backing: compute_backing_ceiling(subject: subject, available: available),
+                                      backing: compute_backing_ceiling(appropriation: appropriation, available: available),
                                       budget: b, sibling: sibling,
                                     ),
                                   )
@@ -832,17 +840,18 @@ type SiblingCommittedStanding
   = SiblingCommittedTotal { total: Kibibyte }
   | SiblingCommittedUnreadable { detail: String }
 
-fn reviewer_siblings_committed(store: FabricStorageBinding, subjects: List<ComputeCapacitySubject>, available: Kibibyte, now: EpochSecs) -> SiblingCommittedStanding {
-  match subjects {
+fn reviewer_siblings_committed(store: FabricStorageBinding, ledgers: List<ComputeCapacityLedger>, available: Kibibyte, now: EpochSecs) -> SiblingCommittedStanding {
+  match ledgers {
     Empty {} => SiblingCommittedTotal { total: kibibyte(count: 0) }
-    Cons { head: s, tail: rest } =>
+    Cons { head: l, tail: rest } =>
+      let s = l.subject
       match fabric_seat_committed(
         store: store, partition: s.partition,
-        root: compute_memory_root_pool(subject: s, ceiling: compute_backing_ceiling(subject: s, available: available)),
+        root: compute_memory_root_pool(subject: s, ceiling: compute_backing_ceiling(appropriation: l.appropriation, available: available)),
         at: now, budget: compute_partition_read_budget,
       ) {
         SeatCommitted { committed: c, generation: _ } =>
-          match reviewer_siblings_committed(store: store, subjects: rest, available: available, now: now) {
+          match reviewer_siblings_committed(store: store, ledgers: rest, available: available, now: now) {
             SiblingCommittedTotal { total: acc } => SiblingCommittedTotal { total: kibibyte(count: kibibyte_count(k: c) + kibibyte_count(k: acc)) }
             SiblingCommittedUnreadable { detail: w } => SiblingCommittedUnreadable { detail: w }
           }
@@ -852,17 +861,16 @@ fn reviewer_siblings_committed(store: FabricStorageBinding, subjects: List<Compu
   }
 }
 
-fn reviewer_committed_standings(subject: ComputeCapacitySubject, agent_subject: ComputeCapacitySubject, build_subject: ComputeCapacitySubject, available: Kibibyte, now: EpochSecs) -> ReviewerRoomStanding {
-  let store = compute_capacity_store(subject: subject)
+fn reviewer_committed_standings(store: FabricStorageBinding, own: ComputeCapacityLedger, siblings: List<ComputeCapacityLedger>, available: Kibibyte, now: EpochSecs) -> ReviewerRoomStanding {
   match fabric_seat_committed(
-    store: store, partition: subject.partition,
-    root: compute_memory_root_pool(subject: subject, ceiling: compute_backing_ceiling(subject: subject, available: available)),
+    store: store, partition: own.subject.partition,
+    root: compute_memory_root_pool(subject: own.subject, ceiling: compute_backing_ceiling(appropriation: own.appropriation, available: available)),
     at: now, budget: compute_partition_read_budget,
   ) {
     SeatCommittedUnobserved { step: s, reason: r } => ReviewerRoomUnestablished { why: join(["the reviewer pool standing is unreadable (", s, ": ", r, ")"], "") }
     SeatCommittedStoreRefused { cause: c } => ReviewerRoomUnestablished { why: join(["the reviewer pool store refused the read: ", event_log_refusal_wire(c)], "") }
     SeatCommitted { committed: own_c, generation: _ } =>
-      match reviewer_siblings_committed(store: store, subjects: [agent_subject, build_subject], available: available, now: now) {
+      match reviewer_siblings_committed(store: store, ledgers: siblings, available: available, now: now) {
         SiblingCommittedUnreadable { detail: w } => ReviewerRoomUnestablished { why: w }
         SiblingCommittedTotal { total: sibling_c } =>
           ReviewerRoomEstablished {
