@@ -1328,8 +1328,21 @@ fn file_slot_store(root: NonEmptyStr) -> SlotStore {
 // The listing outcome of one store's OWN directory, before any store record is minted. The
 // Listed arm carries the root whose listing the Filesystem answered for: readiness is evidence
 // that THIS directory was observed, not a caller assertion (DESIGN section 4b).
+// READINESS OF A STORE'S OWN DIRECTORY, THREE-VALUED ON PURPOSE.
+// Listed is evidence THIS directory was observed; Refused is a directory that exists but could not be
+// read (or is not admissible at all); ABSENT is a store whose directory was never created, which is a
+// fact about the subject and not a read failure. Before the absent arm, both collapsed into Refused,
+// so a consumer could not tell "this store is not there yet" -- the state a cutover ENDS in -- from a
+// permission failure, and the one place that distinction decides whether work is complete is
+// roadmap_session_attempt_slots_cutover's source store.
+// AS WITH CasSlotKeysAbsent, THIS IS A CENSUS ANSWER AND NEVER A RELEASE TRIGGER. Admitting a store
+// mints a handle; it never frees a charge, retires a lease, or licenses a mint. A slot is released
+// only through the CAS-fenced transition on the lease reference plus the generation read from the
+// slot. A consumer that treats "absent" as permission to release has rebuilt
+// hold_recovered_by_age_not_observed_holder_death on new substrate.
 type SlotStoreAdmission
   = SlotStoreListed { root: NonEmptyStr }
+  | SlotStoreAbsent { member: String, root: NonEmptyStr }
   | SlotStoreRefused { detail: String }
 
 // THE ONE LIST-THEN-FOLD for every sealed slot store (DESIGN section 6b root generalization: a
@@ -1348,7 +1361,10 @@ fn listed_slot_store(member: String, root: NonEmptyStr) -> SlotStoreAdmission {
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotStoreRefused { detail: join(["the ", member, " store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotStoreRefused { detail: join(["the ", member, " store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => match filesystem_listing_absence(directory: root as String, error: e, error_kind: listing.error_kind) {
+      FilesystemDirectoryListingAbsent { directory: _ } => SlotStoreAbsent { member: member, root: root }
+      FilesystemDirectoryListingUnreadable { directory: _, error: err, error_kind: kind } => SlotStoreRefused { detail: join(["the ", member, " store's directory exists but could not be read (error_kind ", kind, "): ", err], "") }
+    }
     FilesystemDirectoryListed(_) => SlotStoreListed { root: root }
   }
 }

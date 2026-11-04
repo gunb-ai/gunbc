@@ -15,7 +15,7 @@ import std.durable_compare_and_set {
   cas_generation_count,
 }
 import std.checked_arithmetic { int_inclusive_max }
-import gunbc.durable_cas_file_store { slot_keys, file_slot_store, CasSlotKeysListed, CasSlotKeysAbsent, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
+import gunbc.durable_cas_file_store { slot_keys, file_slot_store, listed_slot_store, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, CasSlotKeysListed, CasSlotKeysAbsent, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
 
 // Wet controls for the file-backed CAS provider. Hermetic mint and classification
 // live in test.claim.durable_cas_file_store_witness. This file reaches the host.
@@ -446,4 +446,58 @@ test fn an_absent_census_creates_nothing_and_leaves_the_answer_unchanged_by_real
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   first == second && host_still_says_not_found && removed.success
+}
+
+// THE SAME DISTINCTION AT THE ADMISSION SURFACE. listed_slot_store decides whether a store's OWN
+// directory can be handed to a consumer as a handle, and it used to answer "that store is not there"
+// and "I could not read that store" with one constructor. The cutover lane is where that collapse
+// decides whether work is finished, so the admission coproduct now carries the absent arm too. Both
+// consumers read the ONE seam fold (extdeps.filesystem.filesystem_io.filesystem_listing_absence), so
+// one mutant at that fold must turn this row AND the census row red while the listed and unreadable
+// controls stay green.
+
+test fn an_admission_of_a_never_created_store_answers_absent_naming_the_member_and_the_store_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let missing = concat(root_path, "/never-created-store")
+  let missing_root = missing as NonEmptyStr
+  let admitted = match listed_slot_store(member: "carry_source_store", root: missing_root) {
+    SlotStoreAbsent { member: m, root: r } => (m == "carry_source_store") && (r == missing_root)
+    SlotStoreListed { root: _ } => false
+    SlotStoreRefused { detail: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  admitted && removed.success
+}
+
+test fn an_admission_of_an_established_store_still_admits_it_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let here = concat(root_path, "/established-store")
+  let here_root = here as NonEmptyStr
+  let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", here]).exit_code == 0
+  let admitted = match listed_slot_store(member: "carry_source_store", root: here_root) {
+    SlotStoreListed { root: r } => r == here_root
+    SlotStoreAbsent { member: _, root: _ } => false
+    SlotStoreRefused { detail: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  admitted && made.success && removed.success
+}
+
+// The control the collapse mutant must NOT turn red: a store directory that EXISTS but cannot be read
+// is still a refusal, and the refusal names the kind it saw. Written as a disjunction so a host that
+// ignores mode 000 reads as LISTED -- a red here means the setup did not hold, never a swallowed kind.
+test fn an_admission_of_an_unreadable_store_refuses_naming_the_kind_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let sealed = concat(root_path, "/unreadable-store")
+  let sealed_root = sealed as NonEmptyStr
+  let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", sealed]).exit_code == 0
+  let locked = shell.Exec.RunArgv(program: "chmod", arguments: ["000", sealed]).exit_code == 0
+  let answer = match listed_slot_store(member: "carry_source_store", root: sealed_root) {
+    SlotStoreRefused { detail: d } => string_contains(d, "permission_denied")
+    SlotStoreAbsent { member: _, root: _ } => false
+    SlotStoreListed { root: _ } => true
+  }
+  let restored = shell.Exec.RunArgv(program: "chmod", arguments: ["700", sealed])
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  answer && made && locked && restored.exit_code == 0 && removed.success
 }

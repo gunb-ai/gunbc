@@ -540,6 +540,12 @@ fn attempt_slots_carry_refused_detail(cause: CasStoreFailure) -> String {
 // was observed rather than a caller's assertion (the same list-then-fold every sealed store uses).
 fn attempt_slots_source_store(moved: ReplacedAttemptSlotsRoot) -> SlotStore? {
   match listed_slot_store(member: session_attempt_slots.member as String, root: moved.old_slots_root) {
+    // SlotStoreAbsent is answered as Absent HERE, to keep this wrapper's current Optional shape. The
+    // distinction is now available at the admission surface (listed_slot_store answers the absent
+    // arm), and the proven-absent arm belongs on THIS module's own census/carry coproducts --
+    // roadmap_session_attempt_slots_cutover's AttemptSlotsCensus* and AttemptSlotsCarry* -- which
+    // that lane's owner mints, not this fold.
+    SlotStoreAbsent { member: _, root: _ } => Absent
     SlotStoreRefused { detail: _ } => Absent
     SlotStoreListed { root: r } => Present { value: file_slot_store(root: r) }
   }
