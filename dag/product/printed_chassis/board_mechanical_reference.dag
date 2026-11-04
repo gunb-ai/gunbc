@@ -5,8 +5,8 @@ import extdeps.external_authority {ExternalAuthority,CitedFigureStanding,CitedTo
 import extdeps.uri {uri_wire}
 import extdeps.ocp.mt_jade.platform {mt_jade_motherboard_mechanical}
 import extdeps.ocp.mt_jade.subject {mt_jade_subject_authority_anchor}
-import extdeps.boards.asrock_rack {BoardLocationStanding,HolePositionEstimatedFromImage,BoardStandardLocationCorrespondence,standoff_placement,StandoffAdmitted,StandoffProhibited}
-import extdeps.standards.micro_atx {micro_atx_mounting_locations,MountingLocationId,LocB,LocC,LocF,LocH,LocJ,LocL,LocM,LocR,LocS}
+import extdeps.boards.types {BoardLocationStanding,HolePositionEstimatedFromImage,BoardStandardLocationCorrespondence,standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.standards.motherboard_mounting_location {MountingLocation,MountingLocationId,LocA,LocB,LocC,LocF,LocG,LocH,LocJ,LocK,LocL,LocM,LocR,LocS}
 import gunbc.specification_citation_read_provenance {SpecificationCitationReadReceipt,mt_jade_mirror_citation_read_receipt}
 import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_array,json_string,json_int,json_null,json_bool}
 
@@ -26,8 +26,12 @@ type ImageMountReading {
  source:ExternalAuthority,source_read:SpecificationCitationReadReceipt,
  standing:BoardLocationStanding,coverage:ImageMountCoverage,accuracy:ImageMountAccuracy
 }
+// A standard-location reference names the standard population its letters are read against (a
+// standard's own list, e.g. extdeps.standards.micro_atx micro_atx_mounting_locations or
+// extdeps.standards.atx_2_2 atx_mounting_locations), so an ATX board's A, G and K resolve and a
+// microATX board's R and S do. The correspondence still carries no coordinates of its own.
 type BoardMountingReference
- = StandardLocationReference {locations:List<BoardStandardLocationCorrespondence>}
+ = StandardLocationReference {grid:List<MountingLocation>,locations:List<BoardStandardLocationCorrespondence>}
  | ImageLocationReference {reading:ImageMountReading}
  | MountingReferencePending {read_obligation:NonEmptyStr}
 
@@ -68,17 +72,17 @@ fn placement_admitted(standing:BoardLocationStanding) -> Bool {
  match standoff_placement(standing:standing) {StandoffAdmitted=>true StandoffProhibited {cause:_}=>false}
 }
 fn standard_location_label(id:MountingLocationId) -> String {
- match id {LocB=>"B" LocC=>"C" LocF=>"F" LocH=>"H" LocJ=>"J" LocL=>"L" LocM=>"M" LocR=>"R" LocS=>"S"}
+ match id {LocA=>"A" LocB=>"B" LocC=>"C" LocF=>"F" LocG=>"G" LocH=>"H" LocJ=>"J" LocK=>"K" LocL=>"L" LocM=>"M" LocR=>"R" LocS=>"S"}
 }
 fn mounting_reference_json(reference:BoardMountingReference) -> JsonValue {
  match reference {
  MountingReferencePending {read_obligation:o}=>json_object(members:[json_kv(key:"kind",value:json_string(s:"pending")),json_kv(key:"read_obligation",value:json_string(s:o as String))])
- StandardLocationReference {locations:rows}=>json_object(members:[
+ StandardLocationReference {grid:grid,locations:rows}=>json_object(members:[
  json_kv(key:"kind",value:json_string(s:"standard-location-correspondence")),
  json_kv(key:"locations",value:json_array(elements:map(rows,r=>json_object(members:[
  json_kv(key:"location",value:json_string(s:standard_location_label(id:r.location))),
  json_kv(key:"standoff_admitted",value:json_bool(b:placement_admitted(standing:r.standing))),
- json_kv(key:"standard_coordinates",value:json_array(elements:map(filter(micro_atx_mounting_locations,m=>m.id==r.location),m=>json_object(members:[json_kv(key:"along_rear_edge_um",value:json_int(n:micrometer_count(m:m.along_rear_edge))),json_kv(key:"depth_from_rear_edge_um",value:json_int(n:micrometer_count(m:m.depth_from_rear_edge)))]))))
+ json_kv(key:"standard_coordinates",value:json_array(elements:map(filter(grid,m=>m.id==r.location),m=>json_object(members:[json_kv(key:"along_rear_edge_um",value:json_int(n:micrometer_count(m:m.along_rear_edge))),json_kv(key:"depth_from_rear_edge_um",value:json_int(n:micrometer_count(m:m.depth_from_rear_edge)))]))))
  ]))))])
  ImageLocationReference {reading:r}=>json_object(members:[
  json_kv(key:"kind",value:json_string(s:"image-derived-candidates")),

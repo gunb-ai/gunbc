@@ -6,6 +6,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
   Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
+  Micrometer, micrometer,
 }
 import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population, BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort, BoardFunctionSwitch, JumperSwitch, SwitchNotStated, OnboardEthernetPortRow, BmcSharingNotStated, PortRowsStated }
 import extdeps.vendor.supermicro { supermicro }
@@ -24,6 +25,8 @@ import extdeps.uri { Uri, Https }
 import std.algebra { FreeSemigroup }
 import extdeps.board_soc { BoardSocEdge }
 import extdeps.cpu.amd { amd_epyc_7001_soc_family, amd_epyc_7002_soc_family }
+import extdeps.boards.types { BoardStandardLocationCorrespondence, board_location_correspondence, HoleCorrespondenceFromFormFactorClaim }
+import extdeps.standards.motherboard_mounting_location { LocA, LocC, LocF, LocG, LocH, LocJ, LocK, LocL, LocM }
 
 // AUTHORITY. "H11SSL-I/C/NC USER'S MANUAL", Revision 1.1, released November 18, 2019, copyright
 // Super Micro Computer, Inc. (title page), 130 PDF pages. Held copy: sha256
@@ -51,8 +54,35 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [supermicro_h11ssl_i_product_page_authority]
 }
+
+// THE -i PRODUCT PAGE, read 2026-11-04: "Form Factor ATX", "Dimensions 12" x 9.6" (30.5cm x 24.4cm)",
+// and "AMD EPYC 7002 series drop-in support requires board revision 2.x".
+data supermicro_h11ssl_i_product_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/en/products/motherboard/h11ssl-i"
+  }
+}
+
+// WHICH STANDARD LOCATIONS THE BOARD POPULATES: ATX 2.2's nine (extdeps.standards.atx_2_2
+// atx_mounting_locations), on the strength of the page's ATX claim alone. No drawing of this board
+// was read -- the held manual draws the layout without dimensions -- so each row is
+// HoleCorrespondenceFromFormFactorClaim, and the fit print or a photograph of the bare board
+// discharges each into HolePhysicallyConfirmedPresent or HolePhysicallyConfirmedAbsent. A board that
+// omits one of the nine is not impossible; that is exactly what the discharge would record.
+data supermicro_h11ssl_standard_location_correspondence: List<BoardStandardLocationCorrespondence> = [
+  board_location_correspondence(location: LocF, standing: HoleCorrespondenceFromFormFactorClaim),
+  board_location_correspondence(location: LocJ, standing: HoleCorrespondenceFromFormFactorClaim),
+  board_location_correspondence(location: LocM, standing: HoleCorrespondenceFromFormFactorClaim),
+  board_location_correspondence(location: LocC, standing: HoleCorrespondenceFromFormFactorClaim),
+  board_location_correspondence(location: LocH, standing: HoleCorrespondenceFromFormFactorClaim),
+  board_location_correspondence(location: LocL, standing: HoleCorrespondenceFromFormFactorClaim),
+  board_location_correspondence(location: LocA, standing: HoleCorrespondenceFromFormFactorClaim),
+  board_location_correspondence(location: LocG, standing: HoleCorrespondenceFromFormFactorClaim),
+  board_location_correspondence(location: LocK, standing: HoleCorrespondenceFromFormFactorClaim),
+]
 
 // What a CPU-support row is conditioned on; p.15 conditions 7002 on revision 2.x.
 type H11sslRevisionCondition = NoRevisionConditionStated | BoardMajorRevisionAtLeast { major: Nat }
@@ -496,13 +526,21 @@ fn supermicro_h11ssl_lan_option_rom_choices(family: H11sslCpuFamily, lan: H11ssl
   }
 }
 
-// ---- Mechanical (p.16): 12.0" (L) x 9.6" (W); not carried as millimetres, the manual's inch figures are not converted here.
+// ---- Mechanical (p.16): 12.0" (L) x 9.6" (W). The -i product page agrees ("Form Factor ATX",
+// "12" x 9.6" (30.5cm x 24.4cm)", supermicro_h11ssl_i_product_page_authority). Neither names the
+// edges; 12 in along the rear I/O edge is ATX 2.2 section 3.1's assignment ("12" wide by 9.6" deep"),
+// applied because both state the board is ATX. The extents are carried as exact micrometres
+// (1 in = 25,400 um), so the manual's inch figures are converted without rounding.
 type SupermicroH11sslMechanical {
   board_label: NonEmptyStr
   vendor: Vendor<Hardware>
   dimm_slots: Nat
   dimms_per_channel: Nat
   lan_ports: List<H11sslLanPort>
+  form_factor_claim: NonEmptyStr
+  extent_along_rear_io: Micrometer
+  extent_depth: Micrometer
+  extents_standing: CitedFigureStanding
 }
 
 data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = SupermicroH11sslMechanical {
@@ -511,6 +549,10 @@ data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = Supermicr
   dimm_slots: 8,
   dimms_per_channel: 1,
   lan_ports: [Lan1, Lan2],
+  form_factor_claim: "ATX",
+  extent_along_rear_io: micrometer(count: 304800),
+  extent_depth: micrometer(count: 243840),
+  extents_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
 }
 
 // DESIGN section 3c declared frontier, for the cooling-zone count, the zone and slot-geometry

@@ -12,6 +12,7 @@ import extdeps.bmc.endpoint { BmcFirmwareFamily, BmcEndpoint }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.standards.motherboard_mounting_location { MountingLocationId }
 
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
@@ -204,3 +205,62 @@ type BoardFunctionSwitch
   = JumperSwitch { designator: NonEmptyStr, off_position: NonEmptyStr, citation: NonEmptyStr }
   | FirmwareSetupSwitch { menu: NonEmptyStr, item: NonEmptyStr, off_meaning: NonEmptyStr, citation: NonEmptyStr }
   | SwitchNotStated { coarser: NonEmptyStr? }
+
+// WHAT IS KNOWN about a standard location on a specific board. Moved here from
+// extdeps.boards.asrock_rack when the Supermicro H11SSL-i became the second board to need it.
+// HoleCorrespondenceInferred is a correspondence read off a to-scale drawing of the board itself (the
+// ALTRAD8UD's section 1.4 figure). HoleCorrespondenceFromFormFactorClaim is weaker: the vendor states
+// a form factor whose standard requires the location, and no drawing of the board was read. Both
+// admit a standoff for the same reason -- the standard's coordinates are exact, and a fit print
+// discharges the correspondence physically into one of the HolePhysicallyConfirmed arms -- but the
+// grade stays readable from the constructor.
+//
+// WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
+// route, so the grade is readable from the constructor rather than from prose beside it.
+// Image-position estimates (used by Jade review) do not establish a location; unlike
+// a correspondence to exact standard coordinates, they cannot admit a standoff.
+type BoardLocationStanding
+  = HoleCorrespondenceInferred
+  | HoleCorrespondenceFromFormFactorClaim
+  | HolePositionEstimatedFromImage
+  | HoleAbsenceExplicitlyDirected
+  | HoleNotObservedInDrawing
+  | HolePhysicallyConfirmedPresent
+  | HolePhysicallyConfirmedAbsent
+
+// WHY a location must stay empty. Distinct from the standing that established it.
+type StandoffProhibitionCause
+  = ProductSaysRemove
+  | NoAdmittedBoardHole
+
+// WHAT IS DONE at a standard location by a chassis built for this board.
+type StandoffPlacementDecision
+  = StandoffAdmitted
+  | StandoffProhibited { cause: StandoffProhibitionCause }
+
+// The join, and the reason the two types are worth separating: this is total, so a new standing arm
+// cannot be added without deciding what a chassis does about it. FIT will add exactly that — the
+// physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
+fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
+  match standing {
+    HolePositionEstimatedFromImage => StandoffProhibited { cause: NoAdmittedBoardHole }
+    HoleCorrespondenceInferred => StandoffAdmitted
+    HoleCorrespondenceFromFormFactorClaim => StandoffAdmitted
+    HolePhysicallyConfirmedPresent => StandoffAdmitted
+    HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }
+    HoleNotObservedInDrawing => StandoffProhibited { cause: NoAdmittedBoardHole }
+    HolePhysicallyConfirmedAbsent => StandoffProhibited { cause: NoAdmittedBoardHole }
+  }
+}
+
+type BoardStandardLocationCorrespondence sole_constructor {
+  location: MountingLocationId
+  standing: BoardLocationStanding
+}
+
+fn board_location_correspondence(
+  location: MountingLocationId,
+  standing: BoardLocationStanding,
+) -> BoardStandardLocationCorrespondence {
+  BoardStandardLocationCorrespondence { location: location, standing: standing }
+}
