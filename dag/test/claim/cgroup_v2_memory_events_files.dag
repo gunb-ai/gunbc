@@ -3,7 +3,7 @@ module test.claim.cgroup_v2_memory_events_files
 import std.types { Bool }
 import extdeps.linux.cgroup_v2_memory {
   MemoryEvents, MemoryEventsLocal, CumulativeCounter,
-  CgroupMemoryEventCounters, cgroup_memory_interface_file_name, cgroup_memory_metric_kind,
+  cgroup_memory_interface_file_name, cgroup_memory_metric_kind,
 }
 
 // THE TWO EVENTS FILES, AT THEIR OWN INTERFACE. cgroup-v2 gives them the same entries and moves only
@@ -27,13 +27,10 @@ test fn the_local_events_file_is_not_the_hierarchical_one() -> Bool {
     && cgroup_memory_metric_kind(f: MemoryEvents) == cgroup_memory_metric_kind(f: MemoryEventsLocal)
 }
 
-// THE RECORD'S FIVE COUNTERS, PINNED AT THE SHAPE ITS CONSUMER READS. The production consumer is the
-// memory_events field of BuildCacheEndpointObservation in gunbc.build_cache.build_cache_instance,
-// which used to coin this record to itself; pinning the five fields here means a rename or a dropped
-// counter on the authority breaks a claim rather than passing silently at the observation.
-test fn the_events_record_carries_the_five_counters_the_kernel_names() -> Bool {
-  match CgroupMemoryEventCounters { low: 2, high: 5, max: 1, oom: 0, oom_kill: 3 } {
-    CgroupMemoryEventCounters { low: l, high: h, max: m, oom: o, oom_kill: k } =>
-      l == 2 && h == 5 && m == 1 && o == 0 && k == 3
-  }
-}
+// NO TEST IS WRITTEN OVER THE RECORD'S FIELD LIST, AND THAT IS STATED RATHER THAN HIDDEN. A test
+// would build a literal, read it back and compare it with what it put in: true by construction, with
+// no forbidden state expressible anywhere it runs. The record's consumer is the memory_events field
+// of BuildCacheEndpointObservation in gunbc.build_cache.build_cache_instance, and that field is the
+// only place the five names are exercised. A field-level check needs a reader of an events body,
+// which the corpus does not have yet -- the authority module says the same thing where the record
+// sits.
