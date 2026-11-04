@@ -14,7 +14,8 @@ import product.printed_chassis.card_cooling_route {
   admit_home, RouteSubject, AgainstCardSide, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, a16_route_subject,
 }
 import product.printed_chassis.gpu_duct { BlowerDuctDesign, a16_blower_duct_design, a16_duct_design, a16_end_face }
-import product.printed_chassis.side_mount_duct { side_mount_side_spend, side_mount_rear_spend }
+import product.printed_chassis.side_mount_duct { side_mount_side_spend, side_mount_rear_spend, side_mount_card_gap }
+import product.printed_chassis.blower_outlet_mount { lug_arm_protrusion }
 import extdeps.fans.types { RadialBlowerEnvelope }
 
 fn a16_side_root(side: CardFaceSide) -> String {
@@ -80,4 +81,10 @@ test fn an_unread_card_refuses_both_faces() -> Bool {
     PrintableAssemblyRefused { reason: _ } => true
     PrintableAssemblyReady { assembly: _ } => false
   })
+}
+
+// THE CARD GAP HOLDS THE SCREW ARM: the arm on the blower's label face and the screw head stand beyond the
+// socket wall toward the card, and the gap leaves at least a millimetre between the head and the card face.
+test fn the_card_gap_holds_the_lug_arm_and_screw_head() -> Bool {
+  micrometer_count(m: side_mount_card_gap) as Int - lug_arm_protrusion(wall: a16_duct_design.wall) >= 1000
 }

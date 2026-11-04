@@ -15,13 +15,13 @@ import std.measure { Kibibyte, millicore }
 import std.filesystem { path_parent_directory }
 import extdeps.git { git_non_bare_git_dir_name, SafeDirectoryGrant, GitEnvironmentSetting, git_safe_directory_environment }
 import extdeps.systemd {
-  ExecStopPostProperty, NoNewPrivilegesProperty, PrivateTmpProperty, ProtectHomeProperty, ProtectSystemProperty,
+  CollectModeProperty, ExecStopPostProperty, NoNewPrivilegesProperty, PrivateTmpProperty, ProtectHomeProperty, ProtectSystemProperty,
   ReadOnlyPathsProperty, ReadWritePathsProperty, RestrictSUIDSGIDProperty, StandardErrorProperty, StandardOutputProperty,
   UMaskProperty,
 }
 import extdeps.systemd.unit_file { systemd_system_credstore_directory }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
-import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file }
+import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file, operator_route_certificate_file }
 import extdeps.systemd.systemd_run { EmptyCapabilityBoundingSet, NamedUnitSetting, SystemdRunProperty }
 import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -163,9 +163,11 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
 // which is why every receipt looked right while nothing ran.
 // THE ATTEMPT'S UNIT NAME. Per attempt, not per node: the attempt key is a content hash, so two
 // attempts on one node get distinct units and the collision the tmux path reports as
-// `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
-// `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
-// explicit act rather than a side effect of starting the next attempt.
+// `duplicate session` has no spelling here. A unit that has exited is collected (CollectMode below), so
+// its exit record, written by ExecStopPost before the unit unloads, is the evidence the next step reads.
+// THE NAME IS PER ATTEMPT, NOT PER DELIVERY: re-delivery restarts the SAME attempt (same node, same key),
+// so the name recurs, and a failed unit under the default CollectMode keeps it loaded and refuses the
+// re-run. dispatch_worker_unit_stream_properties therefore sets CollectMode=inactive-or-failed.
 fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
   join(["gunbc-attempt-", node_id, "-", attempt_key], "")
 }
@@ -357,6 +359,7 @@ fn dispatch_worker_unit_stream_properties(
         NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
         NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
         NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
+        NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
       ],
       dispatch_worker_set_credential_settings(set: set),
     ),
@@ -442,7 +445,7 @@ fn dispatch_worker_credential(instance: HostDashboardInstance, file: OperatorCre
 fn dispatch_worker_credentials(instance: HostDashboardInstance) -> List<DispatchWorkerCredential> {
   match instance.worker {
     WorkerIsServiceUser => []
-    WorkerDedicatedAccount => [dispatch_worker_credential(instance: instance, file: operator_route_credential_file)]
+    WorkerDedicatedAccount => [dispatch_worker_credential(instance: instance, file: operator_route_credential_file), dispatch_worker_credential(instance: instance, file: operator_route_certificate_file)]
   }
 }
 

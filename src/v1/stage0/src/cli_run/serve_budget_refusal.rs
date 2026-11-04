@@ -74,10 +74,8 @@ pub(super) fn serve_budget_refusal_from_exceeded(
 pub(super) fn serve_budget_refusal_machine_body(refusal: &ServeBudgetRefusal) -> String {
     format!(
         "{{\"code\":{},\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
-        super::serve_json_string(
-            crate::evaluation_budget_consequence_generated::EVALUATION_BUDGET_REFUSAL_CODE
-        ),
-        super::serve_json_string(&refusal.entry),
+        json_string(crate::evaluation_budget_consequence_generated::EVALUATION_BUDGET_REFUSAL_CODE),
+        json_string(&refusal.entry),
         refusal.clock_key,
         refusal.elapsed_nanos,
         refusal.limit_ms
@@ -138,12 +136,13 @@ pub(super) struct ServeArmedContract {
 
 pub(super) fn serve_armed_contract(
     entry: String,
-    budget: super::ServeEvaluationBudget,
+    cpu_limit_ms: Option<u64>,
+    wall_limit_ms: Option<u64>,
 ) -> ServeArmedContract {
     ServeArmedContract {
         entry,
-        cpu_limit_ms: budget.cpu_limit_ms,
-        wall_limit_ms: budget.wall_limit_ms,
+        cpu_limit_ms,
+        wall_limit_ms,
     }
 }
 
@@ -170,4 +169,25 @@ pub(super) fn serve_refusal_names_contract(
     contract: &ServeArmedContract,
 ) -> bool {
     refusal.entry == contract.entry
+}
+
+/// Minimal JSON string escaping for the machine body. The entry name comes from the binding rather
+/// than a request, but it is escaped anyway: a body that can be malformed by its own configuration is
+/// a fabricated-output path.
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
