@@ -93,8 +93,9 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_unnameable_principal,
 }
 import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed,
-  // Called bare three times below as the gate the worker unit start sits behind; declared in
-  // gunbc.roadmap.roadmap_belt_actuate at :3267 and never imported here -- the same
+  // Called bare three times below as the gate the worker unit start sits behind; declared as
+  // gunbc.roadmap.roadmap_belt_actuate belt_worker_git_entry_grant_readback and never imported
+  // here -- the same
   // bare_name_resolved_by_proximity_standing_in_for_resolution residual (gunbc#15247), and why this
   // entry reported a FIFTH 'no established callee identity' where roadmap_dashboard_instance_apply
   // alone reports three.
