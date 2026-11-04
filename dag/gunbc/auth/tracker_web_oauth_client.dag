@@ -251,7 +251,7 @@ fn tracker_web_workspace_identity_binding(client: TrackerWebEnvironmentClient) -
   }
 }
 
-// Transcribed from the bright-moth-475 2026-10-11 console receipt. These strings are the
+// Transcribed from the operator's 2026-11-04 console readback (client tracker-web-test). These strings are the
 // observation, not a second name for the desired URIs: aliasing the desired symbols here
 // made workspace_admin_assess compare a value with itself (DESIGN §3d / §5).
 data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
@@ -265,13 +265,13 @@ type TrackerWebConsoleUtcInstant {
 }
 
 data tracker_web_test_console_readback_observed_at: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
-  date: Iso8601CivilDate { year: 2026, month: 10, day: 11 },
-  since_midnight: second(count: 4 * 60 * 60),
+  date: Iso8601CivilDate { year: 2026, month: 11, day: 4 },
+  since_midnight: second(count: 7 * 60 * 60 + 45 * 60),
 }
 
 data tracker_web_test_console_readback_valid_until: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
-  date: Iso8601CivilDate { year: 2026, month: 11, day: 10 },
-  since_midnight: second(count: 4 * 60 * 60),
+  date: Iso8601CivilDate { year: 2026, month: 12, day: 4 },
+  since_midnight: second(count: 7 * 60 * 60 + 45 * 60),
 }
 
 // Unix seconds at a UTC civil date plus a duration since midnight, delegated to the ISO-8601
@@ -380,7 +380,7 @@ data tracker_web_test_console_readback_row: TrackerWebConsoleReadbackRow = Track
   observed_redirect_uris: tracker_web_test_console_observed_redirect_uris,
   observed_at: tracker_web_test_console_readback_observed_at,
   valid_until: tracker_web_test_console_readback_valid_until,
-  evidence: "bright-moth-475 2026-10-11 operator console URI add; no Auth Platform write API" as NonEmptyStr,
+  evidence: "operator 2026-11-04 console readback of client 433089409875-2c1u5obhaeafee9ve7igpopt5oiqoa8k (redirect URIs srv2:18082, srv1:8444); no Auth Platform write API" as NonEmptyStr,
 }
 
 data tracker_web_test_environment_client: TrackerWebEnvironmentClient = TrackerWebEnvironmentClient {

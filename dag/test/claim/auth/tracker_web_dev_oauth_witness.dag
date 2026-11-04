@@ -49,7 +49,7 @@ import gunbc.live_deploy.emit {
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact, ComposeOwned }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects, claim_oidc_now }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects, claim_oidc_now_for }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.workspace_allocation_policy { workspace_operator_principal }
@@ -146,7 +146,7 @@ test fn lab_serve_unit_carries_oidc_env() -> Bool {
     && match live_deploy_serve_unit_emission(
       spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
       revision: witness_revision(),
-      now_epoch: claim_oidc_now(),
+      now_epoch: claim_oidc_now_for(spec: selected_deployment_spec(row: srv1_lab_desired_deployment())),
     ) {
       LiveDeployServeUnitEmitted { file } =>
         string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
@@ -197,8 +197,8 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
 test fn console_readback_epochs_are_the_2026_calendar_receipt() -> Bool {
   let observed_unix = tracker_web_console_instant_unix_int(at: tracker_web_test_console_readback_observed_at)
   let until_unix = tracker_web_console_instant_unix_int(at: tracker_web_test_console_readback_valid_until)
-  iso8601_utc_text(unix: observed_unix) == "2026-10-11T04:00:00Z"
-    && iso8601_utc_text(unix: until_unix) == "2026-11-10T04:00:00Z"
+  iso8601_utc_text(unix: observed_unix) == "2026-11-04T07:45:00Z"
+    && iso8601_utc_text(unix: until_unix) == "2026-12-04T07:45:00Z"
     && match tracker_web_test_console_readback_observed_at_epoch {
       Absent => false
       Present { value: s } => (second_count(s: s) as Int) == observed_unix
