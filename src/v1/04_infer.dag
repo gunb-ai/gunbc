@@ -3818,14 +3818,29 @@ fn equality_presence_walk(inner: EqualityWalk) -> EqualityWalk {
   }
 }
 
+// THE PAYLOAD OF AN OPTIONAL OPERAND. `T?` and the spelling `Optional<T>` peel through extract_optional_inner_node; an
+// Optional reached by another spelling of its declaration (std.optional.Optional<T>) carries its payload as its one
+// child, which extract_optional_inner_node does not read (it returns the node itself unless the spelling is bare), so
+// recursing on its result would walk the same operand again without descending.
+fn equality_optional_payload(n: Node) -> Node {
+  if n.return_cardinality == CardOptional || n.name == "Optional" {
+    extract_optional_inner_node(n: n)
+  } else {
+    match n.children |> first {
+      Present { value: inner } => inner
+      Absent => n
+    }
+  }
+}
+
 fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
   let source_indices = scope.type_env.source_indices
   if depth > 64 {
     equality_walk_refused(r: equality_refused(carrier: authored_name_at(source_indices: source_indices, node: n), member: "type expansion depth exceeded", member_judged: false))
   } else {
     let peeled = normalize_access_type_node(n: n)
-    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) || ((peeled.children |> count) == 1 && peeled.connective != Conj && peeled.connective != Disj && node_is_std_optional(n: peeled, scope: scope)) {
-      equality_presence_walk(inner: equality_operand_walk(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth, at_root: false))
+    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) || ((peeled.children |> count) == 1 && peeled.connective != Conj && peeled.connective != Disj && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled)) == "Optional" && node_is_std_optional(n: peeled, scope: scope)) {
+      equality_presence_walk(inner: equality_operand_walk(n: equality_optional_payload(n: peeled), scope: scope, visited: visited, depth: depth, at_root: false))
     } else {
       let name = authored_name_at(source_indices: source_indices, node: peeled)
       let leaf = qualified_last_segment(name: name)
@@ -3994,8 +4009,8 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
   } else {
     let peeled = normalize_access_type_node(n: n)
     let source_indices = scope.type_env.source_indices
-    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) || ((peeled.children |> count) == 1 && peeled.connective != Conj && peeled.connective != Disj && node_is_std_optional(n: peeled, scope: scope)) {
-      equality_argument_by_target(n: extract_optional_inner_node(n: peeled), scope: scope, depth: depth + 1)
+    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) || ((peeled.children |> count) == 1 && peeled.connective != Conj && peeled.connective != Disj && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled)) == "Optional" && node_is_std_optional(n: peeled, scope: scope)) {
+      equality_argument_by_target(n: equality_optional_payload(n: peeled), scope: scope, depth: depth + 1)
     } else {
       let identity = type_reference_identity(n: peeled, source_indices: source_indices)
       match equality_route_for(identity: identity) {

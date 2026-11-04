@@ -280,6 +280,46 @@ test fn a_two_variant_derived_equality_keeps_its_wildcard() -> Bool {
   )
 }
 
+// AN OPTIONAL IS JUDGED BY ITS DECLARATION, WHATEVER THE SPELLING (gunbc#15175). The equality walk descends into the payload of
+// a std.optional.Optional reached by the qualified spelling or by a transparent alias, and a function-valued payload refuses
+// there exactly as it does under the bare spelling. Each refusal row has an accepted control with an Int payload beside it, so
+// the refusal is the payload's and not the spelling's.
+data qualified_optional_fn_eq_red_source: String = "module eq_probe_qualified_optional_fn\nimport std.optional { Optional }\ntype Holder {\n  f: std.optional.Optional<fn(Int) -> Int>\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data qualified_optional_int_eq_green_source: String = "module eq_probe_qualified_optional_int\nimport std.optional { Optional }\ntype Holder {\n  f: std.optional.Optional<Int>\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data aliased_optional_fn_eq_red_source: String = "module eq_probe_aliased_optional_fn\nimport std.optional { Optional }\ntype MaybeOp = Optional<fn(Int) -> Int>\ntype Holder {\n  f: MaybeOp\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data aliased_optional_int_eq_green_source: String = "module eq_probe_aliased_optional_int\nimport std.optional { Optional }\ntype MaybeInt = Optional<Int>\ntype Holder {\n  f: MaybeInt\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data sugar_optional_fn_eq_red_source: String = "module eq_probe_sugar_optional_fn\ntype Op = fn(Int) -> Int\ntype Holder {\n  f: Op?\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data sugar_optional_int_eq_green_source: String = "module eq_probe_sugar_optional_int\ntype Holder {\n  f: Int?\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+test fn sugar_optional_function_payload_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: sugar_optional_fn_eq_red_source) >= 1
+}
+
+test fn sugar_optional_int_payload_is_admitted() -> Bool {
+  eq_admitted(source: sugar_optional_int_eq_green_source)
+}
+
+test fn qualified_optional_function_payload_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: qualified_optional_fn_eq_red_source) >= 1
+}
+
+test fn qualified_optional_int_payload_is_admitted() -> Bool {
+  eq_admitted(source: qualified_optional_int_eq_green_source)
+}
+
+test fn aliased_optional_function_payload_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: aliased_optional_fn_eq_red_source) >= 1
+}
+
+test fn aliased_optional_int_payload_is_admitted() -> Bool {
+  eq_admitted(source: aliased_optional_int_eq_green_source)
+}
+
 // (A plan exists only where a routed member such as Node is reachable; without one `==` is the target structural equality and needs no function.)
 // A generic declaration is never synthesized (one function per instance would be needed), so a record reaching
 // one as a field has no derived equality: comparing it refuses with the typed member cause, and the emitted
