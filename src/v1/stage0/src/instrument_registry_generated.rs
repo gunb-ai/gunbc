@@ -110,15 +110,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "dependency-demand-census".to_string(),
-            },
-            TargetProducer::NativeCensusVerb {
-                verb: "demand-census",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "self-host-frontier".to_string(),
             },
             TargetProducer::SelfHostFrontier,
