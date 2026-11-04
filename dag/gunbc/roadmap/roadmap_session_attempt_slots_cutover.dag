@@ -466,7 +466,7 @@ fn attempt_slots_census(target: SessionAttemptSlotsStore, moved: ReplacedAttempt
         // A source PROVEN ABSENT and a source that could not be READ are different facts and are
         // reported as different facts. Both still refuse the census: neither licenses a carry or a
         // release, and a census answer is never a release trigger.
-        SlotStoreAbsent { member: _, root: r } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: join(["the replaced root's own directory was never created, so there is no store to census (proven absent at ", r as String, "); this coproduct has no proven-absent constructor yet -- attempt_slots_source_absent_frontier_ref names that mint"), "") }
+        SlotStoreAbsent { member: _, root: r } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: join(["the replaced root's own directory was never created, so there is no store to census (proven absent at ", r as String, "); this coproduct has no proven-absent constructor yet -- attempt_slots_source_absent_frontier_ref names that mint"], "") }
         SlotStoreRefused { detail: d } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: d }
         SlotStoreListed { root: listed_root } =>
           match attempt_slot_keys(store: file_slot_store(root: listed_root)) {

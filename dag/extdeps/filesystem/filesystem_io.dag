@@ -564,8 +564,12 @@ type FilesystemListingObservation
 // The alternative was widening FilesystemListingObservation with a fourth arm. Measured, that forces
 // 28 existing match blocks in 18 files to state a judgement none of them is about -- 28 of the 29
 // name all three arms explicitly -- so widening would fabricate 28 policy judgements and churn 119
-// call sites. This fold is therefore kept beside the existing one, with a single caller today
-// (gunbc.durable_cas_file_store.cas_slot_keys). TRIGGER FOR DISSOLUTION: when a consumer needs the
+// call sites. This fold is therefore kept beside the existing one. MEASURED CALLER COUNT, since the
+// trigger below is stated against how far this decoder reaches: TWO, both in gunbc.durable_cas_file_store
+// -- cas_slot_keys (the census of a store's slots) and listed_slot_store (the admission of a store's own
+// directory), each consulting it only in its failed-listing arm of the one List. Any third consumer
+// would raise that number and is the signal to re-run the widening measurement rather than trust this
+// sentence. TRIGGER FOR DISSOLUTION: when a consumer needs the
 // absent/readable split AND the contents in one step, or when widening the observation would no
 // longer force a judgement any consumer is not already making, delete this fold and move the absence
 // arm into FilesystemListingObservation.
