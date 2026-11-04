@@ -12492,8 +12492,9 @@ fn rust_type_argument_witness_pair_lists(basis_children: List<Node>, site_childr
 // emission cannot reach. (2) A declared parameter the plan does not pin -- no witness, or witnesses
 // that render differently. (3) A witness the seed's own resolution check refuses:
 // `v1.compiler.infer_types` `is_fully_resolved`, the same walk the checker asks before it commits a
-// type (13 call sites in `v1.compiler.infer`, e.g. the fold accumulator at its line 10401), asked with
-// the `source_indices` this function already carries. An `im::HashMap<String, _>` inside a turbofish is
+// type -- the same pair the checker asks of a fold accumulator, `is_fully_resolved` together with
+// `fold_accumulator_is_unapplied_generic` in `v1.compiler.infer` -- asked with the `source_indices`
+// this function already carries. An `im::HashMap<String, _>` inside a turbofish is
 // a hole for rustc to fill, which is the defect this rule exists to close. In every case the emitted
 // program carries the refusal; it never degrades into the shape that was refused.
 fn rust_call_type_argument_annotation(
@@ -12565,11 +12566,11 @@ fn rust_type_argument_spelling(witnesses: List<CallTypeArgumentWitness>, name: S
 // without asking its parameter types, and took a container at its spelling without its arity or
 // `authored_container_spelling_verdict`, so it could have handed this rule a witness with a hole in it,
 // which is the defect the refusal exists to stop. Asking the verdict instead means whatever the emitter
-// refuses is exactly what inference refused. ONE LIMITATION, STATED: `v1.compiler.infer` line 8757
-// records that an unapplied generic accumulator expansion reads as fully resolved to this check, which
-// it guards there with `fold_accumulator_is_unapplied_generic`; a callee type argument spelled as such
-// an expansion would pass here, and if rustc ever refuses one the repair belongs at `is_fully_resolved`,
-// not in a second walk beside it. Whether rendered text may be trusted instead was settled by run
+// refuses is exactly what inference refused. ONE LIMITATION, STATED: `v1.compiler.infer`
+// `fold_accumulator_is_unapplied_generic` exists precisely because an unapplied generic accumulator
+// expansion -- a `Disj` or `Conj` still carrying its declared params -- reads as fully resolved to this
+// check; a callee type argument spelled as such an expansion would pass here, and if rustc ever refuses
+// one the repair belongs at `is_fully_resolved`, not in a second walk beside it. Whether rendered text may be trusted instead was settled by run
 // 41299024017, where the emitted annotation was `im::HashMap<_, _>` against an initializer of
 // `Rc<im::HashMap<_, bool>>`: a text test misses `(_, i64)`, `Fn(_) -> i64` and `Vec<(i64, _)>`, and
 // tracks whatever spacing the renderer happens to use. The richer source is the checker's verdict.
