@@ -1240,26 +1240,81 @@ type SessionSettleDecision
   | SettleKeep { why: String, explain: Bool }
   | SettleDone { why: String }
 
-fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: UnitLifecycle, now: EpochSecs, release_settled: Bool) -> SessionSettleDecision {
+// THE ONE ADMISSION OF A SLOT TO SETTLEMENT. Whether a held slot may be closed and its seat released under
+// THIS name is a single fact, and both deciders below (the pass's session_settle_decide and the operator's
+// session_operator_settle_decide) consume it, so neither can admit what the other refuses. A slot is
+// admitted only when its identity names a node and attempt, the key it is read under IS the reference it
+// records, and its reference, unit and identity all name that one attempt (session_slot_binding_mismatch).
+type SlotSettlementAdmission
+  = SlotAdmissionAbsent
+  | SlotAdmissionUnreadable { detail: String }
+  | SlotAdmissionUnbindable { identity: String }
+  | SlotAdmissionForeign { mismatch: String }
+  | SlotAdmissionAdmitted { record: AttemptRecord, generation: CasGeneration, attempt: SessionAttemptName }
+
+fn session_slot_settlement_admission(key: NonEmptyStr, slot: AttemptSlotReading) -> SlotSettlementAdmission {
   match slot {
-    AttemptSlotAbsent => SettleDone { why: join(["no slot is held for ", key as String], "") }
-    AttemptSlotUnreadable { detail } => SettleKeep { why: join(["the session slot for ", key as String, " is unreadable, and an unreadable slot is not an absent one, so its seat is kept: ", detail], ""), explain: true }
+    AttemptSlotAbsent => SlotAdmissionAbsent
+    AttemptSlotUnreadable { detail } => SlotAdmissionUnreadable { detail: detail }
     AttemptSlotHeld { record: rec, generation: g } =>
       match session_attempt_name_of(identity: rec.identity) {
-        Absent => SettleKeep { why: join(["the session slot ", key as String, " binds identity ", rec.identity, ", which names no node and attempt, so its seat is kept"], ""), explain: true }
+        Absent => SlotAdmissionUnbindable { identity: rec.identity }
         Present { value: name } => {
           let mismatch = if (key as String) != rec.reference { join(["the slot keyed ", key as String, " names reference ", rec.reference], "") } else { session_slot_binding_mismatch(record: rec, node_id: name.node_id, attempt_key: name.attempt_key) }
-          if mismatch != "" {
-            SettleKeep { why: join(["the session slot ", key as String, " is not bound consistently (", mismatch, "), so it is never released under this name"], ""), explain: true }
-          } else {
-            match rec.state {
-              AttemptTerminal { verdict: _, detail: d } =>
-                if release_settled { SettleDone { why: "closed and released" } } else { SettleReleaseOnly { record: rec, attempt: name, reason: join(["the slot is closed (", d, ") and no settled release is recorded"], "") } }
-              AttemptReserved => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
-              AttemptLaunching => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
-            }
-          }
+          if mismatch != "" { SlotAdmissionForeign { mismatch: mismatch } } else { SlotAdmissionAdmitted { record: rec, generation: g, attempt: name } }
         }
+      }
+  }
+}
+
+// THE SEAT-KEEPING WORDS FOR A SLOT THAT IS NOT ADMITTED, spelled once for both deciders.
+fn session_slot_unreadable_keep(key: NonEmptyStr, detail: String) -> SessionSettleDecision {
+  SettleKeep { why: join(["the session slot for ", key as String, " is unreadable, and an unreadable slot is not an absent one, so its seat is kept: ", detail], ""), explain: true }
+}
+
+fn session_slot_unbindable_keep(key: NonEmptyStr, identity: String) -> SessionSettleDecision {
+  SettleKeep { why: join(["the session slot ", key as String, " binds identity ", identity, ", which names no node and attempt, so its seat is kept"], ""), explain: true }
+}
+
+fn session_slot_foreign_keep(key: NonEmptyStr, mismatch: String) -> SessionSettleDecision {
+  SettleKeep { why: join(["the session slot ", key as String, " is not bound consistently (", mismatch, "), so it is never released under this name"], ""), explain: true }
+}
+
+fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: UnitLifecycle, now: EpochSecs, release_settled: Bool) -> SessionSettleDecision {
+  match session_slot_settlement_admission(key: key, slot: slot) {
+    SlotAdmissionAbsent => SettleDone { why: join(["no slot is held for ", key as String], "") }
+    SlotAdmissionUnreadable { detail } => session_slot_unreadable_keep(key: key, detail: detail)
+    SlotAdmissionUnbindable { identity } => session_slot_unbindable_keep(key: key, identity: identity)
+    SlotAdmissionForeign { mismatch } => session_slot_foreign_keep(key: key, mismatch: mismatch)
+    SlotAdmissionAdmitted { record: rec, generation: g, attempt: name } =>
+      match rec.state {
+        AttemptTerminal { verdict: _, detail: d } =>
+          if release_settled { SettleDone { why: "closed and released" } } else { SettleReleaseOnly { record: rec, attempt: name, reason: join(["the slot is closed (", d, ") and no settled release is recorded"], "") } }
+        AttemptReserved => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
+        AttemptLaunching => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
+      }
+  }
+}
+
+// THE OPERATOR-DIRECTED DECISION, over the same admission. The operator supplies the evidence that the
+// holder is gone (the reason carries what it read); the pass observes nothing here, so the record says the
+// operator directed the closure and never that the pass saw the holder end. Absent from the CURRENT store
+// refuses: releasing the ledger while the slot sits where no pass reads it would erase the acquisition
+// instant session_holder_evidence needs (it reads it from the ledger), so such a slot is first carried into
+// the current store. Everything the admission refuses keeps its seat, with the pass's own words.
+fn session_operator_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, reason: NonEmptyStr, release_settled: Bool) -> SessionSettleDecision {
+  let directed = join(["operator-directed: ", reason as String], "")
+  match session_slot_settlement_admission(key: key, slot: slot) {
+    SlotAdmissionAbsent => SettleKeep { why: join(["no slot for ", key as String, " is in the current store, so nothing is released: a ledger-only release would erase the acquisition instant the settle pass needs to prove the holder died; carry the slot into the current store first"], ""), explain: false }
+    SlotAdmissionUnreadable { detail } => session_slot_unreadable_keep(key: key, detail: detail)
+    SlotAdmissionUnbindable { identity } => session_slot_unbindable_keep(key: key, identity: identity)
+    SlotAdmissionForeign { mismatch } => session_slot_foreign_keep(key: key, mismatch: mismatch)
+    SlotAdmissionAdmitted { record: rec, generation: g, attempt: name } =>
+      match rec.state {
+        AttemptTerminal { verdict: _, detail: d } =>
+          if release_settled { SettleDone { why: "closed and released" } } else { SettleReleaseOnly { record: rec, attempt: name, reason: join([directed, "; the slot is closed (", d, ") and no settled release is recorded"], "") } }
+        AttemptReserved => SettleTerminateAndRelease { record: rec, generation: g, attempt: name, reason: directed }
+        AttemptLaunching => SettleTerminateAndRelease { record: rec, generation: g, attempt: name, reason: directed }
       }
   }
 }
@@ -1327,22 +1382,44 @@ fn session_release_settled_for_slot(stores: SessionPlacementStores, host: String
   }
 }
 
-fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmptyStr, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
-  let slot = attempt_slot_read(store: stores.slots.slots, reference: key)
-  match session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot)) {
+// THE ONE EXECUTION OF A SETTLE DECISION, for the pass and for the operator. A terminate runs at the
+// generation the decision read (a CAS): a slot that moved refuses and releases nothing. `closing` renders the
+// terminal slot's detail from the decision's reason; it is the only thing the two callers say differently.
+fn session_settle_execute(stores: SessionPlacementStores, host: String, key: NonEmptyStr, decision: SessionSettleDecision, closing: fn(String) -> String) -> SessionSettlement {
+  match decision {
     SettleDone { why } => SessionSettlementDone { unit: key as String, why: why }
     SettleKeep { why, explain } =>
       SessionSettlementKept { unit: key as String, why: if explain { session_settle_note(stores: stores, unit: key as String, why: why) } else { why } }
     SettleReleaseOnly { record: _, attempt, reason } =>
       session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
     SettleTerminateAndRelease { record, generation, attempt, reason } =>
-      match attempt_terminate(store: stores.slots.slots, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join([reason, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+      match attempt_terminate(store: stores.slots.slots, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: closing(reason)) {
         AttemptLostRace { expected: e, observed: o } =>
           SessionSettlementRefused { unit: key as String, detail: join(["the slot moved while settlement was deciding (expected ", e, ", found ", o, "); the observation is stale, so nothing is released"], "") }
         AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
         AttemptAdvanced { state: _, generation: _ } => session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
       }
   }
+}
+
+fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmptyStr, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
+  let slot = attempt_slot_read(store: stores.slots.slots, reference: key)
+  session_settle_execute(
+    stores: stores, host: host, key: key,
+    decision: session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot)),
+    closing: r => join([r, "; unit ", unit_lifecycle_wire(u: lifecycle)], ""),
+  )
+}
+
+// THE OPERATOR'S SETTLEMENT OF ONE NAMED SLOT: the same read, admission and execution as the pass, with the
+// operator's decision in place of the pass's observation of the unit.
+fn session_operator_settle_one(stores: SessionPlacementStores, host: String, key: NonEmptyStr, reason: NonEmptyStr) -> SessionSettlement {
+  let slot = attempt_slot_read(store: stores.slots.slots, reference: key)
+  session_settle_execute(
+    stores: stores, host: host, key: key,
+    decision: session_operator_settle_decide(key: key, slot: slot, reason: reason, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot)),
+    closing: r => r,
+  )
 }
 
 // THE RELEASE SETTLEMENT PERFORMS, bound to the grant the placement record names when there is one.
