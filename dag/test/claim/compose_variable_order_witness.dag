@@ -563,6 +563,31 @@ test fn the_sweep_walks_past_a_clean_read_of_compose() -> Bool {
   }
 }
 
+// A SIBLING DIRECTORY NAME IS NOT A REPEAT. The composed directory here is /gunbc-mirror-compose; a path
+// that hangs a directory whose name merely BEGINS with it off COMPOSE names a different directory, and a
+// law that flagged it would report a step that composes correctly. The boundary is a path segment, not a
+// substring -- and the real repeat planted beside it still has to be found, or this control would pass by
+// reporting nothing.
+test fn a_sibling_directory_name_is_not_reported_as_a_repeat() -> Bool {
+  let prefix = compose_plant_prefix()
+  let defects = compose_step_path_defects(
+    steps: concat(
+      prefix,
+      [
+        mkdir_under_compose(path_tail: "/gunbc-mirror-compose-x/private_overlay"),
+        mkdir_under_compose(path_tail: "/gunbc-mirror-compose/private_overlay")
+      ]
+    )
+  )
+  match defect_path_at(defects: defects, i: 0) {
+    Present { value: first } =>
+      count(defects) == 1
+        && first.literal == "/gunbc-mirror-compose/private_overlay"
+        && first.step_index == count(prefix) + 2
+    Absent => false
+  }
+}
+
 // THE PATH LAW IS NOT ASKED A VACUOUS QUESTION. Both planted steps really do expand COMPOSE (so the
 // passing one passed something), and a step that composes nothing is not silently clean: the law reads no
 // paths there, and the claim says which of the two it looked at.
