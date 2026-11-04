@@ -40,7 +40,10 @@ import product.electrical.identification {
   InstalledComponent,
   MarkingCandidate,
   MarkingReading,
+  MarkingSharedByMakers,
   MarkingUnresolved,
+  RatingPrintedOnBody,
+  ResistanceCodeRead,
   ObservedPresence,
   observed_presence,
 }
@@ -57,6 +60,7 @@ import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
 import extdeps.electronic_component.types { designator_eq, designator_of, designator_text }
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_position_receipts {
+  ReceiptBasis,
   e1_held_receipts,
   e1_position_receipts,
 }
@@ -122,6 +126,21 @@ fn named_without_being_seen() -> List<InstalledComponent> {
     MarkingUnresolved { marking: Absent, discriminator: _ } => true
     _ => false
   })
+}
+
+// A marking text is what one body says about itself in one frame. A text that compares the body to
+// something else is not a read of that body: it is another part's read, copied. That is exactly how
+// C3_F1 reached the record -- its installed row carried "150 / J ZU / 26AL (as its three neighbours)",
+// a sentence whose own parenthetical admits the copying, and the model had no test that could see it
+// (DESIGN §5, §4d: a marking candidate is not an identification, and nothing here may inherit an
+// identity by sitting nearby). The comparison is a legitimate thing to SAY -- it belongs in a
+// discriminator, an obligation or a comment, where it is visibly an inference -- and is never
+// legitimate as the text itself.
+fn text_compares_rather_than_reads(t: NonEmptyStr) -> Bool {
+  string_contains(s: t, pattern: "as its")
+    || string_contains(s: t, pattern: "same as")
+    || string_contains(s: t, pattern: "like its")
+    || string_contains(s: t, pattern: "as the other")
 }
 
 fn held_unresolved(d: NonEmptyStr) -> Bool {
@@ -332,12 +351,16 @@ test fn every_reading_cites_a_frame_or_names_a_gap() -> Bool {
 //
 // The base rule the generator applies is stated in its own header -- a designated part above the
 // passive level, the designator transcribed 'clear', standing 'confirmed' or 'final-pass critic', no
-// unreadable character. 249 of the 262 positions come from that rule alone. The other 13 are named
+// unreadable character. 249 of the 261 positions come from that rule alone. The other 12 are named
 // exceptions carrying the receipt that justifies them (a per-photo sighting the merged inventory
 // lost, an entry on the atlas's own anomaly list, a bench read the atlas could not repeat, the bulk
 // capacitors the handoff puts in scope), and 5 more reads the rule reaches were refused anyway and
 // are held instead -- the two duplicate bottom-side labels and the three empty footprints that need
-// a visual check. k, the designators whose read carries a '?' or a '*', is 81 distinct above the
+// a visual check. It was 262 and 13 until C3_F1 came out: the pass saw its label at t4_07 and
+// never transcribed it (no designator_read, no photo, no bbox in the merged row), and its marking
+// was copied from C1_F1, C2_F1 and C4_F1, which its own parentheses admit. A position is NVIDIA's
+// design fact, so an unread label cannot mint one; the exception was deleted and the rule holds it.
+// The excluded set, the designators whose read carries a '?' or a '*', is 81 distinct above the
 // passive level: those stay in the receipts entirely, which is why no test here can count them.
 
 test fn the_positions_are_the_receipts_and_nothing_else() -> Bool {
@@ -360,6 +383,77 @@ test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
     Present { value: _ } => false
     Absent { } => true
   })
+}
+
+test fn every_named_exception_reaches_the_board() -> Bool {
+  // A named exception is an admission the base rule did not make, so the exception cannot be the
+  // whole story: something on the board has to speak for that designator, a designator reading or
+  // an unresolved row. An exception admitting a designator with no observation behind it would put
+  // a position on NVIDIA's design list that nobody on the bench ever recorded, and `rests_on` would
+  // stay a field the model states and nothing reads. This is its only consumer: the 12 named
+  // exceptions are now checkable rather than merely stated.
+  //
+  // This test would NOT have caught C3_F1, and it is not offered as if it did. That designator had
+  // two board rows, exactly as this test requires; what it never had was a transcription behind the
+  // text one of those rows carried, and no test over the rows can see through a copied CSV column.
+  // The generator change is what catches it: the merged row has no designator read at all, so the
+  // base rule no longer reaches it and no exception covers it.
+  filter(e1_position_receipts, r => match r.rests_on {
+    NamedException { why: _ } => true
+    RuleRead { } => false
+  }).all(r =>
+    any(p4261_e1_layout.designator_readings, d =>
+      designator_eq(a: designator_of(verbatim: d.designator), b: r.designator))
+      || any(p4261_e1_layout.unresolved, u => match u.designator {
+        Present { value: d } => designator_eq(a: designator_of(verbatim: d), b: r.designator)
+        Absent { } => false
+      }))
+}
+
+test fn no_marking_text_describes_a_comparison() -> Bool {
+  // Every marking text on the board -- on an installed part or on an unresolved row -- has to be a
+  // read of that body, not a comparison with another one.
+  //
+  // The receipts cannot catch this and are not a substitute: the receipts carry the very CSV column
+  // the text was copied from, so a copied column is perfectly consistent with itself and every join
+  // over it stays green. What C3_F1 made visible is that the SHAPE of the sentence is evidence -- a
+  // text that explains itself by pointing at its neighbours is not a reading of the body it is
+  // attached to -- and the shape is checkable here, where the receipts cannot see it.
+  p4261_e1_layout.components.all(c => match c.identification {
+    IdentifiedByMarking { row: _, marking: m } => !text_compares_rather_than_reads(t: m.text)
+    MarkingSharedByMakers { rows: _, marking: m } => !text_compares_rather_than_reads(t: m.text)
+    MarkingCandidate { row: _, marking: m, discriminator: _ } => !text_compares_rather_than_reads(t: m.text)
+    RatingPrintedOnBody { rating: _, marking: m } => !text_compares_rather_than_reads(t: m.text)
+    ResistanceCodeRead { milliohms: _, marking: m } => !text_compares_rather_than_reads(t: m.text)
+    MarkingUnresolved { marking: m, discriminator: _ } => match m {
+      Present { value: r } => !text_compares_rather_than_reads(t: r.text)
+      Absent { } => true
+    }
+    _ => true
+  })
+    && p4261_e1_layout.unresolved.all(u => match u.marking {
+      Present { value: t } => !text_compares_rather_than_reads(t: t)
+      Absent { } => true
+    })
+}
+
+test fn a_rule_read_never_admits_an_unread_label() -> Bool {
+  // `transcribed` is the strength of the designator read the receipts hold for a position, and the
+  // generator now derives it from the strongest evidence that exists rather than from the merged
+  // column alone -- the change that took J2 from "not transcribed" to "clear (per-photo frame p007;
+  // the merged inventory says 'not transcribed')" while its frame said clear and confirmed.
+  //
+  // The one place that field has consequences inside the model is the admission rule, so its
+  // consequences have to be checkable: a row admitted by the rule alone is asserting that the rule
+  // could read the label, and it cannot assert that and also that the label was never transcribed.
+  // Named exceptions are exempt by design -- J3 sits under one precisely because its label was never
+  // read, and it is admitted on a bench obligation to go and read it. The six strengthened rows keep
+  // the phrase inside a parenthetical and all sit under named exceptions, so none trips this today;
+  // the mutant that flips a RuleRead row's transcription is what shows the test has teeth.
+  filter(e1_position_receipts, r => match r.rests_on {
+    RuleRead { } => true
+    _ => false
+  }).all(r => !string_contains(s: r.transcribed, pattern: "not transcribed"))
 }
 
 test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
@@ -420,11 +514,14 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
     // product.p4261.e1_b rather than asserted beside it. 47 - 2 + 4 = 49. Beside the identity join
     // (the_positions_are_the_receipts_and_nothing_else), a change detector only.
     && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 49
-    // The held set keeps its 24 members, and the K1 keeps its own 13 positions: an E1 pass must
-    // not reach into another board's design facts. Both are change detectors, not proofs -- the
-    // held set's own authority is `every_held_receipt_is_recorded_on_the_board` joined to
-    // `e1_held_receipts`, and the design list's is `the_positions_are_the_receipts_and_nothing_else`.
-    && count(e1_held_receipts) == 24
+    // The held set is 25 as of the 2026-11-04 correction, which took C3_F1 out of the admitted set
+    // and put it here: the pass saw its label at t4_07 and never transcribed it, and the marking the
+    // board had stored was the neighbours' (see the generator's EXCEPTIONS and e1_b's C3_F1 rows).
+    // Before that it was 24. The K1 keeps its own 13 positions: an E1 pass must not reach into
+    // another board's design facts. Both are change detectors, not proofs -- the held set's own
+    // authority is `every_held_receipt_is_recorded_on_the_board` joined to `e1_held_receipts`, and
+    // the design list's is `the_positions_are_the_receipts_and_nothing_else`.
+    && count(e1_held_receipts) == 25
     && count(p4261_k1_positions) == 13
 }
 
@@ -433,7 +530,7 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
 // The census pins two totals; this pins the shape a total cannot. Readings and positions stand in
 // one-to-one correspondence: every position on the list has exactly one designator reading, and no
 // reading names a designator that is not on the list. A position losing its reading while another
-// gains a second leaves both totals at 262 and every other test here green, which is exactly the
+// gains a second leaves both totals at 261 and every other test here green, which is exactly the
 // mistake this catches. The comparison goes through Designator's own equality, so a reading cannot
 // be matched to a position by a spelling that differs in case or whitespace: the reading side is a
 // plain string today (the type still says NonEmptyStr), so this test, not the type, is what holds
