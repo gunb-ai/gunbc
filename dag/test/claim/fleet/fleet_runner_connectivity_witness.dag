@@ -6,13 +6,16 @@ import test.claim.runner.runner_user_session_label_witness { srv4_holding_input 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import product.host_identity { HostIdentity }
-import std.nat { Nat }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import std.nat { Nat, nat_range_inclusive }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess }
+import gunbc.runner.runner_incarnation { parse_jit_registration_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_runner_connectivity {
   incident_2026_08_06_roster_fixture,
   runner_slot_connectivity_verdict,
   runner_slot_connectivity_verdict_for_incarnation,
+  committed_incarnation_main_process_unread,
   connectivity_verdicts_for_active_incarnations,
   connectivity_verdict_is_healthy,
   connectivity_verdict_is_detached,
@@ -40,6 +43,10 @@ import gunbc.fleet.fleet_runner_connectivity {
   SlotConnectivityOrphaned,
   SlotConnectivityUnknown,
   FleetRunnerCapacityWidthSnapshot,
+  decode_registration_slot,
+  RegistrationNamesCommittedSlot,
+  RegistrationNamesDeadIncarnation,
+  RegistrationNamesNoCommittedSlot,
 }
 import extdeps.github.ci_runner {
   GitHubSelfHostedRunnerRegistration,
@@ -277,7 +284,7 @@ fn online_srv4_01_under(labels: List<NonEmptyStr>, receipt: RunnerUserSessionRec
 }
 
 fn online_01_under(host: HostIdentity, name: String, labels: List<NonEmptyStr>, receipt: RunnerUserSessionReceiptInput) -> RunnerSlotConnectivityVerdict {
-  runner_slot_connectivity_verdict_for_incarnation(receipt: receipt,
+  runner_slot_connectivity_verdict_for_incarnation(receipt: receipt, main: committed_incarnation_main_process_unread,
     incarnation: runner_slot_incarnation(host: host, slot_index: 1, unit_active: true),
     roster: organization_runner_roster_from_page(
       observed_on: "2026-09-19" as NonEmptyStr,
@@ -359,4 +366,120 @@ test fn online_registration_under_a_mixed_case_wrong_host_label_is_not_healthy()
   connectivity_verdict_labels_diverge(
     v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "Linux" as NonEmptyStr, "ARM64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "SRV3" as NonEmptyStr], receipt: ReceiptAbsent),
   )
+}
+
+// ── JIT INCARNATIONS: one registration per incarnation, the current one picked by the unit's pid ──
+// The fleet's runners register as <slot>-<epoch>-<pid> (gunbc.runner.runner_incarnation
+// parse_jit_registration_name). These claims supply rosters of that shape at the join's boundary; the
+// live shape is roster 41694782240 (134 srv1-02 rows, one online). RED for the group: put
+// find_registration_by_name back as the only lookup in registration_verdict_or and the current-
+// incarnation claims read Orphaned.
+
+test fn a_jit_name_parses_only_under_its_own_slot_with_two_numeric_tokens() -> Bool {
+  (match parse_jit_registration_name(name: "srv1-02-1793731396-1395494", slot_instance: "srv1-02") {
+    Present { value: n } => n.minted_epoch == 1793731396 && n.wrapper_pid == 1395494
+    Absent => false
+  })
+    && (match parse_jit_registration_name(name: "srv1-02-1793731396-1395494", slot_instance: "srv1-0") { Present { value: _ } => false Absent => true })
+    && (match parse_jit_registration_name(name: "srv1-02", slot_instance: "srv1-02") { Present { value: _ } => false Absent => true })
+    && (match parse_jit_registration_name(name: "srv1-02-x-1395494", slot_instance: "srv1-02") { Present { value: _ } => false Absent => true })
+    && (match parse_jit_registration_name(name: "srv1-02-1-2-3", slot_instance: "srv1-02") { Present { value: _ } => false Absent => true })
+}
+
+data srv4_healthy_labels: List<NonEmptyStr> = ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr]
+
+fn jit_row(id: Nat, name: String, online: Bool) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration {
+    id: id,
+    name: name as NonEmptyStr,
+    status: if online { GitHubRunnerOnline } else { GitHubRunnerOffline },
+    busy: false,
+    ephemeral: Present { value: true },
+    version: Present { value: "2.334.0" as NonEmptyStr },
+    os: "Linux" as NonEmptyStr,
+    labels: srv4_healthy_labels,
+  }
+}
+
+// One hundred rows of another slot ahead of srv4-01's, so srv4-01's rows sit past the first 100 -- the
+// rows the hand-installed reconcile's per_page=100 read never saw.
+data jit_other_slot_rows: List<GitHubSelfHostedRunnerRegistration> = map(nat_range_inclusive(lo: 1, hi: 100), i => jit_row(id: 7000 + i, name: concat("srv4-02-1793600000-", to_string(i)), online: false))
+
+data jit_ghost_rows: List<GitHubSelfHostedRunnerRegistration> = [
+  jit_row(id: 8101, name: "srv4-01-1793700000-111", online: false),
+  jit_row(id: 8102, name: "srv4-01-1793700660-222", online: false),
+]
+
+fn jit_main(pid: Nat) -> RunnerUnitMainProcess {
+  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: pid, start_time: "t" as NonEmptyStr } }
+}
+
+fn jit_complete_roster(rows: List<GitHubSelfHostedRunnerRegistration>) -> OrganizationRunnerRosterEvidence {
+  RosterObserved { observed_on: "2026-11-04" as NonEmptyStr, registrations: rows }
+}
+
+fn srv4_01_verdict(main: RunnerUnitMainProcess, roster: OrganizationRunnerRosterEvidence) -> RunnerSlotConnectivityVerdict {
+  runner_slot_connectivity_verdict_for_incarnation(
+    incarnation: runner_slot_incarnation(host: operator_host_srv4, slot_index: 1, unit_active: true),
+    main: main,
+    roster: roster,
+    receipt: ReceiptAbsent,
+  )
+}
+
+// The current incarnation (pid 333) is online at row 103, behind 100 other rows and two of its own
+// slot's dead incarnations: Healthy. Offline under the same pid it is Detached -- the live one, not a ghost.
+test fn the_current_jit_incarnation_is_found_by_its_pid_past_the_first_hundred_rows() -> Bool {
+  connectivity_verdict_is_healthy(v: srv4_01_verdict(main: jit_main(pid: 333), roster: jit_complete_roster(rows: concat(jit_other_slot_rows, concat(jit_ghost_rows, [jit_row(id: 8103, name: "srv4-01-1793701320-333", online: true)])))))
+    && connectivity_verdict_is_detached(v: srv4_01_verdict(main: jit_main(pid: 333), roster: jit_complete_roster(rows: concat(jit_other_slot_rows, concat(jit_ghost_rows, [jit_row(id: 8103, name: "srv4-01-1793701320-333", online: false)])))))
+}
+
+// Dead incarnations are not the current one: with only ghosts under the slot and the pid read, the
+// current incarnation has no registration (Orphaned under a complete roster); with the pid NOT read, the
+// current one cannot be told apart, which is Unknown -- never Orphaned or Detached. That second arm is the
+// false-WEDGED class: an offline row read as the live incarnation's.
+test fn dead_incarnations_never_stand_in_for_the_current_one() -> Bool {
+  connectivity_verdict_is_orphaned(v: srv4_01_verdict(main: jit_main(pid: 333), roster: jit_complete_roster(rows: concat(jit_other_slot_rows, jit_ghost_rows))))
+    && connectivity_verdict_is_unknown(v: srv4_01_verdict(main: committed_incarnation_main_process_unread, roster: jit_complete_roster(rows: concat(jit_other_slot_rows, jit_ghost_rows))))
+}
+
+// With the pid not read, the one online row under the slot is the current incarnation's.
+test fn with_no_pid_the_single_online_jit_row_is_the_current_incarnation() -> Bool {
+  connectivity_verdict_is_healthy(v: srv4_01_verdict(main: committed_incarnation_main_process_unread, roster: jit_complete_roster(rows: concat(jit_ghost_rows, [jit_row(id: 8103, name: "srv4-01-1793701320-333", online: true)]))))
+}
+
+// A truncated roster that does not reach the current incarnation's row is Unknown, never Orphaned.
+test fn a_partial_roster_without_the_current_row_is_unknown() -> Bool {
+  connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main(pid: 333), roster: RosterObservedPartial { observed_on: "2026-11-04" as NonEmptyStr, registrations: concat(jit_other_slot_rows, jit_ghost_rows), observed_count: 102, authority_total: 2028 }))
+}
+
+fn decodes_as_live_slot(reg: GitHubSelfHostedRunnerRegistration) -> Bool {
+  match decode_registration_slot(reg: reg) {
+    RegistrationNamesCommittedSlot { slot: _ } => true
+    _ => false
+  }
+}
+
+fn decodes_as_dead_incarnation(reg: GitHubSelfHostedRunnerRegistration) -> Bool {
+  match decode_registration_slot(reg: reg) {
+    RegistrationNamesDeadIncarnation { slot: _ } => true
+    _ => false
+  }
+}
+
+fn decodes_as_foreign(reg: GitHubSelfHostedRunnerRegistration) -> Bool {
+  match decode_registration_slot(reg: reg) {
+    RegistrationNamesNoCommittedSlot { registration_name: _ } => true
+    _ => false
+  }
+}
+
+// The capacity plan's population decode over a JIT fleet: an online `<slot>-<epoch>-<pid>` row IS the slot's
+// registration, an offline one is a dead incarnation (no population member, no Foreign refusal), and a name
+// that fits no committed slot's grammar stays Foreign.
+test fn a_jit_registration_decodes_to_its_slot_live_or_dead_and_a_stranger_stays_foreign() -> Bool {
+  decodes_as_live_slot(reg: jit_row(id: 1, name: "srv4-01-1793701320-333", online: true))
+    && decodes_as_dead_incarnation(reg: jit_row(id: 2, name: "srv4-01-1793701320-333", online: false))
+    && decodes_as_foreign(reg: jit_row(id: 3, name: "srv4-01-notanumber-333", online: true))
+    && decodes_as_foreign(reg: jit_row(id: 4, name: "elsewhere-01-1793701320-333", online: false))
 }
