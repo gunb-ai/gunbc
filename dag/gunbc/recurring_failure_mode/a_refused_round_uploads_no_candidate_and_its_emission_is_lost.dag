@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.a_refused_round_uploads_no_candidate_and_its_emission_is_lost
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_refused_round_uploads_no_candidate_and_its_emission_is_lost: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_refused_round_uploads_no_candidate_and_its_emission_is_lost" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "upload the round candidate as evidence under a distinct artifact name when the round refuses, while publishing only on convergence",
+    },
+  },
+
+  receipts: [
+    "**a refused round uploads no candidate, so what it would have produced is lost** (INVALID STATE: a generation runs to completion, writes a whole candidate tree into the runner's workspace, and then refuses at a later phase. The step that would have carried that tree out of the runner is conditioned on the phase that refused, so it never runs, and the tree dies with the runner. What survives the job is a verdict line and a list of path NAMES; the bytes those names denote are gone.)",
+
+    "MECHANISM. heal.yml's upload step (actions/upload-artifact, artifact name heal-repair-candidate, if-no-files-found set to error) carries no unconditional execution, so a round that exits non-zero skips it entirely. The publisher heal-publish.yml then downloads by pattern from the triggering run and finds nothing to publish. Two facts are true at the moment of refusal -- the round refused, and the round had already written a complete candidate -- and only the first one survives the job.",
+
+    "WHY IT SURVIVES REVIEW: the workflow reads correctly as a publisher. Publishing a candidate from a refused round WOULD be wrong, so conditioning the upload on success is the right rule for the artifact that gets published. The defect is invisible because it is not a publishing bug at all: it is the absence of a SECOND, evidence-only transport beside the publisher, and an absent step produces no diff for anyone to review.",
+
+    "RECOGNITION RULE (mechanical, at diff grain): for any step that consumes an artifact an earlier step produced, ask what the FAILING path leaves behind. Where the producing step can succeed while the enclosing job fails, and the upload is conditioned on job success, the failure path has no artifact, and every later diagnosis of that failure must re-run the producer at its full cost. A refusal whose every artifact is conditional is a refusal that cannot be inspected, which is what DESIGN section 5 refuses to accept.",
+
+    "SPECIMEN (heal run 41748758669, branch wave/import-only-algebra-heads at dd3c5c1515be, conclusion FAILURE, 2026-11-04 00:41:58Z to 01:19:35Z). The round printed first_generation_equal=false with candidate=target/stage0-regen-candidate -- a complete emitted mirror set -- and then regen-round-cost: refused. The upload step never ran, so heal-publish run 41753277888 (success, 20 seconds, 01:19:39Z to 01:19:59Z) reported Found 0 artifact(s) and Total of 0 artifact(s) downloaded and published nothing. The residue is one log line naming 15 drifted paths; the bytes behind those names did not survive.",
+
+    "HARM, measured. The question the candidate answers -- WHICH BYTES differ, not merely which files -- could not be answered from CI at all. Answering it required a separate ruled host run: build the regenerator at the head (about 10 minutes) and run the generation child alone (about 14 minutes, child-only peak 11.76 GB read from run 41720970373's own cgroup lines), plus a reviewed leg script, in order to obtain one file. The emission the round had ALREADY produced would have answered the same question for the cost of a download.",
+
+    "RUNG FOUND AT: Mitigatable. The mitigation exists and works -- an out-of-band leg that rebuilds the emission at the head -- but it is a hand-run script plus a host ruling every single time, not a mechanism in the corpus, so the class recurs at every refused round rather than being discharged once.",
+
+    "CEILING, derived: MechanicallyPreventable. Whether a round refused and what it wrote are both facts the runner already holds at the instant of refusal; carrying the second fact out under a name the publisher never reads needs no new judgement, no new model, and no new capability anywhere else in the system. It is a property of the workflow, which is what makes the rung mechanical rather than structural.",
+
+    "NEXT TRIGGER, named as a capability: upload the round candidate as EVIDENCE under a distinct artifact name when the round refuses, while publishing only on convergence. The two transports must stay distinct -- an evidence artifact the publisher is willing to read would let a refused round publish, which is the failure this row exists to prevent, not to enable. This row records the class only: the job roster and the workflows are closed to growth without a ruling, so nothing in this change builds the trigger.",
+
+    "BOUNDED AGAINST NEIGHBOURS: [[roster_is_its_own_denominator]] is a denominator defect, where the enumeration IS the population so the instrument reading it cannot notice the population is short; here the population exists, is complete, and is destroyed before anyone can read it, which is a transport defect. [[a_v1_unit_test_red_on_main_runs_in_no_required_lane]] is a fact observed in no required lane: there the evidence persists and nobody runs the check, here the check runs, produces the evidence, and the evidence is deleted. [[a_check_and_its_subject_are_removed_in_one_edit]] is a control and its subject leaving together; here the control is not removed at all -- it is unreachable on exactly the path where it is needed.",
+  ],
+
+  evidence: [],
+}
