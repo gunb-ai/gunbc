@@ -215,13 +215,16 @@ test fn the_route_urls_are_the_pool_fronts_origin_plus_its_declared_paths() -> B
     && (join([harness_pool_front_operator_route.origin as String, harness_pool_front_operator_route.chat_completions_path as String], "") == "https://srv2.tailecbe08.ts.net:3737/pool/v1/chat/completions")
 }
 
-// ── 6b. THE LAB IS PINNED TO THE SRV4 STRATA ENGINE (operator direction 2026-10-28) ─────────────
-test fn the_selected_route_is_the_srv4_strata_engine_at_its_own_paths() -> Bool {
-  (match operator_models_url() { Present { value: u } => (u as String) == "https://192.168.1.196:18443/v1/models"  Absent => false })
-    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://192.168.1.196:18443/v1/chat/completions"  Absent => false })
-    && (match harness_operator_route.unit { Qwen38FlashNextIq3sOnSrv4Strata => true  Qwen38FlashNextOnPoolFront => false  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false })
-    && (harness_operator_route.credential_identifier as String) == "gunbc-srv4-strata-api-key"
-    && harness_operator_route.concurrency_ceiling == 1
+// ── 6b. THE LAB IS ROUTED THROUGH THE SRV1 OPENRESTY ROUTER (lab hotfix 2, 2026-11-04) ──────────────
+// RED against the srv4 binding this replaced: every conjunct names the router, not 192.168.1.196.
+test fn the_selected_route_is_the_srv1_router_at_its_own_paths() -> Bool {
+  (match operator_models_url() { Present { value: u } => (u as String) == "https://192.168.1.203:18443/v1/models"  Absent => false })
+    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://192.168.1.203:18443/v1/chat/completions"  Absent => false })
+    && (match harness_operator_route.unit { Qwen38FlashNextOnPoolFront => true  Qwen38FlashNextIq3sOnSrv4Strata => false  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false })
+    && (harness_operator_route.credential_identifier as String) == "gunbc-router-client-key"
+    && (harness_operator_route.certificate_identifier as String) == "gunbc-router-server-pem"
+    && (operator_pinned_certificate.sha256_fingerprint as String) == "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52"
+    && harness_operator_route.concurrency_ceiling == 8
 }
 
 // The engine's list admits its own IQ3_S model id; the srv1 card's id and the front's alias do not.
