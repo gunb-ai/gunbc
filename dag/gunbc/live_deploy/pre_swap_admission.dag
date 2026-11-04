@@ -17,7 +17,7 @@ import gunbc.live_deploy.desired {
   ProdRoleDeploymentRosterRefused,
   ProdRoleDeploymentHolderRowMismatch,
 }
-import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots }
 import gunbc.live_deploy.emit {
   live_deploy_ingress_argv_segments,
   live_deploy_ingress_limit_argv_segments,
