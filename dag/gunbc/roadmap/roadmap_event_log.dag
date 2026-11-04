@@ -787,6 +787,19 @@ fn roadmap_issue_assignment(envs: List<RoadmapEventEnvelope>) -> IssueAssignment
   roadmap_issue_state(envs: envs).assignment
 }
 
+// Whether the node's ordered history names this principal as the current holder: a released,
+// forked, incomplete or never-claimed history, and a legacy (unauthenticated) holder, name no one.
+fn roadmap_assignment_held_by(envs: List<RoadmapEventEnvelope>, assignee: PrincipalRef) -> Bool {
+  match roadmap_issue_assignment(envs: envs).holder {
+    Absent => false
+    Present { value: holder } =>
+      match holder {
+        EventPrincipalAuthenticated { ref: held } => principal_ref_eq(a: held, b: assignee)
+        LegacyEmailPrincipal { email: _, authentication_unestablished: _ } => false
+      }
+  }
+}
+
 fn assignment_for_node(standings: RoadmapStandings, node_id: String) -> IssueAssignmentProjection? {
   match standings {
     StandingsUnobserved { reason: _ } => none
