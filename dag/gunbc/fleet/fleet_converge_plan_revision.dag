@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_converge_plan_revision
 
 import std.types { String, Bool, NonEmptyStr, FilePath, GitRef, CommitSha }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -291,6 +291,15 @@ fn run_pointer_text_ok(text: String) -> Bool {
   }
 }
 
+// The wire carries path and head_branch as Optional (GitHub may omit them); the admission compares
+// and reports LABELS, so a missing field reads as the named absence rather than a silent inequality.
+fn run_pointer_wire_label(value: Optional<String>) -> String {
+  match value {
+    Present { value: v } => v
+    Absent => "(absent)"
+  }
+}
+
 fn admit_run_pointer(
   pointer: String,
   run_result: RestResult<WorkflowRun>,
@@ -299,10 +308,10 @@ fn admit_run_pointer(
   artifact_name: String,
 ) -> RunPointerAdmission {
   match run_result {
-    RestRefused { refusal: refusal } => RunPointerRunRefused { run_id: pointer, cause: rest_refusal_text(refusal: refusal) }
+    RestRefused { refusal: refusal } => RunPointerRunRefused { run_id: pointer, cause: rest_refusal_text(o: refusal) }
     RestAnswered { answer: run } =>
-      if run.path != fleet_converge_workflow_path {
-        RunPointerWrongWorkflow { run_id: pointer, observed_path: run.path }
+      if run_pointer_wire_label(run.path) != fleet_converge_workflow_path {
+        RunPointerWrongWorkflow { run_id: pointer, observed_path: run_pointer_wire_label(run.path) }
       } else if run.event != "workflow_dispatch" {
         RunPointerWrongEvent { run_id: pointer, observed_event: run.event }
       } else {
@@ -312,7 +321,7 @@ fn admit_run_pointer(
               Absent => RunPointerIncomplete { run_id: pointer, status: workflow_run_status_wire_label(status: run.status), conclusion: "(none)" }
               Present { value: Success } =>
                 match artifacts_result {
-                  RestRefused { refusal: refusal } => RunPointerArtifactsRefused { run_id: pointer, cause: rest_refusal_text(refusal: refusal) }
+                  RestRefused { refusal: refusal } => RunPointerArtifactsRefused { run_id: pointer, cause: rest_refusal_text(o: refusal) }
                   RestAnswered { answer: listed } => {
                     let matching = filter(listed.artifacts, a => a.name == artifact_name)
                     match matching.first() {
@@ -320,8 +329,8 @@ fn admit_run_pointer(
                       Present { value: artifact } =>
                         if artifact.expired {
                           RunPointerArtifactExpired { run_id: pointer, artifact: artifact_name }
-                        } else if run.head_branch != default_branch {
-                          RunPointerOffDefaultBranch { run_id: pointer, branch: run.head_branch, default_branch: default_branch }
+                        } else if run_pointer_wire_label(run.head_branch) != default_branch {
+                          RunPointerOffDefaultBranch { run_id: pointer, branch: run_pointer_wire_label(run.head_branch), default_branch: default_branch }
                         } else {
                           RunPointerAdmitted { run_id: pointer, head_sha: run.head_sha as String, artifact_name: artifact_name }
                         }

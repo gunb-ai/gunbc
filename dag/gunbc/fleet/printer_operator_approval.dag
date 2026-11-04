@@ -3,6 +3,7 @@ import extdeps.tools.hostname
 import std.algebra {trim}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
 import std.types { String, NonEmptyStr }
+import extdeps.printing.bambu_lab_lan_protocol { BambuAmsTray }
 import std.process { ProcessExit, exit_failure }
 import std.measure { second }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
@@ -26,7 +27,7 @@ import gunbc.auth.approval_gate {
 // that grant to gunbc.fleet.printer_actuation start_authorized, which owns every physical effect.
 // The human approves the printer state read before filing; start_authorized re-reads it and
 // refuses if it moved.
-fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStartClaims, evidence: StartEvidenceStore, printer: String, path: String, digest: String, version: String, attempt: String, token_source: AccessTokenSource) -> ProcessExit {
+fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStartClaims, evidence: StartEvidenceStore, printer: String, path: String, digest: String, version: String, attempt: String, token_source: AccessTokenSource, ams_tray: BambuAmsTray) -> ProcessExit {
   let host=os.Hostname.ReadShort()
   if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) {
     return exit_failure(reason:"Print starts must run on the modeled printer LAN host so approvals share one durable claim store")
@@ -62,7 +63,7 @@ fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStart
             PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
               GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
               GateAdmitted { authorization: authorization } =>
-                with_execution_hold(store:hold_store,escalation_id:request.escalation_id,use:h=>start_authorized(hold:h,claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request))
+                with_execution_hold(store:hold_store,escalation_id:request.escalation_id,use:h=>start_authorized(hold:h,claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request,ams_tray:ams_tray))
             }
           }
         }

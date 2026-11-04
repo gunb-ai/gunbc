@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   owned_directory_is_agent_door,
 }
 import gunbc.owned_directory { ForeignOwnershipRefuses, owned_directory_group_adoption }
-import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
+import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import test.claim.live_deploy.live_deploy_apply_plan_witness { plan_for, legs_of, has_step, payload_at, step_index }
 
@@ -38,7 +38,7 @@ fn agent_door_revision() -> ReleaseRevisionBinding {
 }
 
 fn agent_door_unit_text(spec: DeploymentSpec) -> String {
-  match live_deploy_agent_door_unit_file(spec: spec, revision: agent_door_revision(), now_epoch: claim_oidc_now()) {
+  match live_deploy_agent_door_unit_file(spec: spec, revision: agent_door_revision(), now_epoch: claim_oidc_now_for(spec: spec)) {
     LiveDeployTailnetDoorUnitNotDeployed => ""
     LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => ""
     LiveDeployTailnetDoorUnitEmitted { file } => serialize_systemd_unit_file(file: file)
@@ -58,8 +58,8 @@ test fn the_lab_deployment_derives_one_agent_door_unit_on_the_lab_socket() -> Bo
   let text = agent_door_unit_text(spec: lab)
   deployment_agent_door_socket_of(spec: lab) == Present { value: socket }
     && count(deployment_agent_door_steps(instance: srv1_lab_dashboard_instance(), names: lab.names)) == 1
-    && string_contains(s: text, pattern: join([" --unix-socket ", socket as String, " "], ""))
-    && string_contains(s: text, pattern: " --function roadmap_serve_handle_srv1_lab_agent_door ")
+    && string_contains(s: text, pattern: join([" --arg listener=unix:", socket as String, " "], ""))
+    && string_contains(s: text, pattern: " --arg handler=roadmap_serve_handle_srv1_lab_agent_door ")
 }
 
 // Index of the ensure-directory leg that targets the agent-door directory (-1 when none).
@@ -95,8 +95,8 @@ test fn the_lab_apply_plan_installs_the_agent_door_unit_and_ensures_its_director
     && has_step(legs: legs, step: "agent-door-enable")
     && has_step(legs: legs, step: "agent-door-restart")
     && door_directory_ensured_before_unit(legs: legs)
-    && string_contains(s: payload, pattern: join([" --unix-socket ", socket as String, " "], ""))
-    && string_contains(s: payload, pattern: " --function roadmap_serve_handle_srv1_lab_agent_door ")
+    && string_contains(s: payload, pattern: join([" --arg listener=unix:", socket as String, " "], ""))
+    && string_contains(s: payload, pattern: " --arg handler=roadmap_serve_handle_srv1_lab_agent_door ")
 }
 
 // RED CONTROL: drop the door directory from the spec and the ensure conjunct goes false (the spec no

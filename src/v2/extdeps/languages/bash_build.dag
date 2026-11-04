@@ -275,6 +275,29 @@ fn bash_var_reads(n: Node, acc: List<String>) -> List<String> {
   }
 }
 
+// Every literal this subtree carries, in document order, read off the atoms `bash_build_word_lit` made.
+// The read-side sibling of `bash_var_reads`: same descent, same primitives, the other half of a word. A
+// law about paths needs the text a path word was built from, and taking it from a rendered script would
+// make the renderer an authority over what a literal is -- here it is only what the builder was handed.
+fn bash_word_literal_texts(n: Node, acc: List<String>) -> List<String> {
+  if bash_built_by(n: n, production: ^bash_fold_word_kind_lit) {
+    match bash_positional_atom(n: n, i: 1) {
+      Present { value: text } => concat(acc, [text])
+      Absent => acc
+    }
+  } else {
+    match n.kind {
+      TypeNode { connective: Conj } =>
+        fold(
+          n.children,
+          init: acc,
+          f: (inner, edge) => bash_word_literal_texts(n: edge.target, acc: inner)
+        )
+      _ => acc
+    }
+  }
+}
+
 fn bash_build_assign_lit(name: String, text: String) -> Node {
   bash_build_assign(name: name, value: bash_build_word_lit(text: text))
 }
