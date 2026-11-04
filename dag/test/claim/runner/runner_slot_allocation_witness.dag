@@ -125,9 +125,9 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // 145.85 GiB; less 52 GiB shakedown and 46 GiB revision-job (22 GiB cell + 24 GiB controller);
 // 2 authored + floor(47.85/22) = 4. The pin is the fold's answer.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 4
-    && host_memory_admitted_width(host: operator_host_srv3) == 21
-    && host_memory_admitted_width(host: operator_host_srv4) == 21
+  host_memory_admitted_width(host: operator_host_srv1) == 3
+    && host_memory_admitted_width(host: operator_host_srv3) == 18
+    && host_memory_admitted_width(host: operator_host_srv4) == 18
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true
@@ -216,8 +216,8 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  committed_width_is(host: operator_host_srv3, expected: 21)
-    && committed_width_is(host: operator_host_srv4, expected: 21)
+  committed_width_is(host: operator_host_srv3, expected: 18)
+    && committed_width_is(host: operator_host_srv4, expected: 18)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
@@ -760,12 +760,12 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
 
 // THE REVISION-JOB SLOT IS FUNDED WITHOUT TAKING CI WIDTH (operator decision 2026-10-18). Read from the
 // charged envelope after the user-work move: srv1's committed identities are the two authored slots
-// plus exactly two CI slots, and the revision-job slot is granted exactly the fleet row it is charged.
-test fn srv1_keeps_two_ci_slots_beside_the_two_authored_microvm_slots() -> Bool {
+// plus exactly one CI slot (25 GiB slot, 2026-11-04 ruling: two at 22 GiB), and the revision-job slot is granted exactly the fleet row it is charged.
+test fn srv1_keeps_one_ci_slot_beside_the_two_authored_microvm_slots_at_the_25_gib_slot() -> Bool {
   let committed = host_committed_identities_at(host: operator_host_srv1, committed: host_memory_admitted_width(host: operator_host_srv1))
   host_authored_microvm_slots(host: operator_host_srv1).length() == 2
-    && committed.length() == 4
-    && committed.length() - host_authored_microvm_slots(host: operator_host_srv1).length() == 2
+    && committed.length() == 3
+    && committed.length() - host_authored_microvm_slots(host: operator_host_srv1).length() == 1
     && revision_job_slots.length() == 1
     && revision_job_slots_match_the_fleet_row()
     && byte_size_count(b: authored_microvm_slot_charge(slot: srv1_revision_job_slot()))
