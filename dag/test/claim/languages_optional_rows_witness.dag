@@ -1,0 +1,45 @@
+module test.claim.languages_optional_rows_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import std.optional { Absent, Present }
+import std.languages {
+  gitignore_format,
+  markdown_format,
+  yaml_format,
+  rust_language,
+  python_language
+}
+import std.render { config_comment_prefix, language_comment_prefix, comment_prefix_for }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The CommentSyntax, ConfigFormat.record and SerializationKnobs.value_quote rows of std.languages are
+// declared `String?` / `SerializationKnobs?`, so a row holds Present { value } or Absent, never the
+// bare value or bare null (gunbc.design_ruling explicit_present_is_the_authoring_policy). Each claim
+// goes through the real consumer route config_comment_prefix / language_comment_prefix ->
+// comment_prefix_for, whose `match syntax.line_prefix` refuses a bare value since #15501 (drift-watch
+// run 41453839642: "matched an Optional but the value is not an Optional variant: #").
+test fn gitignore_line_prefix_is_present_hash() -> Bool {
+  config_comment_prefix(format: gitignore_format) == "#"
+}
+
+test fn yaml_line_prefix_is_present_hash() -> Bool {
+  config_comment_prefix(format: yaml_format) == "#"
+}
+
+test fn rust_and_python_language_line_prefixes_are_present() -> Bool {
+  language_comment_prefix(lang: rust_language) == "//"
+    && language_comment_prefix(lang: python_language) == "#"
+}
+
+// An ACTUAL Absent row: markdown_format.comment.line_prefix is Absent, which comment_prefix_for
+// documents as the empty prefix.
+test fn markdown_absent_line_prefix_reads_as_the_empty_prefix() -> Bool {
+  comment_prefix_for(syntax: markdown_format.comment) == ""
+}
+
+test fn the_line_prefix_rows_are_the_declared_optional() -> Bool {
+  gitignore_format.comment.line_prefix == Present { value: "#" }
+    && markdown_format.comment.line_prefix == Absent
+}
