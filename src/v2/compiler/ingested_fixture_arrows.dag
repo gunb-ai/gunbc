@@ -30,7 +30,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_synthetic,
-  well_formed
+  well_formed,
+  NotADeclaration
 }
 import v2.std.node_query { find_arrow_body_child }
 
@@ -234,7 +235,8 @@ fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
           children: [
             Edge {
               label: Authored { name: fn_name },
-              target: arrow_with_body
+              target: arrow_with_body,
+              declaration: NotADeclaration
             }
           ]
         )

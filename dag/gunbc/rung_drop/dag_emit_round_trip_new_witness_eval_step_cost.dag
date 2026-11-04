@@ -26,9 +26,7 @@ data dag_emit_round_trip_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   declared: "2026-10-01",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -36,5 +34,5 @@ data dag_emit_round_trip_new_witness_eval_step_cost: RungDrop = RungDrop {
     },
     population: population_from_list(xs: dag_emit_round_trip_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY: a real-route parse of the dag surface language (v2.compiler.parse parse_module_prepared over v2.compiler.program_assembly dag_prepared_grammar) is cheap enough that this identity, still running two real parses and the emit, measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. The parser's prepared choice plan (gunbc#11422) is one contributor to that capability and does not satisfy it on its own. WHAT IT MUST BE SUFFICIENT FOR: this identity measuring under the budget on the acceptance path. Deleting the identity, supplying its tree, or relocating it to a home that does not execute it does not satisfy this trigger.",
-  }
+  } }
 }

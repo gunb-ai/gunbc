@@ -2,6 +2,7 @@ module extdeps.crypto.md_padding
 
 import std.types { Int, List }
 import std.power_of_two { bitwise_pow2 }
+import std.algebra { collection_count_shape, collection_map_shape, list_push }
 
 // FIPS 180-4 section 5.1.1 padding and section 5.2.1 block parsing, ONE fact shared by every
 // 512-bit-block member of the SHA family (SHA-1, SHA-256) and by the SHA-512 length suffix: the

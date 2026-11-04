@@ -1,0 +1,219 @@
+module gunbc.fleet.zone_curve_openbmc_projection
+
+import std.types { Int, List, NonEmptyStr }
+import std.decimal { ExactDecimal }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { Celsius, CelsiusDelta, Second, celsius, celsius_count, celsius_delta, celsius_delta_count, percent_count, second_count }
+import product.zone_thermal_curve { ZoneCurve, zone_curve_duty, zone_full_duty }
+import extdeps.bmc.pid_control_program {
+  ActuatorController,
+  DbusBoundsIgnored,
+  DemandCurvePoint,
+  FanTachometerSensor,
+  FeedForward,
+  IntegralBounds,
+  OutputBounds,
+  PidGains,
+  ProgramSensor,
+  ProgramZone,
+  SensorBoundsUnstated,
+  SensorReadOnly,
+  SensorTimeoutDeclared,
+  SlewLimits,
+  TemperatureSensor,
+  ThermalDemandController,
+  decimal_celsius,
+  decimal_celsius_delta,
+  decimal_milliseconds,
+  decimal_seconds,
+  stepwise_point_count_fits_upstream,
+  phosphor_stepwise_max_points,
+  zone_demand_value,
+}
+
+// REALIZATION: A product.zone_thermal_curve ZoneCurve PROJECTED ONTO AN OpenBMC phosphor-pid-control
+// ZONE (DESIGN 3: the curve is policy, the program shape is extdeps.bmc.pid_control_program's, and
+// this join is realization, so it sits peripheral). SELECTION, stated as DESIGN 3d requires: the
+// BMC-side loop is chosen over a host-side controller for a passive-accelerator OpenBMC host because
+// swampd keeps driving the zone when the host crashes and, with a sensor timeout, drives the zone's
+// failsafe when the host stops pushing the reading. That was read live on butch (OpenBMC 3.22.00,
+// 2026-10-31, relayed by the install owner): a GPU_MAX extsensor of 40 C held the zone at 60 percent
+// and a stale sensor drove it to 100 percent within about 15 s.
+//
+// THE STEPWISE CONTROLLER IS A SAMPLING OF THE LINEAR CURVE, NOT THE CURVE. phosphor-pid-control's
+// stepwise controller outputs the output of the highest reading point not above the input, and
+// below the first point its first output (read live: 40 C answered 60 percent). The linear
+// zone_curve_duty is therefore sampled every `openbmc_curve_sample_step` degrees from flat_until to
+// full_at, so between samples the BMC holds the lower sample's duty: it can run cooler than the curve
+// by up to one step. That divergence from the h11 host-side loop is stated, not hidden, and the
+// sample step and the 1 degree hysteresis are the values of the program verified live, not tuned.
+//
+// ALL OF THE FOLLOWING WERE READ, NOT DERIVED: config-butch-gpumax-test2.json on the butch BMC
+// (sha256 fd5b69275308850861f90d7e864d8ca3c6f6d05ded175a49a92b7beacfdb2fc7, read 2026-10-31):
+// samplePeriod 1, hysteresis 1/1, isCeiling false, actuator feed-forward gain 1 with every other
+// gain, limit and slew zero and output limits 3..100, cycle and update intervals 1000 ms.
+data openbmc_curve_sample_step: CelsiusDelta = celsius_delta(5)
+
+data openbmc_curve_hysteresis: CelsiusDelta = celsius_delta(1)
+
+// WHAT A ROW SUPPLIES FOR ONE CURVE-FOLLOWING ZONE. Which sensor the BMC reads, where its extsensor
+// lives, how stale a reading may get and which fan inputs the actuator drives are facts of the
+// machine, not of the curve and not of the family.
+type OpenBmcCurveZoneRow {
+  zone_id: Int
+  input_sensor: NonEmptyStr
+  input_read_path: NonEmptyStr
+  input_timeout: Second
+  controller_name: NonEmptyStr
+  actuator_name: NonEmptyStr
+  actuator_inputs: List<NonEmptyStr>
+  excluded_inputs: List<NonEmptyStr>
+}
+
+type OpenBmcCurveZone {
+  sensor: ProgramSensor
+  zone: ProgramZone
+}
+
+fn openbmc_curve_point(curve: ZoneCurve, index: Int, at: Celsius) -> DemandCurvePoint {
+  DemandCurvePoint {
+    index: index,
+    reading: decimal_celsius(value: ExactDecimal { units: celsius_count(at), fraction_digits: 0 }),
+    output: zone_demand_value(value: ExactDecimal {
+      units: percent_count(zone_curve_duty(curve: curve, t: at)) as Int,
+      fraction_digits: 0,
+    }),
+  }
+}
+
+// Points at flat_until, flat_until + step, ... and a final point at full_at, so the curve's 100 is
+// always a point and the last sample never overshoots it. flat_until >= full_at yields the one point
+// at flat_until, whose duty zone_curve_duty answers.
+fn openbmc_curve_points_from(curve: ZoneCurve, index: Int, at: Celsius) -> List<DemandCurvePoint> {
+  let hi = curve.full_at
+  if celsius_count(at) >= celsius_count(hi) {
+    [openbmc_curve_point(curve: curve, index: index, at: at)]
+  } else {
+    concat(
+      [openbmc_curve_point(curve: curve, index: index, at: at)],
+      openbmc_curve_points_from(
+        curve: curve,
+        index: index + 1,
+        at: if celsius_count(at) + celsius_delta_count(openbmc_curve_sample_step) > celsius_count(hi) { hi } else { celsius(celsius_count(at) + celsius_delta_count(openbmc_curve_sample_step)) },
+      ),
+    )
+  }
+}
+
+fn openbmc_curve_points(curve: ZoneCurve) -> List<DemandCurvePoint> {
+  openbmc_curve_points_from(curve: curve, index: 0, at: curve.flat_until)
+}
+
+fn openbmc_whole(units: Int) -> ExactDecimal {
+  ExactDecimal { units: units, fraction_digits: 0 }
+}
+
+// THE FAIL-SAFE IS CARRIED TWICE ON PURPOSE, AND BOTH ARE zone_full_duty: the zone's failsafe covers
+// a zone whose thermal inputs are all unusable, and the controller's covers its own input going stale.
+// The input sensor always declares a timeout, because without one a host that stops pushing leaves
+// the last value in force and the fail-safe never fires.
+fn openbmc_curve_zone_built(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenBmcCurveZone {
+  let full = openbmc_whole(units: percent_count(zone_full_duty()) as Int)
+  OpenBmcCurveZone {
+    sensor: ProgramSensor {
+      name: row.input_sensor,
+      role: TemperatureSensor,
+      read_path: row.input_read_path,
+      actuation: SensorReadOnly,
+      bounds: SensorBoundsUnstated,
+      dbus_bounds: DbusBoundsIgnored,
+      timeout: SensorTimeoutDeclared { seconds: decimal_seconds(value: openbmc_whole(units: second_count(row.input_timeout) as Int)) },
+    },
+    zone: ProgramZone {
+      id: row.zone_id,
+      minimum_thermal_output: zone_demand_value(value: openbmc_whole(units: percent_count(curve.floor) as Int)),
+      failsafe_output: zone_demand_value(value: full),
+      cycle_interval: decimal_milliseconds(value: openbmc_whole(units: 1000)),
+      update_thermals_interval: decimal_milliseconds(value: openbmc_whole(units: 1000)),
+      thermal_demand_controllers: [ThermalDemandController {
+        name: row.controller_name,
+        inputs: [row.input_sensor],
+        setpoint: decimal_celsius(value: openbmc_whole(units: 30)),
+        failsafe_output: zone_demand_value(value: full),
+        sample_period: decimal_seconds(value: openbmc_whole(units: 1)),
+        positive_hysteresis: decimal_celsius_delta(value: openbmc_whole(units: celsius_delta_count(openbmc_curve_hysteresis))),
+        negative_hysteresis: decimal_celsius_delta(value: openbmc_whole(units: celsius_delta_count(openbmc_curve_hysteresis))),
+        is_ceiling: false,
+        curve: openbmc_curve_points(curve: curve),
+      }],
+      actuator_controllers: [ActuatorController {
+        name: row.actuator_name,
+        inputs: filter(row.actuator_inputs, i => !any(row.excluded_inputs, x => x == i)),
+        configured_setpoint_unused_by_runtime: openbmc_whole(units: 30),
+        sample_period: decimal_seconds(value: openbmc_whole(units: 1)),
+        gains: PidGains { proportional: openbmc_whole(units: 0), integral: openbmc_whole(units: 0), derivative: openbmc_whole(units: 0) },
+        feed_forward: FeedForward { gain: openbmc_whole(units: 1), offset: zone_demand_value(value: openbmc_whole(units: 0)) },
+        integral_limits: IntegralBounds { minimum: openbmc_whole(units: 0), maximum: openbmc_whole(units: 0) },
+        output_limits: OutputBounds {
+          minimum: zone_demand_value(value: openbmc_whole(units: 3)),
+          maximum: zone_demand_value(value: full),
+        },
+        slew: SlewLimits { negative_coefficient: openbmc_whole(units: 0), positive_coefficient: openbmc_whole(units: 0) },
+      }],
+    },
+  }
+}
+
+// THE ACCEPTED INPUT DOMAIN. Two inputs would break the guarantees this projection states, so each is
+// refused with a named cause at admission, before any OpenBmcCurveZone exists (DESIGN 5):
+// - a timeout of zero. phosphor-pid-control reads a sensor timeout of 0 as "read-timeout checking
+//   disabled", so a host that stops publishing would leave its last cool value in force and the
+//   100 percent failsafes (which govern what happens AFTER a failure is detected) would never run.
+//   Zero is legitimate in the vendor model, where it means disabled; it is refused here, where the
+//   input is a host-pushed sensor.
+// - more sampled points than upstream consumes. phosphor-pid-control declares maxStepwisePoints = 20
+//   and its JSON parser reads only the keys 0..19, so a 21st point, which is the full_at point of a
+//   curve wider than 95 degrees at this step, is silently dropped and the zone holds the previous
+//   point's duty at full_at and above. The refusal is typed rather than a coarser sampling, so the
+//   approximation is never silently changed.
+type OpenBmcCurveRefusal
+  = OpenBmcTimeoutNotPositive
+  | OpenBmcPointsExceedUpstreamLimit { required: Int, limit: Int }
+
+type OpenBmcCurveProjection
+  = OpenBmcCurveProjected { zone: OpenBmcCurveZone }
+  | OpenBmcCurveRefused { causes: List<OpenBmcCurveRefusal> }
+
+// HOW MANY POINTS openbmc_curve_points WILL EMIT, WITHOUT EMITTING THEM: one at flat_until, one every
+// step, and a last at full_at, which is 1 + ceil(span / step) for the strictly ascending span a
+// ZoneCurve guarantees. Admission needs only this, so a rejected curve of any span costs constant work
+// and an admitted one is sampled once.
+fn openbmc_curve_point_count(curve: ZoneCurve) -> Int {
+  let span = celsius_count(curve.full_at) - celsius_count(curve.flat_until)
+  let step = celsius_delta_count(openbmc_curve_sample_step)
+  if span <= 0 { 1 } else { 1 + (span + step - 1) / step }
+}
+
+fn openbmc_curve_refusals(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> List<OpenBmcCurveRefusal> {
+  let required = openbmc_curve_point_count(curve: curve)
+  concat(
+    if (second_count(row.input_timeout) as Int) > 0 { [] } else { [OpenBmcTimeoutNotPositive] },
+    if stepwise_point_count_fits_upstream(count: required) { [] } else { [OpenBmcPointsExceedUpstreamLimit { required: required, limit: phosphor_stepwise_max_points }] },
+  )
+}
+
+fn openbmc_curve_zone(row: OpenBmcCurveZoneRow, curve: ZoneCurve) -> OpenBmcCurveProjection {
+  let causes = openbmc_curve_refusals(row: row, curve: curve)
+  if length(causes) == 0 {
+    OpenBmcCurveProjected { zone: openbmc_curve_zone_built(row: row, curve: curve) }
+  } else {
+    OpenBmcCurveRefused { causes: causes }
+  }
+}
+
+// DESIGN 3c declared frontier. THE INHABITANCE CLAIM IS NOT MET: the witness compares this projection
+// with the program read from butch, supplied as values, and no enrolled claim yet shows the BMC
+// running a rendered program or answering a stale sensor with the failsafe.
+data zone_curve_openbmc_projection_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the butch host row (BMC .250) carries an OpenBmcCurveZoneRow and a ZoneCurve, and the openbmc fan converge route writes the whole BmcFanControlProgram rendered from them (this projection plus the zone 0 SoC stepwise controller, the FAN actuators and the sensors, with FAN5 excluded from the chassis actuator inputs because its tach reads nan and pins the zone failsafe), re-applies it after a BMC boot (the active config symlink reverts), and reads the running zone back. SUFFICIENT FOR: openbmc_curve_zone has a production consumer. THAT THE FIRMWARE RUNNING ON THE BMC (butch: OpenBMC 3.22.00) IS BUILT FROM THE phosphor-pid-control SOURCE CONTRACT WHOSE 20-POINT STEPWISE LIMIT THIS PROJECTION ENFORCES IS ALSO UNREAD, AND THE READBACK OF THE RUNNING ZONE DISCHARGES IT. THE HOST-TO-BMC TRANSPORT FOR THE GPU_MAX PUSH AND ITS CREDENTIAL GRANT ARE NOT MODELED HERE AND ARE REQUIRED BEFORE THIS RUNS." as NonEmptyStr
+)

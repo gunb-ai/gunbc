@@ -24,7 +24,8 @@ import v2.std.node {
   content_hash,
   core_edge,
   node_synthetic,
-  symbol_intern_lexeme
+  symbol_intern_lexeme,
+  NotADeclaration
 }
 
 // THE CONFORMANCE WALL FOR AN ARROW'S CONTRACT EDGES (v2.std.node arrow_signature_edges_conform):
@@ -43,7 +44,7 @@ fn ace_conj(children: List<Edge>) -> Node {
 }
 
 fn ace_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn ace_payload() -> Node {
@@ -54,7 +55,7 @@ fn ace_arrow(extra: List<Edge>) -> Node {
   let signature = declared_signature(params: [binder_edge(name: ^operation_input, type_node: ace_payload())], source: ace_payload())
   node_synthetic(
     kind: TypeNode { connective: Arrow },
-    children: concat([signature.domain, Edge { label: Positional, target: ace_conj(children: []) }, signature.order], extra)
+    children: concat([signature.domain, Edge { label: Positional, target: ace_conj(children: []), declaration: NotADeclaration }, signature.order], extra)
   )
 }
 

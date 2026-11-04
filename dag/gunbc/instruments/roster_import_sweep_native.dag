@@ -1,0 +1,288 @@
+module gunbc.instruments.roster_import_sweep_native
+
+import std.types { Int, List, String, Bool }
+import std.algebra { list_append }
+import std.optional { Absent, Optional, Present }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+import std.measure { Nanosecond, nanosecond, nanosecond_count }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ProcessExit, ExitSuccess }
+import v2.workflow.roster_import_sweep { roster_import_sweep_for_paths }
+
+// THE GENERATOR ENTRY, RUN NATIVELY. `roster_import_sweep_for_paths` -- the sweep the namespace
+// waves run today through the v1 interpreter, whose front-end cost is proportional to module size
+// (node.dag about 16m, infer.dag about 50m per pass at sunny-bee-153's measurement, past the
+// runner's 1h cap) -- is emitted by the seed, built with cargo and EXECUTED, the same route
+// std.compiler_entry NativeClaimDriver fixes for instrument labels and gunbc.target_binding's
+// NativeClaimProgramProducer binds (DESIGN section 7: `gunbc test //gunbc/instruments:<label>`
+// emits, builds and runs; the work item's refusals: no second hand-Rust registry, no flag on
+// claim_executor, no wrapper that still calls the interpreter). DESIGN section 5: the claim is
+// that this PROGRAM RAN and printed, not that a Rust mirror exists.
+//
+// WHAT THE ENTRY'S EFFECT CLOSURE IS. This file calls `roster_import_sweep_for_paths` directly;
+// the closure reaches v2.workflow.roster_import_sweep, v2.workflow.roster_home_kind,
+// v2.compiler.module_acquisition and gunbc.source_root_read, whose effect surface is
+// Filesystem.Read and Filesystem.List -- both inside the NativeClaimDriver denominator
+// (std.compiler_entry native_claim_route_denominator), alongside std.realization_measurement's
+// AllocationCounter. The sweep's git.Inspect shell operations sit only in the apply path
+// (roster_target_refusal, reached from roster_import_sweep_apply_exit), which the applied edits
+// never enter from here: nothing below calls an apply exit, so the entry's admission stays
+// Filesystem-only and the emitted closure carries no git transport. What the MEASURED run refused,
+// as the run named it (DESIGN section 5: done means executed -- and an unexecuted claim says so):
+// when this entry was first executed (#15138, before #14815 and before the emitter fix #15197),
+// its first emitted-build refusal was the std.bit/std.machine_word Word64 E0204 collision:
+//   V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed
+//   first_error=error[E0204]: the trait `Copy` cannot be implemented for this type
+//   @ src/v1/v2-emitted-policy-unit-0/src/../../stage0/src/std_bit.rs:40:12
+// The emitted std_bit.rs line 40 was `pub struct Word64` -- dag/std/bit.dag's
+// `type Word64 { bytes: List<Byte> }`, emitted with
+// `#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]` over an
+// `Rc<Vec<Rc<Byte>>>` field. The mechanism then was the documented leaf collision (docs/governance
+// RFM emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer: shared_types keyed by spelling,
+// last declarer wins): Word64 was declared in BOTH dag/std/bit.dag and dag/std/machine_word.dag --
+// both in this closure (std.bit through v2.compiler.program_assembly <- v2.std.integer's
+// `import std.bit { Word64 }` -- a name v2.std.integer's body never uses, the very dead shape
+// this sweep flags; std.machine_word through std.filesystem <- std.encoding) -- and the second
+// declarer poisoned the leaf's shared mark, so the emitter took its non-shared derive arm and
+// rustc refused. That wall is CLOSED, twice over: #14815 deletes the unused std.bit Word carriers,
+// so this closure no longer carries two declarations of the Word64 leaf, and #15197 keyed the
+// derive roster on the declaration rather than the spelling. What the entry now reaches is the
+// INDEPENDENT wall -- E0425 `start_detached`/`reap` missing from the emitted
+// extdeps.posix.process (extdeps_posix_process.rs:151, plus the pre-existing E0282 fold
+// accumulator in std_list.rs) -- recorded verbatim, with its discriminating controls, in the
+// executed refusal-progression matrix in docs/measurements/roster_import_sweep_native/README.md.
+// The route itself is wired (the seed renders the crate and cargo runs it); child_wall_ms rows
+// print only once that emission gap closes, and until then the native cost instrument remains the
+// refusal line -- reported, not papered over.
+//
+// THE SUBJECT CHANNEL. The native claim child is spawned with no arguments and no environment of
+// its own (cli_run/native_lane_runner spawn site), so the work list arrives as ONE committed
+// manifest at a fixed repository-relative path, read through the admitted Filesystem effect --
+// the same fixed-path channel gunbc.instruments.value_position_block_nests uses for its module
+// fixtures. Manifest rows are `id|paths-csv`; the expected edit lines for each id live at
+// docs/measurements/roster_import_sweep_native/expected/<id>.txt, committed ONCE from the
+// interpreter, which is then the offline differential oracle and never this route's executor.
+// The native child re-runs the sweep; its rows answer whether the emitted program's bytes equal
+// the oracle's, and a not-held row names the first disagreeing byte on both sides, so a reader
+// sees WHERE before anyone re-runs the interpreter.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn manifest_path() -> String {
+  "docs/measurements/roster_import_sweep_native/manifest.txt"
+}
+
+fn expected_directory() -> String {
+  "docs/measurements/roster_import_sweep_native/expected"
+}
+
+type ManifestRow {
+  identity: String
+  paths: String
+}
+
+type SweepCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn manifest_text() -> String {
+  let read = Filesystem.Read(path: manifest_path())
+  if read.success {
+    read.content
+  } else {
+    ""
+  }
+}
+
+// THE ORACLE'S MOUTH. The interpreter cannot print a String result (gunbc run refuses a value that
+// is not a ProcessExit), so committing the expected files runs THIS through the interpreter --
+// `gunbc run --function ...roster_sweep_oracle_wire --arg paths_csv=...` -- and captures stdout.
+// The wire wrapper changes nothing about the sweep's rows: it is the same `roster_import_sweep_for_paths`
+// call the interpreted instrument makes today. Once the expected files are committed, the
+// interpreter is OFFLINE: the native route reads only what this instrument reads (the manifest and
+// the expected files), never this function.
+fn roster_sweep_oracle_wire(paths_csv: String) -> CliWireResponse {
+  CliWirePrintable { bytes: roster_import_sweep_for_paths(paths_csv: paths_csv), exit: ExitSuccess }
+}
+
+fn manifest_rows(paths: String) -> List<ManifestRow> {
+  manifest_rows_step(lines: split(s: paths, delimiter: "\n"), acc: [])
+}
+
+fn manifest_rows_step(lines: List<String>, acc: List<ManifestRow>) -> List<ManifestRow> {
+  match lines {
+    Empty => acc
+    Cons { head: line, tail: rest } => match manifest_row_of(line: line) {
+      Absent => manifest_rows_step(lines: rest, acc: acc)
+      Present { value: row } =>
+        manifest_rows_step(lines: rest, acc: list_append(left: acc, right: [row]))
+    }
+  }
+}
+
+// A manifest line is a row only if it is neither blank nor a comment nor malformed.
+fn manifest_row_of(line: String) -> Optional<ManifestRow> {
+  if string_length(s: line) == 0 || substring(s: line, start: 0, end: 1) == "#" {
+    Absent
+  } else {
+    match split_pipe_pair(line: line) {
+      Absent => Absent
+      Present { value: pair } => Present { value: ManifestRow { identity: pair.first, paths: pair.second } }
+    }
+  }
+}
+
+type PipePair {
+  first: String
+  second: String
+}
+
+// ONE PIPE, EXACTLY: `id|paths-csv`. A row without exactly one pipe is no row -- the manifest is
+// an input the program does not trust (a malformed row must not become a sweep over a wrong path
+// set), so it is skipped rather than guessed at. A row whose identity is empty is likewise no row,
+// because an empty identity cannot name its expected file.
+fn split_pipe_pair(line: String) -> Optional<PipePair> {
+  let head = split(s: line, delimiter: "|")
+  match head {
+    Cons { head: first, tail: tail_one } => {
+      if string_length(s: first) == 0 {
+        Absent
+      } else {
+        match tail_one {
+          Cons { head: second, tail: Empty } => Present { value: PipePair { first: first, second: second } }
+          _ => Absent
+        }
+      }
+    }
+    Empty => Absent
+  }
+}
+
+fn expected_path(identity: String) -> String {
+  concat(expected_directory(), concat("/", concat(identity, ".txt")))
+}
+
+fn read_expected(identity: String) -> String {
+  let read = Filesystem.Read(path: expected_path(identity: identity))
+  if read.success {
+    read.content
+  } else {
+    concat("READ_REFUSED:", concat(read.error, "\u{0}"))
+  }
+}
+
+// THE OBSERVED TEXT, one per case: the live output's line count, byte length and wall, so a held
+// row carries the MEASUREMENT the before/after names, and a not-held row adds the first byte where
+// the emitted program and the oracle disagree.
+fn observed_text(live: String, expected: String, elapsed: Nanosecond) -> String {
+  concat(
+    "live_lines=",
+    concat(
+      to_string(value: count_nonempty(text: live)),
+      concat(
+        ",live_bytes=",
+        concat(
+          to_string(value: string_length(s: live)),
+          concat(
+            ",expected_lines=",
+            concat(
+              to_string(value: count_nonempty(text: expected)),
+              concat(
+                ",expected_bytes=",
+                concat(
+                  to_string(value: string_length(s: expected)),
+                  concat(",child_wall_ms=", to_string(value: nanosecond_count(n: elapsed) / 1000000))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn count_nonempty(text: String) -> Int {
+  filter(split(s: text, delimiter: "\n"), l => l != "") |> count
+}
+
+fn sweep_case(row: ManifestRow) -> SweepCase {
+  let t0 = observed_monotonic_nanos(concat("roster-sweep-native-", row.identity))
+  let live = roster_import_sweep_for_paths(paths_csv: row.paths)
+  let t1 = observed_monotonic_nanos(concat("roster-sweep-native-finish-", row.identity))
+  let expected = read_expected(identity: row.identity)
+  let observed = observed_text(live: live, expected: expected, elapsed: nanosecond(count: t1 - t0))
+  if live == expected {
+    SweepCase { identity: row.identity, held: true, observed: observed }
+  } else {
+    SweepCase { identity: row.identity, held: false, observed: concat(observed, concat(",first_diff=", first_diff(a: live, b: expected))) }
+  }
+}
+
+// THE FIRST BYTE WHERE THE NATIVE PROGRAM AND THE ORACLE DISAGREE, named to 32 characters on each
+// side. A missing tail says so with the shared prefix length instead of pretending a difference.
+fn first_diff(a: String, b: String) -> String {
+  let al = string_length(s: a)
+  let bl = string_length(s: b)
+  first_diff_step(a: a, b: b, i: 0, shared: if al < bl { al } else { bl })
+}
+
+fn first_diff_step(a: String, b: String, i: Int, shared: Int) -> String {
+  if i >= shared {
+    concat("shared_prefix_ends_at=", to_string(value: i))
+  } else {
+    if substring(s: a, start: i, end: i + 1) == substring(s: b, start: i, end: i + 1) {
+      first_diff_step(a: a, b: b, i: i + 1, shared: shared)
+    } else {
+      concat(
+        to_string(value: i),
+        concat(
+          ":native[",
+          concat(
+            substring(s: a, start: i, end: i + 32),
+            concat("] oracle[", concat(substring(s: b, start: i, end: i + 32), "]"))
+          )
+        )
+      )
+    }
+  }
+}
+
+fn case_row(c: SweepCase) -> String {
+  concat("case ", concat(c.identity, concat(if c.held { " held observed=" } else { " not_held observed=" }, concat(c.observed, "\n"))))
+}
+
+
+fn roster_line(cases: List<SweepCase>) -> String {
+  concat("roster ", concat(cases |> map(c => c.identity) |> join(separator: ","), "\n"))
+}
+
+// THE REPORT, in gunbc.native_claim_program's grammar: one roster line, then one `case` row per
+// manifest row, one-for-one. An empty manifest is NO OBSERVATION -- nothing ran over anything, and
+// a green from zero cases would be the exact paper-over this instrument exists to refuse. Any
+// expected-file read refusal makes that case not held (its observed text names the refused read),
+// which is what keeps the seeded RED honest: a row the interpreter refuses must print its REFUSE
+// row natively, and its expected file IS that REFUSE row.
+fn native_claim_report() -> NativeClaimReport {
+  let rows = manifest_rows(paths: manifest_text())
+  if (rows |> count) == 0 {
+    NativeClaimReport {
+      stdout: "",
+      terminal: NativeClaimNoObservation { reason: concat("the manifest names no case: ", manifest_path()) }
+    }
+  } else {
+    let cases = map(rows, r => sweep_case(row: r))
+    let failed = filter(cases, c => !c.held)
+    let stdout = concat(roster_line(cases: cases), cases |> map(c => case_row(c: c)) |> join(separator: ""))
+    if (failed |> count) == 0 {
+      NativeClaimReport { stdout: stdout, terminal: NativeClaimHeld }
+    } else {
+      NativeClaimReport {
+        stdout: stdout,
+        terminal: NativeClaimNotHeld { reason: concat("not held: ", failed |> map(c => c.identity) |> join(separator: ",")) }
+      }
+    }
+  }
+}

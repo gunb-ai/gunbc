@@ -168,11 +168,6 @@ fn external_consumers() -> List<BoundaryConsumer> {
       justification: "keyring install target",
     ),
     endpoint_consumer(
-      module_path: "gunbc.auth.approval_device_enrolment_code_issue",
-      decl_name: "enrolment_code_issue_ssh_target",
-      justification: "enrolment code issue target",
-    ),
-    endpoint_consumer(
       module_path: "gunbc.runner.runner_microvm_network_apply",
       decl_name: "runner_microvm_administrator_target",
       justification: "microvm network administrator target, apply and observe",

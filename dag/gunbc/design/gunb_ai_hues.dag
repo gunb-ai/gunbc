@@ -3,7 +3,7 @@ module gunbc.design.gunb_ai_hues
 import std.types { String, Int, List }
 import std.optional { Optional, Absent, Present }
 import extdeps.color.srgb { Srgb8, hsl_to_srgb8 }
-import std.error_primitives { pure_dag_seam_unreachable }
+import std.error_primitives { pure_dag_seam_unreachable_int }
 import std.measure { Degree, degree, degree_count, Percent, percent, percent_count }
 import extdeps.languages.css.values {
   CssHsl, CssColorComponent, ComponentVar, ComponentPercent, CssVarRef,
@@ -180,7 +180,7 @@ fn live_token_css(t: LiveColorToken) -> CssHsl {
 fn live_token_srgb8(t: LiveColorToken) -> Srgb8 {
   match hsl_to_srgb8(hue: 0 + degree_count(d: t.hue.degrees), sat_pct: live_percent_value(p: t.saturation), light_pct: live_percent_value(p: t.lightness)) {
     Present { value: c } => c
-    Absent => Srgb8 { r: pure_dag_seam_unreachable(), g: pure_dag_seam_unreachable(), b: pure_dag_seam_unreachable() }
+    Absent => Srgb8 { r: pure_dag_seam_unreachable_int(), g: pure_dag_seam_unreachable_int(), b: pure_dag_seam_unreachable_int() }
   }
 }
 

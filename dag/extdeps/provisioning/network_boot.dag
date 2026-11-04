@@ -1,20 +1,7 @@
 module extdeps.provisioning.network_boot
 
-import std.types { NonEmptyStr }
-import extdeps.toolchain.types {
-  Architecture,
-  X86_64,
-  X86,
-  Aarch64,
-  Arm,
-  Armv7,
-  Mips,
-  Mipsel,
-  Mips64,
-  Mips64el,
-  Riscv64,
-  Wasm32,
-}
+import std.types { Bool, List, NonEmptyStr }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority }
 
@@ -34,24 +21,90 @@ type DhcpBootDirection =
     NativeDhcpBootOptions
   | ProxyDhcp
 
-fn network_uefi_bootloader_artifact(arch: Architecture) -> NonEmptyStr? {
-  match arch {
-    Aarch64 => Present { value: "grubnetaa64.efi" }
-    X86_64 => Present { value: "grubnetx64.efi" }
-    X86 => Absent
-    Arm => Absent
-    Armv7 => Absent
-    Mips => Absent
-    Mipsel => Absent
-    Mips64 => Absent
-    Mips64el => Absent
-    Riscv64 => Absent
-    Wasm32 => Absent
-  }
-}
-
 type NetworkBootChain {
   boot_mode: ClientNetworkBootMode
   dhcp_direction: DhcpBootDirection
   image_http_root: Uri
+}
+
+data uefi_secure_boot_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "uefi.org/specs/UEFI/2.10/32_Secure_Boot_and_Driver_Signing.html"
+  }
+}
+
+data shim_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/rhboot/shim/blob/main/README.md"
+  }
+}
+
+// THE LOADER CHAIN A NETWORK-BOOT CLIENT IS SERVED, as a shape with no products in it (DESIGN 3,
+// external upstream decomposition: this hub defines the agnostic shape; each chain is declared by the
+// upstream that ships it). The members are what the client fetches from the boot server, in order;
+// the first is what the DHCP boot filename names. A chain of exactly one member is a chainloader that
+// fetches everything after it from elsewhere; a longer chain has the server hold the later stages too.
+type NetworkBootLoaderRole
+  = FirstStageLoader
+  | SecondStageLoader
+  | LoaderConfiguration
+  | KernelImage
+  | InitrdImage
+
+// WHO AUTHENTICATES A MEMBER BEFORE IT RUNS, as the upstream boot chain defines it. The UEFI firmware
+// checks a first-stage image against its signature database (UEFI 2.10 section 32, Secure Boot); shim
+// checks the next image against the vendor certificate built into it and exposes the shim-lock protocol
+// a shim-aware loader uses to check the kernel (shim README). A configuration file or an initrd is
+// checked by nobody in either chain. A verifier is a claim about what the chain DOES when Secure Boot is
+// enforced; whether it was enforced is an observation of the booted unit, never a property of the chain.
+type NetworkBootLoaderVerifier
+  = FirmwareSignatureDatabase
+  | ShimVendorCertificate
+  | ShimLockProtocol
+  | NotAuthenticated
+
+type NetworkBootLoaderMember {
+  role: NetworkBootLoaderRole
+  served_path: NonEmptyStr
+  verifier: NetworkBootLoaderVerifier
+}
+
+// Nonempty by construction: a chain with no first stage has no DHCP boot filename to offer.
+type NetworkBootLoaderChain {
+  members: FreeSemigroup<NetworkBootLoaderMember>
+}
+
+fn network_boot_loader_chain_members(chain: NetworkBootLoaderChain) -> List<NetworkBootLoaderMember> {
+  non_empty_to_list(xs: chain.members)
+}
+
+fn network_boot_loader_first_stage(chain: NetworkBootLoaderChain) -> NetworkBootLoaderMember {
+  chain.members.head
+}
+
+// WHETHER THE SERVER HOLDS ONLY THE CHAINLOADER is a property of the chain, not of the server.
+fn network_boot_loader_chain_is_chainloader_only(chain: NetworkBootLoaderChain) -> Bool {
+  length(chain.members.tail) == 0
+}
+
+fn network_boot_loader_member_is_authenticated(member: NetworkBootLoaderMember) -> Bool {
+  match member.verifier {
+    FirmwareSignatureDatabase => true
+    ShimVendorCertificate => true
+    ShimLockProtocol => true
+    NotAuthenticated => false
+  }
+}
+
+// THE SAME CHAIN WITH ANOTHER FILE AS ITS FIRST STAGE, for an upstream that lets an enrolled loader stand in for
+// the documented one; the later members and every verifier are unchanged.
+fn network_boot_loader_chain_with_first_stage_path(chain: NetworkBootLoaderChain, path: NonEmptyStr) -> NetworkBootLoaderChain {
+  NetworkBootLoaderChain {
+    members: FreeSemigroup {
+      head: NetworkBootLoaderMember { role: chain.members.head.role, served_path: path, verifier: chain.members.head.verifier },
+      tail: chain.members.tail,
+    },
+  }
 }

@@ -24,7 +24,7 @@ import std.optional {
   optional_present
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Disj, Arrow, Instantiation, Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel, ComputationNode, fold_list_node, positional_child_target_nodes }
+import v2.std.node { Disj, Arrow, Instantiation, Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel, ComputationNode, fold_list_node, positional_child_target_nodes, NotADeclaration }
 import v2.std.text { String }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -523,7 +523,8 @@ fn lexical_reference_node(label: Symbol, occurrence_id: NodeOccurrenceIdentity) 
     children: [
       Edge {
         label: core_edge_label(marker: resolved_reference_kind_marker(kind: LexicalReferenceKind)),
-        target: node_synthetic(kind: TypeNode { connective: Atom { identity: label } }, children: [])
+        target: node_synthetic(kind: TypeNode { connective: Atom { identity: label } }, children: []),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: occurrence_id
@@ -549,7 +550,8 @@ fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedNam
     children: [
       Edge {
         label: core_edge_label(marker: resolved_reference_kind_marker(kind: kind)),
-        target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
+        target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: occurrence_id

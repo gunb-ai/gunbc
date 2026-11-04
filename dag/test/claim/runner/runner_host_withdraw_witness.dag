@@ -1,0 +1,524 @@
+module test.claim.runner.runner_host_withdraw_witness
+
+// THE WITHDRAW/RESTORE CONTROLS, executed through the claim dispatcher (never self-host): a withdraw
+// drains through the bracket's OWN legs and leaves every slot masked and inactive with a written record;
+// a restore lifts the recorded units and reads back admitting; a drain that exceeds its declared bound
+// REFUSES and states where it left the host; and a host that re-admits after a withdraw makes the
+// readback control go RED rather than certify a lie by file.
+//
+// THE WORLD ANSWERS, THE ROUTE ASKS. The scenario is not a ledger of scripted answers in a fixed order
+// (that would test the script, not the code): the realization holds the host -- each slot's systemd
+// state, its worker/listener processes, its roster registration, the modeled files, and a virtual clock
+// that advances by exactly the seconds the route asked it to sleep. A `systemctl mask` mutates the
+// world; the next `systemctl show` answers FROM it. So a route that claims to mask without masking,
+// or clears a record it never wrote, or sleeps without the bound ever being measured, fails here. The
+// mask-ineffective world (control 4) is the mutation: the hand keeps re-admitting, and the withdraw
+// must refuse -- an unred mutation is a broken control, not a passing test.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.algebra { string_contains, list_head, skip }
+import std.measure { second_count }
+
+import std.measure { second, second_displacement }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant { Read, Write, Envelope }
+import std.operation_argv { InputTextList, OperationRef }
+import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, virtual_clock_origin, virtual_delay_binding }
+import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
+import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
+import gunbc.process_environment_model { ModeledVariable, environment_binding }
+import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
+import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_host_file_converge { runner_host_file_subject, RunnerHostFileSubject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+import gunbc.runner.runner_host_cap_bracket {
+  HostCapDrainPolicy, runner_host_cap_drain_policy, host_cap_drain_ticks, host_cap_bracket_budget,
+  bracket_refusal_wire, bracket_start_over, BracketStartAt, BracketStartRefused,
+}
+import gunbc.runner.runner_host_withdraw {
+  WithdrawalOutcome, Withdrawn, WithdrawalRefused, WithdrawalRefusalDrainBound, WithdrawalRefusalSplit, WithdrawalRefusalSubject, WithdrawalRefusalBudget, WithdrawalRefusalUnrecordable, WithdrawalRefusalHeldRecord, WithdrawalRefusalOwnershipUnproven, WithdrawalRefusalDrainNotClosed, WithdrawalRefusalMaskNotHeld, WithdrawalRefusalStopRefused,
+  withdraw_host_over,
+  RestorationOutcome, Restored, RestorationRefused, restore_host_over,
+}
+import gunbc.runner.runner_host_withdraw_record {
+  WithdrawnRecord, WithdrawnCertification, read_withdrawn_record, WithdrawnRecordOurs,
+  runner_host_withdraw_identity, runner_host_withdraw_record_path,
+  runner_host_withdraw_observe_line_for,
+}
+import test.claim.runner.runner_host_cap_bracket_witness {
+  u, minted, registration_of, runner_json, roster_of, org_ok, slot_current_mint_tag, bracket_grant, remote_side_of,
+}
+
+data shell_posix_command_check_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.PosixCommandV", operation: "Check" }
+data github_cli_organization_organizations_operation: OperationRef = OperationRef { path: "dag/extdeps/github/organizations.dag", service: "github.CliOrganizations", operation: "GetOrganization" }
+data organization_self_hosted_runners_operation: OperationRef = OperationRef { path: "dag/extdeps/github/ci_runner.dag", service: "github.CliOrgSelfHostedRunners", operation: "ListOrgRunnersPage" }
+
+data withdraw_witness_name: String = "runner_host_withdraw"
+
+// THE HOST, AS THE WORLD HOLDS IT. One row per slot: what systemd reports (load / unit-file / active),
+// what the cgroup owns (a worker, a listener, nothing), and whether the registration is on the roster.
+// `mask_sticks` is the mutation knob: in the hand-mask world a mask leaves the unit loaded and active,
+// and the withdraw must notice rather than certify the file it just wrote.
+type SlotWorld {
+  n: String
+  load: String
+  file: String
+  active: String
+  worker: Bool
+  listener: Bool
+  registered: Bool
+}
+
+type WithdrawWorld {
+  slots: List<SlotWorld>
+  fs: ModeledFilesystem
+  elapsed: Int
+  mask_sticks: Bool
+  // EVERY COMMAND THE ROUTE DISPATCHED OVER THE EDGE, in order. The split controls read this: a
+  // precondition refusal must leave it EMPTY -- not merely "no mask" -- because the ruling demands the
+  // refusal fire before any drain or mask actuation, and the only honest evidence of that is that no
+  // leg ever went out.
+  acts: List<String>
+}
+
+data withdraw_dirs: List<String> = ["/", "/var", "/var/lib", "/var/lib/gunbc", "/var/lib/gunbc/fleet-converge", "/runner-tmp"]
+
+fn fresh_fs() -> ModeledFilesystem {
+  ModeledFilesystem { directories: withdraw_dirs, files: [], refused_reads: [], stats: [] }
+}
+
+// THE HOST AS srv3 PRESENTS IT TODAY: both slots loaded/enabled/active, listeners idle, registrations
+// on the roster under their CURRENT mint (the identity the bracket joins on). No memory.max anywhere;
+// the envelope refuses; only this mode takes the host out.
+fn admitted_slots() -> List<SlotWorld> {
+  [
+    SlotWorld { n: "01", load: "loaded", file: "enabled", active: "active", worker: false, listener: true, registered: true },
+    SlotWorld { n: "02", load: "loaded", file: "enabled", active: "active", worker: false, listener: true, registered: true },
+  ]
+}
+
+fn world(slots: List<SlotWorld>, mask_sticks: Bool) -> WithdrawWorld {
+  WithdrawWorld { slots: slots, fs: fresh_fs(), elapsed: 0, mask_sticks: mask_sticks, acts: [] }
+}
+
+// THE ENVIRONMENT the bracket's own routes read: the step budget the bracket measures itself against,
+// RUNNER_TEMP the release obligation is filed under, and the run identity the obligation is keyed by.
+fn withdraw_environment() -> List<ModeledVariable> {
+  [
+    ModeledVariable { name: "GUNBC_ORG_ADMIN_TOKEN", value: "in-run-installation-token" },
+    ModeledVariable { name: "GH_TOKEN", value: "in-run-installation-token" },
+    // THE SAME DERIVED BUDGET the workflow delivers (fleet_converge_workflow binds this env to
+    // host_cap_bracket_budget(runner_host_cap_drain_policy)); the pre-derivation literal 3540 cannot
+    // cover the derived wait bound + allowances, and the bracket would refuse before the first leg --
+    // the witness must run the route the step runs, budget included.
+    ModeledVariable { name: "RUNNER_HOST_CAP_STEP_BUDGET_SECONDS", value: to_string(second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy))) },
+    ModeledVariable { name: "RUNNER_TEMP", value: "/runner-tmp" },
+    ModeledVariable { name: "GITHUB_RUN_ID", value: "9001" },
+    ModeledVariable { name: "GITHUB_RUN_ATTEMPT", value: "1" },
+  ]
+}
+
+// A command belongs to a slot when it names the unit (`<n>.service`) OR the slot's instance path --
+// the registration `cat` carries the decoded instance name, not the unit name, and it is still a read
+// OF THAT SLOT.
+fn slot_match(s: SlotWorld, unit: String) -> Bool {
+  unit == s.n || string_contains(s: unit, pattern: concat(s.n, ".service")) || string_contains(s: unit, pattern: registration_of(n: s.n))
+}
+
+fn slot_of(w: WithdrawWorld, unit: String) -> SlotWorld? {
+  fold(w.slots, init: none, f: fn(acc, s) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if slot_match(s: s, unit: unit) { Present { value: s } } else { none }
+    }
+  })
+}
+
+fn slot_put(w: WithdrawWorld, unit: String, s: SlotWorld) -> WithdrawWorld {
+  WithdrawWorld { slots: map(w.slots, x => if slot_match(s: x, unit: unit) { s } else { x }), fs: w.fs, elapsed: w.elapsed, mask_sticks: w.mask_sticks, acts: w.acts }
+}
+
+fn show_answer(s: SlotWorld) -> ShellExchangeObservation {
+  ShellProcessExited {
+    exit_code: 0,
+    stdout: concat("Id=", u(n: s.n) as String, "\nLoadState=", s.load, "\nUnitFileState=", s.file, "\nActiveState=", s.active, "\nNeedDaemonReload=no\n"),
+    stderr: "",
+  }
+}
+
+// THE LISTING THE ROUTE ASKS FOR, per unit: a worker answers worker, a listener answers listener, a
+// genuinely stopped slot answers nothing. The classification the bracket leans on is computed by the
+// route from THESE bytes, never scripted here.
+fn listing_answer(s: SlotWorld) -> ShellExchangeObservation {
+  let body = if s.worker { concat(u(n: s.n) as String, " Runner.Worker\n") } else if s.listener { concat(u(n: s.n) as String, " Runner.Listener\n") } else { "" }
+  ShellProcessExited { exit_code: 0, stdout: body, stderr: "" }
+}
+
+fn registration_answer(s: SlotWorld) -> ShellExchangeObservation {
+  if s.registered {
+    ShellProcessExited {
+      exit_code: 0,
+      stdout: concat("{\"AgentId\": \"42\", \"AgentName\": \"", minted(n: s.n, tag: slot_current_mint_tag), "\", \"Ephemeral\": \"True\", \"PoolId\": \"1\", \"GitHubUrl\": \"https://github.com/gunb-ai\"}"),
+      stderr: "",
+    }
+  } else {
+    ShellProcessExited { exit_code: 1, stdout: "", stderr: "cat: .runner: No such file or directory" }
+  }
+}
+
+fn ok_exit() -> ShellExchangeObservation { ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } }
+
+fn unmatched(cmd: String) -> ShellExchangeObservation {
+  ShellProcessExited { exit_code: 255, stdout: "", stderr: concat("the withdrawal world answers no command like: ", cmd) }
+}
+
+// THE SSH ROUTE, ANSWERED BY COMMAND SHAPE (never by position). Each systemctl verb mutates the world
+// it just read; a mask in the mutated world answers success while changing NOTHING, which is exactly
+// the hand-mask pathology control 4 must catch. Unmatched commands exit 255 naming the command: an
+// unbound dispatch fails the run instead of silently passing it.
+type SshAnswer {
+  world: WithdrawWorld,
+  answer: ShellExchangeObservation,
+}
+
+// THE PROCESS LISTING IS A GLOBAL READ: `ps -e -o unit=,comm=` names NO unit, so the per-slot matcher
+// would drop it and the worker reading would come back unobserved -- an unobserved worker makes every
+// drain judge the slot UNPROVEN and the bracket refuse to acquire. The listing is therefore answered
+// from the whole world: one line per slot the world says is up, which the route then filters by unit.
+fn world_listing(w: WithdrawWorld) -> ShellExchangeObservation {
+  ShellProcessExited {
+    exit_code: 0,
+    stdout: join(map(filter(w.slots, s => s.active == "active" && (s.worker || s.listener)), s =>
+      if s.worker { concat(u(n: s.n) as String, " Runner.Worker\n") } else { concat(u(n: s.n) as String, " Runner.Listener\n") }
+    ), ""),
+    stderr: "",
+  }
+}
+
+fn ssh_answer(state: WithdrawWorld, cmd: String) -> SshAnswer {
+  // EVERY dispatch is accounted before it is answered -- including the ones that find no slot. The
+  // split controls assert this ledger empty; recording only the answered commands would let a refusal
+  // that dispatched reads hide behind a slot-less world.
+  let state = WithdrawWorld { slots: state.slots, fs: state.fs, elapsed: state.elapsed, mask_sticks: state.mask_sticks, acts: append(state.acts, items: [cmd]) }
+  if string_contains(s: cmd, pattern: "ps -e") {
+    SshAnswer { world: state, answer: world_listing(w: state) }
+  } else {
+    match slot_of(w: state, unit: cmd) {
+      Absent => SshAnswer { world: state, answer: unmatched(cmd: cmd) }
+      Present { value: s } =>
+        if string_contains(s: cmd, pattern: "systemctl show") { SshAnswer { world: state, answer: show_answer(s: s) } }
+        else if string_contains(s: cmd, pattern: "cat ") { SshAnswer { world: state, answer: registration_answer(s: s) } }
+        else if string_contains(s: cmd, pattern: " mask ") {
+          if state.mask_sticks { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: "masked", file: "masked", active: s.active, worker: s.worker, listener: s.listener, registered: s.registered }), answer: ok_exit() } }
+          else { SshAnswer { world: state, answer: ok_exit() } }
+        }
+        else if string_contains(s: cmd, pattern: " unmask ") { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: "loaded", file: "enabled", active: s.active, worker: s.worker, listener: s.listener, registered: s.registered }), answer: ok_exit() } }
+        else if string_contains(s: cmd, pattern: " enable ") { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: s.load, file: "enabled", active: s.active, worker: s.worker, listener: s.listener, registered: s.registered }), answer: ok_exit() } }
+        else if string_contains(s: cmd, pattern: " start ") { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: s.load, file: s.file, active: "active", worker: false, listener: true, registered: true }), answer: ok_exit() } }
+        else if string_contains(s: cmd, pattern: " stop ") { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: s.load, file: s.file, active: "inactive", worker: false, listener: false, registered: s.registered }), answer: ok_exit() } }
+        else { SshAnswer { world: state, answer: unmatched(cmd: cmd) } }
+    }
+  }
+}
+
+fn command_of(call: OperationCall) -> String {
+  match first(filter(call.invocation.bindings, b => (b.name as String) == "client_args")) {
+    Absent => ""
+    Present { value: b } => match b.value {
+      InputTextList { items: items } => remote_side_of(items: items)
+      _ => ""
+    }
+  }
+}
+
+// DISTINCT ROSTER IDS, per slot. The roster parser treats one id carried by two entries as DISPUTED and
+// withholds both from the members -- which the drain reads as a partial roster, and a partial roster is
+// an unread one: every listener then fails the join "the roster did not say whether the registration is
+// busy". A world whose two slots share id 11 cannot drain, however honest every other reading is.
+fn slot_roster_id(n: String) -> Int {
+  if string_contains(s: n, pattern: "01") { 11 }
+  else if string_contains(s: n, pattern: "02") { 12 }
+  else if string_contains(s: n, pattern: "03") { 13 }
+  else if string_contains(s: n, pattern: "04") { 14 }
+  else { 19 }
+}
+
+fn roster_answer(w: WithdrawWorld, busy_override: Bool) -> String {
+  roster_of(entries: map(filter(w.slots, s => s.registered), s => runner_json(id: slot_roster_id(n: s.n), name: minted(n: s.n, tag: slot_current_mint_tag), busy: busy_override)))
+}
+
+// THE REALIZATION. The clock is virtual and advances ONLY through the sleep route, by exactly the
+// seconds the route asked to sleep: the drain's bound is measured against that clock, so a route that
+// never sleeps cannot outrun it and a busy host cannot hide from it.
+fn withdraw_realization(initial: WithdrawWorld, busy_override: Bool) -> OperationRealization<WithdrawWorld> {
+  OperationRealization {
+    identity: withdraw_identity(),
+    initial: initial,
+    epoch: virtual_clock_origin(),
+    bindings: concat(concat([
+      OperationBinding {
+        at: ssh_session_exec_portable_words_operation,
+        handler: fn(state, call) {
+          let answered = ssh_answer(state: state, cmd: command_of(call: call))
+          OperationObserved { observation: ShellObserved { observation: answered.answer }, state: answered.world, elapsed: second(count: 1) }
+        }
+      },
+      OperationBinding {
+        at: shell_posix_command_check_operation,
+        handler: fn(state, _) {
+          OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "/usr/bin/gh\n", stderr: "" } }, state: state, elapsed: second(count: 0) }
+        }
+      },
+      OperationBinding {
+        at: github_cli_organization_organizations_operation,
+        handler: fn(state, _) {
+          OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: org_ok(), stderr: "" } }, state: state, elapsed: second(count: 0) }
+        }
+      },
+      OperationBinding {
+        at: organization_self_hosted_runners_operation,
+        handler: fn(state, _) {
+          OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: roster_answer(w: state, busy_override: busy_override), stderr: "" } }, state: state, elapsed: second(count: 0) }
+        }
+      },
+      virtual_delay_binding(at: sleep_operation_ref, seconds_input: "seconds"),
+    ], [environment_binding(get: fn(_) { withdraw_environment() })]), concat(filesystem_bindings(get: fn(state) { state.fs }, put: fn(state, fs) { WithdrawWorld { slots: state.slots, fs: fs, elapsed: state.elapsed, mask_sticks: state.mask_sticks, acts: state.acts } }, cwd: fn(_) { "/" }), wall_clock_bindings(get: fn(state) {
+      ModeledWallClock { unix_at_origin: 1790000000, step: second_displacement(count: 0), jumps: [] }
+    }))),
+    advance: fn(state, _now) { state },
+  }
+}
+
+// THE FRAME'S OWN IDENTITY, stamped on its grants. The bracket witness's grants stamp the BRACKET's
+// realization identity; borrowing them while declaring a different realization makes every dispatch
+// refuse with OperationRealizationMismatch -- the zero-dispatch split controls pass and everything
+// that dispatches one op fails. A frame's grants and its realization must name the same thing.
+fn withdraw_identity() -> NonEmptyStr { "runner-host-withdraw-witness" as NonEmptyStr }
+
+fn withdraw_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb,
+    root: NamespacePosition { tree: ServiceOpTree { service: service as NonEmptyStr }, path: [] },
+    binding: ModeledRealization { realization: withdraw_identity() as String },
+    lifecycle: LifecycleByConstruction,
+  }
+}
+
+data sleep_operation_ref: OperationRef = OperationRef { path: "dag/extdeps/tools/sleep.dag", service: "sleep.Delay", operation: "Seconds" }
+
+data withdraw_services: List<String> = ["ssh.Session", "shell.PosixCommandV", "shell.Env", "github.CliOrganizations", "github.CliOrgSelfHostedRunners", "Clock", "Filesystem", "sleep.Delay"]
+
+fn withdraw_frame(initial: WithdrawWorld, busy_override: Bool) -> WitnessEvaluationFrame<WithdrawWorld> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "host-withdraw" as NonEmptyStr, kind: SharedStateFrame }
+      grants: concat(map(withdraw_services, sv => withdraw_grant(service: sv, verb: Read)), map(withdraw_services, sv => withdraw_grant(service: sv, verb: Write)))
+    }
+    rest_fixtures: []
+    realization: Present { value: withdraw_realization(initial: initial, busy_override: busy_override) }
+  }
+}
+
+type WithdrawRun<T>
+  = WithdrawRunReturned { value: T, world: WithdrawWorld }
+  | WithdrawRunEnded { cause: String }
+
+// THE RUN, on the srv1 subject (an admitted runner host in the model; srv3's 21-slot width would only
+// multiply the same legs). The world is threaded through by the dispatcher; what comes back is the
+// host as the route LEFT it -- which is what every control below reads.
+fn withdraw_run<T>(initial: WithdrawWorld, busy_override: Bool, body: fn(SshTarget, FleetSshExecutionContext) -> T) -> WithdrawRun<T> {
+  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: c } => WithdrawRunEnded { cause: concat("subject refused: ", c) }
+    RunnerHostFileSubjectAdmitted { subject: sj } => match fleet_ssh_execution_context_hermetic_witness_fixture() {
+      Absent => WithdrawRunEnded { cause: "the fleet witness context could not be sealed" }
+      Present { value: context } => match evaluate_in_witness_frame(frame: withdraw_frame(initial: initial, busy_override: busy_override), subject: fn(_scope) { body(sj.target, context) }) {
+        WitnessReturned { value: v, route: _, state: st } => match st {
+          Present { value: w } => WithdrawRunReturned { value: v, world: w }
+          Absent => WithdrawRunEnded { cause: "the withdrawal run returned no world" }
+        }
+        WitnessRefused { diagnostic: d, route: _, state: _ } => WithdrawRunEnded { cause: witness_diagnostic_rendered_reason(diagnostic: d) }
+        WitnessInterrupted { at: _, route: _, state: _, now: _ } => WithdrawRunEnded { cause: "the withdrawal worker was interrupted" }
+      }
+    }
+  }
+}
+
+// ── THE CONTROLS ─────────────────────────────────────────────────────────────────────────────────
+
+// 1. WITHDRAW, THEN READ BACK MASKED. The route must return Withdrawn, and the WORLD it left must
+// agree: every slot masked and stopped, no processes, and a record file present at the exact route
+// path whose contents name both units. A route that wrote a record over a host it did not mask fails
+// the world half of this control even though its own verdict says Withdrawn.
+test fn withdraw_leaves_every_slot_masked_inactive_with_a_record() -> Bool {
+  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+  })
+  match r {
+    WithdrawRunEnded { cause: _ } => false
+    WithdrawRunReturned { value: Withdrawn { units: us, certified: cs, record_written: rw }, world: w } =>
+      rw && length(us) == 2 && length(cs) == 2
+        && all(w.slots, s => s.load == "masked" && s.active == "inactive" && !s.worker && !s.listener)
+        && any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String)
+          && string_contains(s: f.content, pattern: "\"actions-runner@srv3-01.service\"")
+          && string_contains(s: f.content, pattern: "\"actions-runner@srv3-02.service\"")
+          && string_contains(s: f.content, pattern: "\"host\": \"srv1\""))
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: _, left: _ }, world: _ } => false
+  }
+}
+
+// 2. RESTORE, THEN READ BACK ADMITTING. From a world the withdraw control left behind (both slots
+// masked and stopped, record present), restore must lift the RECORDED units, bring them back
+// loaded/enabled/active with listeners and registrations, and remove the record only after the
+// read-back held. A restore that deleted the file before the host agreed would leave the world here
+// masked with the record gone -- and that fails this control.
+test fn restore_brings_the_recorded_units_back_admitting() -> Bool {
+  let withdrawn = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+  })
+  match withdrawn {
+    WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: true }, world: w0 } =>
+      match withdraw_run(initial: w0, busy_override: false, body: fn(target, context) {
+        restore_host_over(target: target, context: context, host: "srv1", executor_runner_name: Present { value: "actions-runner@srv4-01" })
+      }) {
+        WithdrawRunReturned { value: Restored { units: us }, world: w } =>
+          length(us) == 2
+            && all(w.slots, s => s.load == "loaded" && s.file == "enabled" && s.active == "active" && s.listener && s.registered)
+            && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// 3. A DRAIN THAT EXCEEDS ITS BOUND REFUSES. One slot holds a worker the whole bound long (the world
+// simply never loses it); the drain must end in WithdrawalRefusalDrainBound -- never Withdrawn -- and
+// the refusal must carry the state it LEFT (the undo released what it owned, so the host reads as it
+// was found). The clock here advanced only through the route's own sleeps, so the bound was measured,
+// not assumed.
+test fn a_drain_past_the_bound_refuses_and_never_claims_withdrawn() -> Bool {
+  let stubborn = map(admitted_slots(), s => if s.n == "02" { SlotWorld { n: s.n, load: s.load, file: s.file, active: s.active, worker: true, listener: true, registered: s.registered } } else { s })
+  let r = withdraw_run(initial: world(slots: stubborn, mask_sticks: true), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+  })
+  match r {
+    WithdrawRunEnded { cause: _ } => false
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalDrainBound { busy: b, unproven: _, waited: _ }, left: _ }, world: _ } =>
+      length(b) == 1 && match first(b) { Present { value: x } => (x as String) == (u(n: "02") as String) Absent => false }
+    WithdrawRunReturned { value: _, world: _ } => false
+  }
+}
+
+// 4. A MUTATION THAT RE-ADMITS AFTER WITHDRAW GOES RED. The mask no longer holds (the world answers
+// every mask with success but keeps the unit loaded and its listener live -- exactly what the operator
+// fights when systemd brings a slot back). The withdraw must REFUSE: no record may be left claiming
+// a host that contradicts it, and no Withdrawn verdict. If this test ever passes while the route
+// claims Withdrawn, the readback control is decorative.
+test fn a_host_that_re_admits_after_withdraw_is_refused_not_certified() -> Bool {
+  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: false), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+  })
+  match r {
+    WithdrawRunEnded { cause: _ } => false
+    WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: _ }, world: _ } => false
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: _, left: _ }, world: w } =>
+      !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+  }
+}
+
+// NEVER HALF-WITHDRAWN SILENTLY: when the drain refuses on its bound, the undo must have run -- every
+// mask THIS attempt filed is gone, no record was written, and the refusal carries the host AS READ.
+// An operator left with masked slots and no record has a host nobody admits to owning.
+test fn the_bound_refusal_undoes_every_mask_this_attempt_filed() -> Bool {
+  let stubborn = map(admitted_slots(), s => if s.n == "02" { SlotWorld { n: s.n, load: s.load, file: s.file, active: s.active, worker: true, listener: true, registered: s.registered } } else { s })
+  match withdraw_run(initial: world(slots: stubborn, mask_sticks: true), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+  }) {
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalDrainBound { busy: _, unproven: _, waited: _ }, left: _ }, world: w } =>
+      !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+        && all(w.slots, s => s.load != "masked")
+    _ => false
+  }
+}
+
+// THE OBSERVABILITY THE BRIEF DEMANDS: a later converge or restore reads the truth. With the record
+// written and the world masked, the observe line says withdrawn with both units and both certified
+// registrations; with the record absent it says nothing (a hand mask is not this route's to name).
+test fn the_observe_line_reports_withdrawn_from_the_record_and_not_without_it() -> Bool {
+  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context) {
+    let done = withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    runner_host_withdraw_observe_line_for(host: "srv1", target: target, context: context, units: [u(n: "01"), u(n: "02")])
+  })
+  match r {
+    WithdrawRunReturned { value: line, world: _ } =>
+      string_contains(s: line, pattern: "state=withdrawn") && string_contains(s: line, pattern: "units=actions-runner@srv3-01.service,actions-runner@srv3-02.service")
+    WithdrawRunEnded { cause: _ } => false
+  }
+}
+
+// ─── THE SPLIT CONTROLS (operator ruling 2026-10-24, after refused run 40085967610) ───────────────
+//
+// The ruling demands executor != subject as a TYPED refusal, fired BEFORE any drain or mask actuation,
+// and the control must assert no actuation step ran. The empty `acts` ledger is that assertion: every
+// ssh dispatch -- answered or not -- is accounted in ssh_answer before it is handled, so a refusal that
+// left this list non-empty dispatched something, however harmless it looked.
+
+// A withdrawal whose executor is pinned to the subject it drains REFUSES, and NOTHING WENT OVER THE
+// EDGE. This is the srv3 shape: the job pinned to srv3 draining srv3, waiting on actions-runner@srv3-13
+// -- the slot running itself.
+test fn a_withdraw_whose_executor_is_the_subject_refuses_with_zero_actuation() -> Bool {
+  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv1-03" })
+  })
+  match r {
+    WithdrawRunEnded { cause: _ } => false
+    WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: _ }, world: _ } => false
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalSplit { reason: why }, left: _ }, world: w } =>
+      w.acts == [] && string_contains(s: why, pattern: "REFUSED: fleet-converge self-subject") && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: _, left: _ }, world: _ } => false
+  }
+}
+
+// The slot-name shape of the same fact: a runner named actions-runner@srv1-13 LIVES on srv1 even
+// though its name is not the host -- the deploy gate's own proving relation decides, and here it says
+// the executor belongs to the subject. Refused, zero actuation.
+test fn a_withdraw_whose_executor_slot_lives_on_the_subject_refuses_with_zero_actuation() -> Bool {
+  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv1-13" })
+  })
+  match r {
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalSplit { reason: _ }, left: _ }, world: w } => w.acts == []
+    _ => false
+  }
+}
+
+// An executor that cannot name itself is refused too -- fail-open here is the deadlock again, and an
+// unregistered process proves nothing about not being the subject. Zero actuation again.
+test fn a_withdraw_with_no_executor_identity_refuses_with_zero_actuation() -> Bool {
+  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: none)
+  })
+  match r {
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalSplit { reason: why }, left: _ }, world: w } =>
+      w.acts == [] && string_contains(s: why, pattern: "REFUSED: fleet-converge executor identity absent")
+    _ => false
+  }
+}
+
+// THE LEDGER IS NOT VACUOUS. The three split controls above assert an EMPTY actuation ledger, which is
+// only meaningful if a real run produces a NON-EMPTY one -- otherwise every "zero actuation" assertion
+// would pass even when the route happily dispatched. This is the honest split-ok run: the same route,
+// the same world, a legitimate executor, and the ledger comes back full of legs.
+test fn a_split_ok_withdraw_actuates_so_the_empty_ledgers_mean_something() -> Bool {
+  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context) {
+    withdraw_host_over(target: target, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+  })
+  match r {
+    WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: _ }, world: w } =>
+      length(w.acts) > 0 && any(w.acts, c => string_contains(s: c, pattern: " mask "))
+    _ => false
+  }
+}

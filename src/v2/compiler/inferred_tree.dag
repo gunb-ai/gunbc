@@ -7,7 +7,7 @@ import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePendi
 import std.algebra { list_snoc_item, PartialFunction, empty_map, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
 import v2.std.inhabitance { TypeVariableInstance }
@@ -48,11 +48,12 @@ type NotDerivedSite
   | VariantArmValueNotDerived
   | CallableEvidenceAbsent
   | MatchFrontier
-  | EqualityNotDerived
+  | ComparisonNotDerived
   | LiteralPayloadMember
   | ConstructFieldsUnbound
   | ConstructFormalsAuthored
   | ConstructTypeAbsent
+  | FunctionValueSignatureUndetermined
 
 // Why GroundingNotDerived exists: before this arm, a node no derivation rule covered was routed
 // through solve_constraints with the singleton candidate set [root], and the resulting grounding
@@ -162,7 +163,7 @@ fn authored_occurrence_census_step(acc: AuthoredOccurrenceCensus, n: Node) -> Au
       match map_lookup(m: acc.seen, key: id.value) {
         Absent => AuthoredOccurrenceCensus { seen: map_insert(m: acc.seen, key: id.value, value: n), collisions: acc.collisions }
         Present { value: held } =>
-          if held == n {
+          if node_same_occurrence(a: held, b: n) {
             acc
           } else {
             AuthoredOccurrenceCensus {

@@ -1,5 +1,6 @@
 module gunbc.v1.v1_consumer_census
 
+import std.integer { int_to_decimal_string }
 import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names }
 import std.types { List, String, NonEmptyStr, CommitSha, Bool, Int }
 import std.content_hash { Sha1Digest }
@@ -558,26 +559,6 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_build_step"),
-      authority: gunbc_cli_bin,
-      disposition: retired(reason: "fleet-desired withdrawal deleted gunbc.fleet.fleet_desired_admission_workflow; this consumer no longer exists. The admitted revision is origin/main."),
-    ),
-    medium: WorkflowArgv,
-    subject: V1Cli,
-    discovered_by: producer_workflow_argv,
-  },
-  {
-    boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_decide_push_step"),
-      authority: gunbc_cli_bin,
-      disposition: retired(reason: "fleet-desired withdrawal deleted the decide-push step with its workflow. No remaining production consumer of that argv."),
-    ),
-    medium: WorkflowArgv,
-    subject: V1Cli,
-    discovered_by: producer_workflow_argv,
-  },
-  {
-    boundary: v1cc_boundary(
       consumer: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
       authority: invoked_bins_row,
       disposition: retained_open(justification: "the converge build job packs every bin this roster names; the roster names claim_executor and gunbc. Closes with the two CLI rows above; a separate relation because the consumer reaches the bins through a .dag roster row rather than through a literal, and gunbc.ci.ci_release_bins records that this exact roster stranded fleet-converge for two days after FLOOR-Y when a member was removed without draining the row"),
@@ -771,7 +752,7 @@ fn v1_shim_uncitable_row(item_key: String, detail: String, authority: V1Referenc
 }
 
 fn v1_unattributed_key(u: RustReferenceUnattributed) -> String {
-  concat(concat(u.repo_path, ":"), u.line as String)
+  concat(concat(u.repo_path, ":"), int_to_decimal_string(value: u.line))
 }
 
 // CITABILITY IS THE PROJECTION'S ANSWER, CARRIED ON EACH PRODUCED ROW. One fold, two accumulators;
@@ -859,7 +840,7 @@ fn v1_shim_population_of(observation: RustReferenceObservation) -> V1ShimPopulat
       V1ShimPopulationRefused { reason: concat("the Rust reference population could not be observed: ", d) }
     RustReferencesObserved { observed_at: v1cc_seen_tree, rows: rows, unattributed: u, unscannable: unscannable } =>
       if count(unscannable) > 0 {
-        V1ShimPopulationRefused { reason: concat(count(unscannable) as String, " token-carrying Rust file(s) could not be scanned, so the reference population is not closed") }
+        V1ShimPopulationRefused { reason: concat(int_to_decimal_string(value: count(unscannable)), " token-carrying Rust file(s) could not be scanned, so the reference population is not closed") }
       } else {
         V1ShimPopulationObserved { partition: v1_shim_partition_over(observed_at: v1cc_seen_tree, rows: rows, unattributed: u) }
       }
@@ -1156,7 +1137,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       disposition: retired(reason: "the transport's cargo args name the v1-compiler package to run the interpreter-dispatch bijection roster, whose subject is the v1 interpreter's dispatch table. Same class as the recorded-fixture transport: an instrument built to measure a property OF the seed has no successor obligation once the seed is gone")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.live_deploy.emit", decl_name: "emit_artifact_upsert",
+      module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_executable_plan",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the DEPLOYED PRODUCT: the live-deploy pipeline installs the gunbc source tree and binary onto a served host, so v1 is not only a build-time dependency of this repository but a shipped artifact on srv1. This is the relation that makes ProductsV1Free a separate finish line from InterpreterDeleted -- deleting the crate does not by itself remove it from a machine that already runs it. Closes on: the deployment artifact naming a native binary AND the deployed hosts having converged onto it, which is a fleet condition rather than a repository one")
     ),
@@ -1198,7 +1179,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
     v1_dag_argv_consumer(
       module_path: "gunbc.live_deploy.member_observe", decl_name: "release_executable_source_path",
       authority: gunbc_cli_bin, subject: V1Cli,
-      disposition: retained_open(justification: "the path live-deploy READS to observe what a served member is running, the observation twin of gunbc.live_deploy.emit emit_artifact_upsert. Closes on the same fleet condition: a deployed member running a native binary AND this observation naming it, since an observer left pointed at the old path reports absence rather than the truth")
+      disposition: retained_open(justification: "the path live-deploy READS to observe what a served member is running, the observation twin of gunbc.live_deploy.apply_legs deploy_apply_executable_plan. Closes on the same fleet condition: a deployed member running a native binary AND this observation naming it, since an observer left pointed at the old path reports absence rather than the truth")
     ),
     v1_dag_argv_consumer(
       module_path: "gunbc.cli_invoke", decl_name: "claim_executor_bin_name",
@@ -1521,7 +1502,7 @@ fn v1_minted_manifest_join_over(observation: RustReferenceObservation) -> Minted
     RustReferenceHostRefused { detail: d } => MintedManifestJoinUnobserved { reason: d }
     RustReferencesObserved { observed_at: v1cc_seen_tree, rows: rows, unattributed: u, unscannable: un } =>
       if count(un) > 0 {
-        MintedManifestJoinUnobserved { reason: concat(count(un) as String, " token-carrying Rust file(s) could not be scanned") }
+        MintedManifestJoinUnobserved { reason: concat(int_to_decimal_string(value: count(un)), " token-carrying Rust file(s) could not be scanned") }
       } else {
         let produced = rows |> flat_map(r => match r.projection {
           ItemDeclarationRefProjected { ref: x } => [x]
@@ -1546,7 +1527,7 @@ fn v1_minted_manifest_join_over(observation: RustReferenceObservation) -> Minted
         let stale_uncitable = v1_uncitable_seed_link_sites
           |> filter(site => !(uncitable_keys |> any(u => u.item_key == site.item_key)))
           |> map(site => site.item_key)
-        let unattributed = u |> map(x => concat(concat(concat(x.repo_path, ":"), x.line as String), concat(" ", x.detail)))
+        let unattributed = u |> map(x => concat(concat(concat(x.repo_path, ":"), int_to_decimal_string(value: x.line)), concat(" ", x.detail)))
         MintedManifestJoined {
           observed_at: v1cc_seen_tree,
           produced: produced,
@@ -1615,8 +1596,8 @@ fn minted_manifest_join_rendered(j: MintedManifestJoin) -> String {
   match j {
     MintedManifestJoinUnobserved { reason: r } => concat("unobserved: ", r)
     MintedManifestJoined { observed_at: _, produced: p, undisposed_sites: a, undisposed_uncitable: b, uncitable: uc, stale_rows: c, stale_uncitable: d, unattributed_lines: e } =>
-      concat("produced=", concat(count(p) as String,
-      concat(" uncitable=", concat(count(uc) as String,
+      concat("produced=", concat(int_to_decimal_string(value: count(p)),
+      concat(" uncitable=", concat(int_to_decimal_string(value: count(uc)),
       concat(" undisposed=[", concat(join_keys(xs: a |> map(r => declaration_ref_display_key(ref: r))),
       concat("] undisposed_uncitable=[", concat(join_keys(xs: b),
       concat("] stale=[", concat(join_keys(xs: c |> map(r => declaration_ref_display_key(ref: r))),
@@ -2042,7 +2023,7 @@ fn v1_blocking_consumer_count_report() -> ProcessExit {
 
 fn v1_blocking_count_rendered(c: V1BlockingCount) -> String {
   match c {
-    V1BlockingCounted { blocking: b, members: m } => concat(concat("blocking=", b as String), concat(" members=", m as String))
+    V1BlockingCounted { blocking: b, members: m } => concat(concat("blocking=", int_to_decimal_string(value: b)), concat(" members=", int_to_decimal_string(value: m)))
     V1BlockingUnmeasured { reason: r } => concat("unmeasured: ", r)
   }
 }

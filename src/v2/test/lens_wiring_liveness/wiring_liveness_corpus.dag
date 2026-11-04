@@ -1,5 +1,7 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_corpus
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -110,7 +112,7 @@ fn dead_wire_decl() -> FnArrowDecl {
     output: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_atom(s: ^wiring_corpus_present_input) }
+        Edge { label: Positional, target: probe_atom(s: ^wiring_corpus_present_input), declaration: NotADeclaration }
       ],
       occurrence_id: OccurrenceSynthetic
     },

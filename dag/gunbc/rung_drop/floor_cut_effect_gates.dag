@@ -14,13 +14,11 @@ data floor_cut_effect_gates: RungDrop = RungDrop {
 
   declared: "2026-09-01",
 
-  standing: Standing,
-
-    declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: OutsideTheLadder,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: floor_cut_effect_gates_population },
     restoration_trigger: "THE CAPABILITY, PER GATE AND NOT FOR THE SET: each of the six gates has a required-run consumer that refuses a merge on its own violation, with a discriminating RED executed on the real acceptance path. The seventh gate (generated-artifact drift) was restored by gunbc#9415 and is not a member. A lens that computes a gate without gating, or a gate landed with no authored RED, does not restore it. gunbc.rung_drop floor_cut cannot retire while this row stands"
-  }
+  } }
 }

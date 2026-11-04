@@ -474,3 +474,27 @@ test fn the_typed_preamble_refuses_a_fleet_ssh_transport_before_running_any_comm
       }
   }
 }
+
+// THE PRINCIPAL IS CREATED AS A SYSTEM ACCOUNT WITH NO HOME (restored from the deleted
+// test.claim.live_deploy.emit the_preamble_ensures_the_publication_principal_as_a_nologin_system_account,
+// c11aa2317029). The Either claim above says WHEN useradd runs and that the shell is nologin; this says WHAT
+// the act creates. The publication helper only answers its spool, so an account with a home directory or a
+// regular uid range is a different principal than the one the grant was reasoned for. At main head
+// d2b027b5f41 dropping --no-create-home from the shared EnsureSystemAccount argv left every surviving claim
+// green.
+test fn the_principal_act_creates_a_homeless_system_account() -> Bool {
+  match w_leg_at(step: PrincipalCheck) {
+    Absent => false
+    Present { value: leg } =>
+      match leg {
+        PreambleEither { check_step: _, check: _, act_step: _, act: a } =>
+          let words = argv_words(command: a)
+          any(words, w => w == "--system")
+            && any(words, w => w == "--no-create-home")
+            && any(words, w => w == (preamble_principal as String))
+        PreambleArgv { step: _, command: _ } => false
+        PreambleStdin { step: _, command: _, payload: _ } => false
+        PreambleEffect { step: _, effect: _ } => false
+      }
+  }
+}

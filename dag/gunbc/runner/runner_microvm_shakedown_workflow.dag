@@ -8,7 +8,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.types { yaml_string, kv }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, SelfHosted, Bash,
+  Workflow, Job, Step, RunStep, SelfHosted, Bash, WorkflowTrigger,
   WorkflowDispatch, DispatchInput, InputString,
   WorkflowPermissions, PermRead,
   self_hosted_provenance_label,
@@ -29,7 +29,7 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
-  bash_build_if_else, bash_build_test_bracket, bash_build_stmt_list_from_nodes,
+  bash_build_if_else_from_stmts, bash_build_test_bracket,
   bash_build_with_redir, bash_build_with_redir_to_file, bash_build_exit,
 }
 
@@ -130,20 +130,20 @@ fn microvm_shakedown_known_task_statements() -> List<Node> {
         right: bash_build_command_from_lits(lits: ["cut", "-d", " ", "-f1"]),
       )),
     ),
-    bash_build_if_else(
+    bash_build_if_else_from_stmts(
       cond: bash_build_test_bracket(words: [
         bash_build_word_var(name: "observed"),
         bash_build_word_lit(text: "="),
         bash_build_word_lit(text: microvm_shakedown_known_task_digest()),
       ]),
-      then_body: bash_build_stmt_list_from_nodes(stmts: [
+      then_stmts: [
         bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
         bash_build_with_redir_to_file(
           inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
           path: bash_build_word_var(name: "GITHUB_STEP_SUMMARY"),
         ),
-      ]),
-      else_body: bash_build_stmt_list_from_nodes(stmts: [
+      ],
+      else_stmts: [
         bash_build_with_redir(
           inner: bash_build_command_with_words(words: [
             bash_build_word_lit(text: "echo"),
@@ -157,7 +157,7 @@ fn microvm_shakedown_known_task_statements() -> List<Node> {
           redir: ^bash_production_fold_redir_stdout_to_stderr,
         ),
         bash_build_exit(code: "1"),
-      ]),
+      ],
     ),
   ]
 }
@@ -209,11 +209,13 @@ fn microvm_shakedown_job(script: String) -> Job {
   }
 }
 
-fn microvm_shakedown_workflow(script: String) -> Workflow {
-  Workflow {
-  name: microvm_shakedown_workflow_name,
-  run_name: Present { value: join(["microvm-shakedown ", microvm_shakedown_attempt_expression()], "") },
-  on: [
+// THE TRIGGER SET IS A MODULE-LEVEL CONSTANT that the Workflow constructor reads for its 'on'
+// field, so it cannot depend on the dispatched script: "workflow_dispatch-only" — the reason
+// gunbc.runner.runner_fleet_job_timeout_census omits this workflow from the drain-bound population —
+// is then a property of this constant, read directly by the census discharge and its witness, not a
+// sampling over built workflows.
+fn microvm_shakedown_workflow_triggers() -> List<WorkflowTrigger> {
+  [
     WorkflowDispatch {
       inputs: [
         DispatchInput {
@@ -225,7 +227,14 @@ fn microvm_shakedown_workflow(script: String) -> Workflow {
         },
       ]
     }
-  ],
+  ]
+}
+
+fn microvm_shakedown_workflow(script: String) -> Workflow {
+  Workflow {
+  name: microvm_shakedown_workflow_name,
+  run_name: Present { value: join(["microvm-shakedown ", microvm_shakedown_attempt_expression()], "") },
+  on: microvm_shakedown_workflow_triggers(),
   concurrency: none,
   env: none,
   permissions: none,

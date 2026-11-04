@@ -1,0 +1,28 @@
+module test.fixture.binwet_row_liveness_decoys
+
+// DECOY FIXTURE for dag/test/claim/ci/binwet_row_function_liveness_witness.dag (review 85702,
+// DESIGN §5: a text-grep join passes on names that occur only in comments and string literals).
+// This file deliberately spells two function names that ARE NOT declarations, in the two shapes a
+// substring matcher mistakes for one, and one name that IS a real parsed function as the positive
+// control. Nothing here executes; the fixture's whole job is to exist and parse.
+
+import std.types { String }
+
+// A commented-out declaration. The line below is a comment, so the parse carries no item named
+// bw_decoy_only_in_comment; a string_contains("fn bw_decoy_only_in_comment(") check would find it.
+//
+// fn bw_decoy_only_in_comment(x: String) -> String {
+//   x
+// }
+
+// THE STRING-LITERAL DECOY. This constant's VALUE spells a function-definition-looking line. It is
+// data, not an item: no parse produces a declaration named bw_decoy_only_in_string, but a
+// substring matcher over the file text finds "fn bw_decoy_only_in_string(" inside these bytes.
+data decoy_string_literal: String = "fn bw_decoy_only_in_string(x: String) -> String {\n  x\n}"
+
+// THE POSITIVE CONTROL: a real parsed function. The witness demands this exact (rel_path, name)
+// pair be present, so a wrong fixture path -- where both decoy refusals would be vacuously
+// correct -- cannot pass the arm.
+fn bw_decoy_real_fn(x: String) -> String {
+  x
+}

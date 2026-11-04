@@ -1070,6 +1070,7 @@ test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
     privileged: gunbc_runner_slot_privileged_commands(
       slot_dir: "/opt/actions-runner/srv3-09" as NonEmptyStr,
       job_user: "ghrunner" as NonEmptyStr,
+      mode: executor_managed_directory_mode,
     ),
   )
   !string_contains(s: sc, pattern: "sudo tar")

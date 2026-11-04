@@ -1,5 +1,6 @@
 module test.claim.runner.runner_service_slot_admission_witness
 
+import gunbc.host.host_boot_id { HostBootId, host_boot_id_of_capture_run }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
 import gunbc.runner.runner_unit_file { RunnerJobUserUidReading, JobUserUidObserved, JobUserUidUnobserved, runner_job_user_uid_reading }
@@ -16,8 +17,8 @@ import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, Kern
 import gunbc.runner.runner_slot_allocation { RunnerWidthDerived }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
 import gunbc.runner.runner_host_unit_slot {
-  ServiceSlot, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotStanding, ServiceBootId, CurrentServicePopulationStanding, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationEmpty, HostUnitSlotHostNotControlled,
-  host_unit_slot_over, service_slot_unit, service_slot_selected_workflow, current_service_population_over, service_boot_id_of,
+  ServiceSlot, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotStanding, CurrentServicePopulationStanding, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationEmpty, HostUnitSlotHostNotControlled,
+  host_unit_slot_over, service_slot_unit, service_slot_selected_workflow, current_service_population_over,
 }
 import gunbc.runner.runner_service_slot_controller {
   ServiceSlotRebuild, ServiceSlotRebuilt, ServiceSlotNotBound, ServiceSlotAdmission, ServiceSlotAdmitted, ServiceSlotAdmissionRefused, service_slot_admit,
@@ -32,7 +33,6 @@ import gunbc.runner.runner_service_slot_controller {
   ServiceSlotKeyStanding, ServiceSlotKeyHeldStanding, ServiceSlotKeyNotHeld, service_slot_key_standing_of,
   ServiceSlotIsolation, ServiceSlotIsolated, ServiceSlotListenerCouldReadKey, ServiceSlotListenerUserUnspecified, ServiceSlotIdentityUngrounded, service_slot_isolate_listener_as,
   ServiceSlotListenerCommand, ServiceSlotListenerReady, ServiceSlotListenerUnbuilt, service_slot_listener_command, ServiceSlotPassIdReading, ServiceSlotPassIdRead, ServiceSlotPassIdRefused, service_slot_pass_id_of,
-  service_slot_listener_properties,
 }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
 
@@ -47,10 +47,10 @@ fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
 fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(host: m.host, standing: bmc_control_binding(observed: m.access, secured: m.secure)) }
 
-fn boot_of(id: String) -> ServiceBootId? {
+fn boot_of(id: String) -> HostBootId? {
   match uuid_of(text: id) {
     Absent => none
-    Present { value: u } => service_boot_id_of(run: KernelBootId { boot_id: u })
+    Present { value: u } => host_boot_id_of_capture_run(run: KernelBootId { boot_id: u })
   }
 }
 
@@ -80,6 +80,7 @@ fn rebuilt_for(m: ManagedHost, id: String, index: Int) -> ServiceSlotRebuild {
 fn admission_over(m: ManagedHost, population_id: String, current_id: String, unit_id: String, index: Int) -> ServiceSlotAdmission admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admit_over"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_stop_witness", decl_name: "fixture_stop"),
 ] {
   match boot_of(id: current_id) {
     Absent => ServiceSlotAdmissionRefused { cause: "no current boot" }
@@ -191,6 +192,7 @@ test fn an_outside_bypass_of_the_mint_path_is_refused() -> Bool {
 fn key_over(file: CustodyPathMetadata, dir: CustodyPathMetadata) -> ServiceSlotKeyStanding admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "the_key_is_held_only_when_both_paths_read_back_as_declared"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_stop_witness", decl_name: "fixture_stop"),
 ] {
   service_slot_key_standing_of(row: host_credential_custody_row(c: ServiceSlotAppKey), file: file, dir: dir)
 }

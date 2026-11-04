@@ -148,7 +148,7 @@ fn task_created_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent? {
       Absent => none
       Present { value: task } => if (task.identity as String) == (roadmap_task_identity_of(operation_key: key) as String) { Present { value: TaskCreated { operation_key: key, task: task } } } else { none }
     }
-    other => none
+    _ => none
   }
 }
 
@@ -160,7 +160,7 @@ fn task_revised_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent? {
           Absent => none
           Present { value: replacement } => if (replacement.identity as String) == (id as String) { Present { value: TaskDefinitionRevised { operation_key: key, task: id, expected_definition_digest: digest, replacement: replacement } } } else { none }
         }
-        other => none
+        _ => none
       }
     }
   }
@@ -171,7 +171,7 @@ fn task_superseded_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent?
     match json_object_unique_member(v: doc, key: "replacement") {
       JsonMemberAbsent => Present { value: TaskSuperseded { operation_key: key, task: id, replacement: none } }
       JsonMemberFound { value: JsonString { value: next } } => if next == "" { none } else { Present { value: TaskSuperseded { operation_key: key, task: id, replacement: Present { value: next as NonEmptyStr } } } }
-      other => none
+      _ => none
     }
   }
 }
@@ -322,7 +322,7 @@ fn roadmap_task_commit(store: FabricStorageBinding, actor: NonEmptyStr, at: Epoc
           } } else { RuntimeTaskRefused { reason: "operation key already names a different event" } }
         Absent => match roadmap_task_capacity(events: count(events)) {
           CapacityFull => RuntimeTaskChainFull { events: count(events) }
-          other => match roadmap_task_fold(events: concat(events, [event])) {
+          _ => match roadmap_task_fold(events: concat(events, [event])) {
             RuntimeTasksInconsistent { reason: r } => RuntimeTaskStale { reason: r }
             RuntimeTasksFolded { states: after } => match roadmap_task_event_subject(event: event, states: after) {
               Absent => RuntimeTaskRefused { reason: "event's task is not in the folded roster" }

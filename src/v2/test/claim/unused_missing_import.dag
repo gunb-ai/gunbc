@@ -9,7 +9,7 @@ import v2.compiler.name_resolve {
   resolve_with_admission
 }
 import v2.compiler.normalized_tree { normalized_tree_imported_modules }
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text }
 import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude, qualified_name_from_module_node }
 import v2.std.diagnostic {
   Accepted,
@@ -99,7 +99,7 @@ test fn used_import_of_a_missing_module_still_refuses() -> Bool {
 // projects resolve_module_not_found onto that locus (file + byte range), not a whole-file
 // name of the missing module.
 test fn unused_missing_import_refusal_is_located_at_the_import_line() -> Bool {
-  match conserved_normalize_of_text(path: "umi/entry.dag", text: umi_entry_unused_missing_empty_block, explained: no_explained_drops()) {
+  match conserved_normalize_of_text(path: "umi/entry.dag", text: umi_entry_unused_missing_empty_block) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match qualified_name_from_module_node(root: tree.root) {

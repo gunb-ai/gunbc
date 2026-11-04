@@ -27,6 +27,7 @@ import gunbc.runner.runner_registration_labels {
   runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
 }
 import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
 
 data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
@@ -301,7 +302,7 @@ data incident_runner_version: NonEmptyStr = "2.334.0"
 
 // THE CORPUS PINNED STATUS, NOT LABELS. Each fixture registration carries the class labels plus
 // the label of the host it names, i.e. the registration contract
-// (gunbc.runner.runner_registration_labels runner_registration_labels) spelled independently here, so the
+// (gunbc.runner.runner_registration_labels runner_evidence_gated_registration_labels) spelled independently here, so the
 // connectivity rows below exercise status while label divergence is exercised by its own reds.
 data incident_runner_class_labels: List<NonEmptyStr> = [
   "self-hosted" as NonEmptyStr,
@@ -574,13 +575,14 @@ fn registration_verdict_or(
   registrations: List<GitHubSelfHostedRunnerRegistration>,
   incarnation: LocalRunnerSlotIncarnation,
   unseen: RunnerSlotConnectivityVerdict,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerSlotConnectivityVerdict {
   match find_registration_by_name(registrations: registrations, name: incarnation.registration_name) {
     Absent => unseen
     Present { value: reg } =>
       match reg.status {
         GitHubRunnerOnline =>
-          match runner_slot_labels_conform(slot: incarnation.slot, observed: map(reg.labels, l => l as String)) {
+          match runner_slot_labels_conform(slot: incarnation.slot, observed: map(reg.labels, l => l as String), receipt: receipt) {
             RegistrationLabelsUnjudged { host: _, cause: c } =>
               SlotConnectivityUnknown { slot: incarnation.slot, reason: c as String }
             RegistrationLabelsConform =>
@@ -603,6 +605,7 @@ fn registration_verdict_or(
 fn runner_slot_connectivity_verdict_for_incarnation(
   incarnation: LocalRunnerSlotIncarnation,
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerSlotConnectivityVerdict {
   if !incarnation.unit_active {
     SlotConnectivityUnknown {
@@ -617,6 +620,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
         registration_verdict_or(
           registrations: regs,
           incarnation: incarnation,
+          receipt: receipt,
           unseen: SlotConnectivityOrphaned { slot: incarnation.slot },
         )
       RosterObservedPartial {
@@ -628,6 +632,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
         registration_verdict_or(
           registrations: regs,
           incarnation: incarnation,
+          receipt: receipt,
           unseen: SlotConnectivityUnknown {
             slot: incarnation.slot,
             reason: partial_roster_unseen_reason(observed_count: seen, authority_total: total),
@@ -637,7 +642,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
   }
 }
 
-fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
+fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity, receipt: RunnerUserSessionReceiptInput) -> RunnerSlotConnectivityVerdict {
   let roster = incident_2026_08_06_roster_fixture()
   let incarnations = local_runner_slot_incarnations()
   match fold(
@@ -646,7 +651,7 @@ fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConne
     f: (acc, inc) =>
       if (inc.slot.host as String) == (slot.host as String) && inc.slot.slot_index == slot.slot_index {
         Present {
-          value: runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
+          value: runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster, receipt: receipt)
         }
       } else {
         acc
@@ -795,10 +800,11 @@ fn fleet_runner_capacity_width_snapshot() -> FleetRunnerCapacityWidthSnapshot {
 
 fn connectivity_verdicts_for_active_incarnations(
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> List<RunnerSlotConnectivityVerdict> {
   map(
     local_runner_slot_incarnations(),
-    inc => runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
+    inc => runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster, receipt: receipt)
   )
 }
 
@@ -878,11 +884,12 @@ fn connectivity_verdict_is_unknown(v: RunnerSlotConnectivityVerdict) -> Bool {
 // Orphaned), and folding both into one predicate would let either hold up the other's evidence.
 fn roster_unavailable_yields_unknown_not_detached(
   roster: OrganizationRunnerRosterEvidence,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> Bool {
   match roster {
     RosterReadUnavailable { reason: _ } =>
       all(
-        connectivity_verdicts_for_active_incarnations(roster: roster),
+        connectivity_verdicts_for_active_incarnations(roster: roster, receipt: receipt),
         v => connectivity_verdict_is_unknown(v: v) && !connectivity_verdict_is_detached(v: v)
       )
     RosterObserved { observed_on: _, registrations: _ } => true

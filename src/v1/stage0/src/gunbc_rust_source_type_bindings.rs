@@ -36,7 +36,7 @@ pub fn rust_source_binding(
     representation: RustRepresentation,
 ) -> Rc<SourceTypeTargetBinding<RustRepresentation>> {
     Rc::new(SourceTypeTargetBinding {
-        source: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        source: crate::std_decl_ref::decl_ref(module_path, decl_name),
         representation: representation.clone(),
         _phantom: std::marker::PhantomData,
     })
@@ -188,7 +188,7 @@ pub fn symbol_capture_declarer(
     symbol_position: String,
 ) -> Rc<SymbolCaptureDeclarer> {
     Rc::new(SymbolCaptureDeclarer {
-        declarer: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        declarer: crate::std_decl_ref::decl_ref(module_path, decl_name),
         symbol_position: symbol_position.clone(),
     })
 }

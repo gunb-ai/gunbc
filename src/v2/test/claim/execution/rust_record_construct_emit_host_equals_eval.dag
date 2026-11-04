@@ -1,5 +1,6 @@
 module v2.test.claim.execution.rust_record_construct_emit_host_equals_eval
 
+
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_host {
@@ -60,6 +61,7 @@ import v2.std.node { positional_child_target_nodes,
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -98,15 +100,18 @@ fn rust_rec_nine_field_access_body_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_dot)
+        target: dag_type_atom_node(identity: ^dag_token_dot),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_rec_construct_body_fixture
+        target: dag_rec_construct_body_fixture,
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_rec_v)
+        target: dag_type_atom_node(identity: ^dag_binding_rec_v),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

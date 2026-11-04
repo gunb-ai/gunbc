@@ -1,5 +1,7 @@
 module v2.test.claim.emit.decl_emit_consolidated
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data dc_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
@@ -17,7 +19,7 @@ fn dc_conj(children: List<Edge>) -> Node {
   Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic }
 }
 
-fn dc_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
+fn dc_pos(target: Node) -> Edge { Edge { label: Positional, target: target, declaration: NotADeclaration } }
 
 fn dc_nil() -> Node { dc_conj(children: []) }
 
@@ -68,7 +70,7 @@ fn dc_variant_block(variants: List<Node>) -> Node {
 }
 
 fn dc_named_edge(name: String, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn dc_coproduct_variant_edge_nullary(name: String) -> Edge {

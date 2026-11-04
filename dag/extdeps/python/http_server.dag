@@ -1,0 +1,41 @@
+module extdeps.python.http_server
+
+import std.types { List, NonEmptyStr, Port, String }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+
+// CPython's http.server command-line interface, as the 3.12 documentation states it: `python -m http.server
+// [port] [-b ADDRESS] [-d DIR]`. Two facts in that page shape every consumer. Without --bind the server
+// "binds itself to all interfaces", so a consumer that means one interface must pass the address. And the
+// page warns that http.server "is not recommended for production. It only implements basic security
+// checks": it authenticates no client and lists directories, so whatever it serves is served to anyone who
+// can reach the bound address.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.python.org/3.12/library/http.server.html"
+  }
+}
+
+// ONE INVOCATION, with the bind address and directory as required fields: an invocation that would bind every
+// interface has no spelling here.
+type HttpServerInvocation {
+  interpreter: NonEmptyStr
+  bind_address: NonEmptyStr
+  port: Port
+  directory: NonEmptyStr
+}
+
+fn http_server_argv(invocation: HttpServerInvocation) -> List<String> {
+  [
+    invocation.interpreter as String,
+    "-m", "http.server",
+    "--bind", invocation.bind_address as String,
+    "--directory", invocation.directory as String,
+    to_string(invocation.port),
+  ]
+}
+
+fn http_server_command_line(invocation: HttpServerInvocation) -> NonEmptyStr {
+  join(http_server_argv(invocation: invocation), " ") as NonEmptyStr
+}

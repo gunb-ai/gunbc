@@ -33,9 +33,20 @@ type BmcProtocol = Redfish | Ipmi
 // (extdeps.ampere.mt_collins_product_brief.bmc), not as a second axis here;
 // OpenBmc as an enum arm remains the nickname debt
 // extdeps.firmware.openbmc.subject records.
+//
+// SupermicroAten is Supermicro's X11/H11-generation BMC firmware (ATEN lineage, on the AST2500); its
+// authority is extdeps.bmc.supermicro. A STATED DIVERGENCE (DESIGN section 3, external upstream
+// decomposition): a closed sum of vendor products, matched exhaustively at every family-keyed site, is
+// the hub-enumerates-products shape that section forbids. It is kept because the exhaustive match IS the
+// census -- a fourth family refuses to compile at each site that must answer for it -- and replacing it
+// with rows today would drop that to a coverage witness. The follow-up that removes the divergence
+// without that drop: per-vendor upstream modules carrying their own family row, with family dispatch as
+// data whose completeness is an identity-join witness over the family roster, landed when a fourth
+// family arrives or the dispatch sites are next migrated, whichever is first.
 type BmcFirmwareFamily
   = OpenBmc
   | AmiMegaRac
+  | SupermicroAten
 
 type BmcEndpoint {
   host: NonEmptyStr

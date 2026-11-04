@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // FILED AS A STALL AND NOT AS PROSE IN THE PLAN THAT FOUND IT (gunbc.plans.joint_incompatibility_claim_join
 // section 6), on the manager's 2026-09-11 ruling: an instrument that is blind to almost every module in
@@ -31,7 +31,7 @@ data joint_claim_join_private_corpus_unindexed_stall: GuaranteeStall = Guarantee
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding {
-    grounding: "the private overlay is not a source root the .dag parse sweep can read: DAG_PARSE_SWEEP_ROOTS is a closed triple of in-workspace roots, and the private workflow copies its dag/ to public/private_overlay/dag precisely because gunbc does not yet admit an extra --source-root outside the process workspace root with module-scope annotations attaching as for an in-workspace root -- the overlay's own declared dissolution trigger",
+    grounding: GroundingUndeclared,
   },
   population: UncountedNotEnumerable {
     reason: "every private module that imports a public module, on every future public change that shrinks a surface; open rather than a list, and listing the 113 importing modules here would be a second representation of the private corpus's import edges that rots on its next commit. IT IS MEASURABLE AND THE PREDICATE IS THE INSTRUMENT: joint_claim_join with the private corpus as one subject whose added claims are its whole import set answers it the moment private records exist; until then the count is a text scan of import lines against the private module list (113 of 114 at gunbc-private #62), a scoping figure and not a producer",

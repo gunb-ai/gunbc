@@ -25,6 +25,7 @@ fn usage(edges: &[(EdgeKind, &str, i64)]) -> Rc<BindingUsage> {
                         kind: *kind,
                         site: (*site).into(),
                         span_start: *span,
+                        occurrence: None,
                     })
                 })
                 .collect(),

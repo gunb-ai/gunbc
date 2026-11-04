@@ -1,0 +1,63 @@
+module gunbc.approve_ios_swift_join
+
+import std.types { String, List, Bool, Set }
+import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject }
+import gunbc.approve_ios_app { approve_ios_retained_swift_rows }
+import gunbc.generated_artifact_registry { generated_artifact_registry }
+import gunbc.generated_artifact { artifact_path }
+
+// THE COMPLETENESS JOIN FOR THE SWIFT UNDER apps/approve-ios. Every .swift path in a supplied tree
+// listing must be exactly one of a registered generated artifact (printed and drift-gated) or a
+// typed retained row (gunbc.approve_ios_app approve_ios_retained_swift_rows). A path in neither is a
+// Swift file nothing refuses an edit to and nothing names; a path in both has two authorities.
+// The listing is a SUPPLIED value: the join discriminates at one interface (DESIGN 3); the route that
+// produces a real listing is observed by gunbc.approve_ios_swift_join_live approve_ios_swift_join_live_report, which the merge path cannot execute (gunbc.guarantee_stall approve_ios_swift_join_live_off_the_merge_path_stall).
+
+type SwiftJoinFinding
+  = SwiftFileUnaccounted { path: String }
+  | SwiftFileDoublyAccounted { path: String }
+
+data approve_ios_swift_root: String = "apps/approve-ios/"
+
+fn is_approve_ios_swift(path: String) -> Bool {
+  starts_with(s: path, prefix: approve_ios_swift_root) && ends_with(s: path, suffix: ".swift")
+}
+
+fn retained_row_path(row: FrontierRow) -> List<String> {
+  match row.subject {
+    PathSubject { path: p } => [p]
+    DeclSubject { ref: _ } => []
+  }
+}
+
+fn retained_swift_paths() -> List<String> {
+  flat_map(approve_ios_retained_swift_rows, r => retained_row_path(row: r))
+}
+
+fn registered_artifact_paths() -> List<String> {
+  map(generated_artifact_registry, a => artifact_path(a: a))
+}
+
+// MEMBERSHIP IS A Set, built once per join: contains over a list inside the per-path fold is
+// quadratic in the tree (DESIGN 6 bare-minimum cost).
+fn path_set(paths: List<String>) -> Set<String> {
+  fold(paths, init: empty_set(), f: (acc, p) => set_insert(acc, p))
+}
+
+fn swift_join_findings(tree: List<String>, registered: Set<String>, retained: Set<String>) -> List<SwiftJoinFinding> {
+  flat_map(filter(tree, p => is_approve_ios_swift(path: p)), p => {
+    let in_registry = set_contains(registered, p)
+    let in_retained = set_contains(retained, p)
+    if in_registry && in_retained {
+      [SwiftFileDoublyAccounted { path: p }]
+    } else if in_registry || in_retained {
+      []
+    } else {
+      [SwiftFileUnaccounted { path: p }]
+    }
+  })
+}
+
+fn swift_join_is_clean(tree: List<String>) -> Bool {
+  length(swift_join_findings(tree: tree, registered: path_set(paths: registered_artifact_paths()), retained: path_set(paths: retained_swift_paths()))) == 0
+}

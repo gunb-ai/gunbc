@@ -4,8 +4,6 @@ import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.access { AccessDecision, Permit, Deny, access_policy_refusal, access_refusal_reason }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
 import gunbc.hostname_read {
   hostname_short_read,
@@ -211,47 +209,3 @@ fn gunbc_ci_deploy_srv1_runner_spec() -> RunnerSpec {
   host_pinned_runner_spec(offer: srv1_offer, host: operator_host_srv1)
 }
 
-data deploy_target_host_preflight_shell_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration
-  }
-}
-
-fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
-  match proof {
-    RunnerIdentityOnHost { host: id } =>
-      concat(
-        concat(
-          concat(
-            concat(
-              "HOSTNAME=\"$(hostname -s 2>/dev/null || hostname)\"\n",
-              "RUNNER_NAME=\"$(printenv RUNNER_NAME 2>/dev/null || true)\"\n"
-            ),
-            concat(
-              concat("if [ \"$HOSTNAME\" != \"", id),
-              concat("\" ] && ! echo \"$RUNNER_NAME\" | grep -Eq '@", concat(id, "(-|\\.|$)'; then\n"))
-            )
-          ),
-          concat(
-            concat(
-              concat(
-                concat("  echo \"", deploy_target_host_refusal_local),
-                concat(" expected=", id)
-              ),
-              concat(" hostname=$HOSTNAME runner=$RUNNER_NAME\"\n", "  exit 1\nfi\n")
-            ),
-            concat(concat("echo \"deploy-target-host: PASS host=", id), "\"\n")
-          )
-        ),
-        ""
-      )
-    SshExplicitHost { host: id, ssh_host: h } =>
-      concat(
-        concat(concat("echo \"deploy-target-host: PASS SshShell target=", h), concat(" host=", id)),
-        "\"\n"
-      )
-  }
-}

@@ -8,6 +8,7 @@ import extdeps.transports.rest {
   RestResult,
   RestAnswered,
   RestRefused,
+  RestRefusal,
   RestReadExchange,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
@@ -200,12 +201,22 @@ fn advance_review_tab_scan(acc: ReviewTabScan, sheet: SheetsSheetRead) -> Review
   }
 }
 
-fn review_tab_scan_of(sheets_read: List<SheetsSheetRead>) -> ReviewTabScan {
-  fold_list(
+// THE RULE IS "EXACTLY ONE TAB PER DECLARED TITLE", NOT "EXACTLY ONE TAB IN THE SPREADSHEET". A
+// kind declares the titles of its tabs and this scan keeps only the candidates carrying the asked
+// title, so a workbook with three declared tabs answers each title independently while a kind
+// that declares a single title behaves exactly as the old rule did on a single-tab workbook. A tab
+// whose properties could not be read still poisons every title's answer, because an unreadable tab
+// may be the one carrying the title.
+fn review_tab_scan_of(sheets_read: List<SheetsSheetRead>, title: NonEmptyStr) -> ReviewTabScan {
+  let scanned = fold_list(
     sheets_read,
     ReviewTabScan { candidates: [], unreadable: none },
     (acc, s) => advance_review_tab_scan(acc: acc, sheet: s),
   )
+  ReviewTabScan {
+    candidates: filter(scanned.candidates, c => c.title == title),
+    unreadable: scanned.unreadable,
+  }
 }
 
 // THE CLASSIFICATION AUTHORIZES NOTHING, AND THAT SPLIT IS THE WHOLE REPAIR.
@@ -239,10 +250,10 @@ type ReviewTabClassification
   | ClassifiedMany { candidates: List<ReviewTabCandidate> }
   | ClassifiedUnreadable { cause: NonEmptyStr }
 
-fn classify_review_tabs(read: SpreadsheetRead) -> ReviewTabClassification {
+fn classify_review_tabs(read: SpreadsheetRead, title: NonEmptyStr) -> ReviewTabClassification {
   match read.sheets {
     Absent => ClassifiedNone
-    Present { value: ss } => classify_review_tab_scan(scan: review_tab_scan_of(sheets_read: ss))
+    Present { value: ss } => classify_review_tab_scan(scan: review_tab_scan_of(sheets_read: ss, title: title))
   }
 }
 
@@ -323,9 +334,10 @@ data review_tab_locator_field_mask: String = sheets_field_mask(paths: [sheets_fi
 // THE READ THAT MAKES THE MINT LEGITIMATE. Every arm that is not a 200 is TabUnreadable carrying
 // the transport's own account of why, because a locator that answered TabAbsent to a 403 would
 // send an operator to look for a missing tab in a spreadsheet they cannot open.
-fn locate_review_tab(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding uses net: Network {
+fn locate_review_tab(spreadsheet_id: NonEmptyStr, title: NonEmptyStr) -> ReviewTabStanding uses net: Network {
   review_tab_standing_of_outcome(
     spreadsheet_id: spreadsheet_id,
+    title: title,
     outcome: match sheets.Spreadsheets.GetSpreadsheetMetadata(
       spreadsheet_id: spreadsheet_id as String,
       fields: review_tab_locator_field_mask,
@@ -342,6 +354,7 @@ fn locate_review_tab(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding uses net:
 // not a weaker seal, it is no seal.
 fn review_tab_standing_of_outcome(
   spreadsheet_id: NonEmptyStr,
+  title: NonEmptyStr,
   outcome: RestResult<SpreadsheetRead>,
 ) -> ReviewTabStanding admit_callers: [
   decl_ref(module_path: "gunbc.review_sheet_tab_locator", decl_name: "locate_review_tab"),
@@ -351,26 +364,57 @@ fn review_tab_standing_of_outcome(
     RestAnswered { answer } =>
       review_tab_standing_from_classification(
         spreadsheet_id: spreadsheet_id,
-        classified: classify_review_tabs(read: answer),
+        classified: classify_review_tabs(read: answer, title: title),
       )
-    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
-      RestExchangeStatusRefused { status, body } =>
-        TabUnreadable {
-          cause: join(["the tab metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
-        }
-      RestExchangeUnreached { cause } =>
-        TabUnreadable {
-          cause: join(["the tab metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
-        }
-      RestExchangeUndecodable { status, cause } =>
-        TabUnreadable {
-          cause: join(["the tab metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
-        }
-      RestExchangeCommitAmbiguous { detail } =>
-        TabUnreadable {
-          cause: join(["the tab metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
-        }
-    }
+    RestRefused { refusal } => TabUnreadable { cause: metadata_read_refusal_cause(refusal: refusal) }
+  }
+}
+
+// ONE ACCOUNT OF A REFUSED METADATA READ, shared by the per-title locator and the whole-set read
+// below: both ask spreadsheets.get the same question under the same mask, so a refusal means the
+// same thing to each and is spelled once.
+fn metadata_read_refusal_cause(refusal: RestRefusal) -> NonEmptyStr {
+  match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+    RestExchangeStatusRefused { status, body } =>
+      join(["the tab metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
+    RestExchangeUnreached { cause } =>
+      join(["the tab metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
+    RestExchangeUndecodable { status, cause } =>
+      join(["the tab metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+    RestExchangeCommitAmbiguous { detail } =>
+      join(["the tab metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
+  }
+}
+
+// THE WHOLE TAB SET, FOR A CONVERGE THAT MUST KNOW EVERY TAB AND NOT ONLY THE ONE IT ASKS FOR. A
+// kind declares its exact tab set, so a tab it does not declare is a drift to refuse rather than a
+// tab to ignore, and that needs the titles of all of them. It is the same read and mask as
+// locate_review_tab, and the same poisoning rule: one unreadable tab makes the set unreadable,
+// because a set with a tab dropped is a confident answer about a workbook nobody observed. It mints
+// no LocatedReviewTab; a writer still locates its tab by title through the sealed mint.
+type ReviewTabSetReading
+  = TabSetRead { candidates: List<ReviewTabCandidate> }
+  | TabSetUnreadable { cause: NonEmptyStr }
+
+fn review_tab_set_of(read: SpreadsheetRead) -> ReviewTabSetReading {
+  let scanned = fold_list(
+    match read.sheets { Present { value: ss } => ss  Absent => [] },
+    ReviewTabScan { candidates: [], unreadable: none },
+    (acc, s) => advance_review_tab_scan(acc: acc, sheet: s),
+  )
+  match scanned.unreadable {
+    Present { value: c } => TabSetUnreadable { cause: c }
+    Absent => TabSetRead { candidates: scanned.candidates }
+  }
+}
+
+fn observe_review_tab_set(spreadsheet_id: NonEmptyStr) -> ReviewTabSetReading uses net: Network {
+  match sheets.Spreadsheets.GetSpreadsheetMetadata(
+    spreadsheet_id: spreadsheet_id as String,
+    fields: review_tab_locator_field_mask,
+  ) {
+    RestAnswered { answer } => review_tab_set_of(read: answer.result)
+    RestRefused { refusal } => TabSetUnreadable { cause: metadata_read_refusal_cause(refusal: refusal) }
   }
 }
 
@@ -382,12 +426,12 @@ fn review_tab_standing_text(s: ReviewTabStanding) -> String {
   match s {
     TabLocated { tab: t } =>
       join(["located tab: sheetId ", to_string(t.sheet_id), " titled ", t.title as String, " in ", t.spreadsheet_id as String], "")
-    TabAbsent => "no tab: spreadsheets.get answered with no sheets for this spreadsheet, so there is nothing to format"
+    TabAbsent => "no tab: spreadsheets.get answered with no tab carrying the declared title in this spreadsheet"
     TabAmbiguous { candidates: cs } =>
       join(
         [
           "AMBIGUOUS: this spreadsheet carries ", to_string(count(cs)),
-          " tabs and nothing observable says which is the review tab (",
+          " tabs with the declared title and nothing observable says which is the review tab (",
           join(map(cs, c => review_tab_candidate_text(c: c)), "; "),
           "); only an operator can adjudicate",
         ],

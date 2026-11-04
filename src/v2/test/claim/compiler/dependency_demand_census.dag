@@ -81,6 +81,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   duplicate_alias  two uses entries share the alias; first-match is refused   -> unobserved
 data ddc_resources_source: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nresource Filesystem {\n  kind: Capability\n  mode: ReadWrite\n  capability read {}\n}\n"
 
+// The closed world supplies what its own sources import: every fixture below imports `std.types { Bool }`, and an ingest
+// without that module refuses each importer at resolve (resolve_module_not_found), so no derivation claim reaches the reducer.
+data ddc_types_source: String = "module std.types\n\ntype Bool = True | False\n"
+
 data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n  operation Ping {\n    requires none\n  }\n  operation net {\n    requires none\n  }\n  operation Network {\n    requires Network\n  }\n}\n"
 
 data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn via_bare_service(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Ping()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
@@ -113,6 +117,7 @@ fn ddc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
 }
 
 data ddc_ingest: SourceRootIngest = [
+  ddc_read(source: ddc_types_source, id: ^ddc_types_artifact, unit: ^ddc_types_cu, path: "dag/std/types.dag"),
   ddc_read(source: ddc_resources_source, id: ^ddc_resources_artifact, unit: ^ddc_resources_cu, path: "dag/std/resources.dag"),
   ddc_read(source: ddc_http_source, id: ^ddc_http_artifact, unit: ^ddc_http_cu, path: "dag/t/http.dag"),
   ddc_read(source: ddc_app_source, id: ^ddc_app_artifact, unit: ^ddc_app_cu, path: "dag/t/app.dag"),

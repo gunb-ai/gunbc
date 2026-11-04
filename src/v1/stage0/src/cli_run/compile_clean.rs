@@ -883,6 +883,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ImportCollidesWithKernelName { name: s(), module_path: s(), importing_module: s(), kernel_declaration_module: s(), span: no_span() },
         KernelMintDeclarationAmbiguousAtImport { name: s(), module_path: s(), importing_module: s(), row_count: 0, span: no_span() },
         UnresolvedType { name: s(), span: no_span() },
+        TypeRefMeasureBindingDisagreement { name: s(), production_route: s(), span: no_span() },
         TypeArgumentKindMismatch { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
         TypeParameterInValuePosition { name: s(), span: no_span() },
         UnitVariantPhantomIdentityEvidenceUnavailable { name: s(), span: no_span() },
@@ -915,6 +916,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         NonExhaustiveMatch { missing: istrings(), span: no_span() },
         CircularDependency { modules: istrings(), span: no_span() },
         DuplicateModule { name: s(), span: no_span() },
+        TypeAliasCycle { members: istrings(), span: no_span() },
         DuplicateDeclaration { module_name: s(), name: s(), span: no_span() },
         MissingAnnotation { fn_name: s(), what: s(), span: no_span() },
         ParseError { message: s(), span: no_span() },
@@ -926,7 +928,6 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             reason: "predicate not enforced at compile time".to_string(),
             span: no_span(),
         },
-        OwnershipViolation { binding: s(), fn_name: s(), consumers: 0, span: no_span() },
         VariantCollision { variant: s(), enum1: s(), enum2: s(), span: no_span() },
         SoleConstructorViolation { type_name: s(), span: no_span() },
         KernelMintShapeMismatch { declaration_name: s(), cause: s(), span: no_span() },
@@ -943,6 +944,10 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         AdmitCallersEntryNotDeclRef { constructor_decl_name: s(), span: no_span() },
         DeclaredTypeNotInhabited { position: s(), expected: s(), got: s(), span: no_span() },
         DeclaredTypeInhabitanceUndecided { position: s(), reason: s(), span: no_span() },
+        DeclaredTypeInhabitanceUnmodeled { position: s(), span: no_span() },
+        ArithmeticWithoutCarrier { operation: s(), operands: istrings(), span: no_span() },
+        ArithmeticAmbiguousCarrier { operation: s(), candidates: istrings(), span: no_span() },
+        ArithmeticUndecidedCarrier { operation: s(), span: no_span() },
         UnlistedImportUse { name: s(), span: no_span() },
         ReferenceDerivedImportProviderUnknown { name: s(), referencing_module: s(), span: no_span() },
         ReferenceDerivedImportExportUnproven { name: s(), referencing_module: s(), provider_module: s(), span: no_span() },
@@ -962,6 +967,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         CallNamedArgOnFunctionValue { callee: s(), argument: s(), span: no_span() },
         EqualityOnFunctionMember { type_name: s(), member: s(), span: no_span() },
         EqualityMemberUnjudgeable { type_name: s(), member: s(), span: no_span() },
+        EqualityOnInadmissibleType { type_name: s(), span: no_span() },
         EqualityOptionalityMismatch { optional_side: s(), span: no_span() },
         TypeArgumentArityMismatch { type_name: s(), supplied: 0, declared: 0, span: no_span() },
         OccurrenceTransportViolation {
@@ -978,6 +984,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             missing_realization_fact: s(),
             span: no_span(),
         },
+        CastRealizationRefused { target: s(), missing_realization_fact: s(), span: no_span() },
         TypeNameCarriesNoRecordConstructor {
             type_name: s(),
             declared_variants: istrings(),
@@ -1358,6 +1365,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "KernelMintDeclarationAmbiguousAtImport"
         }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { .. } => {
+            "TypeRefMeasureBindingDisagreement"
+        }
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => {
             "UnitVariantPhantomIdentityEvidenceUnavailable"
         }
@@ -1386,13 +1396,13 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
         CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
         CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::TypeAliasCycle { .. } => "TypeAliasCycle",
         CompilerDiagnostic::DuplicateDeclaration { .. } => "DuplicateDeclaration",
         CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
         CompilerDiagnostic::ParseError { .. } => "ParseError",
         CompilerDiagnostic::InternalError { .. } => "InternalError",
         CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
         CompilerDiagnostic::WhereRefinementUnenforced { .. } => "WhereRefinementUnenforced",
-        CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
         CompilerDiagnostic::KernelMintShapeMismatch { .. } => "KernelMintShapeMismatch",
@@ -1405,6 +1415,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => "AdmitCallersEntryNotDeclRef",
         CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => "DeclaredTypeNotInhabited",
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => {
+            "DeclaredTypeInhabitanceUnmodeled"
+        }
+        CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => "ArithmeticWithoutCarrier",
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => "ArithmeticAmbiguousCarrier",
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { .. } => "ArithmeticUndecidedCarrier",
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
             "DeclaredTypeInhabitanceUndecided"
         }
@@ -1437,10 +1453,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeParameterInValuePosition { .. } => "TypeParameterInValuePosition",
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => "EqualityOnFunctionMember",
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
+        CompilerDiagnostic::EqualityOnInadmissibleType { .. } => "EqualityOnInadmissibleType",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
+        CompilerDiagnostic::CastRealizationRefused { .. } => "CastRealizationRefused",
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
@@ -1471,6 +1489,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ImportCollidesWithKernelName { name, .. } => name.clone(),
         CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { name, .. } => name.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. } => {
             name.clone()
         }
@@ -1495,6 +1514,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
         CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::TypeAliasCycle { .. } => "(alias cycle)".to_string(),
         CompilerDiagnostic::DuplicateDeclaration { name, .. } => name.clone(),
         CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
         CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
@@ -1512,7 +1532,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::WhereRefinementUnenforced {
             predicate, reason, ..
         } => format!("{predicate}: {reason}"),
-        CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::KernelMintShapeMismatch {
@@ -1530,6 +1549,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         } => constructor_decl_name.clone(),
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position, .. } => position.clone(),
+        CompilerDiagnostic::ArithmeticWithoutCarrier { operation, .. } => operation.clone(),
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { operation, .. } => operation.clone(),
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { operation, .. } => operation.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
@@ -1559,6 +1582,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TypeParameterInValuePosition { name, .. } => name.clone(),
         CompilerDiagnostic::EqualityOnFunctionMember { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::EqualityOnInadmissibleType { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
         }
@@ -1575,6 +1599,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
+        // The NAME is the refusal fact, which names the uncastable pair: the burn-down is the
+        // list of cast routes awaiting a declaration or a realization.
+        CompilerDiagnostic::CastRealizationRefused {
+            missing_realization_fact,
+            ..
+        } => missing_realization_fact.clone(),
         // The NAME is the config FIELD, not the referenced spelling: the burn-down this
         // histogram feeds is the list of service-config fields still awaiting the reference
         // judgment, and keying on the referenced name would spread one unjudged field across
@@ -1605,6 +1635,116 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
     (class.to_string(), name)
 }
 
+/// THE RENDERED `(expected, got)` PAIR a single diagnostic carries, or `None` when its class
+/// carries none. INTERIM hand-Rust scaffold, one marker with `compile_clean_diagnostic_histogram_key`
+/// (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7): a TOTAL match over
+/// `CompilerDiagnostic` — a variant gains a rendered pair only by its arm being written here, and
+/// the census fold reads this one extractor, never a per-consumer guess (§3). The pair TEXT is the
+/// STRINGS THE CHECK SITE ALREADY RENDERED (for the inhabitance pair, the output of the type-shape
+/// renderer `node_type_shape`, authority src/v1/04_types.dag); this projects those strings and never
+/// re-renders (§6 — the producer is named, its output is not re-derived here). An `i64` pair such as
+/// `ArityMismatch`'s is an arity count, not a rendered type shape: its arm is `None` like the
+/// pairless classes, and the census model's `Absent` is the ONLY honest non-pair reading.
+pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(String, String)> {
+    use crate::v1_std_core::CompilerDiagnostic;
+    match d.diagnostic.as_ref() {
+        CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => None,
+        CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { .. } => None,
+        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => None,
+        CompilerDiagnostic::AmbiguousReference { .. } => None,
+        CompilerDiagnostic::ArityMismatch { .. } => None,
+        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => None,
+        CompilerDiagnostic::CallArgumentDuplicate { .. } => None,
+        CompilerDiagnostic::CallArgumentNameUnknown { .. } => None,
+        CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => None,
+        CompilerDiagnostic::CallPositionalDeficit { .. } => None,
+        CompilerDiagnostic::CallPositionalSurplus { .. } => None,
+        // The refusal carries the target NAME and the missing realization FACT, not a rendered
+        // type-shape pair: like the pairless classes its arm is None, and the census model's
+        // `Absent` is the honest reading.
+        CompilerDiagnostic::CastRealizationRefused { .. } => None,
+        CompilerDiagnostic::CircularDependency { .. } => None,
+        CompilerDiagnostic::ComplexityUnknown { .. } => None,
+        CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => None,
+        CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => None,
+        CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => None,
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => None,
+        CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => None,
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => None,
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { .. } => None,
+        CompilerDiagnostic::DeclaredTypeNotInhabited { expected, got, .. } => {
+            Some((expected.clone(), got.clone()))
+        }
+        CompilerDiagnostic::DuplicateDeclaration { .. } => None,
+        CompilerDiagnostic::DuplicateModule { .. } => None,
+        CompilerDiagnostic::EffectfulSelfRecursionUnrealized { .. } => None,
+        CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => None,
+        CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { .. } => None,
+        CompilerDiagnostic::EmittedSymbolCollision { .. } => None,
+        CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => None,
+        CompilerDiagnostic::EqualityOnFunctionMember { .. } => None,
+        CompilerDiagnostic::EqualityOnInadmissibleType { .. } => None,
+        CompilerDiagnostic::EqualityOptionalityMismatch { .. } => None,
+        CompilerDiagnostic::FieldNotFound { .. } => None,
+        CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => None,
+        CompilerDiagnostic::GeneratedProviderUnavailable { .. } => None,
+        CompilerDiagnostic::ImportCollidesWithKernelName { .. } => None,
+        CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => None,
+        CompilerDiagnostic::InternalError { .. } => None,
+        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { .. } => None,
+        CompilerDiagnostic::KernelMintShapeMismatch { .. } => None,
+        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => None,
+        CompilerDiagnostic::MethodExistenceUndecided { .. } => None,
+        CompilerDiagnostic::MethodNotFound { .. } => None,
+        CompilerDiagnostic::MissingAnnotation { .. } => None,
+        CompilerDiagnostic::MissingExport { .. } => None,
+        CompilerDiagnostic::MissingField { .. } => None,
+        CompilerDiagnostic::ModuleFilenameCollision { .. } => None,
+        CompilerDiagnostic::NativeEffectRealizationRefused { .. } => None,
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => None,
+        CompilerDiagnostic::OccurrenceTransportViolation { .. } => None,
+        CompilerDiagnostic::OptionalCastNotEliminated { .. } => None,
+        CompilerDiagnostic::ParseError { .. } => None,
+        CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => None,
+        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => None,
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => None,
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => None,
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => None,
+        CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { .. } => None,
+        CompilerDiagnostic::SoleConstructorViolation { .. } => None,
+        CompilerDiagnostic::TestCodeReferenced { .. } => None,
+        CompilerDiagnostic::TextCrossingHasNoImplicitRoute { expected, got, .. } => {
+            Some((expected.clone(), got.clone()))
+        }
+        CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { .. } => None,
+        CompilerDiagnostic::TransportEmissionNotModeled { .. } => None,
+        CompilerDiagnostic::TypeAliasCycle { .. } => None,
+        CompilerDiagnostic::TypeArgumentArityMismatch { .. } => None,
+        CompilerDiagnostic::TypeArgumentKindMismatch { .. } => None,
+        CompilerDiagnostic::TypeMismatch { expected, got, .. } => {
+            Some((expected.clone(), got.clone()))
+        }
+        CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => None,
+        CompilerDiagnostic::TypeParameterInValuePosition { .. } => None,
+        // INTERIM hand-Rust scaffold, same marker as the pair above
+        // (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7): the
+        // measure-vs-production disagreement carries a type-reference NAME and the
+        // production ROUTE that resolved it (its authority src/v1/00_core.dag
+        // render_diagnostic); neither is a rendered expected/got type shape, so the
+        // pairless reading is the honest one — the sibling reading `UnresolvedType`
+        // already gets. A pair is gained only by this arm being rewritten.
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { .. } => None,
+        CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => None,
+        CompilerDiagnostic::UnlistedImportUse { .. } => None,
+        CompilerDiagnostic::UnlistedVariantValueUse { .. } => None,
+        CompilerDiagnostic::UnresolvedImport { .. } => None,
+        CompilerDiagnostic::UnresolvedType { .. } => None,
+        CompilerDiagnostic::VariantCollision { .. } => None,
+        CompilerDiagnostic::VariantNotFound { .. } => None,
+        CompilerDiagnostic::WhereRefinementUnenforced { .. } => None,
+    }
+}
+
 pub(crate) fn compile_clean_internal_error_histogram_name(message: &str) -> String {
     if let Some(rest) = message.strip_prefix("function '") {
         if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
@@ -1623,7 +1763,6 @@ pub(crate) fn compile_clean_diags_from_resolved_stages(
     resolve_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
     norm_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
     typed: &Rc<v1_compiler_compile::ResolvedGraph>,
-    ownership_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
 ) -> Rc<im::Vector<Rc<ErrorNode>>> {
     let mut acc = im::Vector::new();
     for d in resolve_diags.iter() {
@@ -1633,7 +1772,6 @@ pub(crate) fn compile_clean_diags_from_resolved_stages(
     for d in typed.diagnostics.iter() {
         acc.push_back(d.clone());
     }
-    acc.extend(ownership_diags.iter().cloned());
     Rc::new(acc)
 }
 

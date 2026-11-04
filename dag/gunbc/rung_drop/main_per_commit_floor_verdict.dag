@@ -2,7 +2,7 @@ module gunbc.rung_drop.main_per_commit_floor_verdict
 
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup }
-import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, Enumerated, ReplacementStaged, RetiredTypedDeclaration }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 // DECLARED 2026-09-11 with P0a.1 occupancy grouping (gunbc#10981, review 63340).
@@ -40,16 +40,15 @@ data main_per_commit_floor_verdict: RungDrop = RungDrop {
   declared: "2026-09-11",
 
   standing: Retired {
-    trigger_fired: "2026-10-12 (gunbc#13791) -- every landed main sha obtains its terminal verdict from its own push-on-main run of the required workflow, in a run-<id> concurrency group with no other member, so no pending main sha can be superseded. The 2026-09-15 basis (the merge_group run on the composed revision) lapsed when the merge queue stopped being used, 2026-10-09" as NonEmptyStr
-  },
-
-  declaration: TypedDeclaration {
+    trigger_fired: "2026-10-12 (gunbc#13791) -- every landed main sha obtains its terminal verdict from its own push-on-main run of the required workflow, in a run-<id> concurrency group with no other member, so no pending main sha can be superseded. The 2026-09-15 basis (the merge_group run on the composed revision) lapsed when the merge queue stopped being used, 2026-10-09" as NonEmptyStr,
+    declaration: RetiredTypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "witness_floor_concurrency_group keys push events by github.ref under the 2026-09-10 occupancy ruling; cancel-in-progress stays false"
     },
-    population: Enumerated { members: FreeSemigroup { head: "push events on refs/heads/main", tail: [] } },
+    population_at_retirement: Enumerated { members: FreeSemigroup { head: "push events on refs/heads/main", tail: [] } },
     restoration_trigger: "every superseded pending refs/heads/main SHA receives a terminal adjudication, bound to that SHA, of every required acceptance obligation -- executed and passed, or coverage by a superseding execution proved. SUFFICIENT FOR: per-commit attribution and bisection grain on main, so a SHA GitHub removed while pending is not silent. Fleet cancellation safety (running_supersession_for_fleet_standing restoring pull_request-only running cancel) lives on the running-cancellation axis and does not retire this evidence-grain drop. Re-adding unique run_id to the group string is an artifact and does not discharge the row"
+  }
   }
 }

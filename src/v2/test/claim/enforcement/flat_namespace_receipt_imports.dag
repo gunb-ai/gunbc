@@ -1,0 +1,94 @@
+module v2.test.claim.enforcement.flat_namespace_receipt_imports
+
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.decl_ref { DeclarationRef }
+import gunbc.source_layout { layout_module_storage_path }
+import gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespace { bare_name_resolved_only_by_the_flat_namespace }
+import v2.lens.module_graph { ImportResolutionFact, import_resolution_facts_live, module_graph_exclude_substrings }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The identity join (caller module, callee owner module) over the declarations the RFM row
+// bare_name_resolved_only_by_the_flat_namespace receipts as call sites that bound only through the
+// flat namespace. CALLERS come from the RFM evidence rows (DeclarationRef.module_path/decl_name);
+// the join requires each listed caller declaration to BE an evidence row, so a receipted
+// declaration cannot be silently dropped from this control. The import facts are read from the
+// parsed import declarations (import_resolution_facts_live), not from text.
+//
+// WHY THE OWNER COLUMN IS LISTED: the owner of a called name is exactly the fact the flat
+// namespace hides -- resolving it through the same bare lookup would reproduce the defect this
+// control guards, and the DeclarationRef rows name the caller only. Each owner is a module that
+// declares a name the caller's body calls cross-module.
+type ReceiptedCallEdge {
+  caller_module: String
+  caller_decl: String
+  owner_module: String
+}
+
+data receipted_call_edges: List<ReceiptedCallEdge> = [
+  ReceiptedCallEdge { caller_module: "v2.lens.complexity_lowering", caller_decl: "cost_is_lowerable", owner_module: "v2.lens.cost" },
+  ReceiptedCallEdge { caller_module: "v2.lens.enforcement.cost_coverage", caller_decl: "cost_coverage_fn_verdict_from_body", owner_module: "v2.lens.cost" },
+  ReceiptedCallEdge { caller_module: "v2.lens.enforcement.cost_coverage", caller_decl: "cost_coverage_fn_verdict_from_body", owner_module: "v2.lens.enforcement.receipts" },
+  ReceiptedCallEdge { caller_module: "v2.lens.enforcement.inventory", caller_decl: "cadence_scheduling_rows_for_witness", owner_module: "v2.workflow.witness_admission" }
+]
+
+fn str_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn path_of(module: String) -> String {
+  match layout_module_storage_path(module: module) {
+    Absent => ""
+    Present { value: p } => p
+  }
+}
+
+fn parent_dir(path: String) -> String {
+  match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
+    Absent => path
+    Present { value: rest } => join(reverse(rest), "/")
+  }
+}
+
+fn edge_roots() -> FreeMonoid<String> {
+  fold_list(
+    xs: receipted_call_edges,
+    empty: [],
+    cons: fn(acc, e) {
+      let a = parent_dir(path: path_of(module: e.caller_module))
+      let b = parent_dir(path: path_of(module: e.owner_module))
+      let acc1 = if contains(xs: acc, item: a, eq: str_eq) { acc } else { list_snoc_item(xs: acc, item: a) }
+      if contains(xs: acc1, item: b, eq: str_eq) { acc1 } else { list_snoc_item(xs: acc1, item: b) }
+    }
+  )
+}
+
+fn is_receipted(e: ReceiptedCallEdge) -> Bool {
+  bare_name_resolved_only_by_the_flat_namespace.evidence
+    |> any(d => d.module_path == e.caller_module && d.decl_name == e.caller_decl)
+}
+
+fn edge_imported(facts: List<ImportResolutionFact>, e: ReceiptedCallEdge) -> Bool {
+  facts |> any(f => f.path == path_of(module: e.caller_module) && f.import_module == e.owner_module)
+}
+
+fn refused_edges(facts: List<ImportResolutionFact>) -> FreeMonoid<String> {
+  fold_list(
+    xs: receipted_call_edges,
+    empty: [],
+    cons: fn(acc, e) {
+      if is_receipted(e: e) && edge_imported(facts: facts, e: e) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: concat(e.caller_module, concat(" -> ", e.owner_module)))
+      }
+    }
+  )
+}
+
+test fn flat_namespace_receipted_callers_import_their_callee_owners() -> Bool {
+  let roots = edge_roots()
+  let facts = import_resolution_facts_live(pool_roots: roots, importer_roots: roots, exclude_substrings: module_graph_exclude_substrings)
+  length(xs: refused_edges(facts: facts)) == 0
+}

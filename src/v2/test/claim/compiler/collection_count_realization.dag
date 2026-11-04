@@ -6,9 +6,9 @@ import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_inf
 import std.types { Bool, List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
-import std.optional { Absent, Optional, Present }
+import std.optional { optional_eq, Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { positional_child_target_nodes, Atom, Instantiation, Node, TypeNode, node_subtree_nodes, node_synthetic }
+import v2.std.node { node_same_occurrence, positional_child_target_nodes, Atom, Instantiation, Node, TypeNode, node_subtree_nodes, node_synthetic }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.extdeps.languages.dag { dag_binding_denotation }
 import std.algebra { Cons, Empty, list_at_optional }
@@ -88,7 +88,7 @@ fn ccc_int_type() -> Node {
 // SUPPLIED: one formal, the bounded carrier M.
 test fn ccc_signature_is_one_carrier_formal() -> Bool {
   match ccc_formals() {
-    Cons { head: f, tail: Empty } => f == collection_roster_carrier_type()
+    Cons { head: f, tail: Empty } => node_same_occurrence(a: f, b: collection_roster_carrier_type())
     _ => false
   }
 }
@@ -110,6 +110,6 @@ test fn ccc_int_binds_the_carrier_formal() -> Bool {
 test fn ccc_size_result_is_the_stated_int() -> Bool {
   match ccc_arrow() {
     Absent => false
-    Present { value: arrow } => list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) == Present { value: ccc_int_type() }
+    Present { value: arrow } => optional_eq(a: list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1), b: Present { value: ccc_int_type() }, eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
   }
 }

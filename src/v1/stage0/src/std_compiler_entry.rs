@@ -94,7 +94,7 @@ pub struct NativeEffectDenominator {
 
 pub fn native_effect_declared(module_path: String, decl_name: String) -> Rc<NativeEffectClass> {
     Rc::new(NativeEffectClass::NativeEffectDeclaration {
-        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        declaration: crate::std_decl_ref::decl_ref(module_path, decl_name),
     })
 }
 
@@ -133,9 +133,9 @@ pub fn native_claim_route_denominator() -> Rc<NativeEffectDenominator> {
             static CACHED: Rc<NativeEffectDenominator> = {
                 Rc::new(NativeEffectDenominator {
         route: CompilerEntryDriver::NativeClaimDriver,
-        ruling: crate::std_decl_ref::decl_ref("std.compiler_entry".to_string(), "NativeClaimDriver".to_string()),
+        ruling: crate::std_decl_ref::decl_ref("gunbc.design_ruling".to_string(), "native_claim_route_admits_the_docker_cli".to_string()),
         scope: Rc::new(NativeEffectScope::NativeAdmitOnly {
-        admitted: Rc::new(vec![native_effect_declared("extdeps.filesystem.filesystem_io".to_string(), "Filesystem".to_string()), native_effect_declared("std.realization_measurement".to_string(), "AllocationCounter".to_string())]),
+        admitted: Rc::new(vec![native_effect_declared("extdeps.filesystem.filesystem_io".to_string(), "Filesystem".to_string()), native_effect_declared("std.realization_measurement".to_string(), "AllocationCounter".to_string()), native_effect_declared("extdeps.docker.cli_service".to_string(), "DockerCli".to_string())]),
     }),
     })
             };
@@ -267,7 +267,7 @@ pub fn native_driver_cost_account(
     tolerance: Nanosecond,
 ) -> Rc<NativeDriverCostAccounting> {
     {
-        let sum = native_driver_exclusive_sum(exclusive.clone());
+        let sum = native_driver_exclusive_sum(exclusive);
         if (crate::std_measure::nanosecond_count(sum.clone())
             > crate::std_measure::nanosecond_count(parent_span.clone()))
         {

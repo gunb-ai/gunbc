@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj }
+import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj, NotADeclaration }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -36,8 +36,8 @@ fn effect_subject(signature: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: signature },
-      Edge { label: Positional, target: body },
+      Edge { label: Positional, target: signature, declaration: NotADeclaration },
+      Edge { label: Positional, target: body, declaration: NotADeclaration },
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -48,11 +48,13 @@ data effect_derived_from_signature_input: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^effect_read_subject_field },
-      target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol))
+      target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol)),
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^effect_write_subject_field },
-      target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol))
+      target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol)),
+      declaration: NotADeclaration
     },
   ],
   occurrence_id: OccurrenceSynthetic
@@ -63,8 +65,8 @@ data explicit_reread_input: Node = effect_subject(signature: atom_node(s: ^read_
 data falsification_redundant_read: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
-    Edge { label: Authored { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
+    Edge { label: Authored { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol), declaration: NotADeclaration },
+    Edge { label: Authored { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol), declaration: NotADeclaration },
   ],
   occurrence_id: OccurrenceSynthetic
 }

@@ -1,7 +1,7 @@
 module test.claim.site_gunb_ai_tokens_witness
 
 import std.types { Bool, Int, List, String }
-import std.algebra { string_contains }
+import std.algebra { string_contains, collection_concat_shape, collection_map_shape, collection_join_shape, list_push }
 import gunbc.design.material { CssDecl }
 import extdeps.languages.css.properties { CustomProperty }
 import gunbc.design.gunb_ai_hues { gunb_ai_hues_admissible }

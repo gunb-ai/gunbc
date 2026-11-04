@@ -126,7 +126,6 @@ fn gunbhub_browse_page() -> Fragment {
                 children: [
                   gunbhub_browse_entry(name: "dag", path: "/dag"),
                   gunbhub_browse_entry(name: "src", path: "/src"),
-                  gunbhub_browse_entry(name: "ROADMAP.md", path: "/ROADMAP.md"),
                 ],
               },
             ],

@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.v1_elaborates_bare_none_to_optional_unit_and_lets_unit_inhabit_bool
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data v1_elaborates_bare_none_to_optional_unit_and_lets_unit_inhabit_bool: RecurringFailureMode = RecurringFailureMode {
+  identity: "v1_elaborates_bare_none_to_optional_unit_and_lets_unit_inhabit_bool" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the native v2 compiler judges the corpus (the seed retires as the compiler); sufficient when the REDs below refuse natively on the real std.algebra and std.types rather than the stub, and the controls pass. Not satisfied by a v1 patch, which the PURPOSE test does not justify." } },
+
+  receipts: [
+    "INVALID STATE, two floor breaks in the v1 seed, both found by smart-boar-59 on bin 5c5f591b: (a) a bare `none` as a fold init (`fold(xs, init: none, f: ...)`) is elaborated to Optional<Unit>, not an open Optional<T>, so the matched binder is Unit and `let z: Bool = c` is ACCEPTED; a typed init (`let init0: String? = none`) restores the refusal. Corpus member: gunbc.harness.harness_throughput (the fold with `init: none`). (b) a Unit-typed value at a Bool annotation (`fn f(u: Unit) -> Bool { let z: Bool = u  z }`) is ACCEPTED while Int-as-Bool is refused.",
+
+    "HARM: silent wrong typing at the compiler floor (DESIGN 4b: values inhabit declared types) while the seed is the compiler; below the ladder, not a rung. Neighbours: v1_accepts_a_container_at_a_coproduct_annotation_and_a_split_derived_element_untyped (gunbc#14785), field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter, arithmetic_accepts_an_unconstrained_type_variable_operand. Relevant ruling: H3, none is syntax lowered to Absent, so its Optional element type must stay open until a declared type or use closes it.",
+
+    "RECEIPTS (v1, remote amd64, one file per probe, a control after the probe in the same file that REFUSED, so accepted is distinguishable from never-reached): bin d01efe1fcb989eaf, remote SRC 6a03b8bf6d5bb84c68a7adc7544676ebe5fb519c. zz_fa (fold init: none, binder as Bool): ACCEPTED, control refused. zz_fb (typed init, binder as Bool): REFUSED (String vs Bool), control refused. zz_fc (Unit as Bool): ACCEPTED, control refused. The probe sources were scratch files and are reproducible from the shapes above. (smart-boar-59's own probes: probe_a4_fold and probe_a4_nontext, bin 5c5f591b.)",
+
+    "RECEIPTS (native, `gunbc run` of a probe through assemble_program_from_ingest and v2.compiler.infer, same remote subject, bin d01efe1fcb989eaf; the probe module declares its own Unit and Optional, std.algebra is a stub): Unit-as-Bool INFER_REJECTED (bound_value_does_not_inhabit_annotation); a bare `none` binder at Bool INFER_REJECTED infer_unsolved_constructor_type_variable; the same through an identity generic INFER_REJECTED infer_unsolved_constructor_type_variable; a typed none INFER_REJECTED; Int-as-Bool and the planted Int-body-true control REJECTED. STUB CAVEAT: the native fold was not run (the real std.algebra is not yet natively compilable); the none-through-generic probe is the analogue, so the re-run unstubbed is the trigger. These are seed defects v2 does not carry forward (DESIGN 7).",
+
+    "RUNG FOUND AT: below the ladder on v1. CEILING: structurally guaranteed -- the open constructor type variable is already refused natively. NEXT-RUNG TRIGGER: seed retirement or native judging the corpus, with the unstubbed re-run.",
+  ],
+
+  evidence: [],
+}

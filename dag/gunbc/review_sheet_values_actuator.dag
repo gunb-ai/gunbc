@@ -15,8 +15,6 @@ import extdeps.transports.rest {
   classify_rest_refusal,
 }
 import extdeps.google.sheets
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.google.sheets {
   ValueRange,
   ValueRangeWrite,
@@ -33,14 +31,14 @@ import extdeps.google.sheets {
 
 // THE FIRST EXECUTED CALLER OF THE SHEETS SERVICE, which until this module ran had zero call sites.
 //
-// IT DOES NOT DISSOLVE live_sheets_transport_frontier, and the earlier wording here claimed
-// otherwise. That frontier reserves a caller for review_sheet_ensure specifically -- the cell-level
-// converge with conflict detection over an operator-edited sheet -- and this module does not call
-// it: it converges a whole range against a supplied ValueRange. The frontier is still open and
-// review_sheet_ensure still has no caller. What this module did establish is that the frontier was
-// hiding a defect: the earlier plan lowering built an Optional-wrapped ValueRange body that Sheets
-// refuses, which no witness over a mock response corpus could ever have caught; the lowering is
-// now gunbc.review_sheet_sheets lower_write_plan, which builds ValueRangeWrite.
+// IT IS NOT THE ROW WRITE. It converges a whole range against a supplied ValueRange, which is right
+// for the one header row the review-sheet converge initialises into an empty tab
+// (gunbc.review_sheet_converge_cli converge_review_tab_header) and wrong for rows, where a
+// whole-range rewrite would erase the operator's cells; rows go through
+// gunbc.review_sheet_sheets review_sheet_ensure, the cell-level converge with conflict detection.
+// An earlier plan lowering built an Optional-wrapped ValueRange body that Sheets refuses, which no
+// witness over a mock response corpus could have caught; the lowering is now
+// gunbc.review_sheet_sheets lower_write_plan, which builds ValueRangeWrite.
 //
 // THE WHOLE-PLAN ROUTE IS NOT THIS MODULE. gunbc.review_sheet_batch_actuator issues one
 // values.batchUpdate over an admitted TabBoundWritePlan and verifies by whole-tab reassessment; it
@@ -384,15 +382,3 @@ fn values_outcome_text(o: ValuesWriteOutcome) -> String {
   }
 }
 
-
-// The consumer is real and executed -- it wrote 58 rows on 2026-09-16 -- but it lives in another
-// repository, so no check in this one can see it. The trigger is a consumer INSIDE this corpus:
-// when the census producer lands here and a public entry point converges a sheet, this row goes.
-data review_sheet_values_consumer_frontier: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.review_sheet_values_actuator",
-    decl_name: "converge_sheet_values",
-    field: WholeDeclaration
-  }
-}

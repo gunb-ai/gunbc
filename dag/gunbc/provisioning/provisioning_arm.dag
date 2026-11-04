@@ -1,20 +1,41 @@
 module gunbc.provisioning.provisioning_arm
 
+import gunbc.boot_artifact_delivery {
+  BootArtifactDelivery,
+  BootDeliveryPlan,
+  BootDeliveryPlanAdmitted,
+  BootDeliveryPlanIncoherence,
+  BootDeliveryPlanIncoherent,
+  BootDeliveryPlanned,
+  BootDeliveryRefusalCause,
+  BootDeliveryRefused,
+  BootDeliverySolution,
+  MegaRacRestRemoteMedia,
+  OpenBmcConfigfsUsbGadget,
+  OpenBmcNbdProxyWebsocket,
+  PxeChainBoot,
+  RedfishVirtualMediaPull,
+  UefiHttpBoot,
+  admit_boot_delivery_plan,
+}
+import gunbc.machine_intake.subject { IntakeAttemptId }
+import gunbc.machine_intake.access { boot_delivery_target_subject }
+import extdeps.toolchain.types { Architecture }
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.site_pxe_edge_converge {
-  SitePxeEdgeChainloaderPin,
-  SitePxeEdgeChainloaderPinned,
-  SitePxeEdgeChainloaderUnpinned,
-  SitePxeEdgeChainloaderBuildReceipt,
-  SitePxeEdgeSecureBootStanding,
-  SecureBootObserved,
-  SecureBootUnobserved,
-  SecureBootRefused,
-  SecureBootVerdictRejected,
-  SecureBootVerdictBooted,
+  SitePxeEdgeChainPin,
+  SitePxeEdgeChainPinned,
+  SitePxeEdgeChainUnpinned,
+  SitePxeEdgePinnedChain,
+  ChainSecureBootNoUnsignedMember,
+  ChainSecureBootBooted,
+  ChainSecureBootUnobserved,
+  ChainSecureBootRefused,
+  ChainSecureBootRejected,
+  site_pxe_edge_chain_secure_boot,
 }
 
 // ── Sibling imports (cut 6): ONE block. Each module is another cut-6 work item's file, now on main (S0 swift-wren-451,
@@ -31,18 +52,9 @@ import gunbc.firmware_network_boot_standing {
   Refused,
 }
 // S3, PR #14281: the pinned Ubuntu arm64 network origin an attempt fetches from.
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin }
 // S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
-import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
-
-// THE CLOSED SET OF DELIVERY STRATEGIES THE OPERATOR HAS PERMITTED. Network boot (PXE or UEFI HTTP,
-// one family: the firmware picks the transport) and BMC virtual media. There is deliberately no
-// USB arm: the operator ruled a USB interim out for these boards, so a variant would model a decision
-// already made against. A fleet where USB is admitted adds the constructor here and one arm in
-// provisioning_arm_derive; nothing else in this module names a transport.
-type DeliveryStrategy
-  = PxeOrUefiHttp
-  | VirtualMedia
+import gunbc.provisioning.ubuntu_autoinstall_seed { UbuntuAutoinstallSeedBinding, BindingBlocker }
 
 // What the BMC says about presenting virtual media. Evidence the caller observes (the board's BMC
 // firmware capability catalog is its authority); it is never read off a host name.
@@ -56,17 +68,17 @@ type VirtualMediaStanding
 // field a host name could hide in.
 type AttemptBinding {
   unit: UnitKey
-  attempt: NonEmptyStr
+  attempt: IntakeAttemptId
 }
 
 // Everything the derivation may consult. Each field is an observation or an admitted sibling record;
 // absence of an origin or a seed is an Optional Absent, which the derivation reports as Unobserved.
 type DeliveryEvidence {
   firmware: FirmwareNetworkBootStanding
-  chainloader: SitePxeEdgeChainloaderPin
+  chain: SitePxeEdgeChainPin
   virtual_media: VirtualMediaStanding
   origin: UbuntuNetworkOrigin?
-  seed: AltraAutoinstallSeedBinding?
+  seed: UbuntuAutoinstallSeedBinding?
 }
 
 // Network boot needs the firmware either already ready or prepared through exactly one named route.
@@ -81,7 +93,7 @@ type FirmwarePreparation
 
 type ArmMissingEvidence
   = FirmwareStandingNotObserved
-  | ChainloaderNotPinned { obligation: NonEmptyStr }
+  | LoaderChainNotPinned { obligation: NonEmptyStr }
   | SecureBootStandingNotObserved { why: NonEmptyStr }
   | VirtualMediaStandingNotObserved
   | OriginNotObserved
@@ -92,6 +104,19 @@ type ArmRefusalCause
   | SecureBootRejectsChainloader { evidence: NonEmptyStr }
   | SecureBootStandingRefused { why: NonEmptyStr }
   | VirtualMediaNotAvailable { cause: NonEmptyStr }
+  | SeedBindingRefused { blocker: BindingBlocker }
+  | BootDeliveryNotPlanned { cause: BootDeliveryRefusalCause }
+  | BootDeliveryPlanNotCoherent { cause: BootDeliveryPlanIncoherence }
+  | EvidenceNotForThisPlan { axis: PlanEvidenceAxis }
+
+// WHICH JOIN BETWEEN THE EVIDENCE AND THE PLAN FAILED. Evidence arrives independently of the solver's plan,
+// so each observation that names a unit, an attempt or an architecture is compared with the plan's own
+// target and artifact; a mismatch withholds the arm, it is never reconciled in the evidence's favour.
+type PlanEvidenceAxis
+  = SeedBoundForOtherUnit
+  | SeedBoundForOtherAttempt
+  | ChainForOtherArchitecture { chain: Architecture, artifact: Architecture }
+  | ShapeForOtherDelivery { delivery: BootArtifactDelivery }
 
 // THE SHAPE OF AN ARM: ONE strategy, fully bound, or a terminal Unobserved/Refused. It is derived from
 // (strategy, evidence) and from nothing else; no attempt or unit identity exists at this type, so the
@@ -101,73 +126,122 @@ type ArmRefusalCause
 // new evidence or a human choosing a strategy, never by this value retrying itself.
 type ArmShape
   = ArmedPxeOrUefiHttp {
-      chainloader: SitePxeEdgeChainloaderBuildReceipt
+      chain: SitePxeEdgePinnedChain
       firmware: FirmwarePreparation
       origin: UbuntuNetworkOrigin
-      seed: AltraAutoinstallSeedBinding
+      seed: UbuntuAutoinstallSeedBinding
     }
   | ArmedVirtualMedia {
       media_observation: DeclarationRef
       origin: UbuntuNetworkOrigin
-      seed: AltraAutoinstallSeedBinding
+      seed: UbuntuAutoinstallSeedBinding
     }
   | ArmUnobserved { missing: ArmMissingEvidence }
   | ArmRefused { cause: ArmRefusalCause }
 
-// THE ARM = WHOM IT COVERS (data) + WHAT WAS DERIVED. The two are separate fields so the identity is
-// attached after the shape is fixed: provisioning_arm_derive never passes the attempt into the
-// derivation, which makes a per-host selection unwritable rather than merely tested for.
+// THE ARM = THE ADMITTED PLAN IT WAS DERIVED FROM + WHAT WAS DERIVED. `plan` carries the solver's delivery
+// parameters, target and artifact to the consumer (Absent exactly when no coherent plan existed). Whom the
+// arm covers is the plan's own subject (`plan_attempt`), never a second field that could disagree with it.
 type ProvisioningArm {
-  attempt: AttemptBinding
+  plan: BootDeliveryPlan?
   shape: ArmShape
 }
 
-// THE DERIVATION. Total over (strategy, evidence). The attempt is bound to the result and is not an
-// argument of any deriving fn. Evidence is checked in a fixed order so the same evidence always yields
-// the same missing/refused cause. No attempt-time fallback: a Refused or Unobserved shape ends the attempt.
-fn provisioning_arm_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
-  ProvisioningArm { attempt: attempt, shape: arm_shape_derive(strategy: strategy, evidence: evidence) }
-}
-
-fn arm_shape_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence) -> ArmShape {
-  match strategy {
-    PxeOrUefiHttp => derive_pxe(evidence: evidence)
-    VirtualMedia => derive_virtual_media(evidence: evidence)
-  }
-}
-
-fn derive_pxe(evidence: DeliveryEvidence) -> ArmShape {
-  match evidence.firmware {
-    Unobserved { unanswered: _ } => ArmUnobserved { missing: FirmwareStandingNotObserved }
-    Refused { cause: _, gaps: _ } => ArmRefused { cause: FirmwareProbeRefused { standing: evidence.firmware } }
-    Ready { conclusion: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwareAlreadyReady)
-    NeedsPreparation { admitted: AdmittedPreparation { route: r, blocking: b } } => derive_pxe_with(evidence: evidence, firmware: FirmwarePreparedVia { route: r, blocking: b })
-  }
-}
-
-fn derive_pxe_with(evidence: DeliveryEvidence, firmware: FirmwarePreparation) -> ArmShape {
-  match evidence.chainloader {
-    SitePxeEdgeChainloaderUnpinned { obligation: o } => ArmUnobserved { missing: ChainloaderNotPinned { obligation: o } }
-    SitePxeEdgeChainloaderPinned { build: b } => match b.secure_boot {
-      SecureBootUnobserved { why: w } => ArmUnobserved { missing: SecureBootStandingNotObserved { why: w } }
-      SecureBootRefused { why: w } => ArmRefused { cause: SecureBootStandingRefused { why: w } }
-      SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: e } => ArmRefused { cause: SecureBootRejectsChainloader { evidence: e } }
-      SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: _ } => bind_origin_and_seed(evidence: evidence, build: b, firmware: firmware)
+// THE DERIVATION. Total over (solution, evidence, attempt). The route is the solver's choice and nothing here
+// picks one: the plan is first ADMITTED (its fields must cohere, so a hand-built plan cannot pass as the
+// solver's), then the arm dispatches on the plan's DELIVERY constructor, which is the route authority, never
+// on one field of it. The evidence can only arm or withhold that route, never re-select it (a PXE plan cannot
+// come out as removable media however much virtual-media evidence exists), and each observation that names a
+// unit, attempt or architecture is joined to the plan's own subject and artifact: another unit's seed, another
+// attempt's claim or another architecture's chain withholds the arm. A solution that planned nothing is a
+// terminal refusal carrying the solver's own cause. The attempt is read only to be compared with the plan's
+// subject, never to select a strategy. No attempt-time fallback: a Refused or Unobserved shape ends the attempt.
+fn provisioning_arm_derive(solution: BootDeliverySolution, evidence: DeliveryEvidence) -> ProvisioningArm {
+  match solution {
+    BootDeliveryRefused { cause: c } => ProvisioningArm { plan: none, shape: ArmRefused { cause: BootDeliveryNotPlanned { cause: c } } }
+    BootDeliveryPlanned { plan: p } => match admit_boot_delivery_plan(plan: p) {
+      BootDeliveryPlanIncoherent { cause: c } => ProvisioningArm { plan: none, shape: ArmRefused { cause: BootDeliveryPlanNotCoherent { cause: c } } }
+      BootDeliveryPlanAdmitted { plan: admitted } =>
+        ProvisioningArm { plan: Present { value: admitted }, shape: arm_shape_derive(plan: admitted, evidence: evidence) }
     }
   }
 }
 
-fn bind_origin_and_seed(evidence: DeliveryEvidence, build: SitePxeEdgeChainloaderBuildReceipt, firmware: FirmwarePreparation) -> ArmShape {
+// WHOM THE ATTEMPT COVERS IS THE PLAN'S OWN SUBJECT, read from its target and never supplied beside it, so an
+// attempt cannot disagree with the plan it is derived from.
+fn plan_attempt(plan: BootDeliveryPlan) -> AttemptBinding {
+  let subject = boot_delivery_target_subject(target: plan.target)
+  AttemptBinding { unit: subject.subject.unit_key, attempt: subject.attempt_id }
+}
+
+fn solution_attempt(solution: BootDeliverySolution) -> AttemptBinding? {
+  match solution {
+    BootDeliveryPlanned { plan: p } => Present { value: plan_attempt(plan: p) }
+    BootDeliveryRefused { cause: _ } => none
+  }
+}
+
+fn arm_shape_derive(plan: BootDeliveryPlan, evidence: DeliveryEvidence) -> ArmShape {
+  match plan.delivery {
+    PxeChainBoot { evidence: _ } => derive_pxe(plan: plan, evidence: evidence)
+    UefiHttpBoot { params: _ } => derive_pxe(plan: plan, evidence: evidence)
+    RedfishVirtualMediaPull { params: _ } => derive_virtual_media(plan: plan, evidence: evidence)
+    MegaRacRestRemoteMedia { params: _ } => derive_virtual_media(plan: plan, evidence: evidence)
+    OpenBmcNbdProxyWebsocket { params: _ } => derive_virtual_media(plan: plan, evidence: evidence)
+    OpenBmcConfigfsUsbGadget { params: _ } => derive_virtual_media(plan: plan, evidence: evidence)
+  }
+}
+
+// The seed binding is minted for one unit and one intake attempt; it arms only the plan whose subject that is.
+fn seed_axis_mismatch(plan: BootDeliveryPlan, seed: UbuntuAutoinstallSeedBinding) -> PlanEvidenceAxis? {
+  let subject = boot_delivery_target_subject(target: plan.target)
+  if seed.unit_key != subject.subject.unit_key {
+    Present { value: SeedBoundForOtherUnit }
+  } else if seed.attempt != subject.attempt_id {
+    Present { value: SeedBoundForOtherAttempt }
+  } else {
+    none
+  }
+}
+
+fn derive_pxe(plan: BootDeliveryPlan, evidence: DeliveryEvidence) -> ArmShape {
+  match evidence.firmware {
+    Unobserved { unanswered: _ } => ArmUnobserved { missing: FirmwareStandingNotObserved }
+    Refused { cause: _, gaps: _ } => ArmRefused { cause: FirmwareProbeRefused { standing: evidence.firmware } }
+    Ready { conclusion: _ } => derive_pxe_with(plan: plan, evidence: evidence, firmware: FirmwareAlreadyReady)
+    NeedsPreparation { admitted: AdmittedPreparation { route: r, blocking: b } } => derive_pxe_with(plan: plan, evidence: evidence, firmware: FirmwarePreparedVia { route: r, blocking: b })
+  }
+}
+
+fn derive_pxe_with(plan: BootDeliveryPlan, evidence: DeliveryEvidence, firmware: FirmwarePreparation) -> ArmShape {
+  match evidence.chain {
+    SitePxeEdgeChainUnpinned { architecture: _, audience: _, obligation: o } => ArmUnobserved { missing: LoaderChainNotPinned { obligation: o } }
+    SitePxeEdgeChainPinned { chain: c } => if c.architecture != plan.artifact.architecture {
+      ArmRefused { cause: EvidenceNotForThisPlan { axis: ChainForOtherArchitecture { chain: c.architecture, artifact: plan.artifact.architecture } } }
+    } else { match site_pxe_edge_chain_secure_boot(chain: c) {
+      ChainSecureBootUnobserved { why: w } => ArmUnobserved { missing: SecureBootStandingNotObserved { why: w } }
+      ChainSecureBootRefused { why: w } => ArmRefused { cause: SecureBootStandingRefused { why: w } }
+      ChainSecureBootRejected { evidence: e } => ArmRefused { cause: SecureBootRejectsChainloader { evidence: e } }
+      ChainSecureBootBooted { evidence: _ } => bind_origin_and_seed(plan: plan, evidence: evidence, chain: c, firmware: firmware)
+      ChainSecureBootNoUnsignedMember => bind_origin_and_seed(plan: plan, evidence: evidence, chain: c, firmware: firmware)
+    } }
+  }
+}
+
+fn bind_origin_and_seed(plan: BootDeliveryPlan, evidence: DeliveryEvidence, chain: SitePxeEdgePinnedChain, firmware: FirmwarePreparation) -> ArmShape {
   match evidence.origin {
     Absent => ArmUnobserved { missing: OriginNotObserved }
     Present { value: o } => match evidence.seed {
       Absent => ArmUnobserved { missing: SeedBindingNotObserved }
-      Present { value: s } => ArmedPxeOrUefiHttp { chainloader: build, firmware: firmware, origin: o, seed: s }
+      Present { value: s } => match seed_axis_mismatch(plan: plan, seed: s) {
+        Present { value: axis } => ArmRefused { cause: EvidenceNotForThisPlan { axis: axis } }
+        Absent => ArmedPxeOrUefiHttp { chain: chain, firmware: firmware, origin: o, seed: s }
+      }
     }
   }
 }
 
-fn derive_virtual_media(evidence: DeliveryEvidence) -> ArmShape {
+fn derive_virtual_media(plan: BootDeliveryPlan, evidence: DeliveryEvidence) -> ArmShape {
   match evidence.virtual_media {
     VirtualMediaUnobserved => ArmUnobserved { missing: VirtualMediaStandingNotObserved }
     VirtualMediaUnavailable { cause: c } => ArmRefused { cause: VirtualMediaNotAvailable { cause: c } }
@@ -175,14 +249,20 @@ fn derive_virtual_media(evidence: DeliveryEvidence) -> ArmShape {
       Absent => ArmUnobserved { missing: OriginNotObserved }
       Present { value: o } => match evidence.seed {
         Absent => ArmUnobserved { missing: SeedBindingNotObserved }
-        Present { value: s } => ArmedVirtualMedia { media_observation: m, origin: o, seed: s }
+        Present { value: s } => match seed_axis_mismatch(plan: plan, seed: s) {
+          Present { value: axis } => ArmRefused { cause: EvidenceNotForThisPlan { axis: axis } }
+          Absent => ArmedVirtualMedia { media_observation: m, origin: o, seed: s }
+        }
       }
     }
   }
 }
 
-fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding {
-  arm.attempt
+fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding? {
+  match arm.plan {
+    Present { value: p } => Present { value: plan_attempt(plan: p) }
+    Absent => none
+  }
 }
 
 // THE CONSUMER THAT MUST EXIST. An arm is only a statement of what one boot attempt WOULD do; nothing

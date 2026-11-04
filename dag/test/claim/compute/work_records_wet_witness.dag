@@ -1,0 +1,63 @@
+module test.claim.compute.work_records_wet_witness
+
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.compute.host_capacity { compute_root }
+import gunbc.compute.compute_work_records { compute_work_records, compute_work_dir, compute_work_consumption_read, compute_work_consumption_write, ComputeWorkRecordPresent, ComputeWorkRecordUnread, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, NonEmptyStr, String, FilePath }
+
+// THE SEALED CONSUMPTION RECORD KEEPS THE BYTES AND THE PATH THE OLD CODE USED. The old code wrote
+// <compute root>/work/<identity>/consumption with a plain Filesystem.Write. The oracle here spells that path
+// literally (not through the sealed module) and writes it the old way; the sealed read must return those exact
+// bytes, and a sealed write must be readable back through the literal path. A refusal arm fails the claim.
+
+fn instance_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "work-records-wet" as NonEmptyStr),
+    instance_id: "work-records-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn old_consumption_path(instance: HostDashboardInstance) -> String {
+  join([compute_root(instance: instance) as String, "/work/legacyid/consumption"], "")
+}
+
+test fn a_consumption_record_written_by_the_old_code_reads_back_through_the_sealed_store() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_work_records.XXXXXX").path
+  let instance = instance_at(root: root as String)
+  let records = compute_work_records(instance: instance, identity: "legacyid")
+  let made = shell.Mkdir.Parents(path: compute_work_dir(records: records) as FilePath)
+  let body = "attempt: settled\nstanding: held\n"
+  let legacy = Filesystem.Write(path: old_consumption_path(instance: instance), content: body)
+  let ok = match compute_work_consumption_read(records: records) {
+    ComputeWorkRecordPresent { content: c } => c == body
+    ComputeWorkRecordUnread { error: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  made.success && legacy.success && ok && removed.success
+}
+
+test fn a_sealed_consumption_write_is_readable_at_the_old_path() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_work_records.XXXXXX").path
+  let instance = instance_at(root: root as String)
+  let records = compute_work_records(instance: instance, identity: "legacyid")
+  let made = shell.Mkdir.Parents(path: compute_work_dir(records: records) as FilePath)
+  let body = "attempt: settled\nstanding: held\n"
+  let wrote = match compute_work_consumption_write(records: records, content: body) {
+    ComputeWorkRecordWritten => true
+    ComputeWorkRecordUnwritten { error: _ } => false
+  }
+  let read = Filesystem.Read(path: old_consumption_path(instance: instance))
+  let removed = shell.Remove.RecursiveForce(path: root)
+  made.success && wrote && read.success && read.content == body && removed.success
+}

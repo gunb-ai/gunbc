@@ -21,6 +21,10 @@ import gunbc.parse_verdict_schema {
   MissDeclaredRefused,
 }
 import v2.cli.population_verbs {
+  SpelledRefused,
+  SpelledSelected,
+  spelled_in,
+  select_spelled_report,
   ParseVerdictReuse,
   parse_verdict_reuse_off,
   parse_verdict_reuse_requested,
@@ -112,7 +116,7 @@ fn begun(classes: List<RefusalClass>) -> PopulationParse {
 
 fn judge(tally: PopulationParse, judgment: Judgment) -> PopulationParse {
   match judgment {
-    JudgedRefused { key: key, cause: cause } => population_parse_refused(tally: tally, key: key, cause: cause)
+    JudgedRefused { key: key, cause: cause } => population_parse_refused(tally: tally, key: key, cause: cause, at: Absent)
     JudgedParses { key: key, source_digest: digest } => population_parse_accepted(tally: tally, key: key, source_digest: digest)
   }
 }
@@ -171,26 +175,26 @@ test fn a_declaration_begins_with_nothing_judged() -> Bool {
 // ---- the per-member judgment ---------------------------------------------------------------------------
 
 test fn a_covered_refusal_is_tallied_declared_and_reports_nothing() -> Bool {
-  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "dag:a/one.dag", cause: "parse_g0_tokens_remain")
+  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "dag:a/one.dag", cause: "parse_g0_tokens_remain", at: Absent)
   (tally.declared == 1) && (tally.parsed == 0) && (length(xs: tally.refusals) == 0)
 }
 
 test fn an_uncovered_refusal_is_reported_with_its_key_and_cause() -> Bool {
-  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "dag:a/four.dag", cause: "parse_g0_tokens_remain")
+  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "dag:a/four.dag", cause: "parse_g0_tokens_remain", at: Absent)
   (tally.declared == 0) && (tally.parsed == 0) && (first_refusal(tally: tally) == "dag:a/four.dag: parse_g0_tokens_remain")
 }
 
 // The module is declared, but for another cause: the declared refusal is no longer the module's, so the
 // walk reports the contradiction once and does not also count the declaration as met.
 test fn a_refusal_for_another_cause_than_the_declared_one_is_reported_and_not_met() -> Bool {
-  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "dag:a/one.dag", cause: "parse_declaration_marker_not_test")
+  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "dag:a/one.dag", cause: "parse_declaration_marker_not_test", at: Absent)
   (tally.declared == 0)
     && (length(xs: tally.refusals) == 1)
     && first_refusal(tally: tally).starts_with(prefix: "dag:a/one.dag: parse_declaration_marker_not_test; gunbc.parse_population_refusals declares it refused for parse_g0_tokens_remain")
 }
 
 test fn a_member_is_declared_under_its_own_class_cause_only() -> Bool {
-  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "v2:b/three.dag", cause: "parse_g0_tokens_remain")
+  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "v2:b/three.dag", cause: "parse_g0_tokens_remain", at: Absent)
   (tally.declared == 0) && (length(xs: tally.refusals) == 1)
 }
 
@@ -433,6 +437,35 @@ test fn parse_verdict_reuse_off_has_no_standing_holds() -> Bool {
   }
 }
 
+// THE SPELLING SELECTION IS A SUPERSET, AND THE CONTROLS SAY WHICH WAY: a comment that only mentions the name is
+// SELECTED (no binding is claimed), a module that writes it as code is selected, and a module that writes neither
+// is not. A selection that dropped the comment-only module would be claiming a binding-level fact it cannot see.
+test fn a_comment_only_mention_of_a_ruled_spelling_is_selected_holds() -> Bool {
+  spelled_in(content: "module m\n// chars is mentioned here only\n", names: ["chars"])
+}
+
+test fn a_module_writing_a_ruled_spelling_as_code_is_selected_holds() -> Bool {
+  spelled_in(content: "module m\nfn f(s: String) -> Int { length(xs: chars(s: s)) }\n", names: ["chars"])
+}
+
+test fn a_module_spelling_no_ruled_name_is_not_selected_holds() -> Bool {
+  !spelled_in(content: "module m\nfn f(s: String) -> Int { 1 }\n", names: ["chars"])
+}
+
+test fn a_selection_over_no_ruled_names_selects_nothing_holds() -> Bool {
+  !spelled_in(content: "module m\n// chars\n", names: [])
+}
+
+test fn a_selection_reports_the_selected_names_and_holds() -> Bool {
+  let report = select_spelled_report(selection: SpelledSelected { names: ["a.m1", "a.m2"] })
+  report.held && report.text == "a.m1\na.m2"
+}
+
+test fn an_unreadable_module_refuses_the_whole_selection_holds() -> Bool {
+  let report = select_spelled_report(selection: SpelledRefused { module: "a.m3", cause: "unreadable" })
+  !report.held && report.text == "a.m3: unreadable"
+}
+
 // THE DECLARED COUNTS SHAPE IS BOUND TO THE PRINTED LINE, BYTE FOR BYTE. The fleet's reuse walk reads
 // this line back and its only contract on it is a shell exit code, so the field set IS the contract
 // (gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions, silent arm:
@@ -464,4 +497,17 @@ test fn parse_verdict_counts_shape_matches_declared_rows_holds() -> Bool {
       parse_verdict_reuse_counts_field_names(),
       label => string_contains(s: printed, pattern: join([" ", label, "="], ""))
     )
+}
+
+// The parse stage's located refusal reaches the population report: the line:col rides after the cause.
+test fn a_located_undeclared_refusal_reports_its_line_and_column() -> Bool {
+  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "dag:a/five.dag", cause: "parse_data_value_missing_after_eq", at: Present { value: "3:13" })
+  (length(xs: tally.refusals) == 1)
+    && (first_refusal(tally: tally) == "dag:a/five.dag: parse_data_value_missing_after_eq at 3:13")
+}
+
+test fn an_unlocated_undeclared_refusal_reports_the_cause_alone() -> Bool {
+  let tally = population_parse_refused(tally: begun(classes: fixture_classes), key: "dag:a/five.dag", cause: "parse_data_value_missing_after_eq", at: Absent)
+  (length(xs: tally.refusals) == 1)
+    && (first_refusal(tally: tally) == "dag:a/five.dag: parse_data_value_missing_after_eq")
 }

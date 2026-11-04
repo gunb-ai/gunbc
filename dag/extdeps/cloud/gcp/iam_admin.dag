@@ -1,4 +1,5 @@
 module extdeps.cloud.gcp.iam_admin
+import std.types { Bearer }
 
 
 import extdeps.external_authority { ExternalAuthority }
@@ -283,7 +284,7 @@ service gcp.IamAdmin {
   operation GetServiceAccount {
     requires Network
     input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
-    output { email: ServiceAccountEmail, sa_name: String from "name" }
+    output { email: ServiceAccountEmail, sa_name: String from "name", unique_id: String from "uniqueId" }
     readonly
     transport rest {
       method: GET,

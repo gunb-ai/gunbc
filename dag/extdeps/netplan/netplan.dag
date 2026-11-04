@@ -6,6 +6,12 @@ import extdeps.uri { Uri, Https }
 import std.algebra { trim }
 import std.optional { Present, Absent }
 import extdeps.networkmanager.nmcli { nm_keyfile_profile_dir }
+import std.nat { Nat }
+import std.measure { Second, second, second_count, ByteSize, byte_size_count }
+import extdeps.languages.yaml.types { YamlValue, kv, yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
+import extdeps.network.mac { Eui48Address, render_mac_address }
+import extdeps.network.ipv4 { Ipv4Address, PrefixLength, render_ipv4_cidr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -24,6 +30,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data netplan_config_dir: NonEmptyStr = "/etc/netplan"
 
 type NetplanRenderer = SystemdNetworkd | NetworkManager
+
+// netplan-yaml "Properties for all device types", `renderer`: "Instructs the backend ... Use
+// networkd or NetworkManager". These two words are the whole domain.
+fn netplan_renderer_wire(r: NetplanRenderer) -> NonEmptyStr {
+  match r {
+    SystemdNetworkd => "networkd" as NonEmptyStr
+    NetworkManager => "NetworkManager" as NonEmptyStr
+  }
+}
 
 // THE applier fact, the counterpart to cloud-init's writer fact. netplan reads EVERY *.yaml under
 // /etc/netplan at boot, merges them in lexical order, and renders the result to its backend — with
@@ -182,4 +197,185 @@ fn netplan_passthrough_value(yaml: String, key: NonEmptyStr) -> NetplanPassthrou
       PassthroughValue { word: replace(s: replace(s: trim(s: substring(s: t, start: length(pattern), end: length(t))), from: "'", to: ""), from: "\"", to: "") }
     }
   }
+}
+
+// ── A NETPLAN DOCUMENT AS A VALUE ───────────────────────────────────────────────────────────────
+//
+// The subset of netplan-yaml (netplan.readthedocs.io/en/stable/netplan-yaml/) the fleet writes, as
+// one value with one renderer, so every consumer that writes a netplan file spells the keys once.
+// `match`: "This selects a subset of available physical devices by various hardware properties ...
+// name ... macaddress: Device's 6-byte permanent MAC address in the form 'XX:XX:XX:XX:XX:XX'". A
+// definition with a match is a physical device whose kernel name is whatever enumeration gave it,
+// which is why a MAC match is the stable selector on a board whose enumeration moves (see
+// gunbc.host.host_primary_network_observed). `dhcp4-overrides: route-metric`, `mtu`, `link-local`
+// ("Configure the link-local addresses to bring up. Valid options are 'ipv4' and 'ipv6'"; an empty
+// list brings up none) and `optional` ("the system will not wait for it to come online at boot")
+// are the device properties of the same page. Keys are emitted in one fixed order, and a key whose
+// value is netplan's default is omitted, so one value has one document.
+type NetplanMatch
+  = MatchByName { name: NonEmptyStr }
+  | MatchByMacAddress { mac: Eui48Address }
+
+type NetplanLinkLocal = LinkLocalIpv4 | LinkLocalIpv6
+
+type NetplanInterfaceAddress {
+  address: Ipv4Address
+  prefix: PrefixLength
+}
+
+type NetplanEthernet {
+  id: NonEmptyStr
+  selector: NetplanMatch
+  addresses: List<NetplanInterfaceAddress>
+  mtu: ByteSize?
+  dhcp4: Bool
+  dhcp4_route_metric: Nat?
+  dhcp6: Bool?
+  link_local: List<NetplanLinkLocal>?
+  optional: Bool
+}
+
+type NetplanDocument {
+  renderer: NetplanRenderer
+  ethernets: List<NetplanEthernet>
+}
+
+fn netplan_link_local_wire(l: NetplanLinkLocal) -> String {
+  match l {
+    LinkLocalIpv4 => "ipv4"
+    LinkLocalIpv6 => "ipv6"
+  }
+}
+
+// THE DOCUMENT IS A YamlValue AND THE YAML IS extdeps.languages.yaml's TO WRITE. The keys and their
+// order are netplan's; the encoding -- indentation, quoting, flow or block -- is the emitter's, which
+// writes a value only in a form its own reader reads back as that value and refuses the rest with a
+// path, so no netplan consumer spells YAML syntax.
+fn netplan_match_value(m: NetplanMatch) -> YamlValue {
+  match m {
+    MatchByName { name: n } => yaml_mapping(entries: [kv(key: "name", value: yaml_string(s: n as String))])
+    MatchByMacAddress { mac: a } => yaml_mapping(entries: [kv(key: "macaddress", value: yaml_string(s: render_mac_address(addr: a) as String))])
+  }
+}
+
+fn netplan_ethernet_value(e: NetplanEthernet) -> YamlValue {
+  yaml_mapping(entries: concat(
+    [kv(key: "match", value: netplan_match_value(m: e.selector))],
+    concat(
+      if length(e.addresses) == 0 { [] } else {
+        [kv(key: "addresses", value: yaml_sequence(elements: map(e.addresses, a => yaml_string(s: render_ipv4_cidr(addr: a.address, prefix: a.prefix) as String))))]
+      },
+      concat(
+        match e.mtu { Absent => []  Present { value: m } => [kv(key: "mtu", value: yaml_int(n: byte_size_count(b: m) as Int))] },
+        concat(
+          [kv(key: "dhcp4", value: yaml_bool(b: e.dhcp4))],
+          concat(
+            match e.dhcp4_route_metric { Absent => []  Present { value: m } => [kv(key: "dhcp4-overrides", value: yaml_mapping(entries: [kv(key: "route-metric", value: yaml_int(n: m as Int))]))] },
+            concat(
+              match e.dhcp6 { Absent => []  Present { value: b } => [kv(key: "dhcp6", value: yaml_bool(b: b))] },
+              concat(
+                match e.link_local { Absent => []  Present { value: ls } => [kv(key: "link-local", value: yaml_sequence(elements: map(ls, l => yaml_string(s: netplan_link_local_wire(l: l)))))] },
+                if e.optional { [kv(key: "optional", value: yaml_bool(b: true))] } else { [] },
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ))
+}
+
+data netplan_version: Int = 2
+
+fn netplan_document_value(d: NetplanDocument) -> YamlValue {
+  yaml_mapping(entries: [kv(key: "network", value: yaml_mapping(entries: [
+    kv(key: "version", value: yaml_int(n: netplan_version)),
+    kv(key: "renderer", value: yaml_string(s: netplan_renderer_wire(r: d.renderer) as String)),
+    kv(key: "ethernets", value: yaml_mapping(entries: map(d.ethernets, e => kv(key: e.id as String, value: netplan_ethernet_value(e: e))))),
+  ]))])
+}
+
+type NetplanDocumentRendering
+  = NetplanDocumentRendered { text: String }
+  | NetplanDocumentRefused { path: String, reason: String }
+
+fn render_netplan_value(v: YamlValue) -> NetplanDocumentRendering {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => NetplanDocumentRendered { text: t }
+    YamlEmitRefused { path: p, reason: r } => NetplanDocumentRefused { path: p, reason: r }
+  }
+}
+
+fn render_netplan_document(d: NetplanDocument) -> NetplanDocumentRendering {
+  render_netplan_value(v: netplan_document_value(d: d))
+}
+
+fn netplan_document_rendering_wire(r: NetplanDocumentRendering) -> String {
+  match r {
+    NetplanDocumentRendered { text: _ } => "rendered"
+    NetplanDocumentRefused { path: p, reason: why } => join(["netplan document refused at ", p, ": ", why], "")
+  }
+}
+
+// ── netplan try, AS THE INSTALLED SOURCE BEHAVES ────────────────────────────────────────────────
+//
+// netplan-try(8): "takes a netplan(5) configuration, applies it, and automatically rolls it back if
+// the user does not confirm the configuration within a time limit ... A configuration can be
+// confirmed or rejected interactively or by sending the SIGUSR1 or SIGINT signals", default
+// timeout 120 seconds. The facts below go past the manual and were read from netplan.io
+// 1.1.2-8ubuntu1~24.04.1's own source on srv1 (2026-10-25: netplan_cli/cli/commands/try_command.py,
+// netplan_cli/configmanager.py, netplan_cli/terminal.py). They were read, not executed.
+//
+// WHAT A REVERT RESTORES. ConfigManager.revert copies back only the RENDERED backend directories,
+// /run/systemd/network and /run/NetworkManager/system-connections, and unlinks a --config-file copy.
+// It never restores the YAML it read, even though backup() copies /etc/netplan, so a try that times
+// out leaves whatever YAML it applied in place for the next generate or boot. A caller must keep
+// the tried YAML somewhere a revert does not depend on (a /run/netplan shadow, wiped at boot) and
+// remove it itself.
+data netplan_try_revert_restores: List<NonEmptyStr> = ["/run/systemd/network" as NonEmptyStr, "/run/NetworkManager/system-connections" as NonEmptyStr]
+
+data netplan_try_default_timeout: Second = second(count: 120)
+
+// The ready stamp is touched after the apply and before the wait, as the signal that a confirmation
+// will be heard (try_command.py touch_ready_stamp, for netplan-dbus).
+data netplan_try_ready_stamp_path: NonEmptyStr = "/run/netplan/netplan-try.ready" as NonEmptyStr
+
+// CONFIRMATION IS A LINE ON STDIN, AND STDIN MUST BLOCK. Terminal.get_confirmation_input loops on
+// select([stdin], 1s) and a non-blocking read, counting one second per pass, and accepts when the
+// read returns exactly "\n". A stdin at end-of-file (/dev/null, a unit's default, a non-terminal ssh
+// leg) is always readable and reads "", so every pass returns at once: the timeout passes in
+// milliseconds and the try reverts before anyone can confirm. A FIFO with a writer held open blocks
+// select until a line arrives.
+data netplan_try_confirmation_line: String = "\n"
+
+// THE OUTCOME IS ON STDOUT ONLY: command_try prints "\nConfiguration accepted." on InputAccepted and
+// "\nReverting." on rejection, timeout or an error during apply, and exits 0 either way. A
+// configuration it cannot revert (a non-trivial bridge or bond) is refused before any apply with
+// "Please carefully review the configuration and use 'netplan apply' directly." and exit EX_CONFIG.
+data netplan_try_accepted_text: String = "Configuration accepted."
+data netplan_try_reverting_text: String = "Reverting."
+data netplan_try_not_revertable_text: String = "use 'netplan apply' directly"
+
+type NetplanTryOutcome
+  = NetplanTryAccepted
+  | NetplanTryReverted
+  | NetplanTryRefusedNotRevertable
+  | NetplanTryOutcomePending
+
+fn netplan_try_outcome(stdout: String) -> NetplanTryOutcome {
+  if string_contains(s: stdout, pattern: netplan_try_reverting_text) { NetplanTryReverted }
+  else if string_contains(s: stdout, pattern: netplan_try_accepted_text) { NetplanTryAccepted }
+  else if string_contains(s: stdout, pattern: netplan_try_not_revertable_text) { NetplanTryRefusedNotRevertable }
+  else { NetplanTryOutcomePending }
+}
+
+fn netplan_try_argv(timeout: Second) -> List<String> {
+  ["netplan", "try", "--timeout", to_string(second_count(s: timeout))]
+}
+
+// A /run/netplan file shadows a same-named /etc/netplan file (netplan-yaml "General structure"), so
+// a document holding only the version key removes another file's definitions from the merge without
+// touching it.
+fn netplan_empty_document_rendering() -> NetplanDocumentRendering {
+  render_netplan_value(v: yaml_mapping(entries: [kv(key: "network", value: yaml_mapping(entries: [kv(key: "version", value: yaml_int(n: netplan_version))]))]))
 }

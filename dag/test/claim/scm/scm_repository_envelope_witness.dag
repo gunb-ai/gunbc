@@ -24,6 +24,7 @@ import extdeps.languages.json.parse {
 
 import v2.std.node {
   Node, Edge, Authored, TypeNode, Connective, Atom, Conj, Symbol, node_synthetic,
+  NotADeclaration
 }
 
 import gunbc.scm.object_store {
@@ -155,7 +156,7 @@ fn scm_env_atom(identity: Symbol) -> Node {
 }
 
 fn scm_env_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 // Two programs SHARING a subtree. The shared-population claim is meaningless without real sharing.

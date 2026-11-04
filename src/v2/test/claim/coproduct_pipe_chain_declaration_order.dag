@@ -13,7 +13,7 @@ import v2.std.compilers.sugar { sugar_all_coproduct_variants, sugar_variants_to_
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.test.claim.coproduct_fixture { cpf_standing_disj }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.node { Atom, Authored, Conj, Edge, EdgeLabel, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Authored, Conj, Edge, EdgeLabel, Node, Symbol, TypeNode, NotADeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -40,8 +40,8 @@ fn cpo_sequence(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left },
-      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right }
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

@@ -1,0 +1,123 @@
+module test.claim.review_sheet_converge_workflow_witness
+
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import extdeps.github.actions { Job, Step, RunStep, UsesStep, Workflow, WorkflowTrigger, Push, Schedule, PullRequest, WorkflowDispatch, WorkflowCall, WorkflowRunTriggered, MergeGroup }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlString, YamlBool }
+import extdeps.google.sheets { sheets_token_env }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_workflow, fleet_converge_review_sheet_converge_job, fleet_converge_review_sheet_writer_token_step,
+  fleet_converge_build_job_if, fleet_converge_dispatch_event_if, fleet_converge_mode_job_id, ReviewSheetConverge,
+  review_sheet_converge_source_paths, fleet_converge_mode_step_if,
+}
+
+fn job_if(j: Job) -> String {
+  match j.if_condition { Present { value: v } => v  Absent => "" }
+}
+
+fn with_value(fields: List<YamlKeyValue>, key: String) -> String {
+  match filter(fields, f => f.key == key).first() {
+    Present { value: f } => match f.value { YamlString { value: v } => v  _ => "" }
+    Absent => ""
+  }
+}
+
+// THE SCHEDULE AND PUSH TRIGGERS START THIS JOB ALONE. Every other job's condition is either gated to
+// a dispatch outright, or tests inputs.mode for equality with a named mode (empty on a schedule or
+// push, so false), or waits on `build`, which is dispatch-gated. This is a structural reading of the
+// emitted conditions, not an evaluation of them; the executed reading is the first scheduled run's own
+// job list.
+fn admits_only_a_dispatch(j: Job) -> Bool {
+  let c = job_if(j: j)
+  string_contains(s: c, pattern: fleet_converge_dispatch_event_if)
+    || string_contains(s: c, pattern: "github.event.inputs.mode == '")
+}
+
+test fn no_other_job_can_start_on_a_schedule_or_push() -> Bool {
+  let mine = fleet_converge_mode_job_id(mode: ReviewSheetConverge) as String
+  let others = filter(fleet_converge_workflow.jobs, j => j.id != mine)
+  others.length() > 0 && all(others, j => admits_only_a_dispatch(j: j))
+}
+
+// CONTROL: a job with no condition (plan-revision before this change) is exactly what the reading
+// refuses; and build's own condition leads with the dispatch gate.
+test fn a_job_with_no_condition_is_caught_and_build_is_dispatch_gated() -> Bool {
+  let bare = Job {
+    id: "bare", name: none, runner: fleet_converge_review_sheet_converge_job().runner, environment: none,
+    steps: [], needs: [], env: none, outputs: none, if_condition: none, timeout_minutes: none,
+    continue_on_error: none, concurrency: none, permissions: none,
+  }
+  !admits_only_a_dispatch(j: bare)
+    && starts_with(s: fleet_converge_build_job_if, prefix: fleet_converge_dispatch_event_if)
+}
+
+test fn this_job_runs_on_schedule_push_or_its_own_dispatch() -> Bool {
+  let c = job_if(j: fleet_converge_review_sheet_converge_job())
+  string_contains(s: c, pattern: "github.event_name == 'schedule'")
+    && string_contains(s: c, pattern: "github.event_name == 'push'")
+    && string_contains(s: c, pattern: fleet_converge_mode_step_if(mode: ReviewSheetConverge))
+    && fleet_converge_review_sheet_converge_job().needs == []
+}
+
+fn is_push_on_main_sources(t: WorkflowTrigger) -> Bool {
+  match t {
+    Push { branches: b, paths: p } => b == ["main"] && p == review_sheet_converge_source_paths
+    PullRequest { branches: _, types: _, paths: _ } => false
+    Schedule { cron: _ } => false
+    WorkflowDispatch { inputs: _ } => false
+    WorkflowCall { inputs: _ } => false
+    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
+    MergeGroup => false
+  }
+}
+
+fn is_pull_request_or_merge_group(t: WorkflowTrigger) -> Bool {
+  match t {
+    PullRequest { branches: _, types: _, paths: _ } => true
+    MergeGroup => true
+    Push { branches: _, paths: _ } => false
+    Schedule { cron: _ } => false
+    WorkflowDispatch { inputs: _ } => false
+    WorkflowCall { inputs: _ } => false
+    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
+  }
+}
+
+// The push trigger is main-only and source-scoped, and fleet-converge gains no pull-request or
+// merge-group trigger: it can never post a context on the required path.
+test fn the_push_trigger_is_main_only_and_no_required_path_trigger_exists() -> Bool {
+  any(fleet_converge_workflow.on, t => is_push_on_main_sources(t: t))
+    && !any(fleet_converge_workflow.on, t => is_pull_request_or_merge_group(t: t))
+}
+
+// THE TOKEN ROUTE: the delegation step continues on error (so the refusal is the converge's own,
+// typed), names the writer as the account and review-sheet-converge as the delegate, and its output
+// reaches the converge step's environment under the transport's variable and nowhere on a command line.
+test fn the_writer_token_is_delegated_and_reaches_only_the_environment() -> Bool {
+  let auth_ok = match fleet_converge_review_sheet_writer_token_step() {
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: coe, timeout_minutes: _ } =>
+      coe == Present { value: true } && match w {
+        Present { value: fields } =>
+          with_value(fields: fields, key: "service_account") == "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com"
+            && with_value(fields: fields, key: "delegates") == "review-sheet-converge@gunbai-secrets.iam.gserviceaccount.com"
+            && with_value(fields: fields, key: "token_format") == "access_token"
+        Absent => false
+      }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+  let runs = filter(fleet_converge_review_sheet_converge_job().steps, s => match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  })
+  let env_carried = any(runs, s => match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e { Present { value: kvs } => with_value(fields: kvs, key: sheets_token_env) == "${{ steps.writer_token.outputs.access_token }}"  Absent => false }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  })
+  let never_in_a_script = all(runs, s => match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      !string_contains(s: r, pattern: "writer_token") && !string_contains(s: r, pattern: sheets_token_env)
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
+  })
+  auth_ok && env_carried && never_in_a_script
+}

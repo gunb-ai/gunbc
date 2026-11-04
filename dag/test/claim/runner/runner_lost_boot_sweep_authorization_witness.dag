@@ -16,8 +16,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // claim asserts the ROUTE (the real fold selects FederatedScopedGrant for it, and the census verdict
 // Conforms) and not only the answer. RED: a row realized as another pattern, or an effect the fold
 // selects another pattern for, fails.
+// BOTH ARMS' KEY SITES are rowed and run through the same selection: the deleting arm's and the dry run's.
 test fn the_sweep_effect_selects_a_federated_scoped_grant() -> Bool {
-  match filter(privileged_effect_census, r => r.site.decl_name == "sweep_under_staged_key").first() {
+  ["sweep_under_staged_key", "dry_run_under_staged_key"] |> all(site => match filter(privileged_effect_census, r => r.site.decl_name == site).first() {
     Absent => false
     Present { value: row } => (match select_authorization_pattern(e: row.effect) {
       PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
@@ -26,7 +27,7 @@ test fn the_sweep_effect_selects_a_federated_scoped_grant() -> Bool {
       Conforms => true
       _ => false
     })
-  }
+  })
 }
 
 // THE TOKEN SOURCE OF A FEDERATED RUN: WIF_ACCESS_TOKEN present selects WorkloadIdentityToken, and its

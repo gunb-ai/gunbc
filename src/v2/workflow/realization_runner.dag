@@ -5,7 +5,7 @@ import v2.std.dependency { DependencyView }
 import std.measure { ByteSize, byte_size, measure_add }
 import std.types { Int, List }
 import std.content_hash { ContentHash }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.workflow.executor {
   ExecutorBatch,
   ExecutorJob,
@@ -37,7 +37,7 @@ fn node_keyed_store_empty<V>() -> NodeKeyedStore<V> {
 
 fn node_keyed_store_has_node<V>(store: NodeKeyedStore<V>, node: Node) -> Bool {
   fold(store.entries, init: false, f: fn(found, entry) {
-    found || (entry.node == node)
+    found || (node_same_occurrence(a: entry.node, b: node))
   })
 }
 
@@ -247,7 +247,7 @@ fn runner_dependency_satisfied<V>(
   store: NodeKeyedStore<V>,
   candidate: Node
 ) -> Bool {
-  if dependency.dependent == candidate {
+  if node_same_occurrence(a: dependency.dependent, b: candidate) {
     node_keyed_store_has_node(store: store, node: dependency.source)
   } else {
     true
@@ -285,7 +285,7 @@ fn runner_first_missing_dependency<V>(
     match found {
       RunnerPrerequisiteMissing { node: _ } => found
       RunnerPrerequisiteNotFoundYet {} =>
-        if dependency.dependent == candidate {
+        if node_same_occurrence(a: dependency.dependent, b: candidate) {
           if node_keyed_store_has_node(store: store, node: dependency.source) {
             RunnerPrerequisiteNotFoundYet {}
           } else {

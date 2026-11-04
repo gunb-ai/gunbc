@@ -294,6 +294,14 @@ data srv13_baseboard: ServerBaseboard = ServerBaseboard {
   catalog: asrock_altrad8ud_1l2t_catalog,
   bmc: BmcEndpoint { host: "192.168.1.247", protocol: Redfish },
 }
+// srv15's board and BMC endpoint (box 2, bound to srv15 by snappy-bear-100 on the operator's delegation,
+// 2026-10-28): an ALTRAD8UD-1L2T whose controller answered an unauthenticated Redfish service root
+// (1.17.0) at the router's bmc-altrad8ud-1l2t-7 reservation, MAC 9c:6b:00:e7:c9:e7, read from srv1. No
+// host row yet: nothing authenticated has been read.
+data srv15_baseboard: ServerBaseboard = ServerBaseboard {
+  catalog: asrock_altrad8ud_1l2t_catalog,
+  bmc: BmcEndpoint { host: "192.168.1.248", protocol: Redfish },
+}
 
 data srv1_nvme0: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,

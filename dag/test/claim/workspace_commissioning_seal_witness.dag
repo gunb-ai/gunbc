@@ -2,7 +2,8 @@ module test.claim.workspace_commissioning_seal_witness
 
 import std.types { Bool, String, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.compile_census_probe { blocking_subject_count_for }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit}
+import std.process { ProcessExit }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -12,18 +13,18 @@ data commissioning_skipped_readback_source: String = "module test.probe.commissi
 
 data commissioning_admitted_readback_source: String = "module test.probe.commissioning_admitted_readback\nimport gunbc.workspace_commissioning_store { WorkspaceCommissioningStoreSnapshot, WorkspaceCommissioningSupplyReadback, workspace_commissioning_store_admit_supply }\nfn read(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback { workspace_commissioning_store_admit_supply(snapshot: snapshot) }\n"
 
-test fn initial_admission_cannot_forge_committed_supply() -> Bool {
-  blocking_subject_count_for(source: commissioning_forged_supply_source, wanted_class: "SoleConstructorViolation", wanted_subject: "WorkspaceCommittedCommissioning") == 1
+test fn initial_admission_cannot_forge_committed_supply() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: commissioning_forged_supply_source, wanted_class: "SoleConstructorViolation", wanted_subject: "WorkspaceCommittedCommissioning"), holds: fn(n) { n == 1 }))
 }
 
-test fn supply_cannot_skip_fresh_provenance_readback() -> Bool {
-  blocking_subject_count_for(source: commissioning_skipped_readback_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "workspace_commissioning_current_supply") == 1
+test fn supply_cannot_skip_fresh_provenance_readback() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: commissioning_skipped_readback_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "workspace_commissioning_current_supply"), holds: fn(n) { n == 1 }))
 }
 
 // The census includes imported production diagnostics. Scope this positive control to the
 // same access boundary as the negative control; a failed census returns -1, never zero.
-test fn the_public_fresh_readback_route_preserves_constructor_admission() -> Bool {
-  blocking_subject_count_for(source: commissioning_admitted_readback_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "workspace_commissioning_current_supply") == 0
+test fn the_public_fresh_readback_route_preserves_constructor_admission() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: commissioning_admitted_readback_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "workspace_commissioning_current_supply"), holds: fn(n) { n == 0 }))
 }
 
 data commissioning_release_bypass_source: String = "module test.probe.commissioning_release_bypass\nimport std.types { Bool }\nimport gunbc.workspace_slot_mutation { WorkspaceSlotMutationLease, workspace_slot_mutation_release_fenced }\nfn skip(lease: WorkspaceSlotMutationLease) -> Bool { workspace_slot_mutation_release_fenced(lease: lease) }\n"

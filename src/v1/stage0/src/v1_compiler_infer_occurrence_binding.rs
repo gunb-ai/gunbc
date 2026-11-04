@@ -44,7 +44,7 @@ pub fn module_path_owner_binding_decide(
 }
 
 pub fn ambiguity_labels_from_decide(owners: Rc<Vec<String>>, name: String) -> Rc<Vec<String>> {
-    match (*module_path_owner_binding_decide(owners.clone())).clone() {
+    match (*module_path_owner_binding_decide(owners)).clone() {
         ModulePathBindingProjection::ModulePathBindingAmbiguous {
             owners: ambiguous_owners,
             ..

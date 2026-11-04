@@ -3,7 +3,7 @@ module v2.test.lens_application.substitute_at_depth_three
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.application { substitute_at }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Path, Symbol, TypeNode }
+import v2.std.node { node_same_occurrence, Atom, Conj, Edge, Authored, Node, Path, Symbol, TypeNode, NotADeclaration }
 
 data depth_three_original_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^depth_three_original_leaf_symbol } },
@@ -22,7 +22,8 @@ data depth_three_inner: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^depth_three_step_c },
-      target: depth_three_original_leaf
+      target: depth_three_original_leaf,
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -33,7 +34,8 @@ data depth_three_middle: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^depth_three_step_b },
-      target: depth_three_inner
+      target: depth_three_inner,
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -44,7 +46,8 @@ data depth_three_root: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^depth_three_step_a },
-      target: depth_three_middle
+      target: depth_three_middle,
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -65,15 +68,18 @@ data depth_three_expected_root: Node = Node {
               children: [
                 Edge {
                   label: Authored { name: ^depth_three_step_c },
-                  target: depth_three_replacement_leaf
+                  target: depth_three_replacement_leaf,
+                  declaration: NotADeclaration
                 }
               ],
               occurrence_id: OccurrenceSynthetic
-            }
+            },
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -87,7 +93,7 @@ test fn substitute_at_depth_three_claim_holds() -> Bool {
     },
     replacement: depth_three_replacement_leaf
   ) {
-    Accepted { value: n, diagnostics: _ } => n == depth_three_expected_root
+    Accepted { value: n, diagnostics: _ } => node_same_occurrence(a: n, b: depth_three_expected_root)
     Rejected { diagnostics: _ } => false
   }
 }

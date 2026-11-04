@@ -1,10 +1,9 @@
 module test.claim.live_deploy.pre_swap_admission_merge_base_inhabitance_witness
 
-import std.types { Bool, String, Int, NonEmptyStr, GitRef, FilePath }
+import std.types { Bool, String, GitRef, FilePath }
 import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.retained_shell_script { retained_runtime }
 import gunbc.live_deploy.desired { production_admitted_branch }
 import gunbc.live_deploy.pre_swap_admission {
   checkout_branch_for_admission,
@@ -15,6 +14,8 @@ import gunbc.live_deploy.pre_swap_admission {
 import extdeps.git
 import extdeps.git.inspect { merge_base_outcome, MergeBaseOutcome }
 import extdeps.shell
+import extdeps.shell.exec
+import extdeps.filesystem.filesystem_io
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -26,51 +27,25 @@ type AncestryScratch {
   off_main: String
 }
 
-fn line_at(raw: String, index: Int) -> String {
-  fold(
-    split(s: raw, delimiter: "\n"),
-    init: LineScan { at: 0, found: "" },
-    f: (acc, l) => LineScan { at: acc.at + 1, found: if acc.at == index { trim(s: l) } else { acc.found } },
-  ).found
-}
-
-type LineScan {
-  at: Int
-  found: String
-}
-
 fn ancestry_scratch() -> AncestryScratch? {
-  let result = shell.Exec.Run(
-    script: retained_runtime(
-      body: join([
-        "set -eu",
-        "root=$(mktemp -d)",
-        "on=$root/on",
-        "off=$root/off",
-        "git init -q -b main \"$on\"",
-        "git -C \"$on\" config user.email witness@example.invalid",
-        "git -C \"$on\" config user.name witness",
-        "printf on-main > \"$on/tracked\"",
-        "git -C \"$on\" add tracked",
-        "git -C \"$on\" commit -qm on-main",
-        "git -C \"$on\" update-ref refs/remotes/origin/main HEAD",
-        "git -C \"$on\" checkout -q --detach HEAD",
-        "cp -a \"$on\" \"$off\"",
-        "printf off-main > \"$off/tracked\"",
-        "git -C \"$off\" add tracked",
-        "git -C \"$off\" commit -qm off-main",
-        "printf '%s\\n%s\\n%s\\n' \"$root\" \"$on\" \"$off\"",
-      ], "\n"),
-      reason: "detached-HEAD merge-base inhabitance fixture" as NonEmptyStr,
-    ),
-    expect: OutcomeIsData,
-  )
-  if result.success {
-    Present { value: AncestryScratch {
-      root: line_at(raw: result.stdout, index: 0),
-      on_main: line_at(raw: result.stdout, index: 1),
-      off_main: line_at(raw: result.stdout, index: 2),
-    } }
+  let dir = shell.Mktemp.Dir()
+  let root = dir.path as String
+  let on = concat(root, "/on")
+  let off = concat(root, "/off")
+  let init = shell.Exec.RunArgv(program: "git", arguments: ["init", "-q", "-b", "main", on])
+  let email = git.Core.ConfigLocalSetInRepo(repo: on as FilePath, key: "user.email", value: "witness@example.invalid")
+  let name = git.Core.ConfigLocalSetInRepo(repo: on as FilePath, key: "user.name", value: "witness")
+  let wrote_on = Filesystem.Write(path: concat(on, "/tracked"), content: "on-main")
+  let added_on = git.Core.AddAllInRepo(repo: on as FilePath)
+  let committed_on = git.Core.CommitInRepo(repo: on as FilePath, message: "on-main")
+  let tracked_ref = shell.Exec.RunArgv(program: "git", arguments: ["-C", on, "update-ref", "refs/remotes/origin/main", "HEAD"])
+  let detached = shell.Exec.RunArgv(program: "git", arguments: ["-C", on, "checkout", "-q", "--detach", "HEAD"])
+  let copied = shell.Exec.RunArgv(program: "cp", arguments: ["-a", on, off])
+  let wrote_off = Filesystem.Write(path: concat(off, "/tracked"), content: "off-main")
+  let added_off = git.Core.AddAllInRepo(repo: off as FilePath)
+  let committed_off = git.Core.CommitInRepo(repo: off as FilePath, message: "off-main")
+  if dir.success && init.exit_code == 0 && email.success && name.success && wrote_on.success && added_on.exit_code == 0 && committed_on.exit_code == 0 && tracked_ref.exit_code == 0 && detached.exit_code == 0 && copied.exit_code == 0 && wrote_off.success && added_off.exit_code == 0 && committed_off.exit_code == 0 {
+    Present { value: AncestryScratch { root: root, on_main: on, off_main: off } }
   } else { none }
 }
 
@@ -99,13 +74,7 @@ test fn git_merge_base_in_a_temp_repo_emits_the_standing_admission_consumes() ->
     Present { value: s } => {
       let on = merge_base_standing(repo: s.on_main)
       let off = merge_base_standing(repo: s.off_main)
-      let cleaned = shell.Exec.Run(
-        script: retained_runtime(
-          body: join(["set -eu", concat("rm -rf ", s.root)], "\n"),
-          reason: "detached-HEAD merge-base inhabitance cleanup" as NonEmptyStr,
-        ),
-        expect: OutcomeIsData,
-      ).success
+      let cleaned = shell.Remove.RecursiveForce(path: s.root as FilePath).success
       let on_ok = match checkout_branch_for_admission(
         named: "HEAD",
         admitted: production_admitted_branch,

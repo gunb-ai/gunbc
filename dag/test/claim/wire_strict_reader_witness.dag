@@ -1,0 +1,219 @@
+module test.claim.wire_strict_reader_witness
+
+import std.roster_frontier { frontier_rows_well_formed, FrontierRow, DeclSubject, PathSubject }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import gunbc.auth.wire_strict_reader { wire_strict_reader_frontier_rows }
+import std.types { String, List, Bool, NonEmptyStr }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import extdeps.languages.json.emit { JsonValue, JsonNull }
+import gunbc.auth.approval_device_wire {
+  WireDecoded, WireRefused, wire_admission_apns_environment, wire_admission_rows, decode_read_authentication, decode_push_registration, apns_environment_wire, ApnsProduction, ApnsDevelopment,
+}
+import gunbc.auth.wire_strict_reader {
+  WireVerdict, wire_cause_text, WireAccepted, WireRefusedAt, WireFieldRule, WireFreeString, WireAdmittedString, WireNested, WireField, WireShape, WireRecord, WireSum, WireSumArm,
+  WireAdmission, sum_admission, bind_record, BoundShape, ShapeBound, ShapeRefused, AdmissionVerdict, AdmissionSound, AdmissionNotDeclared, admission_verdict,
+  BoundShape, ShapeBound, ShapeRefused, bind_record, read_shape,
+}
+
+// SUPPLIED STRUCTURE: the declared field lists as values (DESIGN 3, a witness discriminates at one
+// interface). The inhabitance claim that the batched decl_facts_at pass yields these same lists is
+// wire_schema_derivation_witness.
+data read_authentication_declared: List<String> = ["enrollment_id", "requested_at", "assertion_b64"]
+
+fn read_authentication_rules() -> List<WireField> {
+  [
+    WireField { name: "enrollment_id", rule: WireFreeString },
+    WireField { name: "requested_at", rule: WireFreeString },
+    WireField { name: "assertion_b64", rule: WireFreeString },
+  ]
+}
+
+fn apns_registration_fields() -> List<WireField> {
+  [
+    WireField { name: "environment", rule: WireAdmittedString { row: wire_admission_apns_environment, cause: "not an APNs environment" } },
+    WireField { name: "topic", rule: WireFreeString },
+    WireField { name: "token", rule: WireFreeString },
+  ]
+}
+
+data push_shape: WireShape = WireSum {
+  arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }],
+  admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }], admitted: ["apns"]),
+  cause: "not an admitted push provider",
+}
+
+fn read_auth_shape() -> WireShape {
+  WireRecord { fields: read_authentication_rules() }
+}
+
+fn parsed(text: String) -> JsonValue {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => v
+    JsonDocumentUnreadable { gap: _ } => JsonNull
+  }
+}
+
+fn verdict_key(v: WireVerdict) -> String {
+  match v {
+    WireAccepted => "ok"
+    WireRefusedAt { at: a, cause: c } => join([a, "|", wire_cause_text(c: c)], "")
+  }
+}
+
+fn chain_auth_key(text: String) -> String {
+  match decode_read_authentication(v: parsed(text: text)) {
+    WireDecoded { value: _ } => "ok"
+    WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "")
+  }
+}
+
+fn chain_push_key(text: String) -> String {
+  match decode_push_registration(v: parsed(text: text)) {
+    WireDecoded { value: _ } => "ok"
+    WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "")
+  }
+}
+
+fn reader_key(shape: WireShape, text: String, path: String) -> String {
+  verdict_key(v: read_shape(shape: shape, v: parsed(text: text), path: path))
+}
+
+data auth_ok: String = "{\"enrollment_id\":\"e\",\"requested_at\":\"t\",\"assertion_b64\":\"a\"}"
+data auth_missing: String = "{\"enrollment_id\":\"e\",\"requested_at\":\"t\"}"
+data auth_empty: String = "{\"enrollment_id\":\"e\",\"requested_at\":\"\",\"assertion_b64\":\"a\"}"
+data auth_unknown: String = "{\"enrollment_id\":\"e\",\"requested_at\":\"t\",\"assertion_b64\":\"a\",\"x\":\"y\"}"
+data auth_not_string: String = "{\"enrollment_id\":1,\"requested_at\":\"t\",\"assertion_b64\":\"a\"}"
+
+// Members of a standalone body are bare in both readers (the chain labelled only the object "auth").
+// The recorded B2 change is the object-level subject: "auth" becomes "$" at the root.
+test fn derived_reader_matches_chain_on_read_authentication_members() -> Bool {
+  all([auth_ok, auth_missing, auth_empty, auth_not_string], t =>
+    reader_key(shape: read_auth_shape(), text: t, path: "") == chain_auth_key(text: t))
+}
+
+test fn the_recorded_b2_change_is_the_object_level_subject_only() -> Bool {
+  reader_key(shape: read_auth_shape(), text: auth_unknown, path: "") == "$|unknown member: x"
+    && chain_auth_key(text: auth_unknown) == "auth|unknown member: x"
+}
+
+data apns_ok: String = "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\"}"
+data apns_bad_kind: String = "{\"kind\":\"fcm\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\"}"
+data apns_bad_env: String = "{\"kind\":\"apns\",\"environment\":\"staging\",\"topic\":\"t\",\"token\":\"k\"}"
+data apns_missing_topic: String = "{\"kind\":\"apns\",\"environment\":\"production\",\"token\":\"k\"}"
+data apns_unknown: String = "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\",\"z\":\"1\"}"
+data apns_no_kind: String = "{\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\"}"
+
+// Nested under a site the chain labels "push": the derived reader is given path "push".
+test fn derived_reader_matches_chain_on_push_registration() -> Bool {
+  all([apns_ok, apns_bad_kind, apns_bad_env, apns_missing_topic, apns_unknown, apns_no_kind], t =>
+    reader_key(shape: push_shape, text: t, path: "push") == chain_push_key(text: t))
+}
+
+test fn a_changed_spelling_row_reds_a_vector() -> Bool {
+  let changed = WireSum {
+    arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }],
+    admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }], admitted: ["apns2"]),
+    cause: "not an admitted push provider",
+  }
+  reader_key(shape: changed, text: apns_ok, path: "push") != chain_push_key(text: apns_ok)
+}
+
+test fn a_policy_that_is_not_the_declared_fields_is_refused() -> Bool {
+  match bind_record(derived: read_authentication_declared, rules: read_authentication_rules() |> filter(f => f.name != "assertion_b64")) {
+    ShapeRefused { cause: _ } => true
+    ShapeBound { shape: _ } => false
+  }
+}
+
+// RED: the same fields in another order are not the declared fields in declaration order (CausePolicyFieldsDiffer says "in declaration order").
+test fn a_policy_that_reorders_the_declared_fields_is_refused() -> Bool {
+  match bind_record(derived: read_authentication_declared, rules: concat(read_authentication_rules() |> filter(f => f.name == "assertion_b64"), read_authentication_rules() |> filter(f => f.name != "assertion_b64"))) {
+    ShapeRefused { cause: c } => wire_cause_text(c: c) == "policy fields are not the declared fields in declaration order"
+    ShapeBound { shape: _ } => false
+  }
+}
+
+test fn a_policy_that_is_the_declared_fields_binds() -> Bool {
+  match bind_record(derived: read_authentication_declared, rules: read_authentication_rules()) {
+    ShapeBound { shape: _ } => true
+    ShapeRefused { cause: _ } => false
+  }
+}
+
+// Every declared frontier row carries a reason and a bound-or-described dissolution trigger (review 83284: no row count is asserted).
+test fn the_declared_frontier_rows_are_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows)
+}
+
+// Completeness at identity grain: each declaration the fold's consumers are still owed on is joined to a row's DeclSubject by its complete DeclarationRef (module, name, field), never by its name alone.
+fn frontier_owed_declarations() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "read_shape"),
+    decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "admission_verdict"),
+    decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireSumArm"),
+    decl_ref(module_path: "v2.std.node_query", decl_name: "field_default_reading"),
+    decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireShape"),
+  ]
+}
+
+fn row_names_declaration(r: FrontierRow, n: DeclarationRef) -> Bool {
+  match r.subject {
+    DeclSubject { ref: d } => declaration_ref_eq(a: d, b: n)
+    PathSubject { path: _ } => false
+  }
+}
+
+fn owed_all_named(rows: List<FrontierRow>) -> Bool {
+  all(frontier_owed_declarations(), n => any(rows, r => row_names_declaration(r: r, n: n)))
+}
+
+test fn every_owed_declaration_has_a_frontier_row() -> Bool {
+  owed_all_named(wire_strict_reader_frontier_rows)
+}
+
+// RED: a dropped row fails the join.
+test fn a_dropped_frontier_row_fails_the_join() -> Bool {
+  !owed_all_named(wire_strict_reader_frontier_rows |> filter(r => !row_names_declaration(r: r, n: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "read_shape"))))
+}
+
+// RED: a row with the owed NAME under another module does not discharge the obligation.
+test fn a_row_with_the_same_name_in_another_module_fails_the_join() -> Bool {
+  !owed_all_named(map(wire_strict_reader_frontier_rows, r => match r.subject {
+    DeclSubject { ref: d } => if d.decl_name == "field_default_reading" { FrontierRow { subject: DeclSubject { ref: decl_ref(module_path: "v2.std.some_other_module", decl_name: "field_default_reading") }, reason: r.reason, dissolution: r.dissolution } } else { r }
+    PathSubject { path: _ } => r
+  }))
+}
+
+// RED: a path subject spelled like an owed declaration does not discharge it.
+test fn a_path_subject_with_the_same_spelling_fails_the_join() -> Bool {
+  !owed_all_named(map(wire_strict_reader_frontier_rows, r => match r.subject {
+    DeclSubject { ref: d } => if d.decl_name == "WireShape" { FrontierRow { subject: PathSubject { path: "WireShape" }, reason: r.reason, dissolution: r.dissolution } } else { r }
+    PathSubject { path: _ } => r
+  }))
+}
+
+// B3/B4: every admission row the protocol declares is a subset of its declared arms.
+test fn every_admission_row_is_within_its_declared_arms() -> Bool {
+  all(wire_admission_rows, r => match admission_verdict(row: r) { AdmissionSound => true  AdmissionNotDeclared { subject: _, spelling: _ } => false })
+}
+
+// RED: an admitted spelling no arm has is refused, naming it.
+test fn an_admitted_spelling_that_is_not_declared_is_refused() -> Bool {
+  match admission_verdict(row: WireAdmission { subject: "platform", declared: ["ios", "android"], admitted: ["ios", "windows"] }) {
+    AdmissionNotDeclared { subject: s, spelling: v } => s == "platform" && v == "windows"
+    AdmissionSound => false
+  }
+}
+
+// RED: a sum admitting a tag no arm has does not bind, through the same verdict that judges field values.
+test fn a_sum_admitting_an_undeclared_tag_does_not_bind() -> Bool {
+  let bad = WireSum {
+    arms: [WireSumArm { wire_tag: "apns", fields: [] }],
+    admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "apns", fields: [] }], admitted: ["mobile_web"]),
+    cause: "x",
+  }
+  match bind_record(derived: ["push"], rules: [WireField { name: "push", rule: WireNested { shape: bad } }]) {
+    ShapeRefused { cause: c } => wire_cause_text(c: c) == "policy admits a spelling no declared arm has: kind mobile_web"
+    ShapeBound { shape: _ } => false
+  }
+}

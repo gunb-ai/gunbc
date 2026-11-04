@@ -6,7 +6,7 @@ import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
 import extdeps.google.workspace {
   WorkspaceAdminSubject, WorkspaceAdminValue, WorkspaceAdminControl, WorkspaceAdminReadSurface,
   AuthPlatformClient, AuthPlatformAudience, WorkspaceClientAccess, WorkspaceDirectorySharing, WorkspacePhotoEditing,
-  RegisteredWebClient, InternalAudience, ExternalAudience, ClientAccess, AppSpecificGoogleData, AppTrusted, AppLimited, AppBlocked, DirectorySharing, RequesterBasicProfileOnly, OrganizationDirectoryData, PhotoEditing,
+  RegisteredWebClient, RegisteredIosClient, InternalAudience, ExternalAudience, ClientAccess, AppSpecificGoogleData, AppTrusted, AppLimited, AppBlocked, DirectorySharing, RequesterBasicProfileOnly, OrganizationDirectoryData, PhotoEditing,
   workspace_admin_control, workspace_admin_value_control, workspace_admin_read_surface, ConsoleReadbackRequired, PolicyApiReadSupported,
 }
 
@@ -119,6 +119,7 @@ fn workspace_admin_values_equal(a: WorkspaceAdminValue, b: WorkspaceAdminValue) 
   match a {
     RegisteredWebClient { redirect_uris: left } => match b {
       RegisteredWebClient { redirect_uris: right } => all(left, x => any(right, y => x == y)) && all(right, x => any(left, y => x == y))
+      RegisteredIosClient { bundle_id: _ } => false
       InternalAudience => false
       ExternalAudience => false
       ClientAccess { access: _ } => false
@@ -131,11 +132,13 @@ fn workspace_admin_values_equal(a: WorkspaceAdminValue, b: WorkspaceAdminValue) 
       ClientAccess { access: AppLimited } => false
       ClientAccess { access: AppBlocked } => false
       RegisteredWebClient { redirect_uris: _ } => false
+      RegisteredIosClient { bundle_id: _ } => false
       InternalAudience => false
       ExternalAudience => false
       DirectorySharing { policy: _ } => false
       PhotoEditing { allowed: _ } => false
     }
+    RegisteredIosClient { bundle_id: _ } => a == b
     ClientAccess { access: AppTrusted } => a == b
     ClientAccess { access: AppLimited } => a == b
     ClientAccess { access: AppBlocked } => a == b

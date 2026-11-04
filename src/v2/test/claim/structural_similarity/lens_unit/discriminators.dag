@@ -1,5 +1,7 @@
 module v2.test.claim.structural_similarity.lens_unit.discriminators
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -8,11 +10,11 @@ fn atom(id: Symbol) -> Node {
 }
 fn disj2(a: Node, b: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Disj }, children: [
-    Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
+    Edge { label: Positional, target: a, declaration: NotADeclaration }, Edge { label: Positional, target: b, declaration: NotADeclaration } ])
 }
 fn compose2(a: Node, b: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
+    Edge { label: Positional, target: a, declaration: NotADeclaration }, Edge { label: Positional, target: b, declaration: NotADeclaration } ])
 }
 
 data nickname_pair: List<Node> = [

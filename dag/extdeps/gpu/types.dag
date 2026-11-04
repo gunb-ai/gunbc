@@ -3,15 +3,18 @@ module extdeps.gpu.types
 import std.types { Int, NonEmptyStr, String, List, Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count, Micrometer }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, Hertz, Watt, watt_count, Bandwidth, bandwidth_count, Micrometer, GigaTensorOperationsPerSecond }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.storage.types { PcieLink }
+import extdeps.pci.identity { PciDeviceId }
 
-import extdeps.external_authority { ExternalAuthority, FactCitation }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority }
+import std.decl_ref { NamedField, decl_field_eq }
+import std.measure { Measure }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -22,6 +25,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data cuda_compute_capabilities_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+// NVIDIA's CUDA GPUs page: the compute capability of each CURRENT product, listed by product name. Its
+// companion "Legacy CUDA GPUs" page lists the products the current page no longer carries (Tesla K80 at
+// 3.7, M60 at 5.2, P100 at 6.0, V100 at 7.0); a part on neither page carries no compute capability.
+data cuda_gpus_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.nvidia.com/cuda-gpus"
+  }
+}
+
+data cuda_legacy_gpus_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.nvidia.com/cuda-legacy-gpus"
+  }
+}
 
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
 
@@ -90,53 +110,114 @@ type GpuSmCacheGeometry {
   register_file_per_sm: ByteSize
 }
 
-// PACKAGE IS NOT THE HOST LINK. PcieAddInCard names the board; interconnect is that board's
-// endpoint capability (generation × width). An SXM module in an HGX tray is SxmModule: its
-// GPU-to-GPU fabric is NVLink, and a rental listing's "PCIe Gen5" is an observed host link of
-// that system, never an add-in-card fact. IntegratedComputePackage is a GPU nested in an SoC
-// or superchip. The three stay separate so P4 feasibility can refuse to treat a B200 as a
-// purchasable dual-slot card.
-type GpuPackageForm
-  = PcieAddInCard
-  | SxmModule
-  | IntegratedComputePackage
+// DENSE TENSOR-CORE THROUGHPUT IS A RATE PER DATATYPE, NOT A STRING AND NOT ONE NUMBER. Vendors print
+// a headline per datatype and print the SPARSE figure beside the dense one (sparsity doubles it), so a
+// row carries only the dense figure and the datatype it was read for: a card with no FP4 MMA has no
+// FP4 entry, which is different from an entry of zero. The list is empty where this repository has
+// read no throughput, never a fabricated zero (execution_lane_count's rule). Each entry carries its own
+// CitedFigureStanding because one datasheet routinely states some datatypes and not others.
+//
+// The unit is giga-operations per second, carried as std.measure's GigaTensorOperationsPerSecond --
+// the Frequency-axis sibling of TokensPerSecond, minted where every other unit is minted (DESIGN s3:
+// an extdeps module holds upstream facts, not units; review 84774 caught this alias minted here).
+// Giga scale rather than Tera because Tera would floor a published 835.5 TFLOPS to 835 and lose the
+// figure. 1.75 petaFLOPS is 1,750,000.
+type TensorDatatype = TensorFp4 | TensorFp8 | TensorInt8 | TensorBf16
 
-// figure_citations cites the row's other published figures (bandwidth, power, memory, lane count),
-// each naming the row field it grounds; sm_cache_citations grounds sm_cache only.
+type DenseTensorThroughput {
+  datatype: TensorDatatype
+  rate: GigaTensorOperationsPerSecond
+  standing: CitedFigureStanding
+}
+
+fn tensor_datatype_wire(d: TensorDatatype) -> String {
+  match d {
+    TensorFp4 => "fp4"
+    TensorFp8 => "fp8"
+    TensorInt8 => "int8"
+    TensorBf16 => "bf16"
+  }
+}
+
+// Absent when the row carries no entry for the datatype (the card has no such MMA, or nothing was
+// read) AND when it carries two: a duplicated datatype is not read as either.
+fn gpu_dense_tensor_throughput(row: GpuDeviceCatalogRow, datatype: TensorDatatype) -> DenseTensorThroughput? {
+  let hits = row.dense_tensor_throughput |> filter(t => tensor_datatype_wire(d: t.datatype) == tensor_datatype_wire(d: datatype))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, t) => Present { value: t })
+  } else {
+    none
+  }
+}
+
+// ONE GPU AS ITS VENDOR SPECIFIES IT: the device grain. What a GPU is -- its die, its lanes, its memory
+// and the rate it reads it at, its clocks, its compute capability, its tensor throughput -- belongs here.
+// How the GPU is attached and powered does not: a GPU reaches a host on a board (GpuBoardCatalogRow, which
+// owns attachment, board power, thermal solution and PCI identity) or inside a system
+// (extdeps.systems.types nests this row), and the same device can sit on several. An earlier shape kept a
+// package form, a TDP and a host link on this row, which made a four-GPU board's power a property of each of
+// its GPUs and an SoC's GPU a card with an Absent TDP.
+// figure_citations cites the row's other published figures (bandwidth, memory, lane count), each naming
+// the row field it grounds; sm_cache_citations grounds sm_cache only.
 // execution_lane_count is absent when the cited datasheet does not state a CUDA-core / lane
 // count (NVIDIA unpublished B200/B300 SM counts); a consumer that needs lanes reads Present
 // or stops, never a fabricated zero.
 // memory_bandwidth is absent when the cited page only states a ceiling ("up to"), not an
 // exact rate; a consumer that needs bandwidth reads Present or stops.
-type GpuModelCatalogRow {
+// supported_runtimes stays on the device for now; which runtime releases support a device is a fact of
+// each runtime's own support matrix, and moving it there is a declared follow-up, not this cut.
+type GpuDeviceCatalogRow {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
   microarchitecture: NonEmptyStr
-  package: GpuPackageForm
   execution_lane_count: HardwareThreadCount?
   memory: MemoryFacts
   memory_bandwidth: Bandwidth?
   boost_clock: Hertz?
-  tdp_watts: Watt?
   compute_capability: GpuComputeCapability?
   supported_runtimes: List<GpuRuntime>
-  interconnect: PcieLink?
   sm_cache: GpuSmCacheGeometry?
   sm_cache_citations: List<FactCitation>
   figure_citations: List<FactCitation>
+  dense_tensor_throughput: List<DenseTensorThroughput>
 }
 
-// Identity of a catalog row is the cited vendor plus the cited SKU name (NVIDIA's edition
-// spellings distinguish Workstation / Max-Q / Server). Package×VRAM×TDP is not enough: the
-// Workstation and Server PRO 6000 rows share those three and differ in model and bandwidth.
-fn gpu_catalog_row_eq(a: GpuModelCatalogRow, b: GpuModelCatalogRow) -> Bool {
+// Identity of a device row is the cited vendor plus the cited SKU name (NVIDIA's edition
+// spellings distinguish Workstation / Max-Q / Server). VRAM is not enough: the Workstation and
+// Server PRO 6000 rows share it and differ in model and bandwidth.
+fn gpu_catalog_row_eq(a: GpuDeviceCatalogRow, b: GpuDeviceCatalogRow) -> Bool {
   (a.vendor.legal_name as String) == (b.vendor.legal_name as String)
     && (a.model as String) == (b.model as String)
 }
 
-fn gpu_catalog_bandwidth_count(row: GpuModelCatalogRow) -> Nat? {
+fn gpu_catalog_bandwidth_count(row: GpuDeviceCatalogRow) -> Nat? {
   match row.memory_bandwidth {
     Present { value: b } => Present { value: bandwidth_count(b: b) }
+    Absent => none
+  }
+}
+
+// A MEMORY BANDWIDTH WITH THE STANDING OF ITS FIGURE, the bandwidth sibling of DenseTensorThroughput:
+// a consumer that divides by a bandwidth must be able to say what grounds the figure it divided by.
+// A catalog row's bandwidth is CitedToAuthority through the row's own figure_citations entry naming
+// memory_bandwidth; a figure supplied from outside the catalog states its own standing.
+type GpuBandwidthFigure {
+  rate: Bandwidth
+  standing: CitedFigureStanding
+}
+
+// Absent when the row carries no bandwidth AND when it carries one that no figure_citations entry, or
+// more than one, grounds: an uncited catalog figure is not read as cited.
+fn gpu_catalog_bandwidth(row: GpuDeviceCatalogRow) -> GpuBandwidthFigure? {
+  match row.memory_bandwidth {
+    Present { value: b } => {
+      let hits = row.figure_citations |> filter(c => decl_field_eq(a: c.fact.field, b: NamedField { field_name: "memory_bandwidth" as NonEmptyStr }))
+      if count(hits) == 1 {
+        fold(hits, init: none, f: (_acc, c) => Present { value: GpuBandwidthFigure { rate: b, standing: CitedToAuthority { authority: c.authority } } })
+      } else {
+        none
+      }
+    }
     Absent => none
   }
 }
@@ -150,4 +231,209 @@ type PcieCardSideOutline {
   length_without_bracket: Micrometer
   length_with_bracket: Micrometer
   height: Micrometer
+}
+
+// ── THE BOARD GRAIN: WHAT A VENDOR SELLS AS ONE PART AND A HOST ATTACHES AS ONE THING. A board carries
+// one GPU of its device row, or several of them joined by an on-board interconnect (GpuBoardComposition),
+// and owns every fact no single GPU of it has: how it attaches, the power the whole board is rated or
+// configurable to, its thermal solution, its PCI identity. Power in particular is a BOARD figure -- how a
+// driver divides it among the GPUs is a reading of the device, not a catalog fact.
+//
+// A MULTI-GPU BOARD IS SEVERAL MEMORY DOMAINS, NOT ONE BIG ONE. Every several-GPU board any source read
+// states (K80, M10, M60, A16) gives each GPU its own memory; no GPU of the board can address another's.
+// So a model that must fit in one GPU's memory sees gpu_board_single_model_memory, the device row's
+// capacity, and the board's aggregate (gpu_board_aggregate_memory) is reachable only by running an
+// independent copy per GPU, or by splitting one model across the on-board interconnect at that link's
+// rate. A board whose GPUs shared one memory would be a new arm of GpuBoardComposition, landing with the
+// first source that states one; none has. The GPU of such a board is also usually a smaller die than the
+// single-GPU card of its generation (the A16's GA107 against the A10's GA102, the K80's GK210 against the
+// K40's GK110B), which the device row already carries and the aggregate hides.
+//
+// ATTACHMENT IS NOT THE HOST LINK OBSERVED. PcieAddInBoard names a board that plugs into a PCIe slot, and
+// its link is that board's endpoint capability (generation x width), Absent where the vendor page states
+// none. An SXM module on an HGX baseboard is SxmModule: its GPU-to-GPU fabric is NVLink, and a rental
+// listing's "PCIe Gen5" is an observed host link of that system, never a board fact. The two stay
+// separate so P4 feasibility can refuse to treat a B200 as a purchasable dual-slot card. A GPU inside an
+// SoC or superchip has no board at all: extdeps.systems.types nests its device row directly.
+// MOBILE ATTACHMENTS. MxmModule is a removable module to the MXM specification, at the revision and type
+// the vendor states (Tesla P6: "MXM 3.1 Type B"), with the PCIe link it presents where stated; it is
+// bought bare and needs a carrier. SolderedBga is a GPU soldered to a laptop's or system's mainboard: it is
+// never bought alone, so its "board" is the marketed laptop GPU and the purchase unit is the whole system.
+// OAM, proprietary mobile modules (DGFF and the like) and conversion boards are arms that land with the
+// rows that inhabit them.
+type GpuAttachmentForm
+  = PcieAddInBoard { link: PcieLink? }
+  | SxmModule
+  | MxmModule { variant: MxmVariant, link: PcieLink? }
+  | SolderedBga
+
+// The MXM revision and module type exactly as the vendor states them ("3.1", "Type B").
+type MxmVariant { revision: NonEmptyStr, module_type: NonEmptyStr }
+
+// HOW A BOARD'S GPUs REACH EACH OTHER AND THE HOST. OnBoardPcieSwitch: the GPUs sit behind one PCIe switch
+// on the board (the K80's "on-board PLX switch"); the board's attachment link is the switch's upstream, and
+// downstream_link is each GPU's own link to the switch where a source states it. Peer traffic between two
+// GPUs crosses the switch at that link's rate, never the board's memory bandwidth. Other fabrics (an
+// Infinity Fabric bridge between two dies, an NVLink bridge) are arms that land with the first board row
+// that states one.
+type GpuBoardInterconnect
+  = OnBoardPcieSwitch { downstream_link: PcieLink? }
+
+// A board's interconnect with the standing of its reading: the vendor's board specification, or an
+// observation of a real board (nvidia-smi topo reporting PIX between the A16's GPUs) that stands as a
+// transcription until the brief is read for it. Unread where no source and no reading says, which is not
+// the same as no interconnect.
+type GpuBoardInterconnectReading
+  = InterconnectRead { interconnect: GpuBoardInterconnect, standing: CitedFigureStanding }
+  | InterconnectUnread { read_obligation: NonEmptyStr }
+
+// ONE GPU, OR SEVERAL JOINED ON THE BOARD. The count lives inside SeveralGpus so a board of one cannot
+// carry an interconnect and a board of several cannot omit the question; admission refuses SeveralGpus
+// with a count below two.
+type GpuBoardComposition
+  = SingleGpu
+  | SeveralGpus { count: Nat, interconnect: GpuBoardInterconnectReading }
+
+fn gpu_board_gpu_count(composition: GpuBoardComposition) -> Nat {
+  match composition {
+    SingleGpu => 1
+    SeveralGpus { count: n, interconnect: _ } => n
+  }
+}
+
+// Thermal solution is a board fact, and the one the fan-zone policy needs: a passive card depends on the
+// chassis zone that reaches it.
+type GpuThermalSolution = PassiveThermalSolution | ActiveThermalSolution
+
+// WHAT THE VENDOR STATES ABOUT A BOARD'S POWER, in the shape it states it. RatedBoardPower is the one
+// figure a page gives (a TDP, a total board power, a "max power consumption", or a maximum that the page
+// calls configurable without stating the range); ConfigurableBoardPower is a stated range with its
+// published default where the page states one (the A2's page states "40–60W (configurable)" and no
+// default) and any named operating point (NVIDIA's MaxQ on the A16). A range is a configurable span,
+// distinct from a rating. SystemDependentTgp is a laptop GPU's total graphics power range: the vendor
+// states the span (the RTX 5000 Ada Laptop GPU's "80-175W") and the laptop maker sets where in it a given
+// system runs, so one marketed GPU is many power points and no one of them is the GPU's. A board whose
+// page states no power figure, or only a ceiling ("up to 1 kW"), carries no specification at all
+// (GpuBoardCatalogFacts.board_power is Absent).
+type GpuBoardPowerSpecification
+  = RatedBoardPower { rated: Watt }
+  | ConfigurableBoardPower { default: Watt?, minimum: Watt, maximum: Watt, named_points: List<GpuNamedPowerPoint> }
+  | SystemDependentTgp { minimum: Watt, maximum: Watt }
+
+type GpuNamedPowerPoint { name: NonEmptyStr, power: Watt }
+
+// The most the board may draw under its own specification: the rating, or the top of the range. This is
+// the ceiling an applied power limit is compared against.
+fn gpu_board_power_ceiling(spec: GpuBoardPowerSpecification) -> Watt {
+  match spec {
+    RatedBoardPower { rated: r } => r
+    ConfigurableBoardPower { default: _, minimum: _, maximum: m, named_points: _ } => m
+    SystemDependentTgp { minimum: _, maximum: m } => m
+  }
+}
+
+// Whether the vendor states the board can be put in a zero-power state, which a sleep or park policy
+// must read before it can select one. NVIDIA's briefs print it as a row ("Zero Power").
+type GpuZeroPowerSupport = ZeroPowerSupported | ZeroPowerNotSupported
+
+// WHAT A BRIEF STATES, AS AUTHORED. The citations point at these fields. A figure the vendor page does not
+// state is Absent, never a default: a board with no stated thermal solution is not thereby passive.
+// driver_listed_name is the product name NVIDIA's Linux driver lists the board under
+// (extdeps.nvidia.linux_driver_supported_chips), which is the name nvidia-smi reports for it, so it is
+// the identity an observed GPU in a run receipt joins through. Absent where the driver lists no such
+// name: the Turing Tesla T10 is listed under none.
+type GpuBoardCatalogFacts {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  gpu: GpuDeviceCatalogRow
+  composition: GpuBoardComposition
+  attachment: GpuAttachmentForm
+  board_power: GpuBoardPowerSpecification?
+  zero_power: GpuZeroPowerSupport?
+  thermal: GpuThermalSolution?
+  pci_device_id: PciDeviceId?
+  driver_listed_name: NonEmptyStr?
+  figure_citations: List<FactCitation>
+}
+
+// THE ROW A CONSUMER READS, AND THE ONLY WAY IN REFUSES (the std.allocation_roster pattern). A board of
+// "several" GPUs that counts fewer than two, a power range whose minimum is above its maximum, or a
+// default or named point outside the range has no GpuBoardCatalogRow, so no consumer can be handed one. The authored facts record is
+// still writable with any figures; it is admit_gpu_board that refuses them, so the invalid state is
+// unconstructible in the row and refused at one fallible ingress, not impossible to author. A refusal
+// carries the facts it refused, so a consumer folding a roster of admissions can locate it.
+type GpuBoardCatalogRow sole_constructor { facts: GpuBoardCatalogFacts }
+
+type GpuBoardRefusal
+  = SeveralGpusCountBelowTwo { count: Nat }
+  | BoardPowerRangeInverted
+  | BoardPowerDefaultOutsideRange
+  | BoardNamedPointOutsideRange { name: NonEmptyStr }
+
+type GpuBoardAdmission
+  = GpuBoardAdmitted { row: GpuBoardCatalogRow }
+  | GpuBoardRefused { facts: GpuBoardCatalogFacts, refusal: GpuBoardRefusal }
+
+fn gpu_board_power_within(minimum: Watt, maximum: Watt, w: Watt) -> Bool {
+  watt_count(w) >= watt_count(minimum) && watt_count(w) <= watt_count(maximum)
+}
+
+fn gpu_board_power_refusal(spec: GpuBoardPowerSpecification) -> GpuBoardRefusal? {
+  match spec {
+    RatedBoardPower { rated: _ } => none
+    SystemDependentTgp { minimum: lo, maximum: hi } => if watt_count(lo) > watt_count(hi) { Present { value: BoardPowerRangeInverted } } else { none }
+    ConfigurableBoardPower { default: d, minimum: lo, maximum: hi, named_points: points } =>
+      if watt_count(lo) > watt_count(hi) { Present { value: BoardPowerRangeInverted } }
+      else if (match d { Present { value: dv } => !gpu_board_power_within(minimum: lo, maximum: hi, w: dv)  Absent => false }) { Present { value: BoardPowerDefaultOutsideRange } }
+      else {
+        match first(filter(points, n => !gpu_board_power_within(minimum: lo, maximum: hi, w: n.power))) {
+          Present { value: n } => Present { value: BoardNamedPointOutsideRange { name: n.name } }
+          Absent => none
+        }
+      }
+  }
+}
+
+fn gpu_board_composition_refusal(composition: GpuBoardComposition) -> GpuBoardRefusal? {
+  match composition {
+    SingleGpu => none
+    SeveralGpus { count: n, interconnect: _ } => if n < 2 { Present { value: SeveralGpusCountBelowTwo { count: n } } } else { none }
+  }
+}
+
+fn admit_gpu_board(facts: GpuBoardCatalogFacts) -> GpuBoardAdmission {
+  match gpu_board_composition_refusal(composition: facts.composition) {
+    Present { value: r } => GpuBoardRefused { facts: facts, refusal: r }
+    Absent => {
+    let power_refusal: GpuBoardRefusal? = match facts.board_power {
+      Present { value: spec } => gpu_board_power_refusal(spec: spec)
+      Absent => none
+    }
+    match power_refusal {
+      Present { value: r } => GpuBoardRefused { facts: facts, refusal: r }
+      Absent => GpuBoardAdmitted { row: GpuBoardCatalogRow { facts: facts } }
+    }
+    }
+  }
+}
+
+// THE MEMORY ONE MODEL CAN USE WITHOUT CROSSING THE INTERCONNECT: one GPU's. The number a fit test, a
+// price per gibibyte and a bandwidth per dollar must use, because the board's GPUs are separate memory
+// domains (above).
+fn gpu_board_single_model_memory(facts: GpuBoardCatalogFacts) -> ByteSize {
+  facts.gpu.memory.capacity
+}
+
+// The board's memory across all its GPUs: what an independent model copy per GPU can use in total, and
+// what a listing's "24 GB" title names for a K80. Never the memory of one model.
+fn gpu_board_aggregate_memory(facts: GpuBoardCatalogFacts) -> ByteSize {
+  byte_size(count: gpu_board_gpu_count(composition: facts.composition) * byte_size_count(b: facts.gpu.memory.capacity))
+}
+
+// The authored facts of an admission, admitted or refused: what a roster fold names when it reports one.
+fn gpu_board_admission_facts(admission: GpuBoardAdmission) -> GpuBoardCatalogFacts {
+  match admission {
+    GpuBoardAdmitted { row: r } => r.facts
+    GpuBoardRefused { facts: f, refusal: _ } => f
+  }
 }

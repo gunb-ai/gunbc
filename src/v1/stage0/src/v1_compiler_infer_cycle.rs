@@ -112,9 +112,9 @@ pub fn kahn_remove_loop(
             __result
         });
         let final_state = kahn_cycle_drain(
-            initial_queue.clone(),
+            initial_queue,
             in_degree.clone(),
-            reverse_adj.clone(),
+            reverse_adj,
             0,
             (remaining.clone().len() as i64),
         );
@@ -150,61 +150,60 @@ pub fn kahn_cycle_drain(
     mut __tco_loop_removed_count: i64,
     mut __tco_loop_fuel: i64,
 ) -> Rc<KahnState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut queue = __tco_loop_queue;
-        #[allow(unused_mut)]
-        let mut in_degree = __tco_loop_in_degree;
-        #[allow(unused_mut)]
-        let mut reverse_adj = __tco_loop_reverse_adj;
-        #[allow(unused_mut)]
-        let mut removed_count = __tco_loop_removed_count;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if ((queue.clone().len() as i64) == 0) {
-            return Rc::new(KahnState {
-                in_degree: in_degree.clone(),
-                removed_count: removed_count.clone(),
-            });
-        }
-        let result = queue.iter().cloned().fold(
-            Rc::new(KahnState {
-                in_degree: in_degree.clone(),
-                removed_count: removed_count.clone(),
-            }),
-            |state: Rc<KahnState>, node: String| {
-                let state = v1_rt::take_owned(state);
-                {
-                    let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
-                        Some(v) => v.clone(),
-                        std::option::Option::None => Rc::new(vec![]),
-                    };
-                    let new_deg = dependents.iter().cloned().fold(
-                        state.in_degree,
-                        |deg_acc: Rc<HashMap<String, i64>>, dep: String| {
-                            let old = match v1_rt::map_get(&deg_acc, dep.clone()) {
-                                Some(d) => d.clone(),
-                                std::option::Option::None => 0,
-                            };
-                            v1_rt::rc_map_insert(
-                                deg_acc.clone(),
-                                dep.clone(),
-                                v1_rt::int_sub(old.clone(), 1),
-                            )
-                        },
-                    );
-                    Rc::new(KahnState {
-                        in_degree: new_deg.clone(),
-                        removed_count: v1_rt::int_add(state.removed_count, 1),
-                    })
-                }
-            },
-        );
-        let next_queue =
-            queue
-                .iter()
-                .cloned()
-                .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, node: String| {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut queue = __tco_loop_queue;
+            #[allow(unused_mut)]
+            let mut in_degree = __tco_loop_in_degree;
+            #[allow(unused_mut)]
+            let mut reverse_adj = __tco_loop_reverse_adj;
+            #[allow(unused_mut)]
+            let mut removed_count = __tco_loop_removed_count;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if ((queue.clone().len() as i64) == 0) {
+                return Rc::new(KahnState {
+                    in_degree: in_degree.clone(),
+                    removed_count: removed_count.clone(),
+                });
+            }
+            let result = queue.iter().cloned().fold(
+                Rc::new(KahnState {
+                    in_degree: in_degree.clone(),
+                    removed_count: removed_count.clone(),
+                }),
+                |state: Rc<KahnState>, node: String| {
+                    let state = v1_rt::take_owned(state);
+                    {
+                        let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
+                            Some(v) => v.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        let new_deg = dependents.iter().cloned().fold(
+                            state.in_degree,
+                            |deg_acc: Rc<HashMap<String, i64>>, dep: String| {
+                                let old = match v1_rt::map_get(&deg_acc, dep.clone()) {
+                                    Some(d) => d.clone(),
+                                    std::option::Option::None => 0,
+                                };
+                                v1_rt::rc_map_insert(
+                                    deg_acc.clone(),
+                                    dep.clone(),
+                                    v1_rt::int_sub(old.clone(), 1),
+                                )
+                            },
+                        );
+                        Rc::new(KahnState {
+                            in_degree: new_deg.clone(),
+                            removed_count: v1_rt::int_add(state.removed_count, 1),
+                        })
+                    }
+                },
+            );
+            let next_queue = queue.iter().cloned().fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<String>>, node: String| {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
                         Some(v) => v.clone(),
                         std::option::Option::None => Rc::new(vec![]),
@@ -223,19 +222,21 @@ pub fn kahn_cycle_drain(
                             }
                         },
                     )
-                });
-        {
-            let __tco_0 = next_queue.clone();
-            let __tco_1 = result.in_degree.clone();
-            let __tco_2 = reverse_adj;
-            let __tco_3 = result.removed_count.clone();
-            let __tco_4 = v1_rt::int_sub(fuel, 1);
-            __tco_loop_queue = __tco_0;
-            __tco_loop_in_degree = __tco_1;
-            __tco_loop_reverse_adj = __tco_2;
-            __tco_loop_removed_count = __tco_3;
-            __tco_loop_fuel = __tco_4;
-            continue;
+                },
+            );
+            {
+                let __tco_0 = next_queue;
+                let __tco_1 = result.in_degree.clone();
+                let __tco_2 = reverse_adj;
+                let __tco_3 = result.removed_count.clone();
+                let __tco_4 = v1_rt::int_sub(fuel, 1);
+                __tco_loop_queue = __tco_0;
+                __tco_loop_in_degree = __tco_1;
+                __tco_loop_reverse_adj = __tco_2;
+                __tco_loop_removed_count = __tco_3;
+                __tco_loop_fuel = __tco_4;
+                continue;
+            }
         }
     }
 }
@@ -258,8 +259,7 @@ pub fn detect_type_cycles_kahn(
             .fold(v1_rt::rc_empty_set::<_>(), |acc: _, n: String| {
                 v1_rt::rc_set_insert(acc, n.clone())
             });
-        let local_deps =
-            compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set.clone());
+        let local_deps = compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set);
         let self_refs = Rc::new({
             let mut __result = Vec::new();
             for name in all_names.iter().cloned() {
@@ -281,7 +281,7 @@ pub fn detect_type_cycles_kahn(
             }
             __result
         });
-        let cycle_members = kahn_remove_loop(all_names.clone(), local_deps.clone());
+        let cycle_members = kahn_remove_loop(all_names.clone(), local_deps);
         let sr_set = self_refs
             .iter()
             .cloned()

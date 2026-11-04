@@ -6,9 +6,27 @@ import UserNotifications
 
 @MainActor
 final class AppState: ObservableObject {
-    @Published private(set) var state: EnrolmentState = .unenrolled
+    /// Entering a phase drops the errors of operations that are not relevant in it (OperationErrors.enter).
+    @Published private(set) var state: EnrolmentState = .signedOut {
+        didSet { errors.enter(state.phase) }
+    }
     @Published var pending: [PendingApproval] = []
-    @Published var lastError: String?
+    /// Bots approved this session; they join the garden. Presentation only, never persisted.
+    @Published private(set) var recruits = 0
+    func recruit() { recruits += 1 }
+    /// The escalation a tapped alert named (ApprovalPushHint.notification_id). It only ORDERS the
+    /// inbox: the card shown is still one the server listed as pending, read over the authenticated
+    /// route, and a locator naming nothing pending selects nothing.
+    @Published var focused: String?
+
+    /// The card the inbox shows first: the tapped request when it is pending, else the oldest.
+    var front: PendingApproval? {
+        if let f = focused, let p = pending.first(where: { $0.escalation_id == f }) { return p }
+        return pending.first
+    }
+    /// One current error per operation (the generated OperationErrors): every attempt records its
+    /// outcome, so the next success of an operation removes that operation's error.
+    @Published private(set) var errors = OperationErrors()
     /// The APNs token most recently delivered by the system. Arrives asynchronously; buffered here
     /// so a token that lands before the state is installed is not lost.
     @Published private(set) var apnsToken: String?
@@ -18,6 +36,18 @@ final class AppState: ObservableObject {
     let client: Client?
 
     init() {
+        #if DEBUG
+        if Demo.on {
+            config = nil
+            client = nil
+            state = .enrolled(EnrolledDevice(enrollment_id: "demo", decision_key_blob: Data(), attest_key_id: "demo", forwarded_apns_token: nil))
+            pending = Demo.pending
+            if Demo.withAppError {
+                errors.record(.pushForward, .failed("APNs token not forwarded: server refused: HTTP 503 {\"refused\": \"push registration not stored: No such file or directory (os error 2)\"}"))
+            }
+            return
+        }
+        #endif
         do {
             let c = try ServerConfig.fromBundle()
             config = c
@@ -25,8 +55,12 @@ final class AppState: ObservableObject {
         } catch {
             config = nil
             client = nil
-            lastError = error.localizedDescription
+            errors.record(.configuration, .failed(error.localizedDescription))
         }
+    }
+
+    func record(_ operation: AppOperation, _ outcome: OperationOutcome) {
+        errors.record(operation, outcome)
     }
 
     /// Called once by the root view: read the persisted state, then register for APNs on every
@@ -34,7 +68,13 @@ final class AppState: ObservableObject {
     func install() async {
         guard !installed else { return }
         installed = true
-        do { state = try EnrolmentStore.load() } catch { lastError = error.localizedDescription }
+        #if DEBUG
+        if Demo.on { return }
+        #endif
+        do {
+            state = try EnrolmentStore.load()
+            record(.enrolmentRead, .succeeded)
+        } catch { record(.enrolmentRead, .failed(error.localizedDescription)) }
         if state.enrolled != nil {
             UIApplication.shared.registerForRemoteNotifications()
             await convergePushToken()
@@ -42,7 +82,7 @@ final class AppState: ObservableObject {
     }
 
     private func requireClient() throws -> Client {
-        guard let client else { throw WireError.configMissing(lastError ?? "no server configuration") }
+        guard let client else { throw WireError.configMissing("no server configuration") }
         return client
     }
 
@@ -59,34 +99,51 @@ final class AppState: ObservableObject {
 
     func tokenDelivered(_ hex: String) {
         apnsToken = hex
+        record(.apnsRegistration, .succeeded)
         guard installed else { return }            // buffered until install()
         Task { await convergePushToken() }
     }
 
     /// PUT /approve/device/push until the server holds the desired token. Idempotent to call: a
     /// second caller while a loop runs returns at once and the running loop sees the new desired
-    /// token on its next iteration. Runs after any adoption of Enrolled too, so a token buffered
-    /// during SubmissionUnknown is forwarded.
+    /// token on its next iteration. Runs after any adoption of Enrolled too.
     ///
     /// Exit discipline: the loop stops only when the server holds the desired token, when there is
     /// nothing to converge (not enrolled, no token), or when the EXACT attempt that failed — this
     /// enrolment identity AND this token — is still what would be attempted next. A failure whose
     /// enrolment or token has since changed continues at once with the current pair, so a failed
     /// update for an old enrolment never suppresses the same token for a newly adopted one. After a
-    /// stop, the restart is owned by tokenDelivered and adopt(): a newer token or a new enrolment
-    /// starts a fresh loop; nothing retries the same failed (enrolment, token) pair.
+    /// stop, the restart is owned by tokenDelivered and signIn(): a newer token or a new enrolment
+    /// starts a fresh loop; nothing retries the same failed (enrolment, token) pair in one loop; every foreground resume
+    /// (resyncPush) starts a fresh one, so a failed pair is retried until the broker acknowledges.
     private struct PushAttempt: Equatable {
         var enrollmentId: String
         var attestKeyId: String
         var token: String
     }
 
+    /// The pair the broker acknowledged in THIS process. `forwarded_apns_token` is persisted and so
+    /// is only a hint (the broker may have lost or never durably stored it); the gate is this.
+    private var acknowledged: PushAttempt?
+
+    /// Foreground resume: forget the acknowledgement and re-register, so the broker is told again.
+    func resyncPush() async {
+        guard installed, state.enrolled != nil else { return }
+        acknowledged = nil
+        UIApplication.shared.registerForRemoteNotifications()
+        await convergePushToken()
+    }
+
     func convergePushToken() async {
+        #if DEBUG
+        if Demo.on { return }
+        #endif
         guard !converging else { return }
         converging = true
         var failedAttempt: PushAttempt?
         defer { converging = false }
-        while case .enrolled(let e) = state, let desired = apnsToken, e.forwarded_apns_token != desired,
+        while case .enrolled(let e) = state, let desired = apnsToken,
+              PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired) != acknowledged,
               PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired) != failedAttempt {
             let attempt = PushAttempt(enrollmentId: e.enrollment_id, attestKeyId: e.attest_key_id, token: desired)
             do {
@@ -101,10 +158,12 @@ final class AppState: ObservableObject {
                 // was made for is STILL the current one; otherwise loop and re-derive.
                 guard apnsToken == desired, case .enrolled(var now) = state, now.enrollment_id == e.enrollment_id,
                       now.attest_key_id == e.attest_key_id else { continue }
+                acknowledged = attempt
                 now.forwarded_apns_token = desired
                 try transition(.enrolled(now))
+                record(.pushForward, .succeeded)
             } catch {
-                lastError = "APNs token not forwarded: \(error.localizedDescription)"
+                record(.pushForward, .failed("APNs token not forwarded: \(error.localizedDescription)"))
                 // Superseded in flight (token or enrolment changed): go on with the current pair.
                 guard apnsToken == desired, case .enrolled(let now) = state,
                       now.enrollment_id == attempt.enrollmentId, now.attest_key_id == attempt.attestKeyId else { continue }
@@ -130,142 +189,62 @@ final class AppState: ObservableObject {
     }
 
     // ── Enrolment ────────────────────────────────────────────────────────────────────────────
-    /// Step 1, local only: refuse without App Attest; generate both keys; fix the transcript; PERSIST
-    /// as Prepared before anything leaves the device.
-    func prepare(code: String) async {
-        lastError = nil
+    /// Google sign-in enrolment (gunbc.auth.approval_google_enrolment). Order: both device keys, the
+    /// transcript over them, nonce = base64url(sha256(transcript)), Google sign-in with that nonce,
+    /// attestation over the transcript, ONE POST. An unanswered POST is re-sent with the identical
+    /// body (the server is idempotent); nothing is persisted before the answer. Which phase follows
+    /// is the generated EnrolmentMachine's decision.
+    func signIn() async {
         do {
             try AppAttest.requireSupported()
             let key = try DecisionKey.create()
             let pub = DecisionKey.verifyingKey(key)
             let attestKeyId = try await AppAttest.generateKey()
-            let transcript = enrolmentTranscript(code: code, decisionKey: pub, platform: .ios)
-            try transition(.prepared(PreparedEnrolment(
-                code: code, decision_key_blob: key.dataRepresentation, decision_key_pub: pub,
-                attest_key_id: attestKeyId, transcript: transcript, attestation_b64: nil)))
-            await submit()
+            let transcript = googleEnrolmentTranscript(decisionKey: pub, platform: .ios, attestKeyId: attestKeyId)
+            let idToken = try await GoogleSignInFlow.idToken(nonce: googleEnrolmentNonce(transcript))
+            let attestation = try await AppAttest.attest(keyId: attestKeyId, transcript: transcript).attestation_b64
+            let client = try requireClient()
+            let token = try await awaitToken()
+            let submission = GoogleEnrolmentRequest(
+                platform: .ios, decision_key: pub, attest_key_id: attestKeyId,
+                attestation_b64: attestation, id_token: idToken)
+            let grant: EnrolmentGrant
+            do { grant = try await client.enrolGoogle(submission) }
+            catch WireError.transport { grant = try await client.enrolGoogle(submission) }   // identical body, once
+            // signIn always creates a fresh key, so the sign-in registered a NEW key.
+            try apply(.signedIn(.newKey), enrolled: EnrolledDevice(
+                enrollment_id: grant.enrollment_id, decision_key_blob: key.dataRepresentation,
+                attest_key_id: attestKeyId, forwarded_apns_token: nil), push: registration(client.config, token))
+            record(.signIn, .succeeded)
         } catch {
-            lastError = error.localizedDescription
+            record(.signIn, .failed(error.localizedDescription))
+            try? apply(.refused, enrolled: nil, push: nil)
         }
     }
 
-    /// Step 2, remote: attest over the fixed transcript (reusing a previous attestation if one was
-    /// generated), register for push, then PERSIST SubmissionUnknown and only then POST. From the
-    /// moment the POST may have left the device the durable state says so: a crash, a transport or
-    /// decode failure, a failed persist of Enrolled, or a refusal after a retry ("code already
-    /// used") all leave SubmissionUnknown standing, and only an authenticated readback resolves it.
-    func submit() async {
-        lastError = nil
-        let p: PreparedEnrolment
-        switch state {
-        case .prepared(var q):
-            do {
-                if q.attestation_b64 == nil {
-                    q.attestation_b64 = try await AppAttest.attest(keyId: q.attest_key_id, transcript: q.transcript).attestation_b64
-                    try transition(.prepared(q))
-                }
-            } catch { lastError = error.localizedDescription; return }
-            p = q
-        case .submissionUnknown(let q):
-            p = q                                   // a retry re-sends the same material
+    /// Move to the phase the generated machine names for this answer; Enrolled is entered only with a device.
+    private func apply(_ answer: EnrolmentAnswer, enrolled: EnrolledDevice?, push: ApnsRegistration?) throws {
+        let next = EnrolmentMachine.next(state.phase, on: answer)
+        switch (next, enrolled) {
+        case (.enrolled, let e?):
+            try transition(.enrolled(e))
+            UIApplication.shared.registerForRemoteNotifications()
+            Task { await convergePushToken() }
+        case (.revoked, _):
+            if case .enrolled(let e) = state { try transition(.revoked(e, reason: "the server reports this enrolment revoked")) }
         default:
             return
         }
-        do {
-            let client = try requireClient()
-            let token = try await awaitToken()
-            let submission = EnrolmentRequest(
-                code: p.code, platform: .ios, decision_key: p.decision_key_pub,
-                evidence: IosAppAttestBoundDecisionKey(attest_key_id: p.attest_key_id, attestation_b64: p.attestation_b64!),
-                push: registration(client.config, token))
-            try transition(.submissionUnknown(p))   // BEFORE the bytes leave
-            let grant = try await client.enrol(submission)
-            try adopt(EnrolledDevice(
-                enrollment_id: grant.enrollment_id, decision_key_blob: p.decision_key_blob,
-                attest_key_id: p.attest_key_id, forwarded_apns_token: token))
-        } catch let WireError.status(status, body) where Self.refusal(body) != nil {
-            // The enrol route answered with a typed refusal. Which phase follows it is the generated
-            // EnrolmentMachine's (gunbc.approve_ios_enrolment_machine) decision, not this file's:
-            // only the refusals that prove the code minted no enrolment leave SubmissionUnknown.
-            let kind = Self.refusal(body)!
-            do {
-                if EnrolmentMachine.next(.submissionUnknown, on: .refused(kind)) == .unenrolled {
-                    try transition(.unenrolled)
-                    lastError = "The server says this code minted no enrolment (\(kind.rawValue), HTTP \(status)). Enter a new code."
-                } else {
-                    lastError = "The server refused the enrolment (\(kind.rawValue), HTTP \(status)); whether it was recorded is unknown."
-                }
-            } catch {
-                lastError = error.localizedDescription
-            }
-        } catch {
-            // Whatever else failed — transport, decode, any other refusal, persisting Enrolled — the
-            // durable state stays SubmissionUnknown; readback is the only way forward.
-            lastError = error.localizedDescription
-        }
     }
 
-    /// The typed refusal an enrol answer carries; nil for an undecodable body (EnrolmentAnswer.unanswered).
-    private static func refusal(_ body: String) -> EnrolmentRefusalKind? {
-        try? WireDecode.enrolmentRefusal(Data(body.utf8))
-    }
-
-    /// The one place Enrolled is entered. The attest key id is persisted as ENROLLED only here,
-    /// after the server verified it; then APNs registration is (re)requested and push-token
-    /// convergence runs for any buffered or rotated token.
-    private func adopt(_ e: EnrolledDevice) throws {
-        try transition(.enrolled(e))
-        UIApplication.shared.registerForRemoteNotifications()
-        Task { await convergePushToken() }
-    }
-
-    /// The only resolution of SubmissionUnknown: GET /approve/device/enrollments/<enrollment_id>
-    /// under the App Attest key just attested, keyed by enrollment_id_for_code over the persisted
-    /// code. Active (and naming the expected id) adopts; revoked is terminal. EVERYTHING ELSE leaves
-    /// SubmissionUnknown standing: the wire defines no absence response, and the server answers a
-    /// bare refusal for unknown, unspent and unreadable alike, so a 404 is not proof of absence —
-    /// "Retry the same submission" is the safe move for a true absence.
-    func resolveUnknownSubmission() async {
-        lastError = nil
-        guard case .submissionUnknown(let p) = state else { return }
-        let enrollmentId = enrollmentIdForCode(p.code)
-        let probe = EnrolledDevice(enrollment_id: enrollmentId, decision_key_blob: p.decision_key_blob,
-                                   attest_key_id: p.attest_key_id, forwarded_apns_token: nil)
-        do {
-            let client = try requireClient()
-            let path = Route.enrollment(enrollmentId)
-            let back = try await client.readback(path, try await readAuth(probe, path: path))
-            guard back.enrollment_id == enrollmentId else {
-                throw WireError.refused(at: "enrollment_id", cause: "readback names \(back.enrollment_id), expected \(enrollmentId)")
-            }
-            switch back.standing {
-            case .active:
-                try adopt(EnrolledDevice(
-                    enrollment_id: back.enrollment_id, decision_key_blob: p.decision_key_blob,
-                    attest_key_id: p.attest_key_id, forwarded_apns_token: nil))
-            case .revoked:
-                try transition(.revoked(probe, reason: "enrolment \(back.enrollment_id) is revoked"))
-            }
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    /// Re-send the identical POST from SubmissionUnknown (same key, same attestation, same
-    /// transcript). The state does not leave SubmissionUnknown to do it.
-    func retrySubmission() async { await submit() }
-
-    /// Only from Prepared: nothing has left the device, so nothing can be stranded on the server.
-    func startOver() {
-        guard case .prepared = state else { return }
-        do { try transition(.unenrolled) } catch { lastError = error.localizedDescription }
-    }
-
-    /// From a terminal state (key invalidated, revoked): the old enrolment decides nothing any more.
-    func enrolAgain() {
+    /// Discard the dead enrolment and key: the phone reads as signed out.
+    func signOut() {
         switch state {
-        case .keyInvalidated, .revoked:
-            do { try transition(.unenrolled) } catch { lastError = error.localizedDescription }
+        case .revoked, .enrolled:
+            do {
+                try transition(.signedOut)
+                record(.signOut, .succeeded)
+            } catch { record(.signOut, .failed(error.localizedDescription)) }
         default:
             return
         }
@@ -297,6 +276,9 @@ final class AppState: ObservableObject {
     }
 
     func fetch(_ escalationId: String) async throws -> FetchedRequest {
+        #if DEBUG
+        if Demo.on { return try await Demo.fetch(escalationId) }
+        #endif
         let path = Route.request(escalationId)
         return try await requireClient().fetch(path, try await readAuth(path: path))
     }
@@ -304,18 +286,30 @@ final class AppState: ObservableObject {
     // ── Inbox ────────────────────────────────────────────────────────────────────────────────
     enum RefreshResult { case changed, unchanged, failed }
 
-    /// The list, re-read. The result is the real one, so the background-push callback can report
+    /// The list, re-read and REPLACED: the server answers exactly the requests that still need the
+    /// operator (gunbc.auth.approval_decision_store pending_escalations), so nothing is kept from an
+    /// earlier read. The result is the real one, so the background-push callback can report
     /// .newData / .noData / .failed truthfully.
     @discardableResult
     func refresh() async -> RefreshResult {
         guard state.enrolled != nil else { return .unchanged }
+        #if DEBUG
+        if Demo.on {
+            let fresh = Demo.pending
+            let changed = fresh != pending
+            pending = fresh
+            record(.inboxRefresh, .succeeded)
+            return changed ? .changed : .unchanged
+        }
+        #endif
         do {
             let fresh = try await requireClient().pending(try await readAuth(path: Route.pending))
             let changed = fresh != pending
             pending = fresh
+            record(.inboxRefresh, .succeeded)
             return changed ? .changed : .unchanged
         } catch {
-            lastError = error.localizedDescription
+            record(.inboxRefresh, .failed(error.localizedDescription))
             return .failed
         }
     }
@@ -323,6 +317,11 @@ final class AppState: ObservableObject {
     // ── Redemption ───────────────────────────────────────────────────────────────────────────
     /// Signs over exactly what the server returned. signature(for:) is where Face ID happens.
     func redeem(_ r: FetchedRequest, _ decision: ProposedDecision) async throws -> RedemptionOutcome {
+        #if DEBUG
+        if Demo.on {
+            return try await Demo.redeem(r, decision)
+        }
+        #endif
         let client = try requireClient()
         guard case .enrolled(let e) = state else { throw WireError.configMissing("this phone is not enrolled") }
         let cap = r.capability(for: decision)
@@ -341,7 +340,8 @@ final class AppState: ObservableObject {
         let key: SecureEnclave.P256.Signing.PrivateKey
         do { key = try DecisionKey.load(e.decision_key_blob) }
         catch let k as DeviceKeyError {
-            if case .keyInvalidated(let why) = k { try transition(.keyInvalidated(e, reason: why)) }
+            // A key the enclave refuses is dead: discard it; the phone reads as signed out.
+            if case .keyInvalidated = k { try transition(.signedOut) }
             throw k
         }
         let signature = try DecisionKey.sign(key, bytes)
@@ -351,7 +351,70 @@ final class AppState: ObservableObject {
         if outcome.outcome == OutcomeName.enrollmentRevoked || outcome.outcome == OutcomeName.enrollmentUnknown {
             try transition(.revoked(e, reason: outcome.message))
         }
-        await refresh()
+        // The caller re-lists (RequestCard.decide), after the stamp has been seen.
         return outcome
     }
 }
+
+#if DEBUG
+// ── Demo mode (debug builds only) ────────────────────────────────────────────────────────────
+/// Launch with `-demo` to run the enrolled screens in the Simulator, where App Attest refuses
+/// sign-in: a fake inbox of sample requests, no server, no keys. `-demoAppError` adds an app-level
+/// error (a failed push forward); `-demoEmpty` starts with nothing pending. The last sample's decision is refused, to show that state.
+enum Demo {
+    static let on = ProcessInfo.processInfo.arguments.contains("-demo")
+    static let withAppError = ProcessInfo.processInfo.arguments.contains("-demoAppError")
+    static let empty = ProcessInfo.processInfo.arguments.contains("-demoEmpty")
+    /// `-demoAutoplay`: each permit is decided by itself after a pause (approve, deny, approve...),
+    /// so the stamp and the bots' reactions can be watched without touching the screen.
+    static let autoplay = ProcessInfo.processInfo.arguments.contains("-demoAutoplay")
+    /// `-demoFull`: the first permit opens in its full view once handed over.
+    static let full = ProcessInfo.processInfo.arguments.contains("-demoFull")
+    static func autoplayDecision(_ id: String) -> ProposedDecision {
+        (samples.firstIndex { $0.id == id } ?? 0) % 2 == 0 ? .approve : .deny
+    }
+
+    private struct Sample { let id: String; let requester: String; let purpose: String; let destructive: Bool; let refused: Bool }
+
+    private static let samples: [Sample] = [
+        Sample(id: "gcp-iam-converge-13faf938a02e091e-run-38752057827-attempt-1", requester: "briansrls@gmail.com",
+               purpose: "GCP IAM converge (project gunbai-secrets) -- hetzner cloud control (approved branch runs): create provider gh-fleet-converge-dispatch-oidc in pool github-fleet-converge-dispatch admitting only assertion.repository_id == '1143718943' && assertion.repository_owner_id == '244123794' && assertion.event_name == 'workflow_dispatch' | on projects/582015116396/secrets/hetzner-cloud-default-read-api-key grant roles/secretmanager.secretAccessor to serviceAccount:hetzner-cloud-control@gunbai-secrets.iam.gserviceaccount.com",
+               destructive: false, refused: false),
+        Sample(id: "hetzner-volume-delete-7c1e-run-38801122334-attempt-1", requester: "gunbc-ci-auto-heal",
+               purpose: "Delete Hetzner volume vol-srv1-scratch (200 GB) and its snapshots", destructive: true, refused: false),
+        Sample(id: "fleet-converge-a16-cap-run-38812345678-attempt-2", requester: "briansrls@gmail.com",
+               purpose: "Lower router cap to 1 on GPUs 85, 86, c5, c6", destructive: false, refused: true),
+    ]
+
+    /// Decided this run; the demo's server stops listing them, as the real one does.
+    @MainActor static var decided: Set<String> = []
+    @MainActor static var pending: [PendingApproval] {
+        empty ? [] : samples.filter { !decided.contains($0.id) }.map { PendingApproval(escalation_id: $0.id, request_revision: "1") }
+    }
+
+    private static func iso(_ d: Date) -> String {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f.string(from: d)
+    }
+
+    static func fetch(_ id: String) async throws -> FetchedRequest {
+        try await Task.sleep(nanoseconds: 400_000_000)
+        guard let s = samples.first(where: { $0.id == id }) else { throw WireError.status(404, "{\"refused\": \"demo: unknown escalation\"}") }
+        let doc: [String: Any] = ["kind": "approval_request", "escalation_id": s.id, "request_revision": "1", "requester": s.requester,
+                                  "purpose": s.purpose, "destructive": s.destructive, "issued_at": iso(Date()), "expires_at": iso(Date().addingTimeInterval(3600))]
+        let text = String(decoding: try JSONSerialization.data(withJSONObject: doc, options: [.sortedKeys]), as: UTF8.self)
+        let cap = VerbCapability(capability_text: "demo", capability_tag_b64url: "ZGVtbw")
+        return FetchedRequest(escalation_id: s.id, request_revision: "1", stored_request_text: text,
+                              challenge: RedemptionChallenge(expires_at: iso(Date().addingTimeInterval(300)), nonce_hex: "00"),
+                              approve: cap, deny: cap)
+    }
+
+    static func redeem(_ r: FetchedRequest, _ d: ProposedDecision) async throws -> RedemptionOutcome {
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+        if samples.first(where: { $0.id == r.escalation_id })?.refused == true {
+            throw WireError.status(403, "{\"outcome\": \"DeviceCapabilityRefused\", \"message\": \"approval capability expired at \(iso(Date().addingTimeInterval(-864000))), observed at \(iso(Date()))\"}")
+        }
+        await MainActor.run { _ = decided.insert(r.escalation_id) }
+        return RedemptionOutcome(outcome: "DeviceRedeemed", message: "demo: \(d == .approve ? "approved" : "denied")")
+    }
+}
+#endif

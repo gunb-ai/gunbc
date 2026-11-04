@@ -4,17 +4,26 @@ import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,Json
 
 import std.types {String,Int}
 import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_object_unique_member,JsonMemberFound}
-import extdeps.languages.json.emit {JsonString,JsonNumber}
+import extdeps.languages.json.emit {JsonString,JsonNumber,JsonValue}
 import extdeps.printing.bambu_lab_lan_protocol {bambu_start_error_nonblocking}
 
 // Completion is a printer observation, never accepted inventory or bed clearance.
 // Each observation requires the digest-derived filename, state and error together.
+// THE JOB'S FILE AS THE PRINTER NAMES IT. While a job runs, gcode_file carries the uploaded name; at
+// FINISH an A1 mini in LAN mode reports gcode_file as "" and keeps the name in subtask_name (saved
+// report beside a start claim on the printer LAN host, 2026-10). A non-empty gcode_file wins.
+fn string_member(p:JsonValue,key:String) -> String? {
+ match json_object_unique_member(v:p,key:key) {JsonMemberFound {value:JsonString {value:v}}=>if v=="" {none} else {Present {value:v}} _=>none}
+}
+fn job_file(p:JsonValue) -> String? {
+ match string_member(p:p,key:"gcode_file") {Present {value:f}=>Present {value:f} Absent=>string_member(p:p,key:"subtask_name")}
+}
 type JobObservation = JobRunning | JobCompletedAwaitingInspection | JobPaused | JobFailed | JobUnresolved
 fn observe_job(text:String,remote:String) -> JobObservation {
  match parse_json_document(s:text) {
   JsonDocumentParsed {value:root}=>match json_object_unique_member(v:root,key:"print") {
-   JsonMemberFound {value:p}=>match json_object_unique_member(v:p,key:"gcode_file") {
-    JsonMemberFound {value:JsonString {value:file}}=>if remote=="" || file!=remote {JobUnresolved} else {
+   JsonMemberFound {value:p}=>match job_file(p:p) {
+    Present {value:file}=>if remote=="" || file!=remote {JobUnresolved} else {
      match json_object_unique_member(v:p,key:"gcode_state") {
       JsonMemberFound {value:JsonString {value:state}}=>match json_object_unique_member(v:p,key:"print_error") {
        JsonMemberFound {value:JsonNumber {lexeme:code}}=>
@@ -28,7 +37,7 @@ fn observe_job(text:String,remote:String) -> JobObservation {
       JsonMemberFound {value:JsonNull}=>JobUnresolved JsonMemberFound {value:JsonBool {value:_}}=>JobUnresolved JsonMemberFound {value:JsonNumber {lexeme:_}}=>JobUnresolved JsonMemberFound {value:JsonArray {elements:_}}=>JobUnresolved JsonMemberFound {value:JsonObject {members:_}}=>JobUnresolved JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
      }
     }
-    JsonMemberFound {value:JsonNull}=>JobUnresolved JsonMemberFound {value:JsonBool {value:_}}=>JobUnresolved JsonMemberFound {value:JsonNumber {lexeme:_}}=>JobUnresolved JsonMemberFound {value:JsonArray {elements:_}}=>JobUnresolved JsonMemberFound {value:JsonObject {members:_}}=>JobUnresolved JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
+    Absent=>JobUnresolved
    }
    JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
   }

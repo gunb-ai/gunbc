@@ -13,7 +13,7 @@ import gunbc.machine_intake.linux_boot_console_observation {
   InitrdFailureNotPrinted, InitrdLoadFailed, EfiLoadError, KernelPanicNotPrinted, KernelPanicked,
   linux_boot_console_observation,
 }
-import gunbc.machine_intake.mtcollins1_console_milestone_observation {
+import gunbc.host.boot_console_observation {
   mtcollins1_console_milestones, UefiConsolePromptObserved, DramFirmwareBannerObserved, GrubBannerObserved, EfiStubLineObserved, KernelBannerObserved,
 }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }

@@ -2,7 +2,7 @@ module gunbc.rung_drop.native_serve_request_budget_unrealized
 
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, Enumerated, ReplacementStaged, RetiredTypedDeclaration }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 // THE NATIVE SERVE DOOR HAS NO PER-REQUEST BUDGET, AND THE SEED'S DOES (DESIGN 4b(3)).
@@ -39,14 +39,13 @@ data native_serve_request_budget_unrealized: RungDrop = RungDrop {
   declared: "2026-10-03",
 
   standing: Retired {
-    trigger_fired: "2026-10-08 -- gunbc test //gunbc/instruments:native-serve held on main at the gunbc#13219 merge (23 requests, refused launch status 2): the probe's /spin cases observe the typed 500 at the 500ms request deadline for a handler that does not return, a later /hello on the same process answered 200, and past the stuck-worker ceiling the typed 503 and exit 75. The wall is gunbc.native_serve native_serve_admission / native_serve_deadline_refused enforced by the rendered main, built in gunbc#13278"
-  },
-
-  declaration: TypedDeclaration {
+    trigger_fired: "2026-10-08 -- gunbc test //gunbc/instruments:native-serve held on main at the gunbc#13219 merge (23 requests, refused launch status 2): the probe's /spin cases observe the typed 500 at the 500ms request deadline for a handler that does not return, a later /hello on the same process answered 200, and past the stuck-worker ceiling the typed 503 and exit 75. The wall is gunbc.native_serve native_serve_admission / native_serve_deadline_refused enforced by the rendered main, built in gunbc#13278",
+    declaration: RetiredTypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: ReplacementStaged { replacement: "a NativeServeDriver budget wall: the native door refuses a non-returning or over-budget compiled request with a typed 500 and keeps serving later requests" },
-    population: Enumerated { members: FreeSemigroup { head: "every NativeServeDriver service; at declaration gunbc.instruments.native_serve_fixture, the only one", tail: [] } },
+    population_at_retirement: Enumerated { members: FreeSemigroup { head: "every NativeServeDriver service; at declaration gunbc.instruments.native_serve_fixture, the only one", tail: [] } },
     restoration_trigger: "a non-returning or over-budget compiled request is refused with a typed 500 and cannot block later requests on the native door. SUFFICIENT FOR: the native-serve instrument carries a case whose handler does not return within the declared budget, observes the typed 500 for it, and observes a later request on the same process answered. A thread pool, a timeout knob, or a supervisor restart that drops the request without a typed answer does not retire this row"
+  }
   }
 }

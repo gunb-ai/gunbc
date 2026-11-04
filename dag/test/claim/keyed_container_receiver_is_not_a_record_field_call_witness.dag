@@ -1,0 +1,55 @@
+module test.claim.keyed_container_receiver_is_not_a_record_field_call_witness
+
+// THE CLASS: a receiver lowered to the host keyed container (HashMap) has no record to own a field.
+// std.algebra declares FinitelySupportedFunction as the profile struct with `map_keys` as an arrow
+// member; the callable-field tier asked that struct, so `m |> map_keys` on a receiver spelled
+// FinitelySupportedFunction<K, V> emitted the field call `(m.map_keys)()` against a HashMap (E0609,
+// seen as the #14876 heal round). The fixture declares the same profile shape in-module (a
+// fixture has no corpus roots) and pipes a spelled receiver into map_keys. The pairing control is
+// an ordinary record whose arrow field is called through its own field, which must stay
+// `(r.step)(..)`: the exemption is the keyed container only.
+//
+// KEYED IS NOT LOWERED (the #14951 v2-bootstrap red, E0308 at the emitted
+// v2_compiler_eval.rs inferred_facts_witness_for_eval): `PartialFunction<K, V>` is a keyed spelling
+// (it carries a container alias row) but has no Rust host inhabitant, so it renders as its record and
+// `tree.facts |> lookup(node)` must stay the field call `(p.lookup)(..)`. The second control holds
+// that line: the exemption keys on the target fact the type renderer uses, not on keyed-ness alone.
+
+fn w_keyed_receiver_is_not_a_field_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module kcf_keyed\n\ntype FinitelySupportedFunction<key, value> {\n  support: List<key>\n  map_keys: fn() -> List<key>\n}\n\nfn kcf_keys(m: FinitelySupportedFunction<String, Int>) -> List<String> {\n  m |> map_keys\n}\n",
+    "src/kcf_keyed.rs",
+    [],
+    ["(m.map_keys)()"]
+  )
+}
+
+fn w_record_arrow_field_is_still_a_field_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module kcf_record\n\nimport std.types { Int }\n\ntype Stepper {\n  step: fn(Int) -> Int\n}\n\nfn kcf_run(r: Stepper, n: Int) -> Int {\n  r |> step(n)\n}\n",
+    "src/kcf_record.rs",
+    ["(r.step)("],
+    []
+  )
+}
+
+fn w_record_rendered_keyed_spelling_is_still_a_field_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module kcf_partial\n\nimport std.types { Int }\n\ntype PartialFunction<key, value> {\n  lookup: fn(key) -> value?\n}\n\nfn kcf_find(p: PartialFunction<String, Int>, k: String) -> Int? {\n  p |> lookup(k)\n}\n",
+    "src/kcf_partial.rs",
+    ["(p.lookup)("],
+    []
+  )
+}
+
+test fn a_keyed_container_receiver_is_not_a_record_field_call() -> Bool {
+  w_keyed_receiver_is_not_a_field_call()
+}
+
+test fn a_record_receiver_still_calls_its_own_arrow_field() -> Bool {
+  w_record_arrow_field_is_still_a_field_call()
+}
+
+test fn a_record_rendered_keyed_spelling_still_calls_its_own_arrow_field() -> Bool {
+  w_record_rendered_keyed_spelling_is_still_a_field_call()
+}

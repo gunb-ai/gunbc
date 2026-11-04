@@ -1,0 +1,19 @@
+module test.fixture.belt_store_seal.unsealed
+
+import std.types { NonEmptyStr }
+
+// THE STRIPPED TWINS for test.claim.belt_store_seal_witness: the SAME six records with the SAME field names,
+// WITHOUT the sole_constructor keyword, so the same forged text can be run against the twin and show the
+// refusal is the keyword and not the shape, name or field types.
+
+type BeltTickReceiptStore { instance: NonEmptyStr, root: NonEmptyStr }
+
+type BeltObligationReceiptStore { instance: NonEmptyStr, root: NonEmptyStr }
+
+type BeltPublicationReceiptStore { instance: NonEmptyStr, root: NonEmptyStr }
+
+type BeltSubmissionStore { node: NonEmptyStr, attempt: NonEmptyStr, root: NonEmptyStr }
+
+type BeltCaptureIntentStore { node: NonEmptyStr, attempt: NonEmptyStr, root: NonEmptyStr }
+
+type BeltIntegrationStore { node: NonEmptyStr, attempt: NonEmptyStr, root: NonEmptyStr }

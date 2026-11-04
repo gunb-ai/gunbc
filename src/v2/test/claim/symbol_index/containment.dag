@@ -1,5 +1,7 @@
 module v2.test.claim.symbol_index.containment
 
+import v2.std.node { node_same_occurrence, NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -52,12 +54,14 @@ fn si_type_with_variants(type_sym: Symbol, variants: List<Symbol>) -> Edge {
               kind: TypeNode { connective: Atom { identity: variant_sym } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-            }
+            },
+            declaration: NotADeclaration
           }
         ])
       }),
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 
@@ -337,7 +341,7 @@ test fn symbol_index_lexical_lookup_chain_unique_hit_holds() -> Bool {
     position: si_shadow_module_qn,
     name: ^ShadowDup
   ) {
-    LexicalHit { node: hit, path: _ } => hit == si_shadow_outer_node
+    LexicalHit { node: hit, path: _ } => node_same_occurrence(a: hit, b: si_shadow_outer_node)
     LexicalAmbiguous { candidates: _ } => false
     LexicalUnbound => false
   }
@@ -356,7 +360,8 @@ data si_orphan_module_root_node: Node = si_module_root(
         kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ]
 )
@@ -434,7 +439,7 @@ test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
   let once = symbol_index_insert(index: empty_symbol_index(), qualified_path: path, resolved: bound)
   let twice = symbol_index_insert(index: once, qualified_path: path, resolved: bound)
   match symbol_index_global_unique_lookup(index: twice, name: ^OrphanPilotOnly) {
-    GlobalBareHit { node: hit, path: _ } => hit == bound
+    GlobalBareHit { node: hit, path: _ } => node_same_occurrence(a: hit, b: bound)
     _ => false
   }
 }
@@ -505,14 +510,16 @@ data si_alias_module_root_node: Node = si_module_root(
   exports: [
     Edge {
       label: Authored { name: ^AliasTargetType },
-      target: si_alias_target_node
+      target: si_alias_target_node,
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^dag_surface_top_level_item },
       target: si_alias_decl_wrapped(
         binding: ^AliasBinding,
         target_qn: si_alias_target_qn
-      )
+      ),
+      declaration: NotADeclaration
     }
   ]
 )
@@ -529,7 +536,7 @@ test fn symbol_index_alias_binding_lexical_lookup_holds() -> Bool {
     position: si_alias_module_qn,
     name: ^AliasBinding
   ) {
-    LexicalHit { node: hit, path: _ } => hit == si_alias_target_node
+    LexicalHit { node: hit, path: _ } => node_same_occurrence(a: hit, b: si_alias_target_node)
     LexicalAmbiguous { candidates: _ } => false
     LexicalUnbound => false
   }
@@ -547,7 +554,8 @@ test fn symbol_index_alias_unresolved_target_red_control_holds() -> Bool {
         target: si_alias_decl_wrapped(
           binding: ^OrphanAlias,
           target_qn: orphan_target_qn
-        )
+        ),
+        declaration: NotADeclaration
       }
     ]
   )

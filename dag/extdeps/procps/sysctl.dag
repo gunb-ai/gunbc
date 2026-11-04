@@ -4,6 +4,7 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr, List, String }
 
 // procps-ng sysctl(8): the program that reads and writes kernel parameters by name. THIS MODULE
 // OWNS THE PROGRAM IDENTITY. Which parameter names exist, and what a value means, belong to the
@@ -34,3 +35,9 @@ fn sysctl_standing() -> CitedFigureStanding {
 }
 
 fn sysctl_program() -> ProgramIdentity = uncataloged_program(invocation: "sysctl")
+
+// ONE PARAMETER'S VALUE, BARE. sysctl(8): `-n` ("--values") prints the value without the key. Which names
+// exist belongs to the subsystem that defines them; the caller supplies the name.
+fn sysctl_read_value_argv(name: NonEmptyStr) -> List<String> {
+  ["sysctl", "-n", name as String]
+}

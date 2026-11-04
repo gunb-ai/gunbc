@@ -23,6 +23,7 @@ import extdeps.pool.pool_front {
 }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, Qwen38FlashNextIq3sOnSrv4Strata, harness_unit_model_id, PoolBudgetPolicy, pool_budget_enforced }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
+import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file }
 import std.list { list_member }
 
 // THE OPERATOR-RUN ENDPOINT: a serving process the OPERATOR runs on a rented GPU pod, reached from the
@@ -126,10 +127,8 @@ type HarnessOperatorRoute {
   chat_completions_path: NonEmptyStr
   pinned_certificate: PoolFrontCertificate
   group_wire: NonEmptyStr
-  credential_relative_path: NonEmptyStr
-  certificate_relative_path: NonEmptyStr
-  credential_identifier: NonEmptyStr
-  certificate_identifier: NonEmptyStr
+  credential: OperatorCredentialFile
+  certificate: OperatorCredentialFile
   concurrency_ceiling: Nat
   quality_floor: OperatorQualityFloor
 }
@@ -148,10 +147,8 @@ data harness_pool_front_operator_route: HarnessOperatorRoute = HarnessOperatorRo
   chat_completions_path: pool_front_chat_completions_path,
   pinned_certificate: operator_pool_front_certificate,
   group_wire: "operator:pool-front" as NonEmptyStr,
-  credential_relative_path: ".config/gunbc-pool-front/api-key" as NonEmptyStr,
-  certificate_relative_path: ".config/gunbc-pool-front/server.pem" as NonEmptyStr,
-  credential_identifier: "gunbc-pool-front-api-key" as NonEmptyStr,
-  certificate_identifier: "gunbc-pool-front-server-pem" as NonEmptyStr,
+  credential: OperatorCredentialFile { relative_path: ".config/gunbc-pool-front/api-key" as NonEmptyStr, identifier: "gunbc-pool-front-api-key" as NonEmptyStr },
+  certificate: OperatorCredentialFile { relative_path: ".config/gunbc-pool-front/server.pem" as NonEmptyStr, identifier: "gunbc-pool-front-server-pem" as NonEmptyStr },
   concurrency_ceiling: pool_budget_enforced(policy: pool_concurrency_budget_policy, upstream: pool_front_card_concurrency_high),
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
@@ -166,10 +163,8 @@ data harness_srv4_strata_operator_route: HarnessOperatorRoute = HarnessOperatorR
   chat_completions_path: strata_chat_completions_path,
   pinned_certificate: operator_srv4_strata_certificate,
   group_wire: "operator:srv4-strata" as NonEmptyStr,
-  credential_relative_path: ".config/gunbc-srv4-strata/api-key" as NonEmptyStr,
-  certificate_relative_path: ".config/gunbc-srv4-strata/server.pem" as NonEmptyStr,
-  credential_identifier: "gunbc-srv4-strata-api-key" as NonEmptyStr,
-  certificate_identifier: "gunbc-srv4-strata-server-pem" as NonEmptyStr,
+  credential: OperatorCredentialFile { relative_path: ".config/gunbc-srv4-strata/api-key" as NonEmptyStr, identifier: "gunbc-srv4-strata-api-key" as NonEmptyStr },
+  certificate: OperatorCredentialFile { relative_path: ".config/gunbc-srv4-strata/server.pem" as NonEmptyStr, identifier: "gunbc-srv4-strata-server-pem" as NonEmptyStr },
   concurrency_ceiling: pool_budget_enforced(policy: strata_concurrency_budget_policy, upstream: srv4_strata_observed_active_turns()),
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
@@ -206,11 +201,13 @@ fn operator_class_admission(route: HarnessOperatorRoute, class: ServingCoTenancy
 // $HOME/.config/gunbc-pool-front/server.pem, mode 0644, any provenance, because it is trusted only if its SHA-256
 // fingerprint equals the pinned one (operator_pinned_certificate) -- a different file refuses.
 //
-// A HARNESS THE SERVICE MANAGER STARTED WITH THE FILES HANDED IN READS THEM THERE, NOT FROM A HOME. A dedicated
-// worker account (gunbc.roadmap.roadmap_dashboard_instance WorkerDedicatedAccount) is the untrusted principal and
-// has no home, so the custody above cannot be its own. The worker unit is handed both files by the manager
-// (systemd.exec(5) LoadCredential=, from root-owned credstore copies the deploy makes as the service user:
-// gunbc.roadmap.roadmap_dispatch_actuator dispatch_worker_credentials), under the two identifiers on the route,
+// A HARNESS THE SERVICE MANAGER STARTED WITH THE FILES HANDED IN READS THEM THERE, NOT FROM A HOME. The route's
+// custody is a 0600 file under $HOME of the user running the harness (each OperatorCredentialFile's relative_path). A
+// dedicated worker account (gunbc.roadmap.roadmap_dashboard_instance WorkerDedicatedAccount) is the untrusted
+// principal and has no home, so that custody cannot be its own. Its unit is handed both files by the manager
+// (systemd.exec(5) LoadCredential=, from a root-owned credstore copy the deploy makes as the service user:
+// gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_credentials, installed by
+// gunbc.live_deploy.apply_legs credstore_copy_legs) under each file's identifier,
 // in the per-invocation directory the manager names in $CREDENTIALS_DIRECTORY, owned by the unit's user and
 // removed when the unit stops. The two locations are not tried in turn: a process the manager handed a
 // credentials directory reads only that directory, so a unit started without this route's credential refuses
@@ -221,20 +218,28 @@ type OperatorCredentialCustody
   | OperatorCredentialUnlocated
 
 fn operator_credential_custody() -> OperatorCredentialCustody {
-  match shell.Env.Get(name: "CREDENTIALS_DIRECTORY").value {
+  operator_credential_custody_of(
+    credentials_directory: shell.Env.Get(name: "CREDENTIALS_DIRECTORY").value,
+    home: shell.Env.Get(name: "HOME").value,
+  )
+}
+
+// The precedence over the two readings, apart from the environment read so a claim can supply them.
+fn operator_credential_custody_of(credentials_directory: String?, home: String?) -> OperatorCredentialCustody {
+  match credentials_directory {
     Present { value: d } => if d == "" { OperatorCredentialUnlocated } else { OperatorCredentialHandedByManager { directory: d as NonEmptyStr } }
     Absent =>
-      match shell.Env.Get(name: "HOME").value {
+      match home {
         Absent => OperatorCredentialUnlocated
         Present { value: h } => if h == "" { OperatorCredentialUnlocated } else { OperatorCredentialInHome { home: h as NonEmptyStr } }
       }
   }
 }
 
-fn operator_custody_file_path(custody: OperatorCredentialCustody, identifier: NonEmptyStr, relative: NonEmptyStr) -> NonEmptyStr? {
+fn operator_custody_file_path(custody: OperatorCredentialCustody, file: OperatorCredentialFile) -> NonEmptyStr? {
   match custody {
-    OperatorCredentialHandedByManager { directory: d } => Present { value: join([d as String, "/", identifier as String], "") as NonEmptyStr }
-    OperatorCredentialInHome { home: h } => Present { value: join([h as String, "/", relative as String], "") as NonEmptyStr }
+    OperatorCredentialHandedByManager { directory: d } => Present { value: join([d as String, "/", file.identifier as String], "") as NonEmptyStr }
+    OperatorCredentialInHome { home: h } => Present { value: join([h as String, "/", file.relative_path as String], "") as NonEmptyStr }
     OperatorCredentialUnlocated => none
   }
 }
@@ -242,11 +247,11 @@ fn operator_custody_file_path(custody: OperatorCredentialCustody, identifier: No
 data operator_custody_unlocated_detail: String = "neither CREDENTIALS_DIRECTORY nor HOME is set"
 
 fn operator_credential_path(route: HarnessOperatorRoute) -> NonEmptyStr? {
-  operator_custody_file_path(custody: operator_credential_custody(), identifier: route.credential_identifier, relative: route.credential_relative_path)
+  operator_custody_file_path(custody: operator_credential_custody(), file: route.credential)
 }
 
 fn operator_certificate_path(route: HarnessOperatorRoute) -> NonEmptyStr? {
-  operator_custody_file_path(custody: operator_credential_custody(), identifier: route.certificate_identifier, relative: route.certificate_relative_path)
+  operator_custody_file_path(custody: operator_credential_custody(), file: route.certificate)
 }
 
 // THE HEADER FILE'S TEXT, ONE SPELLING: the bearer line and the x-pool-session line. The session value is the

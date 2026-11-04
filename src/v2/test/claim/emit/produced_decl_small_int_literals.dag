@@ -12,7 +12,7 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.typescript { ts_target_model }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Authored, Conj, Edge, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node { Authored, Conj, Edge, Node, NotADeclaration, Symbol, TypeNode, node_synthetic }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
@@ -36,7 +36,8 @@ fn sil_decl(lexeme: String, name: Symbol) -> Node {
               domain: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic },
               return_type_binding: dag_int_type_binding(),
               body: literal
-            )
+            ),
+            declaration: NotADeclaration
           }
         ]
       )

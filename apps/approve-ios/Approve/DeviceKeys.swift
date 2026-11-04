@@ -67,7 +67,7 @@ enum DecisionKey {
 }
 
 /// The App Attest key. It certifies the app instance, not the operator, and nothing about the
-/// decision key; the link is the clientDataHash committing to enrolment_transcript
+/// decision key; the link is the clientDataHash committing to google_enrolment_transcript
 /// (attestation_proves_the_app_not_the_person_note). The key id is persisted by EnrolmentStore as
 /// part of the Prepared record so a retried enrolment attests with the SAME key over the SAME hash,
 /// which is Apple's instruction for a failed attestKey submission.
@@ -81,7 +81,7 @@ enum AppAttest {
         return try await DCAppAttestService.shared.generateKey()
     }
 
-    /// clientDataHash = SHA256(enrolment_transcript bytes).
+    /// clientDataHash = SHA256(google_enrolment_transcript bytes).
     static func attest(keyId: String, transcript: Data) async throws -> IosAppAttestBoundDecisionKey {
         let hash = Data(SHA256.hash(data: transcript))
         let attestation = try await DCAppAttestService.shared.attestKey(keyId, clientDataHash: hash)

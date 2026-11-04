@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_wet_witness_goes_stale_when_its_route_gains_a_precondition
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+data a_wet_witness_goes_stale_when_its_route_gains_a_precondition: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_wet_witness_goes_stale_when_its_route_gains_a_precondition" as NonEmptyStr,
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "a wet claim is judged only where a memory-bounded host runs it; the executing run is the mechanism." as NonEmptyStr } },
+
+  receipts: [
+    "**A wet witness stays red for many merges because the required path never evaluates it, and its red names no stage.** INVALID STATE: a claim asserts a production route's outcome while its fixture reaches that route by a path production no longer takes, or omits a precondition the deployment owns. Two specimens in dispatch_credential_snapshot_wet_witness, both red at e8fbd5811 and 196489d3e0e (31 PASS, 2 FAIL).",
+    "SPECIMEN 1 (introduced by #14223): the cursor turn claim matched the bare word cursor-agent; exact-program wiring made the program word the pinned executable path, so the literal could never hold. The witness was stale, production right.",
+    "SPECIMEN 2 (introduced by #14251, after #13952): the abandoned-attempt claim took the snapshot with the bare take, which writes no attempt record, then discarded through a cursor route that reads that record. The first repair (register-then-take) was refused for a second reason, found only by a probe fn run wet: the deployment-owned cursor runtime parent directory did not exist, and an attempt never creates it. Production refused rightly both times.",
+    "DISTINGUISHING FACTS. --claim-run prints only the failing claim name, so a Bool conjunction hides which conjunct is false; the cause was located by a probe fn returning the stage as a String. A fixture repaired from a static read alone was wrong once.",
+    "CEILING: mechanically preventable. NEXT-RUNG TRIGGER, a capability: the native compiler judging wet witnesses on the required path with a memory envelope, so a route change that stales a fixture reds in its own PR.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_register_then_take", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.dispatch_credential_acquisition", decl_name: "cursor_attempt_runtime_parent", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.cursor_agent_realization", decl_name: "cursor_agent_executable_path", field: WholeDeclaration },
+  ],
+}

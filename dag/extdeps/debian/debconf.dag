@@ -9,7 +9,7 @@ import extdeps.uri { Uri, Https }
 // DEBCONF SELECTION RECORDS — the shape of one answered debconf question, as the tool that installs it reads it.
 //
 // WHY THIS SHELF EXISTS (review 83132, DESIGN §3 'External upstream decomposition'). This record used to live
-// inside gunbc.provisioning.altra_autoinstall_seed as four bare NonEmptyStrs, reconstructed by TOKENIZING a
+// inside gunbc.provisioning.ubuntu_autoinstall_seed as four bare NonEmptyStrs, reconstructed by TOKENIZING a
 // string the same module had authored. Four named parts behind a String is §2's anemic leaf, and re-parsing text
 // you wrote yourself is §5's validation where §5 asks for construction. The record is debconf's — its field count,
 // its field order, its separator rule and its set of legal types are set by an independently versioned upstream

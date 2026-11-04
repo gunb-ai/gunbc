@@ -105,16 +105,15 @@ fn nfr_observing_layer_home_exception(host: &str) -> bool {
     host == NFR_OBSERVING_LAYER_HOST
 }
 
+type NfrParsedModule = (
+    std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
+    std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+);
+
 fn nfr_parse_module_from_source(
     module_rel_path: &str,
     content: &str,
-) -> Result<
-    (
-        std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
-        std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
-    ),
-    String,
-> {
+) -> Result<NfrParsedModule, String> {
     let filename = module_rel_path.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(
         content.to_string(),
@@ -400,8 +399,8 @@ fn non_fold_residue_units_from_parse_source(
 
 fn nfr_workspace_carrier_files(root: &Path) -> Result<Vec<(String, String)>, String> {
     let mut acquired: Vec<crate::cli_run::derived_row_roster::AcquiredDag> = Vec::new();
-    collect_dag_files(&root.join("dag"), &mut acquired);
-    collect_dag_files(&root.join("src/v2"), &mut acquired);
+    collect_dag_files_result(&root.join("dag"), &mut acquired)?;
+    collect_dag_files_result(&root.join("src/v2"), &mut acquired)?;
     let mut files = Vec::new();
     for item in acquired {
         if item.is_derived() {

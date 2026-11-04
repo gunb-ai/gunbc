@@ -4,6 +4,7 @@ import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.algebra { trim }
+import extdeps.firmware.types { firmware_semantic_version_text }
 
 import extdeps.bmc.capability {
   CurrentEvidenceUnclaimed,
@@ -154,7 +155,7 @@ import product.cooling_qualification {
   cooling_catalog_refusal_reason,
   installed_cooling_verdict_for_host,
 }
-import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac, SupermicroAten }
 import product.fan_policy_standing {
   ConvergeRouteBound,
   ConvergeRouteUnbound,
@@ -425,6 +426,7 @@ fn bmc_firmware_family_content_hash(
   match family {
     OpenBmc => content_hash_atom(value: "OpenBmc"),
     AmiMegaRac => content_hash_atom(value: "AmiMegaRac"),
+    SupermicroAten => content_hash_atom(value: "SupermicroAten"),
   }
 }
 
@@ -565,17 +567,20 @@ fn bmc_fan_observation_value(lines: List<String>, key: String) -> String? {
   if lines.length() == 0 {
     none
   } else {
-    let line = lines.first()
-    if starts_with(s: line, prefix: prefix) {
-      Present {
-        value: substring(
-          s: line,
-          start: prefix.length(),
-          end: line.length(),
-        ),
-      }
-    } else {
-      bmc_fan_observation_value(lines: lines.skip(n: 1), key: key)
+    match lines.first() {
+      Absent => none
+      Present { value: line } =>
+        if starts_with(s: line, prefix: prefix) {
+          Present {
+            value: substring(
+              s: line,
+              start: prefix.length(),
+              end: line.length(),
+            ),
+          }
+        } else {
+          bmc_fan_observation_value(lines: lines.skip(n: 1), key: key)
+        }
     }
   }
 }
@@ -1452,7 +1457,7 @@ fn bmc_fan_observe_with_credential(
               reason: concat(
                 concat(
                   "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
-                  identity.firmware.version as String,
+                  firmware_semantic_version_text(version: identity.firmware.version),
                 ),
                 concat(
                   "; fleet valid state requires ",
@@ -1472,7 +1477,7 @@ fn bmc_fan_observe_with_credential(
                   reason: concat(
                     concat(
                       "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
-                      identity.firmware.version as String,
+                      firmware_semantic_version_text(version: identity.firmware.version),
                     ),
                     concat(
                       "; fleet valid state requires ",
@@ -1488,7 +1493,7 @@ fn bmc_fan_observe_with_credential(
                     BmcFanLiveObservationRefused {
                       reason: concat(
                         "BMC fan convergence has no exact board-and-firmware projection for observed OpenBMC ",
-                        identity.firmware.version as String,
+                        firmware_semantic_version_text(version: identity.firmware.version),
                       ),
                     }
                   Present { value: projection } =>
@@ -1497,11 +1502,11 @@ fn bmc_fan_observe_with_credential(
                         reason: concat(
                           concat(
                             "BMC fan convergence has no exact config projection for observed OpenBMC ",
-                            identity.firmware.version as String,
+                            firmware_semantic_version_text(version: identity.firmware.version),
                           ),
                           concat(
                             "; available projection is ",
-                            projection.firmware.version as String,
+                            firmware_semantic_version_text(version: projection.firmware.version),
                           ),
                         ),
                       }

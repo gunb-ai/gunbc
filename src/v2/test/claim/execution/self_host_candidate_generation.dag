@@ -37,7 +37,7 @@ import v2.test.claim.manual.sg2_type_expression_projection {
 }
 import std.algebra { list_snoc_item, bag_eq, length }
 import v2.std.diagnostic { Accepted, None, Rejected, diagnostics_fatal_reason }
-import v2.std.node { Symbol }
+import v2.std.node { node_same_occurrence, Symbol }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -123,7 +123,7 @@ fn candidate_generation_dag_add_slice_accepts() -> Bool {
     dag_target: dag_add_target_model
   ) {
     Accepted { value: candidate, diagnostics: d } =>
-      (candidate.emitted == dag_emitted_add_fn_node()) && (d == None)
+      (node_same_occurrence(a: candidate.emitted, b: dag_emitted_add_fn_node())) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }

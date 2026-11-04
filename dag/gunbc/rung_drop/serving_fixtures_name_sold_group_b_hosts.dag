@@ -29,13 +29,11 @@ data serving_fixtures_name_sold_group_b_hosts: RungDrop = RungDrop {
 
   declared: "2026-10-10",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: LostAsPassenger { carrier: "the live Group B host population (srv9-srv12) that the serving and fabric witnesses' fixtures were authored against" },
     population: Enumerated { members: FreeSemigroup { head: "witness fixtures under dag/test/claim that name FabricGroupB or operator_host_srv9 through operator_host_srv12 as inputs", tail: ["gunbc.spark.glm_serving_load was deleted with the Spark serving production path (sold hardware)", "no rostered fleet target, enrolment, binding, reservation or endpoint list: those are removed, not dropped (serving_enrolled_groups emptied gunbc#13776)"] } },
     restoration_trigger: "serving and fabric witnesses that still name FabricGroupB or srv9-srv12 as fixture inputs take their hosts from a live roster (hosts that exist and are reachable) instead of the sold symbols, SUFFICIENT FOR those identity and endpoint data symbols to be deleted without a remaining consumer resolving them",
-  },
+  } }
 }

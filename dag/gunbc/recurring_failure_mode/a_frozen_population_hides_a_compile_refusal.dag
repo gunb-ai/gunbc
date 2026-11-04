@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_frozen_population_hides_a_compile_refusal
+
+// WHY THIS ROW IS ENROLLED HERE AND NOT ONLY IN THE DROP PR. The two rows named below sat in the
+// frozen population of `gunbc.witness.witness_deferral_freeze` while both were red. stern-bat-401's
+// rule for that drop is that no red sits inside it, so each red must either leave the frozen list
+// or carry this kind of row with a named owner. Neither leaves: both causes are real and unowned
+// until the owner below lands their change. So this row is the owner-carrying alternative, written
+// where the drop's claim can see it.
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_frozen_population_hides_a_compile_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_frozen_population_hides_a_compile_refusal" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**an entry kept out of the executing lanes by a freeze hides that the entry's own tree references a declaration nothing can resolve.** A deferral freeze stops the claim; the freeze is also, in practice, why nobody reads the claim's refusal. The refusal is not lost by the freeze -- it is lost by nobody looking, because the lane that would have looked is exactly the lane the freeze withdrew.",
+
+    "TWO ENTRIES, TWO STACKED LAYERS, BOTH AT MAIN (read at origin/main d6586c4e450a, triaged for the drop in gunbc#14886). `enforcement_consistency_gate_holds` (src/v2/test/claim/enforcement_live_witness.dag) fails for two causes stacked, and the second is behind the first: (A) src/v2/lens/enforcement/inventory.dag:272:17 calls `witness_consumer_cadence_for_row` and `witness_row_excluded_from_discovery` from `v2.workflow.witness_admission` with NO import of them -- the refusal is 'cannot establish the declaration identity ... no declaration is indexed'; and (B) BEHIND IT, `lens_contract_schedule_lens` (src/v2/lens/enforcement/contract.dag:434) binds `BoundConsumerWitness { file: 'src/v2/test/claim/walk_plan_schedule_lens_test.dag', function: 'gunbc_ci_walk_plan_schedule_lens_holds' }` to a file that no longer exists. `git log --all --diff-filter=D -- <that path>` names the remover: 611fd0277082, 'FLOOR-Y cutover: delete the CI floor, rebuild from the run_required_floor seed' (gunbc#8283, merged 2026-08-17). The binding was never re-pointed in the ~9 weeks since. A #14887-only tree -- which fixes (A) -- STILL fails the gate, which is how (B) is known to be real and not speculative (keen-owl-704's control; this row's read of the binding and the removal is independent and agrees).",
+
+    "`cost_coverage_smoke_totality_holds` (src/v2/test/claim/enforcement/cost_coverage_witness.dag) fails at src/v2/lens/enforcement/cost_coverage.dag:89:9 and :97:17 for the same KIND of cause as (A) and with no second layer: `judge_subject_node` and `asymptotic_class_of_cost` are used with no import of their declaring modules (receipts.dag:44 and cost.dag:965 -- both functions are LIVE on main, so this is not a rename and the index is not stale about them). gunbai-bot's gunbc#14887 declares the imports and its own PR body carries a head-built PASS receipt for this claim at 0c7db6dfe9da, so this entry's cause is read and named, not guessed.",
+
+    "WHY NO GATE CAUGHT IT: the three functions exist, so no removal check fires; nothing compiles these entries outside the frozen lane, so nothing reaches the import error; and the schedule-lens binding is a STRING inside a typed carrier, which DESIGN §3 already names a second representation that cannot be checked by holding the type. The refusal is loud for whoever dispatches the entry. Nobody dispatches a frozen entry.",
+
+    "NAMED OWNERS (route each to its owner, as required of every row here): layer (A) plus the whole cost_coverage entry are owned by **gunbai-bot** in open gunbc#14887 (add the imports); its own PR body carries a head-built PASS receipt for `cost_coverage_smoke_totality_holds` at 0c7db6dfe9da. Layer (B) is DISPOSED BY RETIREMENT in gunbc#14956 (ruled by **warm-wolf-570**, carried by **keen-owl-704**): the schedule lens judged a CI-floor WalkPlan that #8283 deleted and had no production caller -- its only caller was its own synthetic witness (DESIGN section 3c, dangling). gunbc#14956 deletes the contract binding `lens_contract_schedule_lens`, the lens_registry_v0 row, the ScheduleLens id, `v2.lens.schedule_lens`, the witness and the witness's enrolment in one change, so no binding names a deleted file. Its head-built receipts: `enforcement_consistency_gate_holds` PASSes at its head; a Blocking contract re-pointed at a deleted file FAILs the gate; `only_cost_contract_carries_red_control_probe` stays green. When #14887 lands as well and both entries pass, THIS row is where their receipts are recorded and the two freeze entries leave the population.",
+
+    "HOW THIS IS DIFFERENT FROM THE NEIGHBOURING ROWS. `a_bare_type_name_binds_the_wrong_declaration` (gunbc#12494) is the same population gap for one bare name inside one entry; this row is the same shape reached through a *typed* carrier's string field, which the import fix does not touch. `bare_name_resolved_only_by_the_flat_namespace` covers a name that resolves whole-tree and refuses entry-alone; here the name resolves in NEITHER, and the only reason main is green is that the lane is frozen. `symbol_index_edge_introduces_no_declarations` (#14055, routed to stern-bat-401 for an owner) is the producer side -- an index that misses live declarations; this row's index read is the opposite (the declaration is live and the index knows it; the file itself is absent) so it is not that defect, and is cited here so a later reader does not file it twice.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.lens.enforcement.inventory", decl_name: "cadence_scheduling_rows_for_witness", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.lens.enforcement.cost_coverage", decl_name: "cost_coverage_fn_verdict_from_body", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.enforcement_live_witness", decl_name: "enforcement_consistency_gate_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.enforcement.cost_coverage_witness", decl_name: "cost_coverage_smoke_totality_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals", field: WholeDeclaration },
+  ],
+}

@@ -1,8 +1,7 @@
 module gunbc.serving.rented_release
 
-import std.types { String, NonEmptyStr, Bool, Int, List, Secret, Timestamp }
+import std.types { String, NonEmptyStr, Bool, Int, List, Timestamp }
 import std.optional { Present, Absent }
-import std.resources { Network }
 import std.algebra { list_append }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.decl_ref { decl_ref }
@@ -13,9 +12,6 @@ import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { rm_force_command }
 import extdeps.procps.kill { procps_ng_kill_term_pgid_argv }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
-import extdeps.cloud.vast_ai
-import extdeps.cloud.vast_ai { VastAiInstance }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths, serving_partial_directory, serving_sequence_endangers }
 import gunbc.serving.rented_allocation {
   RentedServingAllocation, RentedAllocationIdentity, RentedAllocationImported, RentedAllocationAcquired,
@@ -70,7 +66,7 @@ fn rented_drain_decision(allocation: RentedServingAllocation, reading: RentedDra
 // something else, which excludes a fault on our side. A silent host with a control that did not reach, or was
 // not read, is ambiguous and refuses, because it cannot tell a dead card from our own network. The same
 // distinction DESIGN 4d keeps between a probe that failed and an axis nobody probed (compare
-// gunbc.site_uefi_arm64_pxe_edge BootNetworkReachabilityDeficit); no shared reachability type carries a
+// gunbc.site_pxe_edge BootNetworkReachabilityDeficit); no shared reachability type carries a
 // vantage control, and extdeps.ssh.session Reachability answers a bare Bool that cannot make the distinction.
 type RentedVantageControl
   = RentedVantageReached
@@ -197,21 +193,30 @@ fn rented_clean_decision(roots: ServingStoreRoots, protected: ServingProtectedPa
 // and it is destroyed only when its id equals the allocation's bound instance id. Inside the guard the origin
 // decides: an Acquired allocation additionally requires the caller-supplied owner label (the flex policy
 // owner) on the read instance; an Imported one is admitted by its typed origin and is not asked for a label.
+// WHAT RELEASE READS OF AN INSTANCE, AND NOTHING ELSE: its id, its owner label and its status text. Every
+// supplier maps its own instance into this (the Vast row: id, label, actual_status; the EC2 row: instance
+// id, the owner tag, the state name), so release is one fold over every supplier and names none of them.
+type RentedObservedInstance {
+  id: NonEmptyStr
+  owner_label: String?
+  status: String?
+}
+
 type RentedInstanceReading
-  = RentedInstanceObserved { instance: VastAiInstance }
+  = RentedInstanceObserved { instance: RentedObservedInstance }
   | RentedInstanceAbsent
   | RentedInstanceUnreadable { cause: NonEmptyStr }
 
 // The Destroy operation's input without its secret: the key is the executor's, never a value here.
 type RentedDestroyRequest {
-  instance_id: Int
+  instance_id: NonEmptyStr
 }
 
 type RentedDestroyDecision
   = RentedDestroyAlreadyGone
   | RentedDestroyPlanned { request: RentedDestroyRequest }
   | RentedDestroyAuthorized { request: RentedDestroyRequest }
-  | RentedDestroyRefusedIdMismatch { bound: NonEmptyStr, read: Int }
+  | RentedDestroyRefusedIdMismatch { bound: NonEmptyStr, read: NonEmptyStr }
   | RentedDestroyRefusedLabel { required: NonEmptyStr, read: String? }
   | RentedDestroyRefusedUnreadable { cause: NonEmptyStr }
 
@@ -219,25 +224,25 @@ fn rented_bound_instance_id(allocation: RentedServingAllocation) -> NonEmptyStr 
   allocation.identity.contract
 }
 
-fn rented_instance_is_bound(allocation: RentedServingAllocation, instance: VastAiInstance) -> Bool {
+fn rented_instance_is_bound(allocation: RentedServingAllocation, instance: RentedObservedInstance) -> Bool {
   (instance.id as String) == (rented_bound_instance_id(allocation: allocation) as String)
 }
 
-fn rented_label_matches(instance: VastAiInstance, required: NonEmptyStr) -> Bool {
-  match instance.label {
+fn rented_label_matches(instance: RentedObservedInstance, required: NonEmptyStr) -> Bool {
+  match instance.owner_label {
     Absent => false
     Present { value: l } => l == (required as String)
   }
 }
 
-fn rented_destroy_admitted(allocation: RentedServingAllocation, instance: VastAiInstance, required_label: NonEmptyStr, mode: ApplyMode) -> RentedDestroyDecision {
+fn rented_destroy_admitted(allocation: RentedServingAllocation, instance: RentedObservedInstance, required_label: NonEmptyStr, mode: ApplyMode) -> RentedDestroyDecision {
   if !rented_instance_is_bound(allocation: allocation, instance: instance) {
     RentedDestroyRefusedIdMismatch { bound: rented_bound_instance_id(allocation: allocation), read: instance.id }
   } else {
     let request = RentedDestroyRequest { instance_id: instance.id }
     let admitted = match allocation.origin {
       RentedAllocationImported { imported_by: _, imported_at: _, found_running: _ } => true
-      RentedAllocationAcquired { owner: _, asked_at: _, asked_rate: _, provider_ask: _ } => rented_label_matches(instance: instance, required: required_label)
+      RentedAllocationAcquired { owner: _, asked_at: _, asked_rate: _ } => rented_label_matches(instance: instance, required: required_label)
     }
     if admitted {
       match mode {
@@ -245,7 +250,7 @@ fn rented_destroy_admitted(allocation: RentedServingAllocation, instance: VastAi
         Apply => RentedDestroyAuthorized { request: request }
       }
     } else {
-      RentedDestroyRefusedLabel { required: required_label, read: instance.label }
+      RentedDestroyRefusedLabel { required: required_label, read: instance.owner_label }
     }
   }
 }
@@ -258,17 +263,9 @@ fn rented_destroy_decision(allocation: RentedServingAllocation, reading: RentedI
   }
 }
 
-// THE ACTUATION. Only an authorized request reaches here, and its answer is never evidence of release: the
-// status is carried as text for the receipt and the gone readback below is what decides.
-fn rented_destroy_perform(api_key: Secret, request: RentedDestroyRequest) -> String uses net: Network {
-  let sent = vast_ai.InstanceLifecycle.Destroy(api_key: api_key, instance_id: request.instance_id)
-  match sent {
-    RestAnswered { answer: _ } => "destroy answered"
-    RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["destroy refused with status ", to_string(status)], "")
-    RestRefused { refusal: RestTransportRefused { cause: _ } } => "destroy got no response"
-    RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["destroy status ", to_string(status), " body undecodable"], "")
-  }
-}
+// THE ACTUATION IS THE SUPPLIER'S. An authorized request leaves this module as data; the supplier row
+// performs it (Vast: product.fabric.flex_vast_loop flex_vast_destroy_perform) and its answer is never
+// evidence of release: the gone readback below is what decides.
 
 // ---- GONE READBACK. A LATER read showing the instance absent is the only thing that proves release. An
 // instance still listed under the bound id is pending, never success; a read that names another id is not a
@@ -284,7 +281,7 @@ fn rented_gone_verdict(allocation: RentedServingAllocation, reading: RentedInsta
     RentedInstanceUnreadable { cause: c } => RentedGoneReadRefused { reason: join(["gone readback unreadable: ", c as String], "") as NonEmptyStr }
     RentedInstanceObserved { instance: i } =>
       if rented_instance_is_bound(allocation: allocation, instance: i) {
-        RentedPendingStillListed { status: i.actual_status }
+        RentedPendingStillListed { status: i.status }
       } else {
         RentedGoneReadRefused { reason: "the readback names another instance id, so it does not read this allocation" as NonEmptyStr }
       }
@@ -453,9 +450,9 @@ data rented_release_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "trigger:the flex wet create produces RentedAllocationAcquired allocations per card and calls rented_release_receipt, resolving flex_release_pass's FlexDestroy to its allocation and passing the FlexPolicy actuation as mode"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_destroy_perform"),
-    reason: "no claim executes rented_destroy_perform: vast_ai.InstanceLifecycle Destroy is Bearer-authenticated, and extdeps.transports.rest RestAuthenticated replay is unexecuted because the invocation input_digest limbs still use a host hash, so only the decisions are witnessed",
-    dissolution: unbound_dissolution(description: "trigger:an authenticated REST replay route in extdeps.transports.rest executes (RestExchangeFixture matched against a RestAuthenticated invocation), and a claim drives rented_destroy_perform over it asserting the route"),
+    ref: decl_ref(module_path: "product.fabric.flex_vast_loop", decl_name: "flex_vast_destroy_perform"),
+    reason: "no claim executes flex_vast_destroy_perform: vast_ai.InstanceLifecycle Destroy is Bearer-authenticated, and extdeps.transports.rest RestAuthenticated replay is unexecuted because the invocation input_digest limbs still use a host hash, so only the decisions are witnessed",
+    dissolution: unbound_dissolution(description: "trigger:an authenticated REST replay route in extdeps.transports.rest executes (RestExchangeFixture matched against a RestAuthenticated invocation), and a claim drives flex_vast_destroy_perform over it asserting the route"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_drain_decision"),

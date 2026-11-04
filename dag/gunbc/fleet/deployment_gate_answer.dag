@@ -1,0 +1,477 @@
+module gunbc.fleet.deployment_gate_answer
+
+// STAGE 2 OF gunbc.plans.ntfy_deployment_gate_approval: THE ROUTE THAT ANSWERS THE PENDING GITHUB GATE.
+//
+// WHAT THIS MODULE IS. A chain of PHASES over the facts a transport hands it, one response per phase. It
+// performs no HTTP, signs no JWT and mints no token: the later actuator change owns transport (it reuses
+// gunbc.github_effect_perform, never a second HTTP path). Each phase takes ONE response, compares it with
+// the request the boundary says ought to have been sent, and yields either a typed stop (Waiting or
+// BrokerDeclined) or the NEXT typed request the transport may make:
+//   0. begin_phase         the claim must name the boundary's environment; yields the installation read.
+//   1. installation_phase  (A) observe_gate_installation, App-JWT read of GET /repos/{owner}/{repo}/installation.
+//   2. ownership_phase     (B) observe_rule_ownership, with the installation OBSERVED in 1, never claimed.
+//   3. broker_phase        (C) admit_broker_answer: the broker's decision, minted as a sealed BrokerAdmission.
+//   4. protection_phase    the protection read, taken LAST so it is the freshest fact before the POST.
+//                          clear_review turns the admission and the sealed protection observation into a
+//                          ReviewClearance, and review_request_of turns that into the ReviewRequest.
+//   5. review_phase        the recorded response to the POST; the only caller of mint_accepted_rule_review.
+//
+// THE ORDER IS CONSTRUCTED, NOT TRUSTED. Every authority-bearing token between phases is sealed
+// (gunbc.auth.deployment_gate_authorization, "THE ORDER OF THE ANSWER IS CONSTRUCTED"): sealed
+// authority from the previous phase cannot be obtained except through the admitted phase route (each
+// observation wrapper is confined to its one phase), so no module can enter the chain in the middle or
+// choose the decision a review carries.
+//
+// DARK. While the environment still lists RequiredReviewers, clear_review refuses, so NO ReviewRequest
+// VALUE EXISTS and no actuator built on this interface can POST a review, whatever responses it holds.
+// Installation and rule reads are read-only and may happen first; that is the whole of what a standing
+// reviewer allows. That is a typed arm (ReviewNotCleared{ProtectionStillRequiresReviewers}), not a toggle:
+// there is no input that skips it. Stage 4 of the plan lifts DARK for srv1-production WHILE the reviewer
+// stands (both rules must pass, so the App cannot release the gate alone); that is a later change to the
+// clearance in gunbc.auth.deployment_gate_authorization and needs the operator's yes. Stage 5 removes the
+// reviewer afterwards.
+//
+// WHAT IS NEVER RETURNED. Answered carries an AcceptedRuleReviewReceipt, which only the mint can build, so
+// "approved" cannot be reported without a 204 on the exact route carrying the exact body. Every other arm
+// is Waiting or BrokerDeclined.
+//
+// THE RUN ID IS THE CARRIER (extdeps.github.workflow_runs GitHubWorkflowRunId) at every position; the path
+// text crosses through github_workflow_run_id_wire_text inside the extdeps builder, never a cast.
+import std.types { String, List, NonEmptyStr, HttpStatus }
+import std.optional { Present, Absent }
+import extdeps.ietf.http_semantics { HttpMethod }
+import extdeps.github.actions_runs { WorkflowRunRecord }
+import extdeps.github.deployment_protection_rule {
+  RestCall,
+  installation_readback_call,
+  enabled_rule_readback_call,
+  environment_protection_readback_call,
+  BuiltRoutePath,
+  BuiltRoutePathOk,
+  BuiltRoutePathRefused,
+  RoutePathBuildRefusal,
+  RoutePathSegment,
+  installation_readback_path_built_for,
+  enabled_rule_readback_path_built_for,
+  environment_protection_readback_path_built_for,
+  InstallationWireFields,
+  EnabledDeploymentProtectionRule,
+  PendingDeploymentWait,
+  DeploymentProtectionRuleReview,
+  GitHubDeploymentProtectionRuleId,
+}
+import gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }
+import gunbc.auth.approval_capability { ApprovalCapability }
+import gunbc.auth.deployment_gate_authorization {
+  DeploymentGateBoundary,
+  GateRequestClaim,
+  GateInstallationClaim,
+  ObservedGateInstallation,
+  InstallationObservation,
+  InstallationObserved,
+  InstallationObservationRefused,
+  InstallationObservationRefusal,
+  EnvironmentRuleOwnership,
+  OwnedByGateApp,
+  NotOwnedByGateApp,
+  OwnershipRefusalReason,
+  BrokerAnswerRefusal,
+  BrokerAdmission,
+  BrokerAdmissionOutcome,
+  BrokerAdmitted,
+  BrokerAdmissionRefused,
+  ClearanceRefusal,
+  ReviewClearanceOutcome,
+  Cleared,
+  ClearanceRefused,
+  ReviewRequest,
+  ReviewRequestOutcome,
+  ReviewRequestBuilt,
+  ReviewRequestRefused,
+  AcceptedReviewOutcome,
+  Accepted,
+  AcceptedReviewRefused,
+  AcceptedReviewRefusal,
+  AcceptedRuleReviewReceipt,
+  EnvironmentProtectionRead,
+  ProtectionReadEstablished,
+  ProtectionReadRefused,
+  ProtectionResponseNamedAnotherEnvironment,
+  observe_environment_protection,
+  observe_gate_installation,
+  observe_rule_ownership,
+  admit_broker_answer,
+  clear_review,
+  review_request_of,
+  mint_accepted_rule_review,
+}
+
+// A READ AS THE TRANSPORT SAYS IT SENT IT. Method and path; a read carries no body.
+type SentRequest {
+  method: HttpMethod,
+  path: NonEmptyStr,
+}
+
+// THE REVIEW AS THE TRANSPORT SAYS IT SENT IT: method, path AND body. The body is part of what the response
+// answered, so the route can compare it with the request and the mint consumes THIS body, never a rebuilt one.
+type SentReview {
+  method: HttpMethod,
+  path: NonEmptyStr,
+  body: DeploymentProtectionRuleReview,
+}
+
+type InstallationReadResponse {
+  sent: SentRequest,
+  status: HttpStatus,
+  wire: InstallationWireFields,
+}
+
+type ProtectionReadResponse {
+  sent: SentRequest,
+  status: HttpStatus,
+  settings: GitHubEnvironmentProtectionSettings,
+}
+
+type RuleReadResponse {
+  sent: SentRequest,
+  status: HttpStatus,
+  rules: List<EnabledDeploymentProtectionRule>,
+}
+
+type ReviewResponse {
+  sent: SentReview,
+  status: HttpStatus,
+}
+
+// WHICH REQUEST A MISROUTED RESPONSE ANSWERED.
+type GateRoute
+  = EnvironmentRoute
+  | InstallationRoute
+  | EnabledRuleRoute
+  | ReviewRoute
+
+type GateWaitReason
+  = ClaimNamesAnotherEnvironment { claimed: NonEmptyStr, boundary: NonEmptyStr }
+  | EnvironmentReadDidNotAnswer { status: HttpStatus }
+  | ProtectionNotEstablished { because: ProtectionResponseNamedAnotherEnvironment }
+  | ReviewNotCleared { because: ClearanceRefusal }
+  | RouteSegmentIsNotRouteSafe { refusal: RoutePathBuildRefusal, hostile_segment: RoutePathSegment }
+  | ReadWasNotTheRoute { route: GateRoute, expected: SentRequest, sent: SentRequest }
+  | ReviewBodyWasNotTheRequest { expected: DeploymentProtectionRuleReview, sent: DeploymentProtectionRuleReview }
+  | InstallationNotObserved { because: InstallationObservationRefusal }
+  | RuleReadDidNotAnswer { status: HttpStatus }
+  | RuleOwnershipNotObserved { because: OwnershipRefusalReason }
+  | ReviewNotAccepted { because: AcceptedReviewRefusal }
+
+type GateAnswerOutcome
+  = Answered { receipt: AcceptedRuleReviewReceipt }
+  | Waiting { reason: GateWaitReason }
+  | BrokerDeclined { because: BrokerAnswerRefusal }
+
+fn wait_for(reason: GateWaitReason) -> GateAnswerOutcome {
+  Waiting { reason: reason }
+}
+
+fn is_the_route(expected: SentRequest, sent: SentRequest) -> Bool {
+  expected.method == sent.method && expected.path == sent.path
+}
+
+fn boundary_owner(boundary: DeploymentGateBoundary) -> NonEmptyStr {
+  boundary.repository.owner as NonEmptyStr
+}
+
+fn boundary_repo(boundary: DeploymentGateBoundary) -> NonEmptyStr {
+  boundary.repository.name as NonEmptyStr
+}
+
+// THE REQUESTS THE BOUNDARY BUILDS. Each is a call and the path its template row builds for the boundary,
+// read together: the route never compares a response with a bare string.
+type RequestBuild
+  = RequestBuilt { request: SentRequest }
+  | RequestNotBuilt { reason: GateWaitReason }
+
+fn request_of(call: RestCall, built: BuiltRoutePath) -> RequestBuild {
+  match built {
+    BuiltRoutePathRefused { refusal: r, hostile_segment: h } =>
+      RequestNotBuilt { reason: RouteSegmentIsNotRouteSafe { refusal: r, hostile_segment: h } }
+    BuiltRoutePathOk { path: p } => RequestBuilt { request: SentRequest { method: call.method, path: p } }
+  }
+}
+
+fn installation_request(boundary: DeploymentGateBoundary) -> RequestBuild {
+  request_of(
+    call: installation_readback_call,
+    built: installation_readback_path_built_for(owner: boundary_owner(boundary: boundary), repo: boundary_repo(boundary: boundary))
+  )
+}
+
+fn rule_read_request(boundary: DeploymentGateBoundary) -> RequestBuild {
+  request_of(
+    call: enabled_rule_readback_call,
+    built: enabled_rule_readback_path_built_for(
+      owner: boundary_owner(boundary: boundary),
+      repo: boundary_repo(boundary: boundary),
+      environment_name: boundary.environment_name
+    )
+  )
+}
+
+fn protection_read_request(boundary: DeploymentGateBoundary) -> RequestBuild {
+  request_of(
+    call: environment_protection_readback_call,
+    built: environment_protection_readback_path_built_for(
+      owner: boundary_owner(boundary: boundary),
+      repo: boundary_repo(boundary: boundary),
+      environment_name: boundary.environment_name
+    )
+  )
+}
+
+// PHASE 0. A claim for another environment than the boundary's is refused ONCE and before any read.
+type BeginPhase
+  = BeginStopped { outcome: GateAnswerOutcome }
+  | Begun { next: SentRequest }
+
+fn begin_phase(boundary: DeploymentGateBoundary, claim: GateRequestClaim) -> BeginPhase {
+  if claim.environment != boundary.environment_name {
+    BeginStopped {
+      outcome: wait_for(
+        reason: ClaimNamesAnotherEnvironment { claimed: claim.environment, boundary: boundary.environment_name }
+      ),
+    }
+  } else {
+    match installation_request(boundary: boundary) {
+      RequestNotBuilt { reason: r } => BeginStopped { outcome: wait_for(reason: r) }
+      RequestBuilt { request: next } => Begun { next: next }
+    }
+  }
+}
+
+// PHASE 1 (A). The only caller of observe_gate_installation (admit_callers names this module's wrapper).
+fn observe_gate_installation_for_route(
+  boundary: DeploymentGateBoundary,
+  response: InstallationReadResponse,
+  claim: GateInstallationClaim
+) -> InstallationObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "installation_phase"
+    ),
+  ]
+{
+  observe_gate_installation(
+    owner: boundary_owner(boundary: boundary),
+    repo: boundary_repo(boundary: boundary),
+    status: response.status,
+    wire: response.wire,
+    claim: claim
+  )
+}
+
+type InstallationPhase
+  = InstallationStopped { outcome: GateAnswerOutcome }
+  | InstallationEstablished { observed: ObservedGateInstallation, next: SentRequest }
+
+fn installation_phase(
+  boundary: DeploymentGateBoundary,
+  response: InstallationReadResponse,
+  claim: GateInstallationClaim
+) -> InstallationPhase {
+  match installation_request(boundary: boundary) {
+    RequestNotBuilt { reason: r } => InstallationStopped { outcome: wait_for(reason: r) }
+    RequestBuilt { request: expected } =>
+      if !is_the_route(expected: expected, sent: response.sent) {
+        InstallationStopped {
+          outcome: wait_for(reason: ReadWasNotTheRoute { route: InstallationRoute, expected: expected, sent: response.sent }),
+        }
+      } else {
+        match observe_gate_installation_for_route(boundary: boundary, response: response, claim: claim) {
+          InstallationObservationRefused { because: b } =>
+            InstallationStopped { outcome: wait_for(reason: InstallationNotObserved { because: b }) }
+          InstallationObserved { observed: observed } =>
+            match rule_read_request(boundary: boundary) {
+              RequestNotBuilt { reason: r } => InstallationStopped { outcome: wait_for(reason: r) }
+              RequestBuilt { request: next } => InstallationEstablished { observed: observed, next: next }
+            }
+        }
+      }
+  }
+}
+
+// PHASE 2 (B). The only caller of observe_rule_ownership; the installation is the OBSERVED one from phase 1.
+fn observe_rule_ownership_for_route(
+  boundary: DeploymentGateBoundary,
+  response: RuleReadResponse,
+  observed: ObservedGateInstallation
+) -> EnvironmentRuleOwnership
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "ownership_phase"
+    ),
+  ]
+{
+  observe_rule_ownership(rules: response.rules, environment_name: boundary.environment_name, observed: observed)
+}
+
+type OwnershipPhase
+  = OwnershipStopped { outcome: GateAnswerOutcome }
+  | OwnershipEstablished { ownership: EnvironmentRuleOwnership }
+
+fn ownership_phase(
+  boundary: DeploymentGateBoundary,
+  response: RuleReadResponse,
+  observed: ObservedGateInstallation
+) -> OwnershipPhase {
+  match rule_read_request(boundary: boundary) {
+    RequestNotBuilt { reason: r } => OwnershipStopped { outcome: wait_for(reason: r) }
+    RequestBuilt { request: expected } =>
+      if !is_the_route(expected: expected, sent: response.sent) {
+        OwnershipStopped {
+          outcome: wait_for(reason: ReadWasNotTheRoute { route: EnabledRuleRoute, expected: expected, sent: response.sent }),
+        }
+      } else if response.status != enabled_rule_readback_call.success_status {
+        OwnershipStopped { outcome: wait_for(reason: RuleReadDidNotAnswer { status: response.status }) }
+      } else {
+        let ownership = observe_rule_ownership_for_route(boundary: boundary, response: response, observed: observed)
+        match ownership {
+          NotOwnedByGateApp { because: b } =>
+            OwnershipStopped { outcome: wait_for(reason: RuleOwnershipNotObserved { because: b }) }
+          OwnedByGateApp { observation: _ } => OwnershipEstablished { ownership: ownership }
+        }
+      }
+  }
+}
+
+// PHASE 3 (C). No I/O: the broker's decision over the wait, the run record, the claim, the tap and the
+// ownership, minted as a sealed BrokerAdmission. The only caller of admit_broker_answer.
+type BrokerPhase
+  = BrokerStopped { outcome: GateAnswerOutcome }
+  | BrokerAdmittedTo { admission: BrokerAdmission, next: SentRequest }
+
+fn broker_phase(
+  boundary: DeploymentGateBoundary,
+  claim: GateRequestClaim,
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  capability: ApprovalCapability,
+  ownership: EnvironmentRuleOwnership
+) -> BrokerPhase {
+  match admit_broker_answer(wait: wait, run: run, claim: claim, capability: capability, ownership: ownership) {
+    BrokerAdmissionRefused { because: b } => BrokerStopped { outcome: BrokerDeclined { because: b } }
+    BrokerAdmitted { admission: admission } =>
+      match protection_read_request(boundary: boundary) {
+        RequestNotBuilt { reason: r } => BrokerStopped { outcome: wait_for(reason: r) }
+        RequestBuilt { request: next } => BrokerAdmittedTo { admission: admission, next: next }
+      }
+  }
+}
+
+// PHASE 4. The only caller of observe_environment_protection (admit_callers names the wrapper below), of
+// clear_review and of review_request_of. The reviewer requirement is decided in ONE place, clear_review.
+fn observe_environment_protection_for_route(
+  boundary: DeploymentGateBoundary,
+  response: ProtectionReadResponse
+) -> EnvironmentProtectionRead
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "protection_phase"
+    ),
+  ]
+{
+  observe_environment_protection(
+    owner: boundary_owner(boundary: boundary),
+    repo: boundary_repo(boundary: boundary),
+    environment_name: boundary.environment_name,
+    settings: response.settings
+  )
+}
+
+type ProtectionPhase
+  = ProtectionStopped { outcome: GateAnswerOutcome }
+  | ProtectionCleared { request: ReviewRequest }
+
+fn protection_phase(
+  boundary: DeploymentGateBoundary,
+  response: ProtectionReadResponse,
+  admission: BrokerAdmission
+) -> ProtectionPhase {
+  match protection_read_request(boundary: boundary) {
+    RequestNotBuilt { reason: r } => ProtectionStopped { outcome: wait_for(reason: r) }
+    RequestBuilt { request: expected } =>
+      if !is_the_route(expected: expected, sent: response.sent) {
+        ProtectionStopped {
+          outcome: wait_for(reason: ReadWasNotTheRoute { route: EnvironmentRoute, expected: expected, sent: response.sent }),
+        }
+      } else if response.status != environment_protection_readback_call.success_status {
+        ProtectionStopped { outcome: wait_for(reason: EnvironmentReadDidNotAnswer { status: response.status }) }
+      } else {
+        match observe_environment_protection_for_route(boundary: boundary, response: response) {
+          ProtectionReadRefused { because: b } =>
+            ProtectionStopped { outcome: wait_for(reason: ProtectionNotEstablished { because: b }) }
+          ProtectionReadEstablished { observation: o } =>
+            match clear_review(boundary: boundary, admission: admission, protection: o) {
+              ClearanceRefused { because: b } =>
+                ProtectionStopped { outcome: wait_for(reason: ReviewNotCleared { because: b }) }
+              Cleared { clearance: c } =>
+                match review_request_of(clearance: c) {
+                  ReviewRequestRefused { refusal: r, hostile_segment: h } =>
+                    ProtectionStopped { outcome: wait_for(reason: RouteSegmentIsNotRouteSafe { refusal: r, hostile_segment: h }) }
+                  ReviewRequestBuilt { request: request } => ProtectionCleared { request: request }
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE COMMENT OF A SENT REVIEW MUST BE WHAT THE REQUEST CARRIED (absent, today: see review_request_of).
+fn review_bodies_agree(expected: DeploymentProtectionRuleReview, sent: DeploymentProtectionRuleReview) -> Bool {
+  expected.environment_name == sent.environment_name
+    && expected.state == sent.state
+    && (match expected.comment {
+         Absent => match sent.comment {
+           Absent => true
+           Present { value: _ } => false
+         }
+         Present { value: e } => match sent.comment {
+           Absent => false
+           Present { value: s } => (e as String) == (s as String)
+         }
+       })
+}
+
+// PHASE 5, TERMINAL. The recorded response is bound to the request it answered: method, path AND body. The
+// mint receives the body that was SENT (response.sent.body), never a rebuilt one, and keeps its own
+// environment and intended-decision checks as the second line. The only caller of mint_accepted_rule_review.
+fn review_phase(
+  request: ReviewRequest,
+  response: ReviewResponse,
+  requested_rule_id: GitHubDeploymentProtectionRuleId
+) -> GateAnswerOutcome {
+  let boundary = request.clearance.boundary
+  let expected = SentRequest { method: request.method, path: request.path }
+  let sent = SentRequest { method: response.sent.method, path: response.sent.path }
+  if !is_the_route(expected: expected, sent: sent) {
+    wait_for(reason: ReadWasNotTheRoute { route: ReviewRoute, expected: expected, sent: sent })
+  } else if !review_bodies_agree(expected: request.body, sent: response.sent.body) {
+    wait_for(reason: ReviewBodyWasNotTheRequest { expected: request.body, sent: response.sent.body })
+  } else {
+    match mint_accepted_rule_review(
+      owner: boundary_owner(boundary: boundary),
+      repo: boundary_repo(boundary: boundary),
+      run_id: request.clearance.admission.run_id,
+      environment_name: boundary.environment_name,
+      intended: request.clearance.admission.decision,
+      review: response.sent.body,
+      status: response.status,
+      ownership: OwnedByGateApp { observation: request.clearance.admission.ownership },
+      requested_rule_id: requested_rule_id
+    ) {
+      Accepted { receipt: r } => Answered { receipt: r }
+      AcceptedReviewRefused { because: b } => wait_for(reason: ReviewNotAccepted { because: b })
+    }
+  }
+}

@@ -22,7 +22,7 @@ import v2.std.find_witness {
 import v2.std.constraint_satisfaction_predicate {
   constraint_satisfaction_preservation_holds
 }
-import v2.std.node { Node, Symbol, well_formed }
+import v2.std.node { node_same_occurrence, Node, Symbol, well_formed }
 import v2.std.witness { StructuralPropertyWitness }
 
 type ConstraintGraph {
@@ -75,7 +75,7 @@ fn canonical_grounding_from_derived_type(
   node: Node,
   derived_type: Node,
 ) -> Outcome<CanonicalGrounding> {
-  if derived_type == node {
+  if node_same_occurrence(a: derived_type, b: node) {
     outcome_rejected(grounding_evidence_is_source_diagnostic(node: node))
   } else {
     Accepted {

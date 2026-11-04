@@ -37,7 +37,7 @@ import gunbc.auth.request_authentication {
   SessionStandingInvalid,
   FabricServiceEvidenceSubmissionMac,
   DeploymentAccessPolicy,
-  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionRetireLineage,
+  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionRetireLineage, ServeActionDispatchNode,
   ServeWriteAuthorizationPolicy,
   tracker_write_authorization_policy, operator_approver_principal,
   HostAccountPeerEvidence, HostAccountEnrolment, host_account_evidence_of_ingress, lab_agent_principal, lab_agent_host_account,
@@ -283,8 +283,17 @@ test fn the_write_law_admits_only_the_full_conjunction() -> Bool {
         authorization_policy: open_write_policy(),
         deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
         csrf_presented: "csrf-1",
-        observed_at: "2026-09-25T00:05:00Z",
+        observed_at: fn() { "2026-09-25T00:05:00Z" },
       ) == Permit
+        && human_write_admission(
+          route_path: "/dispatch" as NonEmptyStr,
+          action: ServeActionDispatchNode,
+          security: session_security(session: s),
+          authorization_policy: open_write_policy(),
+          deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+          csrf_presented: "csrf-1",
+          observed_at: fn() { "2026-09-25T00:05:00Z" },
+        ) == Permit
   }
 }
 
@@ -299,7 +308,7 @@ test fn absent_authentication_refuses_the_write() -> Bool {
     authorization_policy: open_write_policy(),
     deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
     csrf_presented: "csrf-1",
-    observed_at: "2026-09-25T00:05:00Z",
+    observed_at: fn() { "2026-09-25T00:05:00Z" },
   ) {
     Deny { refusal } =>
       match refusal.cause {
@@ -323,7 +332,7 @@ test fn a_valid_session_without_the_csrf_proof_refuses() -> Bool {
         authorization_policy: open_write_policy(),
         deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
         csrf_presented: "",
-        observed_at: "2026-09-25T00:05:00Z",
+        observed_at: fn() { "2026-09-25T00:05:00Z" },
       ) {
         Deny { refusal } =>
           match refusal.cause {
@@ -347,7 +356,7 @@ test fn an_expired_session_refuses_the_write() -> Bool {
         authorization_policy: open_write_policy(),
         deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
         csrf_presented: "csrf-1",
-        observed_at: "2026-09-25T00:07:00Z",
+        observed_at: fn() { "2026-09-25T00:07:00Z" },
       ) {
         Deny { refusal } =>
           match refusal.cause {
@@ -373,7 +382,7 @@ test fn service_evidence_on_a_human_write_refuses() -> Bool {
     authorization_policy: open_write_policy(),
     deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
     csrf_presented: "csrf-1",
-    observed_at: "2026-09-25T00:05:00Z",
+    observed_at: fn() { "2026-09-25T00:05:00Z" },
   ) {
     Deny { refusal } =>
       match refusal.cause {
@@ -430,7 +439,7 @@ test fn login_does_not_grant_approval_authority() -> Bool {
         authorization_policy: open_write_policy(),
         deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
         csrf_presented: "csrf-1",
-        observed_at: "2026-09-25T00:05:00Z",
+        observed_at: fn() { "2026-09-25T00:05:00Z" },
       ) {
         Deny { refusal } =>
           match refusal.cause {
@@ -446,7 +455,7 @@ test fn login_does_not_grant_approval_authority() -> Bool {
           authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
           deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
           csrf_presented: "csrf-1",
-          observed_at: "2026-09-25T00:05:00Z",
+          observed_at: fn() { "2026-09-25T00:05:00Z" },
         ) == Permit
   }
 }
@@ -473,7 +482,7 @@ test fn a_tailnet_required_deployment_refuses_non_tailnet_writes() -> Bool {
         authorization_policy: open_write_policy(),
         deployment_policy: DeploymentAccessPolicy { tailnet_path_required: true },
         csrf_presented: "csrf-1",
-        observed_at: "2026-09-25T00:05:00Z",
+        observed_at: fn() { "2026-09-25T00:05:00Z" },
       ) {
         Deny { refusal } =>
           match refusal.cause {
@@ -486,7 +495,7 @@ test fn a_tailnet_required_deployment_refuses_non_tailnet_writes() -> Bool {
                 authorization_policy: open_write_policy(),
                 deployment_policy: DeploymentAccessPolicy { tailnet_path_required: true },
                 csrf_presented: "csrf-1",
-                observed_at: "2026-09-25T00:05:00Z",
+                observed_at: fn() { "2026-09-25T00:05:00Z" },
               ) == Permit
             _ => false
           }
@@ -549,7 +558,7 @@ test fn the_write_law_admits_a_fixture_session_seated_through_the_cookie_standin
         authorization_policy: open_write_policy(),
         deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
         csrf_presented: "csrf-1",
-        observed_at: "2026-09-25T00:05:00Z",
+        observed_at: fn() { "2026-09-25T00:05:00Z" },
       ) == Permit
   }
 }
@@ -564,7 +573,7 @@ fn witness_standing_write(standing: SessionCookieStanding) -> AccessDecision {
     authorization_policy: open_write_policy(),
     deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
     csrf_presented: "csrf-1",
-    observed_at: "2026-09-25T00:05:00Z",
+    observed_at: fn() { "2026-09-25T00:05:00Z" },
   )
 }
 
@@ -580,7 +589,7 @@ test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its
     authorization_policy: open_write_policy(),
     deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
     csrf_presented: "csrf-1",
-    observed_at: "2026-09-25T00:05:00Z",
+    observed_at: fn() { "2026-09-25T00:05:00Z" },
   ) {
     Deny { refusal } => match refusal.cause {
       AccessEvidenceAbsent { evidence: e } => e

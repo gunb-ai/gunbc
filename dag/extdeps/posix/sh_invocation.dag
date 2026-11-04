@@ -98,15 +98,28 @@ fn posix_sh_program_command(script: String) -> ArgvCommand {
 // literals `sh` and the path, and the script's content is never re-parsed as a word. A caller that
 // holds its script as a verified file belongs here; a caller holding it as a string belongs to the
 // shell -> dag lane's debt, as above.
+// THE WORDS OF "run this script file", WITHOUT the program identity attached. The reason this is split
+// out is elevation: a converge that installs packages has to run its staged script as root, and the
+// elevated wrappers take WORDS, not an ArgvCommand. Handing the words to one of those wrappers after
+// re-spelling "sh" at the call site would put a second spelling of the interpreter in the fleet, and a
+// call site that typed "bash" there would quietly change which shell parses the script — a difference
+// that shows up as a syntax error only on the host that has no bash. ONE NAME ROW below feeds both this
+// and the ArgvCommand form, so they cannot drift.
+fn posix_sh_script_argv(path: NonEmptyStr) -> List<String> {
+  [posix_sh_program_name as String, path as String]
+}
+
+data posix_sh_program_name: NonEmptyStr = "sh"
+
 fn posix_sh_script_command(path: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: posix_sh_program(), arguments: [path as String])
+  argv_command(program: posix_sh_program(), arguments: posix_sh_script_argv(path: path))
 }
 
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: "sh")
+fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: posix_sh_program_name)
 
 // EXPORT ONE VARIABLE FROM A FILE, THEN EXEC A COMMAND (POSIX sh: command substitution, export,
 // exec). The value is read by the shell itself and placed only in the exec'd command's environment;

@@ -62,8 +62,9 @@ import v2.extdeps.languages.bash_build {
 //
 // WHY THIS EXISTS. gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions,
 // silent arm. A pull-request run takes the WORKFLOW TEXT from the merge ref and the gunbc BINARY from
-// the PR head (the lane's checkout ref is github.event.pull_request.head.sha, so the two are never
-// declared to be paired). When the head lacks the newest part of an instruction, the older binary still
+// the PR head (when this stamp was written the lane's checkout ref was github.event.pull_request.head.sha;
+// it is now github.sha, the merge ref that also supplies the workflow, so the lane pairs them by
+// construction and the stamp remains the guard for any step that checks out a different ref). When the head lacks the newest part of an instruction, the older binary still
 // ANSWERS the newer command: runs 39066871919, 39067193189, 39067690307 and 39069382384 (2026-10-17)
 // executed the new reuse walk against a head predating the ancestor locator, printed the six-field
 // counts shape with no ancestor=, and exited GREEN with reused=0. The step's only contract on that

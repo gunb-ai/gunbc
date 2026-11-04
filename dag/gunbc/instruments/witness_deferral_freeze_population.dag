@@ -1,0 +1,142 @@
+module gunbc.instruments.witness_deferral_freeze_population
+
+import std.types { Bool, String }
+import std.process { ExitSuccess, ExitFailure }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE INSTRUMENT THAT MAKES THE OFFLINE WITNESS DEFERRAL A DECLARED RUNG DROP (ruling stern-bat-401,
+// option A, 2026-10-23; the drop row is gunbc.rung_drop.witness_deferral_freeze_population_rung_drop).
+//
+// WHAT IT DECIDES. The freeze file's typed FrozenPathDeferral entries are the population of the drop;
+// the drop is BOUNDED to that list and may SHRINK MONOTONICALLY. Two things have to be executed, not
+// asserted: the population must be re-derived by an IDENTITY JOIN over the typed entries (never a
+// count — a count is a second representation of the roster, §5), and "no new entries" must REFUSE an
+// identity outside the frozen set while still permitting removals, because restoring coverage deletes
+// a deferral row and that direction is the whole point of the ladder.
+//
+// ONE AUTHORITY, NOT TWO. This instrument does not re-parse the roster and does not re-implement the
+// comparison. It consumes `witness_deferral_freeze_population_census` — the Rust builtin that renders
+// the join `cli_run::collect_frozen_path_deferral_additions` already performs between the live tree's
+// typed entries and the resolved diff baseline, which is the SAME gate the required floor consults.
+// The builtin adds no judgment; this module turns its tagged verdict into exit codes and a receipt.
+// A second parser here would be exactly the defect the drop row exists to close: a claim about the
+// population that could be satisfied by editing text rather than by restoring execution.
+//
+// THE THREE ARMS, AND WHAT EACH PROVES.
+//   CONTROL (exit 0). The live identity set equals the baseline's: the roster is bounded and shrinking
+//     only. The current frozen list takes this arm, which is why it is the control.
+//   ADDITIONS (exit 1). At least one live identity is not in the baseline population: a deferral was
+//     planted without its identity being declared by the drop row. This is the RED arm — plant one new
+//     FrozenPathDeferral entry under the fixture root and the instrument refuses.
+//   NO OBSERVATION (exit 2). The join itself could not run (baseline unresolvable, file unreadable).
+//     Not a finding: nothing was checked, which is a different sentence from "checked and bounded"
+//     (§5 — every path succeeds fully or fails with a typed, located diagnostic; a silent pass here
+//     would be the instrument claiming a bound it never measured).
+//
+// WHY A REMOVAL TAKES THE CONTROL ARM. `collect_frozen_path_deferral_additions` computes
+// live-minus-baseline. Deleting a row shrinks the live set, so no live identity can fall outside the
+// baseline and the join still holds: shrinking is permitted by construction, not by an allowance in
+// this file. That is why the removal probe exits 0 rather than needing its own arm.
+//
+// HOW IT IS RUN, AND WHAT IT COSTS. `gunbc test //gunbc/instruments:witness-deferral-freeze-
+// population` -- the same dispatch seam its siblings use. The join is NOT a corpus walk: the
+// additions gate it wraps reads exactly one file, the roster, at two endpoints (the baseline blob
+// via `git ls-tree` + `git show`, and the live tree), so the interpreter time is one wet eval of
+// three host calls over two parses of the same text. That is why this instrument is dispatched
+// rather than wired as a merge gate -- it is dispatched on purpose and its receipt is what a
+// change to the frozen list cites -- and NOT because a lane budget could not hold it. It is not a
+// merge gate because the gate it wraps has no production caller at all (its floor call site is
+// the test-mode modeled seam); the executed half of "no new entries" is THIS instrument, which is
+// what gunbc.rung_drop witness_deferral_freeze_population declares. TRIGGER TO MOVE IT ONTO A
+// LANE: native execution running the claim inside the cost floor -- the drop row's own restoration
+// trigger, so the instrument and the drop end together on one fact.
+fn bounded_word() -> String { "bounded" }
+
+fn refused_prefix() -> String { "refused|" }
+
+fn unbounded_prefix() -> String { "unbounded|" }
+
+fn is_refused(readout: String) -> Bool { starts_with(s: readout, prefix: refused_prefix()) }
+
+fn is_unbounded(readout: String) -> Bool { starts_with(s: readout, prefix: unbounded_prefix()) }
+
+fn is_bounded(readout: String) -> Bool { readout == bounded_word() }
+
+fn refused_cause(readout: String) -> String {
+  substring(s: readout, start: 8, end: string_length(s: readout))
+}
+
+fn added_identities(readout: String) -> String {
+  substring(s: readout, start: 10, end: string_length(s: readout))
+}
+
+// THE PURE HALF, SHARED BY THE CLAIM AND THE EXIT FN. One decision, read the same way by the witness
+// (which needs a Bool) and by the process boundary (which needs an exit code). Splitting these into
+// two computations is the state-space split gunbc.cli_wire refuses: a verb printing an answer and
+// exiting as though it had refused.
+type PopulationVerdict
+  = Bounded
+  | Unbounded { added: String }
+  | NoObservation { cause: String }
+
+fn witness_deferral_freeze_population_verdict() -> PopulationVerdict {
+  let readout = witness_deferral_freeze_population_census()
+  if is_refused(readout: readout) {
+    NoObservation { cause: refused_cause(readout: readout) }
+  } else {
+    if is_bounded(readout: readout) {
+      Bounded
+    } else {
+      if is_unbounded(readout: readout) {
+        Unbounded { added: added_identities(readout: readout) }
+      } else {
+        // An unrecognised tag is NOT a bounded answer. The builtin's three tags are exhaustive today;
+        // reaching here means the two halves drifted, and drifting quietly to a pass is the failure
+        // this instrument exists to make impossible.
+        NoObservation {
+          cause: concat("census readout carried none of the three tags; got: ", readout)
+        }
+      }
+    }
+  }
+}
+
+test fn witness_deferral_freeze_population_is_bounded_holds() -> Bool {
+  match witness_deferral_freeze_population_verdict() {
+    Bounded => true
+    Unbounded { added: _ } => false
+    NoObservation { cause: _ } => false
+  }
+}
+
+// THE CONTROL AND THE RED ARE THE SAME FUNCTION, RUN AGAINST DIFFERENT TREES. Pinned in the fixtures:
+// the current frozen list exits 0 (control), one planted entry exits 1 (RED), one deletion exits 0
+// (shrinking permitted). The head-built receipts for all three live in the PR that lands this row.
+fn witness_deferral_freeze_population_exit() -> CliWireResponse {
+  match witness_deferral_freeze_population_verdict() {
+    Bounded =>
+      CliWirePrintable {
+        bytes: "witness-deferral-freeze-population: BOUNDED — the live FrozenPathDeferral identity join equals the declared population; the offline deferral drop is shrinking-only\n",
+        exit: ExitSuccess
+      }
+    Unbounded { added: added } =>
+      CliWirePrintable {
+        bytes: concat(
+          "witness-deferral-freeze-population: UNBOUNDED — identities outside gunbc.rung_drop.witness_deferral_freeze_population_rung_drop's declared population: ",
+          concat(added, "\nRestore coverage by EXECUTING the claim and deleting its deferral row; adding a deferral without executing it is the drop growing, which the drop row refuses.\n")
+        ),
+        exit: ExitFailure { code: 1, reason: "witness-deferral-freeze-population: offline deferral population GREW beyond the declared drop" }
+      }
+    NoObservation { cause: cause } =>
+      CliWirePrintable {
+        bytes: concat(
+          "witness-deferral-freeze-population: NO OBSERVATION — the identity join could not run: ",
+          concat(cause, " A no-observation is not a bound: nothing was checked.\n")
+        ),
+        exit: ExitFailure { code: 2, reason: "witness-deferral-freeze-population: NO OBSERVATION — the join did not run" }
+      }
+  }
+}

@@ -1,0 +1,637 @@
+module gunbc.machine_intake.supermicro_h11ssl_unit_observation
+
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest }
+import std.measure { mebibyte, MegatransfersPerSecond, megatransfers_per_second, Millisecond, millisecond, Bandwidth }
+import std.claim_evidence {
+  RecordedFact, Claim, EvidenceProvenance, ProvAgentId, EvidenceFreshness, EvidenceFidelity,
+  EvidenceSupports, EvidenceInference, insufficient_evidence_inference, EvidenceInsufficiency,
+}
+import gunbc.readback_independence { ReadBackProbe, ProbeInert }
+import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
+import gunbc.machine_intake.receipt { EvidenceRef }
+import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ami { ami }
+import extdeps.vendor.amd { amd }
+import extdeps.cpu.types { CpuModelCatalogRow }
+import extdeps.cpu.amd { epyc_7702p_catalog }
+import extdeps.vendor.sk_hynix { sk_hynix }
+import extdeps.firmware.ami_aptio_status_codes { PostCodeDecode, ami_aptio_decode }
+import extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide { supermicro_ami_aptio_v_post_codes_guide_table }
+import gunbc.machine_intake.supermicro_h11ssl_first_contact {
+  H11sslUnitVariantStanding, UnitVariantUnread, H11sslRedfishRootOutcome, ServiceRootRefused,
+  H11sslReportedDimm, H11sslBmcClockStanding, BmcClockUnsynchronized,
+}
+
+// RECEIPTS, NOT UPSTREAM FACT (DESIGN section 3, external upstream decomposition). Readings of
+// H11SSL units taken after first contact, ONE ROW PER UNIT READING, keyed by the unit's BMC MAC,
+// the same key the first-contact receipt (gunbc.machine_intake.supermicro_h11ssl_first_contact)
+// and the operator credential inventory use. A third unit or a later reading is a row here, not a
+// module. Raw bytes are under artifacts/bmc/h11ssl-unit2-* and artifacts/bmc/h11ssl-unit1-cpu2-*,
+// cited by sha256. No BMC password or licence key is carried, by value or by reference.
+//
+// The first-contact receipt and the 0x22 POST receipt
+// (gunbc.machine_intake.supermicro_h11ssl_post_code_receipt) stay as they were: unit 1 with its
+// replacement CPU is a NEW reading, never an edit of those.
+
+fn sha256_artifact(path: NonEmptyStr, hex: NonEmptyStr) -> EvidenceRef {
+  EvidenceRef { label: path, digest: Sha256Hash(Sha256Digest { hex: hex }) }
+}
+
+// A figure this receipt carries that no committed artifact contains: the observer's report, typed
+// as transcribed with what would ground it (DESIGN 4d).
+type H11sslReportedFigure { value: NonEmptyStr, standing: CitedFigureStanding }
+
+type H11sslReadInstant
+  = ReadAtUtcMinute { minute: NonEmptyStr, standing: CitedFigureStanding }
+  | ReadInstantUnrecorded { read_obligation: NonEmptyStr }
+
+// The CPU the unit reported at its last POST. SMBIOS gives the model and cores but reads its
+// serial as "Unknown", so WHICH physical part is fitted is not part of the reading: it is the
+// operator's attestation, recorded in supermicro_h11ssl_attested_cpu_parts.
+type H11sslCpuReading {
+  manufacturer: Vendor<Hardware>
+  manufacturer_as_read: NonEmptyStr
+  model_as_read: NonEmptyStr
+  cores: Nat
+  cores_enabled: Nat
+  serial_as_read: NonEmptyStr
+}
+
+type H11sslDimmReading {
+  dimm: H11sslReportedDimm
+  serial_as_read: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  manufacturer_as_read: NonEmptyStr
+  configured_speed: MegatransfersPerSecond
+}
+
+// A link rate exists only for an enabled port; the BMC's SPEED="0" on a disabled port is not a rate
+// and is not carried.
+type H11sslHostLanState = HostLanDisabled | HostLanEnabled { link_speed: Bandwidth }
+
+type H11sslHostLanReading { mac: Eui48Address, state: H11sslHostLanState }
+
+// Redfish as this reading found it. Licence-locked is the refused root's own message; a unit whose
+// Redfish answered in this reading carries the operation it served.
+type H11sslRedfishStanding
+  = RedfishRootReading { outcome: H11sslRedfishRootOutcome, licences_named: List<NonEmptyStr>, service_version: H11sslReportedFigure }
+  | RedfishServedOperation { operation: NonEmptyStr, standing: CitedFigureStanding }
+
+type H11sslSelReading {
+  total_records: Nat
+  battery_low_record_ids: List<NonEmptyStr>
+  clock: H11sslBmcClockStanding
+}
+
+type H11sslSelStanding = SelRead { sel: H11sslSelReading } | SelNotRead
+
+type H11sslUnitReading {
+  bmc_mac: Eui48Address
+  bmc_address: NonEmptyStr
+  bmc_address_reservation: H11sslReportedFigure?
+  read_at: H11sslReadInstant
+  observed_by: NonEmptyStr
+  ipmi_firmware_tag: NonEmptyStr
+  ipmi_firmware_version: NonEmptyStr
+  ipmi_firmware_build_date: NonEmptyStr
+  cpld_version: H11sslReportedFigure?
+  bios_vendor: Vendor<Hardware>
+  bios_vendor_as_read: NonEmptyStr
+  bios_version: NonEmptyStr
+  bios_release_date: NonEmptyStr
+  cpu: H11sslCpuReading
+  dimms: List<H11sslDimmReading>
+  host_lans: List<H11sslHostLanReading>
+  variant: H11sslUnitVariantStanding
+  redfish: H11sslRedfishStanding
+  sel: H11sslSelStanding
+  sources: List<EvidenceRef>
+}
+
+
+// Unit 2 is first contact; its FRU Board Area reads blank (PART_NUM empty), so the read the variant
+// owes returned nothing. Unit 1 is the replacement-CPU reading; its power-info read returned the
+// login redirect page, not a power state, so no power state is carried.
+data supermicro_h11ssl_unit_readings: List<H11sslUnitReading> = [
+  H11sslUnitReading {
+    bmc_mac: supermicro_h11ssl_unit2_bmc_mac,
+    bmc_address: "192.168.1.254",
+    bmc_address_reservation: Present { value: H11sslReportedFigure { value: "H11SSL-i-bmc-2", standing: TranscribedUncited { read_obligation: "The router's static-reservation label as the operator reports it. The -i in it is the operator's label, not the board variant." } } },
+    read_at: ReadAtUtcMinute { minute: "2026-10-23T01:48Z", standing: TranscribedUncited { read_obligation: "The observer's report; the committed XML carries no read time. Seconds are not given and are not filled in." } },
+    observed_by: "merry-fox-82",
+    ipmi_firmware_tag: "BL_SUPERMICRO_X7SB3_2019-11-18_B",
+    ipmi_firmware_version: "015200",
+    ipmi_firmware_build_date: "11/18/2019",
+    cpld_version: Present { value: H11sslReportedFigure { value: "02.b4.02", standing: TranscribedUncited { read_obligation: "Observer's report; no committed artifact carries the CPLD version. Commit the web-interface page or ipmitool reading that shows it." } } },
+    bios_vendor: ami,
+    bios_vendor_as_read: "American Megatrends Inc.",
+    bios_version: "2.6a",
+    bios_release_date: "10/06/2023",
+    cpu: H11sslCpuReading {
+      manufacturer: amd,
+      manufacturer_as_read: "Advanced Micro Devices, Inc.",
+      model_as_read: "AMD EPYC 7702P 64-Core Processor",
+      cores: 64,
+      cores_enabled: 64,
+      serial_as_read: "Unknown",
+    },
+    dimms: [
+      H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD0117108184CA6D", manufacturer: sk_hynix, manufacturer_as_read: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
+    ],
+    host_lans: [
+      H11sslHostLanReading { mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 247, octet6: 254), state: HostLanDisabled },
+      H11sslHostLanReading { mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 247, octet6: 255), state: HostLanDisabled },
+    ],
+    variant: UnitVariantUnread { read_obligation: "The FRU Board Part Number reads empty on this unit (artifact h11ssl-unit2-first-contact-fru-info.xml). Read lspci for a SAS3008, or the board label, before projecting any variant row." },
+    redfish: RedfishRootReading {
+      outcome: ServiceRootRefused { message_id: "Base.v1_4_0.OemLicenseNotPassed" },
+      licences_named: ["SUM DCMS OOB"],
+      service_version: H11sslReportedFigure { value: "1.0.1", standing: TranscribedUncited { read_obligation: "Observer's report; the committed root reply is the licence refusal and carries no RedfishVersion." } },
+    },
+    sel: SelRead { sel: H11sslSelReading {
+      total_records: 17,
+      battery_low_record_ids: ["0003", "000d"],
+      clock: BmcClockUnsynchronized { read_value: "2011/01/01 00:00:06 (SEL record 000c, First AC Power on); records from 0003 on are stamped 2011" },
+    } },
+    sources: [
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit2-first-contact-fru-info.xml", hex: "745025be04424f9bd808a1b28d5b772f525b00dabbe81fe2138516288c4bdae1"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit2-first-contact-generic-info.xml", hex: "cc235f24b518607107d54145517f20a43af2c6773c3c9379a428f1fc3e56cbd7"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit2-first-contact-power-info.xml", hex: "3fe17aa8f90b3e085393aebb1189aa15200504d2009b9ba6e6064411f94c9caf"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit2-first-contact-redfish-root.json", hex: "f160c160356e0fe880fc48f8ff6c5172d70c82c5a486afa4bd60511e7f556831"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit2-first-contact-sel.xml", hex: "3e3a110344aea53a587f913f71c710efc3aed6eba47322e78117b6e524f2f02c"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit2-first-contact-sensor-info.xml", hex: "987b76ac167a69253055c005712594caebdcfdd80b02650b85277f8019316cb7"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit2-first-contact-smbios-info.xml", hex: "3d667965e4ac2c13fa7ecbbb0cfbfdedfb32666353cc8d19663c3f9aaa19641e"),
+    ],
+  },
+  H11sslUnitReading {
+    bmc_mac: supermicro_h11ssl_unit1_bmc_mac,
+    bmc_address: "192.168.1.252",
+    bmc_address_reservation: Absent,
+    read_at: ReadInstantUnrecorded { read_obligation: "The committed XML carries no read time; the SMBIOS figures are those of the last POST, so this reading is no earlier than the 2026-10-23T02:45:18Z reset in the trace below." },
+    observed_by: "merry-fox-82",
+    ipmi_firmware_tag: "BL_SUPERMICRO_X7SB3_2026-03-27_B",
+    ipmi_firmware_version: "015225",
+    ipmi_firmware_build_date: "03/27/2026",
+    cpld_version: Absent,
+    bios_vendor: ami,
+    bios_vendor_as_read: "American Megatrends Inc.",
+    bios_version: "3.7",
+    bios_release_date: "04/29/2026",
+    cpu: H11sslCpuReading {
+      manufacturer: amd,
+      manufacturer_as_read: "Advanced Micro Devices, Inc.",
+      model_as_read: "AMD EPYC 7702P 64-Core Processor",
+      cores: 64,
+      cores_enabled: 64,
+      serial_as_read: "Unknown",
+    },
+    dimms: [
+      H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD011634716CAB6E", manufacturer: sk_hynix, manufacturer_as_read: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
+    ],
+    host_lans: [],
+    variant: UnitVariantUnread { read_obligation: "Not re-read here; the first-contact receipt's variant standing stands." },
+    redfish: RedfishServedOperation { operation: "ComputerSystem.Reset ResetType=ForceRestart (answered HTTP 200)", standing: TranscribedUncited { read_obligation: "The trace records 'reset http 200'; that the request was a Redfish ForceRestart is the observer's report." } },
+    sel: SelNotRead,
+    sources: [
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit1-cpu2-generic-info.xml", hex: "3eb75acec34637756f16d856ae2d03934754e4ca3b346850e9193c9cdb273ed2"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit1-cpu2-power-info.xml", hex: "8dd16257c9108e7dee5cacebb9d5ef4b144160dd8e736e72904966be2136927b"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit1-cpu2-smbios-info.xml", hex: "8220a1aa8fa2c91ef863f7ab4bba973205c37e52447b9ca8fafc4df0a36400b0"),
+      sha256_artifact(path: "artifacts/bmc/h11ssl-unit1-cpu2-snooping.xml", hex: "428cf386fdc48966221eb87115d20148cb41fa6125a89fabaa59e4f368714e4b"),
+    ],
+  },
+]
+
+// CONSUMPTION, declared frontier (DESIGN section 3c). These rows and folds are consumed by the
+// witness now. The named later change is the same arrival-intake binding the first-contact receipt
+// names (its trigger, the FRU Board Area read, came back blank on unit 2), and the BMC Snooping
+// reader, whose rows would be appended to supermicro_h11ssl_post_traces.
+//
+// ---- POST traces. One row per reset, keyed by BMC MAC. A sample is a byte the poller read from
+// the BMC Snooping PostCode with the observer's clock (second resolution) beside it.
+
+type H11sslResetStimulus
+  = WebInterfaceReset
+  | RedfishForceRestart { standing: CitedFigureStanding }
+
+type H11sslSnoopPolling
+  = SnoopPolledEvery { interval: Millisecond, standing: CitedFigureStanding }
+  | SnoopPollIntervalUnrecorded
+
+type H11sslPostSample { at: Rfc3339Timestamp, code: Int }
+
+type H11sslPostTrace {
+  bmc_mac: Eui48Address
+  stimulus: H11sslResetStimulus
+  reset_issued_at: Rfc3339Timestamp
+  polling: H11sslSnoopPolling
+  samples: List<H11sslPostSample>
+  source: EvidenceRef
+}
+
+fn s(at: Rfc3339Timestamp, code: Int) -> H11sslPostSample {
+  H11sslPostSample { at: at, code: code }
+}
+
+data supermicro_h11ssl_post_traces: List<H11sslPostTrace> = [
+  H11sslPostTrace {
+    bmc_mac: supermicro_h11ssl_unit2_bmc_mac,
+    stimulus: WebInterfaceReset,
+    reset_issued_at: "2026-10-23T01:51:53Z",
+    polling: SnoopPollIntervalUnrecorded,
+    samples: [
+      s(at: "2026-10-23T01:51:53Z", code: 0), s(at: "2026-10-23T01:51:58Z", code: 180), s(at: "2026-10-23T01:51:59Z", code: 210),
+      s(at: "2026-10-23T01:52:00Z", code: 21), s(at: "2026-10-23T01:52:02Z", code: 20), s(at: "2026-10-23T01:52:03Z", code: 204),
+      s(at: "2026-10-23T01:52:04Z", code: 192), s(at: "2026-10-23T01:52:05Z", code: 194), s(at: "2026-10-23T01:52:06Z", code: 179),
+      s(at: "2026-10-23T01:52:07Z", code: 17), s(at: "2026-10-23T01:52:10Z", code: 84), s(at: "2026-10-23T01:52:11Z", code: 50),
+      s(at: "2026-10-23T01:52:12Z", code: 79), s(at: "2026-10-23T01:52:14Z", code: 148), s(at: "2026-10-23T01:52:15Z", code: 147),
+      s(at: "2026-10-23T01:52:16Z", code: 156), s(at: "2026-10-23T01:52:17Z", code: 178), s(at: "2026-10-23T01:52:20Z", code: 152),
+      s(at: "2026-10-23T01:52:21Z", code: 178), s(at: "2026-10-23T01:52:28Z", code: 2), s(at: "2026-10-23T01:52:30Z", code: 59),
+      s(at: "2026-10-23T01:52:31Z", code: 148), s(at: "2026-10-23T01:52:33Z", code: 174), s(at: "2026-10-23T01:52:34Z", code: 0),
+    ],
+    source: sha256_artifact(path: "artifacts/bmc/h11ssl-unit2-reset-post-trace.txt", hex: "0e789fbc05a471fde1b4b08b2d0f5680e71617cee68554bf5724b4c70616cd28"),
+  },
+  H11sslPostTrace {
+    bmc_mac: supermicro_h11ssl_unit1_bmc_mac,
+    stimulus: RedfishForceRestart { standing: TranscribedUncited { read_obligation: "The trace records 'reset http 200'; that it was a Redfish ForceRestart is the observer's report." } },
+    reset_issued_at: "2026-10-23T02:45:18Z",
+    polling: SnoopPolledEvery { interval: millisecond(count: 400), standing: TranscribedUncited { read_obligation: "Observer's report of the poller; the trace file does not record its interval." } },
+    samples: [
+      s(at: "2026-10-23T02:45:18Z", code: 0), s(at: "2026-10-23T02:45:23Z", code: 184), s(at: "2026-10-23T02:45:25Z", code: 20),
+      s(at: "2026-10-23T02:45:25Z", code: 21), s(at: "2026-10-23T02:45:28Z", code: 205), s(at: "2026-10-23T02:45:28Z", code: 204),
+      s(at: "2026-10-23T02:45:30Z", code: 194), s(at: "2026-10-23T02:45:30Z", code: 176), s(at: "2026-10-23T02:45:31Z", code: 179),
+      s(at: "2026-10-23T02:45:33Z", code: 17), s(at: "2026-10-23T02:45:35Z", code: 1), s(at: "2026-10-23T02:45:41Z", code: 84),
+      s(at: "2026-10-23T02:45:43Z", code: 59), s(at: "2026-10-23T02:45:43Z", code: 79), s(at: "2026-10-23T02:45:45Z", code: 148),
+      s(at: "2026-10-23T02:45:48Z", code: 156), s(at: "2026-10-23T02:45:48Z", code: 178), s(at: "2026-10-23T02:45:51Z", code: 152),
+      s(at: "2026-10-23T02:45:53Z", code: 178), s(at: "2026-10-23T02:46:00Z", code: 2), s(at: "2026-10-23T02:46:00Z", code: 59),
+      s(at: "2026-10-23T02:46:01Z", code: 148), s(at: "2026-10-23T02:46:05Z", code: 0),
+    ],
+    source: sha256_artifact(path: "artifacts/bmc/h11ssl-unit1-cpu2-reset-post-trace.txt", hex: "d4c4eaa8a48de5c327e7dbf7cfef9f385980af8eb79f4c2abbef73b9a116fa69"),
+  },
+]
+
+// The emitter of each byte is NOT established. On an EPYC board the bytes before the first AMI PEI
+// code (here b4/b8 d2/cd cc c0/b0 c2 b3) arrive before x86 PEI and fall in AMI's BDS and DXE-error
+// rows, which cannot be their meaning at that point; the AMD AGESA/ABL postcode table is the
+// unmodeled upstream (frontier named in supermicro_h11ssl_post_code_receipt). So a decode is what
+// AMI's table says the byte means IF AMI's firmware wrote it, and every decoded trace carries that.
+data supermicro_h11ssl_post_byte_emitter_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Which firmware wrote each byte (AMD PSP/ABL or AMI Aptio) is not established. Read AMD's AGESA/ABL postcode table for EPYC 7002 and land it as its own extdeps module before reading an early byte's AMI meaning as the board's state.",
+}
+
+type H11sslDecodedTrace {
+  bmc_mac: Eui48Address
+  decodes: List<PostCodeDecode>
+  emitter: CitedFigureStanding
+}
+
+// CONSUMER (DESIGN section 3c): the executing route for the AMI decode over a BMC-read sequence,
+// the reader the 0x22 receipt named as its later change. Exercised by
+// test.claim.supermicro_h11ssl_unit_observation_witness.
+fn supermicro_h11ssl_decoded_trace(t: H11sslPostTrace) -> H11sslDecodedTrace {
+  H11sslDecodedTrace {
+    bmc_mac: t.bmc_mac,
+    decodes: t.samples |> map(x => ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: x.code)),
+    emitter: supermicro_h11ssl_post_byte_emitter_standing,
+  }
+}
+
+// What a poller can say about one code. There is no "absent" arm: a sampler that can miss a code
+// cannot establish that it was never written, so not seeing it is CodeNotSampled with the polling
+// it was not seen under.
+type H11sslSampledCodeStanding
+  = CodeSampled { at: Rfc3339Timestamp }
+  | CodeNotSampled { polling: H11sslSnoopPolling }
+
+fn supermicro_h11ssl_code_standing(t: H11sslPostTrace, code: Int) -> H11sslSampledCodeStanding {
+  match first_where(t.samples, x => x.code == code) {
+    Present { value: x } => CodeSampled { at: x.at }
+    Absent => CodeNotSampled { polling: t.polling }
+  }
+}
+
+// AMI's "Legacy Boot event" (0xAE, p.11 of the Supermicro reprint), the handoff byte.
+data supermicro_h11ssl_legacy_boot_handoff_code: Int = 174
+
+fn nonzero_codes(t: H11sslPostTrace) -> List<Int> {
+  t.samples |> filter(x => x.code != 0) |> map(x => x.code)
+}
+
+// The last nonzero byte sampled: where a held trace stopped, or the last progress a completed one showed.
+fn supermicro_h11ssl_last_progress_code(t: H11sslPostTrace) -> Int? {
+  nonzero_codes(t: t) |> reverse |> first
+}
+
+type SuffixMatch { remaining_sup: List<Int>, matched: Int, broken: Bool }
+
+// Greedy right-to-left: the longest suffix of `sub` whose codes occur in `sup` in the same order.
+// Order is the only thing two sampled traces can agree on, since either poller may drop codes.
+fn longest_ordered_suffix_length(sub: List<Int>, sup: List<Int>) -> Int {
+  fold(sub |> reverse, init: SuffixMatch { remaining_sup: sup |> reverse, matched: 0, broken: false }, f: (acc, code) =>
+    if acc.broken { acc } else {
+      let rest = drop_until(xs: acc.remaining_sup, code: code)
+      match rest |> first {
+        Present { value: _ } => SuffixMatch { remaining_sup: rest |> skip(1), matched: acc.matched + 1, broken: false }
+        Absent => SuffixMatch { remaining_sup: [], matched: acc.matched, broken: true }
+      }
+    }
+  ).matched
+}
+
+type DropState { kept: List<Int>, found: Bool }
+
+fn drop_until(xs: List<Int>, code: Int) -> List<Int> {
+  fold(xs, init: DropState { kept: [], found: false }, f: (acc, x) =>
+    if acc.found { DropState { kept: acc.kept |> append(x), found: true } }
+    else { if x == code { DropState { kept: [x], found: true } } else { acc } }
+  ).kept
+}
+
+// The shared tail of two traces' nonzero codes: the longest final run of `a` that occurs in order
+// in `b`. Measured, never chosen: no anchor code is supplied.
+fn supermicro_h11ssl_shared_ordered_tail(a: H11sslPostTrace, b: H11sslPostTrace) -> List<Int> {
+  let xs = nonzero_codes(t: a)
+  xs |> skip((xs |> count) - longest_ordered_suffix_length(sub: xs, sup: nonzero_codes(t: b)))
+}
+
+// ---- The operator's CPU history (DESIGN 4d). An ATTESTATION, not a machine read: the operator
+// handled the parts and is the authority on which part went into which board, but nothing here
+// was read from the parts. SMBIOS reads every serial as Unknown and no PSB fuse state was read,
+// so per-part identity and lock state stay attested; `unread` names what a machine read would add.
+//
+// `attested_on` is a Gregorian day, held as text, because the answer was relayed with its day and
+// no time. An Rfc3339Timestamp would make up a time of day, and v2.std.datetime CalendarDate has no
+// constructor in the corpus yet; extdeps.pin pin_currency_gap records the same gap. Trigger: a
+// CalendarDate constructor. This field then becomes a CalendarDate.
+type H11sslOperatorAttestation {
+  attested_by: NonEmptyStr
+  attested_on: NonEmptyStr
+  statement: NonEmptyStr
+  unread: NonEmptyStr
+}
+
+data supermicro_h11ssl_cpu_history_attestation: H11sslOperatorAttestation = H11sslOperatorAttestation {
+  attested_by: "the operator, answering the open question on gunbc#14975, relayed by merry-fox-82",
+  attested_on: "2026-10-24",
+  statement: "Both H11SSL units now carry two NEW EPYC 7702P parts. The earlier CPUs were locked ('locked / don't work'): vendor-locked parts that would not run in these boards. The 0x22 hold on unit 1 was with its original, locked CPU.",
+  unread: "Per-part identity, and the earlier parts' lock, are the operator's account, not a read: SMBIOS reads each serial as Unknown and no PSB fuse state was read. The package marking or the PSP serial would ground identity; a PSP or BIOS PSB status read would ground a lock state.",
+}
+
+// What the operator said about a part's vendor lock. No arm is a fuse read. The attestation called
+// the replacements NEW, not unlocked, so their lock is PartLockNotAttested. A successful POST shows
+// the board accepts the part, not its fuse state, and that is the PSB inference's bet, not an
+// attestation. PartAttestedUnlocked is for an explicit "unlocked" from the operator. Two folds
+// consume the lock. supermicro_h11ssl_psb_inference_under refuses a PSB link whose fitted part is
+// attested locked while its trace POSTed, since the account and the trace then disagree.
+// supermicro_h11ssl_prior_stall_lock_losses carries the "locked is a diagnosis" loss only when
+// the removed part is attested locked.
+type H11sslCpuPartLock = PartAttestedVendorLocked | PartAttestedUnlocked | PartLockNotAttested { read_obligation: NonEmptyStr }
+
+data supermicro_h11ssl_replacement_lock_not_attested: H11sslCpuPartLock = PartLockNotAttested {
+  read_obligation: "The operator called these parts new, not unlocked; a successful POST shows board compatibility, not fuse state. An explicit statement from the operator, or a PSP or BIOS PSB status read, grounds it.",
+}
+
+type H11sslCpuPartTenure = PartFittedNow | PartRemoved
+
+type H11sslAttestedCpuPart {
+  bmc_mac: Eui48Address
+  model: CpuModelCatalogRow
+  lock: H11sslCpuPartLock
+  tenure: H11sslCpuPartTenure
+  attestation: H11sslOperatorAttestation
+}
+
+// One row per part whose board the attestation places. Unit 1's original is the part the 0x22 hold
+// was with. The model of every row is the upstream catalog row (extdeps.cpu.amd epyc_7702p_catalog),
+// not a copied string. For the original part, that the part was a 7702P is the 2026-10-17 first-contact
+// attestation (gunbc.machine_intake.supermicro_h11ssl_first_contact supermicro_h11ssl_attested_hardware),
+// and the witness checks that row's model number against it. The
+// statement's plural "earlier CPUs" may cover a part beyond unit 1's original, but no board is
+// stated for one, so none is rowed: a row is added when its placement is attested.
+data supermicro_h11ssl_attested_cpu_parts: List<H11sslAttestedCpuPart> = [
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: PartAttestedVendorLocked, tenure: PartRemoved, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, model: epyc_7702p_catalog, lock: supermicro_h11ssl_replacement_lock_not_attested, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
+  H11sslAttestedCpuPart { bmc_mac: supermicro_h11ssl_unit2_bmc_mac, model: epyc_7702p_catalog, lock: supermicro_h11ssl_replacement_lock_not_attested, tenure: PartFittedNow, attestation: supermicro_h11ssl_cpu_history_attestation },
+]
+
+fn supermicro_h11ssl_attested_part(parts: List<H11sslAttestedCpuPart>, bmc_mac: Eui48Address, tenure: H11sslCpuPartTenure) -> H11sslAttestedCpuPart? {
+  first_where(parts, p => p.bmc_mac == bmc_mac && p.tenure == tenure)
+}
+
+// A premise of an inference is either a figure with its cited standing or an operator
+// attestation. Both an attested and a cited premise admit the link; only an uncited figure, or no
+// premise row at all, leaves it insufficient. An attested premise is never silent: its `unread`
+// becomes a loss on the admitted link (cpu_inference), so a reader sees which conclusion rests on
+// the operator's account.
+//
+// DIVERGES WITH A STATED REASON (DESIGN 3b, 6b). This arm is module-local. Operator attestation is
+// already forked per domain (gunbc.machine_intake.mtcollins1_power_on_account
+// PopulationOperatorAttested, gunbc.machine_intake.mtjade1_access_observation
+// SolSessionOperatorAttested, gunbc.machine_intake.bmc_operator_credential_inventory
+// OperatorAttestedInventoryRow, gunbc.os_install_deduction KvmOperatorAttestation, and the
+// MegaRacVersionFromOperatorAttestation arm). The generalization's home is a warrant arm beside
+// extdeps.external_authority CitedFigureStanding. That arm is not added here: it changes every
+// exhaustive match on that standing, and it needs a ruling on whether an attestation is a cited
+// figure at all. Trigger: that ruling. Follow-up: one arm, these leaves deleted.
+type H11sslPremiseStanding
+  = PremiseFigure { standing: CitedFigureStanding }
+  | PremiseOperatorAttested { attestation: H11sslOperatorAttestation }
+
+fn premise_read_obligation(premise: H11sslPremiseStanding) -> NonEmptyStr? {
+  match premise {
+    PremiseFigure { standing: s } => cited_figure_read_obligation(standing: s)
+    PremiseOperatorAttested { attestation: _ } => Absent
+  }
+}
+
+fn premise_attestation_loss(premise: H11sslPremiseStanding) -> NonEmptyStr? {
+  match premise {
+    PremiseFigure { standing: _ } => Absent
+    PremiseOperatorAttested { attestation: a } => Present { value: a.unread }
+  }
+}
+
+// An attested part premise, or, where the roster has no row, an uncited premise naming the attestation owed.
+fn part_premise(part: H11sslAttestedCpuPart?, owed: NonEmptyStr) -> H11sslPremiseStanding {
+  match part {
+    Present { value: p } => PremiseOperatorAttested { attestation: p.attestation }
+    Absent => PremiseFigure { standing: TranscribedUncited { read_obligation: owed } }
+  }
+}
+
+// ---- The inferences (DESIGN 4d): typed as bets through std.claim_evidence, never as findings.
+// The PSB fuse state of no part was read.
+
+// PartNotPsbLockedToANonSupermicroVendor: AMD Platform Secure Boot fuses a part to one OEM's key,
+// after which it refuses firmware not signed by that key. PriorStallFollowedTheFirstCpu: the 0x22
+// hold on unit 1 followed its first CPU, not the board.
+type H11sslCpuProposition
+  = PartNotPsbLockedToANonSupermicroVendor
+  | PriorStallFollowedTheFirstCpu
+
+// The 0x22 receipt does not name its unit; that it is `unit`, with that unit's original part, is
+// the attestation carried by the unit's PartRemoved row.
+type H11sslPriorStall { receipt: DeclarationRef, held_code: Int, unit: Eui48Address }
+
+data supermicro_h11ssl_unit1_prior_stall: H11sslPriorStall = H11sslPriorStall {
+  receipt: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_post_code_receipt", decl_name: "supermicro_h11ssl_post_code_observations"),
+  held_code: 34,
+  unit: supermicro_h11ssl_unit1_bmc_mac,
+}
+
+type H11sslCpuClaim = Claim<Eui48Address, H11sslCpuReading, H11sslCpuProposition, H11sslResetStimulus, Rfc3339Timestamp>
+
+type H11sslCpuInference = EvidenceInference<H11sslPostTrace, H11sslCpuClaim, NonEmptyStr, H11sslSnoopPolling, ReadBackProbe>
+
+data supermicro_h11ssl_snoop_trace_probe: ReadBackProbe = ReadBackProbe {
+  label: "BMC Snooping PostCode poll across a host reset",
+  subject: "the fitted CPU's PSB fuse state",
+  effect_on_subject: ProbeInert,
+}
+
+fn unit_reading(bmc_mac: Eui48Address) -> H11sslUnitReading? {
+  first_where(supermicro_h11ssl_unit_readings, r => r.bmc_mac == bmc_mac)
+}
+
+// DXE IPL (0x4F, AMI's table p.8) ends PEI; a trace that sampled it and progressed to another
+// nonzero byte left the phase 0x22 sits in. Reading 0x4F as AMI's is itself part of the bet.
+data supermicro_h11ssl_dxe_ipl_code: Int = 79
+
+fn passed_dxe_ipl(t: H11sslPostTrace) -> Bool {
+  any(t.samples, x => x.code == supermicro_h11ssl_dxe_ipl_code) && match supermicro_h11ssl_last_progress_code(t: t) { Present { value: c } => c != supermicro_h11ssl_dxe_ipl_code && c != supermicro_h11ssl_unit1_prior_stall.held_code  Absent => false }
+}
+
+// The first premise that is not established (cited, observed or attested), as its read obligation.
+fn first_unestablished_premise(premises: List<H11sslPremiseStanding>) -> NonEmptyStr? {
+  fold(premises, init: Absent, f: (acc, p) => match acc { Present { value: o } => Present { value: o }  Absent => premise_read_obligation(premise: p) })
+}
+
+// Each distinct attestation a link's premises rest on, as one loss.
+fn premise_losses(premises: List<H11sslPremiseStanding>) -> List<NonEmptyStr> {
+  fold(premises, init: [], f: (acc, p) => match premise_attestation_loss(premise: p) {
+    Present { value: l } => if any(acc, x => x == l) { acc } else { acc |> append(l) }
+    Absent => acc
+  })
+}
+
+// A link is CONDITIONAL on its premises: while any premise is unestablished, the inference is
+// EvidenceInsufficient naming that premise's read obligation, never a Supports link carrying the
+// premise as a loss. Losses are what an admitted link still cannot see; an unestablished premise
+// is a reason the link is not admitted at all. An attested premise admits the link and puts what
+// the attestation leaves unread first among its losses.
+fn cpu_inference(t: H11sslPostTrace, proposition: H11sslCpuProposition, rule: NonEmptyStr, premises: List<H11sslPremiseStanding>, losses: List<NonEmptyStr>) -> H11sslCpuInference? {
+  match unit_reading(bmc_mac: t.bmc_mac) {
+    Absent => Absent
+    Present { value: r } => {
+      let claim = Claim { id: rule, subject: t.bmc_mac, target: r.cpu, proposition: proposition, scope: t.stimulus, bound: t.reset_issued_at }
+      let fact = RecordedFact { id: t.source.label, value: t }
+      match first_unestablished_premise(premises: premises) {
+        Present { value: obligation } => Present { value: insufficient_evidence_inference(insufficiency: EvidenceInsufficiency {
+          fact: fact, claim: claim, inference_rule: rule, probe_independence: supermicro_h11ssl_snoop_trace_probe,
+          reason: obligation,
+        }) }
+        Absent =>
+      if !passed_dxe_ipl(t: t) {
+        Present { value: insufficient_evidence_inference(insufficiency: EvidenceInsufficiency {
+          fact: fact, claim: claim, inference_rule: rule, probe_independence: supermicro_h11ssl_snoop_trace_probe,
+          reason: "the trace did not sample DXE IPL (0x4F) and progress past it",
+        }) }
+      } else {
+        Present { value: infer_probe_evidence(
+          fact: fact,
+          direction: EvidenceSupports,
+          inference_rule: rule,
+          authority: r.observed_by,
+          provenance: EvidenceProvenance { entity: t.source.label, activity: "BMC Snooping poll across a host reset", agent: r.observed_by as ProvAgentId },
+          freshness: EvidenceFreshness { maximum_conclusion: claim, basis: "one reset of one unit with the part the operator attests fitted" },
+          fidelity: EvidenceFidelity { boundary: t.polling, losses: concat(premise_losses(premises: premises), losses) },
+          probe: supermicro_h11ssl_snoop_trace_probe,
+        ) }
+      }
+      }
+    }
+  }
+}
+
+data supermicro_h11ssl_psb_losses: List<NonEmptyStr> = [
+  "The PSB fuse state was not read (no PSP or BIOS PSB status read).",
+  "A part fused to Supermicro's own key would POST on a Supermicro board too, so POSTing here does not separate unlocked from Supermicro-locked.",
+  "Reading 0x4F as AMI's DXE IPL assumes AMI wrote it (supermicro_h11ssl_post_byte_emitter_standing).",
+]
+
+data supermicro_h11ssl_prior_stall_losses: List<NonEmptyStr> = [
+  "The CPU was not the only change: unit 1 now reads BIOS 3.7 (2026-04-29) and IPMI 01.52.25 where its first contact read BIOS 2.6a and 1.52.00, and the BIOS at the 0x22 hold is not recorded.",
+  "The memory changed: the 0x22 receipt's populations were ordinary ECC RDIMMs and an NVDIMM in C1; this trace had one SK Hynix HMA82GR7AFR4N-VK in DIMMC1.",
+  "One trace per configuration; a hold that recurs intermittently would not be excluded by one pass.",
+  "The attestation (2026-10-24) names the parts fitted then; that the 2026-10-23 trace ran with that same part assumes no swap in between, which nothing records.",
+]
+
+data supermicro_h11ssl_attested_lock_is_a_diagnosis_loss: NonEmptyStr = "That the original part was vendor-locked is the operator's diagnosis, not a fuse read; the hold following the part does not say whether the lock or another fault of that part caused it."
+
+// The lock attestation of the removed part shapes the prior-stall link's losses. If it is attested
+// locked, a reader could take the hold as the lock's signature, so the link says that the lock is
+// a diagnosis. If it is attested unlocked, or its lock is not attested, no lock was claimed, and the loss is not carried.
+fn supermicro_h11ssl_prior_stall_lock_losses(removed: H11sslAttestedCpuPart?) -> List<NonEmptyStr> {
+  match removed {
+    Present { value: p } => match p.lock { PartAttestedVendorLocked => [supermicro_h11ssl_attested_lock_is_a_diagnosis_loss]  PartAttestedUnlocked => []  PartLockNotAttested { read_obligation: _ } => [] }
+    Absent => []
+  }
+}
+
+// The PSB link for one trace takes the fitted part's attestation as its premise, since the
+// operator's lock account bears on the proposition. If no part is attested fitted, the premise is
+// owed. A part attested UNLOCKED, or one whose lock is NOT ATTESTED, admits the link: the premise is
+// which part is fitted, and its lock is what the link infers. The attestation's unread is carried. A part
+// attested VENDOR-LOCKED that nevertheless POSTed is a disagreement between the account and the
+// trace, and the link is insufficient until the two are reconciled. It is never a Supports link
+// over a contradicted premise.
+fn supermicro_h11ssl_psb_inference_under(t: H11sslPostTrace, parts: List<H11sslAttestedCpuPart>) -> H11sslCpuInference? {
+  let fitted = supermicro_h11ssl_attested_part(parts: parts, bmc_mac: t.bmc_mac, tenure: PartFittedNow)
+  let premise = match fitted {
+    Present { value: p } => match p.lock {
+      PartAttestedUnlocked => PremiseOperatorAttested { attestation: p.attestation }
+      PartLockNotAttested { read_obligation: _ } => PremiseOperatorAttested { attestation: p.attestation }
+      PartAttestedVendorLocked => PremiseFigure { standing: TranscribedUncited { read_obligation: "The fitted part is attested vendor-locked, yet this trace POSTed on Supermicro firmware: the account and the trace disagree. Reconcile them (re-ask the operator, or read the PSB status) before inferring." } }
+    }
+    Absent => part_premise(part: fitted, owed: "No attested part is recorded as fitted in this unit; the operator's account of the fitted part grounds it.")
+  }
+  cpu_inference(t: t, proposition: PartNotPsbLockedToANonSupermicroVendor, rule: "posted-on-supermicro-firmware-is-consistent-with-not-locked-to-another-vendor", premises: [premise], losses: supermicro_h11ssl_psb_losses)
+}
+
+// One PSB inference per trace: each CPU that POSTed on a Supermicro board.
+fn supermicro_h11ssl_psb_inferences() -> List<H11sslCpuInference?> {
+  supermicro_h11ssl_post_traces |> map(t => supermicro_h11ssl_psb_inference_under(t: t, parts: supermicro_h11ssl_attested_cpu_parts))
+}
+
+// The prior-stall inference reads the stalled unit's trace with its new part. Its premises are
+// the unit's two attested parts: the removed original the 0x22 hold was with, and the part fitted
+// now. Both are the operator's attestation, so the link reads SUPPORTS, carrying what the
+// attestation leaves unread and the confounders (BIOS, IPMI, memory) as losses; without either
+// row it is insufficient. The removed part's lock attestation decides whether the "locked is a
+// diagnosis" loss is carried (supermicro_h11ssl_prior_stall_lock_losses).
+fn supermicro_h11ssl_prior_stall_premises(stall: H11sslPriorStall, parts: List<H11sslAttestedCpuPart>) -> List<H11sslPremiseStanding> {
+  [
+    part_premise(part: supermicro_h11ssl_attested_part(parts: parts, bmc_mac: stall.unit, tenure: PartRemoved), owed: "No attested part is recorded as the one this unit held at 0x22 with; the 0x22 receipt does not name its unit or part. The operator's account of the original part grounds it."),
+    part_premise(part: supermicro_h11ssl_attested_part(parts: parts, bmc_mac: stall.unit, tenure: PartFittedNow), owed: "No attested part is recorded as fitted in this unit now; SMBIOS reads the serial as Unknown. The operator's account of the fitted part, or the package marking or PSP serial, grounds it."),
+  ]
+}
+
+fn supermicro_h11ssl_prior_stall_inference_under(stall: H11sslPriorStall, parts: List<H11sslAttestedCpuPart>) -> H11sslCpuInference? {
+  match first_where(supermicro_h11ssl_post_traces, t => t.bmc_mac == stall.unit) {
+    Absent => Absent
+    Present { value: t } => cpu_inference(t: t, proposition: PriorStallFollowedTheFirstCpu, rule: "same-board-passes-the-held-phase-with-another-part", premises: supermicro_h11ssl_prior_stall_premises(stall: stall, parts: parts), losses: concat(supermicro_h11ssl_prior_stall_losses, supermicro_h11ssl_prior_stall_lock_losses(removed: supermicro_h11ssl_attested_part(parts: parts, bmc_mac: stall.unit, tenure: PartRemoved))))
+  }
+}
+
+fn supermicro_h11ssl_prior_stall_inference() -> H11sslCpuInference? {
+  supermicro_h11ssl_prior_stall_inference_under(stall: supermicro_h11ssl_unit1_prior_stall, parts: supermicro_h11ssl_attested_cpu_parts)
+}

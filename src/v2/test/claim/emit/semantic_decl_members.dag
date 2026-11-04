@@ -9,7 +9,7 @@ import v2.extdeps.languages.c { c_target_model }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault, TargetSemanticDeclMember }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode, symbol_intern_lexeme }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode, symbol_intern_lexeme, NotADeclaration }
 import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }
@@ -167,7 +167,7 @@ test fn members_on_a_coproduct_refuse_located() -> Bool {
 fn sdm_flag_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
-    children: [ Edge { label: Authored { name: ^On }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } } ],
+    children: [ Edge { label: Authored { name: ^On }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }

@@ -1,7 +1,7 @@
 module test.claim.error_primitives_bottom_seam
 
 import std.types { Bool, Int, String }
-import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float, pure_dag_seam_unreachable_string }
+import std.error_primitives { pure_dag_seam_unreachable_int, pure_dag_seam_unreachable_float, pure_dag_seam_unreachable_string }
 import std.algebra { string_contains, trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -11,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the import graph) can import it. The guarded arm is never taken, so the claim establishes that the
 // three projections resolve from the leaf; the arm taken is a supplied value.
 fn bottom_seam_resolves_from_the_leaf(selector: Bool) -> Bool {
-  if selector { true } else { (pure_dag_seam_unreachable() == 0) && (pure_dag_seam_unreachable_float() == 0.0) && (pure_dag_seam_unreachable_string() == "") }
+  if selector { true } else { (pure_dag_seam_unreachable_int() == 0) && (pure_dag_seam_unreachable_float() == 0.0) && (pure_dag_seam_unreachable_string() == "") }
 }
 
 test fn bottom_seam_projections_resolve_from_error_primitives() -> Bool {

@@ -22,7 +22,7 @@ fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostI
   match placement {
     FabricStorageUnplaced => FabricStorageBindingUnplaced
     FabricStoragePlacementRefused { cause: c } => FabricStorageBindingRefused { detail: join(["fabric storage placement refused: ", prod_role_realization_refusal_detail(cause: c)], "") as NonEmptyStr }
-    FabricStoragePlaced { host: h, store_root: _, endpoint: e, door_socket: s } =>
+    FabricStoragePlaced { host: h, instance: _, endpoint: e, door_socket: s } =>
       if host_identity_eq(a: h, b: executor) {
         FabricStorageDoorSocket { socket: s, route_prefix: fabric_storage_route_prefix as NonEmptyStr }
       } else { FabricStorageServed { endpoint: e } }
@@ -37,7 +37,7 @@ fn fabric_state_storage_binding() -> FabricStorageBinding {
   match fabric_storage_placement() {
     FabricStorageUnplaced => FabricStorageBindingUnplaced
     FabricStoragePlacementRefused { cause: c } => FabricStorageBindingRefused { detail: join(["fabric storage placement refused: ", prod_role_realization_refusal_detail(cause: c)], "") as NonEmptyStr }
-    FabricStoragePlaced { host: _, store_root: _, endpoint, door_socket: _ } => FabricStorageServed {
+    FabricStoragePlaced { host: _, instance: _, endpoint, door_socket: _ } => FabricStorageServed {
       endpoint: concat(endpoint as String, fabric_storage_state_suffix) as NonEmptyStr,
     }
   }

@@ -1,5 +1,6 @@
 module test.claim.fleet.fleet_revision_acceptance_merge_queue_witness
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { String, Bool, Int, List, CommitSha, NonEmptyStr }
 import std.contract_identity { ContractEpoch }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
@@ -130,7 +131,7 @@ test fn a_cancelled_run_beside_a_success_admits() -> Bool {
 test fn a_floor_of_neutral_runs_refuses_as_unconcluded_not_not_success() -> Bool {
   match ci_on_r(rs: runs(rs: [mg(id: 11, conclusion: Neutral)])) {
     Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunUnconcluded { revision: _, run_ids: ids } } } =>
-      ids == [11]
+      ids == [GitHubWorkflowRunId { value: 11 }]
     _ => false
   }
 }
@@ -146,7 +147,7 @@ test fn a_neutral_run_beside_a_success_admits() -> Bool {
 test fn a_success_and_a_failure_on_one_revision_refuse_carrying_both_run_ids() -> Bool {
   match ci_on_r(rs: runs(rs: [mg(id: 11, conclusion: Success), mg(id: 12, conclusion: Failure)])) {
     Present { value: RequiredCiRefused { cause: RequiredCiContradictoryRuns { revision: _, success_run_ids: ok, non_success_run_ids: bad } } } =>
-      ok == [11] && bad == [12]
+      ok == [GitHubWorkflowRunId { value: 11 }] && bad == [GitHubWorkflowRunId { value: 12 }]
     _ => false
   }
     && !admits(push: main_push(after: sha_r), rs: runs(rs: [mg(id: 11, conclusion: Success), mg(id: 12, conclusion: Failure)]))
@@ -156,14 +157,14 @@ test fn a_success_and_a_failure_on_one_revision_refuse_carrying_both_run_ids() -
 test fn a_failure_listed_before_a_success_is_still_a_contradiction() -> Bool {
   match ci_on_r(rs: runs(rs: [mg(id: 12, conclusion: TimedOut), mg(id: 11, conclusion: Success)])) {
     Present { value: RequiredCiRefused { cause: RequiredCiContradictoryRuns { revision: _, success_run_ids: ok, non_success_run_ids: bad } } } =>
-      ok == [11] && bad == [12]
+      ok == [GitHubWorkflowRunId { value: 11 }] && bad == [GitHubWorkflowRunId { value: 12 }]
     _ => false
   }
 }
 
 test fn only_failed_merge_group_runs_refuse_as_not_success() -> Bool {
   match ci_on_r(rs: runs(rs: [mg(id: 12, conclusion: Failure)])) {
-    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunsNotSuccess { revision: _, run_ids: ids } } } => ids == [12]
+    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunsNotSuccess { revision: _, run_ids: ids } } } => ids == [GitHubWorkflowRunId { value: 12 }]
     _ => false
   }
 }
@@ -181,7 +182,7 @@ test fn a_push_with_no_merge_group_run_refuses_as_absent() -> Bool {
 // merge-group observation: it proves the tree passed, not that the queue proved the landing.
 test fn a_pull_request_run_offered_for_the_revision_is_not_a_merge_group_run() -> Bool {
   match ci_on_r(rs: runs(rs: [run(id: 13, event: "pull_request", head_sha: sha_r, status: Completed, conclusion: Present { value: Success })])) {
-    Present { value: RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: ids } } } => ids == [13]
+    Present { value: RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: ids } } } => ids == [GitHubWorkflowRunId { value: 13 }]
     _ => false
   }
 }
@@ -194,7 +195,7 @@ test fn a_qualifying_success_beside_a_push_run_refuses_as_an_unscoped_read() -> 
     mg(id: 11, conclusion: Success),
     run(id: 21, event: "push", head_sha: sha_r, status: Completed, conclusion: Present { value: Failure }),
   ])) {
-    Present { value: RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: ids } } } => ids == [21]
+    Present { value: RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: ids } } } => ids == [GitHubWorkflowRunId { value: 21 }]
     _ => false
   }
 }
@@ -214,7 +215,7 @@ fn mg_attempt(id: Int, attempt: Int, conclusion: WorkflowRunConclusion) -> Workf
 // unobserved, and the agreement policy cannot be applied to evidence the input already discarded.
 test fn a_rerun_success_whose_earlier_attempt_is_unobserved_refuses() -> Bool {
   match ci_on_r(rs: runs(rs: [mg_attempt(id: 11, attempt: 2, conclusion: Success)])) {
-    Present { value: RequiredCiRefused { cause: RequiredCiRunAttemptHistoryUnestablished { revision: _, run_ids: ids } } } => ids == [11]
+    Present { value: RequiredCiRefused { cause: RequiredCiRunAttemptHistoryUnestablished { revision: _, run_ids: ids } } } => ids == [GitHubWorkflowRunId { value: 11 }]
     _ => false
   }
     && !admits(push: main_push(after: sha_r), rs: runs(rs: [mg_attempt(id: 11, attempt: 2, conclusion: Success)]))
@@ -225,7 +226,7 @@ test fn a_rerun_success_whose_earlier_attempt_is_unobserved_refuses() -> Bool {
 // another run this would otherwise admit.
 test fn a_later_cancelled_attempt_is_judged_before_non_verdicts_are_dropped() -> Bool {
   match ci_on_r(rs: runs(rs: [mg(id: 12, conclusion: Success), mg_attempt(id: 11, attempt: 2, conclusion: Cancelled)])) {
-    Present { value: RequiredCiRefused { cause: RequiredCiRunAttemptHistoryUnestablished { revision: _, run_ids: ids } } } => ids == [11]
+    Present { value: RequiredCiRefused { cause: RequiredCiRunAttemptHistoryUnestablished { revision: _, run_ids: ids } } } => ids == [GitHubWorkflowRunId { value: 11 }]
     _ => false
   }
 }
@@ -256,7 +257,7 @@ test fn merge_group_runs_with_no_verdict_refuse_as_unconcluded() -> Bool {
     run(id: 16, event: "merge_group", head_sha: sha_r, status: InProgress, conclusion: none),
     mg(id: 17, conclusion: Cancelled),
   ])) {
-    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunUnconcluded { revision: _, run_ids: ids } } } => ids == [16, 17]
+    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunUnconcluded { revision: _, run_ids: ids } } } => ids == [GitHubWorkflowRunId { value: 16 }, GitHubWorkflowRunId { value: 17 }]
     _ => false
   }
 }
@@ -343,8 +344,8 @@ test fn the_absent_unconcluded_and_unscoped_refusals_claim_only_what_they_establ
   match revision_r() {
     Present { value: r } => {
       let absent = required_ci_refusal_message(cause: RequiredCiMergeGroupRunAbsent { revision: r })
-      let unconcluded = required_ci_refusal_message(cause: RequiredCiMergeGroupRunUnconcluded { revision: r, run_ids: [16] })
-      let unscoped = required_ci_refusal_message(cause: RequiredCiRunsNotEventScoped { run_ids: [21] })
+      let unconcluded = required_ci_refusal_message(cause: RequiredCiMergeGroupRunUnconcluded { revision: r, run_ids: [GitHubWorkflowRunId { value: 16 }] })
+      let unscoped = required_ci_refusal_message(cause: RequiredCiRunsNotEventScoped { run_ids: [GitHubWorkflowRunId { value: 21 }] })
       contains(absent, "in the complete queried result; this producer cannot establish the required CI proposition")
         && !contains(absent, "queue")
         && !contains(absent, "bypass")

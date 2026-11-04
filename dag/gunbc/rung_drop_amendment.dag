@@ -74,12 +74,12 @@ type RungDropAmendment {
 
 // THE ONE RENDERING, for the same reason gunbc.rung_drop carries exactly one: a consumer that spelled
 // the amendment itself would be a second authority for it and the two would drift.
-fn rung_drop_amendment_message(a: RungDropAmendment, standing: RungDropStanding, admissible: Bool) -> String {
+fn rung_drop_amendment_message(a: RungDropAmendment, standing: RungDropStanding) -> String {
   concat(
     concat(concat("AMENDED ", a.amended), concat(": ", (a.later_event as String))),
     concat(
       concat("; ", (a.bearing as String)),
-      concat(". ", standing_sentence(standing: standing, admissible: admissible))
+      concat(". ", standing_sentence(standing: standing))
     )
   )
 }
@@ -87,12 +87,12 @@ fn rung_drop_amendment_message(a: RungDropAmendment, standing: RungDropStanding,
 // THE CLOSING SENTENCE, READ OFF THE ROW'S OWN STANDING. This is the derivation the note above
 // argues for: the amendment supplies neither arm, so a row that is retired cannot be described by
 // its amendment as one whose trigger still stands.
-fn standing_sentence(standing: RungDropStanding, admissible: Bool) -> String {
+fn standing_sentence(standing: RungDropStanding) -> String {
   match standing {
-    Standing => "The restoration trigger above stands whole."
-    Retired { trigger_fired: _ } => "The trigger above has since fired; the retirement stated with this row is what ends the drop."
-    Superseded { ruling: _, decision_record: _, loss_holder: h } => concat(concat("The trigger above did NOT fire; a superseding ruling ended this drop, and its loss is held by ", (h as String)), ".")
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => if admissible { "The trigger above did NOT fire; a ruling removed the population this drop covered from the tree, so nothing remains for it to restore." } else { "INVALID DISSOLVED: the population this drop covers is still non-empty, so it is counted as standing and its restoration trigger above stands whole." }
+    Standing { declaration: _ } => "The restoration trigger above stands whole."
+    Retired { trigger_fired: _, declaration: _ } => "The trigger above has since fired; the retirement stated with this row is what ends the drop."
+    Superseded { ruling: _, decision_record: _, loss_holder: h, declaration: _ } => concat(concat("The trigger above did NOT fire; a superseding ruling ended this drop, and its loss is held by ", (h as String)), ".")
+    Dissolved { removal: _, declaration: _ } => "The trigger above did NOT fire; a ruling removed the population this drop covered from the tree, so nothing remains for it to restore."
   }
 }
 

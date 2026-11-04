@@ -1,0 +1,142 @@
+module gunbc.approve_ios_operation_errors
+
+import std.types { NonEmptyStr, String, List }
+import std.logic { Bool }
+import std.algebra { list_append }
+import gunbc.approve_ios_enrolment_machine { EnrolmentPhase, PhaseSignedOut, PhaseEnrolled, PhaseRevoked, enrolment_phases }
+
+// WHAT AN ERROR ON THE APPROVAL APP'S SCREEN MEANS, as the authority
+// apps/approve-ios/Approve/OperationErrors.swift is printed from (gunbc.approve_ios_swift_operation_errors).
+//
+// AN ERROR DESCRIBES THE CURRENT STATE OF ONE OPERATION, NEVER A LOG (operator ruling 2026-10-24). The
+// app's one `lastError` slot was written by every operation and cleared by none but sign-in, so an
+// inbox refresh refused 503 while the srv1 assertion-counter directory was missing stayed on screen
+// long after reads answered again. The rule here replaces it:
+//   - an error is KEYED BY THE OPERATION whose attempt failed; another operation's success says
+//     nothing about it and leaves it;
+//   - the next attempt of the SAME operation decides it: a success removes it, a failure replaces
+//     it (one slot per operation, so a repeated failure never accumulates);
+//   - an operation that is no longer relevant in the enrolment phase the app is in takes its error
+//     with it (an inbox refusal means nothing on the sign-in screen).
+// The rule is pure over the operation and its outcome; which Swift call is which operation is the
+// glue's (AppState.swift, Views.swift), and it records every attempt's outcome, success included.
+
+type AppOperation
+  = OpConfiguration
+  | OpEnrolmentRead
+  | OpSignIn
+  | OpSignOut
+  | OpApnsRegistration
+  | OpPushForward
+  | OpInboxRefresh
+  | OpRequestFetch
+  | OpRedemption
+
+fn operation_name(o: AppOperation) -> NonEmptyStr {
+  match o {
+    OpConfiguration => "configuration" as NonEmptyStr
+    OpEnrolmentRead => "enrolmentRead" as NonEmptyStr
+    OpSignIn => "signIn" as NonEmptyStr
+    OpSignOut => "signOut" as NonEmptyStr
+    OpApnsRegistration => "apnsRegistration" as NonEmptyStr
+    OpPushForward => "pushForward" as NonEmptyStr
+    OpInboxRefresh => "inboxRefresh" as NonEmptyStr
+    OpRequestFetch => "requestFetch" as NonEmptyStr
+    OpRedemption => "redemption" as NonEmptyStr
+  }
+}
+
+// The display order, and the closed population every table below is evaluated over.
+fn app_operations() -> List<AppOperation> {
+  [OpConfiguration, OpEnrolmentRead, OpSignIn, OpSignOut, OpApnsRegistration, OpPushForward, OpInboxRefresh, OpRequestFetch, OpRedemption]
+}
+
+fn same_operation(a: AppOperation, b: AppOperation) -> Bool {
+  (operation_name(o: a) as String) == (operation_name(o: b) as String)
+}
+
+type OperationOutcome
+  = OperationSucceeded
+  | OperationFailed { message: NonEmptyStr }
+
+type OperationErrorSlot
+  = NoCurrentError
+  | CurrentError { message: NonEmptyStr }
+
+// THE LIFETIME RULE. The slot after an attempt is a function of that attempt's outcome ALONE: the
+// prior slot is not an input, which is what makes an error the current state and not a history.
+fn slot_after(outcome: OperationOutcome) -> OperationErrorSlot {
+  match outcome {
+    OperationSucceeded => NoCurrentError
+    OperationFailed { message: m } => CurrentError { message: m }
+  }
+}
+
+// WHERE AN OPERATION CAN BE ATTEMPTED. The configuration and the persisted-state read happen at
+// launch whatever the phase; sign-in only from SignedOut (Revoked leaves through sign-out first);
+// sign-out from Enrolled or Revoked; everything that authenticates as the enrolment only while
+// Enrolled. Exhaustive over operation, so a new operation is a compile refusal until it says.
+fn operation_relevant_in(o: AppOperation, p: EnrolmentPhase) -> Bool {
+  match o {
+    OpConfiguration => true
+    OpEnrolmentRead => true
+    OpSignIn => phase_is_signed_out(p: p)
+    OpSignOut => !phase_is_signed_out(p: p)
+    OpApnsRegistration => phase_is_enrolled(p: p)
+    OpPushForward => phase_is_enrolled(p: p)
+    OpInboxRefresh => phase_is_enrolled(p: p)
+    OpRequestFetch => phase_is_enrolled(p: p)
+    OpRedemption => phase_is_enrolled(p: p)
+  }
+}
+
+fn phase_is_signed_out(p: EnrolmentPhase) -> Bool {
+  match p {
+    PhaseSignedOut => true
+    PhaseEnrolled => false
+    PhaseRevoked => false
+  }
+}
+
+fn phase_is_enrolled(p: EnrolmentPhase) -> Bool {
+  match p {
+    PhaseSignedOut => false
+    PhaseEnrolled => true
+    PhaseRevoked => false
+  }
+}
+
+// ── the set of current errors ────────────────────────────────────────────────────────────────
+// The model of what the screen holds, one entry per operation at most; the Swift realization is a
+// dictionary keyed by AppOperation with the same three moves.
+type OperationError {
+  operation: AppOperation
+  message: NonEmptyStr
+}
+
+fn record_outcome(errors: List<OperationError>, operation: AppOperation, outcome: OperationOutcome) -> List<OperationError> {
+  let others = filter(errors, e => !same_operation(a: e.operation, b: operation))
+  match slot_after(outcome: outcome) {
+    NoCurrentError => others
+    CurrentError { message: m } => list_append(left: others, right: [OperationError { operation: operation, message: m }])
+  }
+}
+
+fn enter_phase(errors: List<OperationError>, phase: EnrolmentPhase) -> List<OperationError> {
+  filter(errors, e => operation_relevant_in(o: e.operation, p: phase))
+}
+
+// What the screen shows: the current messages in app_operations order.
+fn shown_errors(errors: List<OperationError>) -> List<String> {
+  flat_map(app_operations(), o => map(filter(errors, e => same_operation(a: e.operation, b: o)), e => e.message as String))
+}
+
+// Every (operation, phase) cell, for the generators.
+type RelevanceCell {
+  operation: AppOperation
+  phase: EnrolmentPhase
+}
+
+fn relevance_cells() -> List<RelevanceCell> {
+  flat_map(app_operations(), o => map(enrolment_phases(), p => RelevanceCell { operation: o, phase: p }))
+}

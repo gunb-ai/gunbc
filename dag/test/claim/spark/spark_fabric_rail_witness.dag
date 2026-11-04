@@ -5,7 +5,8 @@ import product.host_identity { host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address, ipv4_address_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv1 }
 import gunbc.spark.fabric_rail_desired { fabric_rail_desired, fabric_rail_desired_for, fabric_rail_address, fabric_rail_link_gbps }
-import gunbc.spark.fabric_rail_apply { fabric_rail_apply_plans }
+import gunbc.spark.fabric_rail_apply { fabric_rail_apply_plans, FabricRailPlansReady, FabricRailPlansRefused }
+import extdeps.netplan.netplan { NetplanDocumentRendered, NetplanDocumentRefused }
 
 // ONE ADDRESS PER FABRIC HOST, ALL DISTINCT, ALL IN THE RAIL /24, NONE FOR A HOST OFF THE FABRIC.
 test fn every_fabric_host_has_one_distinct_rail_address_and_others_have_none() -> Bool {
@@ -19,21 +20,26 @@ test fn every_fabric_host_has_one_distinct_rail_address_and_others_have_none() -
 
 // THE NETPLAN DOCUMENT NAMES THE LEG NETDEV WITH ITS ADDRESS AND JUMBO MTU, AND THE TWIN AS
 // UNADDRESSED AND OPTIONAL, so NetworkManager configures exactly one of the two netdevs a leg raises.
+// The document is the YAML emitter's, so these read its lines, not a hand spelling.
 test fn the_netplan_document_addresses_the_leg_and_quiets_its_twin() -> Bool {
   match fabric_rail_desired_for(host: operator_host_srv11) {
     Absent => false
     Present { value: d } =>
-      string_contains(s: d.netplan_text, pattern: "renderer: NetworkManager\n")
-        && string_contains(s: d.netplan_text, pattern: "        name: \"enp1s0f1np1\"\n      addresses:\n      - \"192.168.110.18/24\"\n      mtu: 9000\n")
-        && string_contains(s: d.netplan_text, pattern: "gunbc-fabric-twin:\n      match:\n        name: \"enP2p1s0f1np1\"\n      dhcp4: false\n")
-        && !string_contains(s: d.netplan_text, pattern: "enP2p1s0f1np1\"\n      addresses:")
+      match d.netplan {
+        NetplanDocumentRefused { path: _, reason: _ } => false
+        NetplanDocumentRendered { text: t } =>
+          string_contains(s: t, pattern: "renderer: NetworkManager\n")
+            && string_contains(s: t, pattern: "enp1s0f1np1\n      addresses: [192.168.110.18/24]\n      mtu: 9000\n")
+            && string_contains(s: t, pattern: "gunbc-fabric-twin:\n      match:\n        name: enP2p1s0f1np1\n      dhcp4: false\n")
+            && !string_contains(s: t, pattern: "enP2p1s0f1np1\n      addresses:")
+      }
   }
 }
 
 // THE APPLY IS ONE SCRIPT PER FABRIC HOST, WRITING THE WHOLE DOCUMENT THEN APPLYING IT, and the rail
 // speed a sizer reads is the observed 50G, not a nameplate.
 test fn the_apply_writes_the_document_whole_and_reads_the_rail_speed_from_the_cable() -> Bool {
-  let plans = fabric_rail_apply_plans()
+  let plans = match fabric_rail_apply_plans() { FabricRailPlansReady { plans: ps } => ps  FabricRailPlansRefused { cause: _ } => [] }
   length(plans) == 4
     && all(plans, p => starts_with(s: p.script, prefix: "set -e\n") && string_contains(s: p.script, pattern: "> /etc/netplan/90-gunbc-fabric.yaml\n") && string_contains(s: p.script, pattern: "netplan generate\nnetplan apply\n"))
     && fabric_rail_link_gbps() == 50

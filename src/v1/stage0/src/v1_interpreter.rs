@@ -819,6 +819,54 @@ pub(crate) fn process_termination_value(
     }
 }
 
+/// Build `v2.std.host_run` `EmitHostTransportResult`, the one shape both emit-host transports
+/// return. `phase` is an `EmitHostTransportPhase` variant name; termination is already a
+/// `ProcessTermination`; the octets are `std.types` `Bytes` (a list of 0..255 ints, the value
+/// `bytes_octets` reads); the log lines are a `BuildLog`.
+fn emit_host_transport_result_value(
+    phase: &str,
+    termination: Value,
+    stdout: &[u8],
+    stderr: &[u8],
+    build_log: Vec<Value>,
+    ctx: &InterpContext,
+) -> Value {
+    let octets = |bytes: &[u8]| {
+        list_value(
+            bytes
+                .iter()
+                .map(|b| Value::Int(*b as i64))
+                .collect::<Vec<Value>>(),
+        )
+    };
+    Value::Record {
+        type_name: ctx.sym("EmitHostTransportResult"),
+        // fields_get is a binary search by Symbol id, so a multi-field record
+        // MUST be sorted at construction; declaration order is interning-order-
+        // dependent and broke .success lookups when #6904 shifted interning.
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("phase"),
+                Value::Variant {
+                    type_name: ctx.sym("EmitHostTransportPhase"),
+                    variant_name: ctx.sym(phase),
+                    fields: Rc::new(Vec::new()),
+                },
+            ),
+            (ctx.sym("termination"), termination),
+            (ctx.sym("stdout_bytes"), octets(stdout)),
+            (ctx.sym("stderr_bytes"), octets(stderr)),
+            (
+                ctx.sym("build_log"),
+                Value::Record {
+                    type_name: ctx.sym("BuildLog"),
+                    fields: Rc::new(vec![(ctx.sym("lines"), list_value(build_log))]),
+                },
+            ),
+        ])),
+    }
+}
+
 /// Human-facing rendering of a termination for a build log line. Kept beside the
 /// projection above so the two spellings of one observation cannot drift.
 pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> String {
@@ -855,6 +903,16 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
+/// A record field the checker declares `T?` (CardOptional) holds the declared Optional<T>:
+/// Null (the host's "no value") becomes Absent and a bare value Present, through the one
+/// constructors. An already-built Optional variant is kept. A non-optional field is untouched.
+fn declared_optional_field(child: &Rc<Node>, value: Value, ctx: &InterpContext) -> Value {
+    if child.return_cardinality != Cardinality::CardOptional {
+        return value;
+    }
+    declared_optional_field_value(value, ctx)
+}
+
 /// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract (a
 /// `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction) or is a bare
 /// storage read still needing the wrap (native `Value::Map`/field storage, miss = `Value::Null`).
@@ -874,9 +932,10 @@ fn map_lookup_as_optional(raw: RawMapLookup, ctx: &InterpContext) -> Value {
 }
 
 impl RawMapLookup {
-    /// Bare-value callers (field access, `[]` indexing, the raw `lookup`/`get`
-    /// builtins) don't observe the `Optional` contract at all — they want
-    /// exactly what was found, miss-as-`Null` included.
+    /// Exactly two callers, both where the checker's declared type is the map's
+    /// value type and NOT `Optional<V>`: `extract_field` on a `Value::Map`
+    /// (field access) and the `[]` index arm. Every `.get`/`lookup` arm the
+    /// checker types `Optional<V>` goes through `map_lookup_as_optional`.
     fn into_raw(self) -> Value {
         match self {
             RawMapLookup::AlreadyOptional(v) | RawMapLookup::NeedsWrap(v) => v,
@@ -1199,6 +1258,45 @@ fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<Portabl
     }
 }
 
+/// UNIQUELY OWNED CARRIERS ARE DRAINED EVEN WHEN A `Weak` HANDLE IS OUTSTANDING.
+///
+/// `Rc::get_mut` is the obvious test for "nobody else can observe this carrier", and it is too strict
+/// for THIS interpreter: it returns `None` whenever any `Weak` exists, even with the strong count at
+/// one, and this interpreter deliberately keeps `Weak` handles on live carriers (`CompositeWeak` in the
+/// recompute memo, taken by `Rc::downgrade` in the `EvalRecomputeFrameKind` finalizers). So a carrier
+/// can be uniquely owned and still refuse `get_mut`; its members were then never moved to the worklist,
+/// and `Value::drop`'s own return released them through drop glue -- one host frame per value level,
+/// which is the abort this function exists to prevent.
+///
+/// THE INSTRUMENT FOR THAT CLAIM is this module's `a_weak_held_list_chain_drops` and
+/// `a_weak_held_variant_chain_drops`: a 262,144-level chain whose every carrier is uniquely owned but
+/// has a `Weak` outstanding. Take the three fallback arms out and they abort the test process with a
+/// host stack overflow; with them they pass, and they pass in one module run beside the pre-existing
+/// `a_deep_variant_chain_drops` / `a_deep_list_drops` guards, which already passed with and without
+/// this change -- that pair is what says the escape was specific to `Weak`-held carriers rather than
+/// to deep values in general.
+///
+/// `Rc::try_unwrap` is the route that works, and that is pinned rather than assumed:
+/// `an_outstanding_weak_blocks_get_mut_but_not_try_unwrap` asserts that a `Weak` blocks `get_mut` and
+/// does NOT block `try_unwrap`, and says so if a future std changes either way. It is also the honest
+/// route, because it re-checks ownership itself instead of trusting the guard above it: it returns
+/// `Err` unless the strong count is one, so a genuinely SHARED carrier is left in place for its other
+/// owners -- the invariant the `VALUE_DROP_INLINE_DEPTH` note above states, pinned on the shared side
+/// by this module's `a_shared_deep_chain_drops_once_per_owner`, by `slice_cost_tests`'
+/// `dropping_a_slice_of_a_shared_list_moves_no_member` /
+/// `the_detaching_drop_moves_the_slice_members` pair, and on this fallback's own side by
+/// `a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner`. The `strong_count` test
+/// above is what keeps the common shared case off the `try_unwrap` path entirely; the `Err` branch only
+/// reverts to the previous behaviour, and restores the carrier.
+///
+/// A `Weak` OBSERVER OF A DRAINED CARRIER SEES WHAT IT WOULD SEE AFTER AN ORDINARY DROP:
+/// `strong_count` 0. Draining the members does not resurrect the carrier or keep the chain alive, so
+/// the recompute memo's liveness check — `CompositeWeak::alive`, which consults `strong_count` and
+/// never the contents — reads the same answer it read before this change.
+///
+/// This is NARROW by construction: it adds a fallback where the drain previously did nothing. It does
+/// not touch `value_depth_guarded` or any `stacker::maybe_grow` site, so the separate unfired-guard
+/// item (an interpreted recursion whose frames keep allocating) is NOT retired here.
 fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_carriers: bool) {
     match value {
         Value::List(items) if detach_carriers => {
@@ -1206,6 +1304,18 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + items.len() as u64));
                 pending.extend(std::mem::take(items));
+            } else if Rc::strong_count(items) == 1 {
+                // Uniquely owned but `Weak`-held: take the carrier out and put it back if the unwrap
+                // refuses, so no path can leave this value looking at an emptied carrier.
+                let carrier = std::mem::replace(items, Rc::new(RrbVector::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(mut owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(std::mem::take(&mut owned));
+                    }
+                    Err(restored) => *items = restored,
+                }
             }
         }
         Value::Map(entries) if detach_carriers => {
@@ -1213,11 +1323,27 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + entries.len() as u64));
                 pending.extend(std::mem::take(entries).into_iter().map(|(_, v)| v));
+            } else if Rc::strong_count(entries) == 1 {
+                let carrier = std::mem::replace(entries, Rc::new(HamtMap::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(owned.into_iter().map(|(_, v)| v));
+                    }
+                    Err(restored) => *entries = restored,
+                }
             }
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             if let Some(fields) = Rc::get_mut(fields) {
                 pending.extend(fields.drain(..).map(|(_, v)| v));
+            } else if Rc::strong_count(fields) == 1 {
+                let carrier = std::mem::replace(fields, Rc::new(Vec::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => pending.extend(owned.into_iter().map(|(_, v)| v)),
+                    Err(restored) => *fields = restored,
+                }
             }
         }
         _ => {}
@@ -1279,6 +1405,54 @@ impl PartialEq for Value {
 pub struct Env {
     bindings: HashMap<Symbol, Value>,
     parent: Option<Rc<Env>>,
+}
+
+/// An Env chain is as deep as the data that built it (each frame's parent, and every closure a
+/// binding holds, owns another Env), so the derived drop recursed one host frame per level and
+/// aborted the process on a deep chain. The outermost Env drop drains iteratively: contents of any
+/// Env released while it runs are queued on `ENV_DROP_QUEUE` rather than dropped in place.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+type EnvContents = (HashMap<Symbol, Value>, Option<Rc<Env>>);
+
+thread_local! {
+    static ENV_DROP_DRAINING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ENV_DROP_QUEUE: std::cell::RefCell<Vec<EnvContents>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl Drop for Env {
+    fn drop(&mut self) {
+        if self.bindings.is_empty() && self.parent.is_none() {
+            return;
+        }
+        let contents: EnvContents = (std::mem::take(&mut self.bindings), self.parent.take());
+        if ENV_DROP_DRAINING.try_with(Cell::get).unwrap_or(true) {
+            if ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().push(contents))
+                .is_err()
+            {
+                // thread teardown: no queue to defer to
+            }
+            return;
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(true));
+        let mut next = Some(contents);
+        while let Some((bindings, parent)) = next.take() {
+            if let Some(parent) = parent {
+                if let Ok(mut owned) = Rc::try_unwrap(parent) {
+                    let inner: EnvContents =
+                        (std::mem::take(&mut owned.bindings), owned.parent.take());
+                    let _ = ENV_DROP_QUEUE.try_with(|q| q.borrow_mut().push(inner));
+                }
+            }
+            drop(bindings);
+            next = ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().pop())
+                .ok()
+                .flatten();
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(false));
+    }
 }
 
 impl Env {
@@ -1348,6 +1522,14 @@ pub enum InterpError {
     },
     TypeError {
         msg: String,
+    },
+    /// The interpreted call chain reached `CALL_DEPTH_LIMIT`. Its own variant, not a `TypeError`
+    /// string: the count is the refusal's whole content, and a sentence cannot be told apart from
+    /// any other type error by a caller or a witness classifier. `at` names the fn, or the closure
+    /// application, whose frame crossed the limit.
+    CallDepthExceeded {
+        limit: u32,
+        at: String,
     },
     CrossRepresentationEquality {
         detail: String,
@@ -1540,9 +1722,9 @@ pub enum InterpError {
     /// publishing it, a missing `mock_response` by authoring one, a filesystem REMOVAL by a wet
     /// route (removal has no mock arm). One sentence for all three is the state-space
     /// conflation DESIGN's recurring-failure list names.
-    HermeticHostEffectRefused {
+    HostEffectRefused {
         operation: String,
-        ground: HermeticEffectGround,
+        ground: EffectRefusalGround,
     },
     /// A HOST FILESYSTEM EFFECT FAILED: the realization asked the host to create or write a path
     /// and the host refused. Its own variant, never a `TypeError`: nothing about the program's
@@ -1572,10 +1754,10 @@ impl InterpError {
     }
 }
 
-/// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
-/// different remedy — see `InterpError::HermeticHostEffectRefused`.
+/// WHY A RUN COULD NOT REALIZE ONE OPERATION. Closed, and each arm names a
+/// different remedy — see `InterpError::HostEffectRefused`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HermeticEffectGround {
+pub enum EffectRefusalGround {
     /// The service is corpus-governed and no published mock case names this operation.
     /// `published_cases` carries the cases that DO exist for the service, so the refusal
     /// states its own remedy rather than sending the reader to look for it.
@@ -1586,6 +1768,10 @@ pub enum HermeticEffectGround {
     /// A filesystem REMOVAL. Distinct from the two above because there is no mock arm to
     /// author: the operation's whole content is the effect, so only a wet route can run it.
     FilesystemRemoval,
+    /// A witness frame whose modeled realization is admitted only under Hermetic execution,
+    /// reached by a run that dispatches real effects. The one ground refused UNDER a non-hermetic
+    /// mode, so its remedy is the opposite of the three above: run it hermetically.
+    FrameNotRealizableUnderMode,
 }
 
 impl fmt::Display for InterpError {
@@ -1666,6 +1852,11 @@ impl fmt::Display for InterpError {
                     elapsed_ms, budget_ms
                 )
             }
+            InterpError::CallDepthExceeded { limit, at } => write!(
+                f,
+                "call depth exceeded {} at {} -- the interpreted call chain did not terminate within the limit (a divergent chain, or a host seam whose realization this binary lacks); refused, never a host stack overflow",
+                limit, at
+            ),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
             }
@@ -1750,22 +1941,28 @@ impl fmt::Display for InterpError {
                 name,
                 probed.join(", ")
             ),
-            InterpError::HermeticHostEffectRefused { operation, ground } => match ground {
-                HermeticEffectGround::UnpublishedMockCase { published_cases } => write!(
+            InterpError::HostEffectRefused { operation, ground } => match ground {
+                EffectRefusalGround::UnpublishedMockCase { published_cases } => write!(
                     f,
                     "hermetic mode: operation {operation} is not a published mock case for its \
                      corpus-governed service \u{2014} refusing to realize (published cases: \
                      {published_cases:?})"
                 ),
-                HermeticEffectGround::NoMockResponse => write!(
+                EffectRefusalGround::NoMockResponse => write!(
                     f,
                     "hermetic mode: no mock_response for operation {operation} \u{2014} refusing \
                      to fabricate Unit"
                 ),
-                HermeticEffectGround::FilesystemRemoval => write!(
+                EffectRefusalGround::FilesystemRemoval => write!(
                     f,
                     "hermetic mode: {operation} refuses filesystem removal (no mock arm; the \
                      operation's whole content is the effect, so only a wet route can run it)"
+                ),
+                EffectRefusalGround::FrameNotRealizableUnderMode => write!(
+                    f,
+                    "wet run cannot realize {operation}: a modeled operation realization is \
+                     admitted only under Hermetic execution, and this run dispatches real \
+                     effects (route gap, not a verdict)"
                 ),
             },
             InterpError::HostToolRelativePathAmbiguous { name } => write!(
@@ -4259,6 +4456,51 @@ mod cross_claim_memo_tests {
             super::run_in_context(&ctx, name, false).expect(name)
         };
         assert_eq!(eval("left_none"), eval("right_none"));
+    }
+
+    // INTERPRETER-LAYER fail-closed control for the claim-run route defect (DESIGN §5). A claim run is
+    // executed in Hermetic mode — the mode is chosen by the ONE shared authority
+    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb and `claim_batch` both
+    // call; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
+    // mock), while `main.rs::claim_run_mode_tests` pins the route half (the claim route selects Hermetic
+    // AND discriminates Wet). This is the INTERPRETER layer, so it drives `InterpContext::new(.., Hermetic)`
+    // directly; the route-driven test in main.rs is what exercises the mode the route actually selects.
+    // This fixture declares a shell effect
+    // with NO `mock_response` (no mock bound on the entry route). Under Hermetic it must refuse typed
+    // (`no mock_response ... refusing`) via `eval_mock_response`, and NEVER reach `dispatch_shell` --
+    // so nothing is spawned against the host. Before the fix, `gunbc run --claim-run` ran this entry
+    // in WET mode and dispatched the real effect (the mocked journalctl ran live against srv1's
+    // journal). Host-free by construction: the refusal short-circuits before any transport.
+    #[test]
+    fn hermetic_claim_route_refuses_an_unbound_mocked_effect_without_dispatching() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/claim_run_route.dag".to_string(),
+                content: "module fixture.claim_run_route\n\nservice fixture.ClaimRoute {\n  operation UnboundEffect {\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.ClaimRoute.UnboundEffect()\n  r.success\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(e) => {
+                let msg = format!("{e}");
+                assert!(
+                    msg.contains("no mock_response"),
+                    "claim route must refuse the unbound mocked effect with the typed NoMockResponse \
+                     refusal; got instead: {msg}"
+                );
+            }
+            Ok(v) => panic!(
+                "the hermetic claim route must REFUSE an unbound mocked effect, never dispatch it; \
+                 it returned: {v:?}"
+            ),
+        }
     }
 
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
@@ -7652,13 +7894,9 @@ fn call_function_guarded(
     depth: u32,
 ) -> InterpResult<Value> {
     if depth > CALL_DEPTH_LIMIT {
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} at fn '{}' — unbounded recursion (a bare-name \
-                 resolution cycle, or a genuinely divergent chain); refused, never a \
-                 host stack overflow",
-                CALL_DEPTH_LIMIT, fn_node.name
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: format!("fn '{}'", fn_node.name),
         });
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
@@ -8403,7 +8641,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let si = ctx.si();
     match (*node.expr_data).clone() {
-        ExprData::ExprLiteral { value } => eval_literal(&value),
+        ExprData::ExprLiteral { value } => eval_literal(&value, ctx),
 
         // An elaborated literal (std.literal_elaboration) carries its image under the declared
         // homomorphism as its one child. A Peano unfolding's destination is STRUCTURAL on every
@@ -8422,7 +8660,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     crate::std_literal_elaboration::LiteralUnfolding::PeanoUnfold { .. },
                     Some(image),
                 ) => eval_expr(image, env, ctx),
-                _ => eval_literal(&value),
+                _ => eval_literal(&value, ctx),
             }
         }
 
@@ -8459,10 +8697,11 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     // value's truth and the right operand is never asked for.
                     Ok(Value::Bool(left.is_truthy()))
                 }
-                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent
-                    if !matches!(left, Value::Null) =>
-                {
-                    Ok(left)
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
+                    match coalesce_present(&left, ctx)? {
+                        Some(present) => Ok(present),
+                        None => eval_expr(&binop_right(node.clone()), env, ctx),
+                    }
                 }
                 _ => {
                     let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
@@ -8556,7 +8795,9 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     }
 }
 
-fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
+// `none` and `null` lower to one LitNull (extdeps.languages.dag syntax table); the value it
+// denotes is the optional's Absent, built by the one constructor, not a host Null.
+fn eval_literal(lit: &LiteralValue, ctx: &InterpContext) -> InterpResult<Value> {
     match lit {
         LiteralValue::LitBool { value } => Ok(Value::Bool(*value)),
         LiteralValue::LitInt { value } => Ok(Value::Int(*value)),
@@ -8568,7 +8809,7 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
         }
         LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
         LiteralValue::LitSymbol { value } => Ok(str_value(value.clone())),
-        LiteralValue::LitNull => Ok(Value::Null),
+        LiteralValue::LitNull => Ok(optional_absent(ctx)),
     }
 }
 
@@ -8628,12 +8869,13 @@ fn eval_var(
         });
     }
 
-    // Only the untyped null/optional shorthand collapses to the host Null carrier. A resolved
-    // coproduct arm named `None` was handled above and retains its declaration identity
-    // (`parent_enum`, terminal arm), so `Diagnostics.None`, an imported `None`, and a re-export
-    // construct the same value while an unrelated coproduct's `None` remains distinct.
+    // The untyped `none` shorthand denotes the optional's Absent, built by the one constructor
+    // (`optional_absent`), not a host Null second representation. A resolved coproduct arm named
+    // `None` was handled above and retains its declaration identity (`parent_enum`, terminal
+    // arm), so `Diagnostics.None`, an imported `None`, and a re-export construct the same value
+    // while an unrelated coproduct's `None` remains distinct.
     if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
-        return Ok(Value::Null);
+        return Ok(optional_absent(ctx));
     }
 
     if let Some(val) = env.lookup(sym) {
@@ -8744,11 +8986,7 @@ fn eval_var(
 
 fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> InterpResult<Value> {
     if matches!(op, BinOp::NullCoalesce) {
-        return Ok(if matches!(left, Value::Null) {
-            right
-        } else {
-            left
-        });
+        return Ok(coalesce_present(&left, ctx)?.unwrap_or(right));
     }
 
     if matches!(op, BinOp::Add) {
@@ -9391,9 +9629,8 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     // `v1.compiler.infer` `optional_match_arm_sees_present_value` (a bare binding after an
     // unguarded Absent arm; a non-null literal arm), and every Rust match rendering reads the same
     // predicate. The interpreter reads it too and decides nothing of its own. What is interpreter
-    // specific is only HOW the payload is reached: an optional's value has two runtime
-    // representations -- a bare value (host builtins) or an `Optional.Present` variant (an authored
-    // `Present { value }`) -- and `optional_present_payload` peels either.
+    // specific is only HOW the payload is reached: an optional's value has ONE runtime
+    // representation, the `Optional` variant, and `optional_present_payload` peels it.
     // An untyped scrutinee cannot be asked the predicate. That is harmless while its value is a
     // bare value (every arm then sees the same value either way) and a silent wrong answer when it
     // is an `Optional.Present` variant (the literal arm would miss, the binding would hold the
@@ -9493,16 +9730,23 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     })
 }
 
+/// `left ?? right`: the present payload of an `Optional` left, `None` (take the right operand) when
+/// it is `Absent`. One rule for the lazy arm and `eval_binop`; a left that is not an `Optional`
+/// refuses rather than passing through.
+fn coalesce_present(left: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
+    optional_present_payload(left, ctx)
+}
+
 fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
     matches!(value, Value::Variant { type_name, .. } if *type_name == ctx.sym("Optional"))
 }
 
-/// The present payload of an optional value in either runtime representation, `None` when it
-/// is absent (`Null` or `Optional.Absent`). An `Optional.Present` without its `value` field is
-/// malformed and refuses rather than reading as absent.
+/// The present payload of an optional value, `None` when it is `Optional.Absent`. A value that is
+/// not an `Optional` variant (host null or a bare element) refuses: there is one representation.
+/// An `Optional.Present` without its `value` field is malformed and refuses rather than reading
+/// as absent.
 fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
     match value {
-        Value::Null => Ok(None),
         Value::Variant {
             variant_name,
             fields,
@@ -9518,7 +9762,9 @@ fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<
                 }),
             }
         }
-        other => Ok(Some(other.clone())),
+        other => Err(InterpError::TypeError {
+            msg: format!("matched an Optional but the value is not an Optional variant: {other}"),
+        }),
     }
 }
 
@@ -9836,10 +10082,14 @@ fn admit_modeled_realization(
         false,
     )?;
     if !matches!(admitted, Value::Bool(true)) {
-        return Err(modeled_refused(
-            "(frame)",
-            "a modeled operation realization is admitted only under Hermetic execution; this run dispatches real effects",
-        ));
+        // A ROUTE GAP, NOT A VERDICT: the run was never given a route that can realize this
+        // frame, so the claim did not reach its subject. Returned as the typed route-gap error and
+        // not as `modeled_refused`, which the frame builtin turns into a `WitnessRefused` value a
+        // claim can map to false.
+        return Err(InterpError::HostEffectRefused {
+            operation: "(frame)".to_string(),
+            ground: EffectRefusalGround::FrameNotRealizableUnderMode,
+        });
     }
     let envelope = record_field(ctx, frame, "envelope")
         .ok_or_else(|| modeled_refused("(frame)", "the frame carries no envelope"))?;
@@ -10468,6 +10718,7 @@ fn try_witness_evaluation_dispatch(
             let absent_state = || variant_value(ctx, "Optional", "Absent", vec![]);
             let admitted = match admit_modeled_realization(&frame, env, ctx) {
                 Ok(slot) => slot,
+                Err(error @ InterpError::HostEffectRefused { .. }) => return Some(Err(error)),
                 Err(error) => {
                     return Some(Ok(variant_value(
                         ctx,
@@ -10493,6 +10744,11 @@ fn try_witness_evaluation_dispatch(
                     .with(|slots| slots.borrow_mut().last_mut().and_then(|s| s.take()));
                 (evaluated, slot)
             };
+            // A route gap raised inside the subject is no observation either, so it leaves the
+            // frame as the error and never as a `WitnessRefused` verdict value.
+            if let Err(error @ InterpError::HostEffectRefused { .. }) = evaluated {
+                return Some(Err(error));
+            }
             let (route, state, interrupted, clock) = match slot {
                 Some(slot) => (
                     list_value(slot.route),
@@ -10595,7 +10851,7 @@ fn match_pattern(
             }
 
             MatchPattern::LitPattern { value: lit } => {
-                let lit_val = eval_literal(lit).ok()?;
+                let lit_val = eval_literal(lit, ctx).ok()?;
                 if *value == lit_val {
                     Some(HashMap::new())
                 } else {
@@ -13155,6 +13411,66 @@ fn eval_field_access(
 
     let access_style = summary.map(|s| &s.access_style);
 
+    // The checker DECLARES the read: `04_lookup` `field_summary_for_type` styles `.value` on an
+    // optional `OptionalUnwrap` (typed required: peel Present, refuse Absent with a typed error)
+    // and every other field read off an optional with value shape `OptionalValue` (typed
+    // OPTIONAL: peel Present and re-wrap the field, propagate Absent). The interpreter never
+    // reads a field off the variant itself, and never refuses what the checker types as optional.
+    // `OptionalValue` carries two meanings in the checker's summary: the BASE is optional
+    // (`field_summary_for_type`), or the FIELD's own value is optional (a struct field declared
+    // `T?`, `field_value_shape_from_type_node`). Only the first peels; a record base is never an
+    // Optional variant, so a field declared `T?` on a record is returned as the stored Optional.
+    let unwrap_style = matches!(access_style, Some(FieldAccessStyle::OptionalUnwrap));
+    let optional_base_read = !unwrap_style
+        && matches!(
+            summary.map(|s| &s.value_shape),
+            Some(FieldValueShape::OptionalValue)
+        )
+        && is_optional_variant(&base_val, ctx);
+    let base_val = if unwrap_style || optional_base_read {
+        match optional_present_payload(&base_val, ctx)? {
+            Some(payload) => payload,
+            None if optional_base_read => return Ok(optional_absent(ctx)),
+            None => {
+                return Err(locate_field_access_error(
+                    InterpError::TypeError {
+                        msg: format!("field '{}' read off an Absent optional", field_name),
+                    },
+                    node,
+                ))
+            }
+        }
+    } else {
+        base_val
+    };
+    if optional_base_read {
+        let read = eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)?;
+        return Ok(declared_optional_field_value(read, ctx));
+    }
+
+    eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)
+}
+
+// A field read off an optional is typed optional (one layer): an already-Optional field value is
+// returned as is, a bare one is Present, Null is Absent.
+fn declared_optional_field_value(value: Value, ctx: &InterpContext) -> Value {
+    match value {
+        Value::Null => optional_absent(ctx),
+        Value::Variant { ref type_name, .. } if ctx.sym_eq(*type_name, "Optional") => value,
+        other => optional_present(other, ctx),
+    }
+}
+
+fn eval_field_access_on(
+    base_val: &Value,
+    access_style: Option<&FieldAccessStyle>,
+    field_name: &str,
+    node: &Rc<Node>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let base_val = base_val.clone();
+    let field_name = field_name.to_string();
     match access_style {
         Some(FieldAccessStyle::TupleFirst) => match expect_list(&base_val, "tuple.first") {
             Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),
@@ -13164,10 +13480,7 @@ fn eval_field_access(
             Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
             Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
-        Some(FieldAccessStyle::OptionalUnwrap) => match &base_val {
-            Value::Null => Ok(Value::Null),
-            _ => Ok(base_val),
-        },
+        Some(FieldAccessStyle::OptionalUnwrap) => Ok(base_val), // already peeled above
         Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
             .map_err(|e| locate_field_access_error(e, node)),
         _ => extract_field(&base_val, &field_name, env, ctx)
@@ -13425,8 +13738,8 @@ mod cast_scope_index_tests {
     #[ignore = "real repository scope; run explicitly on a remote worker"]
     fn real_scope_cast_index_matches_the_retired_scan() {
         use crate::cli_run::{
-            claim_scope_for, evaluation_frame, prepare_repository_closure, process_shared_index,
-            witness_exclusion_substrings,
+            claim_scope_for, evaluation_frame, prepare_repository_closure,
+            process_shared_index_or_refuse, witness_exclusion_substrings,
         };
         // Locate the runtime checkout: remote builds can remap CARGO_MANIFEST_DIR to a
         // relative compilation path, which is not a usable execution-time source root.
@@ -13447,7 +13760,7 @@ mod cast_scope_index_tests {
         std::env::set_current_dir(root).expect("enter repository root");
         let roots = ["dag", "src/v2"].map(|path| root.join(path).to_string_lossy().into_owned());
         let entry = "test.claim.compiler_frontend_program_status_witness".to_string();
-        let index = process_shared_index(&roots);
+        let index = process_shared_index_or_refuse(&roots);
         let (prepared, _) = prepare_repository_closure(
             &roots,
             &witness_exclusion_substrings(),
@@ -13846,9 +14159,6 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Value::Float(n) => Ok(str_value(n.to_string())),
             Value::Bool(b) => Ok(str_value(b.to_string())),
             Value::Str(ref s) => Ok(Value::Str(s.clone())),
-            // Corpus wire/debug casts for structured values — not the blanket Display
-            // fallback that silently stringified List/Map (§5 fabricated plausible output).
-            Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
             v => Err(refused(&v, "String")),
         },
         t => Err(refused(&val, t)),
@@ -13981,7 +14291,7 @@ macro_rules! v1_algebra_method_arms {
                 let key = $args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "lookup requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
             },
 
             arm "method_call.map" { "map" } => list_method_with_closure("map", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
@@ -14208,12 +14518,12 @@ macro_rules! v1_algebra_method_arms {
 
             arm "method_call.first" { "first" } => {
                 let items = expect_list(&$receiver, "first")?;
-                Ok(items.front().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.front().cloned(), &$ctx))
             },
 
             arm "method_call.last" { "last" } => {
                 let items = expect_list(&$receiver, "last")?;
-                Ok(items.last().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.last().cloned(), &$ctx))
             },
 
             arm "method_call.reverse" { "reverse" } => {
@@ -14305,15 +14615,15 @@ macro_rules! v1_algebra_method_arms {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 } else if let Ok(items) = expect_list(&$receiver, "get") {
                     let idx = expect_int($args.first(), "get")?;
-                    Ok(list_get_at_or_null(&items, idx))
+                    Ok(list_get_at_optional(&items, idx, &$ctx))
                 } else {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 }
             },
 
@@ -14673,7 +14983,7 @@ fn hermetic_checkout_input_disposition_under(
     // path to exist, so it failed identically for three dispositions with different remedies —
     // a file the commit says is NOT THERE, a path RESOLVING OUTSIDE the root, and one
     // UNRESOLVABLE otherwise. One error string for three states is the conflation
-    // `HermeticEffectGround` was split to prevent, twenty lines above the enum recording it.
+    // `EffectRefusalGround` was split to prevent, twenty lines above the enum recording it.
     //
     // The commit determines absence as it determines contents: "no such file" is read OFF THE
     // INPUT, not host state, so it belongs on the same wet arm as a successful read, not in the
@@ -14871,9 +15181,9 @@ fn eval_service_call(
                 })
                 .collect();
             cases.sort();
-            return Err(InterpError::HermeticHostEffectRefused {
+            return Err(InterpError::HostEffectRefused {
                 operation: key.clone(),
-                ground: HermeticEffectGround::UnpublishedMockCase {
+                ground: EffectRefusalGround::UnpublishedMockCase {
                     published_cases: cases.into_iter().cloned().collect(),
                 },
             });
@@ -15098,8 +15408,8 @@ fn dispatch_env_get_native(
         }
     };
     let value = match wet_env_var(&name) {
-        Some(s) => str_value(s),
-        None => Value::Null,
+        Some(s) => optional_present(str_value(s), ctx),
+        None => optional_absent(ctx),
     };
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -16138,7 +16448,38 @@ fn compile_diagnostic_census_row_value(
     subject_name: String,
     blocking: bool,
     count: i64,
+    rendered_pair: Option<crate::cli_run::RenderedPair>,
 ) -> Value {
+    // The model's Optional<RenderedPair>: `None` here is the optional's OWN absence (a class the
+    // extractor's total match says carries no pair) projected to the model's Absent — never a
+    // stand-in for "the pair was equal", which is Uniform { expected, got } with expected == got.
+    let rendered_pair_value = match rendered_pair {
+        None => optional_absent(ctx),
+        Some(crate::cli_run::RenderedPair::Uniform { expected, got }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Uniform"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("expected"), str_value(expected)),
+                    (ctx.sym("got"), str_value(got)),
+                ])),
+            },
+            ctx,
+        ),
+        Some(crate::cli_run::RenderedPair::Varied {
+            distinct_pair_count,
+        }) => optional_present(
+            Value::Variant {
+                type_name: ctx.sym("RenderedPair"),
+                variant_name: ctx.sym("Varied"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("distinct_pair_count"),
+                    Value::Int(distinct_pair_count),
+                )])),
+            },
+            ctx,
+        ),
+    };
     Value::Record {
         type_name: ctx.sym("CompileDiagnosticCensusRow"),
         fields: Rc::new(sorted_fields(vec![
@@ -16146,10 +16487,10 @@ fn compile_diagnostic_census_row_value(
             (ctx.sym("subject_name"), str_value(subject_name)),
             (ctx.sym("blocking"), Value::Bool(blocking)),
             (ctx.sym("count"), Value::Int(count)),
+            (ctx.sym("rendered_pair"), rendered_pair_value),
         ])),
     }
 }
-
 fn reference_derived_candidate_disposition_value(
     disposition: &crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition,
     ctx: &InterpContext,
@@ -16229,6 +16570,7 @@ fn compile_diagnostic_census_value(
                                 r.subject_name,
                                 r.blocking,
                                 r.count,
+                                r.rendered_pair,
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -16286,6 +16628,7 @@ fn claim_scope_fixture_value(
                             row.subject_name.clone(),
                             row.blocking,
                             row.count,
+                            row.rendered_pair.clone(),
                         )
                     })
                     .collect::<Vec<_>>(),
@@ -16331,6 +16674,7 @@ fn multi_module_compile_fixture_value(
                         r.subject_name,
                         r.blocking,
                         r.count,
+                        r.rendered_pair,
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -17149,65 +17493,6 @@ fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext)
             variant_name: ctx.sym("GateNotRun"),
             fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
         },
-    }
-}
-
-fn unlisted_import_binding_source_value(
-    source: crate::cli_run::UnlistedImportBindingSource,
-    ctx: &InterpContext,
-) -> Value {
-    let variant = match source {
-        crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
-        crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
-        crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
-        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
-    };
-    Value::Variant {
-        type_name: ctx.sym("UnlistedImportBindingSource"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![]),
-    }
-}
-
-fn declared_import_closure_binding_value(
-    observation: crate::cli_run::DeclaredImportClosureBindingObservation,
-    ctx: &InterpContext,
-) -> Value {
-    match observation {
-        crate::cli_run::DeclaredImportClosureBindingObservation::Observed(observed) => {
-            let binding_source = match observed.binding_source {
-                Some(source) => {
-                    optional_present(unlisted_import_binding_source_value(source, ctx), ctx)
-                }
-                None => optional_absent(ctx),
-            };
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingObserved"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("binding_source"), binding_source),
-                    (
-                        ctx.sym("definer_module"),
-                        str_value(observed.definer_module.unwrap_or_default()),
-                    ),
-                    (
-                        ctx.sym("symbol_resolves"),
-                        Value::Bool(observed.symbol_resolves),
-                    ),
-                    (
-                        ctx.sym("blocking_hard_diagnostic_count"),
-                        Value::Int(observed.blocking_hard_diagnostic_count),
-                    ),
-                ])),
-            }
-        }
-        crate::cli_run::DeclaredImportClosureBindingObservation::NotRunnable(cause) => {
-            Value::Variant {
-                type_name: ctx.sym("DeclaredImportClosureBindingObservation"),
-                variant_name: ctx.sym("BindingNotRunnable"),
-                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-            }
-        }
     }
 }
 
@@ -18331,7 +18616,10 @@ fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult
         if short == "spawn" {
             continue;
         }
-        fields.push((ctx.sym(&field_name), Value::Null));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, Value::Null, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
@@ -18711,7 +18999,10 @@ fn map_shell_outputs(
             && result.exit_code != 0
             && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
         {
-            fields.push((ctx.sym(&field_name), Value::Null));
+            fields.push((
+                ctx.sym(&field_name),
+                declared_optional_field(child, Value::Null, ctx),
+            ));
             continue;
         }
         let value = match from_key.as_deref() {
@@ -18740,11 +19031,14 @@ fn map_shell_outputs(
                 "exists" => Some(Value::Bool(result.exit_code == 0)),
                 _ => None,
             } {
-                fields.push((ctx.sym(&field_name), v));
+                fields.push((ctx.sym(&field_name), declared_optional_field(child, v, ctx)));
                 continue;
             }
         }
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -19992,7 +20286,10 @@ fn map_file_outputs(
             "content" | "entries" => str_value(result.content.clone()),
             _ => Value::Null,
         };
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -20614,7 +20911,7 @@ fn attach_transport_outcome(
                     .map(|field| {
                         (
                             ctx.sym(&authored_name_at(ctx.si(), field.clone())),
-                            Value::Null,
+                            declared_optional_field(field, Value::Null, ctx),
                         )
                     })
                     .collect()
@@ -21201,11 +21498,11 @@ fn map_response_to_value_json(
 ) -> Result<Value, RestResponseDecodeRefusal> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
-        _ => return Ok(json_to_value(json)),
+        _ => return Ok(json_to_value(json, ctx)),
     };
     let children = &return_type.children;
     if children.is_empty() {
-        return Ok(json_to_value(json));
+        return Ok(json_to_value(json, ctx));
     }
 
     let payload_count = children.len();
@@ -21229,7 +21526,10 @@ fn map_response_to_value_json(
                 None => Value::Null,
             },
         };
-        fields.push((ctx.sym(&field_name), val));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, val, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -21534,7 +21834,7 @@ fn decode_json_by_declared_field_at(
         Some(InferredNode::Resolved { node }) => {
             decode_json_by_declared_type(json, node, path, ctx)
         }
-        _ => Ok(json_to_value(json)),
+        _ => Ok(json_to_value(json, ctx)),
     }
 }
 
@@ -21558,7 +21858,7 @@ fn decode_json_by_declared_type(
                 }
                 Ok(list_value(out))
             }
-            _ => Ok(json_to_value(json)),
+            _ => Ok(json_to_value(json, ctx)),
         };
     }
     // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
@@ -21609,12 +21909,12 @@ fn decode_json_by_declared_type(
             !ty.children.is_empty() && ty.children.iter().all(|arm| arm.children.is_empty());
         if !nullary {
             // A payload-carrying coproduct is not a JSON string and is outside this decode.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         if json.is_boolean() && name.rsplit('.').next() == Some("Bool") {
             // `Bool = True | False` is carried natively (`Value::Bool`), and a JSON boolean is
             // its wire form; every other nullary coproduct is spelled as a string.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         return decode_nullary_coproduct(json, ty, &name, path, ctx);
     }
@@ -21672,7 +21972,7 @@ fn decode_json_by_declared_type(
                             ctx,
                         )?,
                     ),
-                    None => (key.clone(), json_to_value(value)),
+                    None => (key.clone(), json_to_value(value, ctx)),
                 };
                 if let Some(ck) = CanonKey::new(str_value(stored)) {
                     fields.insert(ck, decoded);
@@ -21681,7 +21981,7 @@ fn decode_json_by_declared_type(
             return Ok(map_value(fields));
         }
     }
-    Ok(json_to_value(json))
+    Ok(json_to_value(json, ctx))
 }
 
 fn decode_nullary_coproduct(
@@ -21910,9 +22210,10 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     ))
 }
 
-fn json_to_value(json: &serde_json::Value) -> Value {
+/// JSON null is absence: it builds the one `Optional.Absent` constructor, like `none`.
+fn json_to_value(json: &serde_json::Value, ctx: &InterpContext) -> Value {
     value_depth_guarded(|| match json {
-        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Null => optional_absent(ctx),
         serde_json::Value::Bool(b) => Value::Bool(*b),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
@@ -21922,14 +22223,16 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             }
         }
         serde_json::Value::String(s) => str_value(s.clone()),
-        serde_json::Value::Array(arr) => {
-            list_value(arr.iter().map(json_to_value).collect::<Vec<_>>())
-        }
+        serde_json::Value::Array(arr) => list_value(
+            arr.iter()
+                .map(|v| json_to_value(v, ctx))
+                .collect::<Vec<_>>(),
+        ),
         serde_json::Value::Object(obj) => {
             let fields: HamtMap<CanonKey, Value> = obj
                 .iter()
                 .filter_map(|(k, v)| {
-                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v)))
+                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v, ctx)))
                 })
                 .collect();
             map_value(fields)
@@ -22012,9 +22315,9 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
         }
     }
     let op_name = authored_name_at(ctx.si(), op_node.clone());
-    Err(InterpError::HermeticHostEffectRefused {
+    Err(InterpError::HostEffectRefused {
         operation: op_name.to_string(),
-        ground: HermeticEffectGround::NoMockResponse,
+        ground: EffectRefusalGround::NoMockResponse,
     })
 }
 
@@ -22584,9 +22887,9 @@ fn eval_emit_host_native_cache_evict_builtin(
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::HermeticHostEffectRefused {
+        return Err(InterpError::HostEffectRefused {
             operation: "emit_host_native_cache_evict".to_string(),
-            ground: HermeticEffectGround::FilesystemRemoval,
+            ground: EffectRefusalGround::FilesystemRemoval,
         });
     }
     let workspace_dir =
@@ -23243,7 +23546,6 @@ fn emit_host_run_transport_cached_in_workspace(
 ) -> InterpResult<Value> {
     let ready_marker = workspace.join(".native_ready");
     let cold_compile_receipt = workspace.join(".native_cold_compile_nanos");
-    let artifact_lookup_started = std::time::Instant::now();
     // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
     // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
     // pattern). Not an escape hatch: no value of the env makes the run do less.
@@ -23268,7 +23570,6 @@ fn emit_host_run_transport_cached_in_workspace(
     let compile_skipped = !cold_control
         && ready_marker.exists()
         && (!require_transition_timing || recorded_cold_compile_nanos.is_some());
-    let artifact_lookup_nanos = artifact_lookup_started.elapsed().as_nanos();
     eprintln!(
         "[native-cache] key={} compile_skipped={} cold_control={}",
         workspace
@@ -23278,59 +23579,6 @@ fn emit_host_run_transport_cached_in_workspace(
         compile_skipped,
         cold_control
     );
-
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool,
-                            cold_compile_nanos: u128,
-                            native_execution_nanos: u128|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("artifact_lookup_nanos"),
-                    Value::Int(artifact_lookup_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("cold_compile_nanos"),
-                    Value::Int(cold_compile_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("native_execution_nanos"),
-                    Value::Int(native_execution_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
@@ -23358,23 +23606,19 @@ fn emit_host_run_transport_cached_in_workspace(
             )));
             if !out.status.success() {
                 build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-                return Ok(transport_result(
-                    "build",
+                return Ok(emit_host_transport_result_value(
+                    "EmitHostBuildStepFailed",
                     process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
                     build_log,
-                    false,
-                    compile_started.elapsed().as_nanos(),
-                    0,
+                    ctx,
                 ));
             }
         }
 
         let cold_compile_nanos = compile_started.elapsed().as_nanos();
-        let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
-        let native_execution_nanos = native_started.elapsed().as_nanos();
         build_log.push(str_value(format!(
             "{} -> {}",
             run_argv.join(" "),
@@ -23396,36 +23640,30 @@ fn emit_host_run_transport_cached_in_workspace(
                 )
             })?;
         }
-        return Ok(transport_result(
-            "run",
+        return Ok(emit_host_transport_result_value(
+            "EmitHostRanCold",
             process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
             build_log,
-            false,
-            cold_compile_nanos,
-            native_execution_nanos,
+            ctx,
         ));
     }
 
-    let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
-    let native_execution_nanos = native_started.elapsed().as_nanos();
     let mut build_log: Vec<Value> = Vec::new();
     build_log.push(str_value(format!(
         "{} -> {}",
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run_cached",
+    Ok(emit_host_transport_result_value(
+        "EmitHostRanWarm",
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        true,
-        recorded_cold_compile_nanos.unwrap_or(0),
-        native_execution_nanos,
+        ctx,
     ))
 }
 
@@ -23470,45 +23708,6 @@ fn emit_host_run_transport_in_workspace(
             .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };
 
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
-
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
@@ -23519,13 +23718,13 @@ fn emit_host_run_transport_in_workspace(
         )));
         if !out.status.success() {
             build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-            return Ok(transport_result(
-                "build",
+            return Ok(emit_host_transport_result_value(
+                "EmitHostBuildStepFailed",
                 process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
                 build_log,
-                false,
+                ctx,
             ));
         }
     }
@@ -23536,13 +23735,13 @@ fn emit_host_run_transport_in_workspace(
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run",
+    Ok(emit_host_transport_result_value(
+        "EmitHostRanCold",
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        false,
+        ctx,
     ))
 }
 
@@ -23751,12 +23950,12 @@ macro_rules! v1_builtin_arms {
             arm "free_call.get" { "get" } => match $positional.as_slice() {
                 [Value::List(items), idx_val] => {
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(items, idx)))
+                    Ok(Some(list_get_at_optional(items, idx, &$ctx)))
                 }
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(&items, idx)))
+                    Ok(Some(list_get_at_optional(&items, idx, &$ctx)))
                 }
                 _ => Ok(None),
             },
@@ -23764,8 +23963,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.parse_int" { "parse_int" } => {
                 let s = expect_str($positional.first().copied(), "parse_int")?;
                 match s.parse::<i64>() {
-                    Ok(n) => Ok(Some(Value::Int(n))),
-                    Err(_) => Ok(Some(Value::Null)),
+                    Ok(n) => Ok(Some(optional_present(Value::Int(n), $ctx))),
+                    Err(_) => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -23896,8 +24095,8 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
-            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
-            // sha256_hex_of_text_contract).
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (the host realization
+            // of the declared seam std.content_hash sha256_hex_of_text).
             arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
                 Ok(Some(str_value(sha256_hex_of_text_digest(
                     expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
@@ -23919,8 +24118,8 @@ macro_rules! v1_builtin_arms {
                     expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
                     expect_value_str($positional.get(1).copied(), "hmac_sha256_hex message")?.as_str(),
                 ) {
-                    Some(tag) => str_value(tag),
-                    None => Value::Null,
+                    Some(tag) => optional_present(str_value(tag), $ctx),
+                    None => optional_absent($ctx),
                 }))
             },
 
@@ -23945,8 +24144,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
                 let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
                 match v1_rt::json_unescape_checked(&s) {
-                    Some(out) => Ok(Some(str_value(out))),
-                    None => Ok(Some(Value::Null)),
+                    Some(out) => Ok(Some(optional_present(str_value(out), $ctx))),
+                    None => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -24568,26 +24767,15 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.decl_facts_at" { "decl_facts_at" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
-                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
+                let qualified_names =
+                    expect_str_list($positional.get(1).copied(), "decl_facts_at")?;
+                let type_names = expect_str_list($positional.get(2).copied(), "decl_facts_at")?;
                 Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
                     $ctx,
                     &pool_roots,
-                    qualified_name.as_str(),
+                    &qualified_names,
+                    &type_names,
                 )?))
-            },
-
-            arm "free_call.type_declarer_qualified_names" { "type_declarer_qualified_names" } => {
-                let pool_roots =
-                    expect_str_list($positional.first().copied(), "type_declarer_qualified_names")?;
-                let bare_name =
-                    expect_value_str($positional.get(1).copied(), "type_declarer_qualified_names")?;
-                Ok(Some(
-                    crate::coproduct_reflection::eval_type_declarer_qualified_names(
-                        $ctx,
-                        &pool_roots,
-                        bare_name.as_str(),
-                    )?,
-                ))
             },
 
             arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
@@ -25192,22 +25380,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
-                let pool_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                let consumer_module = expect_str($positional.get(2).copied(), $name)?;
-                let symbol = expect_str($positional.get(3).copied(), $name)?;
-                Ok(Some(declared_import_closure_binding_value(
-                    crate::cli_run::observe_declared_import_closure_symbol_binding(
-                        &pool_roots,
-                        &entry_path,
-                        &consumer_module,
-                        &symbol,
-                    ),
-                    $ctx,
-                )))
-            },
-
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
             ))),
@@ -25256,6 +25428,9 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
+            arm "free_call.witness_deferral_freeze_population_census" { "witness_deferral_freeze_population_census" } => Ok(Some(str_value(
+                crate::cli_run::witness_deferral_freeze_population_census(),
+            ))),
             arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),
@@ -25528,13 +25703,9 @@ fn apply_closure(
     });
     if depth > CALL_DEPTH_LIMIT {
         CALL_DEPTH.with(|d| d.set(d.get() - 1));
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} in closure application — unbounded recursion \
-                 (a bare-name resolution cycle, or a genuinely divergent chain); \
-                 refused, never a host stack overflow",
-                CALL_DEPTH_LIMIT
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: "closure application".to_string(),
         });
     }
     let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
@@ -26760,8 +26931,20 @@ mod slice_cost_tests {
     }
 }
 
-fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
-    items.get(idx as usize).cloned().unwrap_or(Value::Null)
+/// A list element read is the declared `Optional<T>` (v2 `list_at_optional` is the referent):
+/// `Present { value }` in range, `Absent` otherwise, never a bare element or host null.
+fn list_element_as_optional(element: Option<Value>, ctx: &InterpContext) -> Value {
+    match element {
+        Some(value) => optional_present(value, ctx),
+        None => optional_absent(ctx),
+    }
+}
+
+fn list_get_at_optional(items: &RrbVector<Value>, idx: i64, ctx: &InterpContext) -> Value {
+    let element = usize::try_from(idx)
+        .ok()
+        .and_then(|i| items.get(i).cloned());
+    list_element_as_optional(element, ctx)
 }
 
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
@@ -26850,7 +27033,7 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
 }
 
 // SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
-// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// sha256_hex_of_text (declared at std.content_hash sha256_hex_of_text), the same RustCrypto sha2 the HMAC
 // seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
 fn sha256_hex_of_text_digest(text: &str) -> String {
     use sha2::{Digest, Sha256};
@@ -30118,9 +30301,9 @@ mod value_depth_walker_tests {
 
     use super::{
         account_value, cross_representation_numeric_straddle,
-        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value,
-        portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
-        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash,
+        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
+        optional_absent, portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
+        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
 
@@ -30169,6 +30352,138 @@ mod value_depth_walker_tests {
         value
     }
 
+    // THE RED: A UNIQUELY OWNED CARRIER HELD BY A `Weak` STILL REACHES THE WORKLIST.
+    //
+    // `Rc::get_mut` refuses any carrier with an outstanding `Weak`, even at strong count one, and this
+    // interpreter keeps such handles on live carriers on purpose (`CompositeWeak` in the recompute
+    // memo). Before the fallback in detach_owned_children, no level's members were moved, so
+    // `Value::drop`'s return released them through drop glue and the 262,144-deep chain aborted the
+    // process on the default 2 MiB test-thread stack -- the same host abort the wet lane shows after a
+    // reported refusal. Remove the fallback and THIS test aborts; that is its discriminating input.
+    #[test]
+    fn a_weak_held_list_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // Same through the fields carrier, which detach_owned_children drains at EVERY depth rather than
+    // only past VALUE_DROP_INLINE_DEPTH, so it is the arm the wet-lane Variant/Record values take.
+    #[test]
+    fn a_weak_held_variant_chain_drops() {
+        let ctx = fresh_ctx();
+        let (chain, link, end, next) = (
+            ctx.sym("Chain"),
+            ctx.sym("Link"),
+            ctx.sym("End"),
+            ctx.sym("next"),
+        );
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = Value::Variant {
+            type_name: chain,
+            variant_name: end,
+            fields: Rc::new(vec![]),
+        };
+        for _ in 0..DEPTH {
+            let fields = Rc::new(vec![(next, value)]);
+            weaks.push(Rc::downgrade(&fields));
+            value = Value::Variant {
+                type_name: chain,
+                variant_name: link,
+                fields,
+            };
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE THIRD CARRIER TYPE, TESTED THE SAME WAY. detach_owned_children has three fallback arms
+    // (List, Map, fields), and the two above cover List and fields; without this one the Map arm could
+    // be deleted and the suite would stay green. Same shape: uniquely owned at every level, one `Weak`
+    // outstanding at every level, deep enough that detach_carriers is on.
+    #[test]
+    fn a_weak_held_map_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = map_value(HashMap::new());
+        for level in 0..DEPTH {
+            let mut entries = HashMap::new();
+            entries.insert(
+                CanonKey::new(Value::Int(level as i64)).expect("reflexive key"),
+                value,
+            );
+            let carrier = Rc::new(entries);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::Map(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE POSITIVE CONTROL: A SHARED CARRIER IS STILL NOT STOLEN. The fallback must drain only what the
+    // dropping value exclusively owns. Here every level's carrier has a SECOND STRONG OWNER held
+    // elsewhere, so the strong_count guard must keep it off the try_unwrap path entirely: after the
+    // chain is dropped, each retained carrier still holds its one member. Widen the fallback to ignore
+    // the strong count and this fails instead of passing.
+    #[test]
+    fn a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner() {
+        const SHARED_DEPTH: usize = 1_024;
+        let mut retained: Vec<Rc<im::Vector<Value>>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..SHARED_DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            retained.push(Rc::clone(&carrier));
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        assert_eq!(
+            retained.iter().map(|carrier| carrier.len()).sum::<usize>(),
+            SHARED_DEPTH,
+            "a shared carrier was drained from under its other owner"
+        );
+        drop(retained);
+        drop(weaks);
+    }
+
+    // WHY try_unwrap AND NOT A STRONGER get_mut TEST: the fallback rests on `Weak` not blocking
+    // `Rc::try_unwrap` while it does block `Rc::get_mut`. That is std behaviour this file now depends
+    // on, so it is pinned here rather than trusted: if a future std made `Weak` block try_unwrap, the
+    // two deep tests above would abort again and THIS one would say why.
+    #[test]
+    fn an_outstanding_weak_blocks_get_mut_but_not_try_unwrap() {
+        let mut carrier: Rc<Vec<(crate::v1_interpreter::Symbol, Value)>> = Rc::new(vec![]);
+        let weak = Rc::downgrade(&carrier);
+        let extra = Rc::clone(&carrier);
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "two strong owners must not grant get_mut"
+        );
+        drop(extra);
+        assert_eq!(
+            Rc::strong_count(&carrier),
+            1,
+            "the extra owner was not released"
+        );
+        assert_eq!(Rc::weak_count(&carrier), 1, "the Weak handle vanished");
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "Weak stopped blocking get_mut: the fallback arm this pins is then dead weight"
+        );
+        assert!(
+            Rc::try_unwrap(carrier).is_ok(),
+            "std started letting Weak block try_unwrap: uniquely owned carriers stop draining \
+             and the deep drops abort again"
+        );
+        assert_eq!(weak.strong_count(), 0, "the carrier survived its unwrap");
+    }
+
     #[test]
     fn a_deep_variant_chain_drops() {
         let ctx = fresh_ctx();
@@ -30211,7 +30526,9 @@ mod value_depth_walker_tests {
         assert_eq!(super::json_container_depth(&wire), limit);
         let text = serde_json::to_string(&wire).expect("serializes");
         assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok());
-        assert!(json_to_value(&wire) == value);
+        assert!(json_to_value(&wire, &ctx) == value);
+        // JSON null is absence: the one `Optional.Absent` constructor, not host Null.
+        assert!(json_to_value(&serde_json::Value::Null, &ctx) == optional_absent(&ctx));
         // The fixture encoding spends two containers per List level (its tag object and its items
         // array), the empty leaf included, so limit / 2 Lists -- limit / 2 - 1 wrapping levels --
         // fit inside the limit.
@@ -30562,5 +30879,186 @@ mod canonical_render_order_tests {
         assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
         let ints = [Value::Int(2), Value::Int(1)];
         assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod t9_host_recursion_probes {
+    //! Regression controls for the host-stack drop of closure/Env chains deeper than the stack: `Env`
+    //! drops iteratively (`impl Drop for Env`), one discipline with `impl Drop for Value` and
+    //! `impl Drop for PortableValue` -- the outermost drop drains a worklist (a local Vec for Value,
+    //! a thread-local queue for Env). Each test drops a 262,144-deep chain on the default test
+    //! thread; the two `_1m` tests run the Env.parent-only shapes at 1,000,000 (the depth where
+    //! they discriminate; peak ~2.4 GB, so they are `--ignored` and run on a sized host).
+    //! Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{no_span, Cardinality, Connective, ExprData, Node};
+
+    use super::{list_value, map_value, Env, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn body_node() -> Rc<Node> {
+        Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: "body".to_string(),
+            span: no_span(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    /// 262,144 discriminates the closure-capture shapes; the two Env.parent-only shapes hold at that
+    /// depth and abort only at 1,000,000 (srv1, pre-fix), so they default to the deeper figure.
+    fn depth_or(default: usize) -> usize {
+        std::env::var("T9_DEPTH")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    }
+
+    fn depth() -> usize {
+        depth_or(262_144)
+    }
+
+    fn parent_depth() -> usize {
+        depth_or(1_000_000)
+    }
+
+    fn env_parent_chain(depth: usize) {
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            env = Env::extend(&env, HashMap::new());
+        }
+        drop(env);
+    }
+
+    fn closure_via_env_parent_chain(depth: usize) {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            let c = closure(&body, env.clone());
+            env = Env::with_binding(&env, f, c);
+        }
+        drop(env);
+    }
+
+    fn closure(body: &Rc<Node>, env: Rc<Env>) -> Value {
+        Value::Closure {
+            params: vec![],
+            body: body.clone(),
+            env,
+        }
+    }
+
+    /// Env.parent-only chain: no Value anywhere, so only an iterative Env Drop holds it.
+    #[test]
+    fn probe_env_parent_chain_drops() {
+        env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_env_parent_chain_drops_1m() {
+        env_parent_chain(parent_depth());
+    }
+
+    /// Each closure captures an env binding the previous closure.
+    #[test]
+    fn probe_closure_capture_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
+    }
+
+    /// Closure chain threaded through Env.parent: each env's parent binds the previous closure.
+    #[test]
+    fn probe_closure_via_env_parent_chain_drops() {
+        closure_via_env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_closure_via_env_parent_chain_drops_1m() {
+        closure_via_env_parent_chain(parent_depth());
+    }
+
+    /// Closure env binds a List holding the previous closure.
+    #[test]
+    fn probe_closure_env_list_of_closures_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let env = Env::with_binding(&Env::empty(), f, list_value(vec![value]));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Closure env binds a Map whose value is the previous closure.
+    #[test]
+    fn probe_closure_env_map_value_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let mut entries = super::HamtMap::new();
+            entries.insert(
+                super::CanonKey::new(super::str_value("k")).expect("canonical key"),
+                value,
+            );
+            let env = Env::with_binding(&Env::empty(), f, map_value(entries));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Positive control: shallow chain drops fine (proves the probe builds what it claims).
+    #[test]
+    fn control_shallow_closure_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..1_000 {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
     }
 }

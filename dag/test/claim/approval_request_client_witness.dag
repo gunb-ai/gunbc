@@ -3,7 +3,8 @@ module test.claim.approval_request_client_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String, List, Int }
 import std.optional { Present, Absent }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_exit, CensusVerdict }
 import gunbc.auth.approval_request_client {
   approval_loopback_origin, approval_loopback_origin_for, approval_loopback_origin_of, approval_request_submit_path,
   ApprovalLoopbackOrigin, ApprovalLoopbackOriginResolved, ApprovalLoopbackOriginRefused,
@@ -132,43 +133,33 @@ data forged_approval_routes_source: String = "module probe_forged_approval_route
 
 data canonical_approval_routes_source: String = "module probe_canonical_approval_routes\nimport gunbc.auth.approval_gate { approval_file_stored_request, approval_standing_read, ApprovalFiling, ApprovalStandingRead }\nimport gunbc.auth.approval_decision_store { StoredApprovalRequest }\nimport std.measure { Second }\nimport std.types { Timestamp, NonEmptyStr }\nfn file(s: StoredApprovalRequest, t: Second) -> ApprovalFiling { approval_file_stored_request(stored: s, body_file_name: \"x\", submit_timeout: t) }\nfn read(e: NonEmptyStr, x: Timestamp) -> ApprovalStandingRead { approval_standing_read(escalation_id: e, expires_at: x) }\n"
 
-fn forged_route_refusals(class: String, subject: String) -> Int {
-  match census_blocking_count_for_subject(census: compile_dag_diagnostic_census(forged_approval_routes_source), wanted_class: class, wanted_subject: subject) {
-    Present { value: n } => n
-    Absent => 0
-  }
-}
-
-fn admission_refusals_in(source: String) -> Int {
-  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "ConstructorCallAdmissionRefused") {
-    Present { value: n } => n
-    Absent => 0
-  }
+fn forged_route_verdict(class: String, subject: String) -> CensusVerdict {
+  census_verdict(census: blocking_subject_census(source: forged_approval_routes_source, wanted_class: class, wanted_subject: subject), holds: fn(n) { n >= 1 })
 }
 
 // (1) An outside module cannot mint the token: not through the mint, not as a literal, and not by
 // calling the live admission (which is where the hostname is read).
-test fn no_outside_module_can_mint_a_dial_token_through_the_mint() -> Bool {
-  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "mint_dialable_approval_origin") >= 1
+test fn no_outside_module_can_mint_a_dial_token_through_the_mint() -> ProcessExit {
+  census_exit(forged_route_verdict(class: "ConstructorCallAdmissionRefused", subject: "mint_dialable_approval_origin"))
 }
 
-test fn no_outside_module_can_write_a_dial_token_literal() -> Bool {
-  forged_route_refusals(class: "SoleConstructorViolation", subject: "DialableApprovalOrigin") >= 1
+test fn no_outside_module_can_write_a_dial_token_literal() -> ProcessExit {
+  census_exit(forged_route_verdict(class: "SoleConstructorViolation", subject: "DialableApprovalOrigin"))
 }
 
-test fn no_outside_module_can_call_the_live_origin_admission() -> Bool {
-  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "approval_origin_admission_here") >= 1
+test fn no_outside_module_can_call_the_live_origin_admission() -> ProcessExit {
+  census_exit(forged_route_verdict(class: "ConstructorCallAdmissionRefused", subject: "approval_origin_admission_here"))
 }
 
 // (2) The filing step that reads the key, writes the envelope and POSTs is reachable only from the
 // filing composition that admitted the origin.
-test fn no_outside_module_can_call_the_filing_step() -> Bool {
-  forged_route_refusals(class: "ConstructorCallAdmissionRefused", subject: "approval_file_stored_request_at") >= 1
+test fn no_outside_module_can_call_the_filing_step() -> ProcessExit {
+  census_exit(forged_route_verdict(class: "ConstructorCallAdmissionRefused", subject: "approval_file_stored_request_at"))
 }
 
 // (3) THE CONTROL: the canonical filing and standing-read routes compile with no admission refusal.
-test fn the_canonical_filing_and_standing_read_routes_compile() -> Bool {
-  admission_refusals_in(source: canonical_approval_routes_source) == 0
+test fn the_canonical_filing_and_standing_read_routes_compile() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: canonical_approval_routes_source, wanted_class: "ConstructorCallAdmissionRefused"), holds: fn(n) { n == 0 }))
 }
 
 // THE REGRESSION run 37265259209 hit: the live origin is the declared writer's, the broker's loopback

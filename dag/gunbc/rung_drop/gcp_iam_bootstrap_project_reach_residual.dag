@@ -19,12 +19,11 @@ data gcp_iam_bootstrap_project_reach_residual: RungDrop = RungDrop {
   identity: "gcp_iam_bootstrap_project_reach_residual" as NonEmptyStr,
   subject: "which principals a tapped bootstrap delta run can grant fleet-secret access to",
   declared: "2026-10-18",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "the organization policy constraint iam.allowedPolicyMemberDomains on organizations/266638272282, or a GCP-side grant mechanism that admits only the approved cells" },
     population: Enumerated { members: FreeSemigroup { head: "every secret, service account and workload identity pool in project gunbai-secrets", tail: [] } },
     restoration_trigger: "a credential-layer bound on grantees of iam-bootstrap's writes holds -- iam.allowedPolicyMemberDomains enforced on the fleet project's organization and observed refusing an out-of-domain member, or a platform grant mechanism (e.g. Privileged Access Manager with service-account approvers at GA) that issues only the approved cells -- at which point this row retires"
-  }
+  } }
 }

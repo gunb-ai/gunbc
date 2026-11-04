@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.native_claim_program_entry_paths_restated_in_the_hand_rust_instrument_registry
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data native_claim_program_entry_paths_restated_in_the_hand_rust_instrument_registry: RecurringFailureMode = RecurringFailureMode {
+  identity: "native_claim_program_entry_paths_restated_in_the_hand_rust_instrument_registry" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "the seed host's instrument registry is derived from gunbc.instrument_targets instrument_bindings, so a label's producer and entry path have one source and no hand-Rust row restates them -- executed check = adding a label in instrument_targets alone makes `gunbc test` route it, and a hand-Rust row naming a path the bindings do not declare has no construction" } },
+
+  receipts: [
+    "INVALID STATE: a label whose producer entry path in the hand-Rust seed registry (src/v1/stage0/src/target_invocation_host.rs instrument_registry) differs from the entry its gunbc.instrument_targets binding declares, or a label present in one and absent from the other. Every NativeClaimProgramProducer label is stated twice, once as the .dag binding and once as a TargetProducer::NativeClaimProgram row, and nothing joins the two (review 85553 on PR #15044, sunny-bee-153, 2026-10-24: the member-home-cost row repeats member_home_cost_binding's entry). A grep count on #15044's head reads 14 TargetProducer::NativeClaimProgram occurrences in the host against 12 NativeClaimProgramProducer bindings in instrument_targets; the difference is not reconciled here and is itself the kind of drift this row names.",
+
+    "HARM: the label routes to whatever the hand row says, so a binding edit that the host row does not follow runs a different entry from the one the corpus declares, with no refusal; and every new label pays a second hand-Rust edit in the seed (DESIGN section 3, a second authority for one fact; section 7, the seed shrinks, it does not grow rows). ATTAINABLE CEILING: structurally impossible, once the registry is a projection of instrument_bindings. NEXT-RUNG TRIGGER, at capability grain: the registry is derived from gunbc.instrument_targets instrument_bindings. Owner routing: Manager 2 (clever-crane-830, seed host and emitted entry points), routed by tidy-ant-251.",
+  ],
+
+  evidence: [],
+}

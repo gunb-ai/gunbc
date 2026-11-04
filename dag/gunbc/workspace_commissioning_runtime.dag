@@ -22,7 +22,7 @@ import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, 
 import gunbc.fabric.fabric_cell_acquire { fabric_cell_read_boundary, fabric_cell_boundary_address_probe, fabric_cell_read_boundary_property, PropertyRead, PropertyReadRefused }
 import gunbc.fabric.fabric_cell_observe { AddressStateRead, AddressStateReadRefused }
 import gunbc.fabric.fabric_cell_converge { fabric_cell_desired_state_digest, FabricCellResourceBoundaryAddress }
-import gunbc.ci.ci_runner_placement { runner_deployment_plan, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused }
+import gunbc.ci.ci_runner_placement { runner_fleet_capacity_plan, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused }
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsReady, WorkspaceToolsUnobserved }
 
@@ -60,7 +60,7 @@ fn workspace_commissioning_runtime_refusal(provenance: WorkspaceCommissioningPro
 // A derived host deployment is downstream of the existing conservation verdict, including the
 // whole shakedown cell and separate controller charge. Do not author another memory calculation.
 fn workspace_commissioning_host_budget_admitted(slot: RunnerSlotIdentity) -> Bool {
-  count(filter(runner_deployment_plan().hosts, standing => match standing {
+  count(filter(runner_fleet_capacity_plan().hosts, standing => match standing {
     HostRunnerDeploymentDerived { deployment } => deployment.identity == slot.host
     HostRunnerDeploymentRefused { refusal: _ } => false
   })) == 1

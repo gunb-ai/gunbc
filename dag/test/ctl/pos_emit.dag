@@ -17,7 +17,7 @@ import extdeps.bmc.ipmi
 // reason, since an uncollected service means its expected refusal text is emitted unconditionally.
 fn emits_a_service_call(host: String) -> String
 {
-  r = diagnostic.ipmi.Tool.SensorList(bmc_host: host as NonEmptyStr)
+  r = diagnostic.ipmi.Tool.SensorList(bmc_host: host as NonEmptyStr, cipher_suite_argv: [])
   return r.stdout
 }
 

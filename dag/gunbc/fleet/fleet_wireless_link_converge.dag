@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_wireless_link_converge
 
-import std.types { String, Bool, NonEmptyStr, Secret }
+import std.types { String, Bool, NonEmptyStr, Secret, PathSegment }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -11,8 +11,12 @@ import gunbc.fleet.fleet_known_hosts_anchor {
 }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, HostCli, spark_remote_argv_run }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
-import gunbc.auth.materialized_secret {
-  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+import gunbc.auth.private_secret_file {
+  with_private_secret_file,
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
 import gunbc.fleet.fleet_multi_principal_probe {
   SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused, spark_converge_target_selection,
@@ -78,9 +82,9 @@ fn spark_wireless_link_converge_ci_wet() -> ProcessExit
                       match fleet_openssh_trust_policy_of(outcome: materialization) {
                         Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
                         Present { value: trust } =>
-                          match with_materialized_ssh_key_file(
-                            identity_file_name: "gunbc-spark-wireless-link-converge-admin-password" as NonEmptyStr,
-                            secret_bytes: administrator as Secret,
+                          match with_private_secret_file(
+                            file_name: "gunbc-spark-wireless-link-converge-admin-password" as PathSegment,
+                            content: administrator as Secret,
                             use: fn(file) {
                               let ctx = SparkMaterializeContext {
                                 host: target_host,
@@ -101,8 +105,10 @@ fn spark_wireless_link_converge_ci_wet() -> ProcessExit
                               )
                             },
                           ) {
-                            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                            MaterializedSshKeyFileBracketCompleted { value: exit } => exit
+                            PrivateSecretFileNotEntered { cause: c } => exit_failure(reason: c as String)
+                            PrivateSecretFileNotEnteredResidueRemains { cause: c } => exit_failure(reason: c as String)
+                            PrivateSecretFileCompletedResidueRemains { value: _ } => exit_failure(reason: "the credential file could not be removed after the bracket body ran, so the secret may remain on disk and requires cleanup")
+                            PrivateSecretFileCompleted { value: exit } => exit
                           }
                       }
                     }

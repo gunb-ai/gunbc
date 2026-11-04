@@ -54,8 +54,13 @@ type WorkspaceAdminSubject
 type WorkspaceAppAccess = AppTrusted | AppLimited | AppBlocked | AppSpecificGoogleData { scopes: List<NonEmptyStr> }
 type WorkspaceDirectorySharingPolicy = RequesterBasicProfileOnly | OrganizationDirectoryData
 
+// An Auth Platform OAuth client is registered as one application type, and the type fixes what the
+// registration carries: a Web application client its authorized redirect URIs (and a secret), an
+// iOS client its bundle ID, with no secret and a redirect to the reversed client id
+// (https://support.google.com/cloud/answer/15549257, "Application type").
 type WorkspaceAdminValue
   = RegisteredWebClient { redirect_uris: List<NonEmptyStr> }
+  | RegisteredIosClient { bundle_id: NonEmptyStr }
   | InternalAudience
   | ExternalAudience
   | ClientAccess { access: WorkspaceAppAccess }
@@ -87,6 +92,7 @@ fn workspace_admin_control(subject: WorkspaceAdminSubject) -> WorkspaceAdminCont
 fn workspace_admin_value_control(value: WorkspaceAdminValue) -> WorkspaceAdminControl {
   match value {
     RegisteredWebClient { redirect_uris: _ } => OAuthClientRegistration
+    RegisteredIosClient { bundle_id: _ } => OAuthClientRegistration
     InternalAudience => OAuthApplicationAudience
     ExternalAudience => OAuthApplicationAudience
     ClientAccess { access: _ } => OAuthClientAppAccess

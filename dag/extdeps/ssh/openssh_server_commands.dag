@@ -1,0 +1,38 @@
+module extdeps.ssh.openssh_server_commands
+
+import std.types { List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE OpenSSH SERVER'S OWN CONFIGURATION CHECKS, by sshd(8)'s flags. -t: "Test mode. Only check the
+// validity of the configuration file and sanity of the keys. This is useful for updating sshd reliably
+// as configuration options may change." -T: "Extended test mode. Check the validity of the configuration
+// file, output the effective configuration to stdout and then exit." -o: "Can be used to give options
+// in the format used in the configuration file." sshd "rereads its configuration file when it receives a
+// hangup signal, SIGHUP", so a changed file is not live until that reload.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/sshd.8"
+  }
+}
+
+fn sshd_test_config_argv() -> List<String> {
+  ["sshd", "-t"]
+}
+
+// The candidate option checked against the live configuration before any file carrying it exists.
+fn sshd_test_config_with_option_argv(option: NonEmptyStr) -> List<String> {
+  ["sshd", "-t", "-o", option as String]
+}
+
+fn sshd_effective_config_argv() -> List<String> {
+  ["sshd", "-T"]
+}
+
+// sshd -T prints one "keyword value" line per setting, keywords lowercased; the value of one keyword,
+// exactly as printed, or none when the keyword is not printed.
+fn sshd_effective_config_value(text: String, keyword: NonEmptyStr) -> String? {
+  let prefix = concat(keyword as String, " ")
+  map(filter(text.split(delimiter: "\n"), l => l.starts_with(prefix)), l => l.substring(start: prefix.length(), end: l.length())).first()
+}

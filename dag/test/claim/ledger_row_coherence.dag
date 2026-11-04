@@ -86,7 +86,7 @@ test fn a_withheld_row_is_named_as_missing() -> Bool {
 }
 
 // THE SECOND LEDGER IS COVERED BY THE SAME CONSTRUCTION, and this arm is the whole reason the rows
-// are derived from the ROSTER rather than from an index in the projection: docs/design-rung-drops.md
+// are derived from the ROSTER rather than from an index in the projection: `gunbc.design_ledgers` `expected_design_rung_drops_md`
 // carries no identity index, so an index-driven classifier could not answer for it at all.
 test fn the_rung_drop_ledger_is_covered_without_a_projection_index() -> Bool {
   let a = DesignRungDropsArtifact

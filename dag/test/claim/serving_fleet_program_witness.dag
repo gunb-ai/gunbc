@@ -1,0 +1,202 @@
+module test.claim.serving_fleet_program_witness
+
+import std.types { Bool, Int, List, String }
+import v2.std.decl_index { DeclFact }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { Empty, string_contains }
+import std.markdown { MarkdownDocument }
+import gunbc.plan { plan_projects_committed_markdown }
+import gunbc.plan_registry { all_plans }
+import extdeps.languages.markdown { serialize_markdown_source }
+import gunbc.plans.serving_fleet_program {
+  serving_fleet_program_plan,
+  serving_fleet_rows,
+  ServingFleetRow,
+  ServingFleetRowId,
+  ServingFleetOwner,
+  SfpOwnedBy,
+  SfpUnowned,
+  SfpA1,
+  SfpA2,
+  SfpSupply,
+  SfpUnstarted,
+  sfp_row_label
+}
+import test.claim.plan_citation_census {
+  plan_citation_has_positional_citation,
+  plan_citation_citation_roster,
+  plan_citation_occurrences,
+  plan_citation_census_read,
+  plan_citation_census_rows_in
+}
+
+// Guards on the serving-fleet umbrella CARRIER (DESIGN section 1: a plan's authority is its
+// .dag carrier). The rows are typed records, so a row's id, owner, standing and edges are
+// read as fields and the claims fold over them; only the claims about what the projected
+// text says (no endpoint, no line number, citations resolve) read the serialized body.
+// No claim compares a population to a literal: edges are joined against row ids
+// (DESIGN section 5, completeness is an identity join).
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn carrier_text() -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: serving_fleet_program_plan.body })
+}
+
+fn carrier_is_registered() -> Bool {
+  fold(all_plans, init: false, f: (acc, p) => acc || p.slug == "serving-fleet-program")
+}
+
+// Each claim that resolves citations reads the census once and joins every citation against it.
+fn citation_resolves(facts: List<DeclFact>, cite: String) -> Bool {
+  plan_citation_census_rows_in(facts: facts, cite: cite).length() >= 1
+}
+
+test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
+  carrier_is_registered()
+    && plan_projects_committed_markdown(p: serving_fleet_program_plan) == false
+}
+
+// Positive conjuncts first, so an empty read cannot satisfy the negative ones.
+test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
+  let t = carrier_text()
+  string_contains(s: t, pattern: "product.fabric.serving_recipe::serving_unit_cost_for_selection")
+    && !(string_contains(s: t, pattern: ".dag:")
+      || string_contains(s: t, pattern: ".rs:")
+      || string_contains(s: t, pattern: "DESIGN.md:")
+      || plan_citation_has_positional_citation(t: t))
+}
+
+// Public repository: no endpoint or credential vocabulary may appear in the carrier.
+test fn the_carrier_names_no_endpoint_or_secret() -> Bool {
+  let t = carrier_text()
+  string_contains(s: t, pattern: "Standing:")
+    && !(string_contains(s: t, pattern: "http://")
+      || string_contains(s: t, pattern: "https://")
+      || string_contains(s: t, pattern: ".ts.net"))
+}
+
+// Every `::` in the projected text is covered by the derived roster, and every roster entry
+// resolves in the declaration census; a name no module declares stays unresolved.
+test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
+  let t = carrier_text()
+  let roster = plan_citation_citation_roster(t: t)
+  let covered = fold(roster, init: 0, f: (n, cite) => n + plan_citation_occurrences(t: t, cite: cite))
+  // The negative control is one of the read's keys, so the census answers it; a key left out of
+  // the read would come back empty by omission and the control would pass without being asked.
+  let facts = plan_citation_census_read(cites: concat(roster, ["gunbc.serving.no_such_module::NoSuchSymbol"]))
+  roster.length() >= 1
+    && covered == t.split(delimiter: "::").length() - 1
+    && !citation_resolves(facts: facts, cite: "gunbc.serving.no_such_module::NoSuchSymbol")
+    && all(roster, cite => citation_resolves(facts: facts, cite: cite))
+}
+
+// ── Row identity. The id is a closed sum, so a misspelled label has no constructor; what
+// remains to check is that each id is carried by exactly one row, and that every edge and
+// cross-reference names an id some row carries.
+fn same_row(a: ServingFleetRowId, b: ServingFleetRowId) -> Bool {
+  sfp_row_label(id: a) == sfp_row_label(id: b)
+}
+
+fn carries(rows: List<ServingFleetRow>, id: ServingFleetRowId) -> Bool {
+  any(rows, r => same_row(a: r.id, b: id))
+}
+
+test fn every_row_id_is_carried_once_and_every_edge_names_a_row() -> Bool {
+  let rows = serving_fleet_rows
+  rows.length() >= 1
+    && any(rows, r => r.depends_on.length() >= 1)
+    && all(rows, r => filter(rows, q => same_row(a: q.id, b: r.id)).length() == 1)
+    && all(rows, r => all(r.depends_on, d => carries(rows: rows, id: d)))
+    && all(rows, r => all(r.related, d => carries(rows: rows, id: d)))
+    && !carries(rows: [fixture_row(id: SfpA1, depends_on: [])], id: SfpA2)
+}
+
+// ── Owner. An owned row's symbol must resolve in the declaration census; an unowned row
+// states its obligation. A symbol no module declares fails.
+fn owner_is_declared(facts: List<DeclFact>, o: ServingFleetOwner) -> Bool {
+  match o {
+    SfpOwnedBy { symbol } => citation_resolves(facts: facts, cite: symbol)
+    SfpUnowned { obligation } => obligation != ""
+  }
+}
+
+fn owner_symbol_step(acc: List<String>, o: ServingFleetOwner) -> List<String> {
+  match o {
+    SfpOwnedBy { symbol } => concat(acc, [symbol])
+    SfpUnowned { obligation: _ } => acc
+  }
+}
+
+fn owner_symbols(owners: List<ServingFleetOwner>) -> List<String> {
+  fold(owners, init: Empty, f: owner_symbol_step)
+}
+
+fn is_owned(o: ServingFleetOwner) -> Bool {
+  match o {
+    SfpOwnedBy { symbol: _ } => true
+    SfpUnowned { obligation: _ } => false
+  }
+}
+
+test fn every_row_names_a_resolvable_owner_or_its_obligation() -> Bool {
+  let rows = serving_fleet_rows
+  let negative = SfpOwnedBy { symbol: "gunbc.serving.no_such_module::NoSuchSymbol" }
+  let facts = plan_citation_census_read(cites: owner_symbols(owners: concat(map(rows, r => r.owner), [negative])))
+  any(rows, r => is_owned(o: r.owner))
+    && all(rows, r => owner_is_declared(facts: facts, o: r.owner))
+    && !owner_is_declared(facts: facts, o: negative)
+    && !owner_is_declared(facts: facts, o: SfpUnowned { obligation: "" })
+}
+
+// ── Relations are typed. A row's prose names no row, so every relation between rows is a
+// `depends_on` edge or a `related` cross-reference, and the acyclicity claim sees all of
+// them. A done criterion that waits on a dependent row by name would be a hidden edge.
+fn owner_prose(o: ServingFleetOwner) -> String {
+  match o {
+    SfpOwnedBy { symbol: _ } => ""
+    SfpUnowned { obligation } => obligation
+  }
+}
+
+fn row_prose_names_no_row(r: ServingFleetRow) -> Bool {
+  all([r.title, r.summary, r.standing_note, r.pr, r.done, owner_prose(o: r.owner)], t => !string_contains(s: t, pattern: "Row "))
+}
+
+test fn row_prose_names_no_row_so_every_relation_is_typed() -> Bool {
+  let rows = serving_fleet_rows
+  rows.length() >= 1
+    && all(rows, r => row_prose_names_no_row(r: r))
+    && !row_prose_names_no_row(r: ServingFleetRow {
+      id: SfpA1, section: SfpSupply, title: "t", owner: SfpUnowned { obligation: "o" },
+      summary: "s", standing: SfpUnstarted, standing_note: "", pr: "p",
+      done: "observed live under Row A2.", depends_on: [], related: []
+    })
+}
+
+// ── Acyclicity, over typed edges. Each round admits every row whose prerequisites are all
+// admitted; after as many rounds as there are rows, the graph is acyclic exactly when every
+// row is admitted.
+fn fixture_row(id: ServingFleetRowId, depends_on: List<ServingFleetRowId>) -> ServingFleetRow {
+  ServingFleetRow {
+    id: id, section: SfpSupply, title: "t", owner: SfpUnowned { obligation: "o" },
+    summary: "s", standing: SfpUnstarted, standing_note: "", pr: "p", done: "d",
+    depends_on: depends_on, related: []
+  }
+}
+
+fn dependency_graph_is_acyclic(rows: List<ServingFleetRow>) -> Bool {
+  let none_admitted: List<ServingFleetRow> = []
+  let admitted = fold(rows, init: none_admitted, f: (done, round) =>
+    filter(rows, r => any(done, d => same_row(a: d.id, b: r.id))
+      || all(r.depends_on, p => any(done, d => same_row(a: d.id, b: p)))))
+  admitted.length() == rows.length()
+}
+
+test fn the_dependency_graph_is_acyclic() -> Bool {
+  let rows = serving_fleet_rows
+  rows.length() >= 1
+    && dependency_graph_is_acyclic(rows: rows)
+    && dependency_graph_is_acyclic(rows: [fixture_row(id: SfpA1, depends_on: [SfpA2]), fixture_row(id: SfpA2, depends_on: [])])
+    && !dependency_graph_is_acyclic(rows: [fixture_row(id: SfpA1, depends_on: [SfpA2]), fixture_row(id: SfpA2, depends_on: [SfpA1])])
+}

@@ -4,11 +4,12 @@
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_algebra::collection_concat_shape;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
 use crate::std_syntax::BodyKind::{
-    BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
+    AliasBody, BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
 };
 use crate::std_syntax::ItemFormKind::{
     EnumForm, FuncForm, ModuleForm, OtherForm, StructForm, TypeAliasForm,
@@ -16,8 +17,9 @@ use crate::std_syntax::ItemFormKind::{
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
-    SyntaxSpec,
+    PostfixOperatorSpec, PrefixOperatorSpec, SyntaxSpec,
 };
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -315,6 +317,26 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
 }
 
+pub fn dag_prefix_operators() -> Rc<Vec<Rc<PrefixOperatorSpec>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<PrefixOperatorSpec>>> = {
+            serde_json::from_str("[{\"symbol\": \"-\", \"binding_power\": 18}, {\"symbol\": \"!\", \"binding_power\": 18}]")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<PrefixOperatorSpec>>>| c.clone())
+}
+
+pub fn dag_postfix_operators() -> Rc<Vec<Rc<PostfixOperatorSpec>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<PostfixOperatorSpec>>> = {
+            serde_json::from_str("[{\"symbol\": \"(\", \"binding_power\": 21}, {\"symbol\": \"[\", \"binding_power\": 21}, {\"symbol\": \"as\", \"binding_power\": 19}, {\"symbol\": \"{\", \"binding_power\": 18}]")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<PostfixOperatorSpec>>>| c.clone())
+}
+
 pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
@@ -345,6 +367,8 @@ pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
                 Rc::new(SyntaxSpec {
         item_forms: dag_item_forms(),
         operators: dag_operators(),
+        prefix_operators: dag_prefix_operators(),
+        postfix_operators: dag_postfix_operators(),
         keyword_literals: dag_keyword_literals(),
         keyword_set: dag_keyword_set(),
     })

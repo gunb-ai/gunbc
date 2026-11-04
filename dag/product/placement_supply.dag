@@ -3,7 +3,7 @@ module product.placement_supply
 import std.types { NonEmptyStr, Bool, List, String, Int, brand }
 import std.measure { RackUnit }
 import std.decl_ref { DeclarationRef }
-import extdeps.dhcp.v4 { MacAddress }
+import extdeps.network.mac { Eui48Address }
 import product.host_identity { HostIdentity, host_identity_eq }
 
 type PhysicalAssetIdentity = NonEmptyStr where brand("PhysicalAssetIdentity")
@@ -101,8 +101,11 @@ type WirelessReachStanding
   = TargetSsidObserved {
       controller: HostIdentity,
       target: HostIdentity,
+      // The BSSID is a MAC address, so it is the MAC carrier: extdeps.dhcp.v4 MacAddress was a
+      // branded string whose dissolution this plan closed, and a string BSSID can only be compared
+      // verbatim against `iw` output.
       interface: NonEmptyStr,
-      bssid: MacAddress,
+      bssid: Eui48Address,
       signal: SignalStrength?,
     }
   | TargetAssociationObserved {

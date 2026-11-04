@@ -1,20 +1,21 @@
 module gunbc.runner.runner_slot_job_role
 
 import std.types { NonEmptyStr, List, Bool, Int }
+import std.optional { Absent, Present }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureJobAccount, executor_managed_directory_mode }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly }
+import extdeps.access.posix { FileMode, PermissionBits }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_home_directory }
 import std.nat { Nat }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, DeploySlotReading }
-import gunbc.runner.runner_host_deploy { srv1_runner_host_spec }
-import gunbc.runner.runner_group_restriction_observation { runner_group_restriction_not_yet_observed }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, DeploySlotReading, deploy_slot_observed_tenancy }
+import gunbc.ci.deploy_route_requirement { deploy_route_switch_admitted, srv1_deploy_route_requirement }
 import gunbc.runner.runner_slot_allocation {
   host_committed_identities_at,
   identity_in_list,
   identity_is_fabric_execution_member,
-  gunbc_runner_committed_width,
-  RunnerWidthDerived,
-  RunnerWidthUnresolved,
 }
 
 // WHO A SLOT'S JOBS RUN AS IS A FACT OF THE SLOT, NOT OF THE HOST.
@@ -92,6 +93,35 @@ fn runner_slot_job_role_runs_containers(role: RunnerSlotJobRole) -> Bool {
   }
 }
 
+// A DEPLOY SLOT'S TREE IS ITS ACCOUNT'S ALONE. The listener writes its registration and RSA key into the
+// tree (extdeps.github.actions_runner actions_runner_state_paths), and whoever can read them can take
+// the restricted group's jobs as this runner (gunbc.ci.deploy_slot_tenancy, the confidentiality wall).
+// So the tree is created owner-only, and the unit's file creation mask keeps what the listener writes
+// inside it owner-only too: the directory mode alone leaves every file the listener creates at 0644,
+// one chmod of the directory away from readable. A CI slot keeps the managed directory mode it had.
+fn runner_slot_job_role_tree_mode(role: RunnerSlotJobRole) -> FileMode {
+  match role {
+    CiJobSlot => executor_managed_directory_mode
+    DeployJobSlot => declared_directory_mode(m: DirectoryOwnerOnly)
+  }
+}
+
+// THE CREATION MASK, as the bits it removes (systemd.exec(5) UMask=, octal, default 0022): every group
+// and other bit for a deploy slot; a CI slot sets none and keeps systemd's default.
+fn runner_slot_job_role_umask(role: RunnerSlotJobRole) -> FileMode? {
+  match role {
+    CiJobSlot => none
+    DeployJobSlot => Present { value: FileMode {
+      owner: PermissionBits { read: false, write: false, execute: false },
+      group: PermissionBits { read: true, write: true, execute: true },
+      other: PermissionBits { read: true, write: true, execute: true },
+      setuid: false,
+      setgid: false,
+      sticky: false,
+    } }
+  }
+}
+
 // THE CI POPULATION IS THE COMMITTED GITHUB MEMBERS THAT ARE NOT THE DEPLOY SLOT. Both counts are
 // projections of host_committed_identities_at, the population the width instrument admits, and
 // never an authority for it: the deploy slot is a member the width already counts, so repurposing it
@@ -110,13 +140,6 @@ fn host_committed_deploy_members(host: HostIdentity, committed: Int) -> List<Run
   )
 }
 
-fn host_committed_ci_job_members(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
-  filter(
-    host_committed_github_members(host: host, committed: committed),
-    id => !identity_in_list(identity: id, members: deploy_slot_identities)
-  )
-}
-
 // A MEMBER IS KEYED BY ITS INSTANCE NAME, so the account that owns its tree is selected from the name
 // by the same role the unit's drop-in reads: the slot directory, the sudoers install line that
 // creates it and the drop-in that runs it as that account cannot name different users.
@@ -124,24 +147,32 @@ fn runner_instance_job_user(host: HostIdentity, instance_name: NonEmptyStr, ci_j
   runner_slot_job_user(role: runner_instance_job_role(host: host, instance_name: instance_name), ci_job_user: ci_job_user)
 }
 
+fn runner_instance_tree_mode(host: HostIdentity, instance_name: NonEmptyStr) -> FileMode {
+  runner_slot_job_role_tree_mode(role: runner_instance_job_role(host: host, instance_name: instance_name))
+}
+
 fn runner_host_has_deploy_slot(host: HostIdentity) -> Bool {
   any(deploy_slot_identities, d => (d.host as String) == (host as String))
 }
 
-// WHAT srv1's MODEL SAYS A READ OF THE HOST WILL HOLD, WITH THE GROUP STILL UNOBSERVED. The deploy
-// user and every other slot's user are the model's (the deploy slot's role user; each committed CI
-// member's job user), but the group is runner_group_restriction_not_yet_observed, so
-// deploy_slot_observed_tenancy answers shared until a live org-group read replaces that one member.
-// A refused width leaves the CI population unknown, and unknown reads as one shared CI user.
-fn srv1_modeled_deploy_slot_reading() -> DeploySlotReading {
-  let ci_user = srv1_runner_host_spec.job_user
-  DeploySlotReading {
-    group: runner_group_restriction_not_yet_observed(name: deploy_slot_runner_group_name),
-    deploy_slot_job_user: runner_slot_job_user(role: runner_slot_job_role(slot: srv1_deploy_slot()), ci_job_user: ci_user),
-    other_slot_job_users: match gunbc_runner_committed_width(host: operator_host_srv1) {
-      RunnerWidthDerived { slots: n } =>
-        map(host_committed_ci_job_members(host: operator_host_srv1, committed: n), id => runner_slot_job_user(role: runner_slot_job_role(slot: id), ci_job_user: ci_user))
-      RunnerWidthUnresolved { cause: _ } => [ci_user]
-    },
+// THE DEPLOY SLOT'S ACCOUNT, AS THE ONE OPERATION THAT CREATES IT. A runner job's account has a home
+// (the listener sets HOME from it) and a nologin shell (nothing logs in as it; the listener execs the
+// runner under setpriv). Its uid is host-assigned at first creation and read back, never authored.
+fn deploy_slot_account_operation() -> ExecutorPrivilegedOperation {
+  EnsureJobAccount {
+    login: deploy_slot_job_user,
+    shell: fleet_posix_nologin_shell_path,
+    home: fleet_posix_home_directory(login: deploy_slot_job_user),
   }
+}
+
+// WHETHER srv1's DEPLOY ROUTE MAY SWITCH, over a reading the caller took: the microVM controller
+// install takes it in-job, in its own step before the job loads the fleet key
+// (gunbc.live_deploy.apply microvm_controller_install_admission_wet), so the switch is admitted on what
+// the host and the org hold at that instant, not on a row.
+fn srv1_deploy_route_switch_admitted(reading: DeploySlotReading) -> Bool {
+  deploy_route_switch_admitted(
+    r: srv1_deploy_route_requirement,
+    observed: deploy_slot_observed_tenancy(reading: reading),
+  )
 }

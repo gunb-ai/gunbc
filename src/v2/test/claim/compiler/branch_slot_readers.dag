@@ -46,6 +46,7 @@ import v2.std.node {
   Conj,
   Edge,
   Node,
+  NotADeclaration,
   Positional,
   Symbol,
   TypeNode,
@@ -100,10 +101,10 @@ test fn bsr_a_branch_with_a_fourth_positional_child_is_refused() -> Bool {
   let four = node_synthetic(
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: program_kw_true() },
-      Edge { label: Positional, target: program_literal_one() },
-      Edge { label: Positional, target: program_literal_two() },
-      Edge { label: Positional, target: program_literal_two() }
+      Edge { label: Positional, target: program_kw_true(), declaration: NotADeclaration },
+      Edge { label: Positional, target: program_literal_one(), declaration: NotADeclaration },
+      Edge { label: Positional, target: program_literal_two(), declaration: NotADeclaration },
+      Edge { label: Positional, target: program_literal_two(), declaration: NotADeclaration }
     ]
   )
   match program_choose_branch(node: four, condition: program_bool_value(is_true: true), _env: bsr_env()) {
@@ -125,8 +126,8 @@ test fn bsr_a_malformed_branch_with_a_non_bool_condition_refuses_with_the_shape_
   let two = node_synthetic(
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: program_kw_true() },
-      Edge { label: Positional, target: program_literal_one() }
+      Edge { label: Positional, target: program_kw_true(), declaration: NotADeclaration },
+      Edge { label: Positional, target: program_literal_one(), declaration: NotADeclaration }
     ]
   )
   bsr_reason_is(chosen: program_choose_branch(node: two, condition: program_literal_one_value(), _env: bsr_env()), reason: ^program_branch_shape_rejected)
@@ -138,10 +139,10 @@ test fn bsr_three_positionals_plus_a_labeled_child_is_refused() -> Bool {
   let extra = node_synthetic(
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: program_kw_true() },
-      Edge { label: Positional, target: program_literal_one() },
-      Edge { label: Positional, target: program_literal_two() },
-      Edge { label: Authored { name: ^bsr_extra }, target: program_literal_two() }
+      Edge { label: Positional, target: program_kw_true(), declaration: NotADeclaration },
+      Edge { label: Positional, target: program_literal_one(), declaration: NotADeclaration },
+      Edge { label: Positional, target: program_literal_two(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^bsr_extra }, target: program_literal_two(), declaration: NotADeclaration }
     ]
   )
   bsr_reason_is(chosen: program_choose_branch(node: extra, condition: program_bool_value(is_true: true), _env: bsr_env()), reason: ^program_branch_shape_rejected)
@@ -283,7 +284,7 @@ fn bsr_atom(id: Symbol) -> Node {
 }
 
 fn bsr_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn bsr_fn(body: Node) -> Node {
@@ -295,7 +296,7 @@ fn bsr_fn(body: Node) -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: bsr_atom(id: ^fold_call_type_int) },
+      Edge { label: Positional, target: bsr_atom(id: ^fold_call_type_int), declaration: NotADeclaration },
       signature.order,
       core_edge(marker: ArrowBodyEdge, target: body)
     ]

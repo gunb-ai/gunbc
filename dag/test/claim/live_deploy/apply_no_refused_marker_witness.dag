@@ -2,60 +2,23 @@ module test.claim.live_deploy.apply_no_refused_marker_witness
 
 import std.types { Bool, String, List }
 import std.algebra { string_contains }
-import gunbc.live_deploy.desired { selected_deployment_spec, srv1_production_desired_deployment }
-import gunbc.live_deploy.emit {
-  apply_intent_fragments, compose_host_script_decide_steps, compose_host_script_mutate_steps,
-  apply_object_source_pwd_serve_decide_command,
-}
-import gunbc.shell_command_text { shell_command_text_of_node }
+import gunbc.shell_command_text { shell_command_text_of_node, shell_command_text_refusal_marker }
+import std.optional { Present, Absent }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
-import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
-import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import v2.extdeps.languages.bash_build {
-  bash_build_if_else, bash_build_stmt_list_from_nodes, bash_build_command_from_lits,
-}
-import test.claim.live_deploy.apply_emission_projection {
-  pipeline_steps_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve,
-}
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
-
-data refused_marker: String = "__GUNBC_BASH_EMIT_REFUSED__"
-
-// THE LIVE SRV1 SPEC'S WHOLE APPLY, through the real apply emission with the host observation supplied
-// (an empty host; the object source supplied as servable, which selects the same Decide fragment the
-// wet apply's $PWD decide selects). The refusal of a command intent by the bash serializer is not
-// valid shell, so one such marker anywhere in the script makes the host step fail at parse time:
-// a lab deploy failed closed at line 14 on exactly this, in the object-source Decide step. RED
-// when any step of the live spec's complete apply (Decide and Mutate halves) carries the marker.
-test fn the_live_apply_script_contains_no_refused_bash_marker() -> Bool {
-  let spec = selected_deployment_spec(row: srv1_production_desired_deployment())
-  let fragments = apply_intent_fragments(
-    spec: spec,
-    effects: apply_empty_host_effects(spec: spec),
-    access: ci_deploy_srv1_access,
-    plan: deploy_witness_full_install_plan(spec: spec),
-    cap_authorization: CapConvergeWithheld { cause: "apply refused-marker witness" },
-    oidc_now: claim_oidc_now(),
-    object_source_serve: apply_complete_object_source_serve(),
-  )
-  !string_contains(s: pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: fragments)), pattern: refused_marker)
-    && !string_contains(s: pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: fragments)), pattern: refused_marker)
+  bash_build_if_else, bash_build_if_else_from_stmts, bash_build_stmt_list_from_nodes, bash_build_command_from_lits,
+  bash_build_assign, bash_build_word_lit,
 }
 
-// THE OBJECT-SOURCE DECIDE STEP ALONE: the construct that was refused (a bare `if` as the else body,
-// where the grammar's else body is a statement LIST), taken at the unit that builds it.
-test fn the_object_source_decide_step_serializes_without_the_marker() -> Bool {
-  let cmd = apply_object_source_pwd_serve_decide_command()
-  !string_contains(s: cmd, pattern: refused_marker) && string_contains(s: cmd, pattern: "rev-parse")
-}
+// The needle is DERIVED, in gunbc.shell_command_text ::shell_command_text_refusal_marker, from the
+// authority constant that mints the marker -- this module used to re-type the token here, a second
+// copy of one fact that could drift from the thing it copies. Absent means the needle could not be
+// derived, which fails the claim rather than letting it pass on a weaker needle.
 
-// NOTHING IS DROPPED: the config probes' nested unreadable-config refusal (exit neither 0 nor 1) must
-// survive serialization. A serializer that keeps a prefix of children emits no marker and loses it.
-test fn the_object_source_decide_step_keeps_the_unreadable_config_refusal() -> Bool {
-  let cmd = apply_object_source_pwd_serve_decide_command()
-  string_contains(s: cmd, pattern: "exited neither 0 nor 1")
-}
+// The three apply-emission claims that stood here (the live srv1 apply script, and the object-source
+// Decide step alone) were deleted with the bash apply emitter they read (gunbc#14660): the typed apply
+// builds no bash for that step. The serializer claims below are #14586's repair and stay enrolled.
 
 // THE REFUSAL NAMES ITS CAUSE: the old shape (an `if` node standing as else body, not wrapped in a
 // statement list) is refused by the serializer, and the text the caller embeds carries the located
@@ -68,8 +31,12 @@ test fn a_refused_intent_marker_carries_the_serializers_reason() -> Bool {
     else_body: bash_build_if_else(cond: bash_build_command_from_lits(lits: ["true"]), then_body: colon, else_body: colon),
   )
   let text = shell_command_text_of_node(stmt: bare_nested)
-  string_contains(s: text, pattern: refused_marker)
-    && string_contains(s: text, pattern: "bash_fold_serialize_stmt_list_shape_refused")
+  match shell_command_text_refusal_marker() {
+    Absent => false
+    Present { value: refused_marker } =>
+      string_contains(s: text, pattern: refused_marker)
+        && string_contains(s: text, pattern: "bash_fold_serialize_stmt_list_shape_refused")
+  }
 }
 
 // THE SERIALIZER REFUSES AN OVER-ARITY LIST: a bare `if` node standing where a statement list is
@@ -83,5 +50,45 @@ test fn the_serializer_refuses_an_over_arity_statement_list_with_its_reason() ->
     Rejected { diagnostics: ds } =>
       string_contains(s: diagnostics_reason_lexemes(diagnostics: ds), pattern: "bash_fold_serialize_stmt_list_shape_refused")
     Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// THE SAME REFUSAL REACHES AN ASSIGN: the shape the seed build's parameter default handed -- one
+// assignment standing as an `if` arm, three positional children (tag, name, value) -- is refused with
+// the shape reason too. This is the half of the contract that kept the fold honest while
+// dag/gunbc/repo/repo_self_build.dag's `default_from` was emitting a refusal marker into all four
+// required workflows in place of the folded build preamble: the fold was right, the caller was wrong.
+test fn a_bare_assign_as_an_if_else_arm_refuses_with_the_shape_reason() -> Bool {
+  let one_arm = bash_build_assign(name: "GUNBC_SEED_TARGET", value: bash_build_word_lit(text: "/target"))
+  let bare_arms = bash_build_if_else(
+    cond: bash_build_command_from_lits(lits: ["test", "-n", "$GUNBC_SEED_TARGET"]),
+    then_body: one_arm,
+    else_body: one_arm,
+  )
+  match bash_fold_serialize_node(stmt: bare_arms) {
+    Rejected { diagnostics: ds } =>
+      string_contains(s: diagnostics_reason_lexemes(diagnostics: ds), pattern: "bash_fold_serialize_stmt_list_shape_refused")
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// THE BUILDER OWED BY THE FOLD'S CONTRACT EXISTS AND FOLDS: an `if`/`else` whose two arms are single
+// statements, built through the ONE builder for that shape (bash_build_if_else_from_stmts, the twin
+// of bash_build_if_from_stmts and bash_build_subshell_from_stmts), carries no refusal marker and
+// spells both arms. The claims above pin what the fold refuses; this pins the route the vocabulary
+// must offer so a caller never has to hand the fold a bare statement to get one statement per arm.
+test fn the_one_if_else_builder_folds_single_statement_arms() -> Bool {
+  let folded = bash_build_if_else_from_stmts(
+    cond: bash_build_command_from_lits(lits: ["test", "-n", "$SOURCE"]),
+    then_stmts: [bash_build_assign(name: "TARGET", value: bash_build_word_lit(text: "keep"))],
+    else_stmts: [bash_build_assign(name: "TARGET", value: bash_build_word_lit(text: "fallback"))],
+  )
+  let text = shell_command_text_of_node(stmt: folded)
+  match shell_command_text_refusal_marker() {
+    Absent => false
+    Present { value: refused_marker } =>
+      (!string_contains(s: text, pattern: refused_marker))
+        && string_contains(s: text, pattern: "TARGET='keep'")
+        && string_contains(s: text, pattern: "TARGET='fallback'")
   }
 }

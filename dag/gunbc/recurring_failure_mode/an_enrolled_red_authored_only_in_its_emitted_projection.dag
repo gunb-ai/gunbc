@@ -1,0 +1,53 @@
+module gunbc.recurring_failure_mode.an_enrolled_red_authored_only_in_its_emitted_projection
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, BelowCeiling }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+
+data an_enrolled_red_authored_only_in_its_emitted_projection: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_enrolled_red_authored_only_in_its_emitted_projection" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: AwaitsOneGrounding {
+        grounding: GroundingDeclared {
+          reference: DeclarationRef { module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn", field: WholeDeclaration }
+        }
+      },
+      trigger_capability: "a required-path comparison of every committed stage0 mirror with one emission of the seed built from it, refusing a mirror that differs. It must be sufficient for a pull request that adds a test to src/v1/stage0/src/compiler_tests.rs and not to its carrier to turn the required context red before it can land, so that no later regeneration on another pull request is left to delete the test. That is member (3) of the restoration trigger of gunbc.rung_drop v1_required_lanes_withdrawn, and adding it to the required job is the operator's call (ruling gunbc.design_ruling job_roster_closed_to_growth)."
+    }
+  },
+
+  receipts: [
+    "ADDITIONAL RECEIPT, gunbc#14799 review 86290, 2026-10-25. Auto-heal commit 6a9dd3c14195 deleted the same service_root_binds_only_where_its_service_is_imported test from this design-plan branch. Its author independently restored the producer in b203591e3eff and ran the retained regression test, compared the complete formatted compiler_tests_source result with the committed test module, and removed the producer call to reproduce the deletion (https://app.buildbuddy.io/invocation/ad705ac9-216f-48f3-8abb-7f6d731a672d). Rebasing onto gunbc#15178 established that the two producers emit byte-identical test text. The duplicate producer is removed in favor of v1.compiler.compiler_tests_rust ct_service_root_binds_only_where_its_service_is_imported_test. This occurrence belongs to this specific lost-RED class; the initial branch receipt under regen_candidate_reverts_hand_authored_mirror is relocated here. The receipt describes the prior validation revision, not a claim that required CI executes the v1 unit-test population.",
+
+    "INVALID STATE: a committed stage0 mirror holds an item, here an enrolled discriminating RED, that one emission of its carrier does not produce, because the author wrote the item into the generated file and not into the .dag carrier it is emitted from. The item has no authority. The next regeneration of that file converges it back to the carrier and deletes the item.",
+
+    "HARM: an enrolled RED is deleted with no typed signal, and its rung drops silently (DESIGN section 4b, meta-obligation 3). The deletion lands as a bot commit on WHICHEVER pull request next triggers the heal round. That is usually an unrelated change whose author has no reason to read a 64-line deletion in a file they never touched. Restoring the file by hand only puts back the same unauthored state, and the next round deletes the item again.",
+
+    "RECEIPT. gunbc#15133 (30274a6acb6a) enrolled compiler_tests service_root_binds_only_where_its_service_is_imported as the RED for gunbc.recurring_failure_mode binding_chosen_by_pool_membership_rather_than_by_the_declared_rule, writing 64 lines into src/v1/stage0/src/compiler_tests.rs and none into its carrier v1.compiler.compiler_tests_rust (src/v1/compiler_tests_rust.dag). That pull request's own heal run, 40179954350 on head fefc691fc7, was still converging when the change landed at 11:28Z (the round's receipt printed at 11:34Z), so the drift reached main. The next heal round on gunbc#15145, run 40193699572, emitted the file from its carrier and bot commit 91fe6e26 deleted exactly those 64 lines and changed nothing else. That commit is also the reproduction: one emission of the carrier on that tree equals main's file minus the test. A reviewer caught it (review 86236), and the author of gunbc#15145 restored main's file by hand.",
+
+    "DISTINGUISHING FACTS. (a) The round was right: it converged a generated file to its authority, which is its job, so this is not regen_candidate_reverts_hand_authored_mirror, where the candidate overwrites files the regenerator does NOT author. Here the file IS generated, and the defect is that an authored fact was placed in the projection. That row's 'other direction' receipt (gunbc#11291) is the same question, which side authors this file; this row is filed apart because its harm is a silently lost RED and not a refused build. (b) The window is green_required_head_while_heal_holds_an_unapplied_repair with the roles reversed. There the required head carried a stale mirror heal had already repaired; here it carried an unauthored item heal was about to delete. Both exist because no required step compares a mirror with its authority. (c) compiler_tests.rs carried no do-not-edit header, unlike the other emitted mirrors (gunbc.generated_projection_paths records that it lacked one), so it read as hand-maintained.",
+
+    "RUNG FOUND AT: below the ladder. Nothing typed refused or reported that an enrolled RED had been lost. The heal receipt names the file and not the item, and the only detection was a reviewer reading the diff. CEILING: mechanically preventable. The mirror stays a committed, writable file while the v1 seed is retained, so the invalid state cannot be made unconstructible. A comparison of the mirror with one emission of its carrier refuses it reliably, but only while that comparison executes and stays enrolled. No acceptance construction is named for rung 3. CURRENT: below the ladder for the class. The instance below is repaired, and the header added to the emitted file is advice, not a mechanism. NEXT TRIGGER: as stated in the rung field.",
+
+    "REPAIR AT THE EARLIEST UNJUSTIFIED BOUNDARY (DESIGN section 6b). The chain is: the author writes the RED, then the carrier, then the compiled-in mirror v1_compiler_compiler_tests_rust.rs, then the emitted compiler_tests.rs, then the heal round. The earliest link that cannot be justified is the first one, because the RED was authored past its carrier. The round is the sound link that exposed it. So the RED is now a row of its carrier, v1.compiler.compiler_tests_rust ct_service_root_binds_only_where_its_service_is_imported_test, called from compiler_tests_source before the module footer where the hand copy sat, and every regeneration emits it. ct_module_header now emits the do-not-edit header naming the carrier. The test was not re-added by hand to the generated file: the mirrors are left to the heal round.",
+
+    "CONSIDERED AND NOT BUILT: a heal round that refuses to delete a #[test] item it did not generate. Deciding 'did not generate' needs the base revision's own emission, which doubles a round that already costs about an hour. Without that emission the refusal would be a text scan of emitted Rust, which also refuses a legitimate removal made in the carrier. It would make the deletion loud and would leave the hand edit just as writable. The rung-2 mechanism is the comparison named in the trigger, which refuses the state where it is written and not where it is later lost.",
+
+    "RECOGNITION RULE: before editing any file under src/v1/stage0/src, ask which carrier emits it (`gunbc.regen_affected_set` names the source module of each product, and emitted_population.rs lists the emitted population) and edit the carrier. When a heal bot commit is a pure deletion in a file the pull request did not touch, suspect an item authored past its carrier on main, and not a defect in the round.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_service_root_binds_only_where_its_service_is_imported_test", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.heal_workflow", decl_name: "heal_stage0_round_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror", decl_name: "regen_candidate_reverts_hand_authored_mirror", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.green_required_head_while_heal_holds_an_unapplied_repair", decl_name: "green_required_head_while_heal_holds_an_unapplied_repair", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn", field: WholeDeclaration },
+  ],
+}

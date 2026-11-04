@@ -1,6 +1,7 @@
 module std.power_of_two
 
 import std.types { Int, List }
+import std.algebra { list_push, list_at_optional }
 
 // 2^n over bit positions, below std.machine_word and std.machine_width_range so neither has an import cycle.
 // NOT std.induction int_pow_bounded: that is a PARTIAL, linear, capped pow (Int? answer), a different
@@ -19,7 +20,7 @@ data bitwise_pow2_table: List<Int> = fold(
 // The Absent arm is the definition itself, reached only for n outside [0, 62]; it answers the same
 // value the table would, so it is not a fallback to something else.
 fn bitwise_pow2(n: Int) -> Int {
-  match get(bitwise_pow2_table, n) {
+  match list_at_optional(xs: bitwise_pow2_table, index: n) {
     Present { value: v } => v
     Absent => bitwise_pow2_defined(n: n)
   }

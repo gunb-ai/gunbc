@@ -1,0 +1,116 @@
+module extdeps.gpu.nvidia_geforce_rtx_50_laptop
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.measure { hardware_thread_count, bandwidth, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, SingleGpu, SolderedBga }
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA GeForce RTX 50 Series Laptop GPUs. NVIDIA's GeForce RTX 50 Series Laptops page, "Specs" table, read
+// 2026-10-28. Only the first two columns are read. The table names six GPUs (5090, 5080, 5070 Ti, 5070, 5060,
+// 5050 Laptop) and its "NVIDIA CUDA Cores" and "Memory Bandwidth" rows carry six values each, but its
+// "Standard Memory Configuration" row carries SEVEN (24, 16, 12, 12, 8, 8, 8 GB), so from the third column
+// on, which memory belongs to which GPU is not stated by the page's structure. The first two columns agree
+// across every row: RTX 5090 Laptop GPU 10,496 cores, 24 GB GDDR7, 896 GB/s; RTX 5080 Laptop GPU 7,680
+// cores, 16 GB GDDR7, 896 GB/s. The page states no TGP, so board power is Absent. Each is listed by the
+// driver under two device ids (5090: 2c18, 2c58; 5080: 2c19, 2c59), so no single device id is carried.
+
+data geforce_rtx_50_laptops_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/geforce/laptops/50-series/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_50_laptop_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: geforce_rtx_50_laptops_authority,
+  further_citations: []
+}
+
+data nvidia_geforce_rtx_5090_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "GeForce RTX 5090 Laptop GPU",
+  microarchitecture: "Blackwell",
+  execution_lane_count: Present { value: hardware_thread_count(10496) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 24)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 896000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_5090_laptop_catalog", field_name: "memory"), authority: geforce_rtx_50_laptops_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_5090_laptop_catalog", field_name: "memory_bandwidth"), authority: geforce_rtx_50_laptops_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_5090_laptop_catalog", field_name: "execution_lane_count"), authority: geforce_rtx_50_laptops_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_geforce_rtx_5090_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "GeForce RTX 5090 Laptop GPU",
+  gpu: nvidia_geforce_rtx_5090_laptop_catalog,
+  composition: SingleGpu,
+  attachment: SolderedBga,
+  board_power: none,
+  zero_power: none,
+  thermal: none,
+  pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA GeForce RTX 5090 Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_5090_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_geforce_rtx_5090_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_geforce_rtx_5090_laptop_board_facts)
+
+data nvidia_geforce_rtx_5080_laptop_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "GeForce RTX 5080 Laptop GPU",
+  microarchitecture: "Blackwell",
+  execution_lane_count: Present { value: hardware_thread_count(7680) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 896000000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_5080_laptop_catalog", field_name: "memory"), authority: geforce_rtx_50_laptops_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_5080_laptop_catalog", field_name: "memory_bandwidth"), authority: geforce_rtx_50_laptops_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_5080_laptop_catalog", field_name: "execution_lane_count"), authority: geforce_rtx_50_laptops_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_geforce_rtx_5080_laptop_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "GeForce RTX 5080 Laptop GPU",
+  gpu: nvidia_geforce_rtx_5080_laptop_catalog,
+  composition: SingleGpu,
+  attachment: SolderedBga,
+  board_power: none,
+  zero_power: none,
+  thermal: none,
+  pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA GeForce RTX 5080 Laptop GPU" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_geforce_rtx_50_laptop", decl_name: "nvidia_geforce_rtx_5080_laptop_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_geforce_rtx_5080_laptop_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_geforce_rtx_5080_laptop_board_facts)
+
+// Every board this module declares, in declaration order: the roster test.claim.gpu_board_catalog_witness
+// requires to be admitted, and this module's model-scope subject.
+data nvidia_geforce_rtx_50_laptop_board_catalogs: List<GpuBoardAdmission> = [nvidia_geforce_rtx_5090_laptop_board_catalog, nvidia_geforce_rtx_5080_laptop_board_catalog]

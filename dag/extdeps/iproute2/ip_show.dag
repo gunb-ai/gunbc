@@ -1,6 +1,8 @@
 module extdeps.iproute2.ip_show
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.measure { ByteSize, byte_size }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -48,4 +50,121 @@ fn ip_route_show_command(device: String) -> ArgvCommand {
     program: ip_program(),
     arguments: [ip_show_oneline_flag as String, ip_show_ipv4_family_flag as String, "route", "show", "dev", device],
   )
+}
+
+// ── Reading the one-line forms back ─────────────────────────────────────────────────────────────
+//
+// ip(8) -o, --oneline: "output each record on a single line, replacing line feeds with the '\'
+// character". So one record is one line, its words are separated by runs of blanks, and a "\" glued
+// to a word ("qlen 1000\") or standing alone marks where a line feed was; it is dropped before any
+// word is read (srv1, 2026-10-25). ip-link(8) `show` prints "<index>: <name>[@<parent>]: <FLAGS> mtu
+// <n> ... link/<type> <address> brd ..."; LOWER_UP among the flags is the driver reporting carrier.
+// ip-address(8) `show` with -4 prints "<index>: <name> inet <address>/<prefix> ...". ip-route(8)
+// `show default` prints "default via <gateway> dev <name> ... metric <n>". Each reader below takes
+// the word after a keyword and refuses a record that lacks it, so a format it does not know reads
+// as unread rather than as a value.
+data ip_show_link_args: List<String> = ["-o", "link", "show"]
+data ip_show_ipv4_addr_args: List<String> = ["-o", "-4", "addr", "show"]
+data ip_show_ipv4_default_route_args: List<String> = ["-o", "-4", "route", "show", "default"]
+
+fn ip_oneline_words(line: String) -> List<String> {
+  filter(map(split(s: line, delimiter: " "), w => replace(s: w, from: "\\", to: "")), w => w != "")
+}
+
+fn ip_oneline_records(stdout: String) -> List<List<String>> {
+  filter(map(split(s: stdout, delimiter: "\n"), l => ip_oneline_words(line: l)), ws => length(ws) > 0)
+}
+
+fn ip_word_after(words: List<String>, keyword: String) -> String? {
+  match first(filter(enumerate(words), p => p.second == keyword)) {
+    Absent => none
+    Present { value: p } => words |> get(p.first + 1)
+  }
+}
+
+// "enP3p6s0:" and "veth93e4218@if2:" both name the device before the colon and any "@".
+fn ip_record_device_name(words: List<String>) -> String? {
+  match words |> get(1) {
+    Absent => none
+    Present { value: w } =>
+      match first(split(s: replace(s: w, from: ":", to: ""), delimiter: "@")) {
+        Absent => none
+        Present { value: n } => if n == "" { none } else { Present { value: n } }
+      }
+  }
+}
+
+type IpLinkRecord {
+  name: NonEmptyStr
+  carrier: Bool
+  mtu: ByteSize
+  ether: String?
+}
+
+fn ip_link_record(words: List<String>) -> IpLinkRecord? {
+  match ip_record_device_name(words: words) {
+    Absent => none
+    Present { value: n } =>
+      match words |> get(2) {
+        Absent => none
+        Present { value: flags } =>
+          match ip_word_after(words: words, keyword: "mtu") {
+            Absent => none
+            Present { value: m } =>
+              match parse_int(s: m) {
+                Absent => none
+                Present { value: i } =>
+                  match checked_int_to_nat(n: i) {
+                    Absent => none
+                    Present { value: mtu } =>
+                      Present { value: IpLinkRecord { name: n as NonEmptyStr, carrier: string_contains(s: flags, pattern: "LOWER_UP"), mtu: byte_size(count: mtu), ether: ip_word_after(words: words, keyword: "link/ether") } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type IpAddr4Record {
+  name: NonEmptyStr
+  cidr: String
+}
+
+fn ip_addr4_record(words: List<String>) -> IpAddr4Record? {
+  match ip_record_device_name(words: words) {
+    Absent => none
+    Present { value: n } =>
+      match ip_word_after(words: words, keyword: "inet") {
+        Absent => none
+        Present { value: c } => Present { value: IpAddr4Record { name: n as NonEmptyStr, cidr: c } }
+      }
+  }
+}
+
+type IpDefaultRoute4Record {
+  gateway: String
+  device: NonEmptyStr
+  metric: Int?
+}
+
+fn ip_default_route4_record(words: List<String>) -> IpDefaultRoute4Record? {
+  match words |> get(0) {
+    Absent => none
+    Present { value: head } =>
+      if head != "default" { none } else {
+        match ip_word_after(words: words, keyword: "via") {
+          Absent => none
+          Present { value: g } =>
+            match ip_word_after(words: words, keyword: "dev") {
+              Absent => none
+              Present { value: d } =>
+                Present { value: IpDefaultRoute4Record {
+                  gateway: g,
+                  device: d as NonEmptyStr,
+                  metric: match ip_word_after(words: words, keyword: "metric") { Absent => none  Present { value: m } => parse_int(s: m) },
+                } }
+            }
+        }
+      }
+  }
 }

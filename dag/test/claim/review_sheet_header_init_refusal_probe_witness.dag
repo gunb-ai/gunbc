@@ -23,7 +23,8 @@ module test.claim.review_sheet_header_init_refusal_probe_witness
 import std.types { Bool, String }
 import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_subject_census, census_ran, census_verdict, census_verdict_all, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -51,30 +52,32 @@ data harness_control_source: String = "module probe_review_sheet_header_init_har
 
 data no_forgery_source: String = "module probe_review_sheet_header_init_no_forgery\nimport std.types { String }\nimport gunbc.review_sheet_formula_observation { formula_whole_tab_refusal_text, FormulaReadRangeUnqualified, occupied_cell_text, OccupiedCell }\nimport gunbc.review_sheet_header_init { header_init_plan_text }\nfn text() -> String { formula_whole_tab_refusal_text(refusal: FormulaReadRangeUnqualified { range: \"A1:B2\" }) }\nfn located() -> String { occupied_cell_text(cell: OccupiedCell { sheet_row: 1, column_index: 0, raw: \"x\" }) }\n"
 
-test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
-  total_blocking_count_for(source: harness_control_source) == 0
+test fn the_harness_runs_and_a_clean_source_is_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: harness_control_source), holds: fn(n) { n == 0 }))
 }
 
-test fn a_source_that_forges_nothing_carries_no_sole_constructor_row_at_either_type() -> Bool {
-  total_blocking_count_for(source: no_forgery_source) != 0 - 1
-    && blocking_subject_count_for(source: no_forgery_source, wanted_class: "SoleConstructorViolation", wanted_subject: "FormulaWholeTabObservation") == 0
-    && blocking_subject_count_for(source: no_forgery_source, wanted_class: "SoleConstructorViolation", wanted_subject: "HeaderRowWriteAuthorization") == 0
+test fn a_source_that_forges_nothing_carries_no_sole_constructor_row_at_either_type() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_ran(census: total_blocking_census(source: no_forgery_source)),
+    census_verdict(census: blocking_subject_census(source: no_forgery_source, wanted_class: "SoleConstructorViolation", wanted_subject: "FormulaWholeTabObservation"), holds: fn(n) { n == 0 }),
+    census_verdict(census: blocking_subject_census(source: no_forgery_source, wanted_class: "SoleConstructorViolation", wanted_subject: "HeaderRowWriteAuthorization"), holds: fn(n) { n == 0 }),
+  ])
 }
 
-test fn a_formula_observation_cannot_be_authored_outside_the_mint() -> Bool {
-  blocking_subject_count_for(
+test fn a_formula_observation_cannot_be_authored_outside_the_mint() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(
     source: probe_source(name: "review_sheet_formula_observation_forged_probe"),
     wanted_class: "SoleConstructorViolation",
     wanted_subject: "FormulaWholeTabObservation",
-  ) == 1
+  ), holds: fn(n) { n == 1 }))
 }
 
-test fn a_header_row_authorization_cannot_be_authored_outside_the_planner() -> Bool {
-  blocking_subject_count_for(
+test fn a_header_row_authorization_cannot_be_authored_outside_the_planner() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(
     source: probe_source(name: "review_sheet_header_row_authorization_forged_probe"),
     wanted_class: "SoleConstructorViolation",
     wanted_subject: "HeaderRowWriteAuthorization",
-  ) == 1
+  ), holds: fn(n) { n == 1 }))
 }
 
 // THE CARRIER-MINTING BOUNDARY IS SEALED TO ITS CALLERS, MEASURED. formula_reading_from_admission is
@@ -87,19 +90,21 @@ data outside_caller_of_the_minting_boundary_source: String = "module probe_formu
 
 data outside_caller_of_the_observer_source: String = "module probe_formula_observer_outside_caller\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.review_sheet_sheets { SheetA1Range }\nimport gunbc.review_sheet_formula_observation { FormulaWholeTabReading, observe_formula_whole_tab }\nfn probe_observe(spreadsheet_id: NonEmptyStr, requested: SheetA1Range) -> FormulaWholeTabReading uses net: Network {\n  observe_formula_whole_tab(spreadsheet_id: spreadsheet_id, requested: requested)\n}\n"
 
-test fn an_outside_module_calling_the_minting_boundary_is_refused_at_that_callee() -> Bool {
-  blocking_subject_count_for(
+test fn an_outside_module_calling_the_minting_boundary_is_refused_at_that_callee() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(
     source: outside_caller_of_the_minting_boundary_source,
     wanted_class: "ConstructorCallAdmissionRefused",
     wanted_subject: "formula_reading_from_admission",
-  ) == 1
+  ), holds: fn(n) { n == 1 }))
 }
 
-test fn an_outside_module_calling_the_observer_is_not_refused() -> Bool {
-  total_blocking_count_for(source: outside_caller_of_the_observer_source) != 0 - 1
-    && blocking_subject_count_for(
+test fn an_outside_module_calling_the_observer_is_not_refused() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_ran(census: total_blocking_census(source: outside_caller_of_the_observer_source)),
+    census_verdict(census: blocking_subject_census(
       source: outside_caller_of_the_observer_source,
       wanted_class: "ConstructorCallAdmissionRefused",
       wanted_subject: "formula_reading_from_admission",
-    ) == 0
+    ), holds: fn(n) { n == 0 }),
+  ])
 }

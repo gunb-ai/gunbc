@@ -1,5 +1,6 @@
 module gunbc.fleet.printer_job_start
 
+import std.decl_ref { decl_ref }
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential}
 import extdeps.tools.gnu_coreutils {timeout_command}
 import std.measure {second}
@@ -331,87 +332,6 @@ fn start_may_be_replayed(o: PrintStart) -> Bool {
 // print; publishing costs the ability to attribute the report -- and reconciliation by reading that
 // report is the ONLY defence this leg has against the duplicate-actuation risk the protocol module
 // states is unresolved. A start nobody can attribute is the one that must not be sent.
-fn start_print_on_printer(
-  printer: PhysicalAssetIdentity,
-  remote_name: NonEmptyStr,
-  token_source: AccessTokenSource,
-  materializations: List<VerifiedVersionForAttempt>,
-) -> PrintStart
-{
-  match printer_serial(printer: printer) {
-    PrinterSerialUnknown { printer: p } =>
-      PrintStartRefused { printer: p,
-        cause: "this printer is not in the owned inventory, so the request topic its serial keys cannot be derived" }
-    PrinterSerialUnrecorded { printer: p } =>
-      PrintStartRefused { printer: p,
-        cause: "this printer has no recorded serial, and the MQTT request topic is keyed on the serial: the start refuses rather than addressing a topic spelled by convention" }
-    PrinterSerialAmbiguous { printer: p } =>
-      PrintStartRefused { printer: p,
-        cause: "more than one inventory row names this printer, so its serial is ambiguous and the start refuses rather than taking one by list order" }
-    PrinterSerialFound { serial: serial } =>
-  match printer_endpoint_address(printer: printer) {
-    PrinterAddressUnknown { printer: p } =>
-      PrintStartRefused { printer: p,
-        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet.fleet_intent_network" }
-    PrinterAddressAmbiguous { printer: p } =>
-      PrintStartRefused { printer: p,
-        cause: "more than one LAN fabrication endpoint matches this printer; the roster is ambiguous and the start refuses rather than picking one by list order" }
-    PrinterAddressWrongClass { printer: p } =>
-      PrintStartRefused { printer: p,
-        cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the control channel and the start refuses rather than authenticating to it" }
-    PrinterAddressFound { address: lan_address } =>
-  match observe_printer_secret_container(
-    printer: printer, token_source: token_source, materializations: materializations
-  ) {
-    PrinterCredentialObservationRefused { printer: p, cause: cause } =>
-      PrintStartRefused { printer: p, cause: cause }
-    PrinterCredentialLocusUndeclared { printer: p } =>
-      PrintStartRefused { printer: p,
-        cause: "this printer has no access-code locus declared in gunbc.fleet.fleet_printer_access, so there is no secret to observe and the start refuses rather than reading the operator's file on srv2" }
-    PrinterCredentialLocusConflicted { printer: p, matches: _ } =>
-      PrintStartRefused { printer: p,
-        cause: "more than one access-code locus is declared for this printer, so which secret holds its code is ambiguous and the start refuses" }
-    PrinterCredentialMaterializationVanished { printer: p, exact: _ } =>
-      PrintStartRefused { printer: p,
-        cause: "a provisioning receipt records this printer's access code, but Secret Manager answers 404 for the container: the start refuses rather than treating a deletion as a printer that was never onboarded" }
-    PrinterCredentialVersionUnrecorded { printer: p, container: _ } =>
-      PrintStartRefused { printer: p,
-        cause: "this printer's access code secret exists but no provisioning receipt records which version holds it, so the start refuses rather than guessing a version" }
-    PrinterCredentialProvisionRequired { printer: p, desired: _ } =>
-      PrintStartRefused { printer: p,
-        cause: "this printer's access code has not been provisioned, so the start refuses: provisioning is its own operation and is not performed as a side effect of starting a job" }
-    PrinterCredentialProvisionAmbiguous { printer: p, matches: _ } =>
-      PrintStartRefused { printer: p,
-        cause: "more than one provisioning receipt names this printer's secret, so the exact version is ambiguous and the start refuses" }
-    PrinterCredentialProvisioned { exact: exact_ref } =>
-      match fetch_secret_ref_credential(secret_ref: exact_ref, token_source: token_source) {
-        SecretCredentialAccessUpsertRequired { plan: _ } =>
-          PrintStartRefused { printer: printer,
-            cause: "the access code could not be read: Secret Manager access has not been granted to this identity" }
-        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
-          PrintStartRefused { printer: printer,
-            cause: "the Secret Manager response for the access code did not decode" }
-        SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
-          PrintStartRefused { printer: printer,
-            cause: concat(concat("the access code fetch asked for ", requested),
-              concat(" and the service answered about ", concat(resolved,
-                "; the credential this start would authenticate with is not the one the receipt verified"))) as NonEmptyStr }
-        SecretCredentialFetchRefused { reason: reason } =>
-          PrintStartRefused { printer: printer, cause: reason }
-        SecretCredentialReady { credential: credential, resolved_version: _ } =>
-          publish_start_with_credential(
-            printer: printer, serial: serial, lan_address: lan_address,
-            remote_name: remote_name, credential: credential)
-      }
-  }
-  }
-  }
-}
-
-// THE CA IS ACQUIRED AFTER THE CREDENTIAL AND BEFORE THE BINDING, which is the ordering that leaves
-// the least on disk. Fetching it first means every credential refusal above also has to clean up a
-// downloaded bundle; placing the binding first means every CA refusal has to shred an access code.
-// The two brackets are therefore nested rather than parallel, innermost being the secret.
 fn publish_start_with_credential(
   printer: PhysicalAssetIdentity,
   serial: NonEmptyStr,
@@ -419,6 +339,9 @@ fn publish_start_with_credential(
   remote_name: NonEmptyStr,
   credential: Secret,
 ) -> PrintStart
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.printer_job_start", decl_name: "start_print_with_session"),
+  ]
 {
   match acquire_pinned_ca_bundle() {
     CaBundleRefused { cause: cause } => PrintStartRefused { printer: printer, cause: cause }
@@ -548,7 +471,14 @@ fn start_refusal(printer: PhysicalAssetIdentity, stderr: String, cleaned: Bool) 
   }
 }
 
-fn start_print_with_session(session:PrinterCredentialSession,remote_name:NonEmptyStr) -> PrintStart {
+// THE START IS CONFINED BY CONSTRUCTION: only gunbc.fleet.printer_actuation print_claimed_project,
+// behind the approval, readiness and claim checks, may call it; any other caller is refused at
+// compile time, censused or not.
+fn start_print_with_session(session:PrinterCredentialSession,remote_name:NonEmptyStr) -> PrintStart
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.printer_actuation", decl_name: "print_claimed_project"),
+  ]
+{
  let printer=session_printer(s:session)
  match printer_serial(printer:printer) {
   PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {

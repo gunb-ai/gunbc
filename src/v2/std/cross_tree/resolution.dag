@@ -1,6 +1,6 @@
 module v2.std.cross_tree.resolution
 import v2.std.qualified_name { QualifiedName }
-import v2.std.cross_tree.import_model { CoFundamental, CrossTreeAdmitted, CrossTreeDenied, CrossTreeImport, DagTree, LessFundamental, MoreFundamental, SourceRootRef, SourceRootSet, TreeFundamentalityOrder, V2Tree, cross_tree_import_admitted, source_root_ref_eq, source_root_set_contains }
+import v2.std.cross_tree.import_model { CrossTreeAdmitted, CrossTreeDenied, SourceRootRef, SourceRootSet, cross_tree_roots_admitted, source_root_ref_eq, source_root_set_contains }
 import std.algebra { Cons, Empty, FreeMonoid, empty_map, map_insert, map_lookup }
 import std.types { Map }
 import std.optional { Absent, Present }
@@ -57,24 +57,6 @@ fn source_root_index_lookup(
   }
 }
 
-fn tree_fundamentality_order(
-  from_tree: SourceRootRef,
-  to_tree: SourceRootRef
-) -> TreeFundamentalityOrder {
-  match from_tree {
-    V2Tree =>
-      match to_tree {
-        V2Tree => CoFundamental
-        DagTree => MoreFundamental
-      }
-    DagTree =>
-      match to_tree {
-        V2Tree => LessFundamental
-        DagTree => CoFundamental
-      }
-  }
-}
-
 fn source_root_set_insert(
   roots: FreeMonoid<SourceRootRef>,
   r: SourceRootRef
@@ -86,8 +68,10 @@ fn source_root_set_insert(
   }
 }
 
-data cross_tree_module_path_interim: String = ""
-
+// THE NAME-RESOLVE GATE OVER AN EDGE BETWEEN TWO MODULES ALREADY READ. It reads no namespace membership: that
+// has one enforcement site, the storage lookup, which decides it before the read
+// (v2.compiler.source_authority storage_cross_tree_verdict; DESIGN section 3). What stays here is what only
+// the ingest knows: whether both trees are active roots, and whether a module was read from two trees.
 type CrossTreeEdgeDecision
   = EdgeNormalResolution
   | EdgeCrossAdmitted
@@ -111,16 +95,7 @@ fn cross_tree_edge_decision(
           if source_root_ref_eq(a: from_tree, b: to_tree) {
             EdgeNormalResolution
           } else {
-            match cross_tree_import_admitted(
-              edge: CrossTreeImport {
-                from_tree: from_tree,
-                from_module: cross_tree_module_path_interim,
-                to_tree: to_tree,
-                to_module: cross_tree_module_path_interim
-              },
-              roots: active_roots,
-              order: tree_fundamentality_order(from_tree: from_tree, to_tree: to_tree)
-            ) {
+            match cross_tree_roots_admitted(from_tree: from_tree, to_tree: to_tree, roots: active_roots) {
               CrossTreeAdmitted => EdgeCrossAdmitted
               CrossTreeDenied { reason: _ } => EdgeCrossDenied
             }

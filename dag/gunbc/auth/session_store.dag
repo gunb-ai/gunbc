@@ -20,13 +20,6 @@ module gunbc.auth.session_store
 
 import gunbc.auth.auth_store_key { AuthStoreKey, auth_store_key_of }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, Timestamp, Email }
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  filesystem_read_outcome,
-  filesystem_listing_observation,
-  filesystem_file_observation,
-  filesystem_entry_presence,
-}
 import extdeps.languages.json.emit {
   serialize_json, json_object, json_kv, json_string, JsonValue, JsonKeyValue,
 }
@@ -41,47 +34,22 @@ import gunbc.auth.session {
   CsrfToken, session_not_expired, SessionProfile,
   SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieUnknown,
   SessionCookieUnread, SessionCookieMalformed,
-  SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed,
-  session_cookie_id_of_header,
-}
+  }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
-
-data session_store_file_suffix: String = ".json"
+import gunbc.auth.session_store_root {
+  SessionStore, session_store_file_suffix,
+  SessionRecordRead, SessionRecordAbsent, SessionRecordUnreadable,
+  SessionRecordListed, SessionRecordNotListed, SessionRecordPresenceUnreadable,
+  SessionRecordWritten, SessionRecordWriteRefused, SessionRecordDelete, SessionRecordDeleted, SessionRecordDeleteRefused,
+  SessionStoreEntriesListed, SessionStoreEntriesRefused, SessionListedEntryRead, SessionListedEntryUnreadable,
+  session_store_list, session_store_read_record, session_store_record_presence, session_store_write_record,
+  session_store_delete_record, session_store_read_listed,
+}
+import std.algebra { collection_concat_shape, collection_join_shape, list_push }
 
 data session_file_schema: String = "gunbc-auth-session/v1"
-
-// THE STORE LAYOUT, one fact: the directory. Files are derived from it by session id, so no
-// caller builds a store path from an unadmitted string.
-type SessionStoreLayout {
-  root: FilePath
-}
-
-// THE DIRECTORY THIS STORE DEMANDS, declared here because the store is what writes into it: an
-// owned-directory target (gunbc.owned_directory) under the instance root, ensured by both deployment
-// routes through gunbc.roadmap.dashboard_instance_directories, and the layout's root is read off it.
-fn session_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  dashboard_instance_private_directory(instance: instance, member: "auth-sessions" as NonEmptyStr, child: "auth-sessions")
-}
-
-fn session_store_layout_for_instance(instance: HostDashboardInstance) -> SessionStoreLayout {
-  SessionStoreLayout {
-    root: owned_directory_path(t: session_store_directory(instance: instance)),
-  }
-}
-
-// A path is built only from an AuthStoreKey (gunbc.auth.auth_store_key): a session id read from a
-// Cookie header that is not one cannot name a file under the store.
-fn session_store_file_name(key: AuthStoreKey) -> String {
-  join([key.value as String, session_store_file_suffix], "")
-}
-
-fn session_store_file_path(layout: SessionStoreLayout, key: AuthStoreKey) -> String {
-  join([layout.root as String, "/", session_store_file_name(key: key)], "")
-}
 
 // ── The session file codec ─────────────────────────────────────────────────────────────────────
 // ONE FILE PER SESSION, the session record serialized as one JSON object. The wire is the
@@ -387,32 +355,30 @@ fn session_client_of_label(label: String) -> SessionClient? {
 
 // ── The store operations ───────────────────────────────────────────────────────────────────────
 // THREE OPERATIONS AND NOTHING ELSE, the carrier's grain: save one session, resolve one id,
-// delete one id. Everything about WHERE sessions live is this module; the seam asks the
-// questions, the model decides over the answers.
+// delete one id. WHERE sessions live is gunbc.auth.session_store_root: every operation here takes
+// the sealed SessionStore minted there from the instance, and reaches a file only through that
+// module's store operations. The seam asks the questions, the model decides over the answers.
 
 type SessionStoreSave
   = SessionStoreSaved { session_id: NonEmptyStr }
   | SessionStoreSaveRefused { step: String, reason: String }
 
-// THE SAVE IS OWNER-ONLY (0600): the file carries the session's CSRF token, so it takes the
-// WriteOwnerOnly realization exactly like the credential files do (the publisher-token pattern).
-// The session id is a 256-bit random draw the login realization mints fresh (a re-login never
-// reuses an id), so existence-check-and-create buys nothing the draw does not already give; the
+// THE SAVE IS OWNER-ONLY (0600): the file carries the session's CSRF token, so the store writes it
+// with the WriteOwnerOnly realization exactly like the credential files do (the publisher-token
+// pattern). The session id is a 256-bit random draw the login realization mints fresh (a re-login
+// never reuses an id), so existence-check-and-create buys nothing the draw does not already give; the
 // refusal arms carry the host's own words.
-fn session_store_save(layout: SessionStoreLayout, session: AuthenticatedSession) -> SessionStoreSave {
+fn session_store_save(store: SessionStore, session: AuthenticatedSession) -> SessionStoreSave {
   match auth_store_key_of(raw: session.session_id as String) {
     Absent => SessionStoreSaveRefused { step: "key", reason: "the session id is not a store key ([A-Za-z0-9_-], at most 128)" }
-    Present { value: key } => session_store_save_keyed(layout: layout, key: key, session: session)
+    Present { value: key } => session_store_save_keyed(store: store, key: key, session: session)
   }
 }
 
-fn session_store_save_keyed(layout: SessionStoreLayout, key: AuthStoreKey, session: AuthenticatedSession) -> SessionStoreSave {
-  let path = session_store_file_path(layout: layout, key: key)
-  let written = Filesystem.WriteOwnerOnly(path: path, content: authenticated_session_json(session: session))
-  if written.success {
-    SessionStoreSaved { session_id: session.session_id }
-  } else {
-    SessionStoreSaveRefused { step: "write", reason: written.error }
+fn session_store_save_keyed(store: SessionStore, key: AuthStoreKey, session: AuthenticatedSession) -> SessionStoreSave {
+  match session_store_write_record(store: store, key: key, content: authenticated_session_json(session: session)) {
+    SessionRecordWritten => SessionStoreSaved { session_id: session.session_id }
+    SessionRecordWriteRefused { error: e } => SessionStoreSaveRefused { step: "write", reason: e }
   }
 }
 
@@ -422,51 +388,31 @@ type SessionStoreLookup
   | SessionStoreUnread { session_id: NonEmptyStr, detail: String }
   | SessionStoreEntryMalformed { session_id: NonEmptyStr, detail: String }
 
-// THE LOOKUP, absence established from a listing and never from a failed read: the listing is
-// folded through filesystem_file_observation, so "the store could not be listed", "the file was
-// listed and would not read", and "no such file is listed" are three answers that keep their
-// remedies. The id lands in every refusal so a located cause can name the session a request
-// claimed.
+// THE LOOKUP, absence established from a listing and never from a failed read: the store's
+// session_store_read_record folds the listing through filesystem_file_observation, so "the store could not be
+// listed", "the file was listed and would not read", and "no such file is listed" are three answers
+// that keep their remedies. The id lands in every refusal so a located cause can name the session a
+// request claimed.
 // A session id that is not a store key names no session: it cannot have been minted, so it is
 // Unknown without any filesystem read.
-fn session_store_lookup(layout: SessionStoreLayout, session_id: NonEmptyStr) -> SessionStoreLookup {
+fn session_store_lookup(store: SessionStore, session_id: NonEmptyStr) -> SessionStoreLookup {
   match auth_store_key_of(raw: session_id as String) {
     Absent => SessionStoreUnknown { session_id: session_id }
-    Present { value: key } => session_store_lookup_keyed(layout: layout, key: key)
+    Present { value: key } => session_store_lookup_keyed(store: store, key: key)
   }
 }
 
-fn session_store_lookup_keyed(layout: SessionStoreLayout, key: AuthStoreKey) -> SessionStoreLookup {
+fn session_store_lookup_keyed(store: SessionStore, key: AuthStoreKey) -> SessionStoreLookup {
   let session_id = key.value
-  let name = session_store_file_name(key: key)
-  let path = session_store_file_path(layout: layout, key: key)
-  let listing_result = Filesystem.List(path: layout.root as String)
-  let listing = filesystem_listing_observation(
-    directory: layout.root as String,
-    success: listing_result.success,
-    entries: listing_result.entries,
-    error: listing_result.error,
-  )
-  let read_result = Filesystem.Read(path: path)
-  let observation = filesystem_file_observation(
-    listing: listing,
-    name: name,
-    path: path,
-    read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
-  )
-  match observation {
-    FilesystemFileAbsent(absence) =>
-      SessionStoreUnknown { session_id: absence.name as NonEmptyStr }
-    FilesystemFileRead { path: _, content: c } =>
+  match session_store_read_record(store: store, key: key) {
+    SessionRecordAbsent { name: n } =>
+      SessionStoreUnknown { session_id: n as NonEmptyStr }
+    SessionRecordRead { content: c } =>
       match authenticated_session_of_json(text: c) {
         SessionFileDecoded { session: s } => SessionStoreFound { session: s }
         SessionFileMalformed { detail: d } => SessionStoreEntryMalformed { session_id: session_id, detail: d }
       }
-    FilesystemFileIndeterminate { cause: c } =>
-      SessionStoreUnread { session_id: session_id, detail: c }
-    FilesystemFileObservationsDisagree { path: _, cause: c } =>
-      SessionStoreUnread { session_id: session_id, detail: c }
-    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+    SessionRecordUnreadable { detail: c } =>
       SessionStoreUnread { session_id: session_id, detail: c }
   }
 }
@@ -481,36 +427,32 @@ type SessionStoreDelete
 // carries the host's words. Absence is established the same way the lookup establishes it — from
 // the listing, never from the delete's failure — and a listing that could not be taken refuses
 // the delete rather than guessing.
-fn session_store_delete(layout: SessionStoreLayout, session_id: NonEmptyStr) -> SessionStoreDelete {
+fn session_store_delete(store: SessionStore, session_id: NonEmptyStr) -> SessionStoreDelete {
   match auth_store_key_of(raw: session_id as String) {
     Absent => SessionStoreDeleteRefused { session_id: session_id, detail: "the session id is not a store key; nothing outside the store is touched" }
-    Present { value: key } => session_store_delete_keyed(layout: layout, key: key)
+    Present { value: key } => session_store_delete_keyed(store: store, key: key)
   }
 }
 
-fn session_store_delete_keyed(layout: SessionStoreLayout, key: AuthStoreKey) -> SessionStoreDelete {
+fn session_store_delete_refusal(deleted: SessionRecordDelete) -> String? {
+  match deleted {
+    SessionRecordDeleted => none
+    SessionRecordDeleteRefused { detail: d } => Present { value: d }
+  }
+}
+
+fn session_store_delete_keyed(store: SessionStore, key: AuthStoreKey) -> SessionStoreDelete {
   let session_id = key.value
-  let name = session_store_file_name(key: key)
-  let listing_result = Filesystem.List(path: layout.root as String)
-  let listing = filesystem_listing_observation(
-    directory: layout.root as String,
-    success: listing_result.success,
-    entries: listing_result.entries,
-    error: listing_result.error,
-  )
-  match filesystem_entry_presence(listing: listing, name: name) {
-    FilesystemEntryAbsent(absence) =>
-      SessionStoreNothingToDelete { session_id: absence.name as NonEmptyStr }
-    FilesystemEntryListed { directory: _, name: _ } =>
-      let deleted = Filesystem.Delete(path: session_store_file_path(layout: layout, key: key))
-      if deleted.success {
-        SessionStoreDeleted { session_id: session_id }
-      } else {
-        SessionStoreDeleteRefused { session_id: session_id, detail: deleted.error }
+  match session_store_record_presence(store: store, key: key) {
+    SessionRecordNotListed { name: n } =>
+      SessionStoreNothingToDelete { session_id: n as NonEmptyStr }
+    SessionRecordListed => {
+      match session_store_delete_refusal(deleted: session_store_delete_record(store: store, key: key)) {
+        Absent => SessionStoreDeleted { session_id: session_id }
+        Present { value: e } => SessionStoreDeleteRefused { session_id: session_id, detail: e }
       }
-    FilesystemEntryPresenceIndeterminate { cause: c } =>
-      SessionStoreDeleteRefused { session_id: session_id, detail: c }
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } =>
+    }
+    SessionRecordPresenceUnreadable { detail: c } =>
       SessionStoreDeleteRefused { session_id: session_id, detail: c }
   }
 }
@@ -530,36 +472,27 @@ type SessionStorePurge
 // Entries that decode cleanly but name another principal are untouched, and the freshly
 // minted session (except_session_id) is never a purge target.
 fn session_store_purge_principal(
-  layout: SessionStoreLayout,
+  store: SessionStore,
   principal: PrincipalRef,
   except_session_id: NonEmptyStr,
 ) -> SessionStorePurge {
-  let listing_result = Filesystem.List(path: layout.root as String)
-  let listing = filesystem_listing_observation(
-    directory: layout.root as String,
-    success: listing_result.success,
-    entries: listing_result.entries,
-    error: listing_result.error,
-  )
-  match listing {
-    FilesystemDirectoryListed(listed) =>
-      session_store_purge_listed(layout: layout, principal: principal, except_session_id: except_session_id, entries: split(s: listed.entries, delimiter: "\n"))
-    FilesystemDirectoryListingRefused { directory: _, error: e } =>
-      SessionStorePurgeRefused { step: "list", reason: e }
-    FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
-      SessionStorePurgeRefused { step: "list-subject", reason: join(["the store directory ", d, " is not an admitted subject: ", c], "") }
+  match session_store_list(store: store) {
+    SessionStoreEntriesListed { entries: es } =>
+      session_store_purge_listed(store: store, principal: principal, except_session_id: except_session_id, entries: es)
+    SessionStoreEntriesRefused { step: st, reason: r } =>
+      SessionStorePurgeRefused { step: st, reason: r }
   }
 }
 
 fn session_store_purge_listed(
-  layout: SessionStoreLayout,
+  store: SessionStore,
   principal: PrincipalRef,
   except_session_id: NonEmptyStr,
   entries: List<String>,
 ) -> SessionStorePurge {
-  match session_store_purge_targets(layout: layout, principal: principal, except_session_id: except_session_id, entries: entries, refused: none, targets: []) {
+  match session_store_purge_targets(store: store, principal: principal, except_session_id: except_session_id, entries: entries, refused: none, targets: []) {
     SessionStorePurgePlanRefused { step: s, reason: r } => SessionStorePurgeRefused { step: s, reason: r }
-    SessionStorePurgePlan { targets: ts } => session_store_purge_execute(layout: layout, targets: ts, deleted: 0)
+    SessionStorePurgePlan { targets: ts } => session_store_purge_execute(store: store, targets: ts, deleted: 0)
   }
 }
 
@@ -572,7 +505,7 @@ type SessionStorePurgePlan
 // the principal's WHOLE session set, and a fold that skips the entry it could not read has
 // exactly the hole the guarantee refuses.
 fn session_store_purge_targets(
-  layout: SessionStoreLayout,
+  store: SessionStore,
   principal: PrincipalRef,
   except_session_id: NonEmptyStr,
   entries: List<String>,
@@ -588,7 +521,7 @@ fn session_store_purge_targets(
           let rest = entries.skip(n: 1)
           if entry == "" || !ends_with(s: entry, suffix: session_store_file_suffix) {
             session_store_purge_targets(
-              layout: layout,
+              store: store,
               principal: principal,
               except_session_id: except_session_id,
               entries: rest,
@@ -599,7 +532,7 @@ fn session_store_purge_targets(
             let entry_id = substring(s: entry, start: 0, end: string_length(s: entry) - string_length(s: session_store_file_suffix))
             if entry_id == "" || entry_id == (except_session_id as String) {
               session_store_purge_targets(
-                layout: layout,
+                store: store,
                 principal: principal,
                 except_session_id: except_session_id,
                 entries: rest,
@@ -607,14 +540,13 @@ fn session_store_purge_targets(
                 targets: targets,
               )
             } else {
-              let read = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
-              match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-                FilesystemReadRefused { error: e } =>
+              match session_store_read_listed(store: store, entry: entry) {
+                SessionListedEntryUnreadable { error: e } =>
                   SessionStorePurgePlanRefused {
                     step: join(["read ", entry], ""),
                     reason: e,
                   }
-                FilesystemReadSucceeded { content: c } =>
+                SessionListedEntryRead { content: c } =>
                   match authenticated_session_of_json(text: c) {
                     SessionFileMalformed { detail: d } =>
                       SessionStorePurgePlanRefused {
@@ -624,7 +556,7 @@ fn session_store_purge_targets(
                     SessionFileDecoded { session: s } =>
                       if principal_ref_eq(a: s.principal, b: principal) {
                         session_store_purge_targets(
-                          layout: layout,
+                          store: store,
                           principal: principal,
                           except_session_id: except_session_id,
                           entries: rest,
@@ -633,7 +565,7 @@ fn session_store_purge_targets(
                         )
                       } else {
                         session_store_purge_targets(
-                          layout: layout,
+                          store: store,
                           principal: principal,
                           except_session_id: except_session_id,
                           entries: rest,
@@ -649,18 +581,16 @@ fn session_store_purge_targets(
   }
 }
 
-fn session_store_purge_execute(layout: SessionStoreLayout, targets: List<NonEmptyStr>, deleted: Int) -> SessionStorePurge {
+fn session_store_purge_execute(store: SessionStore, targets: List<NonEmptyStr>, deleted: Int) -> SessionStorePurge {
   match targets.first() {
     Absent => SessionStorePurged { deleted: deleted }
     Present { value: target } =>
       match auth_store_key_of(raw: target as String) {
         Absent => SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: "a listed session entry is not a store key; refusing rather than deleting outside the store" }
         Present { value: key } => {
-          let deleted_result = Filesystem.Delete(path: session_store_file_path(layout: layout, key: key))
-          if deleted_result.success {
-            session_store_purge_execute(layout: layout, targets: targets.skip(n: 1), deleted: deleted + 1)
-          } else {
-            SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: deleted_result.error }
+          match session_store_delete_refusal(deleted: session_store_delete_record(store: store, key: key)) {
+            Absent => session_store_purge_execute(store: store, targets: targets.skip(n: 1), deleted: deleted + 1)
+            Present { value: e } => SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: e }
           }
         }
       }
@@ -668,31 +598,20 @@ fn session_store_purge_execute(layout: SessionStoreLayout, targets: List<NonEmpt
 }
 
 // ── The standing seam ──────────────────────────────────────────────────────────────────────────
-// THE FOLD THE SERVE SEAM DECIDES OVER: wire cookie header + store lookup + clock = the
-// standing. The parse is pure syntax; the lookup is the store's three-valued answer; the
-// clock decides expiry. Absent (no header / no session cookie in it), Malformed (syntax),
-// Unknown (id the store does not hold), Unread (store or clock could not be read), and the
-// Valid/Expired pair stay DISTINCT arms end to end, because each names a different remedy.
-fn session_cookie_standing_of(
-  cookie_header: String,
-  layout: SessionStoreLayout,
-  observed_at: Timestamp,
-) -> SessionCookieStanding {
-  match session_cookie_id_of_header(cookie_header: cookie_header) {
-    SessionCookieIdNotPresent => SessionCookieAbsent
-    SessionCookieIdMalformed { detail: d } => SessionCookieMalformed { detail: d }
-    SessionCookieIdParsed { session_id: id } =>
-      session_cookie_standing_of_lookup(layout: layout, session_id: id, observed_at: observed_at)
-  }
-}
-
+// THE FOLD THE SERVE SEAM DECIDES OVER: a parsed session id + store lookup + clock = the standing.
+// The cookie parse (gunbc.auth.session session_cookie_id_of_header) is pure syntax and is folded
+// by the seam itself (gunbc.roadmap.roadmap_auth_routes roadmap_serve_authentication_evidence, which answers Absent and
+// Malformed before any store exists); the lookup is the store's three-valued answer; the clock
+// decides expiry. Unknown (id the store does not hold), Unread (store or clock could not be read),
+// Malformed, and the Valid/Expired pair stay DISTINCT arms end to end, because each names a
+// different remedy.
 fn session_cookie_standing_of_lookup(
-  layout: SessionStoreLayout,
+  store: SessionStore,
   session_id: NonEmptyStr,
   observed_at: Timestamp,
 ) -> SessionCookieStanding {
   session_cookie_standing_of_store_result(
-    lookup: session_store_lookup(layout: layout, session_id: session_id),
+    lookup: session_store_lookup(store: store, session_id: session_id),
     observed_at: observed_at,
   )
 }

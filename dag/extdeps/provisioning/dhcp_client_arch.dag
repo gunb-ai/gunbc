@@ -25,7 +25,20 @@ import extdeps.provisioning.network_boot {
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority }
 
+// THE AUTHORITY IS THE IANA REGISTRY, not RFC 4578's table. IANA's Processor Architecture Types
+// registry (dhcpv6-parameters, processor-architecture; referenced by RFC 5970 and RFC 4578) assigns
+// 0x00 x86 BIOS, 0x07 x64 UEFI, 0x09 EBC, 0x0b ARM 64-bit UEFI, 0x10 x64 UEFI HTTP and 0x13 ARM
+// 64-bit UEFI HTTP. RFC 4578 section 2.1 printed 7 as "EFI BC" and 9 as "EFI x86-64"; firmware follows
+// the registry, and dnsmasq's named client system types follow the RFC, so a consumer that renders a
+// name for 7 or 9 can disagree with the wire. The RFC stays as a further citation for its divergence.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/dhcpv6-parameters/dhcpv6-parameters.xhtml#processor-architecture"
+  }
+}
+
+data rfc4578_processor_architecture_table: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc4578#section-2.1"
@@ -54,7 +67,7 @@ fn dhcp_processor_architecture_code(a: DhcpProcessorArchitecture) -> Int {
 // never guesses onto a member. A new member is one arm in the forward match above AND one entry in
 // this list. Only the match is compiler-forced; the list is author discipline, and its completeness
 // is a typed frontier row (gunbc.fleet.site_pxe_edge_receipts site_pxe_edge_receipts_frontier_rows).
-// WHY HERE AND NOT IN A CONSUMER: IANA authors what an architecture code means, so the inverse is an
+// WHY HERE AND NOT IN A CONSUMER: IANA authors what an architecture code means (the anchor above), so the inverse is an
 // upstream fact and lives in extdeps; a conclusion our own extraction drew (e.g. a casper digest)
 // is authored by us and lives in gunbc.*. The test is who authors the fact.
 data dhcp_processor_architecture_members: List<DhcpProcessorArchitecture> = [BiosX86, UefiX86_64, UefiArm64, HttpBootX86_64, HttpBootArm64]

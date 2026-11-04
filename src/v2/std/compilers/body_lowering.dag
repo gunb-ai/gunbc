@@ -49,6 +49,7 @@ import v2.std.node {
   MatchArmBodyEdge,
   MatchArmPatternEdge,
   edge_is_core,
+  NotADeclaration
 }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.list_introduction { list_introduction_elements_optional }
@@ -66,9 +67,9 @@ fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: operator },
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { label: Positional, target: operator, declaration: NotADeclaration },
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
     ]
   )
 }
@@ -79,8 +80,8 @@ fn lower_unary_prefix(operator: Node, operand: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: operator },
-      Edge { label: Positional, target: operand }
+      Edge { label: Positional, target: operator, declaration: NotADeclaration },
+      Edge { label: Positional, target: operand, declaration: NotADeclaration }
     ]
   )
 }
@@ -89,9 +90,9 @@ fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { label: Positional, target: condition, declaration: NotADeclaration },
+      Edge { label: Positional, target: then_arm, declaration: NotADeclaration },
+      Edge { label: Positional, target: else_arm, declaration: NotADeclaration }
     ]
   )
 }
@@ -100,8 +101,8 @@ fn lower_loop(value: Node, bound: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: value },
-      Edge { label: core_edge_label(marker: LoopBoundEdge), target: bound }
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: bound, declaration: NotADeclaration }
     ]
   )
 }
@@ -110,9 +111,9 @@ fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Bind },
     children: [
-      Edge { label: Positional, target: key_binding },
-      Edge { label: Positional, target: value },
-      Edge { label: Positional, target: body_binding }
+      Edge { label: Positional, target: key_binding, declaration: NotADeclaration },
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      Edge { label: Positional, target: body_binding, declaration: NotADeclaration }
     ]
   )
 }
@@ -124,9 +125,9 @@ fn lower_bind_annotated(key_binding: Node, value: Node, body_binding: Node, anno
   node_synthetic(
     kind: ComputationNode { behavior: Bind },
     children: [
-      Edge { label: Positional, target: key_binding },
-      Edge { label: Positional, target: value },
-      Edge { label: Positional, target: body_binding },
+      Edge { label: Positional, target: key_binding, declaration: NotADeclaration },
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      Edge { label: Positional, target: body_binding, declaration: NotADeclaration },
       type_annotation_edge(annotation: annotation)
     ]
   )
@@ -136,9 +137,9 @@ fn lower_match(scrutinee: Node, arms: List<Node>) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Match },
     children: list_append(
-      left: [Edge { label: Positional, target: scrutinee }],
+      left: [Edge { label: Positional, target: scrutinee, declaration: NotADeclaration }],
       right: fold(arms, init: Empty, f: fn(acc, arm) {
-        list_snoc_item(xs: acc, item: Edge { label: Positional, target: arm })
+        list_snoc_item(xs: acc, item: Edge { label: Positional, target: arm, declaration: NotADeclaration })
       })
     )
   )

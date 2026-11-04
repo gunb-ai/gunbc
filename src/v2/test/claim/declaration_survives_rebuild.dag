@@ -1,0 +1,179 @@
+module v2.test.claim.declaration_survives_rebuild
+
+import std.algebra { fold_list, list_snoc_item, string_contains }
+import std.integer { int_to_decimal_string }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import std.types { List }
+import v2.compiler.infer { infer }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.refinement_discharge { discharge_refinement_obligations }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome, outcome_accepted }
+import std.occurrence_identity { OccurrenceId }
+import v2.std.node { node_same_occurrence, Atom, Authored, Conj, DeclaresAt, Edge, Node, NotADeclaration, Positional, StructuralLabel, TypeNode, canonicalize_node_strip_provenance, content_hash, node_equal_ignoring_provenance, symbol_lexeme }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A DECLARATION EDGE SURVIVES EVERY STAGE THAT REBUILDS EDGES. Edge.declaration is outside content_hash
+// and inside derived ==, so a stage that rebuilds an edge with the same label and target but writes
+// NotADeclaration changes nothing the hash or any existing claim reads: the keyed declaration is lost
+// silently. This claim runs the real normalize, resolve and infer (with refinement discharge) over one
+// module that declares a fn name and a typed parameter (a let binder is an atom, not an edge), and requires every DeclaresAt row
+// found after normalize to be present, with the identical declared occurrence, after each later stage.
+// RED: set one same-label rebuild site in any of those stages to NotADeclaration and the row is missing.
+// close_lowered_image runs inside normalize (its image is the one read first). translate's tree
+// rebuilds are not observable here: its output is target text, not a Node.
+
+data subject_source: String = "module v2.test.subject\nfn alpha(beta: Int) -> Int { let gamma = 1  gamma }\n"
+
+fn identity_text(identity: NodeOccurrenceIdentity) -> String {
+  match identity {
+    OccurrenceMinted { id: i } => "minted#" + int_to_decimal_string(value: i.value)
+    OccurrenceProjected { id: i, caused_by: c } => "projected#" + int_to_decimal_string(value: i.value) + "<-" + int_to_decimal_string(value: c.occurrence.value)
+    OccurrencePending { caused_by: c } => "pending<-" + int_to_decimal_string(value: c.value)
+    OccurrenceSynthetic => "synthetic"
+  }
+}
+
+fn declaration_row(edge: Edge) -> List<String> {
+  match edge.declaration {
+    NotADeclaration => []
+    DeclaresAt { occurrence: occ } =>
+      match edge.label {
+        Authored { name: n } => ["[" + symbol_lexeme(sym: n) + "=" + identity_text(identity: occ) + "]"]
+        StructuralLabel { label: _ } => []
+        Positional => []
+      }
+  }
+}
+
+fn declaration_rows(acc: List<String>, node: Node) -> List<String> {
+  fold(node.children, init: acc, f: fn(inner, edge) {
+    declaration_rows(acc: fold_list(xs: declaration_row(edge: edge), empty: inner, cons: fn(a, x) { list_snoc_item(xs: a, item: x) }), node: edge.target)
+  })
+}
+
+fn joined(xs: List<String>) -> String {
+  fold_list(xs: xs, empty: "", cons: fn(acc, x) { acc + x })
+}
+
+fn all_present(wanted: List<String>, in_text: String) -> Bool {
+  fold_list(xs: wanted, empty: true, cons: fn(acc, x) { acc && string_contains(s: in_text, pattern: x) })
+}
+
+fn stage_verdict(stage: String, base: List<String>, root: Node) -> ProcessExit {
+  let rows = declaration_rows(acc: [], node: root)
+  if all_present(wanted: base, in_text: joined(xs: rows)) {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: stage + " lost a declaration: normalize " + joined(xs: base) + " vs " + joined(xs: rows) }
+  }
+}
+
+fn three_declared(base: List<String>) -> Bool {
+  all_present(wanted: ["[alpha=", "[beta="], in_text: joined(xs: base))
+}
+
+fn verdict_of(base: List<String>, resolved_root: Node, inferred_root: Node) -> ProcessExit {
+  if three_declared(base: base) {
+    match stage_verdict(stage: "resolve", base: base, root: resolved_root) {
+      ExitSuccess => stage_verdict(stage: "infer", base: base, root: inferred_root)
+      failed => failed
+    }
+  } else {
+    ExitFailure { code: 1, reason: "normalize did not carry alpha and beta declarations: " + joined(xs: base) }
+  }
+}
+
+test fn declaration_survives_resolve_and_infer() -> ProcessExit {
+  let lm = dag_language_model()
+  match bind_outcome(
+    o: tokenize(text: subject_source, file: ^subject, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(normalized) {
+              bind_outcome(
+                o: resolve(tree: normalized, lm: lm),
+                f: fn(resolved) {
+                  bind_outcome(
+                    o: infer(tree: resolved),
+                    f: fn(obligated) {
+                      bind_outcome(
+                        o: discharge_refinement_obligations(t: obligated),
+                        f: fn(inferred) {
+                          let base = declaration_rows(acc: [], node: normalized.root)
+                          outcome_accepted(value: verdict_of(base: base, resolved_root: resolved.root, inferred_root: inferred.root))
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  ) {
+    Accepted { value: verdict, diagnostics: _ } => verdict
+    Rejected { diagnostics: _ } => ExitFailure { code: 2, reason: "pipeline refused the subject module" }
+  }
+}
+
+// THE DECLARATION IS PROVENANCE, NOT STRUCTURE. Two trees that differ only in which token declared a
+// name are one structure: content_hash and every erasure route must not see Edge.declaration, while
+// derived == does (the control that makes the other three discriminate).
+fn declared_pair_leaf() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^leaf } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 1 } } }
+}
+
+fn declared_pair(occurrence: Int) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^alpha }, target: declared_pair_leaf(), declaration: DeclaresAt { occurrence: OccurrenceMinted { id: OccurrenceId { value: occurrence } } } }],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 2 } }
+  }
+}
+
+fn undeclared_pair() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^alpha }, target: declared_pair_leaf(), declaration: NotADeclaration }],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 2 } }
+  }
+}
+
+fn exit_of(held: Bool, reason: String) -> ProcessExit {
+  if held { ExitSuccess } else { ExitFailure { code: 1, reason: reason } }
+}
+
+test fn declaration_is_outside_hash_and_erasure() -> ProcessExit {
+  exit_of(held: declaration_outside_hash_and_erasure(), reason: "hash or an erasure route saw Edge.declaration")
+}
+
+fn declaration_outside_hash_and_erasure() -> Bool {
+  content_hash(n: declared_pair(occurrence: 7)) == content_hash(n: declared_pair(occurrence: 9))
+    && content_hash(n: declared_pair(occurrence: 7)) == content_hash(n: undeclared_pair())
+    && node_equal_ignoring_provenance(a: canonicalize_node_strip_provenance(n: declared_pair(occurrence: 7)), b: canonicalize_node_strip_provenance(n: undeclared_pair()))
+    && exact_structural_equality_zip_fold(source_facts: declared_pair(occurrence: 7), candidate: declared_pair(occurrence: 9))
+}
+
+test fn derived_equality_sees_the_declaration() -> ProcessExit {
+  exit_of(held: derived_equality_differs(), reason: "derived == did not see Edge.declaration")
+}
+
+fn derived_equality_differs() -> Bool {
+  !node_same_occurrence(a: declared_pair(occurrence: 7), b: declared_pair(occurrence: 9)) && !node_same_occurrence(a: declared_pair(occurrence: 7), b: undeclared_pair())
+}

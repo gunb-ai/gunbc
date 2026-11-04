@@ -94,6 +94,34 @@ fn workflow_run_activity_name(activity: WorkflowRunActivity) -> String {
   }
 }
 
+// WHAT THE PAYLOAD'S workflow_run.display_title HOLDS AT EACH ACTIVITY. GitHub's docs say the field is
+// the run's title, which is its rendered run-name when the workflow sets one, and say nothing about
+// when that rendering happens. The reproduced upstream report (actions/runner#4141, with a
+// reproduction repository) shows that at `requested` both `name` and `display_title` are the
+// workflow's static name and only at `completed` are they the rendered run-name. A consumer that
+// filters a `requested` event on its run-name therefore sees the workflow name and matches nothing.
+// in_progress is UNCITED, not assumed rendered: no source establishes it, so a consumer may not read
+// a rendered title there.
+data workflow_run_requested_title_report: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/runner/issues/4141"
+  }
+}
+
+type WorkflowRunDisplayTitleAtActivity
+  = DisplayTitleIsWorkflowName { ground: ExternalAuthority }
+  | DisplayTitleIsRenderedRunName { ground: ExternalAuthority }
+  | DisplayTitleRenderingUncited
+
+fn workflow_run_display_title_at(activity: WorkflowRunActivity) -> WorkflowRunDisplayTitleAtActivity {
+  match activity {
+    WorkflowRunRequestedActivity => DisplayTitleIsWorkflowName { ground: workflow_run_requested_title_report }
+    WorkflowRunInProgressActivity => DisplayTitleRenderingUncited
+    WorkflowRunCompletedActivity => DisplayTitleIsRenderedRunName { ground: workflow_run_requested_title_report }
+  }
+}
+
 type Workflow {
   name: String
   run_name: String?

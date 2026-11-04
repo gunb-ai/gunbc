@@ -1,5 +1,7 @@
 module v2.test.claim.fn_family.lens_unit.discriminators
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -8,7 +10,7 @@ fn atom_node(id: Symbol) -> Node {
 }
 
 fn edge_of(k: Node) -> Edge {
-  Edge { label: Positional, target: k }
+  Edge { label: Positional, target: k, declaration: NotADeclaration }
 }
 
 fn no_edges() -> List<Edge> {

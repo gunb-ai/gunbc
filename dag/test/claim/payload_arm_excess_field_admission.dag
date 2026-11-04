@@ -1,6 +1,7 @@
 module test.claim.payload_arm_excess_field_admission
 
 import std.types { String, Bool, Int, List }
+import std.optional { Absent }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CensusObserved, CensusNotRunnable,
   CompileDiagnosticCensusRow, census_blocking_rows, census_total_count, census_rows_of_class,
@@ -119,8 +120,8 @@ data census_sentinel: CompileDiagnosticCensus = compile_dag_diagnostic_census(pa
 data census_missing_required: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: "probe_carrier_host: \"h\" as NonEmptyStr"))
 data census_undefined_initializer: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: join([valid_fields, ", __payload_arm_excess_field_probe: totally_undefined_fn_zz()"], "")))
 
-data plain_product_with_sentinel_source: String = "module probe_plain_product\nimport gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }\nimport std.types { NonEmptyStr }\nfn build() -> CompileDiagnosticCensusRow {\n  CompileDiagnosticCensusRow { diagnostic_class: \"x\" as NonEmptyStr, subject_name: \"s\", blocking: false, count: 0, __payload_arm_excess_field_probe: 1 }\n}\n"
-data plain_product_clean_source: String = "module probe_plain_product_clean\nimport gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }\nimport std.types { NonEmptyStr }\nfn build() -> CompileDiagnosticCensusRow {\n  CompileDiagnosticCensusRow { diagnostic_class: \"x\" as NonEmptyStr, subject_name: \"s\", blocking: false, count: 0 }\n}\n"
+data plain_product_with_sentinel_source: String = "module probe_plain_product\nimport gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }\nimport std.types { NonEmptyStr }\nimport std.optional { Absent }\nfn build() -> CompileDiagnosticCensusRow {\n  CompileDiagnosticCensusRow { diagnostic_class: \"x\" as NonEmptyStr, subject_name: \"s\", blocking: false, count: 0, __payload_arm_excess_field_probe: 1, rendered_pair: Absent {} }\n}\n"
+data plain_product_clean_source: String = "module probe_plain_product_clean\nimport gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }\nimport std.types { NonEmptyStr }\nimport std.optional { Absent }\nfn build() -> CompileDiagnosticCensusRow {\n  CompileDiagnosticCensusRow { diagnostic_class: \"x\" as NonEmptyStr, subject_name: \"s\", blocking: false, count: 0, rendered_pair: Absent {} }\n}\n"
 
 data census_plain_product_sentinel: CompileDiagnosticCensus = compile_dag_diagnostic_census(plain_product_with_sentinel_source)
 data census_plain_product_clean: CompileDiagnosticCensus = compile_dag_diagnostic_census(plain_product_clean_source)

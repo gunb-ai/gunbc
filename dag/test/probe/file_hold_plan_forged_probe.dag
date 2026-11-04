@@ -30,6 +30,7 @@ import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.budget { MoneyAccount, MoneyOutcome, AccountAdvanced }
 import product.fabric.execution { ReservationRef }
 import gunbc.fabric.fabric_control_plane { CellHoldEnd, end_cell_hold, commit_hold_end, free_cell_slot }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
 import std.durable_compare_and_set { ExpectSlotGeneration }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHeld, DurableHoldFree }
 import gunbc.durable_exclusive_hold_file_store { FileHoldAcquirePlan, FileHoldReleasePlan, hold_slot_payload }
@@ -63,9 +64,9 @@ fn authored_account() -> MoneyAccount {
   }
 }
 
-fn free_the_cell_with_an_authored_advanced_account(root: NonEmptyStr, reservation: ReservationRef, generation: Int) -> CellHoldEnd {
+fn free_the_cell_with_an_authored_advanced_account(store: FabricAllocationStore, reservation: ReservationRef, generation: Int) -> CellHoldEnd {
   end_cell_hold(
-    root: root,
+    store: store,
     slot_key: "srv3-06",
     reservation: reservation,
     acquired_generation: generation,
@@ -74,10 +75,10 @@ fn free_the_cell_with_an_authored_advanced_account(root: NonEmptyStr, reservatio
   )
 }
 
-fn commit_a_genuine_plan_with_an_authored_outcome(plan: FileHoldReleasePlan) -> CellHoldEnd {
-  commit_hold_end(plan: plan, money: AccountAdvanced { account: authored_account() })
+fn commit_a_genuine_plan_with_an_authored_outcome(store: FabricAllocationStore, plan: FileHoldReleasePlan) -> CellHoldEnd {
+  commit_hold_end(store: store, plan: plan, money: AccountAdvanced { account: authored_account() })
 }
 
-fn free_a_genuine_plan_with_an_authored_account(plan: FileHoldReleasePlan) -> CellHoldEnd {
-  free_cell_slot(plan: plan, account: authored_account())
+fn free_a_genuine_plan_with_an_authored_account(store: FabricAllocationStore, plan: FileHoldReleasePlan) -> CellHoldEnd {
+  free_cell_slot(store: store, plan: plan, account: authored_account())
 }

@@ -1,0 +1,239 @@
+module extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide
+
+import std.types { Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority,
+}
+import extdeps.uri { Uri, Https }
+import extdeps.firmware.ami_aptio_status_codes {
+  StatusCodeTable, StatusRow, StatusMeaning, Described, OemDefined, ReservedForAmi, ReservedForAsl,
+  CheckpointRange, ProgressCode, ErrorCode,
+  SecPhase, PeiUpToMemoryDetection, PeiAfterMemoryDetection, DxeUpToBds, BdsPhase, S3ResumePei, RecoveryPei,
+}
+
+// SUBJECT: Supermicro's reprint "AMI Aptio V BIOS POST Codes for Supermicro Motherboards User's Guide",
+// Manual Revision 1.0b, released August 06, 2024, 14 pages. Its Acknowledgement and p.7 note state that
+// the tables are adapted, under AMI's permission, from AMI's "Aptio 5.x Status Codes" Revision 2.04
+// dated April 20, 2024; AMI is the sole owner of that content, and the vocabulary and decode live in
+// extdeps.firmware.ami_aptio_status_codes. This module is the reprint: one revisioned table.
+//
+// READ 2026-10-22 from the PDF at the anchor below (text extracted from its page streams). Every row
+// is CitedToAuthority through the table's standing; page is the number printed in the page header
+// (the PDF's 1-based page index is the same). The document is board-agnostic: it names no board, so
+// nothing here says that any Supermicro board's manual points to it, and which board and firmware
+// build emits which table is an observation of the consuming layer.
+//
+// WHAT A ROW IS. A code the extraction shows with an EMPTY description cell (for example 0x12-0x14,
+// 0x16-0x18, 0x1A-0x1C, 0x2E, 0x38-0x3A, 0x3C-0x3E, 0x64-0x67, 0x6B-0x6F, 0x73-0x77, 0xB7) is
+// NOT a row: the extraction does not establish whether the cell is merged with the row above, so no
+// meaning is assigned and the decode refuses NoRowInRange. Neither is 0x00 ("Not used", outside every
+// range of the Checkpoint Ranges table), 0x5C kept as its described row with the reserved row
+// starting at 0x5D (the source prints 0x5C-0x5F), and 0xDE-0xDF (inside the DXE error range, no row printed).
+// The source's own inconsistencies are kept, not resolved: 0xE8 and 0xF8 are printed under the
+// S3-resume and recovery ERROR headings but fall in the range table's progress ranges.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/manuals/other/AMI_AptioV_BIOS_POST_Codes_for_SM_Motherboards.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide",
+      decl_name: "supermicro_ami_aptio_v_post_codes_guide_table",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data supermicro_aptio_v_guide_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor
+}
+
+fn described(code: Int, text: NonEmptyStr, page: Int) -> StatusRow {
+  StatusRow { first: code, last: code, meaning: Described { description: text }, page: page }
+}
+
+fn described_range(first: Int, last: Int, text: NonEmptyStr, page: Int) -> StatusRow {
+  StatusRow { first: first, last: last, meaning: Described { description: text }, page: page }
+}
+
+fn oem_range(first: Int, last: Int, label: NonEmptyStr, page: Int) -> StatusRow {
+  StatusRow { first: first, last: last, meaning: OemDefined { label: label }, page: page }
+}
+
+fn ami_reserved_range(first: Int, last: Int, page: Int) -> StatusRow {
+  StatusRow { first: first, last: last, meaning: ReservedForAmi, page: page }
+}
+
+fn asl_reserved_range(first: Int, last: Int, page: Int) -> StatusRow {
+  StatusRow { first: first, last: last, meaning: ReservedForAsl, page: page }
+}
+
+// p.7 "Checkpoint Ranges".
+data supermicro_aptio_v_guide_ranges: List<CheckpointRange> = [
+  CheckpointRange { first: 1, last: 11, phase: SecPhase, kind: ProgressCode },
+  CheckpointRange { first: 12, last: 15, phase: SecPhase, kind: ErrorCode },
+  CheckpointRange { first: 16, last: 47, phase: PeiUpToMemoryDetection, kind: ProgressCode },
+  CheckpointRange { first: 48, last: 79, phase: PeiAfterMemoryDetection, kind: ProgressCode },
+  CheckpointRange { first: 80, last: 95, phase: PeiAfterMemoryDetection, kind: ErrorCode },
+  CheckpointRange { first: 96, last: 143, phase: DxeUpToBds, kind: ProgressCode },
+  CheckpointRange { first: 144, last: 207, phase: BdsPhase, kind: ProgressCode },
+  CheckpointRange { first: 208, last: 223, phase: DxeUpToBds, kind: ErrorCode },
+  CheckpointRange { first: 224, last: 232, phase: S3ResumePei, kind: ProgressCode },
+  CheckpointRange { first: 233, last: 239, phase: S3ResumePei, kind: ErrorCode },
+  CheckpointRange { first: 240, last: 248, phase: RecoveryPei, kind: ProgressCode },
+  CheckpointRange { first: 249, last: 255, phase: RecoveryPei, kind: ErrorCode },
+]
+
+// Rows by printed page: SEC p.7, PEI progress p.8, PEI errors/S3/recovery p.9, DXE/BDS p.10-11.
+data supermicro_aptio_v_guide_rows: List<StatusRow> = [
+  described(code: 1, text: "Power on.  Reset type detection (soft/hard).", page: 7),
+  described(code: 2, text: "AP initialization before microcode loading", page: 7),
+  described(code: 3, text: "North Bridge initialization before microcode loading", page: 7),
+  described(code: 4, text: "South Bridge initialization before microcode loading", page: 7),
+  described(code: 5, text: "OEM initialization before microcode loading", page: 7),
+  described(code: 6, text: "Microcode loading", page: 7),
+  described(code: 7, text: "AP initialization after microcode loading", page: 7),
+  described(code: 8, text: "North Bridge initialization after microcode loading", page: 7),
+  described(code: 9, text: "South Bridge initialization after microcode loading", page: 7),
+  described(code: 10, text: "OEM initialization after microcode loading", page: 7),
+  described(code: 11, text: "Cache initialization", page: 7),
+  ami_reserved_range(first: 12, last: 13, page: 7),
+  described(code: 14, text: "Microcode not found", page: 7),
+  described(code: 15, text: "Microcode not loaded", page: 7),
+  described(code: 16, text: "PEI Core is started", page: 8),
+  described(code: 17, text: "Pre-memory CPU initialization is started", page: 8),
+  described(code: 21, text: "Pre-memory North Bridge initialization is started", page: 8),
+  described(code: 25, text: "Pre-memory South Bridge initialization is started", page: 8),
+  oem_range(first: 29, last: 42, label: "OEM pre-memory initialization codes", page: 8),
+  described(code: 43, text: "Memory initialization.  Serial Presence Detect (SPD) data reading", page: 8),
+  described(code: 44, text: "Memory initialization.  Memory presence detection", page: 8),
+  described(code: 45, text: "Memory initialization.  Programming memory timing information", page: 8),
+  described(code: 47, text: "Memory initialization (other).", page: 8),
+  asl_reserved_range(first: 48, last: 48, page: 8),
+  described(code: 49, text: "Memory Installed", page: 8),
+  described(code: 50, text: "CPU post-memory initialization is started", page: 8),
+  described(code: 51, text: "CPU post-memory initialization.  Cache initialization", page: 8),
+  described(code: 52, text: "CPU post-memory initialization.  Application Processor(s) (AP) initialization", page: 8),
+  described(code: 53, text: "CPU post-memory initialization.  Boot Strap Processor (BSP) selection", page: 8),
+  described(code: 54, text: "CPU post-memory initialization.  System Management Mode (SMM) initialization", page: 8),
+  described(code: 55, text: "Post-Memory North Bridge initialization is started", page: 8),
+  described(code: 59, text: "Post-Memory South Bridge initialization is started", page: 8),
+  oem_range(first: 63, last: 78, label: "OEM post memory initialization codes", page: 8),
+  described(code: 79, text: "DXE IPL is started", page: 8),
+  described(code: 80, text: "Memory initialization error.  Invalid memory type or incompatible memory speed", page: 9),
+  described(code: 81, text: "Memory initialization error.  SPD reading has failed", page: 9),
+  described(code: 82, text: "Memory initialization error.  Invalid memory size or memory modules do not match.", page: 9),
+  described(code: 83, text: "Memory initialization error.  No usable memory detected", page: 9),
+  described(code: 85, text: "Memory not installed", page: 9),
+  described(code: 86, text: "Invalid CPU type or Speed", page: 9),
+  described(code: 87, text: "CPU mismatch", page: 9),
+  described(code: 88, text: "CPU self test failed or possible CPU cache error", page: 9),
+  described(code: 89, text: "CPU micro-code is not found or micro-code update is failed", page: 9),
+  described(code: 90, text: "Internal CPU error", page: 9),
+  described(code: 91, text: "Reset PPI is  not available", page: 9),
+  described(code: 92, text: "PEI phase BMC self-test failure", page: 9),
+  ami_reserved_range(first: 93, last: 95, page: 9),
+  described(code: 224, text: "S3 Resume is stared (S3 Resume PPI is called by the DXE IPL)", page: 9),
+  described(code: 225, text: "S3 Boot Script execution", page: 9),
+  described(code: 226, text: "Video repost", page: 9),
+  described(code: 227, text: "OS S3 wake vector call", page: 9),
+  ami_reserved_range(first: 228, last: 231, page: 9),
+  described(code: 232, text: "S3 Resume Failed", page: 9),
+  described(code: 233, text: "S3 Resume PPI not Found", page: 9),
+  described(code: 234, text: "S3 Resume Boot Script Error", page: 9),
+  described(code: 235, text: "S3 OS Wake Error", page: 9),
+  ami_reserved_range(first: 236, last: 239, page: 9),
+  described(code: 241, text: "Recovery condition triggered by user (Forced recovery)", page: 9),
+  described(code: 242, text: "Recovery process started", page: 9),
+  ami_reserved_range(first: 245, last: 247, page: 9),
+  described(code: 248, text: "Recovery PPI is not available", page: 9),
+  described(code: 249, text: "Recovery capsule is not found", page: 9),
+  described(code: 250, text: "Invalid recovery capsule", page: 9),
+  ami_reserved_range(first: 251, last: 255, page: 9),
+  described(code: 96, text: "DXE Core is started", page: 10),
+  described(code: 97, text: "NVRAM initialization", page: 10),
+  described(code: 98, text: "Installation of the South Bridge Runtime Services", page: 10),
+  described(code: 99, text: "CPU DXE initialization is started", page: 10),
+  described(code: 104, text: "PCI host bridge initialization", page: 10),
+  described(code: 105, text: "North Bridge DXE initialization is started", page: 10),
+  described(code: 106, text: "North Bridge DXE SMM initialization is started", page: 10),
+  described(code: 112, text: "South Bridge  DXE initialization is started", page: 10),
+  described(code: 113, text: "South Bridge DXE SMM initialization is started", page: 10),
+  described(code: 114, text: "South Bridge devices initialization", page: 10),
+  described(code: 120, text: "ACPI module initialization", page: 10),
+  described(code: 121, text: "CSM  initialization", page: 10),
+  ami_reserved_range(first: 122, last: 127, page: 10),
+  oem_range(first: 128, last: 143, label: "OEM DXE initialization codes", page: 10),
+  described(code: 144, text: "Boot Device Selection (BDS) phase is started", page: 10),
+  described(code: 145, text: "Driver connecting is started", page: 10),
+  described(code: 146, text: "PCI Bus initialization is started", page: 10),
+  described(code: 147, text: "PCI Bus Hot Plug Controller Initialization", page: 10),
+  described(code: 148, text: "PCI Bus Enumeration", page: 10),
+  described(code: 149, text: "PCI Bus Request Resources", page: 10),
+  described(code: 150, text: "PCI Bus Assign Resources", page: 10),
+  described(code: 151, text: "Console Output devices connect", page: 10),
+  described(code: 152, text: "Console input devices connect", page: 10),
+  described(code: 153, text: "Super IO Initialization", page: 10),
+  described(code: 154, text: "USB initialization is started", page: 11),
+  described(code: 155, text: "USB Reset", page: 11),
+  described(code: 156, text: "USB Detect", page: 11),
+  described(code: 157, text: "USB Enable", page: 11),
+  ami_reserved_range(first: 158, last: 159, page: 11),
+  described(code: 160, text: "IDE initialization is started", page: 11),
+  described(code: 161, text: "IDE Reset", page: 11),
+  described(code: 162, text: "IDE Detect", page: 11),
+  described(code: 163, text: "IDE Enable", page: 11),
+  described(code: 164, text: "SCSI initialization is started", page: 11),
+  described(code: 165, text: "SCSI Reset", page: 11),
+  described(code: 166, text: "SCSI Detect", page: 11),
+  described(code: 167, text: "SCSI Enable", page: 11),
+  described(code: 168, text: "Setup Verifying Password", page: 11),
+  described(code: 169, text: "Start of Setup", page: 11),
+  asl_reserved_range(first: 170, last: 170, page: 11),
+  described(code: 171, text: "Setup Input Wait", page: 11),
+  asl_reserved_range(first: 172, last: 172, page: 11),
+  described(code: 173, text: "Ready To Boot event", page: 11),
+  described(code: 174, text: "Legacy Boot event", page: 11),
+  described(code: 175, text: "Exit  Boot Services event", page: 11),
+  described(code: 176, text: "Runtime Set Virtual Address MAP Begin", page: 11),
+  described(code: 177, text: "Runtime Set Virtual Address MAP End", page: 11),
+  described(code: 178, text: "Legacy Option ROM Initialization", page: 11),
+  described(code: 179, text: "System Reset", page: 11),
+  described(code: 180, text: "USB hot plug", page: 11),
+  described(code: 181, text: "PCI bus hot plug", page: 11),
+  described(code: 182, text: "Clean-up of NVRAM", page: 11),
+  ami_reserved_range(first: 184, last: 191, page: 11),
+  oem_range(first: 192, last: 207, label: "OEM BDS initialization codes", page: 11),
+  described(code: 208, text: "CPU initialization error", page: 11),
+  described(code: 209, text: "North Bridge initialization error", page: 11),
+  described(code: 210, text: "South Bridge initialization error", page: 11),
+  described(code: 211, text: "Some of the Architectural Protocols are not available", page: 11),
+  described(code: 212, text: "PCI resource allocation error.  Out of Resources", page: 11),
+  described(code: 213, text: "No Space for Legacy Option ROM", page: 11),
+  described(code: 214, text: "No Console Output Devices are found", page: 11),
+  described(code: 215, text: "No Console Input Devices are found", page: 11),
+  described(code: 216, text: "Invalid password", page: 11),
+  described(code: 217, text: "Error loading Boot Option (LoadImage returned error)", page: 11),
+  described(code: 218, text: "Boot Option is failed (StartImage returned error)", page: 11),
+  described(code: 219, text: "Flash update is failed", page: 11),
+  described(code: 220, text: "Reset protocol is not available", page: 11),
+  described(code: 221, text: "DXE phase BMC self-test failure", page: 11),
+]
+
+data supermicro_ami_aptio_v_post_codes_guide_table: StatusCodeTable = StatusCodeTable {
+  document: DeclarationRef {
+    module_path: "extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide",
+    decl_name: "supermicro_ami_aptio_v_post_codes_guide_table",
+    field: WholeDeclaration
+  },
+  ranges: supermicro_aptio_v_guide_ranges,
+  rows: supermicro_aptio_v_guide_rows,
+  standing: supermicro_aptio_v_guide_standing
+}

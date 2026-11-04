@@ -28,6 +28,7 @@ import v2.std.node {
   MatchArmBodyEdge,
   MatchArmPatternEdge,
   core_edge,
+  NotADeclaration
 }
 import v2.std.witness { Witness }
 
@@ -79,11 +80,13 @@ fn collapsing_arm_with_payload() -> Node {
           children: [
             Edge {
               label: Positional,
-              target: dag_type_atom_node(identity: ^RuntimeValueEqualityUnavailable)
+              target: dag_type_atom_node(identity: ^RuntimeValueEqualityUnavailable),
+              declaration: NotADeclaration
             },
             Edge {
               label: Positional,
-              target: dag_type_atom_node(identity: ^reason)
+              target: dag_type_atom_node(identity: ^reason),
+              declaration: NotADeclaration
             }
           ],
           occurrence_id: OccurrenceSynthetic

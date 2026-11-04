@@ -88,7 +88,7 @@ fn variant_subject(host: HostIdentity, openbmc: Bool) -> FanObserveHost?
     Present { value: h } => match h.access {
       BmcAccessObserved { observation: o } => {
         let access = if openbmc { BmcAccessObserved { observation: as_openbmc(o: o) } } else { h.access }
-        let fixture = managed_host_fixture(host: host, access: access, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        let fixture = managed_host_fixture(host: host, access: access, secure: h.secure, smpro: h.smpro)
         match fan_observe_admission(lookup: ManagedHostFound { host: fixture, control: bmc_control_binding(observed: fixture.access, secured: fixture.secure) }) {
           FanObserveAdmitted { host: v } => Present { value: v }
           _ => Absent

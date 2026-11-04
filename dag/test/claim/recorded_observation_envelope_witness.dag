@@ -32,7 +32,7 @@ import std.observation {
   RootOccurrence,
   ChildOf,
   RecordedObservation,
-  OccurrenceId,
+  AttemptOccurrenceId,
   OccurrenceComparison,
   SameOccurrence,
   DifferentOccurrence,
@@ -79,11 +79,11 @@ fn an_event() -> ObservationEvent {
   }
 }
 
-fn occ_in(attempt: NonEmptyStr, id: NonEmptyStr) -> OccurrenceId {
-  OccurrenceId { attempt: attempt, id: id }
+fn occ_in(attempt: NonEmptyStr, id: NonEmptyStr) -> AttemptOccurrenceId {
+  AttemptOccurrenceId { attempt: attempt, id: id }
 }
 
-fn rec(p: ObservationProducer, seq: Nat, occ: OccurrenceId, origin: OccurrenceOrigin) -> RecordedObservation {
+fn rec(p: ObservationProducer, seq: Nat, occ: AttemptOccurrenceId, origin: OccurrenceOrigin) -> RecordedObservation {
   RecordedObservation {
     producer: p,
     producer_sequence: seq,

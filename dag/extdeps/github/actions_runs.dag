@@ -4,6 +4,7 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.resources { Network }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 
 // THE ACTIONS *RUNS* SURFACE, WHICH IS NOT THE WORKFLOW-SYNTAX SURFACE.
 //
@@ -148,7 +149,7 @@ fn run_settled(settlement: RunSettlement) -> Bool {
 // meaning -- a defect this repository has recorded on three separate surfaces -- so the field names
 // are kept verbatim from upstream rather than shortened to `start` and `end`.
 type WorkflowRunRecord {
-  run_id: Int
+  run_id: GitHubWorkflowRunId
   event: String
   head_branch: String
   status: String

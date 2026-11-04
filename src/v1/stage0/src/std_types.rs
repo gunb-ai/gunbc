@@ -55,7 +55,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
 }
 
 pub fn is_container_type(name: String) -> bool {
-    match container_expected_arity(name.clone()) {
+    match container_expected_arity(name) {
         Some(_) => true,
         std::option::Option::None => false,
     }
@@ -78,7 +78,7 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
 
 pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     {
-        let names = container_param_names_for(kind_name.clone());
+        let names = container_param_names_for(kind_name);
         match Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new({
@@ -154,8 +154,43 @@ pub fn container_template_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_algebra_rows(), name.clone())
 }
 
+pub fn container_spelling_is_algebra(name: String, algebra: String) -> bool {
+    (container_template_algebra(name).as_deref() == Some(algebra.clone()).as_deref())
+}
+
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_alias_rows(), name.clone())
+}
+
+pub fn container_algebra_carrier_rows() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            container_algebra_carrier_rows_value()
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+}
+
+pub fn container_algebra_carrier_rows_value() -> Rc<HashMap<String, bool>> {
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<String, bool>();
+        Rc::new(v1_rt::sorted_map_keys(&container_template_algebra_rows()))
+            .iter()
+            .cloned()
+            .fold(
+                carrier_seed.clone(),
+                |acc: Rc<HashMap<String, bool>>, spelling: String| match container_template_algebra(
+                    spelling.clone(),
+                ) {
+                    Some(carrier) => v1_rt::rc_map_insert(acc.clone(), carrier.clone(), true),
+                    std::option::Option::None => acc.clone(),
+                },
+            )
+    }
+}
+
+pub fn is_container_algebra_carrier(name: String) -> bool {
+    v1_rt::map_contains_key(&container_algebra_carrier_rows(), name.clone())
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
@@ -168,6 +203,14 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
 
 pub type Bool = bool;
 
+pub fn bool_text(b: bool) -> String {
+    if b.clone() {
+        "true".to_string()
+    } else {
+        "false".to_string()
+    }
+}
+
 pub type Unit = ();
 
 pub type Json = serde_json::Value;
@@ -178,9 +221,9 @@ pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
+pub type Set<Element> = Rc<BTreeSet<Element>>;
 
-pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;
+pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.iter().fold(0, |acc: i64, _| v1_rt::int_add(acc, 1))
@@ -424,8 +467,6 @@ pub type WorkflowProducerId = String;
 pub type WorkflowObserverId = String;
 
 pub type WorkflowProverId = String;
-
-pub type WorkflowRunId = String;
 
 pub type GitRef = String;
 

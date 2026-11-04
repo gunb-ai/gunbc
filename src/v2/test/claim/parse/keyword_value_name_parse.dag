@@ -926,3 +926,73 @@ test fn kvn_keyword_block_after_ident_control_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+// A LAMBDA BINDER READS THE SAME VALUE-NAME PRODUCTION AS EVERY OTHER BINDER (dag_grammar_arrow_lambda_expr and its lookahead twin
+// dag_grammar_arrow_lambda_name_head_expr read dag_grammar_primary_name_expr, so the contextual set module/data declarable as a parameter is
+// declarable as a lambda parameter too). Positive: `module => module`, `m => m`, `data => data`, and the parenthesised head. RED: a
+// statement-starting keyword outside the contextual set (`fn => 1`) still refuses.
+data kvn_lambda_module_source: String = "module m.t\ndata d: Int = f(module => module)\n"
+
+test fn kvn_lambda_module_binder_parses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_lambda_module_source, file: ^probe_kvn_lambda_module) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_lambda_data_source: String = "module m.t\ndata d: Int = f(data => data)\n"
+
+test fn kvn_lambda_data_binder_parses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_lambda_data_source, file: ^probe_kvn_lambda_data) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_lambda_ident_source: String = "module m.t\ndata d: Int = f(m => m)\n"
+
+test fn kvn_lambda_ident_binder_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_lambda_ident_source, file: ^probe_kvn_lambda_ident) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_lambda_paren_module_source: String = "module m.t\ndata d: Int = f((module, x) => module)\n"
+
+test fn kvn_lambda_paren_module_binder_parses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_lambda_paren_module_source, file: ^probe_kvn_lambda_paren_module) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_lambda_fn_source: String = "module m.t\ndata d: Int = f(fn => 1)\n"
+
+test fn kvn_lambda_fn_binder_still_refuses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_lambda_fn_source, file: ^probe_kvn_lambda_fn) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// THE CONSUMER SHAPE (src/v1/03_resolve.dag resolve_modules): a module-named lambda parameter inside a pipe call.
+data kvn_lambda_pipe_module_source: String = "module m.t\ndata d: Int = xs |> map(module => module_input(module: module, n: 1))\n"
+
+test fn kvn_lambda_pipe_module_binder_parses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_lambda_pipe_module_source, file: ^probe_kvn_lambda_pipe_module) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// An UNTYPED fn-literal parameter (dag_grammar_untyped_params_helper) reads the same production: `fn(module, s) { ... }`, the corpus shape
+// `fold(xs, init: false, f: fn(acc, s) { ... })` with the first binder named `module`.
+data kvn_fn_literal_module_source: String = "module m.t\ndata d: Int = fold(xs, init: false, f: fn(module, s) { module || s })\n"
+
+test fn kvn_fn_literal_module_param_parses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_fn_literal_module_source, file: ^probe_kvn_fn_literal_module) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

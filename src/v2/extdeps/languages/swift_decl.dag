@@ -37,6 +37,7 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 
 // SWIFT TYPE DECLARATIONS AS ROWS, READ BY THE SHARED SEMANTIC-DECL FOLD (std.compilers.semantic_decl_emission).
@@ -70,7 +71,7 @@ data swift_decl_primitive_spelling_frontier: DissolutionCondition = unbound_diss
 )
 
 fn swift_decl_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn swift_decl_type_expr_productions() -> List<FormalProduction> {

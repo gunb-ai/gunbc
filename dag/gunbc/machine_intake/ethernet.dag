@@ -1,9 +1,15 @@
 module gunbc.machine_intake.ethernet
 
-import std.types { Bool, NonEmptyStr, String }
+import std.measure { Minute }
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
 import extdeps.standards.nic_attachment { NicAttachmentClass }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq }
 import extdeps.network.mac { Eui48Address }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.bmc.ipmi_channel { IpmiChannelNumber }
+import std.decl_ref { DeclarationRef }
+import std.optional { Absent, Present }
 import gunbc.machine_intake.subject { UnitKey }
 
 // ONE PHYSICAL CONNECTOR IS NOT ONE FUNCTION. Mt. Collins initially misread a second BMC
@@ -33,11 +39,18 @@ type PhysicalEthernetPort {
   attachment: EthernetAttachment
 }
 
-type EthernetFunction
+// THE FUNCTIONS AN INTERFACE CAN BE OBSERVED TO HAVE, kept apart from the unobserved arm so a carrier that
+// must NAME a function (a gap saying which function nobody read) holds this sum and cannot hold
+// `FunctionUnobserved` by construction, with no second vocabulary beside it (DESIGN.md section 3).
+type ObservedEthernetFunction
   = BmcDedicated
   | BmcNcsi
+  | BmcHostBus
   | HostData
   | PrebootNetwork
+
+type EthernetFunction
+  = FunctionObserved { function: ObservedEthernetFunction }
   | FunctionUnobserved { discriminator: NonEmptyStr }
 
 type EthernetFunctionBinding {
@@ -49,10 +62,105 @@ type EthernetLinkAddress
   = ConfiguredLink { configured: Eui48Address }
   | PermanentAndConfigured { permanent: Eui48Address, configured: Eui48Address }
 
+// HOW A LINK ADDRESS WAS READ, declared beside the record that carries one. The same six octets
+// could be a redfish reply, an `ipmitool lan print`, a DHCP packet, or somebody's recollection, and
+// which of those it was decides how much weight a reach attempt puts on the address. A bare
+// `ConfiguredLink { configured: mac_address(...) }` cannot say, so the record that carries one says
+// it: what was asked of the unit, over which channel, where the raw capture is kept, when it was
+// true, and which reading produced the address.
+//
+// IT LIVES HERE, ON THE RECORD, NOT IN WHATEVER INVENTORY CITES IT LATER. Provenance is part of
+// taking a reading; a consumer that adds it afterwards can add the wrong one, and an inventory that
+// owned the provenance would be a second place an address's story is kept -- the §3 fork this
+// carrier exists to close.
+// THE MOMENT A READING WAS TRUE, as materially different facts rather than one string. The field once
+// held three kinds of thing at once: a dated reading, a bounded reading ("undated in the source;
+// earlier than the 2026-10-03 reconfiguration") and no reading at all. A timestamp alone fits only
+// the first, and forcing the others into it would be the fabricated default DESIGN.md section 5 calls
+// a hard reject, so the sum says which kind of fact it is and each arm carries only what that kind can
+// have. "No reading at all" is not a moment: it is a gap, and lives in host_interface_inventory.
+//
+// `ReadAtMinute` EXISTS BECAUSE THE SOURCE READINGS ARE MINUTE-GRAINED. "2026-09-06T02:30Z" has no
+// seconds, which RFC 3339 requires, so it cannot inhabit `Rfc3339Timestamp` without inventing a
+// second; the arm keeps the precision the source had. THE CLOCK TIME IS ONE `std.measure` `Minute`
+// COUNT SINCE MIDNIGHT, not an hour field beside a minute field: two bare Ints made 25:99 writable and
+// restated a unit the measure layer already owns. The count is not bounded to a day by construction (a
+// checked constructor returning Optional is the rung above, unbuilt); that residual is stated here
+// rather than hidden behind a field name.
+type ReadingMoment
+  = ReadAt { instant: Rfc3339Timestamp }
+  | ReadAtMinute { date: Iso8601CivilDate, since_midnight: Minute }
+  | ReadBefore { bound: Iso8601CivilDate, bound_stated_by: DeclarationRef }
+
+// HOW AN ADDRESS IS READ ON THIS FLEET, as a closed vocabulary. The first cut packed "ipmitool -I
+// lanplus lan print 1, MAC Address field" into one string: a program, its channel, its arguments and
+// the output field it was read from, four named parts behind one leaf (section 2). The vocabularies
+// are closed because the corpus contains exactly these readings.
+type IpmiLanPrintField
+  = IpmiMacAddressField
+
+// THE FIELDS OF A BOOTP/DHCP EXCHANGE A LINK ADDRESS CAN BE READ OUT OF. `chaddr` and
+// Client-Ethernet-Address are distinct fields of the same packet and the capture carries both.
+type BootpCapturedField
+  = BootpClientEthernetAddress
+  | BootpChaddr
+
+// THE READ-ONLY HOST COMMANDS THAT ESTABLISH AN INTERFACE'S ADDRESS ON A RUNNING HOST. The three
+// answer different questions: `ip addr` the link address, `ethtool -i` the driver and bus info that
+// say what the device is, `networkctl` the administrative state.
+type HostInterfaceListingCommand
+  = IpAddrShow
+  | EthtoolDriverInfo
+  | NetworkctlStatus
+
+type ReadingInstrument
+  = IpmiLanPrint { channel: IpmiChannelNumber, output_field: IpmiLanPrintField }
+  | BootpPacketCapture { fields: List<BootpCapturedField> }
+  | HostInterfaceListing { commands: List<HostInterfaceListingCommand> }
+
+// THE STANDING OF THE CREDENTIAL A READING WAS TAKEN WITH. Whether the factory credential still
+// works on a unit is a fact a later operator needs in order to repeat the reading.
+type ReadingCredentialStanding
+  = BootstrapFactoryCredentialUnrotated
+  | CredentialStandingUnobserved { discriminator: NonEmptyStr }
+
+// OVER WHAT PATH THE UNIT WAS ASKED. An out-of-band controller conversation says what the CONTROLLER
+// believes regardless of what the host is doing; an in-band observation (a packet on the shared
+// segment, or a command run in the host's own shell) can be answered by either the host or the
+// controller -- the ambiguity this plan exists to close. A row that cannot say which path it came
+// from cannot be trusted to say whose address it holds.
+type ReadingChannel
+  = OutOfBandController { controller_address: Ipv4Address, credential: ReadingCredentialStanding }
+  | InBandSegmentSniff { sniffer_address: Ipv4Address? }
+  | InBandHostShell { host_address: Ipv4Address, account: NonEmptyStr }
+  | OperatorAtController
+
+// WHERE THE RAW CAPTURE LIVES: a workspace file and the key read out of it, or a row of this
+// repository's own model that holds the reading (the inventory borrows rather than restates).
+type ReadingArtifact
+  = WorkspaceCaptureFile { path: FilePath, field: NonEmptyStr }
+  | ModelRow { row: DeclarationRef }
+
+type InterfaceReadingProvenance {
+  instrument: ReadingInstrument
+  channel: ReadingChannel
+  artifact: ReadingArtifact
+  moment: ReadingMoment
+  // THE READING ITSELF, in the words the capture uses: a quotation of what the instrument said, not a
+  // packing of parts that have names above.
+  reading: NonEmptyStr
+}
+
+// `provenance` is required rather than optional on purpose: a link address with no stated origin is
+// an assertion, and the only way to keep the record honest is to make it impossible to build without
+// saying where the address came from.
 type ObservedEthernetLan {
   binding: EthernetFunctionBinding
-  network_address: Ipv4Address
+  // ABSENT WHEN THE INTERFACE HAD NO ADDRESS WHEN READ (srv1's controller NIC is admin-down and
+  // unconfigured in its receipt); a placeholder address would be a fabricated reading.
+  network_address: Ipv4Address?
   link: EthernetLinkAddress
+  provenance: InterfaceReadingProvenance
 }
 
 type PortUnitIdentityStanding
@@ -126,25 +234,25 @@ fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort)
   }
 }
 
-fn ethernet_function_is_unobserved(f: EthernetFunction) -> Bool {
-  match f {
-    BmcDedicated => false
-    BmcNcsi => false
-    HostData => false
-    PrebootNetwork => false
-    FunctionUnobserved { discriminator: _ } => true
-  }
-}
+// `BmcHostBus` IS A CONTROLLER'S ETHERNET CONTROLLER SEEN AS A DEVICE ON THE HOST'S OWN BUS (USB
+// CDC-Ether, a host-to-controller virtual NIC). It has no wire and so no segment to be reached on, which
+// `BmcNcsi` -- the controller sharing a host data port's wire through the sideband -- does. They answer
+// different reach questions, so they are different names (DESIGN.md section 3, meaning fork).
+// A host's controller interfaces are read per function (`host_interface_inventory` `host_function_interface`),
+// so no predicate over EthernetFunction exists: `ethernet_function_is_controller` was deleted (review 38602
+// finding 3) and its one fold, `host_controller_interfaces`, with it (review 88405).
 
 fn ethernet_function_identity(a: EthernetFunction, b: EthernetFunction) -> FunctionIdentityStanding {
-  if ethernet_function_is_unobserved(f: a) || ethernet_function_is_unobserved(f: b) {
-    FunctionIdentityUnobserved {
+  match a {
+    FunctionObserved { function: x } => match b {
+      FunctionObserved { function: y } => if x == y { ObservedSameFunction } else { ObservedDistinctFunctions }
+      FunctionUnobserved { discriminator: _ } => FunctionIdentityUnobserved {
+        discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
+      }
+    }
+    FunctionUnobserved { discriminator: _ } => FunctionIdentityUnobserved {
       discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
     }
-  } else if a == b {
-    ObservedSameFunction
-  } else {
-    ObservedDistinctFunctions
   }
 }
 
@@ -166,6 +274,32 @@ fn ethernet_port_may_carry_multiple_functions(
   }
 }
 
-fn observed_lans_have_distinct_addresses(a: ObservedEthernetLan, b: ObservedEthernetLan) -> Bool {
-  ipv4_address_eq(a: a.network_address, b: b.network_address) == false
+// WHETHER TWO LAN RECORDS HOLD THE SAME NETWORK ADDRESS, as a standing and not a Bool. An address that
+// was never read on either side is not "not distinct": `false` there reported an observation nobody
+// made (DESIGN.md section 5), and the srv1 host-bus controller NIC has no network address at all.
+type LanAddressStanding
+  = LanAddressesDistinct
+  | LanAddressesSame
+  | LanAddressUnobserved { discriminator: NonEmptyStr }
+
+fn observed_lans_have_distinct_addresses(a: ObservedEthernetLan, b: ObservedEthernetLan) -> LanAddressStanding {
+  match a.network_address {
+    Present { value: left } => match b.network_address {
+      Present { value: right } =>
+        if ipv4_address_eq(a: left, b: right) { LanAddressesSame } else { LanAddressesDistinct }
+      Absent => LanAddressUnobserved { discriminator: "the second lan carries no network address; absence is not distinctness" }
+    }
+    Absent => LanAddressUnobserved { discriminator: "the first lan carries no network address; absence is not distinctness" }
+  }
+}
+
+// THE ADDRESS A LAN RECORD WAS SEEN ANSWERING WITH. Both arms carry one; it is the configured address,
+// the one on the wire, and it is never the burned-in one: `PermanentAndConfigured` keeps that in a field
+// this accessor does not return, so nothing comparing two of these can mistake a permanent address for a
+// configured one. A permanent-address accessor is added when a consumer needs one (none reads it today).
+fn lan_configured_address(lan: ObservedEthernetLan) -> Eui48Address {
+  match lan.link {
+    ConfiguredLink { configured: c } => c
+    PermanentAndConfigured { permanent: _, configured: c } => c
+  }
 }

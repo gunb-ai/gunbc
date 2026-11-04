@@ -1,5 +1,7 @@
 module v2.test.claim.binding.selection_fold_two_implementations
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -236,12 +238,14 @@ fn binding_inhabitance_variant_edge(type_sym: Symbol, variants: List<Symbol>) ->
         concat(acc, [
           Edge {
             label: Authored { name: variant_sym },
-            target: binding_fixture_node(name: variant_sym)
+            target: binding_fixture_node(name: variant_sym),
+            declaration: NotADeclaration
           }
         ])
       }),
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 

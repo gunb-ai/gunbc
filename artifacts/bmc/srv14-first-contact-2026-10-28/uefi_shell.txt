@@ -1,0 +1,171 @@
+tcgetattr: Inappropriate ioctl for device
+[SOL Session operational.  Use ~? for help]
+ifconfig -l
+
+-----------------------------------------------------------------
+
+name         : eth0
+Media State  : Media present
+policy       : static
+mac addr     : E2:FB:38:27:6D:91
+
+ipv4 address : 169.254.0.18
+
+subnet mask  : 255.255.0.0
+
+default gateway: 0.0.0.0
+
+  Routes (1 entries):
+    Entry[0]
+     Subnet : 169.254.0.0
+     Netmask: 255.255.0.0
+     Gateway: 0.0.0.0
+
+DNS server   : 
+
+-----------------------------------------------------------------
+
+name         : eth1
+Media State  : Media present
+policy       : static
+mac addr     : 9C:6B:00:E7:CA:9C
+
+ipv4 address : 0.0.0.0
+
+subnet mask  : 0.0.0.0
+
+default gateway: 0.0.0.0
+
+  Routes (0 entries):
+
+DNS server   : 
+
+-----------------------------------------------------------------
+
+name         : eth2
+Media State  : Media disconnected
+policy       : static
+mac addr     : 9C:6B:00:E7:CA:9A
+
+ipv4 address : 0.0.0.0
+
+subnet mask  : 0.0.0.0
+
+default gateway: 0.0.0.0
+
+  Routes (0 entries):
+
+DNS server   : 
+
+-----------------------------------------------------------------
+
+name         : eth3
+Media State  : Media disconnected
+policy       : static
+mac addr     : 9C:6B:00:E7:CA:9B
+
+ipv4 address : 0.0.0.0
+
+subnet mask  : 0.0.0.0
+
+default gateway: 0.0.0.0
+
+  Routes (0 entries):
+
+DNS server   : 
+
+-----------------------------------------------------------------
+Shell> map
+Mapping table
+      FS0: Alias(s):HD0b:;BLK1:
+          PcieRoot(0x50000)/Pci(0x5,0x0)/Pci(0x0,0x0)/NVMe(0x1,53-92-00-61-6B-38-25-00)/HD(1,GPT,CE8E66CC-6B52-4C10-8C1D-8B615597F031,0x800,0x32000)
+     BLK0: Alias(s):
+          PcieRoot(0x50000)/Pci(0x5,0x0)/Pci(0x0,0x0)/NVMe(0x1,53-92-00-61-6B-38-25-00)
+     BLK2: Alias(s):
+          PcieRoot(0x50000)/Pci(0x5,0x0)/Pci(0x0,0x0)/NVMe(0x1,53-92-00-61-6B-38-25-00)/HD(2,GPT,92A9E24D-4415-4D5B-B4B8-AC529281CBD1,0x32800,0x8000)
+     BLK3: Alias(s):
+          PcieRoot(0x50000)/Pci(0x5,0x0)/Pci(0x0,0x0)/NVMe(0x1,53-92-00-61-6B-38-25-00)/HD(3,GPT,8FA63064-EEBE-45CC-B0F1-B5709565A8DF,0x3A800,0x3B812000)
+     BLK4: Alias(s):
+          PcieRoot(0x50000)/Pci(0x5,0x0)/Pci(0x0,0x0)/NVMe(0x1,53-92-00-61-6B-38-25-00)/HD(4,GPT,AA4E6A0D-B032-44F4-AA05-AD3BF167BB11,0x3B84C800,0x194000)
+Shell> pci
+   Seg  Bus  Dev  Func
+   ---  ---  ---  ----
+    0C   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E100 Prog Interface 0
+    0C   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E101 Prog Interface 0
+    0C   00   02    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E102 Prog Interface 0
+    0C   00   03    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E103 Prog Interface 0
+    0C   00   04    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E104 Prog Interface 0
+    0D   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E100 Prog Interface 0
+    0D   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E101 Prog Interface 0
+    0D   00   02    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E102 Prog Interface 0
+    0D   00   03    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E103 Prog Interface 0
+    0D   00   04    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E104 Prog Interface 0
+    01   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E100 Prog Interface 0
+    01   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E101 Prog Interface 0
+    00   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E100 Prog Interface 0
+    00   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E101 Prog Interface 0
+    02   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    02   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    02   00   03    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E113 Prog Interface 0
+    02   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    02   00   07    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E117 Prog Interface 0
+    02   03   00    00 ==> Serial Bus Controllers - USB
+             Vendor 1B21 Device 3042 Prog Interface 30
+    02   04   00    00 ==> Network Controller - Ethernet controller
+             Vendor 8086 Device 1533 Prog Interface 0
+    03   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    03   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    03   00   03    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E113 Prog Interface 0
+    03   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    03   00   07    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E117 Prog Interface 0
+    03   01   00    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1849 Device 1150 Prog Interface 0
+    03   02   00    00 ==> Display Controller - VGA/8514 controller
+             Vendor 1A03 Device 2000 Prog Interface 0
+    03   03   00    00 ==> Network Controller - Ethernet controller
+             Vendor 8086 Device 1563 Prog Interface 0
+    03   03   00    01 ==> Network Controller - Ethernet controller
+             Vendor 8086 Device 1563 Prog Interface 0
+    03   04   00    00 ==> Mass Storage Controller - Non-volatile memory subsystem
+             Vendor 144D Device A802 Prog Interface 2
+    04   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    04   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    04   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+    05   00   00    00 ==> Bridge Device - Host/PCI bridge
+             Vendor 1DEF Device E110 Prog Interface 0
+    05   00   01    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E111 Prog Interface 0
+    05   00   05    00 ==> Bridge Device - PCI/PCI bridge
+             Vendor 1DEF Device E115 Prog Interface 0
+Shell> dmpstore SecureBoot
+dmpstore: No matching variables found. Guid 8BE4DF61-93CA-11D2-AA0D-00E098032B8C, Name SecureBoot
+Shell> dmpstore SetupMode
+dmpstore: No matching variables found. Guid 8BE4DF61-93CA-11D2-AA0D-00E098032B8C, Name SetupMode
+Shell> 

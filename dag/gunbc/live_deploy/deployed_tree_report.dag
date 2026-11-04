@@ -32,7 +32,7 @@ import gunbc.live_deploy.deployed_tree_observation {
 // moves the deployed HEAD to the admitted revision and thereby flips the launch admission's revision
 // gate (`roadmap_launch_admission` `launch_gate_revision`) from refusing to admitting while the installed binary is still the old
 // one, so the belt's next tick dispatches a mixed realization that was never admitted as a release.
-// That is recorded in docs/plans/deploy-convergence-observed-side.md, and until the quiescence
+// That is recorded in `gunbc.plans.deploy_convergence_observed_side`, and until the quiescence
 // ordering is settled this entry OBSERVES and never actuates.
 //
 // It exists now rather than after that ruling because the alternative is worse than waiting: a

@@ -12,6 +12,8 @@ import std.content_hash {
 import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.os.ubuntu_autoinstall { nocloud_seedfrom_kernel_arg }
+import extdeps.bootloader.grub { grub_cmdline_arg_render }
 import extdeps.crypto.hash { Digest, Sha256, Sha512 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -156,8 +158,10 @@ fn ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: NonEmptyStr) -> 
   concat("autoinstall \"ds=nocloud;s=/cdrom/", concat(nocloud_dir as String, "/\"")) as NonEmptyStr
 }
 
+// The network form goes through the one token builder and GRUB's quoting rule. The local form above keeps its literal:
+// its consumers include mtcollins1's census image, whose boot path this change does not touch.
 fn ubuntu_seeded_install_media_grub_kernel_cmdline_net(seed_url: NonEmptyStr) -> NonEmptyStr {
-  concat("autoinstall ip=dhcp \"ds=nocloud-net;s=", concat(seed_url as String, "\"")) as NonEmptyStr
+  join(["autoinstall", "ip=dhcp", grub_cmdline_arg_render(arg: nocloud_seedfrom_kernel_arg(datasource: "nocloud-net", seedfrom: seed_url as String))], " ") as NonEmptyStr
 }
 
 fn ubuntu_seeded_install_media_default_nocloud_dir(hostname: NonEmptyStr) -> NonEmptyStr {
@@ -243,6 +247,25 @@ fn ubuntu_seeded_install_media_image_name(image_stem: NonEmptyStr, output_digest
     substring(s: output_digest as String, start: 0, end: seeded_install_media_name_digest_width),
     ".iso",
   ) as NonEmptyStr
+}
+
+// THE STEM IS A FACT OF THE NAME, NEVER A SECOND INPUT: a caller holding an image name and its
+// digest derives the stem from them, and only when the name is exactly the one this digest and that
+// stem produce through ubuntu_seeded_install_media_image_name. A name that does not decompose so
+// answers none, so a stem that disagrees with its medium is unwritable rather than checked.
+fn ubuntu_seeded_install_media_image_stem(image_name: NonEmptyStr, output_digest: NonEmptyStr) -> NonEmptyStr? {
+  let name = image_name as String
+  let suffix_width = 1 + seeded_install_media_name_digest_width + ".iso".length()
+  if name.length() <= suffix_width {
+    none
+  } else {
+    let stem = substring(s: name, start: 0, end: name.length() - suffix_width)
+    if (ubuntu_seeded_install_media_image_name(image_stem: stem as NonEmptyStr, output_digest: output_digest) as String) == name {
+      Present { value: stem as NonEmptyStr }
+    } else {
+      none
+    }
+  }
 }
 
 // THE INVERSE OF THE NAME, so "is this one of that stem's images" is answered by the naming

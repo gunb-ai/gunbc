@@ -1,0 +1,37 @@
+module test.claim.nvidia_persistence_daemon_witness
+
+import std.types { Bool, List, String }
+import extdeps.nvidia.persistence_daemon {
+  PersistenceDaemonStartupMode,
+  DaemonStartsPersistenceEnabled,
+  DaemonStartsPersistenceDisabled,
+  DaemonStartupModeAmbiguous,
+  persistence_daemon_startup_mode
+}
+
+// CAPTURED, NOT AUTHORED: the words of the ExecStart of the unit Ubuntu's
+// nvidia-compute-utils-595-server ships, read verbatim from `systemctl cat nvidia-persistenced` on the
+// H11 A16 host, 2026-10-26, driver 595.91.07. They are supplied already split: turning a unit line into
+// argv is systemd's syntax (extdeps.systemd.service_exec), not this interface's.
+data h11_packaged_exec_argv: List<String> = ["/usr/bin/nvidia-persistenced", "--user", "nvidia-persistenced", "--no-persistence-mode", "--verbose"]
+
+fn is_disabled(m: PersistenceDaemonStartupMode) -> Bool {
+  match m { DaemonStartsPersistenceDisabled => true  _ => false }
+}
+
+fn is_enabled(m: PersistenceDaemonStartupMode) -> Bool {
+  match m { DaemonStartsPersistenceEnabled => true  _ => false }
+}
+
+fn is_ambiguous(m: PersistenceDaemonStartupMode) -> Bool {
+  match m { DaemonStartupModeAmbiguous => true  _ => false }
+}
+
+// The packaged unit starts persistence OFF; the same argv without the flag is the documented default
+// (ON); both flags have no documented meaning.
+test fn the_startup_mode_is_read_from_the_argv() -> Bool {
+  is_disabled(m: persistence_daemon_startup_mode(argv: h11_packaged_exec_argv))
+    && is_enabled(m: persistence_daemon_startup_mode(argv: ["/usr/bin/nvidia-persistenced", "--user", "nvidia-persistenced", "--verbose"]))
+    && is_ambiguous(m: persistence_daemon_startup_mode(argv: ["/usr/bin/nvidia-persistenced", "--persistence-mode", "--no-persistence-mode"]))
+    && is_enabled(m: persistence_daemon_startup_mode(argv: ["/usr/bin/nvidia-persistenced", "--persistence-mode"]))
+}

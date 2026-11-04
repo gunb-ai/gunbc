@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_fail_safe_reads_its_capability_from_a_second_authority
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_fail_safe_reads_its_capability_from_a_second_authority: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_fail_safe_reads_its_capability_from_a_second_authority" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: StructurallyGuaranteed },
+      ceiling: StructurallyImpossible,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the powered stage arms of the boot actuation carry the powered fan gate themselves, so an actuation stage that says the host was powered on has no constructor without a read or abandoned gate",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: an effect powers a host on with one capability (the BMC account the boot handoff wrote the power control with) while the effect that must undo it -- the post-power-on chassis-fan gate and its safe stop -- reads the same capability from a second, independently declared authority (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_bmc_username). Where the second authority is absent the code had an arm: PostPowerFanGateNotReached, no fan read and no PowerDown. HARM: a powered host whose fans were never verified, with nothing watching it (mtcollins1: socket 1 broken, only the socket-0 fans fitted), left on by the boot, and recorded as a typed stop that reads as handled.",
+
+    "SPECIMEN (2026-10-24, gunbc#15011, found by merry-fox-82's side-chat hold): after the fail-safe for a SOL loss inside the fan gate's settle landed, both the abandonment and the post-settle gate still matched mtcollins1_bmc_username, and its Absent arm produced NotReached after power-on. The arm was unreachable at the current data only because the two authorities agree today; nothing tied them. A safe stop also needs an account, so routing the arm to a safe stop was not available: the only repair was to carry the power-on's own account.",
+
+    "REPAIR AND RUNG: gunbc.host.managed_host_boot_handoff BootHandoffPoweredOn is sole_constructor and minted only on an issued power control, with the account it was written with; the fan gate and its abandonment take it, and the post-power-on route carries post_power_fan_gate_outcome PoweredFanGate, which has no not-reached constructor. Held at structurally guaranteed, at the grain of the boot route's producers (the fan gate's two entries, actuation_watch_of, fan_gate_continuation), by compile REDs beside admitted controls in test.claim.machine_intake.mtcollins1_boot_fan_gate_admission_witness. Not impossible: the actuation carrier still has a fan_gate field typed as the reading, whose not-reached arm serves the attempts that never powered the host, so a hand-written literal in the powered branch could still hold one.",
+
+    "RESIDUE, NAMED NOT FIXED: the other post-power-on reads in mtcollins1_boot_actuate (the SMpro passes, boot parameter 5, the power-after poll, the SOL release, the channel-lost enrichment) still read mtcollins1_bmc_username. None of them is the fail-safe, so a disagreement there degrades a reading, not the stop; they are the same second authority and belong to the same consolidation.",
+
+    "RECOGNITION RULE: when an effect's undo or safe stop needs a capability, take it from the record of the effect that used it, never re-look it up; an arm that answers the capability's absence after the effect ran is the tell, and if the undo cannot run without it, that arm is a hazard, not a refusal.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.host.managed_host_boot_handoff", decl_name: "BootHandoffPoweredOn", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.machine_intake.post_power_fan_gate_outcome", decl_name: "PoweredFanGate", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.machine_intake.mtcollins1_boot_fan_gate_admission_witness", decl_name: "a_powered_gate_has_no_unreached_constructor", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.machine_intake.mtcollins1_boot_fan_gate_admission_witness", decl_name: "a_power_on_record_cannot_be_minted_outside_the_handoff", field: WholeDeclaration },
+  ],
+}

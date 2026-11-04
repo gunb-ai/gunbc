@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_type_walk_reads_declaration_structure_as_type_arguments
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_type_walk_reads_declaration_structure_as_type_arguments: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_type_walk_reads_declaration_structure_as_type_arguments" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "one authority for a type node's argument positions, which every walk over a type's spelling reads instead of re-deriving it from Node.children, so a declaration's members and a coproduct's arms have no route into any walk that asks what a spelling names" } },
+
+  receipts: [
+    "INVALID STATE: a walk that asks a question about what a type's SPELLING names (does it name a generic this fn does not bind, does it carry a bare parametric head) reads Node.children as the type's arguments on a node whose children are not arguments: a type-declaration item, whose children are its fields, or a coproduct body, whose children are its arms. In the v1 seed infer answers Resolved with the declaration item for a call's result type and a reference to Optional or Bool resolves to the coproduct body declaring it, so such nodes reach every consumer of an inferred type. The renderer spells them by name and declared parameter count (v1.compiler.emit_rust closed_alias_peel_verdict) and never by members; the walks answered for leaves the rendered spelling never writes.",
+
+    "HARM, measured on the self-host closure (`gunbc compile --source-root dag --source-root src/v2 --entry src/v2/compiler/source_root_eval.dag --target rust`, emitted v2_compiler_resolve.rs): every `fold(.., init: child_walk_init(), ..)` in v2.compiler.resolve rendered `|acc: _, ..|` for the non-generic ChildWalk on main, which rustc happened to infer. Under wise-wolf-174's measurement branch session/wise-wolf-174-c9-strict, which makes the annotation mandatory, the same answer refused as 'the fold's result type names a generic this fn does not bind: Rc<ChildWalk>' (FOLD_ACC_REFUSAL). Splitting that cause per walk located it: v1.compiler.emit_rust type_node_has_closure_unbound_generic_atom fired on a node whose children were ChildWalk's fields. Gating that walk and type_node_has_unbound_type_variable alone left ChildWalk at `_` on main, because type_node_carries_applicationless_parametric_head then answered 'no complete spelling' through the same members; all three gated, every ChildWalk fold renders `|acc: Rc<ChildWalk>, ..|`. The same split showed the shape beyond ChildWalk: an Option<Rc<Node>> accumulator reached Optional's `Absent` arm and bool-valued accumulators reached Bool's `True`, each through an environment miss on the arm's spelling, and concrete Rc<Vec<Rc<Node>>> read as an unbound type variable. The population is re-derived by that cause split and is not transcribed here.",
+
+    "WHY A MINIMAL SPECIMEN DOES NOT SHOW IT: records whose members are Int, a List of a local record, a coproduct from another module, or a Bool all rendered correctly on main, so the walk's descent is observable only when it reaches a leaf the fn's environment misses, and which member of ChildWalk supplied that leaf was not isolated. The descent is the defect whether or not a miss follows it, so the discriminating RED is supplied at the walks' interface (a declaration item and a coproduct body whose member the environment cannot bind) rather than authored as a module.",
+
+    "REPAIR AND ITS GRAIN: v1.compiler.emit_rust type_node_is_declaration_structure (a type-declaration item, or a Disj body, the pair is_host_optional_carrier_type already read as declaration structure) gates all three walks; a declaration answers through its applied type arguments, or, for an item spelled in its own right, its formals. v1.compiler.infer_resolve reference_tree_with_declaration already stopped at a declaration item for the same reason. The leaf test itself is unchanged and still reads a leaf by spelling, an environment miss counting as unbound; that is gunbc.recurring_failure_mode generic_identity_decided_by_spelling's class, and an identity-only leaf test is its own change.",
+
+    "RUNG FOUND AT: below the ladder (a wrong answer that rendered as inference on main and was silent). RUNG NOW: mechanically preventable, by v1.compiler.compiler_tests_rust ct_fold_declared_accumulator_is_not_read_as_an_unbound_generic_test. ATTAINABLE CEILING: structurally guaranteed, when the argument positions of a type node are one authority no walk re-derives (the trigger above); the three walks are the fork census of that rule today."
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_node_is_declaration_structure"),
+    decl_ref(module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_fold_declared_accumulator_is_not_read_as_an_unbound_generic_test"),
+  ],
+}

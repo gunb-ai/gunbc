@@ -1,0 +1,35 @@
+post-power-on chassis-fan gate: REFUSED
+cause: the chassis temperature read left 4 undecoded row(s)
+fitted set ADMITTED ON THE OPERATOR'S ASSUMPTION: ADMITTED ON THE OPERATOR'S ASSUMPTION, not an established fact: taken once from the committed observation of boot run 39005709187 (round 0, 2026-10-17T05:25:07Z) and the operator's stated-uncertain account; OPEN: four physical fans or two dual-rotor positions, and the SEL Device Present reading for FAN1..FAN6 versus the observed FAN1..FAN3 No Reading; a tach signal is not airflow
+cooling manager standing unread: the cooling-manager standing is read only by the operator-session fan-mode GET (extdeps.bmc.megarac); this path executes no REST read and no fan-control write (ruling gunbc#14243); treat as NOT automatic until read
+observation that stopped the boot:
+round=0 at=2026-10-26T02:56:41Z chassis=on thermal=published undecoded=4 unrecognised=0 fans=sensors=20 undecoded=0 failure_rows=6
+  round=0 fan=FAN0_0_Speed status=ns reading=No Reading
+  round=0 fan=FAN0_1_Speed status=ns reading=No Reading
+  round=0 fan=FAN1_0_Speed status=ns reading=No Reading
+  round=0 fan=FAN1_1_Speed status=ns reading=No Reading
+  round=0 fan=FAN2_0_Speed status=ns reading=No Reading
+  round=0 fan=FAN2_1_Speed status=ns reading=No Reading
+  round=0 fan=FAN3_0_Speed status=ns reading=No Reading
+  round=0 fan=FAN3_1_Speed status=ns reading=No Reading
+  round=0 fan=FAN4_0_Speed status=ok reading=5600 RPM
+  round=0 fan=FAN4_1_Speed status=ok reading=5700 RPM
+  round=0 fan=FAN5_0_Speed status=ok reading=5700 RPM
+  round=0 fan=FAN5_1_Speed status=ok reading=5800 RPM
+  round=0 fan=FAN0_Presence status=ns reading=No Reading
+  round=0 fan=FAN1_Presence status=ns reading=No Reading
+  round=0 fan=FAN2_Presence status=ns reading=No Reading
+  round=0 fan=FAN3_Presence status=ns reading=No Reading
+  round=0 fan=FAN4_Presence status=ok reading=Device Present
+  round=0 fan=FAN5_Presence status=ok reading=Device Present
+  round=0 fan=PSU1_FAN_SPEED status=ok reading=5000 RPM
+  round=0 fan=PSU2_FAN_SPEED status=ns reading=No Reading
+  round=0 fan_failure_row=[FAN0_Failure     | 17h | ok  | 29.0 | ]
+  round=0 fan_failure_row=[FAN1_Failure     | 18h | ok  | 29.0 | ]
+  round=0 fan_failure_row=[FAN2_Failure     | 19h | ok  | 29.0 | ]
+  round=0 fan_failure_row=[FAN3_Failure     | 1Ah | ok  | 29.0 | ]
+  round=0 fan_failure_row=[FAN4_Failure     | 1Bh | ok  | 29.0 | ]
+  round=0 fan_failure_row=[FAN5_Failure     | 1Ch | ok  | 29.0 | ]
+safe stop: power-off read back as off
+PowerDown (first): command success=true exit=0 stdout=[Chassis Power Control: Down/Off] stderr=[]; readbacks 1: off
+repeat: not needed

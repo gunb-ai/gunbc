@@ -1,5 +1,7 @@
 module v2.test.claim.diagnostic_correction.show_correct_code
 
+import v2.std.node { NotADeclaration }
+
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: OccurrenceSynthetic
@@ -10,8 +12,8 @@ fn pair_node(left: Symbol, right: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^correction_left }, target: atom_node(s: left) },
-      Edge { label: Authored { name: ^correction_right }, target: atom_node(s: right) },
+      Edge { label: Authored { name: ^correction_left }, target: atom_node(s: left), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^correction_right }, target: atom_node(s: right), declaration: NotADeclaration },
     ],
     occurrence_id: OccurrenceSynthetic
 }

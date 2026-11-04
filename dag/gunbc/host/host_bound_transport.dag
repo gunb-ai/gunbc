@@ -1,0 +1,69 @@
+module gunbc.host.host_bound_transport
+
+import std.types { String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
+import gunbc.host.managed_host { managed_hosts }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_wire }
+import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
+
+// A TRANSPORT PAIRED WITH THE MANAGED HOST IT REACHES, and the pairing is derived, never stated.
+// HostEffectTransport names an address (FleetSsh's SshTarget) or nothing at all (LocalShell), so a
+// consumer that mints a fact "about host H" from a transport and a separate H lets the two disagree:
+// a transport to srv2 handed with mtcollins1 would forge mtcollins1 evidence. The host field here has
+// no second spelling: the record is sealed and the one constructor is host_bound_transport_of, which
+// reads the host off the target through the route a FleetSsh target is BUILT by.
+type HostBoundTransport sole_constructor {
+  host: HostIdentity
+  transport: HostEffectTransport
+}
+
+type HostBoundTransportResolution
+  = HostBoundTransportResolved { bound: HostBoundTransport }
+  | HostBoundTransportRefused { cause: String }
+
+// THE ADDRESS-TO-MANAGED-HOST JOIN IS THE INVERSE OF THE ROUTE THAT BUILDS A FleetSsh TARGET. A managed
+// host's target is gunbc.fleet.fleet_ssh_locus fleet_locus_ssh_target (fleet_probe_endpoint_for at sshd's
+// standard port); a host is the one reached by a target when that route, run over each managed_hosts()
+// row, lands on the target's address. No second host registry and no second address spelling exist: a
+// row added to managed_hosts() or to the endpoint authority is joined with no edit here. The principal
+// is deliberately not compared: it names which account acts, not which machine answers.
+fn hosts_reached_at(hosts: List<HostIdentity>, target: SshTarget) -> List<HostIdentity> {
+  fold(hosts, init: [], f: fn(acc, h) {
+    match fleet_locus_ssh_target(host: h) {
+      SshTargetRefused { endpoint: _, refusal: _ } => acc
+      SshTargetResolved { target: t } =>
+        if t.address == target.address { concat(acc, [h]) } else { acc }
+    }
+  })
+}
+
+fn managed_hosts_reached_at(target: SshTarget) -> List<HostIdentity> {
+  hosts_reached_at(hosts: map(managed_hosts(), m => m.host), target: target)
+}
+
+// ONLY A FleetSsh TRANSPORT REACHES A NAMED MACHINE. LocalShell reaches whichever machine executes it,
+// and EmitArtifactThenThinRun a bootstrap this run has not named; neither carries an address to join.
+// SshShell carries a bare endpoint with no trust context and is the transport scheduled for deletion, so
+// a host-bound fact is not minted over it. An address that matches no managed host, or more than one,
+// refuses: absence is not a host and ambiguity does not pick one.
+fn host_bound_transport_of(transport: HostEffectTransport) -> HostBoundTransportResolution {
+  match transport {
+    LocalShell => HostBoundTransportRefused { cause: "a local shell reaches whichever machine executes it and names no managed host" }
+    SshShell { ssh_host: h } => HostBoundTransportRefused { cause: join(["an SshShell to ", h as String, " carries a bare endpoint with no trust context, so it is not bound to a managed host"], "") }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => HostBoundTransportRefused { cause: "an emitted bootstrap run names no managed host" }
+    FleetSsh { target: t, context: _ } => {
+      let reached = managed_hosts_reached_at(target: t)
+      match first(reached) {
+        Absent => HostBoundTransportRefused { cause: join(["the address ", ssh_target_wire(target: t) as String, " is not the endpoint of any managed host"], "") }
+        Present { value: h } =>
+          if count(reached) == 1 {
+            HostBoundTransportResolved { bound: HostBoundTransport { host: h, transport: transport } }
+          } else {
+            HostBoundTransportRefused { cause: join(["the address ", ssh_target_wire(target: t) as String, " is the endpoint of more than one managed host"], "") }
+          }
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@ import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget, CapturedI
 import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree, parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Correction, Diagnostic, Diagnostics, Locus, node_locus, Outcome, UserInputBoundary, Accepted, None, diagnostics_merge, diagnostics_singleton, rejected_with_pending, bind_outcome, outcome_accepted, Rejected, Unavailable }
-import v2.std.node { Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_rebuild, node_subtree_nodes, well_formed, ComputationNode }
+import v2.std.node { Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_rebuild, node_subtree_nodes, well_formed, ComputationNode, NotADeclaration }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, ScopedOccurrenceAllocator, scoped_occurrence_allocator }
 import v2.std.compilers.sugar { ProductionIdentityKey, SugarKey, apply_sugar, sugar_rule_for_key }
 import v2.compiler.body_lowering_fold { BodyLowering, body_term_of, BodyLoweredTree, WrapperRetention, body_lowering_after_pending, body_lower_finish_for_normalize, body_lowered_tree_map_node, body_lowered_tree_of, body_lowered_tree_over, body_lowered_tree_retained, body_lowered_tree_then, no_wrapper_retentions, wrapper_retentions_concat, body_lower_fn_decl_to_census_arrow, body_lower_service_decl, body_lower_resource_decl, body_lower_resource_decl_declared_kind_optional, body_lower_is_deferred_lower_at_normalize, DeclaredTypeKind, DeclaredTypeModifiers, DeclaredTypeModifiersAbsent, DeclaredTypeModifiersPresent, body_lower_type_decl_declared_kind_optional, body_lower_type_decl_declared_modifiers, declared_record_names, declared_resource_names }
@@ -100,7 +100,7 @@ fn normalize_children_step(
             value: NormalizeEdges {
               edges: list_snoc_item(
                 xs: gathered.edges,
-                item: Edge { label: edge.label, target: child_tree.node }
+                item: Edge { label: edge.label, target: child_tree.node, declaration: edge.declaration }
               ),
               retained: wrapper_retentions_concat(
                 earlier: gathered.retained,

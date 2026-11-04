@@ -9,6 +9,7 @@ import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
 import std.types { Bool, String, NonEmptyStr, List, FilePath }
 import std.content_hash {
+  serialize_content_hash,
   ContentHash,
   Sha256Digest,
   Sha256DigestHex,
@@ -787,7 +788,7 @@ test fn moved_oracle_detail_locates_both_identities() -> Bool {
     },
   })
   string_contains(s: detail, pattern: "changed after dispatch")
-    && string_contains(s: detail, pattern: pinned_identity() as String)
+    && string_contains(s: detail, pattern: serialize_content_hash(hash: pinned_identity()) as String)
     && string_contains(s: detail, pattern: "proves nothing")
 }
 

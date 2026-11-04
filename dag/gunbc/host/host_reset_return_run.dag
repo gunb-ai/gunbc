@@ -4,8 +4,9 @@ import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import std.optional { Absent, Present }
 import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
-  host_reset_owner, admit_unit_hold_subject, UnitHoldSubjectAdmitted, UnitHoldNotRequired,
+  host_reset_owner, UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided,
 }
+import gunbc.host_state_root { host_state_tree }
 import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_range_inclusive }
@@ -60,6 +61,7 @@ import gunbc.host.host_reset_return {
   SubjectHasNoRosterRow,
   UnitHoldStoreNotOnObserver,
   UnitHeldForMaintenance,
+  SubjectHoldUndecided,
   reset_preflight_refusal_wire,
   ResetDispatchAdmitted,
   ResetDispatchNotThisMode,
@@ -80,6 +82,7 @@ import gunbc.host.host_reset_return {
   reset_return_verdict_of_mint,
   select_reset_observer,
   subject_for_observer,
+  consumed_release_of_mint,
 }
 import gunbc.host.bmc_control_binding { bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.host_reset_subject_roster {
@@ -109,6 +112,7 @@ import gunbc.machine_intake.oob_boot_handoff {
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
+import gunbc.host.managed_host_boot_handoff { admitted_release_of }
 
 // THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host.host_reset_return is pure
 // and is exercised by its witness against fixtures, which is what a fold is owed. This module is
@@ -402,9 +406,15 @@ data host_reset_down_watch_samples: Nat = 120
 
 data host_reset_back_watch_samples: Nat = 200
 
+// THE GATE READS THE HOLD ADMISSION THE SUBJECT CARRIES (gunbc.host.host_reset_subject_roster
+// AdmittedResetSubject hold), minted once in the reset admission, and never asks the policy again from
+// candidate.host: a second reading here would be a second authority for whether this subject is hold-gated,
+// able to disagree with the admission it was dispatched on.
 fn reset_unit_hold_gate(candidate: AdmittedResetSubject, proof: UnitHoldProof?) -> NonEmptyStr? {
-  match admit_unit_hold_subject(host: candidate.host) {
+  match candidate.hold {
     UnitHoldNotRequired { host: _ } => none
+    UnitHoldUndecided { host: _ } =>
+      Present { value: join(["subject ", candidate.host.host as String, " has no unit hold decision, and an undecided subject is never driven as if it needed no hold; no controller write was attempted"], "") as NonEmptyStr }
     UnitHoldSubjectAdmitted { subject: _ } =>
       match proof {
         Absent => Present { value: join(["subject ", candidate.host.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
@@ -428,9 +438,10 @@ fn host_reset_return_attempt(
 ) -> ResetAttemptMint
 {
   let subject = candidate.host.host as NonEmptyStr
+  let subjects = reset_roster_hosts(entries: reset_subject_roster(evidence: evidence))
   let selection = select_reset_observer(
-    subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: evidence)),
-    peer_roster: reset_observer_peer_roster(),
+    subject_roster: subjects,
+    peer_roster: reset_observer_peer_roster(subjects: subjects),
     subject: subject,
     observer: observer,
   )
@@ -708,9 +719,10 @@ fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
       )
     RouteEstablished { route: r } => r
   }
+  let subjects = reset_roster_hosts(entries: reset_subject_roster(evidence: evidence))
   let assignment = reset_dispatch_pairings(
-    subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: evidence)),
-    peer_roster: reset_observer_peer_roster(),
+    subject_roster: subjects,
+    peer_roster: reset_observer_peer_roster(subjects: subjects),
   )
   return match subject_for_observer(assignment: assignment, observer: observer) {
     Absent =>
@@ -726,9 +738,14 @@ fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
             remedy: "the assigned subject has no roster row carrying its controller evidence",
           )
         Present { value: candidate } =>
-          match admit_unit_hold_subject(host: candidate.host) {
+          match candidate.hold {
             UnitHoldNotRequired { host: _ } =>
               host_reset_return_attempt_exit(evidence: evidence, proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
+            UnitHoldUndecided { host: _ } =>
+              host_reset_return_preflight_exit(
+                refusal: SubjectHoldUndecided { subject: subject },
+                remedy: "the subject has no unit hold decision (gunbc.host.host_maintenance_hold_reason unit_hold_decision); decide whether driving it must take a hold before resetting it; nothing was written to its controller",
+              )
             UnitHoldSubjectAdmitted { subject: held } =>
               if (observer as String) != (held.store_host as String) {
                 host_reset_return_preflight_exit(
@@ -736,7 +753,7 @@ fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
                   remedy: "the subject's maintenance hold lives on the store host; a reset observed from anywhere else would take a hold in a store the operator never sees",
                 )
               } else {
-                match unit_hold_acquire(subject: held, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
+                match unit_hold_acquire(subject: held, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject)), tree: host_state_tree()) {
                   UnitHoldRefused { reason: r } =>
                     host_reset_return_preflight_exit(
                       refusal: UnitHeldForMaintenance { subject: subject, reason: r },

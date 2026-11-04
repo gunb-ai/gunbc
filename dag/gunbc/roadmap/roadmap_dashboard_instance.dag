@@ -24,6 +24,8 @@ import extdeps.git {
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
+import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
@@ -51,6 +53,7 @@ import gunbc.owned_directory {
   ForeignOwnershipRefuses,
   SameUserRegroupToDeclaredGroup,
   owned_directory_path,
+  owned_directory_member,
 }
 import gunbc.deployment_risk {
   DeploymentId,
@@ -117,6 +120,7 @@ import gunbc.host.host_layout {
   srv1_host_layout,
   srv2_host_layout,
 }
+import extdeps.rust.cargo { cargo_default_release_dir, cargo_default_release_dir_rel }
 
 type DashboardActuationPosture
   = DashboardObserveOnly
@@ -386,6 +390,29 @@ data dashboard_environment_binding_executable: FilePath = env_absolute_program()
 
 fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
   join([root as String, "/", child], "") as FilePath
+}
+
+// THE INSTANCE ROOT IS ABSOLUTE AND SPELLED ONE WAY, a fact of the instance that every store derived from
+// instance_root reads, so it is answered here once and not per store: one rule, applied at every sibling store.
+// A relative root resolves against each process's working directory, so two processes would address two
+// directories as "the" instance; "/" is the host root, not an instance. A doubled or trailing separator, or
+// a `.` or `..` segment, still names the same directory on disk, but every identity this repository takes by
+// string reads it as another: gunbc.durable_exclusive_hold_file_store file_hold_ref (a release over the
+// other spelling refuses as ForAnotherHold), dashboard_declared_instance_roots_are_unique (two rows naming
+// one directory would pass) and dashboard_instance_for_instance_root. NOT ESTABLISHED: that no component is a
+// symlink; the filesystem interface has no resolution operation, so that rests on the declaration.
+fn dashboard_instance_root_spelling_refusal(instance: HostDashboardInstance) -> String? {
+  let root = instance.instance_root as String
+  let segments = split(s: root, delimiter: "/")
+  if !starts_with(s: root, prefix: "/") {
+    Present { value: "it is not absolute" }
+  } else if root == "/" {
+    Present { value: "it is the filesystem root" }
+  } else if any(segments.skip(n: 1), s => s == "" || s == "." || s == "..") {
+    Present { value: "it has an empty, `.` or `..` segment (a doubled or trailing separator, or a relative step)" }
+  } else {
+    none
+  }
 }
 // THE INSTANCE'S TAILNET DOOR: the unix socket its door unit serves on and tailscale serve proxies
 // to. It sits in a directory of its own under the instance root, which the deployment ensures owned
@@ -1096,7 +1123,7 @@ fn linux_service_directory_owner() -> PosixOwnerNames {
   }
 }
 
-data macbook_local_serve_binary: FilePath = "/Users/briansrls/gunbc/target/release/gunbc" as FilePath
+data macbook_local_serve_binary: FilePath = join([cargo_default_release_dir(build_root: "/Users/briansrls/gunbc"), "/gunbc"], "") as FilePath
 
 // THE PROVIDER EXECUTABLE THIS INSTANCE OFFERS, and it is the field whose absence made the whole
 // inventory empty.
@@ -1328,6 +1355,14 @@ fn isolated_dashboard_instance_admitting(
 // repository did not even hold main's new head) until the next redeploy (srv1 lab, 2026-10-11, twice
 // in one night). The operator admits the lab's tree by advancing this ref -- a visible act with a
 // reflog receipt -- exactly as srv2-deploy does.
+//
+// THE LAB'S VERIFICATION RUNS COMPUTE, AS THE SERVICE USER, so the lab declares a store. The belt's
+// verification obligation (gunbc.roadmap.roadmap_belt_actuate) runs the handed-in tests through compute
+// as the instance's service user; a store-less instance refuses with MaterializationStoreUndeclared, so
+// the lab could never accept an attempt (srv1, 2026-10-25, attempt 71ac07ca21af8e29: acceptance came back
+// `unavailable`). The store's scope root IS the instance root (gunbc.persistent_instance_roots), declared
+// once. The dedicated worker is kept out by compute admission refusing it by principal
+// (gunbc.compute.work_provider_local compute_principal_refusal), not by this declaration's absence.
 data srv1_lab_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
   remote: ".",
   ref_name: "refs/gunbc/srv1-lab-admitted" as GitRef,
@@ -1348,18 +1383,6 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     publication_base_branch: srv1_lab_publication_base_branch,
     worker: WorkerDedicatedAccount,
     provision_parent_root: srv1_dashboard_lab_provision_parent,
-    // THE LAB'S VERIFICATION RUNS COMPUTE, AS THE SERVICE USER. The belt's verification obligation
-    // (gunbc.roadmap.roadmap_belt_actuate) runs the handed-in tests through compute after hand-in, and
-    // it runs them as the instance's service user -- the standing decision is that the DEDICATED
-    // worker runs none. A compute request against an instance with no declared store refuses with
-    // MaterializationStoreUndeclared before any shared state is touched, so the store-less lab could
-    // never accept an attempt: measured 2026-10-25 on srv1, attempt 71ac07ca21af8e29 handed in, the
-    // belt committed the candidate, and acceptance came back `unavailable`. The lab's store is its own
-    // workspace under the lab root -- the scope root IS the instance root (gunbc.persistent_instance_roots),
-    // so the store is declared once and read twice, never by a second literal. The dedicated worker is
-    // kept out NOT by this declaration's absence but by compute admission refusing it by principal
-    // (gunbc.compute.work_provider_local compute_principal_refusal), before store, ledger or
-    // compute-root access.
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: Srv1Lab } },
   )
 }
@@ -1424,7 +1447,7 @@ data srv2_deploy_repo_root: FilePath = "/home/briansrls/gunbc-srv2-deploy" as Fi
 
 data srv2_deploy_instance_root: FilePath = materialization_store_persistent_srv2_scope as FilePath
 
-data srv2_deploy_serve_binary: FilePath = "/home/briansrls/gunbc-srv2-deploy/target/release/gunbc" as FilePath
+data srv2_deploy_serve_binary: FilePath = join([cargo_default_release_dir(build_root: srv2_deploy_repo_root as String), "/gunbc"], "") as FilePath
 
 // THE BRANCH ATTEMPTS ARE PUBLISHED AGAINST IS THE BRANCH THEIR BASE REVISION BELONGS TO, declared per
 // instance (publication_base_branch) rather than derived. Reading the repository's default_branch
@@ -1658,6 +1681,19 @@ fn dashboard_declared_repo_roots_are_unique() -> Bool {
 fn dashboard_declared_instance_roots_are_unique() -> Bool {
   let xs = public_builtin_dashboard_instances()
   all(xs, a => count(xs |> filter(b => b.instance_root == a.instance_root)) == 1)
+}
+
+// The uniqueness law above compares spellings, so it means "one directory per instance" only over roots
+// spelled one way; this is that precondition, over any instance set, and read off the same declared rows.
+fn dashboard_instance_roots_are_one_spelling(instances: List<HostDashboardInstance>) -> Bool {
+  all(instances, i => match dashboard_instance_root_spelling_refusal(instance: i) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+fn dashboard_declared_instance_roots_are_one_spelling() -> Bool {
+  dashboard_instance_roots_are_one_spelling(instances: public_builtin_dashboard_instances())
 }
 
 // AT MOST ONE per host_identity among instances that answer host lookup. Distinct instance_ids
@@ -1971,11 +2007,29 @@ data dashboard_git_worker_directory_children: List<NonEmptyStr> = [
 // THE MEMBER LABEL THE THREE GIT-WORKER OWNED-DIRECTORY DEMANDS ARE MINTED WITH. This ONE function is
 // the typed origin of "is this demand one of the git subtree's?": the roster mints members through it
 // (dashboard_instance_worker_git_directories) and the apply partitions through it
-// (gunbc.live_deploy.emit is_dashboard_git_worker_directory_demand), by PATH-FREE member equality --
-// never by a substring of the path, which would misclassify any unrelated owned directory whose path
-// merely happens to contain /logs or /refs (review round: path-substring classifier).
+// (is_dashboard_git_worker_directory_demand below, called from gunbc.live_deploy.apply_legs
+// git_worker_subtree_demand_claimed), by PATH-FREE member equality -- never by a substring of the path,
+// which would misclassify any unrelated owned directory whose path merely happens to contain /logs or
+// /refs (review round: path-substring classifier).
 fn dashboard_git_worker_directory_member(child: NonEmptyStr) -> NonEmptyStr {
   join(["git-worker-", child as String], "") as NonEmptyStr
+}
+
+// PARTITION AT THE MINT AUTHORITY (WORKER-ROOT-EQUIVALENT-3, typed-legs port). "Does this owned-directory
+// demand belong to the git worker subtree?" is decided HERE, where the demands are minted, by PATH-FREE
+// MEMBER EQUALITY against the single member authority above -- never by a substring of the path, which
+// would misclassify any unrelated owned directory whose path merely contains /logs, /refs or /objects
+// (review round: path-substring classifier). This is the predicate the standing directories plan EXCLUDES
+// by and the subtree plan INCLUDES by, so the two partitions are complementary by construction: no
+// instance of a demand is in both, and none is silently in neither (the standing plan installs everything
+// this refuses). Lives beside the minter rather than in the apply because the apply may only ASK the
+// source (DESIGN section 4: the richer source exists); the typed legs in gunbc.live_deploy.apply_legs call
+// this, they do not re-derive it.
+fn is_dashboard_git_worker_directory_demand(t: OwnedDirectoryTarget) -> Bool {
+  any(
+    xs: dashboard_git_worker_directory_children,
+    predicate: child => owned_directory_member(t: t) == dashboard_git_worker_directory_member(child: child),
+  )
 }
 
 // THE CHILD OF THE REPO ROOT UNDER WHICH EVERY ATTEMPT'S PRIVATE GIT ENTRY SITS. Owned by the
@@ -3225,6 +3279,20 @@ type DashboardInstanceProvisionOp
       // only route that executes (DESIGN 3 pairing).
       group: NonEmptyStr,
     }
+  // THE ONE-TIME MOVE OF A STORE'S FLAT ENTRIES OUT OF THE SHARED DISPATCH ATTEMPT-STATE ROOT INTO THE
+  // MEMBER THE STORE NOW OWNS (gunbc.roadmap.roadmap_attempt_state_layout_move). The same op for every
+  // store: the row carries the member and the legacy pattern, and nothing here names a store. It is the deploy
+  // leg of the cutover: the store's mint refuses permanently while a legacy entry remains, so this op runs
+  // before the new code starts or the store stays unready. Planned and read back like the git subtree
+  // re-group above; a second run finds nothing to move (Noop) and a collision refuses.
+  | DashboardMoveAttemptStateEntries {
+      row: MoveRow,
+      // The legacy writer's unit, observed stopped and masked before any entry is touched
+      // (gunbc.roadmap.roadmap_attempt_state_layout_move legacy_writer_exclusion).
+      fence: LegacyWriterFence,
+    }
+  // THE ACTIVATION GATE, last in the plan: the exclusion is re-observed before the new dispatcher may start.
+  | DashboardAssertLegacyWriterExcluded { fence: LegacyWriterFence }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
 // deployment_spec_for has no production caller. This plan does not start the process and does not
@@ -3271,7 +3339,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       controller_repo: dashboard_instance_controller_workdir(instance: instance),
       built_binary: dashboard_instance_child(
         root: dashboard_instance_controller_workdir(instance: instance),
-        child: "target/release/gunbc",
+        child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
       ),
       path: instance.serve_binary,
     },
@@ -3305,10 +3373,14 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  concat(controller_source_ops, concat(common, concat(source_ops, concat(
+  let attempt_state_moves = map(attempt_state_move_rows, row => DashboardMoveAttemptStateEntries { row: row, fence: dashboard_instance_legacy_writer_fence(instance: instance) })
+  concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
     shared_git_posture,
-    dashboard_instance_provider_verification_ops(instance: instance),
-  ))))
+    concat(
+      dashboard_instance_provider_verification_ops(instance: instance),
+      [DashboardAssertLegacyWriterExcluded { fence: dashboard_instance_legacy_writer_fence(instance: instance) }],
+    ),
+  )))))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -3426,7 +3498,45 @@ fn dashboard_instance_provision_op_row(
         target: repo as String,
         detail: "bounded re-group of objects/, refs/ and logs/ to the attempt group with g+w and setgid (objects/ also +t); confined children pruned; read back path by path before the receipt",
       }
+    DashboardAssertLegacyWriterExcluded { fence: _ } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "assert-legacy-writer-excluded" as NonEmptyStr,
+        target: "legacy dispatcher units" as String,
+        detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
+      }
+    DashboardMoveAttemptStateEntries { row: row, fence: _ } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "move-attempt-state-entries" as NonEmptyStr,
+        target: row.member as String,
+        detail: join(["move the flat ", row.legacy_flat_prefix as String, "* entries of the dispatch attempt-state root into the member ", row.member as String, "; Noop when none remain, refused on a collision, read back before the receipt"], ""),
+      }
   }
+}
+
+// THE LEGACY IDENTITY WRITERS PER INSTANCE, as data, traced by symbol (read of srv1, stern 2026-10-31, system
+// units in /etc/systemd/system running /opt/gunbc-lab/codex-provider-feedback-v0/bin/gunbc as briansrls).
+// The mint is gunbc.roadmap.roadmap_belt_actuate belt_dispatch_attempt_identity_mint, reached by static call
+// graph from these unit entries and no others:
+//   gunbc-srv1-lab-codex-feedback-v0.service  serve, roadmap_serve_handle_srv1_lab -> roadmap_serve_handle_over
+//     -> serve_dispatch_handler_response_over -> belt_dispatch_node_for_instance_over -> belt_actuate_spawn_for_instance.
+// Entries traced NOT to reach it: the belt service (belt_launch_enqueue_cli), the exit drain, the publication
+// answer drain, credential recovery, the publication helper, and the attempt-unit drain (it launches an already
+// minted attempt's worker unit). Their .path/.timer triggers therefore start no writer. The serve unit has no
+// .path or .timer trigger; masking it refuses its restarts too. UNKNOWN, recorded not resolved: what starts
+// gunbc-srv1-lab-codex-feedback-v0-belt.service (no unit file references it); its entry does not reach the
+// mint, but if a trace of another entry ever does, its unit joins this row.
+data legacy_writer_fences: List<LegacyWriterFenceRow> = [
+  LegacyWriterFenceRow {
+    instance_id: srv1_dashboard_lab_id,
+    fence: LegacyWriterUnits {
+      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
+      units: ["gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr],
+    },
+  },
+]
+
+fn dashboard_instance_legacy_writer_fence(instance: HostDashboardInstance) -> LegacyWriterFence {
+  legacy_writer_fence_for(rows: legacy_writer_fences, instance_id: instance.instance_id)
 }
 
 fn dashboard_instance_provision_plan_rows(

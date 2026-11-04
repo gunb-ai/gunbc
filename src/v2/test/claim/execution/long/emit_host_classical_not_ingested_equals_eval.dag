@@ -1,5 +1,6 @@
 module v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval
 
+
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import std.types { List, Map }
 import v2.compiler.refinement_discharge { infer_and_discharge }
@@ -70,7 +71,7 @@ import v2.std.node {
   MatchArmBodyEdge,
 }
 import v2.std.node_query { find_arrow_body_child, find_core_child }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -146,7 +147,7 @@ fn ingested_arrow_from_source(source: String) -> Outcome<ResolvedTree> {
     f: fn(resolved) {
       match ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } =>
-          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), resolved_declarations: resolved.resolved_declarations, occurrence_bindings: resolved.occurrence_bindings, duplicate_binding_records: resolved.duplicate_binding_records, module_outcomes: resolved.module_outcomes, outcome_index: resolved.outcome_index, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: resolved.type_declaration_modifiers, constructing_module: resolved.constructing_module })
+          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), resolved_declarations: resolved.resolved_declarations, occurrence_resolutions: resolved.occurrence_resolutions, duplicate_binding_records: resolved.duplicate_binding_records, module_outcomes: resolved.module_outcomes, outcome_index: resolved.outcome_index, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: resolved.type_declaration_modifiers, constructing_module: resolved.constructing_module })
         Absent =>
           outcome_rejected(
             d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved.root)
@@ -344,11 +345,11 @@ fn ingested_classical_not_octet_value(n: Int) -> RuntimeValue {
 }
 
 fn ingested_classical_not_bool_true(value: RuntimeValue) -> Bool {
-  value == ingested_classical_not_octet_value(n: 1)
+  (runtime_value_equality(a: value, b: ingested_classical_not_octet_value(n: 1)) == RuntimeValuesEqual)
 }
 
 fn ingested_classical_not_bool_false(value: RuntimeValue) -> Bool {
-  value == ingested_classical_not_octet_value(n: 0)
+  (runtime_value_equality(a: value, b: ingested_classical_not_octet_value(n: 0)) == RuntimeValuesEqual)
 }
 
 fn ingested_classical_not_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
@@ -524,7 +525,7 @@ test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Boo
         inputs: inputs_root_only(root: ingested_classical_not_eval_subgraph_canonical())
       ) {
         Accepted { value: v, diagnostics: _ } =>
-          v == ingested_classical_not_octet_value(n: 0)
+          (runtime_value_equality(a: v, b: ingested_classical_not_octet_value(n: 0)) == RuntimeValuesEqual)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

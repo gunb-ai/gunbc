@@ -140,6 +140,7 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ExecStartPost { command: _ } => none
       ExecStop { command: _ } => none
       ExecStopPost { command: _ } => none
+      ExecReload { command: _ } => none
       ExecStopPostIgnoringFailure { command: _ } => none
       ServiceStandardOutput { stream: _ } => none
       ServiceStandardError { stream: _ } => none
@@ -161,6 +162,7 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }
@@ -178,6 +180,7 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ExecStartPost { command: _ } => none
       ExecStop { command: _ } => none
       ExecStopPost { command: _ } => none
+      ExecReload { command: _ } => none
       ExecStopPostIgnoringFailure { command: _ } => none
       ServiceStandardOutput { stream: _ } => none
       ServiceStandardError { stream: _ } => none
@@ -198,6 +201,7 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }
@@ -215,6 +219,7 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ExecStartPost { command: _ } => none
       ExecStop { command: _ } => none
       ExecStopPost { command: _ } => none
+      ExecReload { command: _ } => none
       ExecStopPostIgnoringFailure { command: _ } => none
       ServiceStandardOutput { stream: _ } => none
       ServiceStandardError { stream: _ } => none
@@ -235,6 +240,7 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }

@@ -1,0 +1,200 @@
+module v2.test.claim.compiler.lambda_alias_field_key
+
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers }
+import v2.compiler.infer { infer }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Node, Symbol, node_equal_ignoring_provenance, node_subtree_nodes }
+import v2.std.inhabitance { type_variable_instance_lookup }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { Cons, Empty, list_snoc_item }
+import std.types { Bool, List, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a field projection whose receiver is typed by a TRANSPARENT ALIAS of a record reads the record's
+// fields (v2.compiler.infer infer_projection_receiver, through infer_type_alias_normalized_at). The specimen
+// is the seed false refusal reported by the sort_by wave: `fn(h) { h.digest }` over `xs: List<Hash>` with
+// `type Hash = Fnv1a64Structural` imported from std.content_hash (v2.std.node bag_hash_digest's shape, keyed
+// through a user generic), which v1 refuses as "no field 'digest' on type 'T'".
+//
+// BOUNDARY: source text in, through the production assembly route (bla_assemble_with_peers), then
+// v2.compiler.infer infer. The peer set really declares the module the subject imports: fmi_list_peers
+// (v2.std.collection, std.algebra) plus a std.content_hash whose Fnv1a64Structural is a record with a digest
+// field. The real digest type is a where-refinement; the peer's is a plain String, because the claim is about
+// the receiver's fields and a refinement peer would need std.types' predicates, which no one-module peer
+// declares -- an under-declared peer refuses at assembly and measures nothing, which is why every reading
+// below folds an assembly refusal into its own value (^lafk_assembly_refused) rather than into a verdict.
+//
+// MEASURED ON MAIN 88e8991e557, with the seed built from that head running this file:
+//   the lambda-key shapes (imported alias, imported record, local alias) were ACCEPTED -- the generic matcher
+//   normalizes the actual before it binds, so the key's input is framed at the alias's expansion -- and the
+//   misspelled-field lambda refused as infer_reason_field_not_declared_on_receiver. So for the reported shape
+//   v2 is not the defect: the seed is (DESIGN section 7, a seed defect v2 does not carry forward).
+//   But the SIBLING shape, a plain parameter `h: Hash` projected as `h.digest`, refused as
+//   infer_reason_field_not_declared_on_receiver: infer_projection_receiver read the receiver type raw, the
+//   index answered the ALIAS declaration as the payload, and an alias body declares no fields.
+//
+// RED ON MAIN, measured with one seed binary over this file twice (this change's v2.compiler.infer, then main's):
+// lafk_an_alias_typed_parameter_projects_its_records_field, lafk_a_generic_alias_receiver_projects_at_its_instantiation
+// and lafk_a_generic_alias_field_keeps_its_instantiated_type FAIL on main (the last because `b.item` refuses before the
+// argument judgment can) and PASS with the change; every other claim here PASSES on both. Main's infer.dag IS the
+// mutation: restoring the raw receiver read reds exactly those three.
+
+data lafk_content_hash_artifact: Artifact = Artifact { kind: SourceFile, id: ^lafk_content_hash_artifact, file_path: "src/v2/pilot/lafk_content_hash.dag" }
+
+data lafk_content_hash_source: String = "module std.content_hash\n\ntype Fnv1a64Structural {\n  digest: String\n}\n"
+
+fn lafk_peers() -> List<DagSourceReadWitness> {
+  list_snoc_item(xs: fmi_list_peers(), item: bla_source(src: lafk_content_hash_source, artifact: lafk_content_hash_artifact, cu: ^lafk_content_hash_cu))
+}
+
+// The verdict: ^lafk_assembly_refused when the source never reached infer, ^accepted when infer accepted it,
+// otherwise infer's fatal reason.
+fn lafk_reason(src: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: src, peers: lafk_peers()) {
+    Rejected { diagnostics: _ } => ^lafk_assembly_refused
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => ^accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+// The key callback's K instance at the one sort_by_key call, Absent when the source does not reach an
+// accepted inference.
+fn lafk_key_instance(src: String) -> Optional<Node> {
+  match bla_assemble_with_peers(p_src: src, peers: lafk_peers()) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: tree, diagnostics: _ } =>
+          lafk_the_one(xs: fold(node_subtree_nodes(root: tree.root), init: Empty, f: fn(acc, n) {
+            match tree.facts.lookup(n) {
+              Absent => acc
+              Present { value: facts } =>
+                match type_variable_instance_lookup(instances: facts.type_instances, binder: ^K) {
+                  Absent => acc
+                  Present { value: k } => Cons { head: k, tail: acc }
+                }
+            }
+          }))
+      }
+  }
+}
+
+// Exactly one reading or none: a second K instance would mean the fixture has more than the one generic call.
+fn lafk_the_one(xs: List<Node>) -> Optional<Node> {
+  match xs {
+    Cons { head: x, tail: rest } =>
+      match rest {
+        Empty => optional_present(value: x)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+fn lafk_same(a: Optional<Node>, b: Optional<Node>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => node_equal_ignoring_provenance(a: x, b: y)
+      }
+  }
+}
+
+data lafk_sort_by_key: String = "fn sort_by_key<T, K>(xs: List<T>, key: fn(T) -> K) -> List<T> {\n  xs\n}\n\n"
+
+fn lafk_alias_prelude() -> String {
+  "module p\n\nimport v2.std.collection { List }\nimport std.content_hash { Fnv1a64Structural }\n\ntype Hash = Fnv1a64Structural\n\n"
+}
+
+fn lafk_lambda_source(prelude: String, element: String, field: String) -> String {
+  join([prelude, lafk_sort_by_key, "fn by_digest(xs: List<", element, ">) -> List<", element, "> {\n  sort_by_key(xs: xs, key: fn(h) { h.", field, " })\n}\n"], "")
+}
+
+fn lafk_param_source(prelude: String, element: String, field: String) -> String {
+  join([prelude, "fn digest_of(h: ", element, ") -> String {\n  h.", field, "\n}\n"], "")
+}
+
+fn lafk_direct_prelude() -> String {
+  "module p\n\nimport v2.std.collection { List }\nimport std.content_hash { Fnv1a64Structural }\n\n"
+}
+
+data lafk_generic_alias_source: String = "module p\n\ntype Box<T> {\n  item: T\n}\n\ntype IntBox = Box<Int>\n\nfn item_of(b: IntBox) -> Int {\n  b.item\n}\n"
+
+data lafk_generic_alias_wrong_source: String = "module p\n\ntype Box<T> {\n  item: T\n}\n\ntype IntBox = Box<Int>\n\nfn need_bool(x: Bool) -> Bool {\n  x\n}\n\nfn item_of(b: IntBox) -> Bool {\n  need_bool(x: b.item)\n}\n"
+
+// THE CLIMB. RED on main as infer_reason_field_not_declared_on_receiver.
+test fn lafk_an_alias_typed_parameter_projects_its_records_field() -> Bool {
+  lafk_reason(src: lafk_param_source(prelude: lafk_alias_prelude(), element: "Hash", field: "digest")) == ^accepted
+}
+
+// THE CLIMB AT AN INSTANTIATION: an alias of an applied record reads the field at the application's argument,
+// so `b.item` with `b: IntBox` is Int, and the RED twin below proves the instance is applied and not dropped.
+test fn lafk_a_generic_alias_receiver_projects_at_its_instantiation() -> Bool {
+  lafk_reason(src: lafk_generic_alias_source) == ^accepted
+}
+
+// ITS DISCRIMINATOR: the projected Int at a Bool formal refuses at the argument, so the climb above is a typed
+// field read and not an untyped acceptance.
+test fn lafk_a_generic_alias_field_keeps_its_instantiated_type() -> Bool {
+  lafk_reason(src: lafk_generic_alias_wrong_source) == ^application_argument_does_not_inhabit
+}
+
+// POSITIVE CONTROL: the alias reads the record's fields, not every field -- a field the record does not declare
+// still refuses through the alias.
+test fn lafk_an_alias_typed_parameter_still_refuses_an_undeclared_field() -> Bool {
+  lafk_reason(src: lafk_param_source(prelude: lafk_alias_prelude(), element: "Hash", field: "nope")) == ^infer_reason_field_not_declared_on_receiver
+}
+
+// HARNESS CONTROL: the same parameter typed with the record directly is accepted, so a red climb is the alias
+// and not the peer set.
+test fn lafk_a_record_typed_parameter_projects_its_field() -> Bool {
+  lafk_reason(src: lafk_param_source(prelude: lafk_direct_prelude(), element: "Fnv1a64Structural", field: "digest")) == ^accepted
+}
+
+// THE v2 CONTROL FOR THE SEED DEFECT (preserved, green on main): the reported shape -- a lambda key over
+// List<Hash> through a user generic -- is accepted, AND ITS ROUTE IS THE FIELD: the key's K instance equals
+// the one the same call records over List<Fnv1a64Structural>, so `h.digest` was typed through the alias rather
+// than accepted on the frontier.
+test fn lafk_a_lambda_key_through_an_imported_alias_types_its_field() -> Bool {
+  let alias_src = lafk_lambda_source(prelude: lafk_alias_prelude(), element: "Hash", field: "digest")
+  lafk_reason(src: alias_src) == ^accepted
+    && lafk_same(
+      a: lafk_key_instance(src: alias_src),
+      b: lafk_key_instance(src: lafk_lambda_source(prelude: lafk_direct_prelude(), element: "Fnv1a64Structural", field: "digest"))
+    )
+}
+
+// ITS DISCRIMINATOR: the same lambda key reading a field the record does not declare refuses, so the
+// acceptance above is a field read and not a frontier pass.
+test fn lafk_a_lambda_key_through_an_alias_refuses_an_undeclared_field() -> Bool {
+  lafk_reason(src: lafk_lambda_source(prelude: lafk_alias_prelude(), element: "Hash", field: "nope")) == ^infer_reason_field_not_declared_on_receiver
+}
+
+// CENSUS CONTROLS (DESIGN 6b sibling census, keen-heron-809). Every other v2.compiler.infer site that reads a TYPE's
+// declaration as a payload already reads it through infer_type_alias_normalized_at; these two drive that through a
+// transparent alias and are green on main and with this change. Construction THROUGH an alias name
+// (`Hash { digest: .. }`) is not an infer payload read: it refuses at assembly (resolve admits a construct tag only
+// at a constructor payload, v2.std.symbol_index declared_payloads), measured on main and with this change alike, so
+// it is a resolve-stage constructor-admission question outside this site's census and has no arm here.
+data lafk_construct_expected_alias_source: String = "module p\n\ntype Payload {\n  digest: String\n}\n\ntype Hash = Payload\n\nfn mk() -> Hash {\n  Payload { digest: \"x\" }\n}\n"
+
+data lafk_match_alias_source: String = "module p\n\ntype Side = | Left | Right\n\ntype Hand = Side\n\nfn pick(h: Hand) -> Int {\n  match h {\n    Left => 1\n    Right => 2\n  }\n}\n"
+
+test fn lafk_census_record_at_an_alias_declared_return() -> Bool {
+  lafk_reason(src: lafk_construct_expected_alias_source) == ^accepted
+}
+
+test fn lafk_census_match_through_an_alias_scrutinee() -> Bool {
+  lafk_reason(src: lafk_match_alias_source) == ^accepted
+}

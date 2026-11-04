@@ -7,7 +7,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, CoreEdgeLabel, MatchArmBodyEdge, MatchArmPatternEdge, edge_is_core }
+import v2.std.node { node_same_occurrence, Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, CoreEdgeLabel, MatchArmBodyEdge, MatchArmPatternEdge, edge_is_core, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length }
@@ -149,13 +149,13 @@ fn mals_lowered() -> MalsArms {
 
 // THE SUPPLIED MALFORMED CAPTURE: the parse with its third arm capture replaced by a bare atom.
 fn mals_replace(n: Node, target: Node, replacement: Node) -> Node {
-  if n == target {
+  if node_same_occurrence(a: n, b: target) {
     replacement
   } else {
     Node {
       kind: n.kind,
       children: fold(n.children, init: Empty, f: fn(acc, e) {
-        list_snoc_item(xs: acc, item: Edge { label: e.label, target: mals_replace(n: e.target, target: target, replacement: replacement) })
+        list_snoc_item(xs: acc, item: Edge { label: e.label, target: mals_replace(n: e.target, target: target, replacement: replacement), declaration: e.declaration })
       }),
       occurrence_id: n.occurrence_id
     }

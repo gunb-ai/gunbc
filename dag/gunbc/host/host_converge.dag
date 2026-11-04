@@ -21,6 +21,7 @@ import gunbc.ci.ci_runner_placement {
   RunnerHostDeployment,
   RunnerCpuBoundary, CapacityQuota, NoCpuCeiling,
   runner_deployment_plan,
+  runner_image_baked_deployment_plan,
   runner_host_deployment_for,
   host_deployment_refusal_text,
   workload_class_cpu_weight,
@@ -341,7 +342,9 @@ fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity)
 }
 
 type ConvergePolicy
-  = ConvergePolicyDerived { hosts: List<HostConverge> }
+  // `hosts` are converged in place; `image_baked` are the knobs of hosts that boot a RAM image, owed to the
+  // image build input and never applied by a converge (gunbc.fleet.fleet_host_backing ConvergeRealization).
+  = ConvergePolicyDerived { hosts: List<HostConverge>, image_baked: List<HostConverge> }
   | ConvergePolicyUnsound { reason: String }
 
 fn runner_instance_glob(host: HostIdentity) -> String {
@@ -1088,8 +1091,19 @@ type FleetConvergeAcc
   = FleetConvergeHosts { hosts: List<HostConverge> }
   | FleetConvergeUnsound { reason: String }
 
-fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
-  match fold(plan.hosts, init: FleetConvergeHosts { hosts: [] }, f: (acc, st) => match acc {
+fn fleet_converge_policy_from(plan: RunnerDeploymentPlan, image_baked: RunnerDeploymentPlan) -> ConvergePolicy {
+  match converge_hosts_of_plan(plan: plan) {
+    FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
+    FleetConvergeHosts { hosts: applied } =>
+      match converge_hosts_of_plan(plan: image_baked) {
+        FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
+        FleetConvergeHosts { hosts: baked } => ConvergePolicyDerived { hosts: applied, image_baked: baked }
+      }
+  }
+}
+
+fn converge_hosts_of_plan(plan: RunnerDeploymentPlan) -> FleetConvergeAcc {
+  fold(plan.hosts, init: FleetConvergeHosts { hosts: [] }, f: (acc, st) => match acc {
     FleetConvergeUnsound { reason } => FleetConvergeUnsound { reason: reason }
     FleetConvergeHosts { hosts } =>
       match st {
@@ -1115,12 +1129,9 @@ fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
               }
           }
       }
-  }) {
-    FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
-    FleetConvergeHosts { hosts } => ConvergePolicyDerived { hosts: hosts }
-  }
+  })
 }
 
 fn fleet_converge_policy() -> ConvergePolicy {
-  fleet_converge_policy_from(plan: runner_deployment_plan())
+  fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan())
 }

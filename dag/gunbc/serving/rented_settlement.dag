@@ -195,7 +195,7 @@ fn rented_cost_expectation(allocation: RentedServingAllocation, readings: Rented
   match allocation.origin {
     RentedAllocationImported { imported_by: _, imported_at: _, found_running: _ } =>
       RentedExpectationUnavailable { obligation: rented_settlement_imported_no_rate_obligation }
-    RentedAllocationAcquired { owner: _, asked_at: asked, asked_rate: rate, provider_ask: _ } =>
+    RentedAllocationAcquired { owner: _, asked_at: asked, asked_rate: rate } =>
       if rate.currency != vast_ai_quote_currency {
         RentedExpectationUnavailable { obligation: rented_settlement_rate_currency_obligation }
       } else {
@@ -219,7 +219,7 @@ fn rented_cost_expectation(allocation: RentedServingAllocation, readings: Rented
 fn rented_window_start_seconds(allocation: RentedServingAllocation, readings: RentedSettlementReadings) -> Int {
   match allocation.origin {
     RentedAllocationImported { imported_by: _, imported_at: _, found_running: _ } => readings.rented_since / 1000
-    RentedAllocationAcquired { owner: _, asked_at: asked, asked_rate: _, provider_ask: _ } =>
+    RentedAllocationAcquired { owner: _, asked_at: asked, asked_rate: _ } =>
       if asked < readings.rented_since { asked / 1000 } else { readings.rented_since / 1000 }
   }
 }

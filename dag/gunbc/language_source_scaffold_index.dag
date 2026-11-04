@@ -412,6 +412,11 @@ data ct_row_ct_call_shape_duplicate_wall_witness_test: LanguageSourceScaffoldRow
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
+data ct_row_ct_call_shape_formal_identity_wall_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_call_shape_formal_identity_wall_witness_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
+}
+
 data ct_row_ct_call_deficit_red_witness_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_call_deficit_red_witness_test",
   disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
@@ -451,6 +456,11 @@ data ct_row_ct_profile_full_pipeline_test: LanguageSourceScaffoldRow = LanguageS
 data ct_row_ct_profile_reconcile_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_profile_reconcile_test",
   disposition: compiler_tests_profile_trigger
+}
+
+data ct_row_ct_service_root_binds_only_where_its_service_is_imported_test: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.compiler_tests_rust", blob_decl: "ct_service_root_binds_only_where_its_service_is_imported_test",
+  disposition: compiler_tests_rust_hand_assertion_scaffold_trigger
 }
 
 data compiler_tests_coercion_hybrid_trigger: Disposition = Scaffold {
@@ -505,6 +515,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_shell_service_output_projection_known_hole_probe_test,
   ct_row_ct_call_shape_wall_witness_test,
   ct_row_ct_call_shape_duplicate_wall_witness_test,
+  ct_row_ct_call_shape_formal_identity_wall_witness_test,
   ct_row_ct_function_value_adapter_bound_alignment_control_test,
   ct_row_ct_call_deficit_red_witness_test,
   ct_row_ct_function_value_named_application_controls_witness_test,
@@ -513,6 +524,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   ct_row_ct_profile_self_compile_test,
   ct_row_ct_profile_full_pipeline_test,
   ct_row_ct_profile_reconcile_test,
+  ct_row_ct_service_root_binds_only_where_its_service_is_imported_test,
   runtime_rust_header_row,
   runtime_rust_work_counter_row,
   runtime_rust_concat_trait_row,

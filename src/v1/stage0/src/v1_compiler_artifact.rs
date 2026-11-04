@@ -128,8 +128,8 @@ pub fn default_artifact_plan(
     target: RenderTarget,
 ) -> Rc<ArtifactPlan> {
     selected_artifact_plan(
-        root_modules.clone(),
-        target.clone(),
+        root_modules,
+        target,
         Rc::new(RustModuleRenderSelection::RenderEveryModule),
     )
 }

@@ -1,0 +1,61 @@
+module test.claim.machine_intake.machine_intake_bmc_secure_standing_forged_probe_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PROJECTION IS THE ONLY ROUTE FROM A CONVERGED RECEIPT TO THE STANDING, ENROLLED AS AN EXECUTED RED
+// (§4b, and the seal scope item 4 asks for). BmcSecureStanding is the carrier every consumer joins on --
+// gunbc.host.managed_host's secure field, gunbc.host.bmc_control_binding,
+// gunbc.host.managed_host_boot_federation, gunbc.fleet.mtcollins_firmware_converge -- so what makes
+// bmc_secure_standing_of_phase_receipt the state-shaped fold's ONE projection is not a comment saying so:
+// it is that a module outside gunbc.machine_intake.bmc_secure can neither WRITE the standing (its
+// sole_constructor) nor REACH it by calling the projection (its admit_callers lists the fold's witnesses
+// and, when bmc_secure_standing_consumer_frontier dissolves, the one admission that is entitled to a
+// standing from this path). The probe below does both from a foreign module; this witness hands the source
+// to the compiler through the diagnostic-census harness and requires each refusal CLASS at its SUBJECT by
+// name, so a probe refused for some other reason measures some other wall. The class-scoped control shows
+// a clean source importing the same modules and READING the standing emits neither.
+data forged_probe_source: String = "module probe_bmc_secure_standing_forged\n\nimport gunbc.machine_intake.subject { MachineIntakeSubject }\nimport gunbc.machine_intake.phase { MachineQualificationPolicy }\nimport gunbc.machine_intake.bmc_secure { BmcSecureOutcome, BmcSecurePhaseReceipt, BmcSecureStanding, bmc_secure_standing_of_phase_receipt }\n\n// The standing is minted only inside gunbc.machine_intake.bmc_secure: every field is handed to this\n// function already formed, so the only thing written here is the construction the seal must refuse.\nfn forged_standing(subject: MachineIntakeSubject, policy: MachineQualificationPolicy, outcome: BmcSecureOutcome) -> BmcSecureStanding {\n  BmcSecureStanding { subject: subject, policy: policy, outcome: outcome }\n}\n\n// And the projection itself admits no outside caller: with the event path frozen, a module that wanted a\n// standing from a converged receipt would have to be named at the mint, which is what makes the swap\n// visible at the seal rather than in prose.\nfn forged_projection(subject: MachineIntakeSubject, receipt: BmcSecurePhaseReceipt) -> BmcSecureStanding {\n  bmc_secure_standing_of_phase_receipt(subject: subject, receipt: receipt)\n}\n"
+
+data harness_control_source: String = "module probe_bmc_secure_standing_harness_control\n\nimport std.types { Bool, list_length }\nimport gunbc.machine_intake.bmc_secure { BmcSecureStanding, bmc_secure_receipt_result, bmc_secure_receipt_observations }\nimport gunbc.machine_intake.receipt { ReceiptSatisfied }\n\n// Reading the standing is not what is confined -- a consumer must be able to read it, and this source\n// does nothing but read. It is the control that keeps the two assertions below about WRITING and CALLING.\nfn is_secured(standing: BmcSecureStanding) -> Bool {\n  bmc_secure_receipt_result(standing: standing) == ReceiptSatisfied && list_length(items: bmc_secure_receipt_observations(standing: standing)) > 0\n}\n"
+
+fn probe() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(forged_probe_source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn the_harness_runs_and_a_clean_source_emits_none_of_the_wall_classes() -> Bool {
+  let c = compile_dag_diagnostic_census(harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// THE STANDING IS NOT A WRITABLE RECORD, AND THE PROJECTION IS NOT A PUBLIC MINT. Asserted by class AND
+// subject: a probe that failed to parse, or tripped some unrelated wall, would leave these at zero.
+test fn the_standing_refuses_a_foreign_literal_and_the_projection_an_outside_caller() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "BmcSecureStanding") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "bmc_secure_standing_of_phase_receipt") >= 1
+}

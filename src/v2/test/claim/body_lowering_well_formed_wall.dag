@@ -19,6 +19,7 @@ import v2.std.node {
   well_formed,
   ArrowBodyEdge,
   core_edge_label,
+  NotADeclaration
 }
 
 // Discriminating RED control for body-lowering-is-TOTAL: malformed arrow bodies
@@ -46,12 +47,13 @@ fn well_formed_wall_malformed_arrow() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
-      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return), declaration: NotADeclaration },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return), declaration: NotADeclaration },
       signature.order,
       Edge {
         label: core_edge_label(marker: ArrowBodyEdge),
-        target: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
+        target: node_synthetic(kind: TypeNode { connective: Disj }, children: []),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -63,12 +65,13 @@ fn well_formed_wall_atom_body_arrow() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
-      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return), declaration: NotADeclaration },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return), declaration: NotADeclaration },
       signature.order,
       Edge {
         label: core_edge_label(marker: ArrowBodyEdge),
-        target: well_formed_wall_atom(identity: ^well_formed_wall_bare_body)
+        target: well_formed_wall_atom(identity: ^well_formed_wall_bare_body),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -80,12 +83,13 @@ fn well_formed_wall_valid_arrow() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
-      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return), declaration: NotADeclaration },
+      Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return), declaration: NotADeclaration },
       signature.order,
       Edge {
         label: core_edge_label(marker: ArrowBodyEdge),
-        target: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+        target: node_synthetic(kind: ComputationNode { behavior: Value }, children: []),
+        declaration: NotADeclaration
       }
     ]
   )

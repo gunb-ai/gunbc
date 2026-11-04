@@ -1,0 +1,10 @@
+module v2.fx.consumer
+
+import std.types { List }
+import v2.fx.ledger { FxRow }
+import v2.fx.ledger.roster { ledger_roster }
+import v2.fx.ledger.helper { ledger_rows }
+
+fn consumed() -> List<FxRow> {
+  ledger_roster
+}

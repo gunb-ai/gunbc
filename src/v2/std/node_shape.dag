@@ -19,6 +19,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_with_occurrence_id,
+  NotADeclaration
 }
 
 fn edge_shape(label: EdgeLabel, target: NodeShape) -> EdgeShape {
@@ -50,7 +51,7 @@ fn computation_shape(behavior: Behavior, children: List<EdgeShape>) -> NodeShape
 }
 
 fn stamp_edge_shape(e: EdgeShape) -> Edge {
-  Edge { label: e.label, target: stamp_node_shape_synthetic(shape: e.target) }
+  Edge { label: e.label, target: stamp_node_shape_synthetic(shape: e.target), declaration: NotADeclaration }
 }
 
 fn stamp_edge_shape_list(shapes: List<EdgeShape>) -> List<Edge> {

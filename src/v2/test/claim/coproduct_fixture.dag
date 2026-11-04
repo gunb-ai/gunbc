@@ -1,7 +1,7 @@
 module v2.test.claim.coproduct_fixture
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Authored, Conj, Disj, Edge, Node, Symbol, TypeNode }
+import v2.std.node { Authored, Conj, Disj, Edge, Node, Symbol, TypeNode, NotADeclaration }
 
 // THE ONE SHAPE TWO CLAIMS MEET AT (DESIGN section 3 pairing obligation). The lowering claim
 // (v2.test.claim.coproduct_pipe_chain_declaration_order) asserts that the pipe chain
@@ -13,7 +13,8 @@ import v2.std.node { Authored, Conj, Disj, Edge, Node, Symbol, TypeNode }
 fn cpf_arm(name: Symbol) -> Edge {
   Edge {
     label: Authored { name: name },
-    target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+    target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic },
+    declaration: NotADeclaration
   }
 }
 

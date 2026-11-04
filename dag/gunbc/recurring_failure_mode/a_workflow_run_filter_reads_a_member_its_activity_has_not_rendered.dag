@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_workflow_run_filter_reads_a_member_its_activity_has_not_rendered
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_workflow_run_filter_reads_a_member_its_activity_has_not_rendered: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_workflow_run_filter_reads_a_member_its_activity_has_not_rendered" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of typing a workflow_run job condition as an expression over a payload model whose members declare the activities at which GitHub renders them, so generation refuses a condition that reads a member its trigger's activity does not carry." } },
+
+  receipts: [
+    "INVALID STATE: a workflow_run-triggered job's condition filters on a payload member that GitHub has not rendered yet at the activity the trigger names. At `requested`, workflow_run.display_title is the workflow's static name, not the rendered run-name (actions/runner#4141, reproduced upstream; modeled at extdeps.github.actions workflow_run_display_title_at). A condition testing the title for a mode word is therefore false for every run, and GitHub reports the job as skipped, not failed.",
+
+    "HARM, found 2026-10-23: branch-run-grant-broker (gunbc.fleet.branch_run_grant_broker_workflow) skipped 100 of its last 100 runs, including broker run 39895483109 for mtcollins1_boot run 39895480515, whose API title did contain ' mtcollins1_boot '. No branch run ever received a grant run, so every run-scoped branch dispatch waited out its grant wait and failed, and nothing reported why: a skipped job is not a failure.",
+
+    "DISTINGUISHING FACTS: the other two terms of the same condition (the originating event and the head repository) are the terms heal-publish's condition reads, and heal-publish fires. The run's REST record read after the event carries the rendered title. Only the title term differs between the two.",
+
+    "RUNG FOUND AT: below the ladder (silent: 100 skipped runs, no red). CURRENT: mitigatable. The broker reads the mode from the run's own record, and a title that names no mode refuses loudly instead of skipping (gunbc.auth.branch_run_grant_broker broker_decision_for). The prefilter reads no title at all, only the originating event and the head repository. test.claim.auth.branch_run_grant_broker_workflow_witness a_requested_mtcollins1_boot_dispatch_reaches_the_broker_job admits a requested same-repository dispatch, and its control derives the title such an event carries from the activity fact and shows that a mode-word filter refuses it. The witness is not on the required path, so it does not raise the rung. CEILING: structurally guaranteed, once job conditions are typed expressions over a payload model whose members carry their activity.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.github.actions", decl_name: "workflow_run_display_title_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.branch_run_grant_broker_workflow", decl_name: "branch_run_grant_broker_prefilter", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.auth.branch_run_grant_broker", decl_name: "broker_decision_for", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.auth.branch_run_grant_broker_workflow_witness", decl_name: "a_requested_mtcollins1_boot_dispatch_reaches_the_broker_job", field: WholeDeclaration },
+  ],
+}

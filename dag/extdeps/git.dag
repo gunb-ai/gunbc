@@ -1164,6 +1164,68 @@ fn git_rev_parse_head_command(repository_dir: String) -> ArgvCommand {
   argv_command(program: git_program(), arguments: git_rev_parse_head_args(repository_dir: repository_dir))
 }
 
+// THE TRACKED LISTING. `git ls-files` is the only route that answers "which paths does the index track"
+// without a governed source tree, which is what makes it the enumeration route for paths NO acquirer can
+// see: `v2.cli.repository_layout repository_tree_of_root_argument` admits only V2Tree and DagTree, so a
+// tree outside those two can never be a --source-root and no discovery walk will ever list it (the repo's
+// own note v1_claim_scoped_witness_batch_deleted_note in gunbc.ci.ci_layer_roots declares that population
+// and its restoration trigger). The authority for this read is the declared `git_ls_files_external_authority_anchor`
+// above, whose consumer is the `LsFiles` operation of `service git.Core`; this builder adds no new anchor.
+// The pathspec is a parameter rather than a hardcoded glob because the caller's population is the claim,
+// and a builder that fixed one would be a second census hidden inside a transport.
+fn git_ls_files_args(repository_dir: String, pathspec: String) -> List<String> {
+  ["-C", repository_dir, "ls-files", "--", pathspec]
+}
+
+fn git_ls_files_command(repository_dir: String, pathspec: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: git_ls_files_args(repository_dir: repository_dir, pathspec: pathspec))
+}
+
+// WHICH TRACKED FILES DECLARE A CLAIM. The second read of the tracked-claim question, because the listing
+// above answers only "which paths are tracked": a `.dag` that declares no `test fn` is a helper inventory,
+// not an uncovered claim, and reporting it as one is a fabricated finding. Some files under the note's
+// subject are exactly that, and some outside it are files whose text merely MENTIONS the phrase in a
+// comment -- the census excludes both at the declaration grain, which is why the pattern below asks for the
+// declaration shape rather than the bare phrase. `-l` prints one path per line and nothing else, which is
+// the grain the census joins on.
+//
+// THE PATTERN IS A PARAMETER because the rule belongs to the caller, and a transport that fixes it becomes a
+// second census. BE HONEST ABOUT WHAT IT IS: this is a TEXT test by git. The interpreter's own marker read,
+// `v2.compiler.module_acquisition acquisition_test_markers`, is a PARSE of the file. This call does not claim
+// they agree. Dissolution: when a parse is reachable for a path the layout does not bind, the marker read
+// above replaces this call (the same drop `floor_pure_producer_share`'s pairing row names for
+// `acquisition_test_markers`, interpreted route, C4-E).
+fn git_grep_files_with_matches_args(repository_dir: String, pattern: String, pathspec: String) -> List<String> {
+  ["-C", repository_dir, "grep", "-E", "-l", pattern, "--", pathspec]
+}
+
+fn git_grep_files_with_matches_command(repository_dir: String, pattern: String, pathspec: String) -> ArgvCommand {
+  argv_command(
+    program: git_program(),
+    arguments: git_grep_files_with_matches_args(
+      repository_dir: repository_dir,
+      pattern: pattern,
+      pathspec: pathspec
+    )
+  )
+}
+
+// The argv shape, spelled the way a person would type it, for the claim that pins the builder (shape_*
+// siblings in this module). Renders the program name; executes nothing.
+fn shape_git_grep_files_with_matches_args(
+  repository_dir: String,
+  pattern: String,
+  pathspec: String
+) -> List<String> {
+  concat(["git"], git_grep_files_with_matches_args(repository_dir: repository_dir, pattern: pattern, pathspec: pathspec))
+}
+
+// The argv shape, spelled the way a person would type it, for the claim that pins the builder. Like its
+// siblings (shape_git_rev_parse_head_args), it renders the program name and never executes anything.
+fn shape_git_ls_files_args(repository_dir: String, pathspec: String) -> List<String> {
+  ["git", "-C", repository_dir, "ls-files", "--", pathspec]
+}
+
 // HEAD IS NOT THE TREE. `rev-parse HEAD` says which commit is checked out and nothing about whether
 // the working tree still matches it, so a build whose only provenance check is the commit id will
 // happily build a modified context and stamp it with an unmodified revision. `--porcelain` prints one
@@ -1339,6 +1401,45 @@ fn git_in_trusted_repository_args(repo: NonEmptyStr) -> List<String> {
 // The program word cannot drift to the back of the list at a second site, because there is no second site.
 fn git_in_trusted_repository_argv(repo: NonEmptyStr, verbs: List<String>) -> List<String> {
   git_argv_of_args(args: concat(git_in_trusted_repository_args(repo: repo), items: verbs))
+}
+
+// THE REPOSITORY PREMISE AS AN EXIT STATUS (WORKER-ROOT-EQUIVALENT-3, typed legs).
+// `git -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir` exits 0 exactly when
+// <repo>/.git IS a git directory -- and nonzero when it is a skeleton without a valid HEAD, a plain
+// directory, or a .git that would only resolve by discovering UPWARD into some outer repository, because
+// an explicit --git-dir disables discovery entirely. Measured on srv1, git 2.43.0 at uid 1000 (parent,
+// 2026-10-23): committed repository 0, unborn branch 0, detached HEAD 0, HEAD-less skeleton 128, plain
+// directory 128, a .git nested inside another repository 128 ("not a git repository: <repo>/.git").
+// THE EXIT STATUS IS THE PREMISE: no capture, no comparison, no printf, no shell around it. An earlier
+// cut ran the three reads inside a bash `[ ]` with a command substitution; that construction died in a
+// word-order defect (the program word landed after its own args, so bash ran `-c` as a program, the
+// substitution printed nothing, and the collapsed `[ ]` turned a TEST ERROR into a silent "not a
+// repository"), and the fix is not to quote the substitution better but to delete the shell -- a verdict
+// that survives how its text was rendered is not a verdict, it is a rendering.
+// THE safe.directory GRANT RIDES ALONG for the same reason every untrusted-principal call takes it:
+// without it git 2.43 refuses ownership of a tree the caller does not own BEFORE resolving anything,
+// which would make a real repository look like a refusal. It is the one-path grant derived from the same
+// repo the --git-dir names; the narrowest grant is the only shape this can spell.
+// THE ARGS LIST IS ARGS-ONLY, EXACTLY LIKE git_config_local_set_args AND EVERY SIBLING THAT FEEDS
+// argv_command(program: git_program(), arguments: _). It must NOT carry the program word: the ArgvCommand
+// that executes it already supplies program: git_program(), so a list that began with "git" would run
+// `git git -c ...` and git would answer "'git' is not a git command" (exit 1) -- which is what a
+// git_argv_of_args wrapper here did, and srv1 caught (job r14328p3t2, 96f6c467ab9c): the premise halted at
+// git-worker-subtree-premise on EVERY repository, committed ones included, because the program word was
+// doubled. git_argv_of_args is for the shape_*_argv LIST form that carries its own program word (it is a
+// whole command line, not the arguments field of an ArgvCommand); this is the arguments field, so it is
+// args-only and the program word has ONE home -- the ArgvCommand's program. A claim pins the executing
+// shape directly: the ArgvCommand's program (git) and its arguments (safe.directory override, then
+// --git-dir <repo>/.git, then rev-parse --absolute-git-dir), NOT a list that contains the program word.
+fn git_absolute_git_dir_premise_args(repo: NonEmptyStr) -> List<String> {
+  concat(
+    git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }),
+    items: ["--git-dir", join([repo as String, "/.git"], ""), "rev-parse", "--absolute-git-dir"],
+  )
+}
+
+fn git_absolute_git_dir_premise_argv(repo: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: git_absolute_git_dir_premise_args(repo: repo))
 }
 
 // gitrepository-layout(5): a non-bare repository keeps its GIT_DIR in the `.git` directory at the
@@ -1700,6 +1801,22 @@ service git.Core {
     }
     readonly
     transport shell { argv: ["git", "-C", "{repository_path}", "diff", "--name-only", "-z", "{treeish}", "--"] }
+  }
+
+  // git grep's fixed-string search over the tracked tree (git-grep(1): -n prefixes each match with
+  // its path and 1-based line number, -F takes the pattern literally, -I skips binary files). Like
+  // LsRemoteHeads it declares no exit block: git grep exits 1 when nothing matches, which is a
+  // reading rather than a failure, so the caller reads exit_code and stderr itself.
+  operation GrepFixedLinesInRepo {
+    requires opaque
+    input { repository_path: String, pattern: String, pathspec: String }
+    output {
+      lines: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "grep", "-n", "-I", "-F", "-e", "{pattern}", "--", "{pathspec}"] }
   }
 
   operation LsFiles {
@@ -2455,4 +2572,28 @@ fn git_remote_url_observation_of(
   } else {
     GitRemoteUrlReadRefused { at: at, exit_code: exit_code, stderr: stderr }
   }
+}
+
+// ONE COMPONENT OF A REF NAME, as git-check-ref-format(1) admits it (git-scm.com/docs/git-check-ref-format):
+// no slash (a component sits between two), no leading dot, no `..`, no space, none of ~ ^ : ? * [ \, no `@{`,
+// and no `.lock` suffix. It carries those rules and NOT the control-character, DEL or trailing-dot rules, so a
+// name it admits may still be refused by git -- loudly, at the ref write -- and nothing here claims otherwise.
+// Its consumers are the qualification branch (gunbc.runner.runner_qualification_ref_pin qualification_branch_name)
+// and the runner group observer that admits one branch under a prefix
+// (gunbc.runner.runner_group_restriction_observation), which ask the same question of the same upstream.
+fn git_ref_component_admitted(component: String) -> Bool {
+  string_length(s: component) > 0
+    && !starts_with(s: component, prefix: ".")
+    && !string_contains(s: component, pattern: "/")
+    && !string_contains(s: component, pattern: "..")
+    && !string_contains(s: component, pattern: " ")
+    && !string_contains(s: component, pattern: "~")
+    && !string_contains(s: component, pattern: "^")
+    && !string_contains(s: component, pattern: ":")
+    && !string_contains(s: component, pattern: "?")
+    && !string_contains(s: component, pattern: "*")
+    && !string_contains(s: component, pattern: "[")
+    && !string_contains(s: component, pattern: "\\")
+    && !string_contains(s: component, pattern: "@{")
+    && !ends_with(s: component, suffix: ".lock")
 }

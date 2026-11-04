@@ -1,0 +1,153 @@
+module gunbc.host.mtcollins1_ssh_host_key_mint
+
+import std.types { Secret, String }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.host.fleet_keypair_mint {
+  FleetKeypairGeneration, FleetAddVerdict,
+  mtcollins1_host_keypair_mint_subject, fleet_keypair_generate_pair, fleet_keypair_store_verdict,
+  fleet_keypair_privkey_resource, fleet_keypair_mint_verdict, fleet_keypair_mint_verdict_holds,
+  fleet_keypair_mint_receipt_text,
+}
+import gunbc.design_ruling { the_mint_of_a_fleet_ssh_keypair_is_account_creation }
+import gunbc.host.anchored_host_transport { mtcollins1_host_key_anchor }
+
+// ── MINTING mtcollins1's SSH HOST KEY, AS A ROW OF THE ONE FLEET-KEYPAIR POLICY ────────────────────
+//
+// WHAT CHANGED, AND ON WHOSE SAY-SO. Until 2026-10-28 this key was minted by a human pasting ssh-keygen
+// into a laptop terminal: gunbc.host.anchored_host_transport anchored_host_key_mint_intervention, rendered
+// as Step 1 of docs/runbooks/mtcollins1-ssh-host-key-mint.md, whose own
+// anchored_host_key_mint_shell_bash_emit_dissolution_trigger named the workflow dispatch this module now is.
+// The operator's ruling on the asymmetry -- the boot medium reader key already had an approval-free mint,
+// this one had a runbook -- was: "i don't see why a human needs to do this - this seems just like normal
+// account creation" (2026-10-28, relayed by merry-fox-82). It is a design_ruling row,
+// gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation, because the reason a human step
+// was removed from beside this key is a decision no code proves, and a later reader is entitled to see who
+// made it and in what words.
+//
+// WHY IT IS A ROW AND NOT A SECOND MINT. The reader key's mint already carried every property that makes a
+// workflow mint trustworthy at all: the private half exists only in a create-only 0700 directory under
+// /dev/shm whose filesystem is READ from findmnt and required to be tmpfs before anything generates, then
+// in Secret Manager via AddVersion with the payload on request stdin -- never in argv, never in a log, never
+// on a durable path -- with the directory removed by its producer and judged again after removal. A second
+// implementation would have had to reproduce all of that, and a second implementation of "the private half
+// never leaves tmpfs" is exactly the kind of thing that drifts: the copy that looks equivalent is the one
+// that quietly drops the findmnt read and trusts the path string, or renders a store's refusal body without
+// redacting it first. So this module is the reader key's mint with a different secret row, from
+// gunbc.host.fleet_keypair_mint, and it owns only what genuinely differs: which pin it consults, its rule
+// line for whoever pins, and its wet entry. Even the receipt prefix ("host_key=", so one log can hold two
+// mint receipts and a reader can tell them apart) is a field on this key's subject row, read by the core's
+// renderer.
+//
+// WHY THE LEAVES SPEAK THE CORE'S VOCABULARY (review 88082). An earlier shape of this PR kept a parallel
+// Host* vocabulary per key -- a type per core type and functions whose only body converted back and forth --
+// which is §3's nicknaming with a runtime excuse attached: in this language `type Alias = Core` typechecks,
+// and a match naming aliased arm spellings typechecks too, and then the run dies with PatternMatchFailure
+// because coproduct arm membership is never checked across an alias (recorded as
+// gunbc.recurring_failure_mode coproduct_alias_arm_membership_untouched_by_the_typechecker). The answer to
+// that trap was never a second vocabulary: the arms belong to the core, so this module imports the core's
+// verdict types and USES them, pattern-matching happens only in the core and in witnesses that name the
+// arms themselves, and a new key is one row -- types, fold, receipt rendering, holds and all.
+//
+// THE DIFFERENCE THAT IS REAL, and it is in the pin rather than in the mint. A reader key is pinned by an
+// authorized_keys row that gunbc.host.boot_medium_reader_key holds as a value. A host key is pinned by a
+// KNOWN-HOSTS row -- gunbc.host.anchored_host_transport mtcollins1_host_key_anchor, a KnownHostKeyRow whose
+// public half and SHA256 fingerprint are what every mtcollins1 transport verifies on connect. That is why
+// both halves are committed together and why the retired scaffold said so: a minted host key with no anchor
+// is a live credential in Secret Manager that nothing can prove it holds, and a client that cannot verify it
+// falls back to nothing -- an unpinned host key is not a missing convenience, it is the absence of the thing
+// that makes the connection mean anything (trust-on-first-contact is the refusal this repository does not
+// take). Hence the rule the core states and this mint obeys: PIN THE PUBLIC ROW AND THE FINGERPRINT, IN THE
+// SAME COMMIT.
+//
+// THE PIN IS READ, NEVER ASSERTED. This mint asks the anchor whether a key exists; it never writes one and
+// never overwrites one. An anchor whose public half is empty is NOT a pin (an empty field would otherwise
+// read as "pinned" and stop the only mint that can fill it, which is a mint that can never run).
+//
+// THE MINTING IDENTITY'S GRANT IS CONVERGED, NOT HELD BY HAND. To add a version the job's federated identity
+// needs secretmanager.secretVersionAdder on this exact row, and that grant arrives as a row of
+// gunbc.auth.fleet_secret_accessor_roster (the host key's adder row), converged by
+// gunbc.auth.gcp_iam_converge -- never by a human editing a policy in the console. A hand-made grant is
+// unmodeled authority: nothing would list it, nothing would revoke it, and the census would be describing a
+// fleet that does not exist.
+//
+// WHY NOTHING HERE READS A KEY. There is no secret read in this module at all. The private half is produced
+// by ssh-keygen writing into the tmpfs directory, read back as file content, base64'd onto a request body,
+// and then nothing -- so there is no code path from a stored key to an output. That is a stronger property
+// than "we print it carefully", and it is why the mint can be dispatched by a workflow at all.
+
+// THE KEYPAIR, AS THE JUDGEMENT SEES IT: the three values a mint can act on. private_half is a Secret
+// THE PIN IS READ, NEVER ASSERTED. This mint asks the anchor whether a key exists; it never writes one and
+// never overwrites one. An anchor whose public half is empty is NOT a pin -- the field exists on the row
+// before the key does, and reading it as "pinned" would make the mint refuse forever without ever having
+// minted, which is a mint that can never run.
+fn mtcollins1_host_key_pinned_line() -> String? {
+  match mtcollins1_host_key_anchor() {
+    Absent => none
+    Present { value: row } =>
+      if row.public_key_base64 == "" { none } else {
+        Present { value: concat("ssh-ed25519 ", row.public_key_base64) }
+      }
+  }
+}
+
+// WHY THE OPERATOR'S WORDS ARE NOT COPIED HERE (review 88000). The quote and the date live in exactly one
+// place -- gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation. This line READS the row:
+// its `decided` for the date, its own declared name for the citation. A rename of the ruling or a dropped
+// provenance fails the mint's witness rather than silently re-pointing the mint at a different decision.
+data mtcollins1_host_key_mint_ruling: String = concat(
+  "operator ruling ",
+  concat(
+    the_mint_of_a_fleet_ssh_keypair_is_account_creation.decided,
+    concat(
+      " -- gunbc.design_ruling.",
+      concat(
+        the_mint_of_a_fleet_ssh_keypair_is_account_creation.reference.decl_name as String,
+        "; the operator's own words live in that row's provenance",
+      ),
+    ),
+  ),
+)
+
+// THE RULE, ONE LINE, FOR WHOEVER PINES: named on the host key because its pin is a known-hosts row every
+// transport verifies, and a half-pinned host key -- version added, anchor not landed -- is exactly how an
+// account nobody can account for goes live unnoticed.
+data mtcollins1_host_key_pin_commit_rule: String = "pin the public half and its fingerprint into gunbc.host.anchored_host_transport mtcollins1_host_key_anchor IN THE SAME COMMIT as the mint; never pin the private half"
+
+// WHERE THE RECEIPT GOES: a projection of the subject row's receipt_path, so the row stays the one home of
+// the fact and the wet entry reads it without spelling the field.
+data mtcollins1_host_key_mint_receipt_path: String = mtcollins1_host_keypair_mint_subject.receipt_path
+
+// THE ENTRY THE DISPATCHED STEP RUNS. It reads no stored secret anywhere: it asks the anchor the pin
+// question, then runs the CORE FOLD keyed on this key's subject row -- which creates the tmpfs directory and
+// refuses it unless findmnt says tmpfs, generates, validates, stores with the private half on the request's
+// stdin, and removes the directory before judging -- and it renders the receipt with the CORE RENDERER, from
+// the verdict's own arms and the row's prefix. The judgement is the core's verdict: the exit code is 0 for
+// minted and for already-pinned (the no-op the mode promises, so a re-dispatch against a key that exists is
+// safe), and 1 for a refusal and for an outcome unknown -- a run that may have created an unprovable
+// credential must not report success, which is how a fleet acquires a key nobody can account for. The
+// receipt is written even on those two failures, because the cause it names is the finding.
+fn mtcollins1_host_key_mint_wet() -> ProcessExit {
+  let verdict = fleet_keypair_mint_verdict(
+    pinned: mtcollins1_host_key_pinned_line(),
+    generate: fn() { fleet_keypair_generate_pair(subject: mtcollins1_host_keypair_mint_subject) },
+    add: fn(payload) {
+      fleet_keypair_store_verdict(
+        project: mtcollins1_host_keypair_mint_subject.privkey_secret.project,
+        secret_id: mtcollins1_host_keypair_mint_subject.privkey_secret.secret,
+        resource: fleet_keypair_privkey_resource(subject: mtcollins1_host_keypair_mint_subject),
+        payload: payload as Secret,
+      )
+    },
+  )
+  let rendered = fleet_keypair_mint_receipt_text(subject: mtcollins1_host_keypair_mint_subject, v: verdict)
+  let written = Filesystem.Write(path: mtcollins1_host_key_mint_receipt_path, content: rendered)
+  if written.success == false {
+    exit_failure(reason: concat("mtcollins1 ssh host key: the receipt could not be written: ", rendered))
+  } else if fleet_keypair_mint_verdict_holds(v: verdict) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 ssh host key mint did not hold:\n", rendered))
+  }
+}

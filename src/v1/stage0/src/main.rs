@@ -588,7 +588,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                         // happen as one that found nothing.
                         eprintln!("gunbc compile: {earlier_phase}: {cause}");
                         cli_run::pre_entry_phase::print_invocation_receipt();
-                        std::process::exit(1);
+                        end_process_without_teardown(1);
                     }
                     cli_run::CompileDisposition::Refused { phase, cause } => {
                         eprintln!(
@@ -603,7 +603,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                             render_diagnostics(&emission.result);
                         }
                         cli_run::pre_entry_phase::print_invocation_receipt();
-                        std::process::exit(1);
+                        end_process_without_teardown(1);
                     }
                     cli_run::CompileDisposition::Completed { emitted_count } => {
                         eprintln!(
@@ -647,7 +647,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                             emitted_count, total_diagnostics
                         );
                         cli_run::pre_entry_phase::print_invocation_receipt();
-                        std::process::exit(0);
+                        end_process_without_teardown(0);
                     }
                 }
             }
@@ -994,9 +994,16 @@ fn render_one_diagnostic(
     let message = diagnostic_to_message(d.diagnostic.clone());
     let span = diagnostic_to_span(d.diagnostic.clone());
 
-    let location = if !span.file.is_empty() {
-        if let Some(idx) = index_map.get(&span.file) {
+    let located = if span.file.is_empty() {
+        None
+    } else {
+        index_map.get(&span.file).map(|idx| {
             let lc = byte_to_line_col(idx.clone(), span.start);
+            (idx, lc)
+        })
+    };
+    let location = if !span.file.is_empty() {
+        if let Some((_, lc)) = &located {
             format!("{}:{}:{}", span.file, lc.line, lc.col)
         } else {
             span.file.clone()
@@ -1013,10 +1020,9 @@ fn render_one_diagnostic(
         eprintln!("{}{}[{}]: {}", indent, severity, location, message);
     }
 
-    if !span.file.is_empty() {
-        if let Some(idx) = index_map.get(&span.file) {
-            let lc = byte_to_line_col(idx.clone(), span.start);
-            let line_text = source_line_at(idx.clone(), lc.line);
+    {
+        if let Some((idx, lc)) = &located {
+            let line_text = source_line_at(Rc::clone(idx), lc.line);
             let line_num = format!("{}", lc.line);
             let gutter_width = line_num.len();
             eprintln!("{} {} |", indent, " ".repeat(gutter_width));
@@ -1131,23 +1137,31 @@ impl Verdict {
         // here, and the compile route reaches this function when writing the emitted tree is
         // refused -- exactly the failure an operator needs the receipt for.
         v1_compiler::cli_run::pre_entry_phase::print_invocation_receipt();
-        // THE PROCESS ENDS WITHOUT RUNNING EXIT-TIME DESTRUCTORS. `std::process::exit` calls libc
-        // `exit`, which runs this thread's thread-local destructors -- the interpreter's corpus-wide
-        // memos and caches -- before the process can end. Measured on the mtcollins1 SOL notice
-        // watcher (run 37102391062): 11.7 s between this line and the process ending under
-        // `exit`, 1.5 s under `_exit` (the remainder is the kernel reclaiming the address space).
-        // Nothing reads that memory after the verdict, and no thread-local or atexit hook on these
-        // paths holds a file, child, lock or lease, so the only work skipped is freeing memory the
-        // kernel reclaims anyway. Both standard streams are flushed first, because `_exit` does not.
-        {
-            use std::io::Write;
-            let _ = std::io::stdout().flush();
-            let _ = std::io::stderr().flush();
-        }
-        // SAFETY: `_exit` takes any int and does not return; no Rust invariant depends on code
-        // after this point running.
-        unsafe { libc::_exit(self.status) }
+        end_process_without_teardown(self.status)
     }
+}
+
+/// THE ONE BOUNDARY AT WHICH THE CLI ENDS THE PROCESS WITHOUT EXIT-TIME TEARDOWN, shared by
+/// `Verdict::apply` and the compile route. CLI ROUTES ONLY: in-process callers (claim_batch, tests)
+/// never reach it and release normally. The caller prints the invocation receipt FIRST, because
+/// `_exit` skips every exit hook.
+fn end_process_without_teardown(status: i32) -> ! {
+    // THE PROCESS ENDS WITHOUT RUNNING EXIT-TIME DESTRUCTORS. `std::process::exit` calls libc
+    // `exit`, which runs this thread's thread-local destructors -- the interpreter's corpus-wide
+    // memos and caches -- before the process can end. Measured on the mtcollins1 SOL notice
+    // watcher (run 37102391062): 11.7 s between this line and the process ending under
+    // `exit`, 1.5 s under `_exit` (the remainder is the kernel reclaiming the address space).
+    // Nothing reads that memory after the verdict, and no thread-local or atexit hook on these
+    // paths holds a file, child, lock or lease, so the only work skipped is freeing memory the
+    // kernel reclaims anyway. Both standard streams are flushed first, because `_exit` does not.
+    {
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+    }
+    // SAFETY: `_exit` takes any int and does not return; no Rust invariant depends on code
+    // after this point running.
+    unsafe { libc::_exit(status) }
 }
 
 /// THE FUNCTIONS ONE `gunbc run` EXECUTES, decided before anything is loaded.
@@ -1315,13 +1329,18 @@ fn run_verb(
         };
     }
 
-    // Exactly the deleted handler's selection: `--dry-run` means Hermetic, which REFUSES
-    // host operations rather than mocking them silently, and absence means Wet.
-    let execution_mode = if dry_run {
-        v1_compiler::v1_interpreter::ExecutionMode::Hermetic
-    } else {
-        v1_compiler::v1_interpreter::ExecutionMode::Wet
-    };
+    // CLAIM RUNS ARE VERIFICATION, NOT EXECUTION. A `test fn` is evaluated against its declared
+    // mocks and MUST NOT perform a real host effect. `--dry-run` already means Hermetic, which
+    // REFUSES host operations rather than mocking them silently; a `--claim-run` must mean the SAME
+    // fail-closed mode, because a claim is not the operator's authority to run a host effect. Before
+    // this, `--claim-run` fell to Wet whenever `--dry-run` was absent, so a claim whose mocked effect
+    // had no mock bound on this route silently dispatched the REAL effect against the host (a DESIGN
+    // §5 fail-open with a live side effect: the mocked journalctl ran live against srv1's journal).
+    // Hermetic mode owns the fail-closed rule: a mocked effect with no bound mock refuses typed
+    // (`no mock_response ... refusing`), and a bound mock still serves. The mode is decided by the
+    // ONE shared authority `cli_run::execution_mode_for`, which `claim_batch` uses too (DESIGN 6b:
+    // one flag-to-mode function for both entrypoints, so they cannot diverge again).
+    let execution_mode = cli_run::execution_mode_for(None, claim_run, dry_run);
     let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
 
     let to_run = match functions_to_run(functions, claim_run, entry_file, graph.as_ref()) {
@@ -1335,7 +1354,7 @@ fn run_verb(
     };
 
     // ONE LOAD, MANY FUNCTIONS. Each function's verdict is decided exactly as it was when a run
-    // executed one; the run's verdict is the first non-zero status, and every function still
+    // executed one; the run's verdict is the first non-zero status (a claim run: 1 > 2 > 0), and every function still
     // runs so a claim file reports all of its reds rather than the first. A non-claim run of
     // several functions stops at the first failure, because a later function may depend on
     // the effects of an earlier one.
@@ -1350,7 +1369,9 @@ fn run_verb(
             if let Some(m) = &one.message {
                 failures.push(m.clone());
             }
-            if verdict.status == 0 {
+            // Precedence 1 > 2 > 0, as claim_batch: a failed claim outranks a no-observation,
+            // which outranks success; a non-claim run keeps its first non-zero status.
+            if verdict.status == 0 || (claim_run && one.status == 1) {
                 verdict.status = one.status;
             }
             if !claim_run {
@@ -1536,8 +1557,18 @@ fn run_one_function(
                 }
             }
         }
+        // A refused route is NO OBSERVATION (exit 2), never a failed claim: the claim did not
+        // get to say anything. Outside a claim run an evaluation error stays exit 1.
         Err(err) => Verdict {
-            status: 1,
+            status: if claim_run
+                && matches!(
+                    err,
+                    v1_compiler::v1_interpreter::InterpError::HostEffectRefused { .. }
+                ) {
+                2
+            } else {
+                1
+            },
             message: Some(format!(
                 "error: evaluating {function} in {entry_file}\n  cause: {err:?}"
             )),
@@ -1707,5 +1738,108 @@ mod exit_status_tests {
             "main",
         );
         assert_eq!(message.as_deref(), Some("drift: docs/plans/x.md"));
+    }
+}
+
+#[cfg(test)]
+mod claim_run_mode_tests {
+    use super::run_one_function;
+    use std::rc::Rc;
+    use v1_compiler::cli_run;
+    use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
+
+    // The boundary flag-to-mode decision itself is exercised, total, in
+    // `cli_run::claim_execution::execution_mode_for_tests` (the single shared authority that both
+    // `claim_batch` and the `run` verb call). What is left HERE is the inhabitance: that the claim
+    // route the `run` verb actually builds REFUSES an unbound mocked effect typed, and does NOT do
+    // so by accident (i.e. it really dispatches when Wet).
+
+    // A claim whose effect is MOCKED (a mockable shell operation) but carries NO `mock_response` —
+    // an unbound mock. The shell argv is a NONEXISTENT ABSOLUTE path so that a Wet attempt to
+    // dispatch it can only fail at spawn and touch nothing real (quick-newt: demonstrate the fall-
+    // through without executing a live host effect).
+    const FIXTURE_PATH: &str = "fixture/claim_run_route.dag";
+    const FIXTURE_SRC: &str = "module fixture.claim_run_route\n\nservice fixture.ClaimRoute {\n  operation UnboundEffect {\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"/nonexistent/gunbc-claim-route-probe\"] }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.ClaimRoute.UnboundEffect()\n  r.success\n}\n";
+
+    fn fixture_sources() -> Vec<Rc<SourceFile>> {
+        vec![Rc::new(SourceFile {
+            path: FIXTURE_PATH.to_string(),
+            content: FIXTURE_SRC.to_string(),
+        })]
+    }
+
+    // INHABITANCE (the route the `run` verb builds, not a hand-picked Hermetic): the mode comes from
+    // the shared authority for a claim run, is fed to the real per-function evaluator `run_one_function`
+    // that `run_verb` calls, and the unbound mocked effect surfaces the typed `HostEffectRefused` as
+    // exit 2 (NO OBSERVATION) carrying the `NoMockResponse` ground. status 2 is the discriminator:
+    // `run_one_function` returns it ONLY for `HostEffectRefused` under a claim run.
+    #[test]
+    fn claim_run_route_refuses_an_unbound_mocked_effect_as_no_observation() {
+        // 1. The route decision comes from the ONE production authority, not a literal.
+        let mode =
+            cli_run::execution_mode_for(None, /*is_claim*/ true, /*dry_run*/ false);
+        assert!(
+            matches!(mode, ExecutionMode::Hermetic),
+            "`gunbc run --claim-run` without --dry-run must select Hermetic, not Wet"
+        );
+
+        // 2. Drive the real evaluator with the route's own mode.
+        let resolved = compile_to_resolved(Rc::new(fixture_sources().into()));
+        let ctx = InterpContext::new(
+            resolved.graph.as_ref().expect("fixture graph"),
+            resolved.source_indices.clone(),
+            mode,
+        );
+        let verdict = run_one_function(&ctx, "witness", "f.dag", &[], true);
+        let message = verdict.message.clone().unwrap_or_default();
+        assert_eq!(
+            verdict.status, 2,
+            "an unbound mocked effect on the claim route must be NO OBSERVATION (exit 2), got \
+             status {} with message: {message}",
+            verdict.status
+        );
+        // `Verdict` carries only the rendered message, so the typed refusal is read from its
+        // Debug rendering: the variant AND its ground, never a looser substring.
+        assert!(
+            message.contains("HostEffectRefused") && message.contains("ground: NoMockResponse"),
+            "the refusal must be the typed NoMockResponse ground, got: {message}"
+        );
+    }
+
+    // DISCRIMINATING CONTROL: the SAME claim and the SAME unbound mocked effect, evaluated under
+    // WET, is DISPATCHED rather than refused — it does NOT take the typed-refusal (exit 2 /
+    // `NoMockResponse`) path. This proves the refusal above is produced by the Hermetic claim mode
+    // the route selects, not by the fixture being non-dispatchable for some unrelated reason. Host-
+    // safe: the argv is a nonexistent absolute path, so the Wet attempt fails at spawn and evaluates
+    // to `success:false` (a FAIL verdict, exit 1), never performing a real effect.
+    #[test]
+    fn wet_route_dispatches_the_same_unbound_effect_instead_of_refusing() {
+        let mode =
+            cli_run::execution_mode_for(None, /*is_claim*/ false, /*dry_run*/ false);
+        assert!(
+            matches!(mode, ExecutionMode::Wet),
+            "an ordinary (non-claim, non-dry) run must be Wet"
+        );
+
+        let resolved = compile_to_resolved(Rc::new(fixture_sources().into()));
+        let ctx = InterpContext::new(
+            resolved.graph.as_ref().expect("fixture graph"),
+            resolved.source_indices.clone(),
+            mode,
+        );
+        let verdict = run_one_function(&ctx, "witness", "f.dag", &[], true);
+        let message = verdict.message.clone().unwrap_or_default();
+        // The discriminator is the typed refusal, not the exit code: under Wet the REAL transport is
+        // attempted (the shell spawn at the nonexistent absolute path fails and evaluates to a normal
+        // dispatch outcome), so the run does NOT surface the `NoMockResponse` typed refusal that the
+        // Hermetic claim route produces on the identical fixture. (The exit code is not asserted: a
+        // dispatch failure may surface as a caught panic (exit 2) or a FAIL verdict (exit 1); either
+        // way it is not the typed unbound-mock refusal — that is what this control pins.)
+        assert!(
+            !message.contains("NoMockResponse"),
+            "the Wet route must DISPATCH the effect, not refuse it for an unbound mock (that \
+             fail-closed refusal is produced only by the Hermetic claim mode); got: {message}"
+        );
     }
 }

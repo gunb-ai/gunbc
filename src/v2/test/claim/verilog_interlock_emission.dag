@@ -1,6 +1,6 @@
 module v2.test.claim.verilog_interlock_emission
 
-import v2.std.node { Node, Symbol }
+import v2.std.node { node_same_occurrence, Node, Symbol }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { FormalProduction, Holds, Violates }
 import v2.extdeps.languages.verilog {
@@ -231,5 +231,5 @@ fn rebuilt_from_spine() -> Node {
 }
 
 test fn w_token_spine_reads_back_to_the_same_emitted_node() -> Bool {
-  rebuilt_from_spine() == verilog_interlock_emitted()
+  node_same_occurrence(a: rebuilt_from_spine(), b: verilog_interlock_emitted())
 }

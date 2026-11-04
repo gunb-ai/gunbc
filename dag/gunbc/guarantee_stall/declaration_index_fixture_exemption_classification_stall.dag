@@ -1,0 +1,61 @@
+module gunbc.guarantee_stall.declaration_index_fixture_exemption_classification_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// THE ROW IS ABOUT THE DECLARATION INDEX'S FIXTURE EXEMPTIONS AND LIVES HERE BECAUSE MEMBERSHIP OF
+// gunbc.guarantee_stall.roster IS THIS DIRECTORY. It was declared at the end of
+// gunbc.declaration_index_seed_growth until the roster became derived; "the carrier prose" below
+// is that module's.
+
+// THE ENROLLED ROWS ARE NOT DISTINGUISHED BETWEEN DELIBERATE-ABSENT AND STALE, AND THAT IS A STALL
+// RATHER THAN A SETTLED BOUNDARY. Two of the thirty-one are decidable by inspection and are named
+// in the carrier prose; the twenty-nine below are not, and a permanently-enrolled unclassified row
+// is exactly where a real defect sits unseen -- which is not a hypothetical, because two were found
+// there. The blocker is AwaitsOneGrounding rather than ClimbableButUnbuilt because what is missing
+// is a DECIDABLE CRITERION, not effort: nothing in the corpus today distinguishes a citation whose
+// author meant it to refuse from one that rotted, and guessing is what turns a stale citation into
+// a confidently wrong one.
+data declaration_index_fixture_exemption_classification_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v1_compiler.declaration_index FIXTURE_CARRIER_CITATION_EXEMPTIONS -- enrolled identities are not distinguished between deliberately-absent (a witness's planted control, permanent by design) and genuinely stale (a citation that rotted and should be repaired)",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: GroundingUndeclared,
+  },
+  population: BoundedPopulation {
+    members: [
+      "extdeps.languages.nonexistent.subject nonexistent_language",
+      "extdeps.network.mac already_deleted_frontier_unit",
+      "extdeps.network.mac parse_mac_addres",
+      "extdeps.network.max parse_mac_address",
+      "gunbc.capability_binding x",
+      "gunbc.publication_policy G1_planted_instance_gap_producer_control_RED",
+      "product.altra_motherboard.minimal_design some_other_board",
+      "std.primitive_identity missing_handler",
+      "synthetic.g1_module_absent_RED any",
+      "synthetic.mod HostConfig",
+      "synthetic.mod HostConfig field memory_swap",
+      "test.claim.dissolution_census_mechanism_witness absent_subject_row",
+      "test.claim.dissolution_census_mechanism_witness planted_bound_target",
+      "test.claim.dissolution_census_mechanism_witness planted_retires_target",
+      "test.claim.dissolution_census_mechanism_witness planted_unbound_target",
+      "test.claim.dissolution_census_mechanism_witness present_subject_row",
+      "test.claim.repository_census_observation_witness census_witness_classifier field rows",
+      "test.fixture planted",
+      "test.fixture.decl_facts_reflection.specimens named_field_anchor field dissolves_to",
+      "test.fixture.dissolution_live_discriminator.subject absent_subject_declaration",
+      "test.fixture.scaffold_disposition_census.pool.specimens no_such_declaration_G1_dangling_bind_control_RED",
+      "v1.compiler.complexity Derived",
+      "v1.compiler.complexity this_declaration_does_not_exist_in_the_seed",
+      "v1.compiler.this_module_does_not_exist classify_complexity",
+      "v2.compiler.parse G1_planted_instance_gap_caller_control_RED",
+      "v2.std.node NoSuchDecl_G1_RED",
+      "v2.std.node NodeKind field NoSuchField_G1_RED",
+      "v2.std.node g1_ambiguous",
+      "v2.test.lens_cost.valuation unmodelled_effect_specimen",
+    ],
+  },
+  next_rung_trigger: climbs_when(capability: "a witness declares each citation it plants to refuse as a typed row beside the citation -- at which point the deliberate half of this roster is DERIVED rather than enrolled, this roster shrinks to the genuinely stale remainder, and that remainder becomes ordinary debt with a terminal state of empty. Until then a new stale citation authored inside a fixture carrier is caught by the wall, but an existing enrolled one is indistinguishable from a control"),
+}

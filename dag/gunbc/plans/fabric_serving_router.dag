@@ -1,0 +1,30 @@
+module gunbc.plans.fabric_serving_router
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { p }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+fn fabric_serving_router_body() -> List<MarkdownBlock> {
+  [
+    p(text: "Goal: dashboard agent streaming OpenAI-compatible completions on flex-rented cards, Vast first/AWS later. Approved #14929; #14927 duplicate lane closed; slices have separate PRs. Operator 2026-10-23: ctrl is throwaway, no dependency on it or its request-count replica ranking. Evidence base cb6548946213 is dated."),
+    p(text: "Contract: router_realization.router_capability_permission permits normalization→placement→granted endpoint→byte proxy→seat release. Never ComputeOwnLoadScore, SelectHostDirectly, authoritative binding ledger, FabricatePlacementWhenUnreadable or ForwardWithoutPermit. Reuse harness_place_cli/harness_release_cli, turn_admission, product.capacity lease/events/redemption and fabric.selection.select_supply; front_door admission/redeem/stream-end/recover own seats. rented_release owns drain/revoke/clean/destroy decisions; rented_allocation_host_enrollment derives enrollment, replacing the recorded empty hand list."),
+    p(text: "Decided: upstream proxy carries bytes; NativeServeDriver callouts carry decisions. Do not extend seed gunbc serve (SeedFeatureCompletion/PublicSurfaceGrowth) or embed a handmade Rust relay in emitted main. NativeServeDriver already admits outgoing HTTP/clock, has a native-serve end-to-end instrument and approval_device_crypto_serve precedent. OpenAI wire belongs to extdeps.llm.openai/openai_contracts/openai_compat_sse/openai_errors/openai_rest, not a new extdeps.openai or OpenRouter key API."),
+    p(text: "Pin the chosen Envoy/OpenResty upstream in extdeps and emit config from typed directives. Upstream comes ONLY from authz’s endpoint/permit; explicitly disable static upstreams, load balancing, retries and health routing, with controls. Authz unreachability or malformed admission refuses without forwarding. Authz normalizes/places/admits/redeems; stream-end calls front_door_stream_end then releases. Body bytes remain unchanged."),
+    p(text: "S1/#14938 carries typed OpenResty directives and string-rendered nginx/Lua config under the 2026-10-24 operator scaffold ruling. Its tracking row must exist; this plan alone admits nothing. It dissolves into a native-emitted streaming door or earlier nginx/Lua grammar rows, never permanent Rust templates. Scratch inference favored OpenResty’s HTTP stream-end hook over Envoy’s gRPC sinks; it is not committed measurement. Adoption requires S1b before/with S1 and before S3; red reopens proxy choice/reverts S1, never waives proof."),
+    p(text: "S1b/#15089: committed //gunbc/instruments:router-proxy-falsifier through native claim + extdeps.docker.cli_service.DockerCli on fleet (native_claim_route_admits_the_docker_cli ruling 2026-10-25). No daemon means no observation. Pinned proxy/emitted config must relay SSE before upstream end and report permit-bound stream-end on normal end, client abort and upstream reset; body reaches authz; refusal/unreachable/malformed answer forwards nothing; nginx -t passes and unknown-directive mutant reds. Planned candidate comparison uses streamed fake upstream/stub callouts; rerun against real S3 callouts."),
+    p(text: "S2 extends only missing request readers (model/prompt size/stream). S3 emits serving_router as a separate srv1 NativeServeDriver unit, never inside roadmap_serve’s seed serial dashboard loop. Existing thread-per-connection request/response callouts need no door change. Call placement folds in-process, admit/redeem, test every RouterCapability arm. Before S3 lands, kill proxy mid-stream in a committed run and observe recovery by front_door_recover/lease expiry; failure reopens proxy selection."),
+    p(text: "Warm sessions stay host-local/sticky through select_supply’s affinity rendezvous, never a router table. Cold prefill is measured acquisition cost on that fold; turn caps are admission policy and excess queues in turn_admission. Engine/cards/KV/throughput-by-active-turns/session-RAM profile belongs to serving measurements, not copied constants here."),
+    p(text: "S4: pool key via request_authentication/serving_key_grant; tailnet-only TLS, no PR keys/endpoints. S5: durable enrollment from every live allocation after supplier-agnostic #14879; do not edit its rented_allocation/rented_release carriers while open. S6: model reclaimed-session re-placement at replica_endpoint_launch’s incarnation frontier BEFORE driver; next turn asks placement/pays cold prefill, never router failover or a replica-set fiction. Reclaim walks drain→revoke→clean→destroy, stopping at first refusal; destroy waits for #14879 target fix. S7: proxy/callout units through live_deploy.apply_legs/emit, not handwritten scripts."),
+    p(text: "First live target, after destroy fix: Vast Apply on, $50 cap, at most two cards. Stream one dashboard chat session to a rented card, reclaim it, then place its next turn on the survivor. Red: any unpermitted served turn, seat held after stream end, or running rented card after reported reclaim completion."),
+  ]
+}
+
+data fabric_serving_router_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "fabric-serving-router",
+  title: "Fabric-native serving router: proxy bytes, native-door decisions, OpenAI wire, rent-to-enroll and reclaim",
+  body: fabric_serving_router_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this plan when S1 to S7 are realized and their rules are carried by the serving, proxy extdeps and live_deploy modules' own declarations and witnesses.") },
+}

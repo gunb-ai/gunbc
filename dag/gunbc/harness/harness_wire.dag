@@ -1,6 +1,7 @@
 module gunbc.harness.harness_wire
 
 import std.measure { TokenCount, token_count, token_count_value }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import std.checked_arithmetic { nat_magnitude }
 import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
 import std.nat { Nat }
@@ -813,7 +814,10 @@ fn harness_backend_url_for_endpoint(shape: HarnessWireShape, endpoint: ServingRo
 // duration tracked router occupancy instead of request size, a 17 KB request taking 480s while a
 // 50 KB one took 60s.
 //
-// 200k IS THE OPERATOR'S NUMBER (router owner, 2026-09-04), from a stated 100k-250k band. It is not
+// THE WINDOW IS THE POOL'S CONTEXT CAP (gunbc.serving.serving_context_cap serving_fleet_context_cap,
+// ruling gunbc.design_ruling one_serving_context_cap, 2026-10-30: the operator aligned the serving
+// engines and the daily workspace harness on one cap). It replaced 200k, the operator's earlier number
+// (router owner, 2026-09-04) from a stated 100k-250k band, which sat inside that band too. It is not
 // derived here from pool-divided-by-slots, and deliberately so: that arithmetic would give ~1M and
 // would be wrong, because the pool is shared with everything else the engine is doing and the
 // divisor is not a constant this module can see.
@@ -831,7 +835,7 @@ fn harness_backend_url_for_endpoint(shape: HarnessWireShape, endpoint: ServingRo
 // sized by the old row to the route that is actually up would have been rejected mid-run with the
 // turn's work already spent. Each unit's ceiling comes from its own upstream authority through the
 // seam, which already owns that question.
-data harness_engine_context_window: TokenCount = token_count(count: 200000)
+data harness_engine_context_window: TokenCount = serving_fleet_context_cap
 
 // THE WORKING WINDOW IS THE SMALLER OF WHAT THIS CLIENT CHOOSES TO SPEND AND WHAT THE ROUTE WILL
 // ADMIT, and both halves are real. The client's choice is a share of a pool it does not own; the

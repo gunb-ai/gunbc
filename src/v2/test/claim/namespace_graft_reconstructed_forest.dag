@@ -2,12 +2,12 @@ module v2.test.claim.namespace_graft_reconstructed_forest
 
 import v2.compiler.namespace_graft { namespace_graft_reconstruct_declaration_forest }
 import v2.std.list_introduction { list_introduction_elements_optional }
-import v2.std.node { Authored, Conj, Edge, Node, TypeNode }
+import v2.std.node { node_same_occurrence, Authored, Conj, Edge, Node, TypeNode, NotADeclaration }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, List }
-import std.algebra { Cons, Empty }
+import std.algebra { zip_eq, Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ngrf_unit_a: Node = Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
 data ngrf_unit_b: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: [Edge { label: Authored { name: ^ngrf_marker }, target: ngrf_unit_a }],
+  children: [Edge { label: Authored { name: ^ngrf_marker }, target: ngrf_unit_a, declaration: NotADeclaration }],
   occurrence_id: OccurrenceSynthetic
 }
 
@@ -29,7 +29,7 @@ test fn reconstructed_forest_reads_back_its_units_in_order_holds() -> Bool {
   match namespace_graft_reconstruct_declaration_forest(units: [ngrf_unit_a, ngrf_unit_b]) {
     Cons { head: edge, tail: Empty } =>
       match list_introduction_elements_optional(node: ngrf_edge_target(e: edge)) {
-        Present { value: elements } => elements == [ngrf_unit_a, ngrf_unit_b]
+        Present { value: elements } => zip_eq(a: elements, b: [ngrf_unit_a, ngrf_unit_b], eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
         Absent => false
       }
     _ => false

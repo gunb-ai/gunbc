@@ -17,6 +17,7 @@ import v2.workflow.wet_evidence {
   WetBindingPreparedSubjectDiffers, WetBindingSemanticSubjectDiffers,
   WetBindingExecutorContractDiffers, WetBindingRelationMismatch,
   WetCrossRouteIdentityOverlap, WetTerminalHostPremiseUnmet,
+  WetScheduledIdentityDuplicated,
   WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
   wet_evidence_validate, wet_evidence_admits, wet_cross_route_overlap_causes
 }
@@ -105,6 +106,7 @@ fn cause_tag(c: WetEvidenceRefusal) -> String {
     WetBindingRelationMismatch { identity: _ } => "relation-mismatch"
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => "host-premise-unmet"
     WetCrossRouteIdentityOverlap { identity: _ } => "cross-route-overlap"
+    WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => "schedule-duplicated"
   }
 }
 
@@ -132,6 +134,7 @@ fn is_prepared_subject_differs(c: WetEvidenceRefusal) -> Bool {
     WetBindingRelationMismatch { identity: _ } => false
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
+    WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
   }
 }
 
@@ -150,6 +153,7 @@ fn is_semantic_subject_differs(c: WetEvidenceRefusal) -> Bool {
     WetBindingRelationMismatch { identity: _ } => false
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
+    WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
   }
 }
 
@@ -168,6 +172,7 @@ fn is_executor_contract_differs(c: WetEvidenceRefusal) -> Bool {
     WetBindingRelationMismatch { identity: _ } => false
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
+    WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
   }
 }
 
@@ -186,6 +191,7 @@ fn is_relation_mismatch(c: WetEvidenceRefusal) -> Bool {
     WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
+    WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
   }
 }
 
@@ -485,6 +491,7 @@ fn is_foreign_entry(c: WetEvidenceRefusal) -> Bool {
     WetBindingRelationMismatch { identity: _ } => false
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
+    WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
   }
 }
 
@@ -504,6 +511,7 @@ fn is_foreign_function(c: WetEvidenceRefusal) -> Bool {
     WetBindingRelationMismatch { identity: _ } => false
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
+    WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
   }
 }
 
@@ -580,4 +588,47 @@ test fn an_unmet_host_premise_refuses_as_the_runner_and_a_met_premise_failure_as
     && sole_cause_tag(v: met_then_failed) == "verdict-not-expected"
     && !wet_evidence_admits(v: unmet)
     && !wet_evidence_admits(v: met_then_failed)
+}
+
+// A SCHEDULE THAT COUNTS ONE CLAIM TWICE REFUSES, NAMING IT. The fold is the authority on what the
+// schedule means, and the executor's own builder already refuses this shape at its grain
+// (`local_repo_wet_schedule` in cli_run/required_floor_runner.rs: "duplicate scheduled identity" --
+// the SEED PRECEDENT for this arm, cited per the 2026-10-21 ruling msg_f51fcdf9). The executor is
+// ONE caller; the fold must refuse too. The trap this closes: with one identity written twice and
+// ONE terminal, the forward join sees n == 1 on each row, the reverse join sees the name scheduled,
+// and the roster's length comparisons are maps -- equal over a duplicate. Every join leg passes and
+// the duplicate silently admits.
+//
+// The fixture is exactly that trap: same scheduled identity twice, the same single alpha terminal,
+// the same co-resident requirement. The ONLY difference from the admitting fixture below is the
+// duplicated row. The duplicate refuses as the sole cause, and the cause NAMES the identity and its
+// occurrence count -- the refusal is decidable from the carrier, not from a comment.
+test fn a_scheduled_identity_written_twice_refuses_naming_it() -> Bool {
+  let binding = co_resident_binding(subject: "s")
+  let requirement = co_resident_requirement(subject: "s")
+  let alpha = scheduled_alpha(expectation: ExpectedToHold {})
+  let one_terminal = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: binding, terminal: passed())]
+  let duplicated = wet_evidence_validate(
+    scheduled: [alpha, alpha],
+    terminals: one_terminal,
+    requirement: requirement
+  )
+  let single = wet_evidence_validate(
+    scheduled: [alpha],
+    terminals: one_terminal,
+    requirement: requirement
+  )
+  let names_it = match first(causes_of(v: duplicated)) {
+    Absent => false
+    Present { value: c } =>
+      match c {
+        WetScheduledIdentityDuplicated { identity: i, occurrences: n } =>
+          i == "test.claim.fixture.alpha_holds" && n == 2
+        _ => false
+      }
+  }
+  sole_cause_tag(v: duplicated) == "schedule-duplicated"
+    && names_it
+    && !wet_evidence_admits(v: duplicated)
+    && wet_evidence_admits(v: single)
 }

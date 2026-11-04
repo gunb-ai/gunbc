@@ -246,7 +246,7 @@ pub fn external_model_scope_decision_of_findings(
 }
 
 pub fn external_model_scope_decision(m: Rc<DeclaredScopeFacts>) -> Rc<ScopeDecision> {
-    external_model_scope_decision_of_findings(external_model_scope_findings(m.clone()))
+    external_model_scope_decision_of_findings(external_model_scope_findings(m))
 }
 
 pub fn external_model_scope_portfolio_decision(

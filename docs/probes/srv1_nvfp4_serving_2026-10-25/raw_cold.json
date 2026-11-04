@@ -1,0 +1,24 @@
+{
+ "arm": "fp8_kv_flash_attn",
+ "rows": [
+  {
+   "phase": "cold-prefill",
+   "arm": "fp8_kv_flash_attn",
+   "id": "cold-prefill-150k",
+   "error": null,
+   "prompt_tokens": 228588,
+   "completion_tokens": 16,
+   "ttft_s": 28.587,
+   "total_s": 28.587,
+   "cold_prefill_tps": 7996.2,
+   "answer_head": ""
+  },
+  {
+   "phase": "cold-prefill",
+   "arm": "fp8_kv_flash_attn",
+   "id": "cold-fit-260k",
+   "error": "http400:{\"error\":{\"message\":\"This model's maximum context length is 262144 tokens. However, you requested 16 output tokens and your prompt contains at least 262129 input tokens, for a total of at least 262145 tokens. Please reduce the length of the input prompt or the number of requested output tokens. (parameter=input_tokens, value=262129)\",\"type\":\"BadRequestError\",\"param\":\"input_tokens\",\"code\":400}}",
+   "raw_status": "check"
+  }
+ ]
+}

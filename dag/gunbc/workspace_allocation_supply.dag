@@ -32,7 +32,7 @@ import gunbc.fabric.fabric_cell_observation_admission {
 import gunbc.fabric.fabric_cell_acquire { fabric_cell_probe_wet }
 import gunbc.runner.runner_microvm_cell_readiness { CellReadinessStoreRead, cell_incarnation_admission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn }
 import gunbc.runner.runner_microvm_cell_readiness_store { read_cell_readiness_store }
-import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_observe_hold }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_work, workspace_execution_requirements }
@@ -115,7 +115,7 @@ fn workspace_candidate_field(
     requirements: workspace_execution_requirements(profile: request.profile), requests: offers)
 }
 
-fn workspace_slot_observation_refusal(root: NonEmptyStr, slot: RunnerSlotIdentity, observation: WorkspaceHostSupplyObservation, now: Timestamp) -> NonEmptyStr? {
+fn workspace_slot_observation_refusal(cells: FabricAllocationStore, slot: RunnerSlotIdentity, observation: WorkspaceHostSupplyObservation, now: Timestamp) -> NonEmptyStr? {
   if !identity_is_workspace_execution_member(identity: slot) { Present { value: "slot is not explicitly designated for workspace use" } }
   else if (slot.host as String) != (observation.host as String) { Present { value: "supply observation belongs to another host" } }
   else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: observation.observed_at) { Present { value: "supply observation has no canonical observation time" } }
@@ -126,7 +126,7 @@ fn workspace_slot_observation_refusal(root: NonEmptyStr, slot: RunnerSlotIdentit
         if (fabric_cell_observed_population_host(population: population) as String) != (slot.host as String) { Present { value: "cell observation belongs to another host" } }
         else { match fabric_cell_shape(members: members_for_slot(members: fabric_cell_observed_population_members(population: population), slot: slot)) {
           FabricCellShaped { shape: _ } => {
-            let next = match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: slot)) {
+            let next = match fabric_allocation_observe_hold(store: cells, key: fabric_cell_allocation_key(slot: slot)) {
               HoldSlotAbsent => Present { value: 1 }
               HoldSlotFree { generation, released_by: _ } => match cas_generation_successor(g: generation) {
                 CasSuccessorGeneration { generation: successor } => Present { value: cas_generation_count(g: successor) }

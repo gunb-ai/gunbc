@@ -47,7 +47,7 @@ test fn concrete_only_comparison_leaves_generic_param_bare() -> Bool {
 }
 
 // Executing floor witness for the CALL-FORWARDING half of the same trigger (v1.compiler.emit_rust
-// v1_call_forwarding_bound_param_names, EqualityForwarded). The seed synthesized the bound only on the fn
+// v1_call_forwarding_bound_param_names over EmitGraphInfo.fn_equality_bounds). The seed synthesized the bound only on the fn
 // whose OWN body compares, which is a program that does not typecheck one hop up: a caller
 // instantiating that fn's K with its own generic param is obliged by rustc to prove a bound it
 // never states, and rustc refuses with E0277. MEASURED, not assumed: the real specimen is
@@ -80,5 +80,47 @@ test fn forwarding_into_unbounded_callee_leaves_generic_param_bare() -> Bool {
     "src/fn_equality_witness_forwarding_bare.rs",
     ["fn cap_table_shape_is"],
     ["K: PartialEq", "K: Clone + PartialEq"]
+  )
+}
+
+// THE FORWARDING IS A CALL-GRAPH FIXPOINT OVER AN ARITY-N JOIN (v1.compiler.emit_rust
+// v1_fn_equality_bound_table; v1.compiler.trait_bound_witness
+// v1_call_forwarding_bound_wrapper_param_names). The specimen is std.state_durability:
+// state_durability_admission_eq<Target, ReadbackSubject> compares both generics;
+// state_durability_evidence_cardinality calls it inside a fold lambda with a two-argument
+// StateDurabilityAdmission<Target, ReadbackSubject>, and state_durability_boundary_evidence_verdict
+// calls THAT, two hops above the ==. Before the fixpoint both callers emitted `<Target: Clone,
+// ReadbackSubject: Clone>` and rustc refused them (E0277): the join paired type arguments only at
+// arity 1, and equality forwarding stopped at one hop. The rows below reduce that shape:
+// arity_two_fold_lambda_caller_inherits_the_equality_bound is the one-hop RED (fold lambda,
+// arity 2); two_hop_caller_inherits_the_equality_bound is the multi-hop RED;
+// two_hop_caller_of_an_unbounded_callee_stays_bare is the discriminator, the same two-hop chain
+// whose leaf compares only concrete types, which a fixpoint keyed on 'reaches a generic callee'
+// would wrongly bound.
+
+test fn arity_two_fold_lambda_caller_inherits_the_equality_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_equality_witness.arity_two\n\ntype Admission<A, B> {\n  target: A\n  subject: B\n}\n\nfn admission_eq<A, B>(x: Admission<A, B>, y: Admission<A, B>) -> Bool {\n  x.target == y.target && x.subject == y.subject\n}\n\nfn admission_count<A, B>(xs: List<Admission<A, B>>, y: Admission<A, B>) -> Int {\n  fold(xs, init: 0, f: (acc, x) => if admission_eq(x: x, y: y) { acc + 1 } else { acc })\n}\n",
+    "src/fn_equality_witness_arity_two.rs",
+    ["fn admission_count<A: Clone + PartialEq, B: Clone + PartialEq>"],
+    ["fn admission_count<A: Clone, B: Clone>"]
+  )
+}
+
+test fn two_hop_caller_inherits_the_equality_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_equality_witness.two_hop\n\ntype Admission<A, B> {\n  target: A\n  subject: B\n}\n\nfn admission_eq<A, B>(x: Admission<A, B>, y: Admission<A, B>) -> Bool {\n  x.target == y.target && x.subject == y.subject\n}\n\nfn admission_count<A, B>(xs: List<Admission<A, B>>, y: Admission<A, B>) -> Int {\n  fold(xs, init: 0, f: (acc, x) => if admission_eq(x: x, y: y) { acc + 1 } else { acc })\n}\n\nfn admission_present<A, B>(xs: List<Admission<A, B>>, y: Admission<A, B>) -> Bool {\n  admission_count(xs: xs, y: y) > 0\n}\n",
+    "src/fn_equality_witness_two_hop.rs",
+    ["fn admission_present<A: Clone + PartialEq, B: Clone + PartialEq>"],
+    ["fn admission_present<A: Clone, B: Clone>"]
+  )
+}
+
+test fn two_hop_caller_of_an_unbounded_callee_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_equality_witness.two_hop_bare\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype Admission<A, B> {\n  target: A\n  subject: B\n  shape: ShapeTag\n}\n\nfn admission_shape_is<A, B>(x: Admission<A, B>, shape: ShapeTag) -> Bool {\n  x.shape == shape\n}\n\nfn admission_shape_count<A, B>(xs: List<Admission<A, B>>, shape: ShapeTag) -> Int {\n  fold(xs, init: 0, f: (acc, x) => if admission_shape_is(x: x, shape: shape) { acc + 1 } else { acc })\n}\n\nfn admission_shape_present<A, B>(xs: List<Admission<A, B>>, shape: ShapeTag) -> Bool {\n  admission_shape_count(xs: xs, shape: shape) > 0\n}\n",
+    "src/fn_equality_witness_two_hop_bare.rs",
+    ["fn admission_shape_present"],
+    ["A: Clone + PartialEq", "B: Clone + PartialEq", "A: PartialEq", "B: PartialEq"]
   )
 }

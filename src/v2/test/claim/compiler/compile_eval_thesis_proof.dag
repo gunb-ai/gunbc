@@ -1,5 +1,6 @@
 module v2.test.claim.compiler.compile_eval_thesis_proof
 
+
 import v2.compiler.compile {
   compile,
   compile_inferred,
@@ -17,7 +18,7 @@ import extdeps.communication.medium { Lossless, Lossy, Medium }
 import std.types { Map }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import std.optional {
   Optional,
   Absent,
@@ -43,13 +44,13 @@ fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProo
 }
 
 fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<InferredFacts> {
-  if key == v2_eval_bool_literal_pin {
+  if node_same_occurrence(a: key, b: v2_eval_bool_literal_pin) {
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_bool_literal_pin,
         algebra: v2_eval_bool_literal_pin,
         descent: Holds { value: compile_eval_thesis_termination_proof() }
       ))
-  } else if key == v2_eval_unit_literal_pin {
+  } else if node_same_occurrence(a: key, b: v2_eval_unit_literal_pin) {
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_unit_literal_pin,
         algebra: v2_eval_unit_literal_pin,
@@ -78,7 +79,7 @@ fn compile_eval_thesis_expected_bool_node() -> Node {
 
 fn compile_eval_thesis_medium_matches_expected(medium: Medium<Node>) -> Bool {
   match medium.fidelity {
-    Lossless => medium.carried == compile_eval_thesis_expected_bool_node()
+    Lossless => node_same_occurrence(a: medium.carried, b: compile_eval_thesis_expected_bool_node())
     Lossy => false
   }
 }

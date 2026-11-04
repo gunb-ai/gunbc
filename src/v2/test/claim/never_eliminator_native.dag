@@ -1,0 +1,113 @@
+module v2.test.claim.never_eliminator_native
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+
+data nen_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^never_eliminator_native_artifact,
+  file_path: "src/v2/pilot/never_eliminator_native_pilot.dag"
+}
+
+data nen_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^never_eliminator_native_std_artifact,
+  file_path: "src/v2/pilot/never_eliminator_native_std_pilot.dag"
+}
+
+fn nen_assemble(src: String, subject: List<Symbol>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+        artifact: nen_std_artifact,
+        compilation_unit: ^never_eliminator_native_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: src, fidelity: Lossless },
+          artifact: nen_artifact,
+          compilation_unit: ^never_eliminator_native_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: subject }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn nen_reason(src: String, subject: List<Symbol>) -> String {
+  match nen_assemble(src: src, subject: subject) {
+    Rejected { diagnostics: d } => concat("assemble:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+        Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+      }
+  }
+}
+
+fn nen_home() -> List<Symbol> {
+  Cons { head: ^std, tail: Cons { head: ^error_primitives, tail: Empty } }
+}
+
+fn nen_p() -> List<Symbol> {
+  Cons { head: ^p, tail: Empty }
+}
+
+// THE NEVER ELIMINATOR ON THE NATIVE INFER ROUTE. std.error_primitives `absurd<T>(n: Never) -> T` eliminates
+// Never with a zero-arm match, which v2.compiler.infer admits exactly when the scrutinee is uninhabited
+// (UninhabitedScrutinee). Never is an opaque declaration, and an opaque lowers to the opaque wrapper (a
+// Conj), so the eliminator is keyed on the declaration's identity (std.primitive_projection
+// never_type_declaration), never on its shape. The two specimens are the home module's own declarations,
+// assembled and inferred through the production route; the reds are a Never declared elsewhere and a
+// different opaque, which name no uninhabited declaration and stay refused.
+
+fn nen_absurd(ret: String) -> String {
+  concat(concat("module std.error_primitives\n\ntype Never\n\nfn absurd<T>(n: Never) -> ", ret), " {\n  match (n) {\n  }\n}\n")
+}
+
+test fn the_generic_absurd_infers_in_its_home_holds() -> Bool {
+  nen_reason(src: nen_absurd(ret: "T"), subject: nen_home()) == "ACCEPTED"
+}
+
+test fn an_int_returning_absurd_infers_in_its_home_holds() -> Bool {
+  nen_reason(src: nen_absurd(ret: "Int"), subject: nen_home()) == "ACCEPTED"
+}
+
+test fn a_never_declared_outside_its_home_is_not_uninhabited_holds() -> Bool {
+  nen_reason(src: "module p\n\ntype Never\n\nfn absurd_int(n: Never) -> Int {\n  match (n) {\n  }\n}\n", subject: nen_p()) == "infer:infer_match_scrutinee_not_coproduct"
+}
+
+test fn a_zero_arm_match_on_another_opaque_refuses_holds() -> Bool {
+  nen_reason(src: "module std.error_primitives\n\ntype Handle\n\nfn take(n: Handle) -> Int {\n  match (n) {\n  }\n}\n", subject: nen_home()) == "infer:infer_match_scrutinee_not_coproduct"
+}
+
+test fn the_home_module_assembles_without_never_holds() -> Bool {
+  nen_reason(src: "module std.error_primitives\n\nfn f(x: Int) -> Int { x }\n", subject: nen_home()) == "ACCEPTED"
+}
+
+// One readable receipt of all five, for `gunbc run --function never_eliminator_native_receipt`.
+fn never_eliminator_native_receipt() -> String {
+  concat(concat(concat(concat(
+    concat("generic_home=", nen_reason(src: nen_absurd(ret: "T"), subject: nen_home())),
+    concat("\nint_home=", nen_reason(src: nen_absurd(ret: "Int"), subject: nen_home()))),
+    concat("\nnever_elsewhere=", nen_reason(src: "module p\n\ntype Never\n\nfn absurd_int(n: Never) -> Int {\n  match (n) {\n  }\n}\n", subject: nen_p()))),
+    concat("\nother_opaque=", nen_reason(src: "module std.error_primitives\n\ntype Handle\n\nfn take(n: Handle) -> Int {\n  match (n) {\n  }\n}\n", subject: nen_home()))),
+    concat("\ncontrol=", nen_reason(src: "module std.error_primitives\n\nfn f(x: Int) -> Int { x }\n", subject: nen_home())))
+}

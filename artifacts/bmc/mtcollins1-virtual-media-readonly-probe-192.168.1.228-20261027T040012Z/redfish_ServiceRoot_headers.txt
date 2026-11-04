@@ -1,0 +1,32 @@
+HTTP/1.1 200 OK
+Server: AMI MegaRAC Redfish Service
+Allow: GET
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: X-Auth-Token
+Access-Control-Allow-Headers: X-Auth-Token
+Access-Control-Allow-Credentials: true
+Cache-Control: no-cache, must-revalidate
+Link: <http://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_5_2.json>; rel=describedby
+Link: </redfish/v1/JsonSchemas/AMIServiceRoot.v1_0_0.json>
+Link: </redfish/v1/TaskService>; path=/Tasks
+Link: </redfish/v1/Chassis>; path=/Chassis
+Link: </redfish/v1/SessionService/Sessions>; path=/Links/Sessions
+Link: </redfish/v1/Managers>; path=/Managers
+Link: </redfish/v1/EventService>; path=/EventService
+Link: </redfish/v1/JsonSchemas>; path=/JsonSchemas
+Link: </redfish/v1/Systems>; path=/Systems
+Link: </redfish/v1/TelemetryService>; path=/TelemetryService
+Link: </redfish/v1/UpdateService>; path=/UpdateService
+Link: </redfish/v1/Registries>; path=/Registries
+Link: </redfish/v1/CertificateService>; path=/CertificateService
+Link: </redfish/v1/Oem/Ami/InventoryData/Status>; path=/Oem/Ami/InventoryDataStatus
+Link: </redfish/v1/configurations>; path=/Oem/Ami/configurations
+Link: </redfish/v1/SessionService>; path=/SessionService
+Link: </redfish/v1/CompositionService>; path=/CompositionService
+Link: </redfish/v1/AccountService>; path=/AccountService
+ETag: "1793034849"
+Content-Type: application/json; charset=UTF-8
+OData-Version: 4.0
+Content-Length: 1632
+Date: Tue, 27 Oct 2026 04:00:10 GMT
+

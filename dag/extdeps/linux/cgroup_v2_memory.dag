@@ -1,7 +1,7 @@
 module extdeps.linux.cgroup_v2_memory
 
 
-import std.algebra { trim, list_at_optional }
+import std.algebra { trim, list_at_optional, collection_join_shape, list_push }
 import std.checked_arithmetic { nat_magnitude }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

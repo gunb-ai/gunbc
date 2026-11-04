@@ -1,5 +1,6 @@
 module v2.program
 
+
 import std.types { Int, List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.ingested_fixture_arrows { ingested_pick_if_arrow_with_body }
@@ -43,7 +44,7 @@ import v2.std.diagnostic {
 }
 import std.algebra { Empty, length, list_at_optional }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   BranchElseSlot,
   BranchSlot,
@@ -57,6 +58,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -203,9 +205,9 @@ fn program_termination_proof() -> v2.std.cardinality.TerminationProof {
 }
 
 fn program_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == program_literal_one() {
+  if node_same_occurrence(a: node, b: program_literal_one()) {
     Accepted { value: program_int_one_value(), diagnostics: None }
-  } else if node == program_literal_two() {
+  } else if node_same_occurrence(a: node, b: program_literal_two()) {
     Accepted {
       value: RuntimePrimitive {
         value: RuntimePrimitiveValue {
@@ -215,11 +217,11 @@ fn program_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<
       },
       diagnostics: None
     }
-  } else if node == program_kw_true() {
+  } else if node_same_occurrence(a: node, b: program_kw_true()) {
     Accepted { value: program_bool_value(is_true: true), diagnostics: None }
-  } else if node == program_kw_false() {
+  } else if node_same_occurrence(a: node, b: program_kw_false()) {
     Accepted { value: program_bool_value(is_true: false), diagnostics: None }
-  } else if node == program_locator_literal {
+  } else if node_same_occurrence(a: node, b: program_locator_literal) {
     Accepted { value: program_locator_value(), diagnostics: None }
   } else {
     Rejected {
@@ -274,7 +276,7 @@ fn program_choose_branch(
 fn program_runtime_bool_true(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == program_bool_type()) && (count(p.bytes) == 1)
+      (node_same_occurrence(a: p.primitive_type, b: program_bool_type())) && (count(p.bytes) == 1)
     RuntimeAggregate { value: _ } => false
     RuntimeReference { value: _ } => false
     RuntimeClosure { value: _ } => false
@@ -285,7 +287,7 @@ fn program_runtime_bool_true(value: RuntimeValue) -> Bool {
 fn program_runtime_bool_false(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == program_bool_type()) && (count(p.bytes) == 0)
+      (node_same_occurrence(a: p.primitive_type, b: program_bool_type())) && (count(p.bytes) == 0)
     RuntimeAggregate { value: _ } => false
     RuntimeReference { value: _ } => false
     RuntimeClosure { value: _ } => false
@@ -370,15 +372,15 @@ fn program_facts_typed(node: Node, algebra: Node) -> InferredFacts {
 }
 
 fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
-  if node == program_pick_if_branch_with_effect_io {
+  if node_same_occurrence(a: node, b: program_pick_if_branch_with_effect_io) {
     optional_present(value: program_facts_typed(node: program_pick_if_branch_with_effect_io, algebra: program_i64_type()))
-  } else if node == program_effect_io_roundtrip {
+  } else if node_same_occurrence(a: node, b: program_effect_io_roundtrip) {
     optional_present(value: program_facts_typed(node: program_effect_io_roundtrip, algebra: program_i64_type()))
-  } else if node == program_locator_literal {
+  } else if node_same_occurrence(a: node, b: program_locator_literal) {
     optional_present(value: program_facts_typed(node: program_locator_literal, algebra: program_i64_type()))
-  } else if node == program_kw_true() {
+  } else if node_same_occurrence(a: node, b: program_kw_true()) {
     optional_present(value: program_facts_for(node: program_kw_true()))
-  } else if node == program_literal_two() {
+  } else if node_same_occurrence(a: node, b: program_literal_two()) {
     optional_present(value: program_facts_for(node: program_literal_two()))
   } else {
     optional_absent()
@@ -432,7 +434,7 @@ fn program_branch_effect_io_holds() -> Witness<Bool> {
 fn program_pick_if_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: callee }],
+    children: [Edge { label: Positional, target: callee, declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -509,13 +511,13 @@ fn program_run_ran_condition_then_chosen_arm(log: RuntimeRunLog) -> Bool {
   length(xs: log.entries) == 3
     && program_run_receipt_is(log: log, index: 0, node: program_kw_true(), role_is: fn(role) {
       match role {
-        RuntimeRunSelectorOf { site: site } => site == program_pick_if_branch_with_effect_io
+        RuntimeRunSelectorOf { site: site } => node_same_occurrence(a: site, b: program_pick_if_branch_with_effect_io)
         _ => false
       }
     })
     && program_run_receipt_is(log: log, index: 1, node: program_effect_io_roundtrip, role_is: fn(role) {
       match role {
-        RuntimeRunSelectedBy { site: site, selections: _ } => site == program_pick_if_branch_with_effect_io
+        RuntimeRunSelectedBy { site: site, selections: _ } => node_same_occurrence(a: site, b: program_pick_if_branch_with_effect_io)
         _ => false
       }
     })
@@ -529,7 +531,7 @@ fn program_run_ran_condition_then_chosen_arm(log: RuntimeRunLog) -> Bool {
 
 fn program_run_receipt_is(log: RuntimeRunLog, index: Int, node: Node, role_is: fn(RuntimeRunRole) -> Bool) -> Bool {
   match list_at_optional(xs: log.entries, index: index) {
-    Present { value: receipt } => receipt.node == node && role_is(receipt.role)
+    Present { value: receipt } => node_same_occurrence(a: receipt.node, b: node) && role_is(receipt.role)
     Absent => false
   }
 }

@@ -1,5 +1,7 @@
 module v2.test.claim.execution.fold_assembly_round_trip
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -8,15 +10,15 @@ fn atom(id: Symbol) -> Node {
 }
 fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Positional, target: a },
-    Edge { label: Positional, target: b }
+    Edge { label: Positional, target: a, declaration: NotADeclaration },
+    Edge { label: Positional, target: b, declaration: NotADeclaration }
   ])
 }
 fn conj3(a: Node, b: Node, c: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Positional, target: a },
-    Edge { label: Positional, target: b },
-    Edge { label: Positional, target: c }
+    Edge { label: Positional, target: a, declaration: NotADeclaration },
+    Edge { label: Positional, target: b, declaration: NotADeclaration },
+    Edge { label: Positional, target: c, declaration: NotADeclaration }
   ])
 }
 
@@ -129,8 +131,8 @@ fn corrupted_per_element() -> FreeMonoid<FreeMonoid<Node>> {
 }
 fn corrupted_fold_form() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Authored { name: fold_template_edge }, target: anti_unify_chain(steps: gate_chain).template },
-    Edge { label: Authored { name: ^fold_elements }, target: encode_per_element(per_element: corrupted_per_element()) }
+    Edge { label: Authored { name: fold_template_edge }, target: anti_unify_chain(steps: gate_chain).template, declaration: NotADeclaration },
+    Edge { label: Authored { name: ^fold_elements }, target: encode_per_element(per_element: corrupted_per_element()), declaration: NotADeclaration }
   ])
 }
 test fn corrupted_content_expands_but_differs() -> Bool {
@@ -143,7 +145,7 @@ fn good_elements_node() -> Node {
 
 fn missing_template_form() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Authored { name: ^fold_elements }, target: good_elements_node() }
+    Edge { label: Authored { name: ^fold_elements }, target: good_elements_node(), declaration: NotADeclaration }
   ])
 }
 test fn structural_missing_template_edge_is_rejected() -> Bool {
@@ -152,9 +154,9 @@ test fn structural_missing_template_edge_is_rejected() -> Bool {
 
 fn duplicate_template_form() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Authored { name: fold_template_edge }, target: anti_unify_chain(steps: gate_chain).template },
-    Edge { label: Authored { name: fold_template_edge }, target: anti_unify_chain(steps: gate_chain).template },
-    Edge { label: Authored { name: ^fold_elements }, target: good_elements_node() }
+    Edge { label: Authored { name: fold_template_edge }, target: anti_unify_chain(steps: gate_chain).template, declaration: NotADeclaration },
+    Edge { label: Authored { name: fold_template_edge }, target: anti_unify_chain(steps: gate_chain).template, declaration: NotADeclaration },
+    Edge { label: Authored { name: ^fold_elements }, target: good_elements_node(), declaration: NotADeclaration }
   ])
 }
 test fn structural_duplicate_template_edge_is_rejected() -> Bool {
@@ -163,10 +165,10 @@ test fn structural_duplicate_template_edge_is_rejected() -> Bool {
 
 fn head_without_tail_elements_form() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Authored { name: fold_template_edge }, target: anti_unify_chain(steps: gate_chain).template },
+    Edge { label: Authored { name: fold_template_edge }, target: anti_unify_chain(steps: gate_chain).template, declaration: NotADeclaration },
     Edge { label: Authored { name: ^fold_elements }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: [
-      Edge { label: Authored { name: ^fold_list_node_head }, target: encode_per_element(per_element: anti_unify_chain(steps: gate_chain).per_element) }
-    ]) }
+      Edge { label: Authored { name: ^fold_list_node_head }, target: encode_per_element(per_element: anti_unify_chain(steps: gate_chain).per_element), declaration: NotADeclaration }
+    ]), declaration: NotADeclaration }
   ])
 }
 test fn structural_cons_head_without_tail_is_rejected() -> Bool {

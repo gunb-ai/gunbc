@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { ObservationInstant, InstantOrder, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, compare_instants }
 import std.interval { OrderedClosedInterval, IntervalReady, IntervalRefused, closed_interval, interval_low, interval_high }
 import std.list { first_duplicate_by_key }
-import std.observation { OccurrenceId }
+import std.observation { AttemptOccurrenceId }
 import std.algebra { empty_map, map_insert, map_lookup }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
@@ -36,7 +36,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 //
 // A SEALED COHORT IS NOT A std.observation RecordedObservation, deliberately. A recorded observation is
 // ONE producer's occurrence -- a sequence number, an occurrence id, a parent. A cohort is a verdict
-// JOINED across many occurrences, so each seat reading and the host window cite the OccurrenceId they
+// JOINED across many occurrences, so each seat reading and the host window cite the AttemptOccurrenceId they
 // were read from, and the cohort carries those citations rather than claiming to be an occurrence of
 // its own.
 //
@@ -55,7 +55,7 @@ type SeatSettlement
 
 type CohortSeatReading<K> {
   seat: K
-  source: OccurrenceId
+  source: AttemptOccurrenceId
   ready_at: ObservationInstant
   started_at: ObservationInstant
   ended_at: ObservationInstant
@@ -67,13 +67,13 @@ type CohortReading<K> {
   barrier_released_at: ObservationInstant
   host_window_from: ObservationInstant
   host_window_to: ObservationInstant
-  host_source: OccurrenceId
+  host_source: AttemptOccurrenceId
   seats: List<CohortSeatReading<K>>
 }
 
 type CohortSeatWindow<K> {
   seat: K
-  source: OccurrenceId
+  source: AttemptOccurrenceId
   active: OrderedClosedInterval<ObservationInstant>
   settled: SeatSettled
 }
@@ -83,7 +83,7 @@ type SealedCohortObservation<K> sole_constructor {
   roster: List<K>
   barrier_released_at: ObservationInstant
   host_window: OrderedClosedInterval<ObservationInstant>
-  host_source: OccurrenceId
+  host_source: AttemptOccurrenceId
   seats: List<CohortSeatWindow<K>>
   all_active: OrderedClosedInterval<ObservationInstant>
 }

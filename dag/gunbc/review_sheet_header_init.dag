@@ -1,9 +1,6 @@
 module gunbc.review_sheet_header_init
 
 import std.types { NonEmptyStr, String, Int, List, Bool }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.decl_ref { decl_ref }
-import std.dissolution { unbound_dissolution }
 import extdeps.google.sheets {
   ValueRangeWrite,
   A1RangeEncoding,
@@ -153,26 +150,3 @@ fn header_init_plan_text(plan: HeaderInitPlan) -> String {
   }
 }
 
-// THE CONSUMER IS PRIVATE AND LATER. strategy.buyer_review_live (gunbc-private, H2) plans the
-// header row from the FORMULA reading and performs the write from header_row_value_range_write
-// under its transaction, with an independent readback. header_row_span is executed by
-// test.claim.review_sheet_header_init_witness with supplied schemas, and plan_header_init is
-// executed there against the hermetic values.get fixture and against supplied occupied and refused
-// readings; a witness is not a production consumer, so the routes below are frontier.
-data review_sheet_header_init_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_header_init", decl_name: "plan_header_init"),
-    reason: "the only mint of HeaderRowWriteAuthorization, over a FormulaWholeTabReading and a ValidatedHeaderSchema; its caller is the private transaction strategy.buyer_review_live (H2), whose write permit confines who may plan a header row",
-    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_header_init plan_header_init over a reading from observe_formula_whole_tab and performs the HeaderInitWriteHeaderRow write from header_row_value_range_write under its transaction with an independent readback; the hermetic witness execution does not fire this, and neither does a caller that matches the plan without performing the write"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_header_init", decl_name: "header_row_value_range_write"),
-    reason: "the lowering of an authorisation to the one ValueRangeWrite the private transaction sends",
-    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_header_init plan_header_init over a reading from observe_formula_whole_tab and performs the HeaderInitWriteHeaderRow write from header_row_value_range_write under its transaction with an independent readback; the hermetic witness execution does not fire this, and neither does a caller that matches the plan without performing the write"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.review_sheet_header_init", decl_name: "header_init_plan_text"),
-    reason: "the operator rendering of a plan, consumed by the same private transaction's report",
-    dissolution: unbound_dissolution(description: "dissolves when strategy.buyer_review_live (gunbc-private, H2) calls gunbc.review_sheet_header_init plan_header_init over a reading from observe_formula_whole_tab and performs the HeaderInitWriteHeaderRow write from header_row_value_range_write under its transaction with an independent readback; the hermetic witness execution does not fire this, and neither does a caller that matches the plan without performing the write"),
-  ),
-]

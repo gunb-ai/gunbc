@@ -11,6 +11,7 @@ import v2.std.node {
   TypeNode,
   Conj,
   node_synthetic,
+  NotADeclaration
 }
 
 import v2.std.dependency {
@@ -629,7 +630,7 @@ fn root_edge_for(store: ObjectStore, acc: RoleRequirementRootAcc, role: Symbol, 
       }
     CheckedOut { program: program } =>
       RoleRequirementRootAcc {
-        edges: concat([Edge { label: Authored { name: role }, target: program }], acc.edges),
+        edges: concat([Edge { label: Authored { name: role }, target: program, declaration: NotADeclaration }], acc.edges),
         refusal: none,
       }
   }

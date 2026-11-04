@@ -57,13 +57,11 @@ data accumulator_copy_positive_controls_off_every_lane: RungDrop = RungDrop {
 
   declared: "2026-09-14",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml and its FalsifierSubstrateLongLane executor, deleted at 611fd02770 (gunbc#8283)" },
     population: Enumerated { members: FreeSemigroup { head: "v2.test.claim.complexity.accumulator_copy_corpus_path a_planted_copied_accumulator_spelled_with_an_arrow_lambda_is_caught", tail: ["v2.test.claim.complexity.accumulator_copy_corpus_path a_clean_accumulating_fold_spelled_with_an_arrow_lambda_stays_clean", "v2.test.claim.complexity.accumulator_copy_corpus_path a_step_nested_inside_an_arrow_step_body_is_not_mistaken_for_the_step", "v2.test.claim.long.accumulator_copy_fold_analysis nested_fold_inside_a_sole_body_fold_is_visible", "v2.test.claim.long.accumulator_copy_fold_analysis a_lambda_in_a_non_step_argument_mints_no_carrier", "v2.test.claim.long.accumulator_copy_fold_analysis an_inline_step_beside_a_decoy_lambda_is_still_caught"] } },
     restoration_trigger: "an executing lane with a declared ceiling plans an ingest-reaching hermetic witness: either the per-frame front end is paid once per run so these enroll as test fns on ordinary discovery inside the enrolment margin (the restoration trigger of long_module_changed_witness_cpu_observed_only), or a scheduled substrate-long executor is re-added under the operator agreement gunbc#8283 reserved. Observed at retirement, not asserted: the six population identities are test fns planned by a live cadence and reach PASS on a required or scheduled run, and this row retires in the same change. Passing under claim_batch is the declared state, not the trigger."
-  }
+  } }
 }

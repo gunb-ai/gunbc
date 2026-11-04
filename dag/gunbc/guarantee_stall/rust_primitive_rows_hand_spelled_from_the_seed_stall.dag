@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.rust_primitive_rows_hand_spelled_from_the_seed_stal
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // A STANDING DEFICIT, NOT A DROP: the Rust spelling of these std.primitives contracts was never derived from the
 // contract, so no higher rung was held and none fell. The string_length and join rows are copied from tables the
@@ -15,7 +15,7 @@ data rust_primitive_rows_hand_spelled_from_the_seed_stall: GuaranteeStall = Guar
   subject: "the Rust primitive realization rows spell std.primitives contracts by hand from the frozen v1 seed (two from its tables, to_string from its emit_rust control flow), not from the contracts",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
-  blocker: AwaitsOneGrounding { grounding: "std.primitives is emitted natively, so the Rust spelling of each contract is derived from the contract and the frozen v1 seed no longer has to be read" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   population: BoundedPopulation { members: [
       "v2.extdeps.languages.rust::rust_primitive_realization_rows string_length (mirrors rt_function_registry)",
       "v2.extdeps.languages.rust::rust_primitive_realization_rows join (mirrors rust_simple_method_specs)",

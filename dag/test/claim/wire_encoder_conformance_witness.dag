@@ -1,0 +1,152 @@
+module test.claim.wire_encoder_conformance_witness
+
+import std.types { String, List, Bool }
+import std.optional { Optional, Present, Absent }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonString, JsonObject, JsonKeyValue }
+import gunbc.auth.approval_device_wire {
+  push_registration_json, read_authentication_json_value, google_enrolment_request_json, signing_input_json, verifying_key_json,
+}
+import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
+import gunbc.auth.wire_strict_reader {
+  WireShape, WireRecord, WireSum, WireSumArm, WireField, WireFreeString, WireAdmittedString, WireNested, WireListNotAdmitted,
+  wire_name_listed,
+}
+import test.claim.wire_admission_differential_witness { enrolment_shape, signing_input_shape, push_shape, key_shape }
+import test.claim.wire_strict_reader_witness { read_auth_shape }
+import test.claim.approval_device_wire_witness { fx_push, fx_enrolment, fx_redemption, fx_read_auth }
+
+// CONFORMANCE OF THE HAND-WRITTEN SERVER *_json ENCODERS, not a derived encoder. The server encoders
+// stay hand-written (validation where construction is not yet available: dag has no value reflection,
+// so a generic fold cannot take a typed value apart by derived field name -- typed frontier row in
+// wire_strict_reader, trigger feature:value-reflection). What is checked: an encoder's output has, at
+// every object level, the member ORDER of the shape (a sum's "kind" first); the shape's members are paired to their declarations for the record shapes by test.claim.wire_shape_declaration_pairing_witness and for ReadAuthentication by wire_schema_derivation_witness, while the sum arms (push_shape, evidence_shape) are supplied and unpaired (frontier row on WireShape) and every admitted
+// string member spelled as one of its row's admitted spellings. The shapes are the ones the reader's
+// differential witnesses already use, so one row set judges both directions.
+//
+// First deviation, located by dotted path; Absent means the value conforms.
+fn deviation(shape: WireShape, v: JsonValue, path: String) -> Optional<String> {
+  match v {
+    JsonObject { members: ms } =>
+      match shape {
+        WireRecord { fields: fs } => members_deviation(ms: ms, fs: fs, lead: [], path: path)
+        WireSum { arms: arms, admitted: adm, cause: _ } =>
+          match first(ms) {
+            Present { value: kv } =>
+              if kv.key != "kind" { Present { value: join([at(path: path), "member order: kind first"], "") } }
+              else {
+                match kv.value {
+                  JsonString { value: tag } =>
+                    if !wire_name_listed(allowed: adm.admitted, k: tag) { Present { value: join([at(path: path), "kind spelled ", tag], "") } }
+                    else {
+                      match first(filter(arms, a => a.wire_tag == tag)) {
+                        Present { value: arm } => members_deviation(ms: ms, fs: arm.fields, lead: ["kind"], path: path)
+                        Absent => Present { value: join([at(path: path), "kind has no arm ", tag], "") }
+                      }
+                    }
+                  _ => Present { value: join([at(path: path), "kind is not a string"], "") }
+                }
+              }
+            Absent => Present { value: join([at(path: path), "no kind member"], "") }
+          }
+      }
+    _ => Present { value: join([at(path: path), "not an object"], "") }
+  }
+}
+
+fn at(path: String) -> String {
+  if path == "" { "$: " } else { join([path, ": "], "") }
+}
+
+fn members_deviation(ms: List<JsonKeyValue>, fs: List<WireField>, lead: List<String>, path: String) -> Optional<String> {
+  let declared = concat(lead, map(fs, f => f.name))
+  if map(ms, m => m.key) != declared {
+    Present { value: join([at(path: path), "member order ", join(map(ms, m => m.key), ","), " is not declared ", join(declared, ",")], "") }
+  } else {
+    fold(fs, init: Absent, f: fn(acc, f) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => field_deviation(f: f, ms: ms, path: path)
+      }
+    })
+  }
+}
+
+fn field_deviation(f: WireField, ms: List<JsonKeyValue>, path: String) -> Optional<String> {
+  let sub = if path == "" { f.name } else { join([path, ".", f.name], "") }
+  match first(filter(ms, m => m.key == f.name)) {
+    Absent => Absent
+    Present { value: kv } =>
+      match f.rule {
+        WireFreeString => Absent
+        WireListNotAdmitted => Absent
+        WireAdmittedString { row: row, cause: _ } =>
+          match kv.value {
+            JsonString { value: s } => if wire_name_listed(allowed: row.admitted, k: s) { Absent } else { Present { value: join([at(path: sub), "spelled ", s], "") } }
+            _ => Present { value: join([at(path: sub), "not a string"], "") }
+          }
+        WireNested { shape: inner } => deviation(shape: inner, v: kv.value, path: sub)
+      }
+  }
+}
+
+fn parsed(text: String) -> JsonValue {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => v
+    JsonDocumentUnreadable { gap: _ } => JsonNull
+  }
+}
+
+fn conforms(d: Optional<String>) -> Bool {
+  match d {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn vector_body(name: String) -> String {
+  match envelope_vector_body(name: name) {
+    Present { value: b } => b
+    Absent => ""
+  }
+}
+
+test fn the_encoders_emit_the_declared_member_order_and_admitted_spellings() -> Bool {
+  conforms(deviation(shape: read_auth_shape(), v: read_authentication_json_value(a: fx_read_auth), path: ""))
+    && conforms(deviation(shape: push_shape(), v: push_registration_json(p: fx_push), path: ""))
+    && conforms(deviation(shape: enrolment_shape(), v: parsed(text: google_enrolment_request_json(r: fx_enrolment())), path: ""))
+    && conforms(deviation(shape: signing_input_shape(), v: signing_input_json(i: fx_redemption().signing_input), path: ""))
+    && conforms(deviation(shape: key_shape(), v: verifying_key_json(k: fx_enrolment().decision_key), path: ""))
+}
+
+// The same shapes judge the vectors.json envelope bodies the Swift app and the server share.
+test fn the_vectors_json_envelope_bodies_conform_to_the_same_shapes() -> Bool {
+  conforms(deviation(shape: enrolment_shape(), v: parsed(text: vector_body(name: "enrolment_request")), path: ""))
+    && conforms(deviation(shape: read_auth_shape(), v: parsed(text: vector_body(name: "read_authentication")), path: ""))
+    && conforms(deviation(shape: push_shape(), v: parsed(text: vector_body(name: "push_update")), path: ""))
+}
+
+// RED: a fixture encoder emitting a record's keys in the wrong order is refused, naming the order.
+test fn a_fixture_encoder_with_swapped_keys_is_refused() -> Bool {
+  match deviation(shape: read_auth_shape(), v: parsed(text: "{\"requested_at\":\"t\",\"enrollment_id\":\"e\",\"assertion_b64\":\"a\"}"), path: "") {
+    Present { value: d } => d == "$: member order requested_at,enrollment_id,assertion_b64 is not declared enrollment_id,requested_at,assertion_b64"
+    Absent => false
+  }
+}
+
+// RED: a wrong spelling at an admitted position, nested two levels down, is refused at its dotted path.
+test fn a_fixture_encoder_with_a_wrong_spelling_is_refused_at_its_path() -> Bool {
+  let bad = replace(vector_body(name: "enrolment_request"), "\"environment\": \"production\"", "\"environment\": \"prod\"")
+  match deviation(shape: enrolment_shape(), v: parsed(text: bad), path: "") {
+    Present { value: d } => d == "push.environment: spelled prod"
+    Absent => false
+  }
+}
+
+// RED: a sum whose kind is not first is refused.
+test fn a_sum_with_kind_not_first_is_refused() -> Bool {
+  match deviation(shape: push_shape(), v: parsed(text: "{\"environment\":\"production\",\"kind\":\"apns\",\"topic\":\"t\",\"token\":\"k\"}"), path: "") {
+    Present { value: d } => d == "$: member order: kind first"
+    Absent => false
+  }
+}

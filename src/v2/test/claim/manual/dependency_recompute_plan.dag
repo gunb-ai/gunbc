@@ -18,7 +18,7 @@ import v2.std.dependency {
   topological_layers
 }
 import v2.std.diagnostic { Accepted, None }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Path, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Path, Symbol, TypeNode, NotADeclaration }
 
 data refinement_subject_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
@@ -37,7 +37,8 @@ data refinement_after_node: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^refinement_new_field_symbol },
-      target: refinement_new_field_node
+      target: refinement_new_field_node,
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -66,15 +67,18 @@ data dependency_projection_subgraph: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^testclaim_lens_symbol },
-      target: testclaim_lens_node
+      target: testclaim_lens_node,
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^boundary_test_lens_symbol },
-      target: boundary_test_lens_node
+      target: boundary_test_lens_node,
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^target_test_projection_symbol },
-      target: target_test_projection_node
+      target: target_test_projection_node,
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic

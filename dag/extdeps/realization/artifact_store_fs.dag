@@ -4,7 +4,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { String, Bool, Int, List }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, serialize_content_hash }
 import std.access { Permit, Deny }
 import std.effect_grant {
   Verb, Write, Read,
@@ -48,8 +48,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // this transport with every per-key outcome typed and counted, so a grant refusal is a recorded
 // EvictionRefused rather than a silent skip.
 
+// The key is written through std.content_hash serialize_content_hash, the owner's wire form, so the
+// file name is the digest and not the host's debug rendering of the ContentHash value. Every store
+// root is a /tmp/gunbc_* scratch root (std.artifact_store_scratch_grant), so a path written under
+// the earlier rendering is a cache miss, never durable data made unfindable.
 fn artifact_fs_path(store_root: String, key: ContentHash) -> String {
-  concat(store_root, "/", key, ".artifact")
+  concat(store_root, "/", serialize_content_hash(hash: key), ".artifact")
 }
 
 type ArtifactFsLookup

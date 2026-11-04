@@ -18,6 +18,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
@@ -143,8 +144,8 @@ data arrow_param_codomain: Node = Node {
 data arrow_with_dissolve_on_param: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: arrow_param_domain },
-    Edge { label: Positional, target: arrow_param_codomain }
+    Edge { label: Positional, target: arrow_param_domain, declaration: NotADeclaration },
+    Edge { label: Positional, target: arrow_param_codomain, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

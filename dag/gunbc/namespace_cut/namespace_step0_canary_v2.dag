@@ -15,6 +15,7 @@ import gunbc.namespace_cut.namespace_step0_binding_provenance_contract {
   BindingProvenanceUnobservable,
   step0_binding_provenance_consequence
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // THE STEP-0 STRIP-ENTRY CANARY, SECOND CONTRACT. The first one is superseded rather than edited,
 // and the defect that superseded it is worth stating exactly, because it is the failure this
@@ -58,7 +59,7 @@ type NamespaceStep0V2Contract {
 // smaller answer.
 data namespace_step0_canary_v2_contract: NamespaceStep0V2Contract = NamespaceStep0V2Contract {
   identity: "namespace-step0-strip-entry-canary-v2" as NonEmptyStr,
-  command: "target/release/gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/namespace_step0_candidate_run.dag --function current_step0_candidate_receipt_line" as NonEmptyStr,
+  command: concat(concat(cargo_default_release_dir_rel, "/gunbc"), " run --source-root dag --source-root src/v2 --entry src/v2/workflow/namespace_step0_candidate_run.dag --function current_step0_candidate_receipt_line") as NonEmptyStr,
   source_roots: ["dag" as NonEmptyStr, "src/v2" as NonEmptyStr, "src/v1" as NonEmptyStr],
   subject: "every .dag source at the pinned revision under the declared roots THAT PARSES AS A MODULE, its parsed import statements removed by a typed source rewrite before containment resolution is compiled; a .dag source the parse declines to give a module is out of subject and is named in the receipt's excluded population" as NonEmptyStr,
   one_dispatch_rule: "the candidate receipt is produced in ONE dispatch: the same run observes the revision, its tree and the compiler executable, collects the subject population from that revision, applies the strip, observes the containment compile, constructs the receipt and classifies it. No field may be supplied from a prior run, a different dispatch, or an authored literal; a command assembled from pieces across two invocations is validating a receipt again rather than observing a frontier, which is the defect this contract supersedes" as NonEmptyStr
@@ -557,7 +558,7 @@ fn admit_namespace_step0_v2_receipt(
     NamespaceStep0V2ReceiptRefused { field: V2SourceCommitField, cause: "receipt names a stale or foreign dispatch commit" as NonEmptyStr }
   } else if !git_object_id_eq(left: receipt.source_tree, right: expected_tree) {
     NamespaceStep0V2ReceiptRefused { field: V2SourceTreeField, cause: "receipt observation is bound to a foreign source tree" as NonEmptyStr }
-  } else if !(receipt.compiler_program == "target/release/gunbc" as NonEmptyStr) {
+  } else if !(receipt.compiler_program == concat(cargo_default_release_dir_rel, "/gunbc") as NonEmptyStr) {
     NamespaceStep0V2ReceiptRefused { field: V2CompilerProgramField, cause: "receipt names a different compiler program" as NonEmptyStr }
   } else if !(receipt.compiler_executable_sha256.hex == expected_compiler_sha256.hex) {
     NamespaceStep0V2ReceiptRefused { field: V2CompilerExecutableField, cause: "receipt names a different compiler executable" as NonEmptyStr }

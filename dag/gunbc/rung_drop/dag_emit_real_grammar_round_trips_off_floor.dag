@@ -35,9 +35,7 @@ data dag_emit_real_grammar_round_trips_off_floor: RungDrop = RungDrop {
 
   declared: "2026-10-01",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -45,5 +43,5 @@ data dag_emit_real_grammar_round_trips_off_floor: RungDrop = RungDrop {
     },
     population: population_from_list(xs: dag_emit_real_grammar_round_trips_off_floor_population),
     restoration_trigger: "THE CAPABILITY: a real-route parse of each construct in this population (v2.compiler.parse parse_module_prepared over v2.compiler.program_assembly dag_prepared_grammar) fits the per-claim eval-step budget and wall clock that v2.workflow.required_floor derives, twice over, so that every member, run as a test fn on the floor, measures under the NewWitnessTier budget while still running the real parser on both sides. The parser's prepared choice plan (gunbc#11422) is one contributor and does not satisfy this trigger on its own. WHAT IT MUST BE SUFFICIENT FOR: EVERY member of the population, not one of them, re-enrolled as a test fn and passing on the floor. Re-enrolling a subset is a partial retirement and is recorded as one. Moving a member under another drop, or supplying its tree, does not satisfy this trigger.",
-  }
+  } }
 }

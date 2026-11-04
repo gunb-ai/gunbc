@@ -1,0 +1,152 @@
+module test.claim.nvidia_smi_power_state_witness
+
+import std.types { Bool, Int, List, String }
+import std.measure { Milliwatt, Hertz, milliwatt_count, hertz_count, celsius_count }
+import extdeps.nvidia.system_management_interface {
+  NvidiaGpuPowerState,
+  NvidiaGpuPowerStateRead,
+  PowerStateParsed,
+  PowerStateUnparsed,
+  SmiReading,
+  SmiReported,
+  SmiWithheld,
+  PersistenceEnabled,
+  NvidiaSupportedClocksRead,
+  SupportedClocksParsed,
+  SupportedClocksUnparsed,
+  SmiEffectOutcome,
+  SmiEffectApplied,
+  SmiPowerLimitOutOfRange,
+  SmiOptionUnrecognized,
+  SmiEffectRefused,
+  parse_gpu_power_state,
+  parse_supported_clocks,
+  minimum_memory_clock,
+  smi_effect_outcome,
+  parse_watts_as_milliwatt
+}
+
+// CAPTURED, NOT AUTHORED. Every fixture below is stdout of the real producer, read on the H11 A16
+// host on 2026-10-26T02:21:55Z, nvidia-smi / driver 595.91.07, CUDA 13.2, by the session that holds
+// that host, and pasted verbatim. The operations' argv in extdeps.nvidia.system_management_interface
+// are the commands that produced them. So each claim reads the shape the real path emits rather
+// than a shape this file invented (DESIGN section 3, a witness discriminates at one interface).
+
+data h11_power_state_capture: String = "0, 00000000:85:00.0, P0, 45.62, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0x0000000000000024
+1, 00000000:86:00.0, P0, 37.10, 48.75, 48.75, 62.50, 622, 6251, Enabled, 87, 0x0000000000000020
+2, 00000000:87:00.0, P0, 48.65, 48.75, 48.75, 62.50, 1462, 6251, Enabled, 76, 0x0000000000000004
+3, 00000000:88:00.0, P0, 42.70, 48.75, 48.75, 62.50, 1755, 6251, Enabled, 55, 0x0000000000000000
+4, 00000000:C5:00.0, P0, 35.90, 48.75, 48.75, 62.50, 262, 6251, Enabled, 87, 0x0000000000000020
+5, 00000000:C6:00.0, P0, 33.03, 48.75, 48.75, 62.50, 585, 6251, Enabled, 88, 0x0000000000000020
+6, 00000000:C7:00.0, P0, 49.03, 48.75, 48.75, 62.50, 1162, 6251, Enabled, 79, 0x0000000000000004
+7, 00000000:C8:00.0, P0, 45.70, 48.75, 48.75, 62.50, 1672, 6251, Enabled, 67, 0x0000000000000004
+"
+
+// The first rows of the supported-clocks listing for GPU 0, then the rows listed at the 405 MHz
+// memory clock, from the same capture.
+data h11_supported_clocks_capture: String = "6251, 1755
+6251, 1747
+6251, 1740
+405, 420
+405, 412
+405, 405
+"
+
+data h11_power_limit_refusal_capture: String = "Provided power limit 40.00 W is not a valid power limit which should be between 48.75 W and 62.50 W for GPU 00000000:C8:00.0
+Terminating early due to previous errors.
+"
+
+data h11_lmi_refusal_capture: String = "ERROR: Option -lmi is not recognized. Please run 'nvidia-smi -h'.
+"
+
+fn gpus(read: NvidiaGpuPowerStateRead) -> List<NvidiaGpuPowerState> {
+  match read {
+    PowerStateParsed { gpus } => gpus
+    PowerStateUnparsed { line: _ } => []
+  }
+}
+
+fn mw(r: SmiReading<Milliwatt>) -> Int {
+  match r {
+    SmiReported { value } => milliwatt_count(value) as Int
+    SmiWithheld { marker: _ } => -1
+  }
+}
+
+fn hz(r: SmiReading<Hertz>) -> Int {
+  match r {
+    SmiReported { value } => hertz_count(value) as Int
+    SmiWithheld { marker: _ } => -1
+  }
+}
+
+fn is_unparsed(read: NvidiaGpuPowerStateRead) -> Bool {
+  match read {
+    PowerStateUnparsed { line: _ } => true
+    PowerStateParsed { gpus: _ } => false
+  }
+}
+
+// Every captured row parses, and the figures are the device's own, exactly: two decimals of watts
+// become milliwatts without rounding, MHz become hertz.
+test fn the_captured_power_state_parses_exactly() -> Bool {
+  let rows = gpus(read: parse_gpu_power_state(text: h11_power_state_capture))
+  let lines = filter(split(s: h11_power_state_capture, delimiter: "\n"), l => l != "")
+  rows.length() == lines.length()
+    && match first(rows) {
+      Absent => false
+      Present { value: g } =>
+        g.index == 0
+          && (g.pci_bus_id as String) == "00000000:85:00.0"
+          && mw(r: g.power_draw) == 45620
+          && mw(r: g.power_min_limit) == 48750
+          && mw(r: g.power_max_limit) == 62500
+          && hz(r: g.graphics_clock) == 1642000000
+          && hz(r: g.memory_clock) == 6251000000
+          && match g.temperature { SmiReported { value } => celsius_count(value) == 87  SmiWithheld { marker: _ } => false }
+          && match g.clock_event_reasons { SmiReported { value } => (value.mask as String) == "0x0000000000000024"  SmiWithheld { marker: _ } => false }
+          && match g.persistence { SmiReported { value } => match value { PersistenceEnabled => true  _ => false }  SmiWithheld { marker: _ } => false }
+    }
+}
+
+// A withheld field is its own arm with no figure; a malformed one makes the read unparsed rather
+// than skipping the row; a figure more precise than a milliwatt is no reading rather than a rounded one.
+test fn withheld_is_not_zero_and_malformed_is_not_skipped() -> Bool {
+  let withheld = gpus(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P8, [N/A], 48.75, 48.75, 62.50, 210, 405, Enabled, 40, 0x0000000000000000\n"))
+  match first(withheld) {
+    Absent => false
+    Present { value: g } => match g.power_draw { SmiWithheld { marker } => (marker as String) == "[N/A]"  SmiReported { value: _ } => false }
+  }
+    && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P0, 45.6x, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0x24\n"))
+    && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P0, 45.62\n"))
+    && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P99, 45.62, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0x24\n"))
+    && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P0, 45.62, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0xzz\n"))
+    && is_unparsed(read: parse_gpu_power_state(text: "0, 00000000:85:00.0, P0, 45.62, 48.75, 48.75, 62.50, 1642, 6251, Enabled, 87, 0x\n"))
+    && match parse_watts_as_milliwatt(raw: "48.7512") { Absent => true  Present { value: _ } => false }
+}
+
+// The park clock is the lowest supported memory clock, read, not assumed: 405 MHz on this capture.
+test fn the_park_clock_is_the_lowest_supported_memory_clock() -> Bool {
+  match parse_supported_clocks(text: h11_supported_clocks_capture) {
+    SupportedClocksUnparsed { line: _ } => false
+    SupportedClocksParsed { pairs } =>
+      pairs.length() == 6
+        && match minimum_memory_clock(pairs: pairs) { Present { value } => hertz_count(value) == 405000000  Absent => false }
+        && match minimum_memory_clock(pairs: []) { Absent => true  Present { value: _ } => false }
+  }
+}
+
+// The two refusals the H11 produced, read into their typed arms; a success is applied, and an
+// unknown refusal keeps its text.
+test fn effect_refusals_are_typed() -> Bool {
+  match smi_effect_outcome(exit_code: 2, text: h11_power_limit_refusal_capture) {
+    SmiPowerLimitOutOfRange { minimum, maximum } => milliwatt_count(minimum) == 48750 && milliwatt_count(maximum) == 62500
+    _ => false
+  }
+    && match smi_effect_outcome(exit_code: 255, text: h11_lmi_refusal_capture) {
+      SmiOptionUnrecognized { option } => (option as String) == "-lmi"
+      _ => false
+    }
+    && match smi_effect_outcome(exit_code: 0, text: "") { SmiEffectApplied => true  _ => false }
+    && match smi_effect_outcome(exit_code: 9, text: "Insufficient Permissions") { SmiEffectRefused { exit_code, text: _ } => exit_code == 9  _ => false }
+}

@@ -1,6 +1,6 @@
 module extdeps.gpu.apple
 
-import extdeps.gpu.types { GpuModelCatalogRow, GpuRuntime, Metal, IntegratedComputePackage }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuRuntime, Metal }
 import extdeps.memory.types { MemoryFacts, UnifiedShared }
 import extdeps.vendor.apple { apple }
 import std.measure { hardware_thread_count, bandwidth, gibibyte, gibibyte_to_byte_size }
@@ -25,11 +25,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+data apple_m5_gpu_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
   vendor: apple,
   model: "Apple M5 GPU",
   microarchitecture: "Apple GPU",
-  package: IntegratedComputePackage,
   execution_lane_count: hardware_thread_count(10),
   memory: MemoryFacts {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)),
@@ -37,11 +36,10 @@ data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   },
   memory_bandwidth: Present { value: bandwidth(count: 153000000000) },
   boost_clock: none,
-  tdp_watts: none,
   compute_capability: none,
   supported_runtimes: [Metal],
-  interconnect: none,
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: [],
+  dense_tensor_throughput: [],
 }

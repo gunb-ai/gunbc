@@ -1,0 +1,19 @@
+{
+ "note": "form-agnostic predicate over the four prompt-enumerated inputs; supersedes run-1 label-based predicate for this row",
+ "date_utc": "2026-10-25T08:37:12Z",
+ "rows": [
+  {
+   "phase": "eval-oracle",
+   "arm": "fp8_kv_flash_attn",
+   "id": "code-tests",
+   "error": null,
+   "answer_sha_full": "709f429595d2f5ee",
+   "oracle_pass": true,
+   "answer_full": "import pytest\n\n\n@pytest.mark.parametrize(\n    \"text, expected\",\n    [\n        (\"\", True),\n        (\"a\", True),\n        (\"racecar\", True),\n        (\"hello\", False),\n    ],\n)\ndef test_is_palindrome(text, expected):\n    assert is_palindrome(text) == expected",
+   "prompt_tokens": 79,
+   "completion_tokens": 314,
+   "ttft_s": 1.085,
+   "total_s": 2.597
+  }
+ ]
+}

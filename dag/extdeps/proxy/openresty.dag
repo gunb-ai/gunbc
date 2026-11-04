@@ -1,0 +1,265 @@
+module extdeps.proxy.openresty
+
+import std.optional { Optional, Present, Absent }
+import std.types { NonEmptyStr, brand, String, Int, List, Bool, Port }
+import std.measure { Second, second_count, ByteSize, byte_size_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "openresty.org/en/ngx-lua-module.html"
+  }
+}
+
+data openresty_proxy_pass_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "nginx.org/en/docs/http/ngx_http_proxy_module.html"
+  }
+}
+
+type OpenResty
+  = | OpenRestyProject
+
+data openresty: OpenResty = OpenRestyProject
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.proxy.openresty",
+      decl_name: "openresty",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.proxy.openresty.extdeps_external_authority_anchor,
+  further_citations: [extdeps.proxy.openresty.openresty_proxy_pass_authority]
+}
+
+type OpenRestyVersion = NonEmptyStr where brand("OpenRestyVersion")
+
+data openresty_1_27_1_1: OpenRestyVersion = "1.27.1.1" as OpenRestyVersion
+
+// The project's published container image of that release (hub.docker.com/r/openresty/openresty, tag
+// 1.27.1.1-bookworm), pinned by its multi-architecture index digest, read with `docker pull` on 2026-10-25.
+// The image's default command runs the server in the foreground over the configuration at
+// openresty_image_config_path; `openresty -t` tests that same file.
+data openresty_1_27_1_1_image: NonEmptyStr = "openresty/openresty@sha256:bbba7e0973dab3117e84aedf01622c34ef44bb8211bfcd987c9529f3083da545" as NonEmptyStr
+data openresty_image_config_path: NonEmptyStr = "/usr/local/openresty/nginx/conf/nginx.conf" as NonEmptyStr
+
+// The directives below are the ones that decide whether a response is relayed as it arrives and whether
+// the proxy may pick a second upstream. The log phase's outcome variables are not modeled: they were
+// observed unreliable on client abort in an uncommitted local run (no committed instrument yet), so release must not depend on them.
+type ProxyNextUpstream
+  = | ProxyNextUpstreamOff
+
+type ProxyBuffering
+  = | ProxyBufferingOff
+
+type ProxyRequestBuffering
+  = | ProxyRequestBufferingOff
+
+// Where a variable-target proxy_pass sends a request. There is no upstream block (balancing, health state) in
+// this model. A fixed-host proxy_pass is the separate ProxyPassToHost directive; which locations may use it is
+// the consumer's policy, not OpenResty's.
+type ProxyTarget
+  = | ProxyTargetFromUpstreamVariable
+
+// A name, path or header token interpolated into emitted text. nginx_token and nginx_variable ADMIT BY
+// CONSTRUCTION: a value is refused unless every character is in the class named below. This is a validator at
+// the two constructors, not a guarantee: the brand is not enforced, so a cast elsewhere bypasses it (the
+// witness shows what such a cast then renders), and the standing of that gap is a stall row in
+// gunbc.guarantee_stall.roster, not an unrecorded wall.
+type NginxToken = NonEmptyStr where brand("NginxToken")
+
+// An nginx variable name, written $name in the conf and ngx.var.name in Lua.
+type NginxVariable = NonEmptyStr where brand("NginxVariable")
+
+type HeaderSource
+  = HeaderFromVariable { variable: NginxVariable }
+  | HeaderPrefixedVariable { prefix: NginxToken, variable: NginxVariable }
+
+// OpenResty's interface is the phase block (access_by_lua_block, log_by_lua_block); the Lua inside it is the
+// consumer's code, passed in as lines.
+type LuaPhase
+  = | InitPhase
+  | AccessPhase
+  | ContentPhase
+  | HeaderFilterPhase
+  | BodyFilterPhase
+  | LogPhase
+
+type LocationMatch
+  = PrefixMatch { path: NginxToken }
+  | ExactMatch { path: NginxToken }
+
+type NginxDirective
+  = WorkerProcesses { count: Int }
+  | EventsBlock
+  | HttpBlock { body: List<NginxDirective> }
+  | AccessLogOff
+  | ServerBlock { body: List<NginxDirective> }
+  | ListenOn { address: NginxToken, port: Port }
+  | LocationBlock { matching: LocationMatch, body: List<NginxDirective> }
+  | SetEmptyVariable { variable: NginxVariable }
+  | ProxyHttpVersion11
+  | ProxyBufferingDirective { value: ProxyBuffering }
+  | ProxyRequestBufferingDirective { value: ProxyRequestBuffering }
+  | ProxyNextUpstreamDirective { value: ProxyNextUpstream }
+  | ProxySetHeader { header: NginxToken, source: HeaderSource }
+  | ProxyPassDirective { target: ProxyTarget, variable: NginxVariable }
+  | ProxyPassToHost { host: NginxToken, port: Port, path: NginxToken }
+  | InternalLocationOnly
+  | ProxyMethodPost
+  | LuaPhaseBlock { phase: LuaPhase, lines: List<String> }
+  | LuaSharedDict { name: NginxToken, size: ByteSize }
+  | EnvPassthrough { name: NginxToken }
+  | ListenTlsOn { address: NginxToken, port: Port }
+  | SslCertificate { path: NginxToken }
+  | SslCertificateKey { path: NginxToken }
+  | SetLiteral { variable: NginxVariable, value: NginxToken }
+  | ProxyReadTimeout { timeout: Second }
+  | ProxySslServerNameOn
+  | ProxySslName { variable: NginxVariable }
+  | ProxySslVerifyOn
+  | ProxySslVerifyDepth { depth: Int }
+  | ProxySslTrustedCertificate { path: NginxToken }
+  | ProxyPassSchemeAndHostVariables { scheme: NginxVariable, host: NginxVariable }
+  | ClientMaxBodySize { size: ByteSize }
+  | ClientBodyBufferSize { size: ByteSize }
+
+// The admitted token class, as code points (the std primitive char_at + code_point, per-character, like
+// extdeps.auth.jwt's scheme check): alphanumeric plus the five punctuation code points - (45) . (46) / (47)
+// : (58) _ (95). That is exactly what the vocabulary's tokens need (host, header names, the /v1/ and /_authz
+// paths, the host:port answer shape) and excludes every character that could end a quoted argument, start a
+// comment, open a block, interpolate a variable, or introduce whitespace in emitted nginx text. Admission is
+// per character and single-sourced: a value is admitted ONLY IF each of its characters is listed here, and
+// nothing else decides safety.
+fn nginx_token_code_point_allowed(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 45
+    || cp == 46
+    || cp == 47
+    || cp == 58
+    || cp == 95
+}
+
+fn nginx_token_chars_allowed(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else if !nginx_token_code_point_allowed(cp: code_point(c: char_at(s, i))) {
+    false
+  } else {
+    nginx_token_chars_allowed(s: s, i: i + 1, len: len)
+  }
+}
+
+// Safety is ONE rule: the per-character admitted class. Every delimiter a blacklist would name (quote,
+// backslash, CR/LF, space, tab, semicolon, braces, dollar, hash, double quote) is already outside that class,
+// so restating them here would be a second representation of a constraint the model already carries (§2/§3).
+fn nginx_text_is_safe(t: String) -> Bool {
+  let len = string_length(s: t)
+  len > 0 && nginx_token_chars_allowed(s: t, i: 0, len: len)
+}
+
+fn nginx_token(text: String) -> Optional<NginxToken> {
+  if nginx_text_is_safe(t: text) { Present { value: text as NginxToken } } else { Absent }
+}
+
+// A variable name is read as ngx.var.name in Lua, so it admits only alphanumerics and _, and its first
+// character must be a letter (a Lua name). Anything else, including '-', '.' and '/', is refused.
+fn nginx_variable_code_point_allowed(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 95
+}
+
+fn nginx_variable_first_code_point_allowed(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)
+}
+
+fn nginx_variable_chars_allowed(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else if !nginx_variable_code_point_allowed(cp: code_point(c: char_at(s, i))) {
+    false
+  } else {
+    nginx_variable_chars_allowed(s: s, i: i + 1, len: len)
+  }
+}
+
+fn nginx_variable_is_safe(t: String) -> Bool {
+  let len = string_length(s: t)
+  len > 0 && nginx_variable_first_code_point_allowed(cp: code_point(c: char_at(t, 0)))
+    && nginx_variable_chars_allowed(s: t, i: 1, len: len)
+}
+
+fn nginx_variable(text: String) -> Optional<NginxVariable> {
+  if nginx_variable_is_safe(t: text) { Present { value: text as NginxVariable } } else { Absent }
+}
+
+fn lua_phase_name(ph: LuaPhase) -> String {
+  match ph { InitPhase => "init_by_lua_block" AccessPhase => "access_by_lua_block" ContentPhase => "content_by_lua_block" HeaderFilterPhase => "header_filter_by_lua_block" BodyFilterPhase => "body_filter_by_lua_block" LogPhase => "log_by_lua_block" }
+}
+
+fn location_match_text(m: LocationMatch) -> String {
+  match m { PrefixMatch { path: p } => p as String ExactMatch { path: p } => "= " + (p as String) }
+}
+
+fn join_with(items: List<String>, sep: String) -> String {
+  fold(items, init: "", f: (acc, e) => if acc == "" { e } else { acc + sep + e })
+}
+
+fn nginx_block(head: String, body: List<NginxDirective>, indent: String) -> String {
+  indent + head + " \{\n" + join_with(map(body, x => render_nginx_directive(d: x, indent: indent + "  ")), "") + indent + "}\n"
+}
+
+fn nginx_line(text: String, indent: String) -> String { indent + text + ";\n" }
+
+fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
+  match d {
+    WorkerProcesses { count: n } => nginx_line(text: "worker_processes " + to_string(n), indent: indent)
+    EventsBlock => indent + "events \{\}\n"
+    HttpBlock { body: b } => nginx_block(head: "http", body: b, indent: indent)
+    AccessLogOff => nginx_line(text: "access_log off", indent: indent)
+    ServerBlock { body: b } => nginx_block(head: "server", body: b, indent: indent)
+    ListenOn { address: a, port: p } => nginx_line(text: "listen " + (a as String) + ":" + to_string(p as Int), indent: indent)
+    LocationBlock { matching: m, body: b } => nginx_block(head: "location " + location_match_text(m: m), body: b, indent: indent)
+    SetEmptyVariable { variable: v } => nginx_line(text: "set $" + (v as String) + " ''", indent: indent)
+    ProxyHttpVersion11 => nginx_line(text: "proxy_http_version 1.1", indent: indent)
+    ProxyBufferingDirective { value: v } => match v { ProxyBufferingOff => nginx_line(text: "proxy_buffering off", indent: indent) }
+    ProxyRequestBufferingDirective { value: v } => match v { ProxyRequestBufferingOff => nginx_line(text: "proxy_request_buffering off", indent: indent) }
+    ProxyNextUpstreamDirective { value: v } => match v { ProxyNextUpstreamOff => nginx_line(text: "proxy_next_upstream off", indent: indent) }
+    ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) HeaderPrefixedVariable { prefix: px, variable: v } => "\"" + (px as String) + " $" + (v as String) + "\"" }, indent: indent)
+    ProxyPassDirective { target: t, variable: v } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$" + (v as String), indent: indent) }
+    ProxyPassToHost { host: hs, port: p, path: pa } => nginx_line(text: "proxy_pass http://" + (hs as String) + ":" + to_string(p as Int) + (pa as String), indent: indent)
+    InternalLocationOnly => nginx_line(text: "internal", indent: indent)
+    ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
+    ClientMaxBodySize { size: z } => nginx_line(text: "client_max_body_size " + to_string(byte_size_count(b: z)), indent: indent)
+    ClientBodyBufferSize { size: z } => nginx_line(text: "client_body_buffer_size " + to_string(byte_size_count(b: z)), indent: indent)
+    LuaPhaseBlock { phase: ph, lines: ls } =>
+      indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(ls, "\n" + indent + "  ") + "\n" + indent + "}\n"
+    EnvPassthrough { name: n } => nginx_line(text: "env " + (n as String), indent: indent)
+    ListenTlsOn { address: a, port: p } => nginx_line(text: "listen " + (a as String) + ":" + to_string(p as Int) + " ssl", indent: indent)
+    SslCertificate { path: pa } => nginx_line(text: "ssl_certificate " + (pa as String), indent: indent)
+    SslCertificateKey { path: pa } => nginx_line(text: "ssl_certificate_key " + (pa as String), indent: indent)
+    SetLiteral { variable: v, value: x } => nginx_line(text: "set $" + (v as String) + " '" + (x as String) + "'", indent: indent)
+    ProxyReadTimeout { timeout: t } => nginx_line(text: "proxy_read_timeout " + to_string(second_count(s: t)) + "s", indent: indent)
+    ProxySslServerNameOn => nginx_line(text: "proxy_ssl_server_name on", indent: indent)
+    ProxySslName { variable: v } => nginx_line(text: "proxy_ssl_name $" + (v as String), indent: indent)
+    ProxySslVerifyOn => nginx_line(text: "proxy_ssl_verify on", indent: indent)
+    ProxySslVerifyDepth { depth: n } => nginx_line(text: "proxy_ssl_verify_depth " + to_string(n), indent: indent)
+    ProxySslTrustedCertificate { path: pa } => nginx_line(text: "proxy_ssl_trusted_certificate " + (pa as String), indent: indent)
+    ProxyPassSchemeAndHostVariables { scheme: sc, host: h } => nginx_line(text: "proxy_pass $" + (sc as String) + "://$" + (h as String), indent: indent)
+    LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + to_string(byte_size_count(b: z)), indent: indent)
+  }
+}
+
+fn render_nginx_directives(rows: List<NginxDirective>) -> String {
+  join_with(map(rows, x => render_nginx_directive(d: x, indent: "")), "")
+}

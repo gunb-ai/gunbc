@@ -1,0 +1,18 @@
+{
+  "standing": "out-of-band-manual-start",
+  "authorized_by": "operator, via approval app session, 2026-10-26T04:10Z",
+  "reason": "fleet-converge printer queue congestion (90+ minute waits) and a stale fleet-print-controller hold; the operator chose to print this attempt manually rather than wait for the automation",
+  "request_root": "a16-plug-fit-ring",
+  "source_plate": "/var/lib/gunbc/print-runs/2c22ca37409a35c614498f99fc7166f25b596951a4e9844d4477534b288459bc.request.json-40201342559/plate.3mf",
+  "source_provenance": "plate.3mf prepared by print pass run 40201342559 (pass 1, admitted and printed plan unchanged)",
+  "project_sha256": "517026ddb552864c2a94949fa441d3dc062447e12852de53013f512f315d72b3",
+  "printer": "printer-01",
+  "remote_name": "a16-plug-fit-ring.3mf",
+  "transport": "manual FTPS upload + manual project_file publish on srv1, same payload shape as bambu_start_payload_json (use_ams true, ams_mapping [0], bed_leveling true, sequence_id a16fit2manual)",
+  "readback_at_start": "gcode_state RUNNING, about 31 minutes remaining",
+  "fleet_record": "none -- the start pass has no record of this start and no print-run record was written for it; this attempt must not be read as a pass success",
+  "operator_result_utc": "2026-10-26T04:45Z",
+  "operator_result": "part fits the A16 (physical fit observation, recorded in product.printed_chassis.fit_observations)",
+  "operator_token": "the LAN access code was deleted from srv1 after the start",
+  "stale_hold_note": "the fleet-print-controller.1 hold (owner sha256 d91310fe..., mtime 2026-10-21T18:10) was NOT touched by this manual start and remains held"
+}

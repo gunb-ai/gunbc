@@ -1,14 +1,14 @@
 module product.printed_chassis.printable_assembly
 
-import std.types { Int, String, List }
+import std.types { Int, String, List, NonEmptyStr }
 import std.measure { micrometer_count, millimeter_count }
 import std.affine_space { Point3, signed_frame_component_count }
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import product.printed_chassis.assembly_geometry {
-  Primitive, Block, RoundPrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance, Cassette, FixedFrame,
+  Primitive, Block, RoundPrism, ProfilePrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance, Cassette, FixedFrame,
   LayOnXZ, LayOnXY, LayOnYZ, InterfaceStatus, Proposed, OriginalPlateFitOnly, Unresolved, FastenerKind, M3PanelClamp,
   PrintedRetainingPin, M4FanThroughBolt, M4SocketThroughBolt, BoardSupportPending, ProtectedDcBranch, BondingHardwarePending,
-  FanSelfTappingScrew, FrictionFitPlug,
+  FanSelfTappingScrew, FrictionFitPlug, FrictionFitSleeve, LocatingSleeveNoRetention, M3IntoCardInsert,
 }
 import product.printed_chassis.assembly_inventory { required_slots_json }
 import product.printed_chassis.export_profile { exercised_stl_knobs }
@@ -18,7 +18,8 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 
 // WHAT IS BEING PRINTED IS SELECTED, NOT HARD-WIRED. The print path (CAD check, plate preparation,
 // prepared-output identity) was written against one assembly and reached it by calling that
-// assembly's producer at every site. Each selectable assembly is one arm here; the selection that
+// assembly's producer at every site. Each selectable assembly is one arm here (a cassette assembly is a
+// named arm, a duct assembly is a catalogued card joined to a shape); the selection that
 // maps an arm to its parts lives in printable_assembly_selection, so this module stays importable
 // by the roots themselves.
 //
@@ -26,22 +27,78 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 // cassette_review all_parts). It was already a distinct selection -- a different part set from the
 // residential print assembly -- reached implicitly through review_realization main. Naming it keeps
 // the two from being confused for one another.
-type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | A16InletDuct
+// The duct roots are one SHAPE on one CATALOGUED CARD. The six shapes are these: the two card mounts (plug,
+// sleeve), each as a full duct and as a fit ring; the radial-blower duct; and the flat-on-end blower duct. A seventh, the side-mounted blower duct
+// (product.printed_chassis.side_mount_duct: the blower's broad face against one face of the card, a short
+// chamber behind the end turning its air into the window), has one root per CardFaceSide.
+// Flat-on-end is its own kind and not a mode of the blower duct, because its geometry differs in kind: that
+// one is a socket the blower drops into beside the plug end, this one carries the housing on an open shoulder
+// behind the end with a channel turned back into the window. Two shapes, two attempts, two names to point at
+// at the printer (product.printed_chassis.card_cooling_route PlaneOnEnd, admitted 2026-10-26 on the
+// operator's declared conservative bounds -- gunbc.design_ruling
+// a16_rear_clearance_and_sides_are_operator_declared_bounds).
+//
+// The CARD half of a duct root is not a kind: it is the catalogued card's own id, and the wire spelling is
+// "<card id>-<kind>" -- the spelling the A16 roots already had, which is what extdeps.gpu.passive_card_row
+// CardRow id says a printed part for a card is named by. So a card added to
+// product.printed_chassis.duct_card_catalog duct_cards brings its own six roots with it, and no new arm,
+// spelling or selection site is written anywhere.
+// WHICH FACE OF THE CARD a side-mounted part sits against. The end face is read from the BACK face (the
+// power-cap side) and the FRONT face is the other one (product.printed_chassis.gpu_duct EndFaceMeasurement).
+// A side-mounted root carries the side, so both orientations are roots of one kind rather than two kinds.
+type CardFaceSide = BackFaceSide | FrontFaceSide
+
+data card_face_sides: List<CardFaceSide> = [BackFaceSide, FrontFaceSide]
+
+fn card_face_side_wire(side: CardFaceSide) -> String {
+  match side {
+    BackFaceSide => "back"
+    FrontFaceSide => "front"
+  }
+}
+
+type DuctRootKind = PlugDuct | SleeveDuct | PlugFitRing | SleeveFitRing | BlowerDuct | BlowerFlatOnEndDuct | BlowerSideMountDuct { side: CardFaceSide }
+
+data duct_root_kinds: List<DuctRootKind> = concat([PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct], map(card_face_sides, s => BlowerSideMountDuct { side: s }))
+
+fn duct_root_kind_suffix(kind: DuctRootKind) -> String {
+  match kind {
+    PlugDuct => "plug-duct"
+    SleeveDuct => "sleeve-duct"
+    PlugFitRing => "plug-fit-ring"
+    SleeveFitRing => "sleeve-fit-ring"
+    BlowerDuct => "blower-duct"
+    BlowerFlatOnEndDuct => "blower-flat-on-end-duct"
+    BlowerSideMountDuct { side: s } => join(["blower-side-mount-", card_face_side_wire(side: s), "-duct"], "")
+  }
+}
+
+// A ROOT IS AN IDENTITY, NOT A GEOMETRY: a duct root names a catalogued card and a shape and carries no
+// dimension; the geometry that reads a card is reached only through product.printed_chassis.
+// printable_assembly_selection. That module also ENUMERATES the duct roots, from the roster -- they cannot be
+// enumerated here, because this module is the one the card-reading geometry imports, so the roster is not
+// reachable from it (printable_assembly_selection duct_card_root, printed_assembly_roots).
+// A GROUP ROOT NAMES A GROUP DUCT PLAN (product.printed_chassis.group_duct GroupDuctPlan: an installation,
+// the operator's grouping and which group) and a shape. Its wire spelling is "<plan id>-<shape>"
+// ("a2-altra-row-fit-plate"). The plans are enumerated in printable_assembly_selection, for the same
+// import-cycle reason as the card roster.
+type GroupRootKind = GroupFitPlate | GroupDuct
+
+data group_root_kinds: List<GroupRootKind> = [GroupFitPlate, GroupDuct]
+
+fn group_root_kind_suffix(kind: GroupRootKind) -> String {
+  match kind { GroupFitPlate => "fit-plate" GroupDuct => "duct" }
+}
+
+type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | DuctCardRoot { card: NonEmptyStr, kind: DuctRootKind } | CardGroupRoot { plan: NonEmptyStr, kind: GroupRootKind }
 
 fn printed_assembly_root_wire(root: PrintedAssemblyRoot) -> String {
   match root {
     ResidentialCassette => "residential-cassette"
     CassetteRackReview => "cassette-rack-review"
-    A16InletDuct => "a16-inlet-duct"
+    DuctCardRoot { card: card, kind: kind } => join([card as String, "-", duct_root_kind_suffix(kind: kind)], "")
+    CardGroupRoot { plan: plan, kind: kind } => join([plan as String, "-", group_root_kind_suffix(kind: kind)], "")
   }
-}
-
-fn printed_assembly_root_from_wire(s: String) -> PrintedAssemblyRoot? {
-  fold([ResidentialCassette, CassetteRackReview, A16InletDuct], init: none, f: (acc, r) =>
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent => if printed_assembly_root_wire(root: r) == s { Present { value: r } } else { none }
-    })
 }
 
 // THE PRINTING PROJECTION OF A SELECTED ASSEMBLY: only what the CAD check and preparation consume.
@@ -71,6 +128,7 @@ fn text(s: String) -> JsonValue { json_string(s: s) }
 fn primitive_json(p: Primitive) -> JsonValue {
  match p {
   Block {size:s,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"box")),json_kv(key:"size_um",value:json_array(elements:[json_int(n:micrometer_count(m:s.size_x)),json_int(n:micrometer_count(m:s.size_y)),json_int(n:micrometer_count(m:s.size_z))])),json_kv(key:"center_um",value:xyz(p:c))]),
+  ProfilePrism {outline:o,axis:a,length:l,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"prism")),json_kv(key:"outline_um",value:json_array(elements:map(o,v=>json_array(elements:[json_int(n:v.u),json_int(n:v.v)])))),json_kv(key:"length_um",value:json_int(n:micrometer_count(m:l))),json_kv(key:"axis",value:text(s:match a {Axis3X=>"x",Axis3Y=>"y",Axis3Z=>"z"})),json_kv(key:"center_um",value:xyz(p:c))]),
   RoundPrism {diameter:d,length:l,axis:a,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"cylinder")),json_kv(key:"diameter_um",value:json_int(n:micrometer_count(m:d))),json_kv(key:"length_um",value:json_int(n:micrometer_count(m:l))),json_kv(key:"axis",value:text(s:match a {Axis3X=>"x",Axis3Y=>"y",Axis3Z=>"z"})),json_kv(key:"center_um",value:xyz(p:c))]),
  }
 }
@@ -78,7 +136,7 @@ fn part_json(p: AssemblyPart) -> JsonValue {
  json_object(members:[json_kv(key:"id",value:text(s:p.id)),json_kv(key:"name",value:text(s:p.name)),json_kv(key:"kind",value:text(s:match p.kind {Printed=>"printed",Purchased=>"purchased",Metal=>"metal",Clearance=>"clearance"})),json_kv(key:"scope",value:text(s:match p.scope {Cassette=>"cassette",FixedFrame=>"fixed"})),json_kv(key:"adds",value:json_array(elements:p.adds |> map(a=>primitive_json(p:a)))),json_kv(key:"cuts",value:json_array(elements:p.cuts |> map(a=>primitive_json(p:a)))),json_kv(key:"at_um",value:xyz(p:p.at)),json_kv(key:"explode_um",value:xyz(p:p.explode)),json_kv(key:"print_plane",value:text(s:match p.print_plane {LayOnXZ=>"XZ",LayOnXY=>"XY",LayOnYZ=>"YZ"})),json_kv(key:"notes",value:text(s:p.notes))])
 }
 fn fastener_display(f: FastenerKind) -> String {
- match f {M3PanelClamp=>"M3 top-accessible panel clamp + nut" M4SocketThroughBolt=>"M4 socket through-bolt + washers + nut" M4FanThroughBolt=>"M4 diagonal through-bolt + nut" PrintedRetainingPin=>"Broad-grip printed retaining pin" BoardSupportPending=>"Standoff hardware unresolved" ProtectedDcBranch=>"Rated protected/isolatable DC branch" BondingHardwarePending=>"Permanent metal bonding hardware unresolved" FanSelfTappingScrew=>"Fan self-tapping screw into the printed plate" FrictionFitPlug=>"Friction-fit plug, no hardware"}
+ match f {M3PanelClamp=>"M3 top-accessible panel clamp + nut" M4SocketThroughBolt=>"M4 socket through-bolt + washers + nut" M4FanThroughBolt=>"M4 diagonal through-bolt + nut" PrintedRetainingPin=>"Broad-grip printed retaining pin" BoardSupportPending=>"Standoff hardware unresolved" ProtectedDcBranch=>"Rated protected/isolatable DC branch" BondingHardwarePending=>"Permanent metal bonding hardware unresolved" FanSelfTappingScrew=>"Fan self-tapping screw into the printed plate" FrictionFitPlug=>"Friction-fit plug, no hardware" FrictionFitSleeve=>"Friction-fit sleeve, no hardware" LocatingSleeveNoRetention=>"Locating sleeve, not retained: hold or tape the blower in place" M3IntoCardInsert=>"M3 screw into a threaded insert on the card"}
 }
 fn status_display(s: InterfaceStatus) -> String {match s {Proposed=>"proposed" OriginalPlateFitOnly=>"original plate fit passed; new stack proposed" Unresolved=>"unresolved"}}
 fn interface_json(i: MechanicalInterface) -> JsonValue {

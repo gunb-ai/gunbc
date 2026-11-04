@@ -17,7 +17,7 @@ fn browse_page_jsx() -> String {
 
 test fn witness_browse_page_jsx_exact_bytes() -> Bool {
   browse_page_jsx() ==
-    "export function GunbhubBrowsePage(): JSX.Element { return <html><head><title>gunbc</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Browse</a></nav></header><main><ul><li><a href=\"/dag\">dag</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>; }"
+    "export function GunbhubBrowsePage(): JSX.Element { return <html><head><title>gunbc</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Browse</a></nav></header><main><ul><li><a href=\"/dag\">dag</a></li><li><a href=\"/src\">src</a></li></ul></main></body></html>; }"
 }
 
 test fn witness_fn_name_in_output() -> Bool {

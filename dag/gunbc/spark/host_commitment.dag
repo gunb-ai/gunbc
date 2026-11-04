@@ -544,11 +544,19 @@ fn spark_claimed_serving_group_members() -> List<ClaimedServingGroupMember> {
 // CURRENT authorities read from the event log (spark_host_standings_current), so an effect that
 // runs while a transaction is open commits the hosts the transaction froze, not the roster.
 fn spark_host_standings_under(authorities: List<PairServingGroupAuthority>, host_effects: List<HostEffectRecord>) -> List<SparkHostStanding> {
+  spark_host_standings_under_roster(units: dgx_spark_reserved_identities(), arm_claims: spark_serving_arm_host_claims, authorities: authorities, host_effects: host_effects)
+}
+
+// THE SAME STANDINGS OVER A SUPPLIED UNIT ROSTER AND ARM-CLAIM ROSTER. The live rosters are empty
+// (every procured unit is sold, gunbc.spark.dgx_procurement dgx_spark_disposed_units), so a witness
+// of the over-the-store route that needs a unit supplies them here; the live route above is this
+// function applied to the live rosters, never a second implementation.
+fn spark_host_standings_under_roster(units: List<HostIdentity>, arm_claims: List<ServingArmHostClaim>, authorities: List<PairServingGroupAuthority>, host_effects: List<HostEffectRecord>) -> List<SparkHostStanding> {
   spark_host_standings_in(
-    units: dgx_spark_reserved_identities(),
+    units: units,
     assignments: spark_cell_role_assignments,
     claimed_group_members: spark_claimed_members_under(authorities: authorities),
-    arm_claims: spark_serving_arm_host_claims,
+    arm_claims: arm_claims,
     serving_reservations: spark_serving_reservations,
     host_effects: host_effects,
   )
@@ -573,6 +581,10 @@ type CurrentStandings
 // placement partition (spark_host_standings_over). An effect that is live -- unreleased, however
 // old -- commits its host until its release lands with quiescence evidence.
 fn spark_host_standings_current(current: List<CurrentAuthority>, host_claims: List<HostEffectRecord>) -> CurrentStandings {
+  spark_host_standings_current_roster(units: dgx_spark_reserved_identities(), arm_claims: spark_serving_arm_host_claims, current: current, host_claims: host_claims)
+}
+
+fn spark_host_standings_current_roster(units: List<HostIdentity>, arm_claims: List<ServingArmHostClaim>, current: List<CurrentAuthority>, host_claims: List<HostEffectRecord>) -> CurrentStandings {
   let unread = flat_map(current, c => match c {
     CurrentAuthorityUnread { group: g, step: st, reason: why } => [join([fabric_group_wire(g: g) as String, " at ", st, ": ", why], "")]
     CurrentAuthorityRead { authority: _ } => [] as List<String>
@@ -580,7 +592,7 @@ fn spark_host_standings_current(current: List<CurrentAuthority>, host_claims: Li
   if length(unread) != 0 {
     CurrentStandingsUnread { cause: join(["the current pair-serving authority could not be read for every claimed group, so host commitment cannot be derived: ", join(unread, "; ")], "") as NonEmptyStr }
   } else {
-    CurrentStandingsRead { standings: spark_host_standings_under(authorities: flat_map(current, c => match c { CurrentAuthorityRead { authority: a } => [a]  CurrentAuthorityUnread { group: _, step: _, reason: _ } => [] as List<PairServingGroupAuthority> }), host_effects: host_claims) }
+    CurrentStandingsRead { standings: spark_host_standings_under_roster(units: units, arm_claims: arm_claims, authorities: flat_map(current, c => match c { CurrentAuthorityRead { authority: a } => [a]  CurrentAuthorityUnread { group: _, step: _, reason: _ } => [] as List<PairServingGroupAuthority> }), host_effects: host_claims) }
   }
 }
 
@@ -616,6 +628,10 @@ fn group_standing_over(group: FabricGroup, partition: GroupPartitionRead, placem
 // standing and the joined placement are decided over that one snapshot -- never over independent
 // re-reads of a live store that could disagree with each other.
 fn spark_host_standings_over(store: FabricStorageBinding, at: EpochSecs) -> CurrentStandings {
+  spark_host_standings_over_roster(store: store, at: at, units: dgx_spark_reserved_identities(), arm_claims: spark_serving_arm_host_claims)
+}
+
+fn spark_host_standings_over_roster(store: FabricStorageBinding, at: EpochSecs, units: List<HostIdentity>, arm_claims: List<ServingArmHostClaim>) -> CurrentStandings {
   let placement = placement_fold_read(store: store)
   let groups = map([FabricGroupB {}], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) })
   let standings = map(groups, gs => group_standing_over(group: gs.group, partition: gs.partition, placement: placement, at: at))
@@ -626,7 +642,7 @@ fn spark_host_standings_over(store: FabricStorageBinding, at: EpochSecs) -> Curr
     let current = flat_map(standings, st => match st { GroupStandingEstablished { current: c } => [c]  GroupStandingUnclaimed => [] as List<CurrentAuthority>  GroupStandingUnread { cause: _ } => [] as List<CurrentAuthority> })
     match placement_read_over(placement: placement, groups: groups) {
       PlacementUnread { step: st, reason: why } => CurrentStandingsUnread { cause: join(["the host-placement partition could not be read at ", st, ", so host commitment cannot be derived: ", why], "") as NonEmptyStr }
-      PlacementReadAt { head: _, effects: effs, preparations: _ } => spark_host_standings_current(current: current, host_claims: effs)
+      PlacementReadAt { head: _, effects: effs, preparations: _ } => spark_host_standings_current_roster(units: units, arm_claims: arm_claims, current: current, host_claims: effs)
     }
   }
 }
@@ -882,7 +898,11 @@ fn admit_unplaced_host_in(raw: String, purpose: NonEmptyStr, standings: List<Spa
 // the claim reads OVERDUE, and it still holds until released. `residue` is what the release must
 // find absent -- the effect declares it here because only the effect knows what it leaves.
 fn admit_unplaced_host_over(raw: String, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs) -> SparkHostAdmission {
-  match spark_host_standings_over(store: store, at: at) {
+  admit_unplaced_host_over_roster(raw: raw, purpose: purpose, term: term, residue: residue, store: store, executor: executor, at: at, units: dgx_spark_reserved_identities(), arm_claims: spark_serving_arm_host_claims)
+}
+
+fn admit_unplaced_host_over_roster(raw: String, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs, units: List<HostIdentity>, arm_claims: List<ServingArmHostClaim>) -> SparkHostAdmission {
+  match spark_host_standings_over_roster(store: store, at: at, units: units, arm_claims: arm_claims) {
     CurrentStandingsUnread { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", c as String], "") as NonEmptyStr }
     CurrentStandingsRead { standings: st } =>
       match admit_unplaced_host_in(raw: raw, purpose: purpose, standings: st) {

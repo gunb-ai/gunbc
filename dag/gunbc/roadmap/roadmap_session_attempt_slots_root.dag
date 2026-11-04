@@ -1,0 +1,200 @@
+module gunbc.roadmap.roadmap_session_attempt_slots_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+
+// THE SESSION ATTEMPT SLOT STORE'S ROOT (its consumer is gunbc.roadmap.roadmap_session_placement
+// SessionPlacementStores), kept in a leaf module for the reason the worktree claim root is
+// (gunbc.roadmap.roadmap_attempt_worktree_claim_root): the instance directory list must import the
+// declaration, and session placement sits above the belt, which the list's own importers reach.
+// THE ONE DECLARATION OF THE STORE: the member it lives under in the instance's dispatch attempt state root
+// and the mode its directory is created with. The store (session_attempt_slots_store) and the directory row
+// (session_attempt_slots_directory) both read it, so there is no second place a path or a mode is written.
+// Owner-only: a slot records which session holds which seat.
+type SessionAttemptSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data session_attempt_slots: SessionAttemptSlotsDeclaration = SessionAttemptSlotsDeclaration {
+  member: "session-attempts" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+}
+
+fn session_attempt_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", session_attempt_slots.member as String], "") as NonEmptyStr
+}
+
+// THE SESSION SLOT STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as WorktreeClaimStore is: sole_constructor,
+// built in one place (session_attempt_slots_store), which takes the instance and no path: the root is derived
+// here from session_attempt_slots, and only a directory listed (Filesystem.List) yields a store. Session placement takes this type, so a SlotStore
+// minted for another declaration or from a bare root is not a session slot store; the root is a field of the SlotStore it holds and field reads are not
+// module-private, so a holder CAN read it (declared residual:
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+// The mint takes no path, but the instance it takes is buildable over any root
+// (gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance), so a chosen path DOES reach this store
+// through it: route 3 of the same residual (test.claim.attempt_store_seal_witness
+// a_session_store_over_a_chosen_instance_root_is_accepted_today, expecting-red). Non-generic and never a variant arm (test.claim.sole_constructor_completeness_audit_probe
+// f13). NOT established, as for the claim store: that a store minted for instance A is refused where B is
+// required.
+// WHICH LANE A STORE WAS MINTED FOR, carried IN the store: the mint writes it and the crossing guard below
+// reads it off the store, so it is never the caller's claim.
+type SessionSlotLane = WorkerSlotLane | ReviewerSlotLane
+
+type SessionAttemptSlotsStore sole_constructor {
+  instance: NonEmptyStr
+  lane: SessionSlotLane
+  slots: SlotStore
+}
+
+type SessionAttemptSlotsStoreReading
+  = SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore }
+  | SessionAttemptSlotsStoreUnready { detail: String }
+
+fn session_attempt_slots_store(instance: HostDashboardInstance) -> SessionAttemptSlotsStoreReading {
+  match listed_slot_store(member: session_attempt_slots.member as String, root: session_attempt_slots_path(instance: instance)) {
+    SlotStoreRefused { detail: d } => SessionAttemptSlotsStoreUnready { detail: d }
+    SlotStoreListed { root: r } => SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore { instance: instance.instance_id, lane: WorkerSlotLane, slots: file_slot_store(root: r) } }
+  }
+}
+
+// THE SESSION SLOT ROOT IS A DEMANDED DIRECTORY, enrolled in the one instance directory list
+// (gunbc.roadmap.dashboard_instance_directories). It replaces the belt's own `install -d -m 0700` of the
+// same path (the second creator gunbc.recurring_failure_mode a_store_root_nothing_creates named as the
+// consolidation follow-up), so the list is its only creator. ON THIS TREE THAT IS NOT YET TRUE:
+// roadmap_belt_actuate::belt_session_slots_ensure still creates the same path at tick time and carries its
+// own dissolution trigger (PR #15747 row D4). The row is here so the admission has something to admit; the
+// creator is removed only once the deploy is proved to have created and read this directory back. Its consumers are the belt alone (acquisition,
+// settlement, activation; the worker never writes it), so ownership is never adopted.
+fn session_attempt_slots_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: session_attempt_slots.member,
+    path: session_attempt_slots_path(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: session_attempt_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// ── THE REVIEWER'S SLOT STORE (a lab-route declaration; main has no reviewer placement) ──────────
+// The lab's session-placement pass enumerates TWO classes of attempt slot under one declared parent: the
+// worker's (session-attempts) and the reviewer's (reviewer-attempts). Each pass must see exactly its own
+// class, and today the reviewer's path is spelled by joining a suffix at a call site
+// (roadmap_session_placement session_reviewer_slots_root), which is the second-creator / second-spelling
+// shape this module exists to remove. So the reviewer gets the same treatment as the worker: ONE declaration
+// of member and mode, a store minted only from it, and a directory row read from the same declaration. The
+// two members are siblings under the instance's dispatch attempt state root, which is already a demanded
+// directory; nothing here widens an owner -- both are DirectoryOwnerOnly, the posture the slot's writer holds.
+type SessionReviewerSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data session_reviewer_slots: SessionReviewerSlotsDeclaration = SessionReviewerSlotsDeclaration {
+  member: "reviewer-attempts" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+}
+
+fn session_reviewer_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", session_reviewer_slots.member as String], "") as NonEmptyStr
+}
+
+type SessionReviewerSlotsStore sole_constructor {
+  instance: NonEmptyStr
+  lane: SessionSlotLane
+  slots: SlotStore
+}
+
+type SessionReviewerSlotsStoreReading
+  = SessionReviewerSlotsStoreReady { store: SessionReviewerSlotsStore }
+  | SessionReviewerSlotsStoreUnready { detail: String }
+
+fn session_reviewer_slots_store(instance: HostDashboardInstance) -> SessionReviewerSlotsStoreReading {
+  match listed_slot_store(member: session_reviewer_slots.member as String, root: session_reviewer_slots_path(instance: instance)) {
+    SlotStoreRefused { detail: d } => SessionReviewerSlotsStoreUnready { detail: d }
+    SlotStoreListed { root: r } => SessionReviewerSlotsStoreReady { store: SessionReviewerSlotsStore { instance: instance.instance_id as NonEmptyStr, lane: ReviewerSlotLane, slots: file_slot_store(root: r) } }
+  }
+}
+
+// THE REVIEWER SLOT ROOT AS A DEMANDED DIRECTORY, enrolled in the same instance directory list. This row is
+// NEW on both trees: nothing on the lab creates the reviewer-attempts directory today (the name appears in
+// exactly one join and no installer), so a listed-directory admission would fail on a cold host without it.
+// Deployment consequence, stated for review rather than discovered on the host: adding it means the deploy
+// creates a directory it did not create before, with the instance's directory owner and mode 0700.
+fn session_reviewer_slots_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: session_reviewer_slots.member,
+    path: session_reviewer_slots_path(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: session_reviewer_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// ONE WAY TO OBTAIN THE HANDLE A LIFECYCLE CALL TAKES, for either session-lane store. The two arms exist
+// because the stores come from two declarations, and the placement pass holds one record that carries
+// whichever lane it was resolved for; this function is the ONLY place a session-lane call site turns a
+// sealed store into a SlotStore, so no call site can pick a root and no lane can borrow the other's store.
+type SessionAttemptSlotStoreRef
+  = WorkerAttemptSlots(SessionAttemptSlotsStore)
+  | ReviewerAttemptSlots(SessionReviewerSlotsStore)
+
+fn session_attempt_slot_store_handle(ref: SessionAttemptSlotStoreRef) -> SlotStore {
+  match ref {
+    WorkerAttemptSlots(s) => s.slots
+    ReviewerAttemptSlots(s) => s.slots
+  }
+}
+
+fn session_slot_lane_of(ref: SessionAttemptSlotStoreRef) -> SessionSlotLane {
+  match ref {
+    WorkerAttemptSlots(s) => s.lane
+    ReviewerAttemptSlots(s) => s.lane
+  }
+}
+
+fn session_slot_store_instance(ref: SessionAttemptSlotStoreRef) -> NonEmptyStr {
+  match ref {
+    WorkerAttemptSlots(s) => s.instance
+    ReviewerAttemptSlots(s) => s.instance
+  }
+}
+
+// THE CROSSING GUARD. A pass declares the lane it acts as and the instance it acts for; the store ref is
+// read against what it actually IS, and a crossing or a foreign instance is REFUSED before a slot is touched.
+// Two distinct refusal details, because they are distinct mistakes: a LANE crossing is the reviewer
+// settlement reaching into worker attempt slots (or the reverse) -- two declared members, two leases, one
+// head of review each; an INSTANCE mismatch is stores resolved for one dashboard instance used to act on
+// another instance's ledger. Main's own note on these stores says it was NOT established that a store minted
+// for instance A is refused where B is required; for this pair of stores that gap is now closed, and it is
+// closed by a refusal rather than by a check after the write.
+// RED CONTROL (named so it is falsifiable): replace `lane_matches != true` with `false != true` (or drop the
+// lane arm) and the crossing witness row stops refusing -- the row that demands a refusal turns red the other
+// way. Replace the instance comparison the same way for the foreign-instance row.
+type SessionSlotLaneReading
+  = SessionSlotLaneAdmitted { store: SlotStore }
+  | SessionSlotLaneCrossed { detail: String }
+
+fn session_attempt_slot_store_admit(
+  ref: SessionAttemptSlotStoreRef,
+  acting_as: SessionSlotLane,
+  acting_for: NonEmptyStr,
+) -> SessionSlotLaneReading {
+  let actual = session_slot_lane_of(ref: ref)
+  let lane_matches = match acting_as {
+    WorkerSlotLane => match actual { WorkerSlotLane => true, ReviewerSlotLane => false }
+    ReviewerSlotLane => match actual { ReviewerSlotLane => true, WorkerSlotLane => false }
+  }
+  if lane_matches != true {
+    SessionSlotLaneCrossed {
+      detail: join(["this pass acts as ", session_slot_lane_spelling(lane: acting_as), " but the store it was handed was minted as ", session_slot_lane_spelling(lane: actual), "; the reviewer settlement may not read or release worker attempt slots, and the worker settlement may not touch reviewer slots"], ""),
+    }
+  } else if session_slot_store_instance(ref: ref) != acting_for {
+    SessionSlotLaneCrossed {
+      detail: join(["the slot store was minted for instance ", session_slot_store_instance(ref: ref) as String, " but this pass is acting for instance ", acting_for as String, "; another instance's attempt ledger is not this pass's to read, even in the right lane"], ""),
+    }
+  } else {
+    SessionSlotLaneAdmitted { store: session_attempt_slot_store_handle(ref: ref) }
+  }
+}
+
+fn session_slot_lane_spelling(lane: SessionSlotLane) -> String {
+  match lane { WorkerSlotLane => "the worker lane (session-attempts)" ReviewerSlotLane => "the reviewer lane (reviewer-attempts)" }
+}

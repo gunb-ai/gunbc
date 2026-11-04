@@ -1,0 +1,36 @@
+module extdeps.tools.util_linux_lsblk
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// lsblk(8), util-linux: "lsblk lists information about all available or the specified block devices". Its TYPE
+// column is the device type; the man page names the column but not its values, which lsblk computes in
+// misc-utils/lsblk.c (get_type): "part" for a partition; for device-mapper "lvm" (LVM- uuid prefix), "crypt"
+// (CRYPT- prefix), "mpath" or "dm"; "loop" for a loop device; and for a SCSI-class device the sysfs type name,
+// "disk" for a direct-access disk and "rom" for a CD/DVD. --inverse (-s) prints a device's dependencies from the
+// device to the whole disk under it, which is the order a root filesystem's backing chain is read in.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/util-linux/util-linux/blob/master/misc-utils/lsblk.c"
+  }
+}
+
+data lsblk_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/lsblk.8.html"
+  }
+}
+
+// The TYPE values a consumer distinguishes, and every other value carried as read: a type lsblk reports that is
+// not one of these (raid levels, tape, mpath, dm) stays its own word, never folded into a named arm.
+type LsblkDeviceType
+  = LsblkDisk
+  | LsblkPart
+  | LsblkLvm
+  | LsblkCrypt
+  | LsblkLoop
+  | LsblkRom
+  | LsblkOtherType { word: NonEmptyStr }

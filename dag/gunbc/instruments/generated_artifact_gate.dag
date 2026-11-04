@@ -1,6 +1,7 @@
 
 module gunbc.instruments.generated_artifact_gate
 
+import std.integer { int_to_decimal_string }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci.ci_gate { gate_receipt_failure_detail }
@@ -209,7 +210,7 @@ fn main_wet_one(path: String) -> ProcessExit {
       reason: concat(
         concat("GeneratedArtifactPathUnrostered: no generated artifact is declared at ", path),
         concat(
-          concat(" -- gunbc.generated_artifact_registry generated_artifact_registry carries ", length(xs: generated_artifact_registry) as String),
+          concat(" -- gunbc.generated_artifact_registry generated_artifact_registry carries ", int_to_decimal_string(value: length(xs: generated_artifact_registry))),
           " row(s), and this path is not one of them; regenerating nothing and reporting success would report a repair that did not happen"
         )
       )

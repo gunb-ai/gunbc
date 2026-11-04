@@ -33,7 +33,7 @@ pub fn tco_reassign_block(target: RenderTarget) -> String {
     crate::v1_compiler_emit::shared_tco_reassign(
         tco_fixture_args(),
         tco_fixture_slots(),
-        crate::v1_compiler_emit_core_support::language_spec(target.clone()),
+        crate::v1_compiler_emit_core_support::language_spec(target),
     )
 }
 

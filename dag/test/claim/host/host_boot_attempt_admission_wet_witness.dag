@@ -1,7 +1,8 @@
 module test.claim.host.host_boot_attempt_admission_wet_witness
 
 import extdeps.shell
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, FilePath }
+import std.optional { Present }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
@@ -9,6 +10,13 @@ import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
 }
 import gunbc.fleet.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path, isolated_host_state_tree }
+import gunbc.provisioning.install_media_store { install_media_store_path }
+import gunbc.host.host_boot_attempt_admission {
+  BootAttemptSlotStore, BootAttemptStoreReading, BootAttemptStoreReady, BootAttemptStoreUnready,
+  boot_attempt_store, boot_attempt_slot_path,
+}
+import gunbc.host.managed_host_unit_hold { unit_hold_store_path, unit_hold_store, UnitHoldStoreReading, UnitHoldStoreReady, UnitHoldStoreUnready }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.crypto.hash { Digest }
 import gunbc.host.host_boot_attempt_admission {
@@ -46,6 +54,7 @@ fn refused_as_consumed(cause: AttemptReceiptRefusal) -> Bool {
     ReceiptHostHasNoRoute { host: _ } => false
     ReceiptExecutorForAnotherHost { executor_host: _, bound: _ } => false
     ReceiptExecutorNotOnStoreHost { reason: _ } => false
+    ReceiptAttemptStoreUnready { detail: _ } => false
     ReceiptHostUnbound { detail: _ } => false
     ReceiptNonceMissing { variable: _, detail: _ } => false
     ReceiptNonceNotSlotSafe { nonce: _ } => false
@@ -100,21 +109,45 @@ fn hold_taken_and_released(root: NonEmptyStr) -> Bool {
 // THE FIVE CONTROLS IN ONE ORDERED RUN over one store: the first A is consumed; a repeated A refuses
 // as already consumed; B is then consumed; A still refuses after B; and after a unit hold on the same
 // host is taken and released in the same directory, A still refuses.
-fn attempt_slot_controls(root: NonEmptyStr) -> Bool {
-  let a = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-a")
-  let b = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-b")
-  let first_a = consumed(c: consume_attempt_slot(root: root, key: a, payload: "consumed by receipt-a"))
-  let repeated_a = already_consumed(c: consume_attempt_slot(root: root, key: a, payload: "consumed by receipt-a"))
-  let then_b = consumed(c: consume_attempt_slot(root: root, key: b, payload: "consumed by receipt-b"))
-  let a_after_b = already_consumed(c: consume_attempt_slot(root: root, key: a, payload: "consumed by receipt-a"))
-  let released = hold_taken_and_released(root: root)
-  let a_after_release = already_consumed(c: consume_attempt_slot(root: root, key: a, payload: "consumed by receipt-a"))
-  first_a && repeated_a && then_b && a_after_b && released && a_after_release
+// THE FIVE CONTROLS IN ONE ORDERED RUN, over an ISOLATED tree (the witness constructor of
+// gunbc.host_state_root -- the same bypass class as file_slot_store, cited as the second specimen of
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module): the attempt
+// store is minted through boot_attempt_store, so the sealed mint is the only route from the test
+// directory to the store, and the hold runs in its store's sibling directory -- the real production
+// shape, where the two stores sit in SEPARATE directories under the one tree.
+fn attempt_slot_controls(tree: HostStateTree) -> Bool {
+  match boot_attempt_store(tree: tree) {
+    BootAttemptStoreUnready { detail: _ } => false
+    BootAttemptStoreReady { store: s } => {
+      // The hold sibling: created, then minted through the SEALED hold mint. No refusal projects to an
+      // empty value -- mkdir failure, hold-store Unready, and hold release all fail this claim directly,
+      // so the five controls can go green only when BOTH stores are truly Ready.
+      let made = shell.Mkdir.Parents(path: unit_hold_store_path(tree: tree) as FilePath)
+      if made.success {
+        match unit_hold_store(tree: tree) {
+          UnitHoldStoreUnready { detail: _ } => false
+          UnitHoldStoreReady { store: h } => {
+            let a = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-a")
+            let b = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-b")
+            let first_a = consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
+            let repeated_a = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
+            let then_b = consumed(c: consume_attempt_slot(store: s, key: b, payload: "consumed by receipt-b"))
+            let a_after_b = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
+            let released = hold_taken_and_released(root: h.root)
+            let a_after_release = already_consumed(c: consume_attempt_slot(store: s, key: a, payload: "consumed by receipt-a"))
+            first_a && repeated_a && then_b && a_after_b && released && a_after_release
+          }
+        }
+      } else { false }
+    }
+  }
 }
 
 test fn an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_releases_by_real_execution() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_boot_attempt.XXXXXX").path
-  let held = attempt_slot_controls(root: root_path as NonEmptyStr)
+  let tree = isolated_host_state_tree(dir: root_path as NonEmptyStr)
+  let made = shell.Mkdir.Parents(path: boot_attempt_slot_path(tree: tree) as FilePath)
+  let held = made.success && attempt_slot_controls(tree: tree)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   held && removed.success
 }
@@ -141,4 +174,22 @@ test fn one_changed_byte_changes_the_receipt_digest_by_real_execution() -> Bool 
           }
       }
   }
+}
+
+// THE PAIRING OBLIGATION (DESIGN §3): the REAL production derivation is executed, not a fixture
+// standing in for it. host_state_tree() runs the one declaration's derivation, every store route is
+// derived from that same tree value, and each route is asserted to sit under the tree root as pure
+// string computation -- nothing here creates, lists or writes anything at /var/lib/gunbc.
+fn under(root: NonEmptyStr, route: NonEmptyStr) -> Bool {
+  let r = root as String
+  let s = route as String
+  s.length() > r.length() && s.substring(start: 0, end: r.length()) == r && s.substring(start: r.length(), end: r.length() + 1) == "/"
+}
+
+test fn the_production_host_state_tree_derivation_carries_every_c_host_store_route() -> Bool {
+  let tree = host_state_tree()
+  let root = host_state_tree_path(tree: tree)
+  under(root: root, route: boot_attempt_slot_path(tree: tree))
+    && under(root: root, route: unit_hold_store_path(tree: tree))
+    && under(root: root, route: install_media_store_path(tree: tree))
 }

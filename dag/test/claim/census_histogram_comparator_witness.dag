@@ -1,6 +1,7 @@
 module test.claim.census_histogram_comparator_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensusRow,
   census_blocking_histograms_equal,
@@ -13,7 +14,7 @@ import gunbc.compile_diagnostic_census {
 // test.claim.fleet_fan_mint_seal_witness and test.claim.annotation_inside_body_witness).
 
 fn row(class: String, subject: String, blocking: Bool, count: Int) -> CompileDiagnosticCensusRow {
-  CompileDiagnosticCensusRow { diagnostic_class: class as NonEmptyStr, subject_name: subject, blocking: blocking, count: count }
+  CompileDiagnosticCensusRow { diagnostic_class: class as NonEmptyStr, subject_name: subject, blocking: blocking, count: count, rendered_pair: Absent {} }
 }
 
 fn base() -> List<CompileDiagnosticCensusRow> {

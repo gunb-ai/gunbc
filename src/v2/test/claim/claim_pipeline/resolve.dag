@@ -10,7 +10,7 @@ import v2.extdeps.languages.dag {
   dag_language_model_void
 }
 import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, TypeNode, NotADeclaration }
 
 // The module root as normalize hands it on: a Conj of labelled declarations. This fixture used
 // to wrap it in a hand-built Atom{^dag_c3_surface_sugar_service} that a sugar rule rewrote to this
@@ -25,7 +25,8 @@ fn spine_resolve_service_parse_tree() -> Node {
           kind: TypeNode { connective: Conj },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -54,7 +55,8 @@ data spine_resolve_reject_module_subject: Node = Node {
         },
         children: [],
         occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic

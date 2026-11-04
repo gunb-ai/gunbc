@@ -1,0 +1,185 @@
+module test.claim.host.boot_medium_reader_key_mint_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, Secret, String }
+import std.optional { Present, Absent }
+import extdeps.ssh.keys { SshPublicKey, Ed25519, ssh_public_key_line }
+import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_ed25519_type }
+import extdeps.exec.command { argv_words }
+import gunbc.host_command_binding { HostCommandDone, HostCommandFailed }
+import extdeps.cloud.gcp.secret_manager { encode_sm_access_version_payload_wire }
+import extdeps.github.actions { Job, HostedRunner, SelfHosted, RunsOnExpression, Step, RunStep, UsesStep }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_fleet_keypair_mint_job, fleet_converge_jobs, fleet_converge_fleet_keypair_mint_job_id, fleet_converge_fleet_keypair_mint_step_id }
+import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
+import gunbc.host.fleet_keypair_mint {
+  boot_medium_reader_keypair_mint_subject, FleetKeypairGeneration, GenerationYielded, GenerationRefusedWith,
+  FleetAddVerdict, FleetAddVersionNamed, FleetAddRefusedWith, FleetAddMayHaveLanded,
+  FleetKeypairMintVerdict, MintVerdictMinted, MintVerdictAlreadyPinned, MintVerdictRefused, MintVerdictOutcomeUnknown,
+  FleetMintDirVerdict, MintDirOnTmpfs, MintDirRefusedAt,
+  fleet_keypair_generation_verdict, fleet_keypair_mint_dir_verdict, fleet_keypair_mint_verdict,
+  fleet_keypair_mint_verdict_holds, fleet_keypair_mint_receipt_text, redact_fleet_keypair_private,
+}
+
+// EVERY CLAIM BELOW IS MADE IN THE CORE'S VOCABULARY (review 88082). This witness used to run against a
+// Reader* mirror of the policy -- types and functions that only converted to and from the core's -- so it
+// could pass while the module the run actually invokes drifted. The mirror is gone: the reader key is a ROW
+// (boot_medium_reader_keypair_mint_subject) and these tests drive the core fold, the core generation and
+// directory judgements, the core holds and the core receipt renderer directly, keyed on that row. A witness
+// for a key is now the same policy read through that key's row.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PLANTED PRIVATE HALF with a marker no public field contains, so its absence from a rendering is
+// decidable by substring.
+data planted_private: String = "-----BEGIN OPENSSH PRIVATE KEY-----\nPLANTED-PRIVATE-MATERIAL-7f3a\n-----END OPENSSH PRIVATE KEY-----\n"
+data public_material: NonEmptyStr = "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN"
+data public_line: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN boot-medium-reader"
+data fingerprint_line: String = "256 SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ boot-medium-reader (ED25519)"
+
+fn generated() -> FleetKeypairGeneration {
+  fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })
+}
+
+fn no_private_in(text: String) -> Bool {
+  !text.contains("PLANTED-PRIVATE-MATERIAL") && !text.contains("PRIVATE KEY")
+}
+
+fn receipt_word(v: FleetKeypairMintVerdict) -> String {
+  match v {
+    MintVerdictMinted { version_name: _, public_line: _, fingerprint: _ } => "minted"
+    MintVerdictAlreadyPinned { public_line: _ } => "pinned"
+    MintVerdictRefused { cause: _ } => "refused"
+    MintVerdictOutcomeUnknown { cause: _, public_line: _, fingerprint: _ } => "unknown"
+  }
+}
+
+fn gen_word(g: FleetKeypairGeneration) -> String {
+  match g {
+    GenerationYielded { pair: _ } => "generated"
+    GenerationRefusedWith { cause: _ } => "refused"
+  }
+}
+
+// THE GENERATE ARGV is ssh-keygen(1)'s: quiet, ed25519, an empty passphrase, the comment, the file.
+test fn the_keypair_is_generated_by_ssh_keygen_ed25519_with_no_passphrase_into_the_named_file() -> Bool {
+  argv_words(command: ssh_keygen_generate_command(key_type: ssh_keygen_ed25519_type, key_file: "/tmp/x/key", comment: "boot-medium-reader"))
+    == ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "boot-medium-reader", "-f", "/tmp/x/key"]
+}
+
+// CONTROL: a generation that read both halves and the fingerprint, with its directory removed, yields the
+// pair; the mint adds it and the receipt names the version, the public key and the fingerprint.
+test fn a_minted_key_receipt_names_the_version_public_key_and_fingerprint() -> Bool {
+  let v = fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddVersionNamed { version_name: "projects/1/secrets/boot-medium-reader-ssh-key/versions/1" } })
+  let text = fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: v)
+  receipt_word(v: v) == "minted" && fleet_keypair_mint_verdict_holds(v: v)
+    && starts_with(s: text, prefix: "reader_key=minted")
+    && string_contains(s: text, pattern: "version_name=projects/1/secrets/boot-medium-reader-ssh-key/versions/1")
+    && string_contains(s: text, pattern: concat("public_key=", public_line))
+    && string_contains(s: text, pattern: "fingerprint=SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ")
+}
+
+// RED: NO RENDERING CARRIES THE PRIVATE HALF. The receipt is the run's whole output -- the exit reason and
+// the uploaded file are both this rendering -- and every arm the mint can end in is rendered over a pair
+// whose private half is planted: minted, outcome unknown, refused by the store, and refused at generation.
+test fn no_receipt_the_mint_can_produce_contains_private_key_material() -> Bool {
+  let minted = fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddVersionNamed { version_name: "v1" } })
+  let unknown = fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddMayHaveLanded { detail: "timeout" } })
+  let refused = fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddRefusedWith { detail: "403" } })
+  let unremoved = fleet_keypair_mint_verdict(pinned: none, generate: fn() { fleet_keypair_generation_verdict(removed: false, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) }, add: fn(p) { FleetAddVersionNamed { version_name: "v1" } })
+  receipt_word(v: minted) == "minted" && receipt_word(v: unknown) == "unknown" && receipt_word(v: refused) == "refused" && receipt_word(v: unremoved) == "refused"
+    && no_private_in(text: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: minted))
+    && no_private_in(text: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: unknown))
+    && no_private_in(text: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: refused))
+    && no_private_in(text: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: unremoved))
+    && !no_private_in(text: planted_private)
+}
+
+// RED: A KEY LEFT ON DISK IS NEVER ADDED. A directory that could not be removed refuses before the add is
+// asked for; an ambiguous add does not hold; a refused add does not hold.
+test fn an_unremoved_directory_refuses_and_an_unsettled_add_does_not_hold() -> Bool {
+  gen_word(g: fleet_keypair_generation_verdict(removed: false, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && !fleet_keypair_mint_verdict_holds(v: fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddMayHaveLanded { detail: "timeout" } }))
+    && !fleet_keypair_mint_verdict_holds(v: fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddRefusedWith { detail: "403" } }))
+}
+
+// RED: only an ed25519 public line and a SHA256 fingerprint are admitted; a failed generation refuses.
+test fn a_generation_that_is_not_one_ed25519_key_refuses() -> Bool {
+  gen_word(g: fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: "ssh-rsa AAAAB3Nza boot-medium-reader", fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && gen_word(g: fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: "256 MD5:aa:bb boot (ED25519)" })) == "refused"
+    && gen_word(g: fleet_keypair_generation_verdict(removed: true, generated: HostCommandFailed { exit_code: 1, stderr: "no" }, private_read: false, private_text: "", public_text: "", fingerprint: HostCommandFailed { exit_code: 1, stderr: "no" })) == "refused"
+    && gen_word(g: fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: false, private_text: "", public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && gen_word(g: generated()) == "generated"
+}
+
+// THE PIN IS THE IDEMPOTENCE: a pinned public key mints nothing, and generation is never reached. The pin
+// enters as the LINE the core fold compares -- the same projection boot_medium_reader_key_pinned_line makes
+// in the wet entry.
+test fn a_pinned_key_mints_nothing() -> Bool {
+  let pinned = SshPublicKey { algorithm: Ed25519, material: public_material, comment: "boot-medium-reader" }
+  receipt_word(v: fleet_keypair_mint_verdict(
+    pinned: Present { value: ssh_public_key_line(k: pinned) },
+    generate: fn() { GenerationRefusedWith { cause: "generation must not be reached" } },
+    add: fn(p) { FleetAddRefusedWith { detail: "add must not be reached" } },
+  )) == "pinned"
+    && (match boot_medium_reader_ssh_key { Present { value: _ } => false  Absent => true })
+}
+
+fn dir_word(a: FleetMintDirVerdict) -> String {
+  match a {
+    MintDirOnTmpfs => "tmpfs"
+    MintDirRefusedAt { cause: _, created: c } => if c { "refused-created" } else { "refused-not-created" }
+  }
+}
+
+// RED: THE KEY IS GENERATED ONLY ON tmpfs, IN A DIRECTORY THIS RUN CREATED. A directory findmnt reports on
+// another filesystem refuses (and is the run's to remove); a directory that already exists -- an earlier
+// mint died there -- refuses without being claimed; an unreadable fstype refuses. CONTROL: a created
+// directory on tmpfs is admitted.
+test fn the_key_is_generated_only_in_a_created_directory_on_tmpfs() -> Bool {
+  dir_word(a: fleet_keypair_mint_dir_verdict(made: HostCommandDone { stdout: "" }, fstype: HostCommandDone { stdout: "tmpfs\n" })) == "tmpfs"
+    && dir_word(a: fleet_keypair_mint_dir_verdict(made: HostCommandDone { stdout: "" }, fstype: HostCommandDone { stdout: "ext4\n" })) == "refused-created"
+    && dir_word(a: fleet_keypair_mint_dir_verdict(made: HostCommandDone { stdout: "" }, fstype: HostCommandFailed { exit_code: 1, stderr: "findmnt: not found" })) == "refused-created"
+    && dir_word(a: fleet_keypair_mint_dir_verdict(made: HostCommandFailed { exit_code: 1, stderr: "mkdir: cannot create directory: File exists" }, fstype: HostCommandDone { stdout: "tmpfs" })) == "refused-not-created"
+}
+
+// RED: A DIAGNOSTIC THAT ECHOES THE KEY IS REDACTED BEFORE ANY RECEIPT HOLDS IT. A failing AddVersion
+// whose detail carries the planted private half -- whole, one of its lines, or its wire encoding -- and an
+// ambiguous add carrying it, render receipts that do not contain it. CONTROL: a detail that carries none
+// of it is kept verbatim. THE REDACTION IS THE FOLD'S: this is the end-to-end claim, a stubbed store echoing
+// the material into the verdict and out through the core renderer keyed on this key's row.
+test fn a_failing_add_that_echoes_the_key_renders_no_private_material() -> Bool {
+  let whole = fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddRefusedWith { detail: concat("400 bad payload: ", planted_private) } })
+  let one_line = fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddRefusedWith { detail: "400 near PLANTED-PRIVATE-MATERIAL-7f3a" } })
+  let wire = fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddRefusedWith { detail: concat("400 data=", encode_sm_access_version_payload_wire(credential: planted_private as Secret)) } })
+  let ambiguous = fleet_keypair_mint_verdict(pinned: none, generate: fn() { generated() }, add: fn(p) { FleetAddMayHaveLanded { detail: concat("connection reset after sending ", planted_private) } })
+  no_private_in(text: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: whole))
+    && no_private_in(text: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: wire))
+    && no_private_in(text: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: ambiguous))
+    && !string_contains(s: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: one_line), pattern: "PLANTED-PRIVATE-MATERIAL")
+    && !string_contains(s: fleet_keypair_mint_receipt_text(subject: boot_medium_reader_keypair_mint_subject, v: wire), pattern: encode_sm_access_version_payload_wire(credential: planted_private as Secret))
+    && redact_fleet_keypair_private(text: "403 PERMISSION_DENIED secretmanager.versions.add", private_half: planted_private) == "403 PERMISSION_DENIED secretmanager.versions.add"
+}
+
+fn step_ids(j: Job) -> List<String> {
+  map(j.steps, st => match st {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+  })
+}
+
+// THE MINT RUNS ONLY ON A DISCARDED VM: its job is GitHub-hosted, and no other job holds the mint step.
+//
+// THE STEP ID IS READ FROM THE POLICY RATHER THAN SPELLING IT, because the mint step id is now derived from
+// the subject's secret row (fleet_converge_fleet_keypair_mint_step_id) and a literal here would pin a spelling
+// the run does not use -- the failure being that a rename passes the claim while the generated workflow has no
+// such step. The claim's substance is unchanged: hosted runner, this key's mint step present in its job, and
+// absent from every other job, so no job user branch job can execute a mint as a side effect of its own
+// dispatch. The job was generalized to fleet_keypair_mint (one mode, a row per key) by the same change that
+// retired the human host-key mint step; see gunbc.design_ruling
+// the_mint_of_a_fleet_ssh_keypair_is_account_creation.
+test fn the_mint_runs_only_in_its_github_hosted_job() -> Bool {
+  let mint_step_id = fleet_converge_fleet_keypair_mint_step_id(subject: boot_medium_reader_keypair_mint_subject)
+  (match fleet_converge_fleet_keypair_mint_job().runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
+    && step_ids(j: fleet_converge_fleet_keypair_mint_job()).contains(mint_step_id)
+    && all(filter(fleet_converge_jobs(), j => j.id != (fleet_converge_fleet_keypair_mint_job_id as String)), j => !step_ids(j: j).contains(mint_step_id))
+}

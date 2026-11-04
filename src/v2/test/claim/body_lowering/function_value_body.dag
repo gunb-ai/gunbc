@@ -1,6 +1,6 @@
 module v2.test.claim.body_lowering.function_value_body
 
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text  }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
@@ -14,7 +14,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // resolve with the inner binders scoped, infer, emit -- is
 // v2.test.claim.body_lowering.function_value_body_route's.
 fn fvb_lowers_well_formed(src: String) -> Bool {
-  match conserved_normalize_of_text(path: "fvb_probe_file", text: src, explained: no_explained_drops()) {
+  match conserved_normalize_of_text(path: "fvb_probe_file", text: src) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

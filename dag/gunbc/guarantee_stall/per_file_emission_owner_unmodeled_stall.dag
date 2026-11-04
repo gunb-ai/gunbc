@@ -1,0 +1,28 @@
+module gunbc.guarantee_stall.per_file_emission_owner_unmodeled_stall
+
+import std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// THE GROUNDING IS UNDECLARED, AND THAT IS THE TRUTHFUL ARM: no per-file emission owner is
+// declared anywhere in the corpus, so there is no DeclarationRef to carry, and a draft PR is not
+// a declaration. What the grounding string used to say lives here and in the trigger: the
+// capability claim (one function holding every reference spelled into one emitted file before the
+// text is released, the emitter as sole reader) is carried by next_rung_trigger, per DESIGN section
+// 4b, and the two sites it would serve are recorded as rationale only -- Rust's nearest owner
+// v2.compiler.emit_produced emit_module_body_members (per MODULE; whether one module is exactly
+// one output file on every Rust route is unverified) and Swift's
+// gunbc.approve_ios_swift_protocol swift_rows_emit_source_file (a hand-built SwiftSourceFile
+// printer that never reaches the reference step; the .dag-types-to-SwiftSourceFile generator does
+// not exist). Revive pointer: gunb-ai/gunbc#14725 (draft) carries the file-scoped EmissionUnit
+// carrier with its leaf-uniqueness constructor and claims, and the threading plan (PLAN comment),
+// to be revived alongside this owner -- a lane pointer, not a grounding, so it stays prose.
+data per_file_emission_owner_unmodeled_stall: GuaranteeStall = GuaranteeStall {
+  subject: "no shared per-file emission owner exists that the declaration-reference step (v2.std.compilers.target_model target_type_expr_declaration_reference_emitted) can query, so a file-scoped leaf-only reference spelling, whose injectivity is a checked per-file property rather than a structural one, has no place to run its collision check",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  population: BoundedPopulation { members: Cons { head: "apps/approve-ios Protocol.swift record DeviceRedemptionSigningInput (field challenge: RedemptionChallenge references another wire type)", tail: Cons { head: "apps/approve-ios Protocol.swift record SignedRedemption", tail: Cons { head: "apps/approve-ios Protocol.swift record VerifyingKey", tail: Cons { head: "apps/approve-ios Protocol.swift record SignatureBytes", tail: Empty {} } } } } },
+  next_rung_trigger: climbs_when(capability: "a per-file emission owner collects the declaration paths the reference step actually spells into one file (the emitter as sole reader, so seen equals printed) and calls the file-scoped unit constructor before releasing text; a file selecting leaf-only spelling then refuses, typed and located, when two referenced declarations share a leaf, and the four approve-ios records generate from .dag types. ModuleScopedPath stays the default and the Rust, C, TypeScript and dag rows stay byte-identical")
+}

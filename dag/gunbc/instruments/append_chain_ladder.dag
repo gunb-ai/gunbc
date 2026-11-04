@@ -1,0 +1,169 @@
+module gunbc.instruments.append_chain_ladder
+
+import std.types { Bool, Int, List, String }
+import std.algebra { Cons, Empty, FreeSemigroup, non_empty_append, non_empty_to_list, list_append, list_snoc_item, fold_list, list_head }
+import std.optional { Absent, Present }
+import std.measure { Nanosecond, nanosecond_count }
+import std.compiler_entry { NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// THE INSTRUMENT THAT LOCATED THE SUPERLINEAR APPEND (gunbc.recurring_failure_mode
+// non_empty_append_on_a_persistent_vector_is_superlinear). Each arm builds one accumulator by n
+// left-nested steps of 8 elements, and is run as its own process with the process timed by the caller:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/append_chain_ladder.dag --function <arm> --arg n=<N>
+//
+// That is the interpreter path, per arm. The label `gunbc test //gunbc/instruments:append-chain-ladder`
+// runs these same arms on the EMITTED path instead (gunbc.instruments.append_chain_ladder_native, built
+// release by NativeClaimProgramProducer), times each (arm, n) best-of-k across doublings, and judges the
+// curves with ladder_linearity below. It is not on the required path. EVERY ARM CHECKS ITS OWN VALUE: it exits 0 only when the
+// accumulator holds 8 * n elements, and otherwise exits with the length it saw. Only CURVES are
+// compared, the time ratio per doubling of n within one arm on one binary, never absolute seconds.
+// The arms isolate one link each. push_chain is list_snoc_item alone. concat_chain is list_append
+// alone, with a fixed 8-element right side. elementwise_chain appends the same right side one
+// element at a time, which is the shape of the fix. non_empty_append_chain is the production
+// operation. Recursion depth is n (one call per step), so the interpreter's call-depth limit bounds n
+// rather than 8 * n.
+
+fn ladder_piece() -> List<Int> { [1, 2, 3, 4, 5, 6, 7, 8] }
+
+fn ladder_verdict(n: Int, length: Int) -> ProcessExit {
+  if length == 8 * n { ExitSuccess }
+  else { ExitFailure { code: 1, reason: concat("append_chain_ladder: expected ", to_string(value: 8 * n), " elements, saw ", to_string(value: length)) } }
+}
+
+fn push_steps(i: Int, n: Int, acc: List<Int>) -> List<Int> {
+  if i >= n { acc }
+  else { push_steps(i: i + 1, n: n, acc: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: acc, item: 1), item: 2), item: 3), item: 4), item: 5), item: 6), item: 7), item: 8)) }
+}
+
+fn push_chain(n: Int) -> ProcessExit { ladder_verdict(n: n, length: push_steps(i: 0, n: n, acc: []) |> count) }
+
+fn concat_steps(i: Int, n: Int, acc: List<Int>, piece: List<Int>) -> List<Int> {
+  if i >= n { acc } else { concat_steps(i: i + 1, n: n, acc: list_append(left: acc, right: piece), piece: piece) }
+}
+
+fn concat_chain(n: Int) -> ProcessExit { ladder_verdict(n: n, length: concat_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count) }
+
+fn elementwise_steps(i: Int, n: Int, acc: List<Int>, piece: List<Int>) -> List<Int> {
+  if i >= n { acc }
+  else { elementwise_steps(i: i + 1, n: n, acc: fold_list(xs: piece, empty: acc, cons: (a, x) => list_snoc_item(xs: a, item: x)), piece: piece) }
+}
+
+fn elementwise_chain(n: Int) -> ProcessExit { ladder_verdict(n: n, length: elementwise_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count) }
+
+fn non_empty_piece() -> FreeSemigroup<Int> { FreeSemigroup { head: 1, tail: [2, 3, 4, 5, 6, 7, 8] } }
+
+fn non_empty_steps(i: Int, n: Int, acc: FreeSemigroup<Int>, piece: FreeSemigroup<Int>) -> FreeSemigroup<Int> {
+  if i >= n { acc } else { non_empty_steps(i: i + 1, n: n, acc: non_empty_append(left: acc, right: piece), piece: piece) }
+}
+
+// The seed is one 8-element piece, so n steps leave 8 * (n + 1) elements; the verdict reads n + 1.
+fn non_empty_append_chain(n: Int) -> ProcessExit {
+  ladder_verdict(n: n + 1, length: non_empty_to_list(xs: non_empty_steps(i: 0, n: n, acc: non_empty_piece(), piece: non_empty_piece())) |> count)
+}
+
+// THE THRESHOLD FOLD (read by gunbc.instruments.append_chain_ladder_native for the label). It reads
+// timing rows -- one per (arm, n), each the best of k runs of that arm at that n on one binary, in
+// increasing n per arm -- and judges each consecutive DOUBLING of n inside one arm. Only curves are
+// compared, never absolute times across arms or binaries. A doubling whose time grew by more than
+// ladder_linear_band_x100 / 100 is superlinear (1). A row set that does not make the curve readable --
+// an arm with fewer than two rows, a step that is not a doubling, a non-positive time -- is no
+// observation (2), never a pass. The band is a policy budget, not a copied measurement: a linear arm
+// reads about 2.0 per doubling and the superlinear append read 2.1 to 3.6 on the 2026-10-24 bench, so
+// 2.5 separates them with margin for timer noise at small n.
+type LadderTiming {
+  arm: String
+  n: Int
+  best: Nanosecond
+}
+
+type LadderLinearity
+  = LadderLinear
+  | LadderSuperlinear { arm: String, from_n: Int, ratio_x100: Int }
+  | LadderUnobserved { arm: String, cause: String }
+
+fn ladder_linear_band_x100() -> Int { 250 }
+
+fn ladder_doubling_verdict(prev: LadderTiming, next: LadderTiming) -> LadderLinearity {
+  let p = nanosecond_count(n: prev.best)
+  let q = nanosecond_count(n: next.best)
+  if (p == 0) || (q == 0) {
+    LadderUnobserved { arm: prev.arm, cause: "a timing row read zero nanoseconds" }
+  } else if next.n != 2 * prev.n {
+    LadderUnobserved { arm: prev.arm, cause: concat("n=", to_string(value: next.n), " does not double n=", to_string(value: prev.n)) }
+  } else if q * 100 > p * ladder_linear_band_x100() {
+    LadderSuperlinear { arm: prev.arm, from_n: prev.n, ratio_x100: (q * 100) / p }
+  } else {
+    LadderLinear
+  }
+}
+
+fn ladder_arm_rows(rows: List<LadderTiming>, arm: String) -> List<LadderTiming> {
+  rows |> filter(r => r.arm == arm)
+}
+
+fn ladder_arm_linearity_from(prev: LadderTiming, rest: List<LadderTiming>) -> LadderLinearity {
+  match rest {
+    Empty => LadderLinear
+    Cons { head: next, tail: more } =>
+      match ladder_doubling_verdict(prev: prev, next: next) {
+        LadderLinear => ladder_arm_linearity_from(prev: next, rest: more)
+        LadderSuperlinear { arm: a, from_n: n, ratio_x100: r } => LadderSuperlinear { arm: a, from_n: n, ratio_x100: r }
+        LadderUnobserved { arm: a, cause: c } => LadderUnobserved { arm: a, cause: c }
+      }
+  }
+}
+
+fn ladder_arm_linearity(rows: List<LadderTiming>, arm: String) -> LadderLinearity {
+  match ladder_arm_rows(rows: rows, arm: arm) {
+    Empty => LadderUnobserved { arm: arm, cause: "fewer than two timing rows" }
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => LadderUnobserved { arm: arm, cause: "fewer than two timing rows" }
+        Cons { head: _, tail: _ } => ladder_arm_linearity_from(prev: first, rest: rest)
+      }
+  }
+}
+
+fn ladder_is_unobserved(v: LadderLinearity) -> Bool {
+  match v {
+    LadderUnobserved { arm: _, cause: _ } => true
+    LadderSuperlinear { arm: _, from_n: _, ratio_x100: _ } => false
+    LadderLinear => false
+  }
+}
+
+fn ladder_is_superlinear(v: LadderLinearity) -> Bool {
+  match v {
+    LadderSuperlinear { arm: _, from_n: _, ratio_x100: _ } => true
+    LadderUnobserved { arm: _, cause: _ } => false
+    LadderLinear => false
+  }
+}
+
+// One verdict over the arms the label requires to be linear: the first unobserved arm wins over a
+// superlinear one, so a run that could not read every curve never reports a defect it did not see.
+fn ladder_linearity(rows: List<LadderTiming>, arms: List<String>) -> LadderLinearity {
+  let verdicts = arms |> map(a => ladder_arm_linearity(rows: rows, arm: a))
+  match list_head(xs: verdicts |> filter(v => ladder_is_unobserved(v: v))) {
+    Present { value: u } => u
+    Absent =>
+      match list_head(xs: verdicts |> filter(v => ladder_is_superlinear(v: v))) {
+        Present { value: s } => s
+        Absent => LadderLinear
+      }
+  }
+}
+
+// THE LABEL'S TERMINAL, read from ladder_linearity and nothing else: the curve verdict decides first
+// (an unreadable curve is no observation, a superlinear one is not held), and only a linear run is
+// then refused by any size row that built the wrong element count.
+fn ladder_linearity_terminal(v: LadderLinearity, sizes_not_held: Int) -> NativeClaimTerminal {
+  match v {
+    LadderUnobserved { arm: a, cause: c } => NativeClaimNoObservation { reason: concat("no curve for ", a, ": ", c) }
+    LadderSuperlinear { arm: a, from_n: n, ratio_x100: r } => NativeClaimNotHeld { reason: concat(a, " grew ", to_string(value: r), "/100 per doubling from n=", to_string(value: n)) }
+    LadderLinear => if sizes_not_held > 0 { NativeClaimNotHeld { reason: concat(to_string(value: sizes_not_held), " size row(s) built the wrong element count") } } else { NativeClaimHeld }
+  }
+}

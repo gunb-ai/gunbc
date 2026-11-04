@@ -24,6 +24,7 @@ import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint,
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }
 import extdeps.bmc.ipmi_channel { IpmiPrivilegeAdministrator, ipmi_user_channel_access, extdeps_external_authority_anchor }
 import extdeps.ampere.mt_collins_firmware_release { mt_collins_bmc_0_45_3_hpm }
+import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead,
   PublicStandardOperation, EffectObserved, rotation_route_candidate, rotation_route_from_committed_execution, redfish_account_password_write,
@@ -158,7 +159,7 @@ fn historical_route_observation_from_manager_read(read: RecordedManagerIdentityO
                       value: HistoricalRotationRouteObservation {
                         observed_endpoint: endpoint,
                         firmware: bmc_firmware_release_identity_of_wire(family: f, wire: o.firmware_version as NonEmptyStr),
-                        request: redfish_account_password_write(),
+                        request: redfish_account_password_write(account: bmc_firmware_factory_account(family: f)),
                         evidence: ObservedSurfaceRead { surface: SurfaceManagerIdentity, receipt: receipt },
                       },
                     }

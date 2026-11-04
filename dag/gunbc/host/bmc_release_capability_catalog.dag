@@ -49,7 +49,10 @@ import extdeps.bmc.ipmitool_hpm_check {
   HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice,
   HpmVersionCell, HpmVersionHeld, HpmVersionAbsent,
 }
-import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32 }
+import extdeps.bmc.ipmitool_observed_output {
+  ipmitool_hpm_check_bmc0_32, ipmitool_hpm_check_bmc0_45,
+  mtcollins1_boot_run_40082618814_hpm_check_artifact_path,
+}
 
 // THE AUTHORITY FOR OUR OWN CAPABILITY OBSERVATIONS IS US, so it is declared HERE, in gunbc, and the
 // capability rows of this catalog cite it (review 81149; DESIGN.md §3). It is NOT a file path: a directory
@@ -142,6 +145,111 @@ type MegaRacVersionRefusal
   | StandingNamesNoComponentInTable { component: NonEmptyStr, listed: List<NonEmptyStr> }
   | StandingNamesAComponentListedTwice { component: NonEmptyStr, ids: List<Int> }
   | StandingComponentCarriesNoVersion { component: NonEmptyStr }
+
+// WHY A COMMITTED READ CAN REFUSE, as distinct from why a STANDING refuses (MegaRacVersionRefusal, above).
+// The two questions are different, so they carry different names (DESIGN.md §3 "a materially different
+// contract needs a materially different name"): a standing refuses because the bytes it holds cannot name a
+// release; a LOOKUP at an artifact path refuses because there is nothing to read, more than one thing to
+// read, what is there establishes nothing, or what is there was attested rather than read. Every arm keeps
+// the CAUSE -- review 86103/86139 (review 38602's first fix returned the parser's "no version stored"
+// rendering for all of them, which threw the cause away and fabricated an identity out of a display cell:
+// DESIGN.md §5, "no plausible output is fabricated"). A caller that cannot distinguish these arms cannot
+// tell a broken read from a real build, which is the exact state §5 forbids entering the ledger.
+type MegaRacCommittedHpmCheckRefusal
+  = NoCommittedRowAtPath { artifact_path: NonEmptyStr }
+  | CommittedRowAmbiguousAtPath { artifact_path: NonEmptyStr, matches: Int }
+  | CommittedRowEstablishesNothing { artifact_path: NonEmptyStr, cause: MegaRacVersionRefusal }
+  | CommittedRowIsAttestedNotRead { artifact_path: NonEmptyStr, attested_on: ObservationInstant, page_reported: BmcFirmwareReleaseIdentity }
+
+// THE OUTCOME OF ASKING WHAT A COMMITTED READ REPORTS: the identity, or the located reason there is none.
+// No third arm exists, so no caller can receive an identity it was not given by bytes.
+type MegaRacCommittedHpmCheckReadout
+  = CommittedReadEstablished { firmware: BmcFirmwareReleaseIdentity }
+  | CommittedReadRefused { cause: MegaRacCommittedHpmCheckRefusal }
+
+// THE COMMITTED READ'S IDENTITY, DERIVED NOT TYPED (review 38602; DESIGN.md §3 "each fact lives in
+// exactly one place"), AND REFUSED NOT FABRICATED (review 86103/86139; DESIGN.md §5 "every path succeeds
+// fully or fails with a typed, located diagnostic"). A module that needs the release identity a committed
+// hpm check reports ASKS the row for it; the row is the one home of those bytes, and
+// megarac_version_establishment is the one mint that turns them into an identity. There is no wire literal
+// on the consumer side to drift. And when the ask cannot be answered -- no row at the path, two rows, a
+// standing whose establishment refuses (the typed cause kept, not flattened), or a standing that was
+// ATTESTED rather than READ -- the answer is a Refusal naming the path and the cause, never a stand-in
+// identity: an identity that silently appears for a read that read nothing is how a boot ends up running
+// on an assumed build. Consumers pattern-match; the boot that cannot resolve an identity refuses at
+// attach rather than minting one (mtcollins1_access_observation mtcollins1_current_build_firmware is
+// BmcFirmwareReleaseIdentity?, and the ledger emits the current-build reading and the reflash destination
+// ONLY on the Present arm -- no reading and no transition exist at all when the committed read refuses).
+fn megarac_committed_hpm_check_readout(artifact_path: NonEmptyStr) -> MegaRacCommittedHpmCheckReadout {
+  let hit = filter(megarac_release_capability_catalog, e => match e.standing {
+    MegaRacVersionFromFirmwareRead { artifact_path: path, component: _, stdout: _ } =>
+      (path as String) == (artifact_path as String)
+    MegaRacVersionFromOperatorAttestation { attested_on: _, page_reported: _, detail: _, upgrade_read: _ } => false
+  })
+  let hit_head = hit |> first()
+  match hit_head {
+    Present { value: e } => match count(hit) {
+      1 => match megarac_version_establishment(standing: e.standing) {
+        MegaRacReleaseEstablishedByRead { firmware: established } =>
+          CommittedReadEstablished { firmware: established }
+        // THE CAUSE SURVIVES THE LOOKUP: the standing refused for its own typed reason, and the caller
+        // hears that reason rather than a rendering of it.
+        MegaRacReleaseEstablishmentRefused { standing: _, cause: cause } =>
+          CommittedReadRefused {
+            cause: CommittedRowEstablishesNothing { artifact_path: artifact_path, cause: cause },
+          }
+        // AN ATTESTED STANDING IS NOT A READING. Ask this fn what the bytes report and it says: nothing
+        // was read at this path -- and names what IS there, so the confusion is legible rather than silent.
+        // The hit filter admits ONLY firmware-read rows, so this arm is structurally unreachable while the
+        // filter stands; it exists because the establishment it matches is total, and it reads the row's
+        // OWN attestation fields so a future filter change reports them rather than hiding them.
+        MegaRacReleaseEstablishedByAttestation { firmware: _ } => match e.standing {
+          MegaRacVersionFromOperatorAttestation { attested_on: attested_on, page_reported: page_reported, detail: _, upgrade_read: _ } =>
+            CommittedReadRefused {
+              cause: CommittedRowIsAttestedNotRead {
+                artifact_path: artifact_path,
+                attested_on: attested_on,
+                page_reported: page_reported,
+              },
+            }
+          MegaRacVersionFromFirmwareRead { artifact_path: _, component: _, stdout: _ } =>
+            CommittedReadRefused {
+              cause: CommittedRowEstablishesNothing {
+                artifact_path: artifact_path,
+                cause: StandingTableUnreadable { detail: "structural: establishment said attested, the standing says read" },
+              },
+            }
+        }
+      }
+      _ => CommittedReadRefused {
+        cause: CommittedRowAmbiguousAtPath { artifact_path: artifact_path, matches: count(hit) },
+      }
+    }
+    Absent => CommittedReadRefused {
+      cause: NoCommittedRowAtPath { artifact_path: artifact_path },
+    }
+  }
+}
+
+// THE IDENTITY THE COMMITTED BOOT-RUN HPM CHECK REPORTS, or Absent with the refusal reachable by asking.
+// This is THE single derived export the rest of the repository consumes: the ledger's current-build row,
+// the operation-evidence transitions, and every witness all read THIS, so there is one answer, it is
+// either real or honestly missing, and nothing downstream has to (or may) re-forge the lookup.
+data megarac_committed_hpm_check_identity: BmcFirmwareReleaseIdentity? = match megarac_committed_hpm_check_readout(artifact_path: mtcollins1_boot_run_40082618814_hpm_check_artifact_path) {
+  CommittedReadEstablished { firmware: firmware } => Present { value: firmware }
+  CommittedReadRefused { cause: _ } => Absent
+}
+
+// THE REFUSAL AS A RECEIPT READS IT, beside the type so every arm is rendered here and nowhere else.
+fn megarac_version_refusal_text(cause: MegaRacVersionRefusal) -> String {
+  match cause {
+    StandingTableUnreadable { detail: d } => concat("the hpm check table is unreadable: ", d as String)
+    StandingIsAnUpgradeListing { header: h } => concat("the output is an upgrade listing, not installed versions: ", h as String)
+    StandingNamesNoComponentInTable { component: c, listed: l } => join(["component ", c as String, " is not in the table (listed: ", join(map(l, n => n as String), ", "), ")"], "")
+    StandingNamesAComponentListedTwice { component: c, ids: _ } => join(["component ", c as String, " is listed more than once"], "")
+    StandingComponentCarriesNoVersion { component: c } => join(["component ", c as String, " carries no active version"], "")
+  }
+}
 
 // THE IDENTITY A STANDING ESTABLISHES, DERIVED AT THE ONE POINT IT IS EVER NAMED. The instrument arm goes
 // through the corpus's own reading of the tool: hpm_check_table_of (the parser a live read uses), then
@@ -375,11 +483,15 @@ fn megarac_release_capabilities_of(evidence: MegaRacReleaseCapabilityEvidence) -
   }
 }
 
-// THE CATALOG WE ESTABLISH. Two rows today, and the asymmetry between them is the point: the 0.32 row
-// rests on a committed machine read with no run behind it, the 0.45.3 row on an executed run that did not
-// itself read the version plus an operator's read of a page. NEITHER ROW NAMES A RELEASE IT DID NOT READ:
-// the 0.32 identity is derived from imported instrument output, the 0.45.3 identity is what the
-// attestation record attests.
+// THE CATALOG WE ESTABLISH. Two rows today, and the asymmetry between them is GONE -- the 2026-10-24
+// re-key removed it. Both rows now rest on a committed machine read of the controller's own
+// component-properties table, and NEITHER ROW NAMES A RELEASE IT DID NOT READ: each identity is DERIVED
+// from imported instrument output by megarac_version_establishment. The 0.45.x row used to rest on an
+// executed run that never read the version plus an operator's read of a vendor page; its standing now
+// names the hpm-check capture boot run 40082618814 retained, and THAT reading establishes the release.
+// The vendor's page label "0.45.3" survives only as that -- the label of a page -- named by the row's
+// evidence record and nowhere else, and it stays distinct from what the controller reports ("0.45")
+// because the vendor page never says the controller reports its own name.
 data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
   MegaRacReleaseCapabilityEntry {
     // THE INSTRUMENT READ IT. Neither the release identity nor the version string is written here: the
@@ -420,22 +532,34 @@ data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
   // is not claimed here -- our coverage obligation, which is precisely the kind of fact that must not live
   // upstream.
   MegaRacReleaseCapabilityEntry {
-    // A PERSON READ A PAGE, AND THE MODEL SAYS SO. MANAGER RULING 2026-10-17: this release has NO
-    // committed hpm-check reading -- this morning's boot (#14215) read BIOS and SCP, not the BMC -- so its
-    // standing is the ATTESTATION arm, its identity comes from the attestation record, and the boot must
-    // never render it as machine-verified. `page_reported` names the upstream release identity the
-    // operator's report matched (extdeps.bmc.megarac.megarac_firmware_0_45_3) rather than restating a
-    // version string, so there is no second copy of a version here that could be mistyped into looking
-    // like a reading. Pinned by w_the_0_45_3_row_is_attested_and_never_rendered_as_machine_read.
-    standing: MegaRacVersionFromOperatorAttestation {
-      attested_on: megarac_0_45_3_operator_attestation_instant,
-      page_reported: megarac_firmware_0_45_3,
-      detail: "operator read of the BMC web UI firmware page: build 'Dec 27 2023 09:36:21 CDT', Image 1; BIOS version 0ACOD014; SCP version shown blank",
-      upgrade_read: "the next boot names an attempt receipt and produces the machine-read pre-power hpm check (ipmitool hpm check, APP component Active column), which upgrades this standing",
+    // THE INSTRUMENT READ IT. THE UPGRADE THE PREVIOUS STANDING PRESCRIBED HAS HAPPENED: this is the
+    // `upgrade_read` that standing named, discharged. Boot run 40082618814 (2026-10-24) ran the read-only
+    // pre-power `ipmitool hpm check` against this unit and retained its raw stdout beside the run; the
+    // standing now names THOSE BYTES and the component, and the release identity is DERIVED from them by
+    // megarac_version_establishment -- which mints the leading field of the Active APP cell whole
+    // (`0.45 03000000` yields the wire "0.45", with the HPM.1 auxiliary revision bytes deliberately NOT
+    // folded into a patch number) and leaves semantic_version Absent, exactly the shape the 0.32 row above
+    // carries. NO VERSION STRING IS TYPED IN THIS ENTRY. The vendor page label "0.45.3" is not on this
+    // standing: it survives as the label of the vendor page named in the evidence below, which is all it
+    // ever was, and nothing here asserts 0.45.3 == "0.45 03000000". Pinned against the committed bytes by
+    // test.claim.machine_intake.megarac_media_0_45_3_witness
+    // w_the_0_45_row_is_established_by_a_machine_read_of_the_committed_stdout (RED: a table whose
+    // auxiliary bytes fold into the release, or a standing that types the page label, must refuse) and
+    // w_the_0_45_row_names_no_release_it_did_not_read.
+    standing: MegaRacVersionFromFirmwareRead {
+      artifact_path: mtcollins1_boot_run_40082618814_hpm_check_artifact_path,
+      component: "APP",
+      stdout: ipmitool_hpm_check_bmc0_45,
     },
     // THE EXECUTED-RUN ARM, which carries NO capability list to author: the row's capabilities are derived
     // from run.exercised by megarac_release_capabilities_of, so the three are written in exactly one place
-    // in this file and cannot drift from the run that exercised them. Boot #14215 pressed all three.
+    // in this file and cannot drift from the run that exercised them. Boot #14215 pressed all three. This
+    // evidence grounds the CAPABILITIES -- which operations were exercised on this release and where their
+    // receipts live -- while the standing above grounds the IDENTITY; the standing swap changes nothing
+    // about what was exercised. The operator's read of the BMC web UI page ("build 'Dec 27 2023 09:36:21
+    // CDT', Image 1; BIOS version 0ACOD014; SCP version shown blank") is the operator-attested page LABEL
+    // for this release -- 0.45.3, the name on the vendor page -- and stays recorded here as that label and
+    // nowhere else. It is not the identity the row is keyed by, and the label never becomes a key.
     evidence: MegaRacCapabilitiesFromExecutedRun { run: megarac_run_38789347052_evidence },
     citations: [
       bmc_capability_observation_citation(decl_name: "megarac_run_38789347052_evidence"),

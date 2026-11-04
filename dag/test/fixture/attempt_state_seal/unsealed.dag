@@ -1,0 +1,19 @@
+module test.fixture.attempt_state_seal.unsealed
+
+import std.types { NonEmptyStr, String }
+
+// THE STRIPPED TWINS for test.claim.attempt_state_seal_witness: the SAME two records with the SAME field names,
+// WITHOUT the sole_constructor keyword, so the same forged text can be run against the twin and show the
+// refusal is the keyword and not the shape, name or field types.
+
+type AttemptState {
+  instance: NonEmptyStr
+  node: String
+  directory: NonEmptyStr
+}
+
+type AttemptStateProvision {
+  instance: NonEmptyStr
+  node: String
+  directory: NonEmptyStr
+}

@@ -103,6 +103,12 @@ fn id_uid_of_command(user: NonEmptyStr) -> ArgvCommand {
   argv_command(program: id_program(), arguments: ["-u", "--", user as String])
 }
 
+// id(1) WITH AN OPERAND, the whole record from the account database (os.Id.Lookup's argv, as a command
+// for a caller that runs it over another transport).
+fn id_user_record_command(user: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: id_program(), arguments: [user as String])
+}
+
 // id(1) WITH AN OPERAND prints `uid=1004(gunbc-worker) gid=1004(gunbc-worker) groups=1004(gunbc-worker),1003(gunbc-attempt)`
 // (man7.org id.1): the numeric id leads each `N(name)` entry. THE GRAMMAR IS THE TOOL'S, so the parse
 // lives here and a consumer reads the structured result. A line that does not carry a uid, a gid and

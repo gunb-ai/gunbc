@@ -7,7 +7,7 @@ import extdeps.tools.jq { jq_program }
 import extdeps.rust.cargo_build { cargo_program }
 
 import std.types { NonEmptyStr, String, Bool, Int }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import extdeps.version { VersionIdentity, VersionConstraint }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.pin {
@@ -431,8 +431,8 @@ test fn second_subject_refuses_on_identity_mismatch_too() -> Bool {
       (subj.repo == "checkout")
         && match c {
              ObservedIdentityMismatch { expected: e, observed: o } =>
-               ((e as String) == (action_ref_pinned_identity as String))
-                 && ((o as String) == (action_ref_other_identity as String))
+               (serialize_content_hash(hash: e) == serialize_content_hash(hash: action_ref_pinned_identity))
+                 && (serialize_content_hash(hash: o) == serialize_content_hash(hash: action_ref_other_identity))
              CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
              ConstraintIsNotIdentity { constraint: _ } => false
              PinAbsent => false

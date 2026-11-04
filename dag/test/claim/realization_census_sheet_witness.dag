@@ -1,0 +1,544 @@
+module test.claim.realization_census_sheet_witness
+
+import std.optional { Absent, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, skip, take_prefix }
+import extdeps.google.sheets { hermetic_get_values_tab, SheetsDimensionPropertiesRead }
+import std.measure { DisplayPixelCount }
+import gunbc.repository_census_observation { repository_census_row_count }
+import gunbc.review_sheet_projection {
+  ReviewSheetProjection,
+  ProjectionRow,
+  ObservedSheet,
+  ValidatedHeaderSchema,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConverged,
+  ReviewSheetConflict,
+  ReviewSheetUnreadable,
+  classify_review_sheet,
+  review_sheet_header_names,
+}
+import gunbc.review_sheet_sheets {
+  TabBoundWritePlan,
+  review_sheet_get_values_request,
+}
+import gunbc.review_sheet_batch_actuator {
+  BatchRequestBuilt,
+  BatchRequestUnlowerable,
+  batch_values_request,
+}
+import gunbc.review_sheet_formula_observation { observe_formula_whole_tab }
+import gunbc.review_sheet_header_init {
+  HeaderInitPlan,
+  HeaderInitWriteHeaderRow,
+  plan_header_init,
+}
+import gunbc.review_sheet_tab_locator {
+  ReviewTabCandidate,
+  TabSetRead,
+  TabSetUnreadable,
+  TabLocated,
+  TabAbsent,
+  TabAmbiguous,
+  TabUnreadable,
+  observe_review_tab_set,
+  locate_review_tab,
+}
+import gunbc.review_sheet_tab_set {
+  TabSetPlan,
+  TabSetConverged,
+  TabSetChange,
+  TabSetRefused,
+  plan_review_tab_set,
+}
+import gunbc.review_sheet_format_actuator {
+  FormatRule,
+  RuleTextContains,
+  FormatPlanned,
+  FormatPlanRefused,
+  format_request_plan,
+  standing_admitted_color,
+  HeaderRangeWire,
+  HeaderRangeUnqualifiable,
+  review_sheet_header_range,
+  FormatRequestPlan,
+  FormatTermReading,
+  FormatRemediationPlanned,
+  FormatRemediationRefused,
+  format_remediation,
+  format_remediation_shape,
+  ColumnWidthsRead,
+  ColumnWidthsRefused,
+  column_widths_of,
+}
+import gunbc.review_sheet_kind {
+  ReviewSheetKind,
+  ReviewSheetTab,
+  AdmittedReviewSheetTab,
+  ReviewSheetKindAdmitted,
+  ReviewSheetKindRefused,
+  TabRowsProjected,
+  TabRowsWrittenElsewhere,
+  admit_review_sheet_kind,
+  review_sheet_kind_tab_titles,
+  review_sheet_tab_widths,
+}
+import gunbc.review_sheet_kind_roster { review_sheet_kind_roster, review_sheet_roster_collisions }
+import gunbc.review_sheet_ci_prospect_kind { ci_prospect_review_sheet_kind }
+import gunbc.realization_census_sheet {
+  realization_census_review_sheet_kind,
+  realization_census_module_observation,
+  realization_census_population,
+  census_schema,
+  realization_census_module_column_names,
+}
+import gunbc.realization_census_rows { realization_census_module_rows, realization_census_finding_rows, realization_census_class_rows }
+
+// THE REALIZATION CENSUS KIND, EXECUTED AT THE INTERFACES THE CONVERGE CALLS, AGAINST THE MOCK
+// WHERE THE MOCK ANSWERS. Two operations publish a hermetic answer the census route reaches:
+// values.get (an empty whole tab named hermetic_get_values_tab) and spreadsheets.get under the
+// locator mask (a three-tab workbook titled modules, findings, classes). So the header-init plan,
+// the tab-set read and the per-title locate run through the real observation functions; the row
+// write is executed to the exact values.batchUpdate request the converge would send, because no
+// batchUpdate answer is published and a claim must not stand one up. Every supplied value below is
+// a boundary value, and the census rows are the real generated module, not a fixture.
+
+data w_spreadsheet: NonEmptyStr = "1hermetic-spreadsheet-id"
+
+fn census_kind() -> ReviewSheetKind { realization_census_review_sheet_kind() }
+
+fn admitted_tabs(kind: ReviewSheetKind) -> List<AdmittedReviewSheetTab> {
+  match admit_review_sheet_kind(kind: kind) {
+    ReviewSheetKindAdmitted { kind: _, tabs: ts } => ts
+    ReviewSheetKindRefused { kind_id: _, cause: _ } => []
+  }
+}
+
+fn admitted_tab(title: String) -> AdmittedReviewSheetTab? {
+  first(filter(admitted_tabs(kind: census_kind()), at => (at.tab.title as String) == title))
+}
+
+fn projected_rows(at: AdmittedReviewSheetTab) -> List<ProjectionRow> {
+  match at.tab.rows {
+    TabRowsProjected { rows: rs } => rs
+    TabRowsWrittenElsewhere { writer: _ } => []
+  }
+}
+
+// ── the kind and the roster ─────────────────────────────────────────────────────────────────
+
+test fn the_census_kind_admits_three_tabs_named_after_the_census_files() -> Bool {
+  join(map(admitted_tabs(kind: census_kind()), at => at.tab.title as String), ",") == "modules,findings,classes"
+}
+
+test fn the_census_kind_names_its_spreadsheet_and_marker_by_the_pin() -> Bool {
+  (census_kind().sheet_name as String) == "Realization census 1dd3eda5696a"
+    && (census_kind().marker_value as String) == "realization-census-1dd3eda5696a"
+}
+
+test fn the_public_roster_is_the_ci_prospect_and_the_census_and_admits_without_collision() -> Bool {
+  join(map(review_sheet_kind_roster(), k => k.kind_id as String), ",") == "ci-prospect,realization-census"
+    && count(review_sheet_roster_collisions(kinds: review_sheet_kind_roster())) == 0
+    && count(filter(review_sheet_kind_roster(), k => count(admitted_tabs(kind: k)) == 0)) == 0
+}
+
+// A NEW CASE IS DATA. A fourth kind built from the same type, with its own two tabs, is appended to
+// the roster value and admitted by the same functions the converge calls; nothing else changed.
+fn fixture_kind(kind_id: String, marker: String, first_title: String, second_title: String) -> ReviewSheetKind {
+  ReviewSheetKind {
+    kind_id: kind_id as NonEmptyStr,
+    sheet_name: concat("Fixture ", kind_id) as NonEmptyStr,
+    marker_value: marker as NonEmptyStr,
+    tabs: FreeSemigroup {
+      head: ReviewSheetTab {
+        title: first_title as NonEmptyStr,
+        schema: census_schema(identity: "module", names: ["module", "phase"]),
+        rules: [FormatRule { column: "phase" as NonEmptyStr, condition: RuleTextContains { fragment: "P2" }, color: standing_admitted_color() }],
+        content: [],
+        rows: TabRowsProjected { rows: [] },
+      },
+      tail: [
+        ReviewSheetTab {
+          title: second_title as NonEmptyStr,
+          schema: census_schema(identity: "module", names: ["module"]),
+          rules: [],
+          content: [],
+          rows: TabRowsWrittenElsewhere { writer: "a fixture writer" as NonEmptyStr },
+        },
+      ],
+    },
+  }
+}
+
+test fn a_fourth_kind_is_a_row_admitted_by_the_same_functions() -> Bool {
+  let roster = concat(review_sheet_kind_roster(), [fixture_kind(kind_id: "fixture-fourth", marker: "fixture-fourth-marker", first_title: "one", second_title: "two")])
+  count(roster) == 3
+    && count(review_sheet_roster_collisions(kinds: roster)) == 0
+    && count(admitted_tabs(kind: fixture_kind(kind_id: "fixture-fourth", marker: "fixture-fourth-marker", first_title: "one", second_title: "two"))) == 2
+}
+
+test fn a_fourth_kind_reusing_the_census_marker_collides() -> Bool {
+  let roster = concat(review_sheet_kind_roster(), [fixture_kind(kind_id: "fixture-fourth", marker: census_kind().marker_value as String, first_title: "one", second_title: "two")])
+  join(map(review_sheet_roster_collisions(kinds: roster), k => k as String), ",") == "realization-census,fixture-fourth"
+}
+
+test fn a_kind_declaring_one_tab_title_twice_refuses_at_admission() -> Bool {
+  match admit_review_sheet_kind(kind: fixture_kind(kind_id: "fixture-doubled", marker: "fixture-doubled-marker", first_title: "same", second_title: "same")) {
+    ReviewSheetKindRefused { kind_id: k, cause: c } => (k as String) == "fixture-doubled" && string_contains(s: c as String, pattern: "same is declared more than once")
+    ReviewSheetKindAdmitted { kind: _, tabs: _ } => false
+  }
+}
+
+// ── header init, all three tabs, through the real observation over the hermetic empty tab ────
+
+fn header_plan_of(title: String) -> String {
+  match admitted_tab(title: title) {
+    Absent => "no such tab"
+    Present { value: at } =>
+      match plan_header_init(
+        reading: observe_formula_whole_tab(spreadsheet_id: w_spreadsheet, requested: review_sheet_get_values_request(tab: hermetic_get_values_tab)),
+        validated: at.validated,
+      ) {
+        HeaderInitWriteHeaderRow { authorization: a } => join([a.range, join(a.cells, "|")], " ")
+        _ => "not a header write"
+      }
+  }
+}
+
+test fn the_modules_tab_header_is_every_census_column_then_ruling_and_note() -> Bool {
+  header_plan_of(title: "modules") == "'hermetic-mock-tab'!A1:S1 module|class|storage_site|storage_level|caching_site|caching_level|access_site|access_level|authz_site|authz_level|placement_site|placement_level|ambient_calls|worst_site|worst_finding|evidence_symbols|phase|Ruling|Note"
+}
+
+test fn the_findings_tab_header_is_every_census_column_then_ruling_and_note() -> Bool {
+  header_plan_of(title: "findings") == "'hermetic-mock-tab'!A1:N1 finding_id|class_id|module|class|dimension|site|level|symbol|specimen|note|existing_authority|fix_shape|Ruling|Note"
+}
+
+test fn the_classes_tab_header_is_every_census_column_but_the_pointer_then_ruling_and_note() -> Bool {
+  header_plan_of(title: "classes") == "'hermetic-mock-tab'!A1:R1 class_id|dimension|decision_site|pattern|instances|modules|production_modules|extdeps_modules|seed_modules|current_rung|attainable_ceiling|owning_authority|wall|red_control|residual|next_trigger|Ruling|Note"
+}
+
+// ── the tab set ─────────────────────────────────────────────────────────────────────────────
+
+fn candidate(id: Int, title: String) -> ReviewTabCandidate {
+  ReviewTabCandidate { sheet_id: id, title: title as NonEmptyStr, index: id }
+}
+
+fn plan_text(p: TabSetPlan) -> String {
+  match p {
+    TabSetConverged => "converged"
+    TabSetChange { rename: r, additions: adds } =>
+      join([
+        match r { Present { value: rn } => join(["rename ", to_string(rn.sheet_id), " ", rn.from as String, "->", rn.to as String], "")  Absent => "no rename" },
+        join(map(adds, t => t as String), ","),
+      ], "; ")
+    TabSetRefused { cause: _ } => "refused"
+  }
+}
+
+fn census_titles() -> FreeSemigroup<NonEmptyStr> { review_sheet_kind_tab_titles(kind: census_kind()) }
+
+test fn the_hermetic_three_tab_workbook_is_the_census_tab_set_and_not_the_ci_one() -> Bool {
+  match observe_review_tab_set(spreadsheet_id: w_spreadsheet) {
+    TabSetRead { candidates: cs } =>
+      plan_text(p: plan_review_tab_set(observed: cs, declared: census_titles())) == "converged"
+        && plan_text(p: plan_review_tab_set(observed: cs, declared: review_sheet_kind_tab_titles(kind: ci_prospect_review_sheet_kind()))) == "refused"
+    TabSetUnreadable { cause: _ } => false
+  }
+}
+
+test fn a_freshly_created_workbook_renames_its_tab_to_the_first_title_and_adds_the_rest() -> Bool {
+  plan_text(p: plan_review_tab_set(observed: [candidate(id: 0, title: "Sheet1")], declared: census_titles()))
+    == "rename 0 Sheet1->modules; findings,classes"
+}
+
+test fn a_workbook_with_some_declared_tabs_adds_only_the_missing_ones() -> Bool {
+  plan_text(p: plan_review_tab_set(observed: [candidate(id: 0, title: "modules"), candidate(id: 4, title: "classes")], declared: census_titles()))
+    == "no rename; findings"
+}
+
+test fn an_undeclared_tab_beside_declared_ones_refuses() -> Bool {
+  plan_text(p: plan_review_tab_set(observed: [candidate(id: 0, title: "modules"), candidate(id: 1, title: "findings"), candidate(id: 2, title: "classes"), candidate(id: 3, title: "scratch")], declared: census_titles()))
+    == "refused"
+}
+
+test fn a_title_on_two_tabs_refuses_rather_than_choosing() -> Bool {
+  plan_text(p: plan_review_tab_set(observed: [candidate(id: 0, title: "modules"), candidate(id: 1, title: "modules"), candidate(id: 2, title: "findings"), candidate(id: 3, title: "classes")], declared: census_titles()))
+    == "refused"
+}
+
+// ── the format plan, through the real locate over the hermetic workbook ───────────────────────
+
+fn format_plan_summary(title: String) -> String {
+  match admitted_tab(title: title) {
+    Absent => "no such tab"
+    Present { value: at } =>
+      match locate_review_tab(spreadsheet_id: w_spreadsheet, title: at.tab.title) {
+        TabLocated { tab: t } =>
+          match format_request_plan(tab: t, validated: at.validated, rules: at.tab.rules, widths: review_sheet_tab_widths(tab: at.tab)) {
+            FormatPlanned { plan: p } =>
+              join([
+                to_string(p.freeze.sheet_id), to_string(p.freeze.frozen_row_count),
+                to_string(p.header.sheet_id), to_string(p.header.end_col),
+                to_string(count(p.rules)),
+                to_string(count(filter(p.rules, r => r.sheet_id != t.sheet_id))),
+                join(map(p.rules, r => to_string(r.start_col)), ","),
+                concat("w", to_string(count(p.widths))),
+              ], " ")
+            FormatPlanRefused { cause: c } => c as String
+          }
+        _ => "not located"
+      }
+  }
+}
+
+// modules: sheetId 0, 19 columns; five site colours on each of six site columns (2,4,6,8,10,13 by
+// header position) and one number rule on ambient_calls (12) -- 31 rules, every one on the tab.
+test fn the_modules_format_plan_freezes_bands_and_colours_every_site_column_and_ambient_calls() -> Bool {
+  format_plan_summary(title: "modules")
+    == "0 1 0 19 31 0 2,2,2,2,2,4,4,4,4,4,6,6,6,6,6,8,8,8,8,8,10,10,10,10,10,13,13,13,13,13,12 w19"
+}
+
+test fn the_findings_format_plan_colours_the_site_column_on_the_findings_tab() -> Bool {
+  format_plan_summary(title: "findings") == "1 1 1 14 5 0 5,5,5,5,5 w14"
+}
+
+// classes: decision_site (2) by site, current_rung (9) and attainable_ceiling (10) by rung name.
+test fn the_classes_format_plan_colours_sites_and_both_rung_columns() -> Bool {
+  format_plan_summary(title: "classes") == "2 1 2 18 15 0 2,2,2,2,2,9,9,9,9,9,10,10,10,10,10 w18"
+}
+
+test fn a_rule_naming_a_column_the_header_lacks_refuses_the_plan() -> Bool {
+  match admitted_tab(title: "findings") {
+    Absent => false
+    Present { value: at } =>
+      match locate_review_tab(spreadsheet_id: w_spreadsheet, title: at.tab.title) {
+        TabLocated { tab: t } =>
+          match format_request_plan(tab: t, validated: at.validated, rules: [FormatRule { column: "worst_site" as NonEmptyStr, condition: RuleTextContains { fragment: "Forked" }, color: standing_admitted_color() }], widths: []) {
+            FormatPlanRefused { cause: _ } => true
+            FormatPlanned { plan: _ } => false
+          }
+        _ => false
+      }
+  }
+}
+
+// ── widths, derived from what each column holds ──────────────────────────────────────────────
+
+// identifiers 40 characters, prose 60, a vocabulary its longest member or its header, each at 7px
+// a character plus 16px: class 14 (seed-generated), dimension and site 9 (placement, Rederived),
+// level 5 (its header outruns L0-L5), existing_authority 40 (its header is shorter).
+test fn the_findings_widths_follow_each_columns_content() -> Bool {
+  match admitted_tab(title: "findings") {
+    Absent => false
+    Present { value: at } =>
+      join(map(review_sheet_tab_widths(tab: at.tab), w => concat(w.column as String, "=", to_string(w.pixels.pixels))), ",")
+        == "finding_id=296,class_id=296,module=296,class=114,dimension=79,site=79,level=51,symbol=296,specimen=436,note=436,existing_authority=296,fix_shape=436,Ruling=436,Note=436"
+  }
+}
+
+test fn a_kind_that_declares_no_content_is_not_sized() -> Bool {
+  count(review_sheet_tab_widths(tab: ci_prospect_review_sheet_kind().tabs.head)) == 0
+}
+
+// ── the row write of the whole census ────────────────────────────────────────────────────────
+
+fn empty_tab_with_header(at: AdmittedReviewSheetTab) -> ObservedSheet {
+  ObservedSheet { headers: map(review_sheet_header_names(validated: at.validated), n => n as String), rows: [] }
+}
+
+fn row_write_summary(title: String) -> String {
+  match admitted_tab(title: title) {
+    Absent => "no such tab"
+    Present { value: at } => {
+      let projection = ReviewSheetProjection { schema: at.tab.schema, rows: projected_rows(at: at) }
+      match classify_review_sheet(observed: empty_tab_with_header(at: at), projection: projection, erasures: []) {
+        ReviewSheetNeedsWrite { plan: p } =>
+          match batch_values_request(spreadsheet_id: w_spreadsheet, bound: TabBoundWritePlan { tab: at.tab.title, plan: p }) {
+            BatchRequestBuilt { request: q } => join([to_string(count(p.patches)), to_string(count(p.appends)), to_string(count(q.data))], " ")
+            BatchRequestUnlowerable { refusals: _ } => "unlowerable"
+          }
+        ReviewSheetConverged => "converged"
+        ReviewSheetConflict { conflict: _ } => "conflict"
+        ReviewSheetUnreadable { reason: r } => r as String
+      }
+    }
+  }
+}
+
+fn part_is(parts: List<String>, at: Int, expected: String) -> Bool {
+  match first(skip(parts, at)) {
+    Present { value: p } => p == expected
+    Absent => false
+  }
+}
+
+fn appends_and_rows(title: String, rows: Int) -> Bool {
+  let parts = split(s: row_write_summary(title: title), delimiter: " ")
+  count(parts) == 3
+    && part_is(parts: parts, at: 0, expected: "0")
+    && part_is(parts: parts, at: 1, expected: to_string(rows))
+    && !part_is(parts: parts, at: 2, expected: "0")
+}
+
+test fn the_whole_modules_census_lowers_to_one_append_per_module() -> Bool {
+  appends_and_rows(title: "modules", rows: count(realization_census_module_rows))
+}
+
+test fn the_whole_findings_census_lowers_to_one_append_per_finding() -> Bool {
+  appends_and_rows(title: "findings", rows: count(realization_census_finding_rows))
+}
+
+test fn the_whole_classes_census_lowers_to_one_append_per_class() -> Bool {
+  appends_and_rows(title: "classes", rows: count(realization_census_class_rows))
+}
+
+// A projection carrying one identity twice refuses before any write is planned. The generator
+// refuses the same defect in the receipt; this is the sheet's own refusal, at the write.
+test fn a_duplicated_identity_in_the_projection_refuses_the_write() -> Bool {
+  match admitted_tab(title: "classes") {
+    Absent => false
+    Present { value: at } => {
+      let rows = projected_rows(at: at)
+      let doubled = ReviewSheetProjection { schema: at.tab.schema, rows: concat(rows, take_prefix(rows, 1)) }
+      match classify_review_sheet(observed: empty_tab_with_header(at: at), projection: doubled, erasures: []) {
+        ReviewSheetUnreadable { reason: r } => string_contains(s: r as String, pattern: "duplicate projection listing")
+        _ => false
+      }
+    }
+  }
+}
+
+// ── the observation ───────────────────────────────────────────────────────────────────────────
+
+test fn the_module_observation_counts_its_rows_by_projection() -> Bool {
+  repository_census_row_count(observation: realization_census_module_observation()) == count(realization_census_module_rows)
+}
+
+
+// THE FORMAT READBACK SPANS EACH TAB'S OWN HEADER. The range was the constant A1:Q1 (seventeen
+// columns), so the nineteen-column modules tab and the eighteen-column classes tab never read back
+// their trailing widths and could never verify. This is the range read_format sends, for the real
+// located tabs and validated schemas; the letters are the tab widths the header-init claims above
+// fix independently (S, N, R).
+fn format_read_range(title: String) -> String {
+  match admitted_tab(title: title) {
+    Absent => "no such tab"
+    Present { value: at } =>
+      match locate_review_tab(spreadsheet_id: w_spreadsheet, title: at.tab.title) {
+        TabLocated { tab: t } =>
+          match review_sheet_header_range(tab: t, validated: at.validated) {
+            HeaderRangeWire { range: r } => r
+            HeaderRangeUnqualifiable { cause: c } => c as String
+          }
+        _ => "not located"
+      }
+  }
+}
+
+test fn the_format_readback_covers_the_nineteen_and_eighteen_column_tabs() -> Bool {
+  format_read_range(title: "modules") == "'modules'!A1:S1"
+    && format_read_range(title: "classes") == "'classes'!A1:R1"
+    && format_read_range(title: "findings") == "'findings'!A1:N1"
+}
+
+// THE POPULATION'S ROOTS ARE EXACTLY THE THREE THE CENSUS READ, and every row the census names by
+// path sits under one of them: a row under an undeclared root, or a root dropped, fails here. The
+// 161 is the pinned receipt's src/v1 row count (docs/probes/realization_census_1dd3eda5_2026-10-24/
+// modules.tsv at census commit f0e73dc1d045), a versioned authority rather than today's tree.
+fn census_roots() -> List<String> {
+  concat([realization_census_population.first_source_root as String], map(realization_census_population.additional_source_roots, r => r as String))
+}
+
+test fn the_population_roots_are_dag_src_v1_and_src_v2_and_cover_every_path_row() -> Bool {
+  join(census_roots(), ",") == "dag,src/v1,src/v2"
+    && count(filter(realization_census_module_rows, m =>
+         string_contains(s: m.module as String, pattern: "/")
+           && count(filter(census_roots(), r => starts_with(s: m.module as String, prefix: concat(r, "/")))) == 0)) == 0
+    && count(filter(realization_census_module_rows, m => starts_with(s: m.module as String, prefix: "src/v1/"))) == 161
+}
+
+// ── remediation is term-specific ──────────────────────────────────────────────────────────────
+// SUPPLIED READINGS AT THE REMEDIATION BOUNDARY: each term's observed state is a value here, and the
+// plan is the real modules plan through the real locate. The converge reaches format_remediation
+// through format_terms_of over the read it performs (gunbc.review_sheet_format_actuator
+// converge_planned), which is the route these readings stand in for.
+
+fn modules_plan() -> FormatRequestPlan? {
+  match admitted_tab(title: "modules") {
+    Absent => none
+    Present { value: at } =>
+      match locate_review_tab(spreadsheet_id: w_spreadsheet, title: at.tab.title) {
+        TabLocated { tab: t } =>
+          match format_request_plan(tab: t, validated: at.validated, rules: at.tab.rules, widths: review_sheet_tab_widths(tab: at.tab)) {
+            FormatPlanned { plan: p } => Present { value: p }
+            FormatPlanRefused { cause: _ } => none
+          }
+        _ => none
+      }
+  }
+}
+
+// The widths the plan wants, read back as Sheets would report them; `wrong` names one column whose
+// observed width is off by one pixel.
+fn observed_width_at(p: FormatRequestPlan, i: Int, wrong: Int) -> DisplayPixelCount? {
+  match first(filter(p.widths, w => w.column_index == i)) {
+    Present { value: w } => Present { value: if i == wrong { DisplayPixelCount { pixels: w.pixel_size.pixels + 1 } } else { w.pixel_size } }
+    Absent => none
+  }
+}
+
+fn observed_widths(p: FormatRequestPlan, wrong: Int) -> List<DisplayPixelCount?> {
+  map([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], i => observed_width_at(p: p, i: i, wrong: wrong))
+}
+
+fn remediation_shape(rule_count: Int, wrong: Int) -> String {
+  match modules_plan() {
+    Absent => "no plan"
+    Present { value: p } =>
+      match format_remediation(terms: FormatTermReading { frozen_ok: true, header_ok: true, rule_count: rule_count, column_widths: observed_widths(p: p, wrong: wrong) }, plan: p) {
+        FormatRemediationPlanned { remediation: r } => join(map(format_remediation_shape(r: r), n => to_string(n)), ",")
+        FormatRemediationRefused { cause: _ } => "refused"
+      }
+  }
+}
+
+fn modules_rule_count() -> Int {
+  match modules_plan() { Present { value: p } => count(p.rules)  Absent => -1 }
+}
+
+// THE RED: freeze, header and every rule are right and one width is wrong, so the run sends that
+// width and nothing else -- no AddTextColorRule, which would stack a second rule set.
+test fn one_wrong_width_remediates_that_width_alone_with_no_rule_writes() -> Bool {
+  modules_rule_count() > 0 && remediation_shape(rule_count: modules_rule_count(), wrong: 0) == "0,0,0,1"
+}
+
+// THE RETRY: a run whose width write refused leaves the rules it added and the width still wrong;
+// the next run reads N rules and so again writes the width only.
+test fn a_retry_after_a_failed_width_write_issues_no_rule_writes() -> Bool {
+  remediation_shape(rule_count: modules_rule_count(), wrong: 18) == "0,0,0,1"
+    && remediation_shape(rule_count: modules_rule_count(), wrong: -1) == "0,0,0,0"
+}
+
+test fn zero_observed_rules_add_the_full_set_and_any_other_count_refuses() -> Bool {
+  remediation_shape(rule_count: 0, wrong: -1) == join(["0,0,", to_string(modules_rule_count()), ",0"], "")
+    && remediation_shape(rule_count: modules_rule_count() * 2, wrong: -1) == "refused"
+    && remediation_shape(rule_count: 1, wrong: -1) == "refused"
+}
+
+// ── the observed width crosses to a typed value at the read ──────────────────────────────────
+// SUPPLIED COLUMN METADATA AT THE WIRE BOUNDARY: column_widths_of is what observed_column_widths
+// hands each grid read's columnMetadata to, on the route read_format_meta takes.
+fn width_reading_text(cols: List<SheetsDimensionPropertiesRead>) -> String {
+  match column_widths_of(cols: cols) {
+    ColumnWidthsRefused { cause: _ } => "refused"
+    ColumnWidthsRead { widths: ws } => join(map(ws, w => match w { Present { value: d } => to_string(d.pixels)  Absent => "unread" }), ",")
+  }
+}
+
+test fn a_negative_pixel_size_refuses_the_width_reading_rather_than_reading_as_a_mismatch() -> Bool {
+  width_reading_text(cols: [SheetsDimensionPropertiesRead { pixelSize: Present { value: 120 } }, SheetsDimensionPropertiesRead { pixelSize: Present { value: -1 } }]) == "refused"
+}
+
+test fn nonnegative_and_absent_pixel_sizes_read_as_widths_and_unread() -> Bool {
+  width_reading_text(cols: [SheetsDimensionPropertiesRead { pixelSize: Present { value: 120 } }, SheetsDimensionPropertiesRead { pixelSize: none }, SheetsDimensionPropertiesRead { pixelSize: Present { value: 0 } }]) == "120,unread,0"
+}

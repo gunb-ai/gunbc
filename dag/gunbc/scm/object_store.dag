@@ -25,6 +25,7 @@ import v2.std.node {
   canonicalize_labeled_for_content_hash,
   LabeledChildHash,
   content_hash_of_children,
+  NotADeclaration
 }
 import std.algebra { map_lookup }
 
@@ -2078,7 +2079,7 @@ fn collision_probe_atom(identity: Symbol) -> Node {
 fn collision_probe_parent(child: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Authored { name: ^only_child }, target: child }],
+    children: [Edge { label: Authored { name: ^only_child }, target: child, declaration: NotADeclaration }],
   )
 }
 
