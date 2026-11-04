@@ -78,11 +78,12 @@ data whole_corpus_compile_measured_demand_note: String = "PROVENANCE, READ THIS 
 // demand note. A run that clears this and dies anyway is expected (an observed run exceeded 19.95 GiB), not a
 // defect in the refusal: the figure is a declared budget and not proof that a compile fits.
 //
-// NEXT-RUNG TRIGGER: a .dag instrument that measures a root's peak and mints its MeasuredForRoot row
-// in one carrier, so a row cannot be authored without the run behind it. The demand is already a
-// fact of the root compiled (the root join below); what stays unconstructed is the receipt. A
-// resident-set prediction scaled from a root's source census is NOT this trigger: it is a DESIGN
-// section 4d bet, and this admission refuses an unmeasured root rather than admitting on one.
+// NO NEXT-RUNG TRIGGER: the instrument that minted a MeasuredForRoot row from a run is retired
+// (the retire-by-default ruling, gunbc.design_ruling bad_process_is_worse_than_no_process), and
+// nothing requires remeasuring a root. A row here is an authored budget; the variant keeps its
+// historical name MeasuredForRoot because renaming it across the seed mirror is a separate
+// change. A resident-set prediction scaled from a root's source census is a DESIGN section 4d
+// bet, and this admission refuses an unmeasured root rather than admitting on one.
 
 // SCOPED COMPILES REACH NO ADMISSION ARM AT ALL, and that placement is unchanged — but THE
 // ASYMMETRY THIS NOTE USED TO REST ON HAS CLOSED, and saying so is the point of this paragraph. It
