@@ -125,7 +125,7 @@ import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency, ComposeOwned, UpsertOwned,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, AttemptUnitDrainPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping,
-  ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ApprovalBrokerFrontDoor, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
 }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
 import gunbc.live_deploy.retract_legs { DeployRetractLeg, retract_leftover_timer_legs }
@@ -156,11 +156,11 @@ import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tail
 import extdeps.systemd.unit_file { SystemdUnitFile }
 import gunbc.live_deploy.emit {
   spec_has_artifact_kind, live_deploy_fabric_storage_unit_file,
-  live_deploy_tailnet_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
+  live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.live_deploy.spec {
   deployment_fabric_storage_door_socket, deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path,
-  deployment_fabric_storage_serve_endpoint, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path,
+  deployment_fabric_storage_serve_endpoint, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_agent_door_unit_name, deployment_agent_door_unit_path,
 }
 import gunbc.live_deploy.spec { UpsertArtifactKind }
 
@@ -1165,6 +1165,20 @@ fn deploy_apply_tailnet_door_plan(spec: DeploymentSpec, revision: ReleaseRevisio
   }
 }
 
+fn deploy_apply_agent_door_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> DeployApplyPlan {
+  match live_deploy_agent_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
+    LiveDeployTailnetDoorUnitNotDeployed => ApplyPlanReady { legs: [] }
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: c } =>
+      ApplyPlanRefused { step: "agent-door", reason: join(["live-deploy apply refused: the agent door unit's OIDC readback was refused (", c as String, ") (DESIGN 5: refuse, never widen)"], "") }
+    LiveDeployTailnetDoorUnitEmitted { file: f } =>
+      ApplyPlanReady { legs: deploy_apply_unit_lifecycle_legs(
+        step: "agent-door",
+        unit: deployment_agent_door_unit_name(names: spec.names),
+        dest: deployment_agent_door_unit_path(names: spec.names),
+        file: f) }
+  }
+}
+
 fn deploy_apply_step_effects_plan(step: DeploymentStep, effects: List<MemberEffect<DeploymentStep>>, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
   deploy_apply_effects_plan(
     effects: filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
@@ -1189,6 +1203,7 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
                 deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
               }
             TailnetDoorServeUnit => deploy_apply_tailnet_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
+            AgentDoorServeUnit => deploy_apply_agent_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
             FleetConvergeTimerUnit =>
               ApplyPlanRefused { step: "fleet-converge-timer", reason: "live-deploy apply refused: FleetConvergeTimerUnit is retired from deployment membership; timer cadence is on-demand via fleet-converge plan/apply, not live_deploy apply" }
           }

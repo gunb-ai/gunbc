@@ -28,6 +28,7 @@ import extdeps.electronic_component.types {
   DrainSourceMaximum,
   DrivenByThePart,
   ElectronicComponentRow,
+  designator_text,
   FuseInterruptRating,
   gate_pin_standing,
   GateInputPin,
@@ -166,7 +167,12 @@ import product.p4261.comparison {
   ComparisonIncomplete,
   BoardReadingsDisagree,
 }
+import product.electrical.photograph { Photograph, citation_explanation }
 import product.p4261.evidence {
+  FromStore,
+  NoPhotographStore,
+  StoreHoldsAnotherBoardsFrames,
+  ReadingGrounding,
   NetGap,
   OccupantNotPresentInState,
   ConnectorNotMappedWhole,
@@ -1042,6 +1048,9 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
     RootOfTrustSpec { root_of_trust: _ } => []
     SerialFlashSpec { flash: _ } => []
     SwitchingRegulatorSpec { regulator: _ } => []
+    BusMultiplexerSpec { multiplexer: _ } => []
+    UsbHubSpec { hub: _ } => []
+    ClockFanoutSpec { clock: _ } => []
   }
 }
 
@@ -1055,6 +1064,7 @@ fn sensor_trace_text(c: InstalledComponent) -> List<String> {
     ResistanceCodeRead { milliohms: _, marking: _ } => []
     MarkingUnresolved { marking: _, discriminator: _ } => []
     FootprintUnpopulated { evidence: _ } => []
+    BodySeenMarkingUnread { evidence: _ } => []
   }
 }
 
@@ -1171,6 +1181,9 @@ fn family_spec_text(row: ElectronicComponentRow) -> String {
     RootOfTrustSpec { root_of_trust: _ } => ""
     SerialFlashSpec { flash: _ } => ""
     SwitchingRegulatorSpec { regulator } => join([" (synchronous step-down converter, ", millivolt_text(n: millivolt_count(v: regulator.input.minimum)), " to ", millivolt_text(n: millivolt_count(v: regulator.input.maximum)), " in, ", to_string(ampere_count(a: regulator.continuous_output_current)), " A, ", to_string(count(regulator.pins)), " pins)"], "")
+    BusMultiplexerSpec { multiplexer } => join([" (bus multiplexer, ", to_string(multiplexer.channels), " channels of ", to_string(multiplexer.inputs_per_channel), ")"], "")
+    UsbHubSpec { hub } => join([" (USB hub, ", to_string(hub.downstream_ports), " downstream ports, ", hub.generation as String, ", ", to_string(hub.upstream_ports), " upstream)"], "")
+    ClockFanoutSpec { clock } => join([" (clock fan-out, ", to_string(clock.inputs), " inputs, ", to_string(clock.outputs), " outputs)"], "")
   }
 }
 
@@ -1248,7 +1261,7 @@ fn compared_side_text(s: ComparedSide) -> String {
 fn population_comparison_text(c: P4261Comparison) -> String {
   join([
     "at the designators both revisions' silkscreens carry (a shared label, not an established circuit correspondence): ",
-    join(map(c.positions, p => join([p.designator as String, " as received ", comparison_conclusion_text(c: p.observed), " (", compared_side_text(s: p.e1), "; ", compared_side_text(s: p.k1), ")"], "")), "; "),
+    join(map(c.positions, p => join([designator_text(designator: p.designator) as String, " as received ", comparison_conclusion_text(c: p.observed), " (", compared_side_text(s: p.e1), "; ", compared_side_text(s: p.k1), ")"], "")), "; "),
     ". Not covered: ", to_string(count(c.e1.uncovered)), " components observed on ", c.e1.asset as String, " and ", to_string(count(c.k1.uncovered)), " on ", c.k1.asset as String,
     " have no admitted designator reading, and ", to_string(count(c.e1.refused) + count(c.k1.refused)), " readings were refused",
   ], "")
@@ -1388,11 +1401,55 @@ fn judgment_words(j: FindingJudgment, established: Bool) -> String {
       Present { value: x } => protected_bus_text(s: x)
     }
     NotAComponent { component } => join([component_text(c: component), " is not a component of this carrier's observation"], "")
+    // The census, in the sheet's own words: how many readings the carrier carries, how many can be
+    // re-read from bytes the store holds, and what is owed. Broken rows are NAMED, because each is a defect
+    // with a designator on it and a reader has to be able to go fix it; the rows awaiting bytes are counted
+    // here and named by product.p4261.evidence's `gap_groundings`, which is the worklist. Naming 94
+    // designators inside a dossier sentence would bury the one number the reader needs.
+    ImageReadingsJudged { grounding } => match grounding {
+      // The census in the sheet's own words. Broken rows are NAMED, each with the reason
+      // product.electrical.photograph's `citation_explanation` gives for it -- a row can be broken because
+      // the store holds nothing under its digest OR because the frame is our own drawing, and saying "names
+      // bytes the store does not hold" about the second would be a false report about our own file. The rows
+      // awaiting bytes are counted here and listed by product.p4261.evidence's `gap_groundings`, which is
+      // the worklist. Naming every designator inside a dossier sentence would bury the one number the
+      // reader needs.
+      FromStore { read, checkable, broken, gaps } => join([
+        to_string(read), " image-readings on this carrier: ", to_string(checkable), " rest on frames we hold for it; ",
+        to_string(count(broken)), " cannot carry a reading", grounding_row_names(gs: broken), "; ",
+        to_string(count(gaps)), " were read off frames whose bytes never reached the store",
+        if count(gaps) == 0 { "" } else { "; they are listed by product.p4261.evidence.gap_groundings" }], "")
+      // A different absence, said plainly: this carrier has never been photographed into a store, so no
+      // reading on it is image-checkable and no number would say so. The obligation travels with it.
+      NoPhotographStore { board, obligation } => join([
+        "no photograph store is held for '", (board as String), "': no image-reading on this carrier is checkable. ",
+        (obligation as String)], "")
+      // Named, not filtered: the store row disagrees with itself about which board it pictures, so nothing
+      // in it grounds this carrier. The foreign digests are printed because the fix is to correct those rows.
+      StoreHoldsAnotherBoardsFrames { board, foreign } => join([
+        "the photograph store held for '", (board as String), "' carries ", to_string(count(foreign)),
+        " frame(s) attributed to another board (", foreign_frame_digests(rows: foreign),
+        "); nothing in it is taken as grounding for this carrier until those store rows are corrected"], "")
+    }
     NetPropositionJudged { key, assessment } => match assessment {
       Absent => join(["no reconstructed wiring proposition '", key as String, "'"], "")
       Present { value: a } => net_assessment_text(a: a)
     }
   }
+}
+
+// The designators behind broken rows, each with why its citation cannot carry the reading -- the digest to
+// go look up, or the fact that the frame is our own drawing. product.electrical.photograph's
+// `citation_explanation` writes that reason so that no consumer reaches into a standing for it. Empty when
+// there are none, so a clean census reads as a sentence and not as a sentence with an empty bracket on it.
+// The digests of frames a store row carries that belong to no board it names, so the sheet can point at the
+// exact rows to fix rather than at a count.
+fn foreign_frame_digests(rows: List<Photograph>) -> String {
+  join(map(rows, f => f.content.hex as String), ", ")
+}
+
+fn grounding_row_names(gs: List<ReadingGrounding>) -> String {
+  if count(gs) == 0 { "" } else { join([" (", join(map(gs, g => join([g.read_of as String, ": ", citation_explanation(standing: g.standing)], "")), ", "), ")"], "") }
 }
 
 fn render_finding(j: FindingJudgment) -> FindingStanding {
@@ -1480,9 +1537,9 @@ fn no_net_assessments() -> List<NetPropositionAssessment> {
 // propositions it argues about. They are hypotheses, not derivations; nothing reads their prose.
 fn hypothesis_class_text(c: HypothesisClass) -> String {
   match c {
-    DesignRelationRemainder { positions } => if count(positions) == 0 { "about the board's design, not yet modeled" } else { join(["about the board's design at ", join(map(positions, p => p.designator as String), ", "), ", not yet modeled"], "") }
+    DesignRelationRemainder { positions } => if count(positions) == 0 { "about the board's design, not yet modeled" } else { join(["about the board's design at ", join(map(positions, p => designator_text(designator: p.designator) as String), ", "), ", not yet modeled"], "") }
     SpecimenDiagnostic { asset } => join(["about ", asset as String, " as we hold it"], "")
-    DesignAndSpecimen { positions, asset } => join(["about the board's design at ", join(map(positions, p => p.designator as String), ", "), " and about ", asset as String, " as we hold it"], "")
+    DesignAndSpecimen { positions, asset } => join(["about the board's design at ", join(map(positions, p => designator_text(designator: p.designator) as String), ", "), " and about ", asset as String, " as we hold it"], "")
   }
 }
 

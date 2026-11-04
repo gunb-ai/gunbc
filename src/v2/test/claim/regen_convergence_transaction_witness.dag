@@ -1,6 +1,7 @@
 module v2.test.claim.regen_convergence_transaction_witness
 
 import std.types { Bool, List, String }
+import std.measure { byte_size, byte_size_count }
 import gunbc.regen_affected_set {
   regen_generation_role_modules,
   regen_bootstrap_product_paths,
@@ -67,6 +68,12 @@ import v2.workflow.regen_convergence_transaction {
   RegenGenerationProgressRefused,
   GenerationCycleDetected,
   GenerationBoundExceeded,
+  GenerationStateRetainedByOrchestrator,
+  RegenGenerationBeginAdmitted,
+  RegenGenerationBeginRefused,
+  regen_admit_generation_begin,
+  regen_generation_begin_admission_label,
+  regen_orchestrator_resident_growth_bound,
   regen_admit_stage_execution,
   regen_stage_execution_admission_label,
   regen_stage_execution_admission_detail,
@@ -152,6 +159,45 @@ test fn finite_generation_bound_refuses_separately_from_a_cycle() -> Bool {
     RegenGenerationProgressRefused { refusal: GenerationBoundExceeded { bound: 8 } } => true
     _ => false
   }
+}
+
+// GENERATION-STATE LIFETIME ISOLATION, at every transition. The RED is the defect's own shape: the
+// orchestrator holding a generation's worth of state when the next generation begins (srv4 receipt:
+// 15.6 GB still charged to the slot when generation 2 began, against a first-generation baseline
+// that held none of it). The control is an orchestrator whose footprint did not grow.
+test fn RED_an_orchestrator_holding_a_generation_refuses_the_next_generation() -> Bool {
+  let admission = regen_admit_generation_begin(ordinal: 2, resident_at_first: byte_size(count: 900000000), resident_now: byte_size(count: 15636525056))
+  match admission {
+    RegenGenerationBeginRefused { refusal: GenerationStateRetainedByOrchestrator { ordinal: 2, resident_at_first: first, resident_now: now, growth_bound: _ } } =>
+      byte_size_count(b: first) == 900000000
+        && byte_size_count(b: now) == 15636525056
+        && string_contains(s: regen_generation_begin_admission_label(admission: admission), pattern: "GenerationStateRetainedByOrchestrator ordinal=2")
+        && string_contains(s: regen_generation_begin_admission_label(admission: admission), pattern: "orchestrator_resident_bytes_now=15636525056")
+    _ => false
+  }
+}
+
+// THE MEASURED TRANSITION ADMITS: run 41707802631's orchestrator grew 10692333568 -> 12602740736
+// between generations 0 and 1 with no generation resident in it; that is orchestration work, and
+// the rule exists to refuse a retained generation, not to refuse it.
+test fn the_measured_orchestration_growth_is_admitted() -> Bool {
+  regen_generation_begin_admission_label(admission: regen_admit_generation_begin(ordinal: 1, resident_at_first: byte_size(count: 10692333568), resident_now: byte_size(count: 12602740736))) == "Admitted"
+}
+
+// A shrinking orchestrator is never refused: the comparison is growth, and growth below zero is none.
+test fn an_orchestrator_that_did_not_grow_admits_every_transition_and_the_bound_is_tight() -> Bool {
+  let first = 900000000
+  let bound = byte_size_count(b: regen_orchestrator_resident_growth_bound)
+  let at_bound = regen_admit_generation_begin(ordinal: 3, resident_at_first: byte_size(count: first), resident_now: byte_size(count: first + bound))
+  let over_bound = regen_admit_generation_begin(ordinal: 3, resident_at_first: byte_size(count: first), resident_now: byte_size(count: first + bound + 1))
+  let shrank = regen_admit_generation_begin(ordinal: 3, resident_at_first: byte_size(count: first), resident_now: byte_size(count: 1000))
+  regen_generation_begin_admission_label(admission: regen_admit_generation_begin(ordinal: 1, resident_at_first: byte_size(count: first), resident_now: byte_size(count: first))) == "Admitted"
+    && regen_generation_begin_admission_label(admission: at_bound) == "Admitted"
+    && regen_generation_begin_admission_label(admission: shrank) == "Admitted"
+    && match over_bound {
+      RegenGenerationBeginRefused { refusal: _ } => true
+      RegenGenerationBeginAdmitted => false
+    }
 }
 
 test fn single_pass_producer_plus_old_dependent_refuses_the_seed_build() -> Bool {
