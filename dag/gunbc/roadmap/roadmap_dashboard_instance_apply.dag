@@ -1,8 +1,10 @@
 module gunbc.roadmap.roadmap_dashboard_instance_apply
 
-import std.algebra { trim, is_empty }
+import std.algebra { trim, is_empty, string_contains }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
+// The writer observation reads two cgroup files; their decoders belong to the module that owns cgroup v2.
+import extdeps.linux.cgroup_v2 { CgroupEventsDecoded, decode_cgroup_events_populated, decode_cgroup_procs }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.gunbc
@@ -82,7 +84,13 @@ import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, Leg
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_metering_closing_cutover {
   MeteringClosingWriterObservation, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
+  MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
+  MeteringClosingWriterQuiescence, WriterQuiescent, WriterNotQuiescent, metering_closing_writer_process_quiescence,
+  metering_closing_show_property_flag, metering_closing_show_value_flag, metering_closing_main_pid_property,
+  metering_closing_control_group_property, metering_closing_unit_events_path, metering_closing_unit_procs_path,
+  metering_closing_file_read_program,
   metering_closing_cutover_disposition, metering_closing_legacy_marker_name,
+  MeteringClosingFinalGate, MeteringClosingFinalGatePassed, MeteringClosingFinalGateRefused, metering_closing_final_gate_for,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
@@ -941,12 +949,32 @@ fn dashboard_apply_provision_op(
         fence: fence,
         instance_id: instance.instance_id,
         observed: observed,
-        legacy_markers_observed: dashboard_metering_closing_marker_census(instance: instance, root: root),
+        census: dashboard_metering_closing_marker_census(instance: instance, root: root),
       ) {
         MeteringClosingNoop { reason: why } => dashboard_exec_ok(stdout: why)
         MeteringClosingActivationRequired { units: units, step: step } =>
           dashboard_exec_refused(detail: join(["the closing-marker writer is not excluded (", join(map(units, u => u as String), ", "), "); ", step], ""))
         MeteringClosingCutoverRefused { cause: why } => dashboard_exec_refused(detail: why)
+      }
+    }
+    // THE FINAL RECHECK (blocker 2(d)). Same two observations, taken AGAIN, and the answer comes from
+    // metering_closing_final_gate_for -- which refuses unless the exclusion still holds AND the census still
+    // counts nothing. Nothing is carried over from the gate above: no flag, no memo, no "it passed earlier".
+    // Between the two ops a unit can be unmasked out of band, a writer process can be started, or a plain marker
+    // can be written again, and a certificate from the first look would certify all three as excluded.
+    DashboardAssertMeteringClosingCutoverFinal { fence: fence, attempt_state_root: root } => {
+      let observed = match fence {
+        LegacyWriterUnits { systemctl: ctl, units: units } => map(units, unit => dashboard_metering_closing_writer_observation(instance: instance, ctl: ctl, unit: unit))
+        _ => []
+      }
+      match metering_closing_final_gate_for(
+        fence: fence,
+        instance_id: instance.instance_id,
+        observed: observed,
+        census: dashboard_metering_closing_marker_census(instance: instance, root: root),
+      ) {
+        MeteringClosingFinalGatePassed { reason: why } => dashboard_exec_ok(stdout: why)
+        MeteringClosingFinalGateRefused { cause: why } => dashboard_exec_refused(detail: why)
       }
     }
     DashboardMoveAttemptStateEntries { row: row, fence: fence } => {
@@ -1146,10 +1174,53 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
 
 // WHAT THE HOST SAYS ABOUT ONE FENCED WRITER UNIT: the two questions the fence asks, through the instance's own
 // transport, in the shape the cutover module reads.
+// THE WRITER OBSERVATION: what the host says about one closing-marker writer unit RIGHT NOW (blocker 2(c)).
+// Six reads, no instructions: `is-active`, `is-enabled`, `show -p MainPID --value`, `show -p ControlGroup
+// --value`, and the two files of that cgroup -- `cgroup.events` for the kernel's subtree answer and
+// `cgroup.procs` for pids attached to the cgroup itself. Whether any of it MEANS quiescence is decided by
+// `metering_closing_writer_quiescent_one` in gunbc.roadmap.roadmap_metering_closing_cutover, not here; this
+// function reports and refuses nothing, so the same six reads serve the first gate and the final recheck.
+//
+// ALL OF IT GOES THROUGH `--user`. The writer is a TRANSIENT unit in the belt user's manager
+// (`systemd_run_user_transient_command`, gunbc.extdeps.systemd.systemd_run, reached from
+// gunbc.roadmap.roadmap_belt_actuate's obligation enqueue). Asking the SYSTEM manager about that unit answers a
+// different question and returns "not loaded", which this module would otherwise read as a stopped, masked,
+// cgroup-less writer -- an exclusion certified about the wrong manager. A read that cannot reach the manager it
+// is asking leaves `cgroup_read_established` false and the gate refuses.
 fn dashboard_metering_closing_writer_observation(instance: HostDashboardInstance, ctl: NonEmptyStr, unit: NonEmptyStr) -> MeteringClosingWriterObservation {
-  let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-active", unit as String])
-  let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
-  MeteringClosingWriterObservation { unit: unit, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout) }
+  let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["--user", "is-active", unit as String])
+  let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["--user", "is-enabled", unit as String])
+  let main_pid = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["--user", "show", metering_closing_show_property_flag, metering_closing_main_pid_property, metering_closing_show_value_flag, unit as String])
+  let control_group = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["--user", "show", metering_closing_show_property_flag, metering_closing_control_group_property, metering_closing_show_value_flag, unit as String])
+  let group = trim(s: control_group.stdout)
+  if group == "" {
+    // No cgroup to ask. That is systemd saying it holds no cgroup for this unit -- positive absence, so the
+    // events question is answered by the absence itself and no file is opened.
+    MeteringClosingWriterObservation {
+      unit: unit,
+      active_state: trim(s: active.stdout),
+      enabled_state: trim(s: enabled.stdout),
+      main_pid: trim(s: main_pid.stdout),
+      control_group: group,
+      cgroup_events: CgroupEventsDecoded { populated: false },
+      cgroup_read_established: true,
+      writer_process_count: 0,
+    }
+  } else {
+    let events = dashboard_target_exec(instance: instance, program: metering_closing_file_read_program as FilePath, args: [metering_closing_unit_events_path(control_group: group) as String])
+    let procs = dashboard_target_exec(instance: instance, program: metering_closing_file_read_program as FilePath, args: [metering_closing_unit_procs_path(control_group: group) as String])
+    MeteringClosingWriterObservation {
+      unit: unit,
+      active_state: trim(s: active.stdout),
+      enabled_state: trim(s: enabled.stdout),
+      main_pid: trim(s: main_pid.stdout),
+      control_group: group,
+      // A read that failed never becomes `populated: false`; it is reported unestablished and the gate refuses.
+      cgroup_events: decode_cgroup_events_populated(body: events.stdout),
+      cgroup_read_established: events.success,
+      writer_process_count: if procs.success { length(xs: decode_cgroup_procs(body: procs.stdout)) as Int } else { 0 },
+    }
+  }
 }
 
 // HOW MANY PLAIN CLOSING MARKERS the instance's attempt-state tree still carries. A missing tree is zero (there
@@ -1157,12 +1228,18 @@ fn dashboard_metering_closing_writer_observation(instance: HostDashboardInstance
 // blank separators failing the equality test. This is the census the cutover's disposition asks for -- the
 // difference between "the writer is excluded and nothing old is left" (Noop) and "the writer is excluded but
 // the old bytes are still here" (Refused, an operator decides).
-fn dashboard_metering_closing_marker_census(instance: HostDashboardInstance, root: FilePath) -> Int {
-  if !dashboard_target_directory_present(instance: instance, path: root) {
-    0
+fn dashboard_metering_closing_marker_census(instance: HostDashboardInstance, root: FilePath) -> MeteringClosingMarkerCensus {
+  let listing = dashboard_target_exec(instance: instance, program: "/bin/ls", args: ["-1R", root as String])
+  if listing.success {
+    CensusCounted { count: length(xs: split(s: trim(s: listing.stdout), delimiter: "\n").filter(line => line == (metering_closing_legacy_marker_name as String))) as Int }
+  } else if string_contains(s: listing.stderr, pattern: "No such file or directory") {
+    // The root is POSITIVELY absent: `ls -1R` on a missing directory reports ENOENT, so there is nothing there to
+    // count -- absence ESTABLISHED, not a probe that failed to look. The cutover may read this as zero markers.
+    CensusAbsentEstablished
   } else {
-    let listing = dashboard_target_exec(instance: instance, program: "/bin/ls", args: ["-1R", root as String])
-    length(xs: split(s: trim(s: listing.stdout), delimiter: "\n").filter(line => line == (metering_closing_legacy_marker_name as String))) as Int
+    // Anything else -- a failed stat, an unreadable subtree, a missing binary, an I/O error -- is UNKNOWN, not
+    // zero. This is the fail-open this closes: a census that could not look must REFUSE the seal, never proceed.
+    CensusRefused { cause: join(["`ls -1R ", root as String, "` refused: ", trim(s: listing.stderr)], "") }
   }
 }
 

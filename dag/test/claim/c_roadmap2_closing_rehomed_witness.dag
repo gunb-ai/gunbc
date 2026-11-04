@@ -1,0 +1,308 @@
+module test.claim.c_roadmap2_closing_rehomed_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.algebra { string_contains }
+import gunbc.roadmap.roadmap_attempt_state_layout_move {
+  LegacyWriterFence, LegacyWriterUnits, LegacyWriterExclusion, LegacyWriterNotExcluded,
+  LegacyWriterUndeclared, LegacyWriterFenceConflict,
+}
+import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable }
+import gunbc.roadmap.roadmap_metering_closing_cutover {
+  MeteringClosingWriterObservation, MeteringClosingWriterQuiescence, WriterQuiescent, WriterNotQuiescent,
+  MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
+  MeteringClosingFinalGate, MeteringClosingFinalGatePassed, MeteringClosingFinalGateRefused,
+  metering_closing_legacy_marker_name, metering_closing_writer_quiescent_one,
+  metering_closing_writer_process_quiescence, metering_closing_unit_exclusion,
+  metering_closing_held_back_units, metering_closing_final_gate_for,
+}
+
+// THE BLOCKER 2(c) AND 2(d) CONTROLS, EXECUTED THROUGH THE REAL PRODUCTION FUNCTIONS.
+//
+// WHY THIS FILE EXISTS SEPARATELY from test.claim.c_roadmap2_closing_cutover_witness: that file's entry closure
+// reaches gunbc.roadmap.roadmap_dashboard_instance_apply, and an entry whose closure reaches that module is refused
+// on main today by a `circular dependency detected` diagnostic on a synthesized node (reported to stern-ram-763;
+// reproduced by a zero-diff probe that adds nothing but an import of the module). stern-ram-763 ruled that
+// "compile-checked, NOT executed" does NOT discharge blockers 2(c) and 2(d) -- they were REQUEST_CHANGES for
+// EXECUTED controls -- and allowed re-homing the controls in an entry whose closure resolves WITHOUT importing
+// apply.dag. This is that re-home, and it is honest in the way that matters:
+//
+//   * EVERY claim below calls the real production function -- metering_closing_writer_quiescent_one,
+//     metering_closing_writer_process_quiescence, metering_closing_unit_exclusion,
+//     metering_closing_held_back_units, metering_closing_final_gate_for -- from
+//     gunbc.roadmap.roadmap_metering_closing_cutover. Nothing here re-implements a gate, copies a
+//     predicate, or restates a rule the production code owns. A claim that did would prove the test, not the gate.
+//   * NO production code was moved to get here. The functions are where the PR put them; only this test file's
+//     imports were narrowed, and the closure is a strict subset of what the production module itself imports
+//     (std.types, gunbc.roadmap.roadmap_attempt_metering_slots,
+//     gunbc.roadmap.roadmap_attempt_state_layout_move, extdeps.linux.cgroup_v2), so the entry cannot see a name
+//     the module under test could not.
+//   * What stays compile-checked is said plainly rather than hidden: the census PRODUCER,
+//     dashboard_metering_closing_marker_census (gunbc.roadmap.roadmap_dashboard_instance_apply), runs `ls
+//     -1R` on a live host and so belongs in apply.dag; moving it to dodge the refusal is ruled out. Its wet
+//     presence/absence/ENOENT control is therefore COMPILE-CHECKED BY V2-BOOTSTRAP, NOT EXECUTED. What IS
+//     executed here is the consequence stern's blocker 1 is about: that the gate REFUSES on CensusRefused instead
+//     of reading it as 0 -- claims 17 and 18.
+//
+// THE OBSERVATION, NOT THE INSTRUCTION (blocker 2(c)). A stopped+masked unit is not enough, and the gate does not
+// ask an operator to drain anything: it reads the unit's own cgroup and refuses while the kernel says something is
+// alive below it. Claims 4, 6 and 12 are the arms that make that more than a word -- each one takes a unit whose
+// WORDS say stopped and masked and is still refused, by the process observation.
+
+// THE UNIT THE TRACE IN roadmap_metering_closing_cutover NAMES, spelled here as a value only. The spelling is not
+// what this file claims -- the fence-vs-belt_instance_obligation_unit_name equality is claimed in
+// c_roadmap2_closing_cutover_witness.dag; here the unit name is an input, so a claim cannot pass by agreeing with
+// itself about a literal.
+data fx_unit: NonEmptyStr = "gunbc-obligation-srv2probe-metering.service" as NonEmptyStr
+data fx_unit_two: NonEmptyStr = "gunbc-obligation-srv2probe-second.service" as NonEmptyStr
+data fx_systemctl: NonEmptyStr = "/usr/bin/systemctl" as NonEmptyStr
+
+// ONE OBSERVATION, ALL EIGHT FIELDS, so a claim states what it varies and inherits a certified baseline for the
+// rest. The baseline is the fully-excluded host: inactive, masked, no main pid, a cgroup the kernel reports
+// unpopulated, and the read established.
+fn fx_obs(
+  unit: NonEmptyStr,
+  active_state: String,
+  enabled_state: String,
+  main_pid: String,
+  control_group: String,
+  cgroup_events: CgroupEventsDecoding,
+  cgroup_read_established: Bool,
+  writer_process_count: Int,
+) -> MeteringClosingWriterObservation {
+  MeteringClosingWriterObservation {
+    unit: unit,
+    active_state: active_state,
+    enabled_state: enabled_state,
+    main_pid: main_pid,
+    control_group: control_group,
+    cgroup_events: cgroup_events,
+    cgroup_read_established: cgroup_read_established,
+    writer_process_count: writer_process_count,
+  }
+}
+
+// THE CERTIFIED-BASELINE OBSERVATION, and the two cgroup answers, so no claim hand-builds a kernel file.
+fn fx_quiescent(unit: NonEmptyStr) -> MeteringClosingWriterObservation {
+  fx_obs(unit: unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+}
+
+fn fx_populated() -> CgroupEventsDecoding { CgroupEventsDecoded { populated: true } }
+fn fx_unparseable() -> CgroupEventsDecoding { CgroupEventsUnparseable { cause: "no populated line" } }
+
+fn fx_fence(units: List<NonEmptyStr>) -> LegacyWriterFence {
+  LegacyWriterUnits { systemctl: fx_systemctl, units: units }
+}
+
+// ─── GROUP A ── metering_closing_writer_quiescent_one: the six arms of the process observation ────────────────
+
+test fn the_running_unit_is_refused_not_drained() -> Bool {
+  // 1. ActiveState=active is a writer running NOW. The answer refuses; it never tells anyone to drain.
+  let o = fx_obs(unit: fx_unit, active_state: "active", enabled_state: "masked", main_pid: "4242", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "ActiveState=active") && !string_contains(s: r, pattern: "drain")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+test fn a_live_main_pid_outvotes_the_stopped_word() -> Bool {
+  // 2. The words say inactive; MainPID says otherwise. The live pid wins -- this is the arm a word-only
+  // observation would get wrong in the dangerous direction.
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "99", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "main pid 99")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+test fn attached_processes_refuse_even_with_no_main_pid() -> Bool {
+  // 3. MainPID is 0 (systemd's answer for a unit with no main process) and yet the unit's OWN cgroup has
+  // processes. Only the cgroup can see this, which is why pgrep was dropped.
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: true }, cgroup_read_established: true, writer_process_count: 3)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "3 process(es) are attached to")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+test fn an_unanswered_cgroup_read_is_never_quiescence() -> Bool {
+  // 4. THE FAIL-CLOSED ARM. Everything reads stopped and masked, the process count is 0, and the cgroup file was
+  // never answered at all. Absence of an answer is not evidence of absence: this is the exact fail-open the
+  // blocker is about, in the process arm.
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsUnparseable { cause: "unread" }, cgroup_read_established: false, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "could not be read") && string_contains(s: r, pattern: "an unanswered question is not evidence")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+test fn an_unparseable_cgroup_events_file_refuses() -> Bool {
+  // 5. The file answered but never said `populated`. A file that will not say cannot certify an empty subtree.
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: fx_unparseable(), cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "did not answer the populated question")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+test fn the_kernel_saying_populated_refuses_a_stopped_masked_unit() -> Bool {
+  // 6. stopped + masked + a populated cgroup: the words and the kernel disagree, and the kernel is the authority.
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: fx_populated(), cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "populated")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+test fn an_unpopulated_cgroup_of_a_stopped_masked_unit_is_quiescent() -> Bool {
+  // 7. The one GREEN path, stated so the refusals above are known to be discriminating rather than blanket.
+  match metering_closing_writer_quiescent_one(o: fx_quiescent(unit: fx_unit)) {
+    WriterQuiescent { unit: u } => u == fx_unit
+    WriterNotQuiescent { unit: _, reason: _ } => false
+  }
+}
+
+test fn a_removed_cgroup_is_positive_absence_not_a_missing_answer() -> Bool {
+  // 8. ControlGroup empty means systemd removed the unit's cgroup. That is an established absence, distinct from
+  // claim 4 where the file exists but never answered -- both are "no processes", only one is a fact.
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "", control_group: "", cgroup_events: fx_unparseable(), cgroup_read_established: false, writer_process_count: 0)
+  match metering_closing_writer_quiescent_one(o: o) {
+    WriterQuiescent { unit: u } => u == fx_unit
+    WriterNotQuiescent { unit: _, reason: _ } => false
+  }
+}
+
+// ─── GROUP B ── metering_closing_unit_exclusion: 2(c) folds the observation into the exclusion ────────────────
+
+test fn an_unobserved_unit_is_not_excluded() -> Bool {
+  // 9. Silence is not absence. A declared unit the gate has no observation of is NOT excluded, so a cutover
+  // cannot pass by forgetting to look.
+  match metering_closing_unit_exclusion(unit: fx_unit, observed: []) {
+    LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "no observed state")
+    LegacyWriterExcluded => false
+  }
+}
+
+test fn stopped_masked_and_quiet_is_excluded() -> Bool {
+  // 10. The GREEN exclusion, through the same rule #15413's identity-store move uses.
+  match metering_closing_unit_exclusion(unit: fx_unit, observed: [fx_quiescent(unit: fx_unit)]) {
+    LegacyWriterExcluded => true
+    LegacyWriterNotExcluded { reason: _ } => false
+  }
+}
+
+test fn stopped_but_not_masked_is_not_excluded() -> Bool {
+  // 11. Stopped alone can be started again, so the mask is required -- the accepted rule, not a stricter one.
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "enabled", main_pid: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_unit_exclusion(unit: fx_unit, observed: [o]) {
+    LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "not masked")
+    LegacyWriterExcluded => false
+  }
+}
+
+test fn a_populated_cgroup_defeats_stopped_and_masked_together() -> Bool {
+  // 12. THE POINT OF 2(c) AS AN OBSERVATION. stopped AND masked -- everything the old instruction-based gate
+  // asked for -- and a live process below the unit still refuses the exclusion. An instruction to drain would
+  // have passed here; an observation does not.
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: fx_populated(), cgroup_read_established: true, writer_process_count: 1)
+  match metering_closing_unit_exclusion(unit: fx_unit, observed: [o]) {
+    LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "populated")
+    LegacyWriterExcluded => false
+  }
+}
+
+test fn one_refusal_among_observations_of_the_same_unit_wins() -> Bool {
+  // 13. Two observations of one unit, one quiet and one not: the refusal survives the fold. A later quiescent
+  // row must never overwrite an earlier refusal.
+  let quiet = fx_quiescent(unit: fx_unit)
+  let live = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "7", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
+  match metering_closing_writer_process_quiescence(unit: fx_unit, observed: [quiet, live]) {
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "main pid 7")
+    WriterQuiescent { unit: _ } => false
+  }
+}
+
+test fn held_back_units_names_only_the_unit_that_is_not_excluded() -> Bool {
+  // 14. The list the disposition keys on: exactly one of two units is held back, and it is the right one.
+  let held = metering_closing_held_back_units(declared: [fx_unit, fx_unit_two], observed: [fx_quiescent(unit: fx_unit), fx_obs(unit: fx_unit_two, active_state: "active", enabled_state: "masked", main_pid: "5", control_group: "/u", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)])
+  length(xs: held) == 1 && held[0] == fx_unit_two
+}
+
+// ─── GROUP C ── metering_closing_final_gate_for: 2(d) recheck, and blocker 1's refusal on CensusRefused ──────
+
+test fn the_final_gate_refuses_an_undeclared_fence() -> Bool {
+  // 15. An exclusion that was never declared cannot be certified, however quiet the host looks.
+  match metering_closing_final_gate_for(fence: LegacyWriterUndeclared, instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit)], census: CensusAbsentEstablished) {
+    MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "never declared")
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}
+
+test fn the_final_gate_refuses_a_conflicted_fence() -> Bool {
+  // 16. Two rows for one instance: the gate will not choose between them.
+  match metering_closing_final_gate_for(fence: LegacyWriterFenceConflict { instance_id: "srv2probe" as NonEmptyStr, rows: 2 }, instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit)], census: CensusAbsentEstablished) {
+    MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "declared 2 times")
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}
+
+test fn the_final_gate_passes_on_an_established_absent_tree() -> Bool {
+  // 17. GREEN, first arm: exclusion holds and the census positively established the tree absent.
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit)], census: CensusAbsentEstablished) {
+    MeteringClosingFinalGatePassed { reason: r } => string_contains(s: r, pattern: "established absent")
+    MeteringClosingFinalGateRefused { cause: _ } => false
+  }
+}
+
+test fn the_final_gate_passes_when_the_census_counts_zero() -> Bool {
+  // 18. GREEN, second arm: a SUCCESSFUL census that counted nothing. Distinguished from claim 19 and from the
+  // pre-fix code, where this `0` and a failed census were the same value.
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit)], census: CensusCounted { count: 0 }) {
+    MeteringClosingFinalGatePassed { reason: r } => string_contains(s: r, pattern: "still counts no plain")
+    MeteringClosingFinalGateRefused { cause: _ } => false
+  }
+}
+
+test fn the_final_gate_refuses_a_failed_census_instead_of_reading_it_as_zero() -> Bool {
+  // 19. BLOCKER 1, EXECUTED. This is the fail-open closed: a census that could not establish anything is NOT the
+  // same answer as a census that counted zero. Before the typed census there was no `cause` to carry and the gate
+  // compared an Int to 0, so this input and claim 18's were indistinguishable and the seal proceeded on an
+  // unknown host.
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit)], census: CensusRefused { cause: "ls -1R exited 2: Permission denied" }) {
+    MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "could not establish the closing-marker census") && string_contains(s: c, pattern: "Permission denied")
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}
+
+test fn the_final_gate_refuses_markers_that_appeared_after_the_first_gate() -> Bool {
+  // 20. A marker written DURING the deploy: the first gate had passed, and the recheck is what catches it.
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit)], census: CensusCounted { count: 2 }) {
+    MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "counted 2 plain") && string_contains(s: c, pattern: metering_closing_legacy_marker_name as String)
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}
+
+test fn the_final_gate_rechecks_the_exclusion_and_not_only_the_census() -> Bool {
+  // 21. THE POINT OF 2(d): the exclusion has to hold at the LAST check. Everything quiet, census clean, and one
+  // unit unmasked between the gates -- the recheck refuses on the exclusion, not on the markers.
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "enabled", main_pid: "0", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)], census: CensusCounted { count: 0 }) {
+    MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "no longer excluded") && string_contains(s: c, pattern: "at the LAST check")
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}
+
+test fn the_final_gate_refuses_a_unit_that_lost_its_observation_entirely() -> Bool {
+  // 22. The recheck re-observes: if the observation set no longer covers a declared unit, that unit is held back
+  // and the gate refuses. Losing the evidence is not the same as evidence of absence.
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [], census: CensusAbsentEstablished) {
+    MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "no longer excluded")
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}
+
+test fn the_gate_refuses_when_one_of_two_declared_units_is_live() -> Bool {
+  // 23. Two declared units; one quiet, one with a live main pid. A partial exclusion is not an exclusion.
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit, fx_unit_two]), instance_id: "srv2probe" as NonEmptyStr, observed: [fx_quiescent(unit: fx_unit), fx_obs(unit: fx_unit_two, active_state: "inactive", enabled_state: "masked", main_pid: "31", control_group: "/u", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)], census: CensusAbsentEstablished) {
+    MeteringClosingFinalGateRefused { cause: c } => string_contains(s: c, pattern: "1 declared closing-marker writer unit(s) no longer excluded") && string_contains(s: c, pattern: "gunbc-obligation-srv2probe-second.service")
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}

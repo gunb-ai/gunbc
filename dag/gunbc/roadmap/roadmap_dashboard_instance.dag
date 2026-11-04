@@ -3242,6 +3242,10 @@ type DashboardInstanceProvisionOp
   // module's disposition (gunbc.roadmap.roadmap_metering_closing_cutover), not a rule spelled here: this op
   // carries the fence and the root to census, and the apply route reads the states and asks.
   | DashboardAssertMeteringClosingWriterExcluded { fence: LegacyWriterFence, attempt_state_root: FilePath }
+  // THE FINAL RECHECK (blocker 2(d)). A second op, run after the first, that re-observes the writer exclusion
+  // and re-runs the full census. Two ops and not one, because the point is that the state is checked TWICE across
+  // the deploy: whatever the first gate saw does not bind the last moment before the seal is trusted.
+  | DashboardAssertMeteringClosingCutoverFinal { fence: LegacyWriterFence, attempt_state_root: FilePath }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
 // deployment_spec_for has no production caller. This plan does not start the process and does not
@@ -3457,8 +3461,9 @@ fn dashboard_instance_provision_op_row(
         detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
       }
     DashboardAssertMeteringClosingWriterExcluded { fence: _, attempt_state_root: root } =>
+    DashboardAssertMeteringClosingCutoverFinal { fence: _, attempt_state_root: root } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "assert-metering-closing-writer-excluded" as NonEmptyStr,
+        kind: "assert-metering-closing-cutover-final-recheck" as NonEmptyStr,
         target: root as String,
         detail: "closing-marker cutover gate: the metering obligation unit is observed stopped and masked, and the plain metering-roster-closing census over the instance's attempt-state tree is 0, before the build that takes the closing hold may run that obligation",
       }
@@ -3533,7 +3538,12 @@ fn dashboard_instance_metering_closing_cutover_ops(instance: HostDashboardInstan
   let fence = dashboard_instance_metering_closing_writer_fence(instance: instance)
   match fence {
     LegacyWriterUndeclared => []
-    _ => [DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: dashboard_instance_dispatch_attempt_state_root(instance: instance) }]
+    _ => [
+      DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: dashboard_instance_dispatch_attempt_state_root(instance: instance) },
+      // THE RECHECK, ordered last. The plan runs its ops in order, so this one observes the host again at the
+      // point where a stale certificate would do the most damage.
+      DashboardAssertMeteringClosingCutoverFinal { fence: fence, attempt_state_root: dashboard_instance_dispatch_attempt_state_root(instance: instance) },
+    ]
   }
 }
 
