@@ -21,7 +21,7 @@ data uri_witness_entry: String = "dag/test/claim/uri_witness.dag"
 
 data corpus_scan_entry: String = "src/v2/lens/mandatory_tag/corpus_scan_witness.dag"
 
-data cgroup_v2_memory_stat_keys_entry: String = "dag/test/claim/cgroup_v2_memory_stat_keys.dag"
+data cgroup_v2_memory_events_files_entry: String = "dag/test/claim/cgroup_v2_memory_events_files.dag"
 
 fn extdeps_external_authority_claims() -> List<ClaimRun> {
   [
@@ -33,10 +33,8 @@ fn extdeps_external_authority_claims() -> List<ClaimRun> {
     ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_missing_plant_reads_absent" },
     ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_file_plant_reads_non_external_scheme" },
     ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_real_anchor_reads_https" },
-    ClaimRun { entry: cgroup_v2_memory_stat_keys_entry, function: "the_events_files_are_named_by_the_kernel_and_share_a_kind" },
-    ClaimRun { entry: cgroup_v2_memory_stat_keys_entry, function: "the_local_events_file_is_not_the_hierarchical_one" },
-    ClaimRun { entry: cgroup_v2_memory_stat_keys_entry, function: "the_stat_key_names_are_the_kernel_spellings" },
-    ClaimRun { entry: cgroup_v2_memory_stat_keys_entry, function: "the_stat_key_kinds_separate_levels_from_counters" },
-    ClaimRun { entry: cgroup_v2_memory_stat_keys_entry, function: "a_stat_key_names_the_key_the_flat_reader_reads" }
+    ClaimRun { entry: cgroup_v2_memory_events_files_entry, function: "the_events_files_are_named_by_the_kernel_and_share_a_kind" },
+    ClaimRun { entry: cgroup_v2_memory_events_files_entry, function: "the_local_events_file_is_not_the_hierarchical_one" },
+    ClaimRun { entry: cgroup_v2_memory_events_files_entry, function: "the_events_record_carries_the_five_counters_the_kernel_names" }
   ]
 }

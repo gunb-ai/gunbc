@@ -1,0 +1,39 @@
+module test.claim.cgroup_v2_memory_events_files
+
+import std.types { Bool }
+import extdeps.linux.cgroup_v2_memory {
+  MemoryEvents, MemoryEventsLocal, CumulativeCounter,
+  CgroupMemoryEventCounters, cgroup_memory_interface_file_name, cgroup_memory_metric_kind,
+}
+
+// THE TWO EVENTS FILES, AT THEIR OWN INTERFACE. cgroup-v2 gives them the same entries and moves only
+// the hierarchy: memory.events is hierarchical, memory.events.local is not ("Note that all fields in
+// this file are hierarchical and the file modified event can be generated due to an event down the
+// hierarchy. For the local events at the cgroup level see memory.events.local."). A witness over both
+// pins the name the kernel uses and the kind the quantity has, which is everything a consumer is
+// allowed to inherit rather than re-decide.
+test fn the_events_files_are_named_by_the_kernel_and_share_a_kind() -> Bool {
+  cgroup_memory_interface_file_name(f: MemoryEvents) == "memory.events"
+    && cgroup_memory_interface_file_name(f: MemoryEventsLocal) == "memory.events.local"
+    && cgroup_memory_metric_kind(f: MemoryEvents) == CumulativeCounter
+    && cgroup_memory_metric_kind(f: MemoryEventsLocal) == CumulativeCounter
+}
+
+// THE NAMES DIFFER, AND NOTHING ELSE ABOUT THE PAIR DOES. If the two names ever collapse, a witness
+// that read one and printed the other becomes indistinguishable from one that read the right file --
+// the silent half of charging a descendant's OOM to the level that asked.
+test fn the_local_events_file_is_not_the_hierarchical_one() -> Bool {
+  cgroup_memory_interface_file_name(f: MemoryEvents) != cgroup_memory_interface_file_name(f: MemoryEventsLocal)
+    && cgroup_memory_metric_kind(f: MemoryEvents) == cgroup_memory_metric_kind(f: MemoryEventsLocal)
+}
+
+// THE RECORD'S FIVE COUNTERS, PINNED AT THE SHAPE ITS CONSUMER READS. The production consumer is the
+// memory_events field of BuildCacheEndpointObservation in gunbc.build_cache.build_cache_instance,
+// which used to coin this record to itself; pinning the five fields here means a rename or a dropped
+// counter on the authority breaks a claim rather than passing silently at the observation.
+test fn the_events_record_carries_the_five_counters_the_kernel_names() -> Bool {
+  match CgroupMemoryEventCounters { low: 2, high: 5, max: 1, oom: 0, oom_kill: 3 } {
+    CgroupMemoryEventCounters { low: l, high: h, max: m, oom: o, oom_kill: k } =>
+      l == 2 && h == 5 && m == 1 && o == 0 && k == 3
+  }
+}

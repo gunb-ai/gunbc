@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.memory_stat_keys_are_unmodelled_in_extdeps_and_the_host_list_is_the_only_one
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Unmanaged }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data memory_stat_keys_are_unmodelled_in_extdeps_and_the_host_list_is_the_only_one: RecurringFailureMode = RecurringFailureMode {
+  identity: "memory_stat_keys_are_unmodelled_in_extdeps_and_the_host_list_is_the_only_one" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Unmanaged },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Unmanaged },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "name a memory.stat key once, on the interface that owns the file it appears in, and have the consumer that prints keys derive its list from that naming, so a key the kernel does not have cannot be printed and a renamed one refuses",
+    },
+  },
+
+  receipts: [
+    "**an external interface fact with no authority, carried by exactly one hand list** (INVALID STATE: the kernel's names for the memory.stat keys, and which kind of quantity each is, are modelled nowhere. The only representation in the corpus is a consumer's hand-written array. A copy can drift from an authority and be caught; a single list has nothing to drift against, so there is no refusal available at any rung of the build.)",
+
+    "MECHANISM. src/v1/stage0/src/required_regen_host.rs carries CGROUP_DIAGNOSTIC_STAT_KEYS, fourteen string literals naming memory.stat keys, plus cgroup_stat_field, a hand-written match over those same names that yields the string absent when a key is missing. The module that owns the cgroup-v2 memory interface, extdeps.linux.cgroup_v2_memory, models the interface FILES by their real names and one READING of memory.stat -- CgroupMemoryStat, the five keys a residency reading requires -- and does not model the keys themselves. The host cannot import the authority for anything: the regen host module is not in the stage0 crate population, so no mirror of that module exists for it to read.",
+
+    "WHY IT SURVIVES REVIEW: both sides read correctly in isolation. A literal array of key names inside a diagnostic function is unremarkable, and an extdeps module that models files and a reading looks complete. Nothing at either head is wrong. The class is the absence of a place to check, which no reviewer of a single diff can see.",
+
+    "RECOGNITION RULE (mechanical, at diff grain): when a diff adds, renames or reorders a string literal that denotes an EXTERNAL interface fact -- a file name, a stat key, a counter name -- ask whether any module owns that fact. One hand list and no owner is this class; two owners that must be kept in step is the sibling class. Both are found at diff grain, and neither is visible as wrongness in either text alone.",
+
+    "SPECIMEN, measured. The host array names fourteen keys: anon, file, kernel, slab, shmem, file_mapped, file_dirty, file_writeback, swapcached, inactive_anon, active_anon, inactive_file, active_file, unevictable. The same kernel file documents workingset_refault_file and pgmajfault as CumulativeCounter entries, which the host does not print -- a consumer choice, and a legitimate one, but today it is a choice recorded nowhere except in the array itself.",
+
+    "THE MITIGATION THAT WAS REMOVED, RECORDED SO THE RUNG IS NOT OVERSTATED. The change that filed this row first put a closed key type on the authority, with each key's kernel name and kind, plus a claim pinning both. It was WITHDRAWN before merge: the type had no production consumer -- the host neither derives from it nor is checked against it -- so it would have been a second list rather than an authority, and DESIGN 3c makes an unconsumed declaration the red it is. The pool enrollment of its claim is not consumption either: CheapClaimPoolGate is declared (gunbc.ci.ci_gate, gunbc.ci.ci_spec, gunbc.merge_admission, and the v2.workflow.ci_floor_plan membership recorded at gunbc.commit_workflow) and executed by no file under .github/workflows -- the only lane invoking claim_executor runs the regen round. That gap is the class already filed as [[an_authored_gate_reached_by_no_execution_route]]. So this row sits at Unmanaged: the corpus carries a disclosure in the authority module and no mechanism.",
+
+    "FOUND SIBLINGS, named rather than silently left, same family. gunbc.observation_seed_render carries two events file names as hand-written data constants (memory.events unreadable, memory.events.local unreadable) without importing the authority. gunbc.build_cache.build_cache_instance carries a local memory-limit triple beside the authority's MemoryMax, MemoryHigh and MemoryCurrent interface files. gunbc.ci.ci_oom_reclassify has a variant label CgroupMemoryEvents on OomKillSource, a label naming the kernel file without the authority's name. One sibling WAS closed by the change filing this row: build_cache_instance coined its own five-counter events record, and that record now lives once, on the authority, with the observation pointing at it.",
+
+    "HARM. The regen round's cgroup memory diagnostic is the only instrument on the memory envelope of a generation, and it is what tells a host ruling whether a slot fits. A key that drifts renders as the string absent beside real numbers, which reads as an interface that lacks the key rather than a list that lost it -- the failure points at the kernel instead of at the diff. Measured cost so far: agreement between the array and the kernel's file had to be established by hand, and every future key change needs the same hand check with nothing to check it against.",
+
+    "RUNG FOUND AT: Unmanaged, and deliberately not higher. The candidate mitigation was removed with its own consumer argument, so nothing in the corpus can refuse a drift today. Claiming Mitigatable would require a mechanism; what exists is a gap note in the authority module and this row.",
+
+    "CEILING, derived: MechanicallyPreventable. When a key type lands on the authority WITH an executing consumer -- the host deriving its print list from that naming, which needs the regen host module to join the stage0 crate population -- a key the interface does not have cannot be printed, a renamed key refuses, and the check runs on the path that builds the host. No new judgement, model or capability anywhere else is required, which is what makes the ceiling mechanical rather than structural.",
+
+    "NEXT TRIGGER, named as a capability: name a memory.stat key once, on the interface that owns the file it appears in, and have the printing consumer derive its list from that naming. The blocker to building it here is that growing the stage0 crate population is a crate-layout change, and the population and the job roster are closed to growth without a ruling; this row records the class and its trigger and builds nothing.",
+
+    "BOUNDED AGAINST NEIGHBOURS: [[an_authored_gate_reached_by_no_execution_route]] is a declared route with no executor, which is why a claim enrolled in an unrun pool discharges nothing here; [[a_pin_claim_compares_two_copies_while_a_third_drifts]] pins two copies and lets a third drift, so its defect is a pin over the wrong population, whereas here there is nothing to pin; [[absence_carried_by_a_second_representation]] is one absence carried twice, while this is one presence carried once with no owner; [[meaning_fork]] is the general shape, two texts for one meaning -- this row is the case of ONE text for a meaning nobody owns, which is why review cannot see it.",
+  ],
+
+  evidence: [],
+}

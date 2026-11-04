@@ -307,87 +307,20 @@ type CgroupMemoryEventCounters {
   oom_kill: Nat
 }
 
-// ── THE memory.stat KEYS, BY THEIR KERNEL NAMES, EACH WITH ITS KIND ────────────────────────────
+// ── memory.stat KEYS ARE NOT MODELLED AS KEYS HERE, AND THAT IS A GAP, NOT A DESIGN ─────────────
 //
-// This is the interface half of a fact that a consumer was hand-copying. Which keys a diagnostic
-// PRINTS, and in what order, is an observation this repository makes and stays with that consumer
-// (DESIGN 3b, External facts: product policy and observations belong to the consuming layer, never
-// to extdeps) -- see src/v1/stage0/src/required_regen_host.rs CGROUP_DIAGNOSTIC_STAT_KEYS, whose
-// divergence from this module is tracked by
-// dag/gunbc/recurring_failure_mode/a_host_renderer_hand_copies_an_extdeps_key_roster. What the
-// consumer was copying is what lives here: the kernel's spelling of each key, and which of the three
-// kinds it is.
+// This module models the interface FILES (CgroupMemoryInterfaceFile) and one READING of memory.stat
+// (CgroupMemoryStat, the five keys a residency reading requires). What it does NOT model is the key
+// interface itself -- the kernel's name for each key and which of the three kinds it is. So the only
+// list of those names in the corpus is a consumer's: CGROUP_DIAGNOSTIC_STAT_KEYS plus
+// cgroup_stat_field in src/v1/stage0/src/required_regen_host.rs. A list with no authority beside it
+// cannot refuse a drift, because there is nothing to drift against -- which is why the gap is filed
+// rather than left, with the capability that would close it: a key type that lands WITH an executing
+// consumer, the host deriving its print list from it, which needs the regen host module to join the
+// stage0 crate population.
+// dag/gunbc/recurring_failure_mode/memory_stat_keys_are_unmodelled_in_extdeps_and_the_host_list_is_the_only_one.dag
 //
-// A CLOSED type, not String keys, so a consumer that wants a key names it and the kind travels with
-// it; and so a key that does not exist in the interface cannot be spelled at all. The set is the keys
-// this corpus reads -- the five the residency reading above requires, plus the levels a memory
-// envelope diagnostic reads. memory.stat documents more (usage, limit, min, low, high, max, peak,
-// current, swap.*, numa_stat, the pgscan/pgsteal and workingset families beyond the one refault and
-// one major-fault counter modelled here, kernel_stack, sock, vmalloc); a key joins when a consumer
-// asks for it, which is the same narrowing this module already declares for the residency reading and
-// for the interface files.
-type CgroupMemoryStatKey
-  = StatAnon
-  | StatFile
-  | StatKernel
-  | StatSlab
-  | StatShmem
-  | StatFileMapped
-  | StatFileDirty
-  | StatFileWriteback
-  | StatSwapCached
-  | StatInactiveAnon
-  | StatActiveAnon
-  | StatInactiveFile
-  | StatActiveFile
-  | StatUnevictable
-  | StatWorkingsetRefaultFile
-  | StatPgmajfault
+// A key list added here WITHOUT such a consumer would be a second list, not an authority, and DESIGN
+// 3c treats a declaration nothing consumes as the red it is. That is the reason this module carries
+// the gap note instead of the keys.
 
-fn cgroup_memory_stat_key_name(k: CgroupMemoryStatKey) -> NonEmptyStr {
-  match k {
-    StatAnon => "anon"
-    StatFile => "file"
-    StatKernel => "kernel"
-    StatSlab => "slab"
-    StatShmem => "shmem"
-    StatFileMapped => "file_mapped"
-    StatFileDirty => "file_dirty"
-    StatFileWriteback => "file_writeback"
-    StatSwapCached => "swapcached"
-    StatInactiveAnon => "inactive_anon"
-    StatActiveAnon => "active_anon"
-    StatInactiveFile => "inactive_file"
-    StatActiveFile => "active_file"
-    StatUnevictable => "unevictable"
-    StatWorkingsetRefaultFile => "workingset_refault_file"
-    StatPgmajfault => "pgmajfault"
-  }
-}
-
-// THE KIND IS PART OF THE KEY, NOT A CONSUMER'S GUESS. cgroup-v2 lists the residency levels
-// (anon, file, kernel, slab, shmem, file_mapped, file_dirty, file_writeback, swapcached,
-// inactive_anon, active_anon, inactive_file, active_file, unevictable) as byte counts of the cgroup's
-// current state, and workingset_refault_file and pgmajfault as event counts since the cgroup was
-// created. A level and a counter printed the same way read the same and mean different things: the
-// counter at two phases without its pair subtracted looks like a charge that grew.
-fn cgroup_memory_stat_key_kind(k: CgroupMemoryStatKey) -> CgroupMemoryMetricKind {
-  match k {
-    StatAnon => Instantaneous
-    StatFile => Instantaneous
-    StatKernel => Instantaneous
-    StatSlab => Instantaneous
-    StatShmem => Instantaneous
-    StatFileMapped => Instantaneous
-    StatFileDirty => Instantaneous
-    StatFileWriteback => Instantaneous
-    StatSwapCached => Instantaneous
-    StatInactiveAnon => Instantaneous
-    StatActiveAnon => Instantaneous
-    StatInactiveFile => Instantaneous
-    StatActiveFile => Instantaneous
-    StatUnevictable => Instantaneous
-    StatWorkingsetRefaultFile => CumulativeCounter
-    StatPgmajfault => CumulativeCounter
-  }
-}
