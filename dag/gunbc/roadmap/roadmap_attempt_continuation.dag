@@ -264,6 +264,7 @@ fn continuation_decision_with_retirement(prior: PriorAttemptFacts?, retire: Line
             ContinuationSpawnFresh { reason: r } => continuation_retire_over_non_ended(record: record, state: "spawn-fresh", reason: r)
             ContinuationRefused { reason: r } => continuation_retire_over_non_ended(record: record, state: "refused", reason: r)
             ContinuationHold { reason: r } => continuation_retire_over_non_ended(record: record, state: "held or active", reason: r)
+            ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => continuation_retire_over_non_ended(record: record, state: "recovery-needed and resumable", reason: r)
             ContinuationComplete { reason: r } => continuation_retire_over_non_ended(record: record, state: "complete", reason: r)
           }
       }
@@ -304,6 +305,7 @@ fn lineage_retire_admission(prior: PriorAttemptFacts?, attempt_key: String, reas
           ContinuationSpawnFresh { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (spawn-fresh): ", r], "") }
           ContinuationRefused { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (refused): ", r], "") }
           ContinuationHold { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (held or active): ", r], "") }
+          ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => LineageRetireRefused { reason: join(["the lineage is not Ended (recovery-needed, resumable): ", r], "") }
           ContinuationComplete { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (complete): ", r], "") }
         }
     }

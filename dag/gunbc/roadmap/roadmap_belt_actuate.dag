@@ -2723,6 +2723,7 @@ fn belt_lineage_retire_panel_for_instance(instance: HostDashboardInstance, node_
             ContinuationSpawnFresh { reason: _ } => LineageRetirePanelNone
             ContinuationRefused { reason: _ } => LineageRetirePanelNone
             ContinuationHold { reason: _ } => LineageRetirePanelNone
+            ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageRetirePanelNone
             ContinuationComplete { reason: _ } => LineageRetirePanelNone
           }
       }
