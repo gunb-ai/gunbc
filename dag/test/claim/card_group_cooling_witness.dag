@@ -11,9 +11,9 @@ import product.printed_chassis.gpu_duct { screwed_end_cap_of, ScrewedEndCap, Scr
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, a2_duct_card, a16_duct_card }
 import product.printed_chassis.group_duct {
   GroupDuctPlan, GroupFitPlateAdmission, a2_altra_row_plan, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
-  GroupMembersNotSideBySide, admit_group_duct, GroupDuctAdmitted,
+  GroupMembersNotSideBySide, admit_group_duct, GroupDuctAdmitted, GroupBlowerUnfit,
 }
-import product.printed_chassis.assembly_geometry { Printed, M5FanScrewIntoBlowerLug }
+import product.printed_chassis.assembly_geometry { Printed, Clearance, M5FanScrewIntoBlowerLug }
 import product.printed_chassis.printable_assembly { CardGroupRoot, GroupFitPlate, PrintableAssemblyReady, PrintableAssemblyRefused }
 import product.printed_chassis.printable_assembly_selection { group_fit_plate_selection }
 import product.printed_chassis.card_installation {
@@ -232,4 +232,16 @@ test fn the_a2_row_duct_carries_one_flat_blower_and_its_screw() -> Bool {
         && length(list: filter(js, j => match j.fastener { M5FanScrewIntoBlowerLug => true _ => false })) == 1
     _ => false
   }
+}
+
+// THE BOARD'S COIN CELL IS A KEEP-OUT OF THE REAL A2 DUCT, and a plan that has not read how high the cards'
+// faces stand above the board cannot place it, so its blower stage refuses rather than drawing without it.
+test fn the_a2_row_duct_keeps_out_of_the_coin_cell_and_refuses_without_the_board_height() -> Bool {
+  let unread = GroupDuctPlan { id: "a2-unread-height", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: "supplied", face_bottom_above_board: Absent }
+  let kept = match admit_group_duct(p: a2_altra_row_plan) {
+    GroupDuctAdmitted { parts: ps, interfaces: _ } => any(ps, x => x.id == "KEEPOUT-PCIE4" && match x.kind { Clearance => true _ => false })
+    _ => false
+  }
+  let refused = match admit_group_duct(p: unread) { GroupBlowerUnfit { reason: r } => string_contains(s: r, pattern: "coin cell") _ => false }
+  kept && refused
 }

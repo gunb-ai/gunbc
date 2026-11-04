@@ -20,6 +20,7 @@ import product.printed_chassis.card_end_interface {
 }
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading }
 import product.printed_chassis.gpu_duct { card_envelope_of, BlowerDuctDesign, blower_duct_design_of }
+import extdeps.boards.types { SlotLaneObstacle }
 import product.printed_chassis.card_installation {
   CardInstallation, InstalledCard, CardGroup, CardInstance, InBoardSlot, SlotNotRecorded, group_members, Partition, Partitioned, PartitionRefused, PartitionRefusal, partition_by_sizes,
   group_contiguity, group_contiguity_text, card_separation, a2_altra_installation,
@@ -388,28 +389,45 @@ fn group_board_keepouts(first: InstalledCard, faces: List<GroupMemberFace>, abov
   match above {
     Absent => BoardKeepoutsUnread { reason: "the board under this row carries lane obstacles (the coin cell), and the plan has not read how high the cards' end faces stand above the board, so the blower stage cannot be checked against them" }
     Present { value: h } => {
-      let f = fold(faces, init: 0, f: (acc, mf) => um(m: mf.face.face_length) / 2)
-      let th = fold(faces, init: 0, f: (acc, mf) => um(m: mf.face.face_thickness))
-      let len = fold(faces, init: 0, f: (acc, mf) => um(m: mf.length))
-      let board_x = 0 - f - um(m: h)
-      BoardKeepoutsRead { parts: fold(obstacles, init: [], f: (acc, o) => {
-        let lane = match first.slot {
-          InBoardSlot { board: b, designator: _ } => card_separation(from: first, to: InstalledCard { instance: first.instance, slot: InBoardSlot { board: b, designator: o.slot } })
-          SlotNotRecorded { read_obligation: _ } => Absent
-        }
-        match lane {
-          Absent => acc
-          Present { value: s } => {
-            let e = um(m: o.half_extent)
-            let y = um(m: s.across) + th / 2
-            let z = um(m: o.depth_from_bracket_plane) - len
-            concat(acc, [part(id: join(["KEEPOUT-", o.slot as String], ""), name: join(["Board keep-out: ", o.label as String, " in ", o.slot as String, "'s lane"], ""), kind: Clearance, scope: FixedFrame,
-              adds: [block(w: um(m: o.height_above_board), h: 2 * e, d: 2 * e, x: board_x + um(m: o.height_above_board) / 2, y: y, z: z)],
-              cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, plane: LayOnXY,
-              notes: "Keep-out only: no printed part may enter it.")])
-          }
-        }
-      }) }
+      // The lane is placed from the group's FIRST card, the one card_separation measures from; admission has
+      // already refused a group of mixed card models (GroupMembersMixCardModels), so its face and length are
+      // every member's.
+      match first_member_face(faces: faces) {
+        Absent => BoardKeepoutsUnread { reason: "the group has no member face to place the board's obstacles from" }
+        Present { value: f0 } => board_keepouts_from(first: first, f0: f0, h: h, obstacles: obstacles)
+      }
     }
   }
+}
+
+fn first_member_face(faces: List<GroupMemberFace>) -> GroupMemberFace? {
+  fold(faces, init: Absent, f: (acc, mf) => match acc { Present { value: v } => Present { value: v } Absent => Present { value: mf } })
+}
+
+fn board_keepouts_from(first: InstalledCard, f0: GroupMemberFace, h: Micrometer, obstacles: List<SlotLaneObstacle>) -> BoardKeepouts {
+      let f = um(m: f0.face.face_length) / 2
+      let th = um(m: f0.face.face_thickness)
+      let len = um(m: f0.length)
+      let board_x = 0 - f - um(m: h)
+      fold(obstacles, init: BoardKeepoutsRead { parts: [] }, f: (acc, o) => match acc {
+        BoardKeepoutsUnread { reason: r } => BoardKeepoutsUnread { reason: r }
+        BoardKeepoutsRead { parts: done } => {
+          let lane = match first.slot {
+            InBoardSlot { board: b, designator: _ } => card_separation(from: first, to: InstalledCard { instance: first.instance, slot: InBoardSlot { board: b, designator: o.slot } })
+            SlotNotRecorded { read_obligation: _ } => Absent
+          }
+          match lane {
+            Absent => BoardKeepoutsUnread { reason: join(["the board's ", o.label as String, " is in ", o.slot as String, "'s lane, which cannot be placed relative to the group's first card"], "") }
+            Present { value: sep } => {
+              let e = um(m: o.half_extent)
+              let y = um(m: sep.across) + th / 2
+              let z = um(m: o.depth_from_bracket_plane) - len
+              BoardKeepoutsRead { parts: concat(done, [part(id: join(["KEEPOUT-", o.slot as String], ""), name: join(["Board keep-out: ", o.label as String, " in ", o.slot as String, "'s lane"], ""), kind: Clearance, scope: FixedFrame,
+                adds: [block(w: um(m: o.height_above_board), h: 2 * e, d: 2 * e, x: board_x + um(m: o.height_above_board) / 2, y: y, z: z)],
+                cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, plane: LayOnXY,
+                notes: "Keep-out only: no printed part may enter it.")]) }
+            }
+          }
+        }
+      })
 }
