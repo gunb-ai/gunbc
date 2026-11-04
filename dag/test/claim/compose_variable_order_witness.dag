@@ -10,32 +10,43 @@ module test.claim.compose_variable_order_witness
 // invisible in the shared emitter while the lane that publishes repairs produced nothing.
 //
 // WHAT IS CHECKED, AND HOW FAR. The rule is stated once, in `gunbc.ci.repository_compose_overlay`, and
-// this claim runs it over every script the compose family emits: the witness lane's compose step, the
+// this claim runs it over every step the compose family emits: the witness lane's compose step, the
 // composed gate run, the drift check step, the heal seal step, and `head_tree_compose_statements` named
-// on its own so the builder stays covered even if the seal that wraps it changes. Each script is read as
-// the bytes it will carry -- rendered by the same `bash_emit_stmts` the emitters use -- and its declared
-// inputs are read off the rows that emit the step's `env:` mapping (`memory_budget_rows`,
-// `heal_seal_env`), never typed out here. The planted cases are what make this a wall rather than a
-// tautology: the pre-fix ordering must go red, an undeclared name must go red, and declaring it in the
-// step's inputs must make it green.
+// on its own so the builder stays covered even if the seal that wraps it changes. Each step is read as
+// the STATEMENTS its builder produced, through the bash grammar's own accessors
+// (`v2.extdeps.languages.bash_build`) -- never by re-parsing rendered text, because rendered text is a
+// second spelling of a fact the builder already holds and a parser over it can only be as correct as its
+// author's list of quoting cases. A quoted word carrying `=` is not an assignment there because it is not
+// one. The step's declared inputs are read off the rows that emit its `env:` mapping
+// (`memory_budget_rows`, `heal_seal_env`), never typed out here. The planted cases are what make this a
+// wall rather than a tautology: the pre-fix ordering, built from the same statement builders the emitters
+// use, must go red; an undeclared name must go red; declaring it in the step's inputs must green it.
 
 import std.types { Bool, Int, List, String }
-import std.algebra { string_contains }
+import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
 import v2.std.node { Node }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_assign_lit,
+  bash_build_word_concat_from_nodes
+}
 import gunbc.ci.repository_compose_overlay {
   ComposeOrderingDefect,
   ComposeSpec,
+  command,
+  command_words,
   compose_gunbc_run_statements,
   compose_preamble_statements,
+  compose_step_is_swept,
   compose_step_ordering_defects,
-  compose_step_script_is_readable,
   composed_source_roots,
   head_tree_compose_statements,
   heal_seal_env,
-  merge_checkout_compose
+  merge_checkout_compose,
+  set_strict_stmt,
+  var_word,
+  word
 }
 import gunbc.ci.repository_ci_profile {
   DagInvocation,
@@ -48,8 +59,8 @@ import gunbc.ci.repository_ci_profile {
 }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram,
-  drift_check_script,
-  heal_seal_script,
+  drift_check_statements,
+  heal_seal_statements,
   memory_budget_rows
 }
 import gunbc.witness.repository_witness_workflow { mirror_compose_statements }
@@ -66,10 +77,11 @@ fn text_at(xs: List<String>, i: Int) -> String {
 }
 
 // One entry per builder path, so a builder that stops being covered shows up as a MISSING ENTRY (the
-// count claim reddens) rather than as a silent pass.
+// count claim reddens) rather than as a silent pass. An entry carries the BUILDER'S STATEMENTS, not a
+// rendered script: the rule reads the syntax the builder produced.
 type ComposeOrderingSweep {
   label: String
-  script: String
+  steps: List<Node>
   inputs: List<String>
 }
 
@@ -102,20 +114,6 @@ fn seal_inputs(profile: RepositoryCiProfile) -> List<String> {
   )
 }
 
-fn render(statements: List<Node>) -> String {
-  match bash_emit_stmts(statements: statements, set_e: true) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => ""
-  }
-}
-
-fn render_outcome(script: Outcome<String>) -> String {
-  match script {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => ""
-  }
-}
-
 fn swept_steps() -> List<ComposeOrderingSweep> {
   let profile = mirror()
   let seed = source_seed(profile: profile)
@@ -125,7 +123,7 @@ fn swept_steps() -> List<ComposeOrderingSweep> {
   let lane = [
     ComposeOrderingSweep {
       label: "witness lane compose step",
-      script: render(statements: mirror_compose_statements(profile: profile, seed: seed)),
+      steps: mirror_compose_statements(profile: profile, seed: seed),
       inputs: []
     }
   ]
@@ -177,52 +175,44 @@ fn composed_sweeps_for_seal(
     Present { value: seal } => [
       ComposeOrderingSweep {
         label: "composed gate run",
-        script: render(
-          statements: concat(
-            compose_preamble_statements(seed: seed, c: spec),
-            compose_gunbc_run_statements(
-              overlay: overlay,
-              source_roots: composed_source_roots(
-                profile_roots: profile.roster.source_roots,
-                overlay: overlay
-              ),
-              entry: seal.invocation.entry,
-              function: seal.invocation.function
-            )
+        steps: concat(
+          compose_preamble_statements(seed: seed, c: spec),
+          compose_gunbc_run_statements(
+            overlay: overlay,
+            source_roots: composed_source_roots(
+              profile_roots: profile.roster.source_roots,
+              overlay: overlay
+            ),
+            entry: seal.invocation.entry,
+            function: seal.invocation.function
           )
         ),
         inputs: []
       },
       ComposeOrderingSweep {
         label: "drift check step",
-        script: render_outcome(
-          script: drift_check_script(
-            profile: profile,
-            seed: seed,
-            overlay: overlay,
-            program: program,
-            check: check
-          )
+        steps: drift_check_statements(
+          profile: profile,
+          seed: seed,
+          overlay: overlay,
+          program: program,
+          check: check
         ),
         inputs: []
       },
       ComposeOrderingSweep {
         label: "heal seal step",
-        script: render_outcome(
-          script: heal_seal_script(profile: profile, seed: seed, overlay: overlay, seal: seal)
-        ),
+        steps: heal_seal_statements(profile: profile, seed: seed, overlay: overlay, seal: seal),
         inputs: seal_inputs(profile: profile)
       },
       ComposeOrderingSweep {
         label: "head-tree compose",
-        script: render(
-          statements: head_tree_compose_statements(
-            seed: seed,
-            overlay: overlay,
-            head_tree_dir_name: seal.head_tree_dir_name,
-            head_link_name: seal.head_link_name,
-            compose_dir_name: seal.compose_dir_name
-          )
+        steps: head_tree_compose_statements(
+          seed: seed,
+          overlay: overlay,
+          head_tree_dir_name: seal.head_tree_dir_name,
+          head_link_name: seal.head_link_name,
+          compose_dir_name: seal.compose_dir_name
         ),
         inputs: heal_seal_env().map(binding => binding.key)
       }
@@ -242,31 +232,116 @@ fn defects_at(steps: List<ComposeOrderingSweep>, i: Int, acc: List<String>) -> L
   }
 }
 
-// A step that renders to nothing, or that reads no variable at all, is a sweep that proved nothing: it is
-// reported as a defect of its own instead of passing quietly.
+// A step the rule cannot be asked about -- empty, not built in the order the law is stated for, or
+// reading no variable -- is a sweep that proved nothing, so it is reported as a defect of its own instead
+// of passing quietly.
 fn step_defect_texts(step: ComposeOrderingSweep) -> List<String> {
-  if !compose_step_script_is_readable(script: step.script) {
-    [concat(step.label, ": the rule cannot read this script (empty, or it does not open with set -e)")]
-  } else if !string_contains(s: step.script, pattern: "$") {
-    [concat(step.label, ": no variable is read here, so this entry checks nothing")]
+  if !compose_step_is_swept(steps: step.steps) {
+    [
+      concat(
+        step.label,
+        ": the rule sweeps no statement here (no statements, no strict-mode opening, or none reads a variable)"
+      )
+    ]
   } else {
-    compose_step_ordering_defects(script: step.script, inputs: step.inputs).map(
-      d => concat(concat(step.label, ": reads $"), d.name)
+    compose_step_ordering_defects(steps: step.steps, inputs: step.inputs).map(
+      d => concat(concat(step.label, ": reads $"), defect_text(defect: d))
     )
   }
 }
 
-// The planted pre-fix shape, spelled the way the emitters spelled it: the head-tree assignment hoisted
-// above the scratch-root declaration. These are the bytes that ran in the field and died at line 6.
-data pre_fix_seal_prefix: String = "set -e\nset -euo pipefail\ncd 'gunbc-public'\nGUNBC='gunbc-public/target/release/gunbc'\nPRIVATE_ROOT='..'\nHEAD_TREE=\"$RUNNER_TMP_ROOT\"'/gunbc-private-head'\ntest -n \"$RUNNER_TEMP\" || RUNNER_TMP_ROOT=\"$RUNNER_TEMP\"\ntest -n \"$RUNNER_TMP_ROOT\" || RUNNER_TMP_ROOT='/tmp'\ntest -n \"$RUNNER_TMP_ROOT\"\ngit -C \"$PRIVATE_ROOT\" 'fetch' '--no-tags' '--depth=1' 'origin' \"$HEAD_SHA\""
+// One defect as text: the name, the statement that reads it, and the statement that assigns it -- or
+// `never`, which is the rule saying it looked and found no assignment.
+fn defect_text(defect: ComposeOrderingDefect) -> String {
+  let assigned = match defect.assigned_index {
+    Present { value: i } => int_to_decimal_string(i)
+    Absent => "never"
+  }
+  concat(
+    concat(concat(defect.name, ":"), int_to_decimal_string(defect.read_index)),
+    concat(":", assigned)
+  )
+}
 
-// The same lines with the declaration first: what the builder emits now.
-data fixed_seal_prefix: String = "set -e\nset -euo pipefail\ncd 'gunbc-public'\nGUNBC='gunbc-public/target/release/gunbc'\nPRIVATE_ROOT='..'\ntest -n \"$RUNNER_TEMP\" || RUNNER_TMP_ROOT=\"$RUNNER_TEMP\"\ntest -n \"$RUNNER_TMP_ROOT\" || RUNNER_TMP_ROOT='/tmp'\ntest -n \"$RUNNER_TMP_ROOT\"\nHEAD_TREE=\"$RUNNER_TMP_ROOT\"'/gunbc-private-head'\ngit -C \"$PRIVATE_ROOT\" 'fetch' '--no-tags' '--depth=1' 'origin' \"$HEAD_SHA\""
+// The i-th defect, or Absent. Absent rather than an empty value: a claim that reads a defect which is not
+// there must be unable to say anything true about it.
+fn defect_at(defects: List<ComposeOrderingDefect>, i: Int) -> Optional<ComposeOrderingDefect> {
+  defects.skip(n: i).first()
+}
 
-// A step that reads the runner's names, its own declared input, and one name nobody assigns.
-data input_probe_script: String = "set -e\nset -euo pipefail\ntest -n \"$RUNNER_TEMP\" || RUNNER_TMP_ROOT=\"$RUNNER_TEMP\"\n'printf' '%s\\n' \"HEAD_TREE=$HEAD_TREE\" >> \"$GITHUB_ENV\"\n'rm' '-rf' \"$HEAD_TREE\"\n'git' 'fetch' '--depth=1' 'origin' \"$HEAD_SHA\""
+// ── THE PLANTED STEPS ────────────────────────────────
+// Built from the SAME statement builders the emitters use, so a planted shape is a shape the emitters
+// could ship. No script text appears in this file: a rule read over text a builder never produced is a
+// rule about the test.
 
-// ── THE CLAIMS ───────────────────────────────────────────────────────────────────────────────
+// The scratch-root declaration: the statement shape `runner_tmp_root_stmts` declares it in, without the
+// fallback branch (which reads only the caller's own argument). Reads `$RUNNER_TEMP`, which is the
+// runner's, and assigns `$RUNNER_TMP_ROOT`, which is the step's to declare.
+fn scratch_declaration() -> List<Node> {
+  [
+    command_words(rest: ["set", "+u"]),
+    bash_build_assign(name: "RUNNER_TMP_ROOT", value: var_word(name: "RUNNER_TEMP")),
+    command(words: [word(text: "test"), word(text: "-n"), var_word(name: "RUNNER_TMP_ROOT")]),
+    command_words(rest: ["set", "-u"])
+  ]
+}
+
+// The head-tree assignment that reads the scratch root -- the statement whose hoisting was the field
+// failure: it died at its own line with `RUNNER_TMP_ROOT: unbound variable`.
+fn head_tree_assignment_reading_scratch() -> Node {
+  bash_build_assign(
+    name: "HEAD_TREE",
+    value: bash_build_word_concat_from_nodes(
+      parts: [var_word(name: "RUNNER_TMP_ROOT"), word(text: "/head")]
+    )
+  )
+}
+
+// THE PRE-FIX SHAPE: that assignment hoisted above the declaration.
+fn pre_fix_seal_prefix() -> List<Node> {
+  concat([set_strict_stmt(), head_tree_assignment_reading_scratch()], scratch_declaration())
+}
+
+// THE FIXED SHAPE: the same statements with the declaration first. The pair is what makes the claim on
+// the pre-fix shape a control rather than an accident of one arrangement.
+fn fixed_seal_prefix() -> List<Node> {
+  concat(concat([set_strict_stmt()], scratch_declaration()), [head_tree_assignment_reading_scratch()])
+}
+
+// A step that reads the runner's own name, a name its `env:` rows declare, and a name nobody assigns.
+fn input_probe_steps() -> List<Node> {
+  [
+    set_strict_stmt(),
+    command(words: [word(text: "test"), word(text: "-n"), var_word(name: "RUNNER_TEMP")]),
+    command(words: [word(text: "echo"), var_word(name: "HEAD_TREE")])
+  ]
+}
+
+// A step that reads a name it never assigns.
+fn unassigned_probe_steps() -> List<Node> {
+  [
+    set_strict_stmt(),
+    command(words: [word(text: "rm"), word(text: "-rf"), var_word(name: "COMPOSE_DIR")]),
+    command(words: [word(text: "cp"), word(text: "-R"), var_word(name: "COMPOSE_DIR")])
+  ]
+}
+
+// THE GRAMMAR'S OWN CONTROL. `PATTERN=a=b` is a quoted literal WORD, not an assignment statement, so it
+// binds nothing -- and the read of `$PATTERN` below is therefore a defect. A rule that read the rendered
+// script by looking for `NAME=` would have accepted the quoted word as an assignment and reported nothing:
+// this is the input that goes red only when the rule reads the syntax.
+fn quoted_equals_steps() -> List<Node> {
+  [
+    set_strict_stmt(),
+    bash_build_assign_lit(name: "COMPOSE_DIR", text: "/tmp/gunbc-mirror-compose"),
+    command(
+      words: [word(text: "grep"), word(text: "PATTERN=a=b"), var_word(name: "COMPOSE_DIR")]
+    ),
+    command(words: [word(text: "echo"), var_word(name: "PATTERN")])
+  ]
+}
+
+// ── THE CLAIMS ──────────────────────────────────────
 
 // EVERY BUILDER, ORDERED. No composed step reads a name it did not assign earlier in the same step, or
 // that the runner and its own `env:` rows do not declare. Five entries, none of them vacuous.
@@ -274,54 +349,72 @@ test fn every_compose_builder_emits_an_ordered_step() -> Bool {
   count(swept_steps()) == 5 && count(swept_defects()) == 0
 }
 
-// THE PRE-FIX ORDERING GOES RED, and names the name. If this claim ever passes on the hoisted shape, the
-// law is decoration.
+// THE PRE-FIX ORDERING GOES RED, and names the name, at the statement it was hoisted to. If this claim
+// ever passes on the hoisted shape, the law is decoration.
 test fn the_pre_fix_ordering_is_a_defect_the_rule_names() -> Bool {
-  let defects = compose_step_ordering_defects(script: pre_fix_seal_prefix, inputs: ["HEAD_SHA"])
-  let first = text_at(xs: defects, i: 0)
-  count(defects) == 1
-    && first.name == "RUNNER_TMP_ROOT"
-    && first.read_line == 6
-    && first.assigned_line > first.read_line
+  let defects = compose_step_ordering_defects(steps: pre_fix_seal_prefix(), inputs: ["HEAD_SHA"])
+  match defect_at(defects: defects, i: 0) {
+    Present { value: first } =>
+      count(defects) == 1
+        && first.name == "RUNNER_TMP_ROOT"
+        && first.read_index == 2
+        && match first.assigned_index {
+             Present { value: i } => i > first.read_index
+             Absent => false
+           }
+    Absent => false
+  }
 }
 
-// THE FIXED ORDERING PASSES ON THE SAME LINES: declaration first, then the assignment that reads it. The
-// pair is what makes the claim above a control rather than an accident of one string.
+// THE FIXED ORDERING PASSES ON THE SAME STATEMENTS: declaration first, then the read.
 test fn the_declared_then_assigned_ordering_passes() -> Bool {
-  count(compose_step_ordering_defects(script: fixed_seal_prefix, inputs: ["HEAD_SHA"])) == 0
+  count(compose_step_ordering_defects(steps: fixed_seal_prefix(), inputs: ["HEAD_SHA"])) == 0
 }
 
-// EXTERNAL INPUTS ARE INPUTS BECAUSE THEY ARE DECLARED. The runner's names (`RUNNER_TEMP`, `GITHUB_*`)
-// need no assignment; a name the step invents does, and the step's `env:` rows are what excuse it -- so
-// dropping the declaration reddens it and adding it greens it.
+// EXTERNAL INPUTS ARE INPUTS BECAUSE THEY ARE DECLARED. The runner's names (`RUNNER_TEMP`, `GITHUB_*`,
+// and the shell's own `PWD`) need no assignment; a name the step invents does, and the step's `env:` rows
+// are what excuse it -- so dropping the declaration reddens it and adding it greens it.
 test fn external_inputs_are_inputs_only_because_they_are_declared() -> Bool {
-  let undeclared = compose_step_ordering_defects(script: input_probe_script, inputs: [])
-  let declared = compose_step_ordering_defects(script: input_probe_script, inputs: ["HEAD_TREE"])
-  let first = text_at(xs: undeclared, i: 0)
-  count(undeclared) == 1
-    && first.name == "HEAD_TREE"
-    && count(declared) == 0
+  let undeclared = compose_step_ordering_defects(steps: input_probe_steps(), inputs: [])
+  let declared = compose_step_ordering_defects(steps: input_probe_steps(), inputs: ["HEAD_TREE"])
+  match defect_at(defects: undeclared, i: 0) {
+    Present { value: first } =>
+      count(undeclared) == 1 && first.name == "HEAD_TREE" && count(declared) == 0
+    Absent => false
+  }
 }
 
-// A NAME THE STEP NEVER ASSIGNS IS REPORTED, not silently allowed: `assigned_line == -1` is the rule
-// saying it looked and found nothing, which is also the anti-vacuity half of the sweeper.
-test fn a_name_the_step_never_assigns_is_reported_with_no_assignment_line() -> Bool {
-  let script = "set -e\nset -euo pipefail\n'rm' '-rf' \"$COMPOSE_DIR\"\n'cp' '-R' 'overlay' \"$COMPOSE_DIR/dag\""
-  let defects = compose_step_ordering_defects(script: script, inputs: [])
-  let first = text_at(xs: defects, i: 0)
-  count(defects) == 1
-    && first.name == "COMPOSE_DIR"
-    && first.assigned_line == -1
+// A NAME THE STEP NEVER ASSIGNS IS REPORTED, not silently allowed: `assigned_index` absent is the rule
+// saying it looked and found nothing.
+test fn a_name_the_step_never_assigns_is_reported_as_never_assigned() -> Bool {
+  let defects = compose_step_ordering_defects(steps: unassigned_probe_steps(), inputs: [])
+  match defect_at(defects: defects, i: 0) {
+    Present { value: first } =>
+      count(defects) == 1
+        && first.name == "COMPOSE_DIR"
+        && match first.assigned_index {
+             Present { value: _ } => false
+             Absent => true
+           }
+    Absent => false
+  }
 }
 
-// THE RULE DOES NOT PASS WHAT IT CANNOT READ, and a quoted word carrying `=` is not an assignment:
-// `'git' 'fetch' '--depth=1'` must not be read as assigning `depth`.
-test fn a_script_the_rule_cannot_read_is_not_a_pass() -> Bool {
-  !compose_step_script_is_readable(script: "")
-    && !compose_step_script_is_readable(script: "echo nothing")
-    && compose_step_script_is_readable(script: pre_fix_seal_prefix)
-    && count(compose_step_ordering_defects(
-      script: "set -e\n'git' 'fetch' '--depth=1' 'origin'",
-      inputs: []
-    )) == 0
+// THE RULE READS THE SYNTAX, NOT THE BYTES. A quoted literal word carrying `=` binds nothing, so the read
+// it appears to excuse is reported; and a step with nothing to read is not swept, so it cannot pass
+// quietly. Both halves matter: the first is what a text scanner got wrong, the second is what a vacuous
+// sweep would have hidden.
+test fn a_quoted_word_carrying_equals_is_not_an_assignment() -> Bool {
+  let defects = compose_step_ordering_defects(steps: quoted_equals_steps(), inputs: [])
+  !compose_step_is_swept(steps: [])
+    && compose_step_is_swept(steps: quoted_equals_steps())
+    && match defect_at(defects: defects, i: 0) {
+         Present { value: first } =>
+           count(defects) == 1 && first.name == "PATTERN"
+             && match first.assigned_index {
+                  Present { value: _ } => false
+                  Absent => true
+                }
+         Absent => false
+       }
 }
