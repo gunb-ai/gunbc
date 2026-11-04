@@ -12,7 +12,8 @@ import extdeps.tools.openssl
 import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlPinnedPubkeyMismatch }
 import extdeps.vllm.server { vllm_route_models, vllm_route_chat_completions }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list, ninfer_authorization_header_line }
-import extdeps.pool.pool_front { PoolFrontCertificate, pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text }
+import extdeps.pool.pool_front { PoolFrontCertificate, pool_front_certificate_is_pinned }
+import extdeps.tools.openssl { openssl_fingerprint_from_stdout }
 import gunbc.serving.router_dev_policy { router_dev_srv1_site }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnFabricRouter, harness_unit_model_id, PoolBudgetPolicy }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
@@ -285,7 +286,7 @@ type OperatorCertificatePin
   | OperatorCertificateRefused { detail: String }
 
 fn operator_certificate_pin_decision(fingerprint_stdout: String) -> Bool {
-  match pool_front_fingerprint_from_openssl_text(stdout: fingerprint_stdout) {
+  match openssl_fingerprint_from_stdout(stdout: fingerprint_stdout) {
     Absent => false
     Present { value: f } => pool_front_certificate_is_pinned(pinned: operator_pinned_certificate, presented: f)
   }

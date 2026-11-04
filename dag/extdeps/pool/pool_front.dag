@@ -1,7 +1,6 @@
 module extdeps.pool.pool_front
 
 import std.types { NonEmptyStr, String, Bool }
-import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.http.header_dump { http_ascii_fold }
 
@@ -26,14 +25,4 @@ fn pool_front_fingerprint_canonical(text: String) -> String {
 fn pool_front_certificate_is_pinned(pinned: PoolFrontCertificate, presented: String) -> Bool {
   let p = pool_front_fingerprint_canonical(text: presented)
   p != "" && p == pool_front_fingerprint_canonical(text: pinned.sha256_fingerprint as String)
-}
-
-// `openssl x509 -noout -fingerprint -sha256` prints `<label> Fingerprint=<AA:BB:...>` (label `sha256` in 3.x,
-// `SHA256` in 1.1). The text after the LAST `=` is the fingerprint; no `=` is no reading.
-fn pool_front_fingerprint_from_openssl_text(stdout: String) -> String? {
-  let line = trim(s: stdout)
-  match split(s: line, delimiter: "=").last() {
-    Absent => none
-    Present { value: f } => if trim(s: f) == "" || trim(s: f) == line { none } else { Present { value: trim(s: f) } }
-  }
 }

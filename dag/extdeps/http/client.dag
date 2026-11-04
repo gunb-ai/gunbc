@@ -160,7 +160,7 @@ fn http_client_probe_status_arguments(url: NonEmptyStr, attempts: Nat, delay: Se
 // PostJsonFromFileWithHeaderFilePinned AND GetBoundedWithHeaderFilePinned ARE THE SAME TWO REQUESTS TO AN
 // ENDPOINT WHOSE CERTIFICATE IS PINNED. Trust is the one certificate in ca_file (--cacert) AND the public key in
 // pinned_pubkey_file (--pinnedpubkey, which curl checks in addition to the chain, so a certificate some other
-// authority signed still fails); verification is never turned off. A mismatch is curl exit 51, 60 or 90
+// authority signed still fails); verification is never turned off. A mismatch is curl exit 60 or 90
 // (extdeps.tools.curl CurlPeerFailedVerification, CurlPinnedPubkeyMismatch) and happens in the handshake, before any request byte is sent. The
 // exit code is an output because the caller must tell a refused certificate from an unreachable server.
 // PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):

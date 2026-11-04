@@ -183,3 +183,13 @@ service openssl.X509 {
     }
   }
 }
+
+// `openssl x509 -noout -fingerprint -sha256` prints `<label> Fingerprint=<AA:BB:...>` (label `sha256` in 3.x,
+// `SHA256` in 1.1). The text after the LAST `=` is the fingerprint; no `=` is no reading.
+fn openssl_fingerprint_from_stdout(stdout: String) -> String? {
+  let line = trim(s: stdout)
+  match split(s: line, delimiter: "=").last() {
+    Absent => none
+    Present { value: f } => if trim(s: f) == "" || trim(s: f) == line { none } else { Present { value: trim(s: f) } }
+  }
+}
