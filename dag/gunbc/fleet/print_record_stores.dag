@@ -1,12 +1,13 @@
 module gunbc.fleet.print_record_stores
 
+import gunbc.durable_create_once { create_once_record, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.types { String, NonEmptyStr, Bool, FilePath, List }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
-import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreRefused }
+import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerGroupWritableSetgid }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import gunbc.host_state_root { HostStateTree }
@@ -77,6 +78,7 @@ type PrintCompletionStoreReading
 // its own member directory and refuses a directory it cannot list rather than reading it as empty.
 fn print_request_store(tree: HostStateTree) -> PrintRequestStoreReading {
   match listed_slot_store(member: print_request_slots.member as String, root: print_request_path(tree: tree)) {
+    SlotStoreAbsent { member: _, root: _ } => PrintRequestStoreUnready { detail: "the store's own directory was never created -- admission answers absence, and an absent store is not an empty store" }
     SlotStoreRefused { detail: d } => PrintRequestStoreUnready { detail: d }
     SlotStoreListed { root: r } => PrintRequestStoreReady { store: PrintRequestStore { root: r } }
   }
@@ -92,6 +94,7 @@ fn print_completion_store(tree: HostStateTree) -> PrintCompletionStoreReading {
     PrinterStartsUnreadable { detail: d } => PrintCompletionStoreUnready { detail: d }
     PrinterStartsLegacyEntries { names: n } => PrintCompletionStoreUnready { detail: join(["printer-starts still holds the flat layout (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
     PrinterStartsClean => match listed_slot_store(member: print_completion_slots.member as String, root: print_completion_path(tree: tree)) {
+      SlotStoreAbsent { member: _, root: _ } => PrintCompletionStoreUnready { detail: "the store's own directory was never created -- admission answers absence, and an absent store is not an empty store" }
       SlotStoreRefused { detail: d } => PrintCompletionStoreUnready { detail: d }
       SlotStoreListed { root: r } => PrintCompletionStoreReady { store: PrintCompletionStore { root: r } }
     }
@@ -162,8 +165,10 @@ fn print_request_read(store: PrintRequestStore, request: PrintRequest) -> Record
 // recorded only when the store's own read returns this record. Another pass that wrote first, or a
 // record that does not read back as this one, refuses (the caller re-runs).
 fn print_request_record(store: PrintRequestStore, record: PrintRequestRecord) -> RecordRead {
-  if !Filesystem.WriteCreateNew(path: request_record_path(store: store, request: record.request), content: record_json(r: record)).success {
-    return RecordRefused { cause: "Cannot write the request record, or another pass wrote it first; re-run" }
+  match create_once_record(path: request_record_path(store: store, request: record.request), content: record_json(r: record)) {
+    CreateOnceAlreadyRecorded { path: _ } => return RecordRefused { cause: "Another pass wrote the request record first; re-run" }
+    CreateOnceRefused { path: _, cause: c } => return RecordRefused { cause: join(["Cannot write the request record: ", c], "") }
+    CreateOnceRecorded { path: _ } => {}
   }
   match print_request_read(store: store, request: record.request) {
     RecordPresent { record: r } => if record_json(r: r) == record_json(r: record) { RecordPresent { record: r } } else { RecordRefused { cause: "The request record read back differently from what was written" } }
@@ -205,7 +210,9 @@ type CompletionWrite = CompletionWritten | CompletionWriteRefused { cause: Strin
 // differently, refuse.
 fn print_completion_record(store: PrintCompletionStore, claim_key: NonEmptyStr, text: String) -> CompletionWrite {
   let path = completion_record_path(store: store, claim_key: claim_key)
-  if !Filesystem.WriteCreateNew(path: path, content: text).success { return CompletionWriteRefused { cause: "Cannot write the completion record, or another pass wrote it first" } }
-  let back = Filesystem.Read(path: path)
-  if back.success && back.content == text { CompletionWritten } else { CompletionWriteRefused { cause: "The completion record read back differently from what was written" } }
+  match create_once_record(path: path, content: text) {
+    CreateOnceRecorded { path: _ } => CompletionWritten
+    CreateOnceAlreadyRecorded { path: _ } => CompletionWriteRefused { cause: "Another pass wrote the completion record first" }
+    CreateOnceRefused { path: _, cause: c } => CompletionWriteRefused { cause: join(["Cannot write the completion record: ", c], "") }
+  }
 }

@@ -77,50 +77,6 @@ enum RetainedCommands {
         #[arg(long = "arg")]
         args: Vec<String>,
     },
-
-    /// Long-running HTTP server: compile once, then answer each request by
-    /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
-    /// The seam is parse/write only — routing and handlers live in .dag.
-    Serve {
-        /// Source root directories (searched recursively for .dag files)
-        #[arg(long = "source-root")]
-        source_roots: Vec<String>,
-        /// Entry `.dag` file: load only this module and its transitive imports
-        #[arg(long)]
-        entry: String,
-        /// Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse
-        #[arg(long)]
-        function: String,
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "8080")]
-        port: u16,
-        /// Listen on this unix socket INSTEAD of --host/--port. Each request's kernel-attested
-        /// peer (SO_PEERCRED) is handed to the handler as peer_user.
-        #[arg(long = "unix-socket")]
-        unix_socket: Option<String>,
-        /// Release revision this process serves, bound ONCE at startup and immutable for the
-        /// process lifetime. Required and validated before the listener binds: `gunbc serve`
-        /// compiles its graph once, so the launch argument is the only fact describing what
-        /// this PROCESS serves; re-reading a file, an env var, or git HEAD per request would
-        /// report mutable disk state wearing a process-shaped interface. Published through
-        /// /healthz beside the served-surface identity (gunbc.running_release_identity).
-        #[arg(long = "release-revision")]
-        release_revision: String,
-        /// Per-request THREAD-CPU evaluation budget in milliseconds. Omitted means this process
-        /// declares no CPU bound -- today's behavior, stated. Deliberately no default: no
-        /// measurement of normal `roadmap_serve_handle` evaluation cost exists, and the one
-        /// adjacent figure (~70s cold graph compile) gives no reason to believe a sub-second
-        /// ceiling is safe, so an invented value would risk refusing legitimate requests.
-        #[arg(long = "eval-budget-cpu-ms")]
-        eval_budget_cpu_ms: Option<u64>,
-        /// Per-request MONOTONIC-WALL evaluation budget in milliseconds. Separate from the CPU
-        /// bound because they catch different failures: CPU catches a spin, wall catches a stall
-        /// that holds the listener while consuming almost no CPU. Neither contains an evaluation
-        /// blocked inside a single native primitive -- that needs worker isolation.
-        #[arg(long = "eval-budget-wall-ms")]
-        eval_budget_wall_ms: Option<u64>,
-    },
 }
 
 /// cargo's build-output dir (a `target` dir beside a `Cargo.toml`) is realization output, not
@@ -461,34 +417,6 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         measurement_child: bool,
     ) -> ! {
         cli_run::measure_root_demand(source_roots, repository, receipt, measurement_child)
-    }
-
-    fn handle_serve(
-        &self,
-        source_roots: Vec<String>,
-        entry: String,
-        function: String,
-        host: String,
-        port: u16,
-        unix_socket: Option<String>,
-        release_revision: String,
-        eval_budget_cpu_ms: Option<u64>,
-        eval_budget_wall_ms: Option<u64>,
-    ) -> ! {
-        retained_dispatch(
-            RetainedCommands::Serve {
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                unix_socket,
-                release_revision,
-                eval_budget_cpu_ms,
-                eval_budget_wall_ms,
-            },
-            self.dry_run,
-        )
     }
 
     fn invoke_bound_target_producer(&self, target: String) -> ! {
@@ -845,60 +773,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 message: Some(outcome.message),
             }
             .apply()
-        }
-
-        // `converge` is no longer a retained verb. It is a bootstrap .dag operation on the
-        // generated dispatch (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding),
-        // the same route `build` takes, so no arm here can answer for it.
-
-        // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
-        // #8286 deleted this seam together with converge's, but converge has a successor that
-        // EXISTS (the spine above) while serve's declared successor -- gunbc.roadmap.roadmap_serve
-        // roadmap_serve_interpreted_scaffold, dissolving to emit-on-demand of the serve closure
-        // -- was never built, so the deletion removed a live outward-facing production route
-        // with no minimal Y to hold the boundary. DESIGN section 3 names that carve-out: where
-        // no Y can hold a gap-intolerant boundary, X stays FROZEN. This restores X and freezes
-        // it.
-        //
-        // FROZEN MEANS: no new options, verbs, routes into the interpreter, or completion work.
-        // The deleted refusal's claim is NOT retracted -- serve is a desired service occurrence
-        // that convergence should observe and reconcile, and gunbc.host.host_effect has no
-        // service-occurrence member to express that. This seam runs until it does.
-        //
-        // The engine objection is recorded, not argued away: this makes the interpreter
-        // load-bearing for a capability two lanes are deleting. Not a NEW dependency (it existed
-        // until #8286), but if this route attracts completion work the freeze has been repealed
-        // by drift.
-        RetainedCommands::Serve {
-            source_roots,
-            entry,
-            function,
-            host,
-            port,
-            unix_socket,
-            release_revision,
-            eval_budget_cpu_ms,
-            eval_budget_wall_ms,
-        } => {
-            cli_run::handle_serve(
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                unix_socket,
-                release_revision,
-                cli_run::ServeEvaluationBudget {
-                    cpu_limit_ms: eval_budget_cpu_ms,
-                    wall_limit_ms: eval_budget_wall_ms,
-                },
-            );
-            Verdict {
-                status: 0,
-                message: None,
-            }
-            .apply()
-        }
+        } // `converge` is no longer a retained verb. It is a bootstrap .dag operation on the
+          // generated dispatch (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding),
+          // the same route `build` takes, so no arm here can answer for it.
     };
     std::process::exit(0)
 }
@@ -1329,13 +1206,18 @@ fn run_verb(
         };
     }
 
-    // Exactly the deleted handler's selection: `--dry-run` means Hermetic, which REFUSES
-    // host operations rather than mocking them silently, and absence means Wet.
-    let execution_mode = if dry_run {
-        v1_compiler::v1_interpreter::ExecutionMode::Hermetic
-    } else {
-        v1_compiler::v1_interpreter::ExecutionMode::Wet
-    };
+    // CLAIM RUNS ARE VERIFICATION, NOT EXECUTION. A `test fn` is evaluated against its declared
+    // mocks and MUST NOT perform a real host effect. `--dry-run` already means Hermetic, which
+    // REFUSES host operations rather than mocking them silently; a `--claim-run` must mean the SAME
+    // fail-closed mode, because a claim is not the operator's authority to run a host effect. Before
+    // this, `--claim-run` fell to Wet whenever `--dry-run` was absent, so a claim whose mocked effect
+    // had no mock bound on this route silently dispatched the REAL effect against the host (a DESIGN
+    // §5 fail-open with a live side effect: the mocked journalctl ran live against srv1's journal).
+    // Hermetic mode owns the fail-closed rule: a mocked effect with no bound mock refuses typed
+    // (`no mock_response ... refusing`), and a bound mock still serves. The mode is decided by the
+    // ONE shared authority `cli_run::execution_mode_for`, which `claim_batch` uses too (DESIGN 6b:
+    // one flag-to-mode function for both entrypoints, so they cannot diverge again).
+    let execution_mode = cli_run::execution_mode_for(None, claim_run, dry_run);
     let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
 
     let to_run = match functions_to_run(functions, claim_run, entry_file, graph.as_ref()) {
@@ -1504,6 +1386,36 @@ fn run_one_function(
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
         // is the total map from that class to a status.
         Ok(value) => {
+            // AN INGRESS BINDING IS A DEPLOYMENT FACT THE RUN REALIZES (gunbc.http_ingress,
+            // gunbc.plans.converged_ingress). Serving is not a verb: an entry that answers a bound
+            // HttpIngressAdmission is served by this process -- bind, accept, one independent
+            // handler evaluation per request -- and a refused one exits before any listener
+            // exists. Read from the answer's type, never from the entry's name. A claim run is
+            // verification, so it never serves.
+            match cli_run::http_ingress_host::ingress_answer(&value, ctx) {
+                cli_run::http_ingress_host::IngressAnswer::NotABinding => {}
+                _ if claim_run => {
+                    return Verdict {
+                        status: 2,
+                        message: Some(format!(
+                            "error: `{function}` answered an ingress binding under --claim-run; a claim run never serves"
+                        )),
+                    }
+                }
+                cli_run::http_ingress_host::IngressAnswer::Refused(reason) => {
+                    return Verdict {
+                        status: 2,
+                        message: Some(format!("REFUSED: ingress binding `{function}`: {reason}")),
+                    }
+                }
+                cli_run::http_ingress_host::IngressAnswer::Bound(binding) => {
+                    let (status, message) = cli_run::http_ingress_host::realize(ctx, binding);
+                    return Verdict {
+                        status,
+                        message: Some(message),
+                    };
+                }
+            }
             // A `CliWireResponse` is an ANSWER PLUS A VERDICT, and it is the only return shape
             // that carries bytes for the operator. Binding it HERE rather than under a new
             // `scm` subcommand keeps dispatch peripheral (§3): one binding serves every
@@ -1733,5 +1645,108 @@ mod exit_status_tests {
             "main",
         );
         assert_eq!(message.as_deref(), Some("drift: docs/plans/x.md"));
+    }
+}
+
+#[cfg(test)]
+mod claim_run_mode_tests {
+    use super::run_one_function;
+    use std::rc::Rc;
+    use v1_compiler::cli_run;
+    use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
+
+    // The boundary flag-to-mode decision itself is exercised, total, in
+    // `cli_run::claim_execution::execution_mode_for_tests` (the single shared authority that both
+    // `claim_batch` and the `run` verb call). What is left HERE is the inhabitance: that the claim
+    // route the `run` verb actually builds REFUSES an unbound mocked effect typed, and does NOT do
+    // so by accident (i.e. it really dispatches when Wet).
+
+    // A claim whose effect is MOCKED (a mockable shell operation) but carries NO `mock_response` —
+    // an unbound mock. The shell argv is a NONEXISTENT ABSOLUTE path so that a Wet attempt to
+    // dispatch it can only fail at spawn and touch nothing real (quick-newt: demonstrate the fall-
+    // through without executing a live host effect).
+    const FIXTURE_PATH: &str = "fixture/claim_run_route.dag";
+    const FIXTURE_SRC: &str = "module fixture.claim_run_route\n\nservice fixture.ClaimRoute {\n  operation UnboundEffect {\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"/nonexistent/gunbc-claim-route-probe\"] }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.ClaimRoute.UnboundEffect()\n  r.success\n}\n";
+
+    fn fixture_sources() -> Vec<Rc<SourceFile>> {
+        vec![Rc::new(SourceFile {
+            path: FIXTURE_PATH.to_string(),
+            content: FIXTURE_SRC.to_string(),
+        })]
+    }
+
+    // INHABITANCE (the route the `run` verb builds, not a hand-picked Hermetic): the mode comes from
+    // the shared authority for a claim run, is fed to the real per-function evaluator `run_one_function`
+    // that `run_verb` calls, and the unbound mocked effect surfaces the typed `HostEffectRefused` as
+    // exit 2 (NO OBSERVATION) carrying the `NoMockResponse` ground. status 2 is the discriminator:
+    // `run_one_function` returns it ONLY for `HostEffectRefused` under a claim run.
+    #[test]
+    fn claim_run_route_refuses_an_unbound_mocked_effect_as_no_observation() {
+        // 1. The route decision comes from the ONE production authority, not a literal.
+        let mode =
+            cli_run::execution_mode_for(None, /*is_claim*/ true, /*dry_run*/ false);
+        assert!(
+            matches!(mode, ExecutionMode::Hermetic),
+            "`gunbc run --claim-run` without --dry-run must select Hermetic, not Wet"
+        );
+
+        // 2. Drive the real evaluator with the route's own mode.
+        let resolved = compile_to_resolved(Rc::new(fixture_sources().into()));
+        let ctx = InterpContext::new(
+            resolved.graph.as_ref().expect("fixture graph"),
+            resolved.source_indices.clone(),
+            mode,
+        );
+        let verdict = run_one_function(&ctx, "witness", "f.dag", &[], true);
+        let message = verdict.message.clone().unwrap_or_default();
+        assert_eq!(
+            verdict.status, 2,
+            "an unbound mocked effect on the claim route must be NO OBSERVATION (exit 2), got \
+             status {} with message: {message}",
+            verdict.status
+        );
+        // `Verdict` carries only the rendered message, so the typed refusal is read from its
+        // Debug rendering: the variant AND its ground, never a looser substring.
+        assert!(
+            message.contains("HostEffectRefused") && message.contains("ground: NoMockResponse"),
+            "the refusal must be the typed NoMockResponse ground, got: {message}"
+        );
+    }
+
+    // DISCRIMINATING CONTROL: the SAME claim and the SAME unbound mocked effect, evaluated under
+    // WET, is DISPATCHED rather than refused — it does NOT take the typed-refusal (exit 2 /
+    // `NoMockResponse`) path. This proves the refusal above is produced by the Hermetic claim mode
+    // the route selects, not by the fixture being non-dispatchable for some unrelated reason. Host-
+    // safe: the argv is a nonexistent absolute path, so the Wet attempt fails at spawn and evaluates
+    // to `success:false` (a FAIL verdict, exit 1), never performing a real effect.
+    #[test]
+    fn wet_route_dispatches_the_same_unbound_effect_instead_of_refusing() {
+        let mode =
+            cli_run::execution_mode_for(None, /*is_claim*/ false, /*dry_run*/ false);
+        assert!(
+            matches!(mode, ExecutionMode::Wet),
+            "an ordinary (non-claim, non-dry) run must be Wet"
+        );
+
+        let resolved = compile_to_resolved(Rc::new(fixture_sources().into()));
+        let ctx = InterpContext::new(
+            resolved.graph.as_ref().expect("fixture graph"),
+            resolved.source_indices.clone(),
+            mode,
+        );
+        let verdict = run_one_function(&ctx, "witness", "f.dag", &[], true);
+        let message = verdict.message.clone().unwrap_or_default();
+        // The discriminator is the typed refusal, not the exit code: under Wet the REAL transport is
+        // attempted (the shell spawn at the nonexistent absolute path fails and evaluates to a normal
+        // dispatch outcome), so the run does NOT surface the `NoMockResponse` typed refusal that the
+        // Hermetic claim route produces on the identical fixture. (The exit code is not asserted: a
+        // dispatch failure may surface as a caught panic (exit 2) or a FAIL verdict (exit 1); either
+        // way it is not the typed unbound-mock refusal — that is what this control pins.)
+        assert!(
+            !message.contains("NoMockResponse"),
+            "the Wet route must DISPATCH the effect, not refuse it for an unbound mock (that \
+             fail-closed refusal is produced only by the Hermetic claim mode); got: {message}"
+        );
     }
 }

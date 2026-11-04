@@ -44,6 +44,9 @@ import gunbc.roadmap.roadmap_publish {
   RoadmapPublicationSubject, PublicationSubjectObserved, PublicationBound, publication_receipt_of,
   publication_receipt_json, ReceiptSourcePresent, ReceiptSourceAbsent,
 }
+import gunbc.dispatch_attempt_launch { RealExecutorOrigin, ReplayExecutorOrigin }
+import gunbc.dispatch_replay_recording { recording_id_decode, RecordingIdDecoded, RecordingIdMalformed }
+import gunbc.roadmap.roadmap_dispatch_destination { DispatchExecutorOriginRead, DispatchExecutorOriginObserved, DispatchExecutorOriginUnreadable }
 import gunbc.roadmap.roadmap_dogfood_route {
   DogfoodStage, dogfood_stage_wire,
   SubmissionReading, SubmissionEstablished, SubmissionGap,
@@ -309,9 +312,26 @@ test fn only_a_published_result_establishes_the_return_and_other_outcomes_refuse
 }
 
 test fn only_a_final_metering_record_establishes_metering() -> Bool {
-  (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }) { MeteringEstablished { evidence: _ } => true  MeteringGap { gap: _ } => false })
-    && (match dogfood_metering_reading(m: MeteringProvisional { record: metering_record() }) { MeteringGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  MeteringEstablished { evidence: _ } => false })
-    && (match dogfood_metering_reading(m: MeteringRefused { cause: "torn" }) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
+  (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }, executor: real_executor()) { MeteringEstablished { evidence: _ } => true  MeteringGap { gap: _ } => false })
+    && (match dogfood_metering_reading(m: MeteringProvisional { record: metering_record() }, executor: real_executor()) { MeteringGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  MeteringEstablished { evidence: _ } => false })
+    && (match dogfood_metering_reading(m: MeteringRefused { cause: "torn" }, executor: real_executor()) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
+}
+
+fn real_executor() -> DispatchExecutorOriginRead {
+  DispatchExecutorOriginObserved { origin: RealExecutorOrigin }
+}
+
+// A REPLAYED ATTEMPT CANNOT BE METERED AS A REAL ONE. The positive control is the same Final record read for a
+// real executor (established above); the controls here are the replay origin and an unreadable origin over that
+// SAME record, each a refused stage. Mutation: let the replay arm of dogfood_metering_reading call
+// dogfood_real_metering_reading (or drop the origin match) and the first assertion goes red.
+test fn a_replayed_or_unattributable_attempt_establishes_no_metering() -> Bool {
+  (match recording_id_decode(text: "1111111111111111111111111111111111111111.2222222222222222222222222222222222222222.0.success") {
+    RecordingIdMalformed { text: _, reason: _ } => false
+    RecordingIdDecoded { id } =>
+      (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }, executor: DispatchExecutorOriginObserved { origin: ReplayExecutorOrigin { recording_id: id } }) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
+  })
+    && (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }, executor: DispatchExecutorOriginUnreadable { reason: "no origin" }) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
 }
 
 // ── THE FOLD ──
@@ -327,7 +347,7 @@ fn all_readings(placement: SessionPlacementObservation, returned_of: SessionPlac
     placement_grant: dogfood_placement_grant_reading(p: placement),
     isolated_execution: ProducerPending { owed_by: "G5 execution observation" },
     durable_result: dogfood_submission_reading(attempt_key: "k1", capture: capture_at(h: head)),
-    metering: dogfood_metering_reading(m: MeteringObserved { record: metering_record() }),
+    metering: dogfood_metering_reading(m: MeteringObserved { record: metering_record() }, executor: real_executor()),
     independent_review: dogfood_review_reading(node_id: "n1", head_sha: head, report: review_at(complete: true)),
     candidate_published: dogfood_publication_reading(head_sha: head, subject: PublicationSubjectObserved { subject: subject_at(h: head) }, evidence_source: ReceiptSourcePresent { text: bound_receipt_text(h: head) }),
     cleanup: dogfood_cleanup_reading(p: returned_of),
@@ -405,7 +425,7 @@ fn readings_with(s: SubmissionReading, r: ReviewReading, p: PublicationReading) 
     placement_grant: dogfood_placement_grant_reading(p: placement),
     isolated_execution: ProducerPending { owed_by: "G5 execution observation" },
     durable_result: s,
-    metering: dogfood_metering_reading(m: MeteringObserved { record: metering_record() }),
+    metering: dogfood_metering_reading(m: MeteringObserved { record: metering_record() }, executor: real_executor()),
     independent_review: r,
     candidate_published: p,
     cleanup: dogfood_cleanup_reading(p: placement),
@@ -692,7 +712,7 @@ test fn a_live_result_recorded_at_another_time_than_the_pinned_completion_is_a_d
   match dogfood_start_receipt_decode(payload: good()) {
     StartReceiptInvalid { reason: _ } => false
     StartReceiptDecoded { receipt } =>
-      match dogfood_durable_g3_g4_defect(receipt: receipt, service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+      match dogfood_durable_g3_g4_defect(receipt: receipt, executor: real_executor(), service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
         binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
         inputs: ServiceEvidenceInputs {
           session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },
@@ -709,7 +729,7 @@ test fn a_live_result_read_through_a_failed_close_is_a_read_boundary_defect() ->
   match dogfood_start_receipt_decode(payload: good()) {
     StartReceiptInvalid { reason: _ } => false
     StartReceiptDecoded { receipt } =>
-      match dogfood_durable_g3_g4_defect(receipt: receipt, service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+      match dogfood_durable_g3_g4_defect(receipt: receipt, executor: real_executor(), service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
         binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
         inputs: ServiceEvidenceInputs {
           session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },
@@ -726,7 +746,7 @@ test fn an_unobserved_live_result_with_an_empty_reason_is_still_a_defect() -> Bo
   match dogfood_start_receipt_decode(payload: good()) {
     StartReceiptInvalid { reason: _ } => false
     StartReceiptDecoded { receipt } =>
-      match dogfood_durable_g3_g4_defect(receipt: receipt, service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+      match dogfood_durable_g3_g4_defect(receipt: receipt, executor: real_executor(), service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
         binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
         inputs: ServiceEvidenceInputs {
           session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },

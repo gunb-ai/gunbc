@@ -147,6 +147,22 @@ data actions_runner_release_2_337_0: ActionsRunnerRelease = ActionsRunnerRelease
   digest_x86_64: sha256_digest(hex: "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613"),
 }
 
+// 2.338.2 IS PINNED BECAUSE GITHUB STOPS ASSIGNING JOBS TO 2.336.0 ON 2026-11-05. Every fleet job's
+// "Set up job" log printed "Runner Version 2.336.0 will no longer be able to run jobs on November 5,
+// 2026, please update your runner version." (read 2026-11-04 on srv1, srv3 and srv4, across the
+// witnesses, heal, drift-watch, instrument-dispatch and fleet-converge workflows). It is the 2.334.0
+// retirement above arriving again with a day's notice instead of none; 2.338.2 is the newest release
+// (published 2026-10-26).
+//
+// THE DIGESTS ARE THE UPSTREAM'S OWN, from the v2.338.2 release body, and they equal the sha256
+// digests GitHub reports on the release's two linux assets. The arm64 value was also recomputed over
+// the downloaded archive (670adb2f...e945) before this row was written.
+data actions_runner_release_2_338_2: ActionsRunnerRelease = ActionsRunnerRelease {
+  version: "2.338.2",
+  digest_aarch64: sha256_digest(hex: "670adb2f268fe21dcbb58b3db0e0aa9d5b3bddfe2c651481336e561ff86de945"),
+  digest_x86_64: sha256_digest(hex: "baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40"),
+}
+
 // A PIN THE RUNTIME MAY OVERWRITE IS NOT A PIN, so whether the runner updates itself decides whether
 // the digests above describe the tarball that was downloaded or the code that ran the job. An
 // earlier revision of this row declared a `--disableupdate` flag for the JIT path. THAT WOULD HAVE
@@ -196,6 +212,20 @@ fn actions_runner_jitconfig_env_name() -> String {
 // return-code row is declared here: nothing in this corpus branches on one.
 data actions_runner_listener_relative_path: String = "/bin/Runner.Listener"
 data actions_runner_listener_run_verb: String = "run"
+
+// WHICH RELEASE A TREE HOLDS, READ WITHOUT EXECUTING ANYTHING IN IT. The listener's .NET dependency
+// manifest, bin/Runner.Listener.deps.json, names the listener's own library as
+// "Runner.Listener/<version>" under its runtime target (read in the 2.336.0 tree on srv1-01 and in
+// the 2.338.2 linux-arm64 archive: the 2.338.2 manifest carries "Runner.Listener/2.338.2" and no
+// "Runner.Listener/2.336.0"). Asking the listener binary for its version instead would have the
+// administrator EXECUTE a file the slot's job user can rewrite. The manifest is just as writable, so
+// a job can make a slot misreport its release; what that buys it is a slot left on an old release,
+// an availability loss and never an execution.
+data actions_runner_listener_deps_manifest_relative_path: String = "/bin/Runner.Listener.deps.json"
+
+fn actions_runner_listener_release_marker(runner_release: ActionsRunnerRelease) -> NonEmptyStr {
+  concat("Runner.Listener/", runner_release.version as String) as NonEmptyStr
+}
 
 // WHERE THE LISTENER WRITES, which is under ONE root derived from where its binary sits. src/Runner.Common/
 // HostContext.cs (v2.337.0) GetDirectory: Bin = the directory of the running assembly, Root = Directory.
