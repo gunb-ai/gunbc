@@ -55,7 +55,9 @@ import extdeps.standards.motherboard_mounting_location { LocB, LocC, LocF, LocH,
 import extdeps.boards.types {
   HoleCorrespondenceInferred, HoleAbsenceExplicitlyDirected, HoleNotObservedInDrawing,
   BoardStandardLocationCorrespondence, board_location_correspondence,
+  BoardStandardLocationRoster, board_standard_location_roster,
 }
+import extdeps.standards.motherboard_mounting_grid { MicroAtxMountingGrid }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
 import extdeps.uri { Uri, Https }
@@ -798,6 +800,12 @@ data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocati
   board_location_correspondence(location: LocJ, standing: HoleAbsenceExplicitlyDirected),
   board_location_correspondence(location: LocS, standing: HoleNotObservedInDrawing),
 ]
+
+// The roster binds this correspondence to the microATX grid its letters are read against.
+data asrock_altrad8ud_standard_location_roster: BoardStandardLocationRoster? = board_standard_location_roster(
+  grid: MicroAtxMountingGrid,
+  locations: asrock_altrad8ud_standard_location_correspondence,
+)
 
 
 // THE DEEP EXTENSION, and the cassette requirement that falls out of it.
