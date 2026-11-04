@@ -44,6 +44,9 @@ type SupervisorVerdictReceipt {
 // is not exactly this string is refused, so a future shape cannot be silently read as this one.
 // v2: the routes became executable session actions and the receipt lost its attempt key, which the
 // verdict's own path under the attempt's state directory now carries.
+// Main's verdict member name (gunbc.roadmap.roadmap_attempt_state_store AttemptSupervisorVerdict reads it). Kept on
+// integration as a merge resolution; slice row 0a decides its fate on main.
+data supervisor_verdict_basename: NonEmptyStr = "supervisor-verdict.json" as NonEmptyStr
 data supervisor_verdict_schema: NonEmptyStr = "roadmap-supervisor-verdict/v2" as NonEmptyStr
 
 fn supervisor_verdict_route_key(verdict: SupervisorVerdict) -> String {
