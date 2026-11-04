@@ -7493,6 +7493,17 @@ impl InterpContext {
         self.indexes.fn_nodes.get(name)
     }
 
+    /// The (declaring module, coproduct) pairs that declare a variant arm of this spelling in this
+    /// run's closure. A runtime variant value carries only its spellings, so this is how a host
+    /// boundary establishes WHICH declaration a spelling can denote before acting on it.
+    pub(crate) fn variant_arm_declarers(&self, arm: &str) -> Vec<(String, String)> {
+        self.indexes
+            .variant_arm_owners
+            .get(arm)
+            .map(|owners| owners.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
     /// Is this bare spelling claimed by more than one module in this scope?
     pub(crate) fn bare_name_is_ambiguous(&self, name: &str) -> bool {
         self.indexes.ambiguous_bare_function_names.contains(name)
