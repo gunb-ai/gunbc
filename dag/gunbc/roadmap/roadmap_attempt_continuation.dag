@@ -5,7 +5,7 @@ import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
 import gunbc.roadmap.roadmap_model { RoadmapEdge }
 import gunbc.roadmap.roadmap_refused_retry {
-  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, refused_retry_exhausted_reason,
+  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable, refused_retry_exhausted_reason,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
@@ -187,6 +187,8 @@ fn continuation_from_segments(prior: PriorAttemptFacts) -> ContinuationDecision 
               ContinuationHold { reason: join(["the prior attempt's verification was refused by its infrastructure, an environment fact rather than a verdict: the belt re-runs it on its next wake (retry ", to_string(ordinal), " of its bound), so no spawn"], "") }
             RefusedRetryExhausted { attempts } =>
               ContinuationRefused { reason: refused_retry_exhausted_reason(attempts: attempts) }
+            RefusedRetryUnreadable { reason } =>
+              ContinuationRefused { reason: join(["the belt could not read its own refused-retry ledger, so it cannot say whether a retry is owed; the line stops and the operator decides: ", reason], "") }
             RefusedRetryOperatorOnly =>
               ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator resumes the verification (belt_verify_resume_cli), so no spawn" }
           }
