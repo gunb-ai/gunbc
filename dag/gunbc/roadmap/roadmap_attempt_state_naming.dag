@@ -18,7 +18,6 @@ module gunbc.roadmap.roadmap_attempt_state_naming
 // than an orphaned file at the next cutover.
 
 import std.types { String, NonEmptyStr }
-import std.algebra { join }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 
 type AttemptStateSlotsDeclaration { attempt_infix: String, current_suffix: String }
