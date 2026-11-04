@@ -74,7 +74,7 @@ fn bambu_lan_mqtt_endpoint(host: NonEmptyStr) -> MqttEndpoint {
 // which started a PETG recipe from whatever PLA sat in slot 1 the day the loading changed. Which tray
 // to name is a SELECTION over what each printer's AMS holds (gunbc.fleet.printer_ams_loading); this
 // module owns only the wire shape: the single project filament maps to one zero-indexed tray.
-type BambuAmsTray {
+type BambuAmsTray sole_constructor {
   index: Int
 }
 

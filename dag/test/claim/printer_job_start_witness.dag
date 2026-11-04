@@ -38,7 +38,14 @@ import product.printing.print_recipe { a1_mini_petg_functional_v1, a1_mini_pla_p
 data a_serial: NonEmptyStr = "0300CA660400324"
 data another_serial: NonEmptyStr = "0300CA652201400"
 data a_host: NonEmptyStr = "192.168.1.235"
-data a_slot_one_tray: BambuAmsTray = BambuAmsTray { index: 0 }
+// The tray is made only by the checked constructor (BambuAmsTray is sole_constructor); a slot with no
+// tray yields an empty payload, which every row below asserts against and so fails.
+fn slot_one_payload(remote: NonEmptyStr, sequence_id: NonEmptyStr) -> String {
+  match bambu_ams_tray_of_slot(slot: 1) {
+    Absent => ""
+    Present { value: t } => bambu_start_payload_json(command: bambu_start_command(remote_name: remote, ams_tray: t), sequence_id: sequence_id)
+  }
+}
 data a_remote_name: NonEmptyStr = "gauge_container.3mf"
 data a_ca_path: FilePath = "/tmp/fixture/printer_ca.pem" as FilePath
 
@@ -46,8 +53,7 @@ fn start_argv() -> List<String> {
   argv_words(command: mosquitto_publish_command(
     endpoint: bambu_lan_mqtt_endpoint(host: a_host),
     topic: bambu_request_topic(serial: a_serial) as NonEmptyStr,
-    payload: bambu_start_payload_json(
-      command: bambu_start_command(remote_name: a_remote_name, ams_tray: a_slot_one_tray), sequence_id: "1"),
+    payload: slot_one_payload(remote: a_remote_name, sequence_id: "1"),
     qos: bambu_start_command_qos,
     ca_bundle: a_ca_path))
 }
@@ -158,8 +164,7 @@ test fn the_start_command_is_not_published_at_most_once() -> Bool {
 // THE START PAYLOAD NAMES A FILE ALREADY ON THE MACHINE, and names THIS one. A payload that carried
 // a stale or defaulted name would start whichever project happened to be on the card.
 test fn the_start_payload_names_the_delivered_file() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: a_remote_name, ams_tray: a_slot_one_tray), sequence_id: "7")
+  let json = slot_one_payload(remote: a_remote_name, sequence_id: "7")
   string_contains(s: json, pattern: "file:///sdcard/gauge_container.3mf")
     && string_contains(s: json, pattern: "\"sequence_id\": \"7\"")
     && string_contains(s: json, pattern: "\"command\": \"project_file\"")
@@ -167,8 +172,7 @@ test fn the_start_payload_names_the_delivered_file() -> Bool {
 
 // Physical slot 1 is wire tray 0, not tray 1 or the external spool.
 test fn the_start_payload_selects_ams_slot_one() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: a_remote_name, ams_tray: a_slot_one_tray), sequence_id: "1")
+  let json = slot_one_payload(remote: a_remote_name, sequence_id: "1")
   string_contains(s: json, pattern: "\"use_ams\": true") &&
   string_contains(s: json, pattern: "\"ams_mapping\": [0]")
 }
@@ -340,26 +344,20 @@ test fn a_clean_publish_is_still_published() -> Bool {
 // nothing would. That is a property of the current callers, not of the function, and a check whose
 // red depends on a caller nobody has written yet is the one that quietly stops being true.
 test fn a_quote_in_the_subtask_name_is_escaped_rather_than_closing_the_string() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: "evil\".3mf" as NonEmptyStr, ams_tray: a_slot_one_tray),
-    sequence_id: "1" as NonEmptyStr)
+  let json = slot_one_payload(remote: "evil\".3mf" as NonEmptyStr, sequence_id: "1" as NonEmptyStr)
   string_contains(s: json, pattern: "evil\\\".3mf")
     && !string_contains(s: json, pattern: "\"subtask_name\": \"evil\".3mf\"")
 }
 
 test fn a_backslash_in_the_sequence_id_is_escaped() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: a_remote_name, ams_tray: a_slot_one_tray),
-    sequence_id: "a\\b" as NonEmptyStr)
+  let json = slot_one_payload(remote: a_remote_name, sequence_id: "a\\b" as NonEmptyStr)
   string_contains(s: json, pattern: "\"sequence_id\": \"a\\\\b\"")
 }
 
 // THE POSITIVE CONTROL: an ordinary value passes through unmangled, so the two rows above are not
 // green merely because the escaper mangles everything.
 test fn an_ordinary_sequence_id_is_not_altered() -> Bool {
-  let json = bambu_start_payload_json(
-    command: bambu_start_command(remote_name: a_remote_name, ams_tray: a_slot_one_tray),
-    sequence_id: "plain-1" as NonEmptyStr)
+  let json = slot_one_payload(remote: a_remote_name, sequence_id: "plain-1" as NonEmptyStr)
   string_contains(s: json, pattern: "\"sequence_id\": \"plain-1\"")
 }
 
