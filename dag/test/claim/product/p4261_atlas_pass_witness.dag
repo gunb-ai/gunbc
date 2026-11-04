@@ -285,10 +285,18 @@ test fn every_held_receipt_is_recorded_on_the_board() -> Bool {
   // proposed name in the obligation where a reader can find it. Deleting that row would throw away
   // the one observation the C3_F1 correction is about: that a label was seen.
   e1_held_receipts.all(r => match r {
-    HeldDesignatorRead { designator: dn, standing: _, legibility: _, legibility_basis: _, why: _ } =>
+    HeldExactDesignator { designator: dn, standing: _, authority: _, why: _ } =>
       any(p4261_e1_layout.unresolved, u => match u.designator {
         Present { value: d } => designator_eq(a: designator_of(verbatim: d), b: dn)
         Absent { } => false
+      })
+    PartiallyTranscribedCandidate { source_key: _, proposed_name: n, standing: _,
+                                    partly_legible_in: _, obligation: _, why: _ } =>
+      any(p4261_e1_layout.unresolved, u => match u.designator {
+        // Same reason as the candidate below: a name that was only partly read is not a read
+        // designator, so an unresolved row presenting it is not a match.
+        Present { value: _ } => false
+        Absent { } => true
       })
     UntranscribedCandidate { source_key: _, proposed_name: n, standing: _, why: _ } =>
       any(p4261_e1_layout.unresolved, u => match u.designator {
@@ -399,8 +407,16 @@ test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
   // asks the position authority directly whether that text became a designator. Leaving the arm
   // unhandled would make the one row whose name was never read the only row this test cannot see.
   e1_held_receipts.all(r => match r {
-    HeldDesignatorRead { designator: dn, standing: _, legibility: _, legibility_basis: _, why: _ } =>
+    HeldExactDesignator { designator: dn, standing: _, authority: _, why: _ } =>
       match p4261_position_at(positions: p4261_e1_positions, verbatim: designator_text(dn)) {
+        Present { value: _ } => false
+        Absent { } => true
+      }
+    PartiallyTranscribedCandidate { source_key: _, proposed_name: n, standing: _,
+                                    partly_legible_in: _, obligation: _, why: _ } =>
+      // A name with characters missing is exactly as unadmitted as a name nobody read: both are
+      // text, and text does not enter NVIDIA's design list.
+      match p4261_position_at(positions: p4261_e1_positions, verbatim: n) {
         Present { value: _ } => false
         Absent { } => true
       }
@@ -443,26 +459,45 @@ test fn every_named_exception_reaches_the_board() -> Bool {
 // in which to claim a half-read label, so the state it refused has no constructor and a witness
 // would only be checking that a record equals itself. The mutant that used to prove that test --
 // writing `RuleRead { legibility: Partial { } }` into a row -- is now refused by the compiler,
-// and that refusal is what the PR reports. The same applies inside a held read: its legibility type is
-// Legibility minus no arm -- there is no 'nobody read it' member to name -- so a held row cannot mint a
-// Designator for characters nobody read. What the types cannot reach is the CROSS-ROW direction, and the
+// and that refusal is what the PR reports. The held path closed the same way and by the same means:
+// an exact held row carries an authority and no legibility field at all, and a row that was only
+// partly read is a candidate arm that mints no Designator, so there is nowhere to write 'exact name,
+// partly read' either. What the types cannot reach is the CROSS-ROW direction, and the
 // four tests below are what covers it: a reading for every exception, a photograph-dated reading for a
 // photograph authority, and a candidate's proposed name kept off the board.)
 
 test fn the_held_arms_carry_only_what_they_may() -> Bool {
-  // The two held shapes are not interchangeable. A held READ was read -- it carries the exact label
-  // and a legibility drawn from Legibility, which has no 'nobody read it' member, so the shape already
-  // refuses the C3_F1 contradiction. A CANDIDATE was never read: it carries a PROPOSED name
-  // as plain text, because Designator is the identity the whole model joins on and an unread
-  // spelling must not enter it. What still needs a witness is the direction the shape cannot close:
-  // a candidate's proposed name reappearing on the board as a read designator, which would undo the
-  // correction exactly as thoroughly as a held read that admitted it was never transcribed.
+  // The three held shapes are not interchangeable, and none of them is allowed to be silently true
+  // here. An EXACT read carries the label it read in full and an authority that licenses every
+  // character of it -- there is no legibility field on it to fail, which is the point: the state
+  // 'exact name, partly read' has no constructor. A PARTLY TRANSCRIBED row and a NEVER TRANSCRIBED
+  // row both carry a proposed name as plain text, because Designator is the identity the whole model
+  // joins on and a spelling that is not settled must not enter it. What the shapes cannot close is
+  // the cross-row direction: a proposed name reappearing on the board as a read designator, from
+  // either candidate arm, which would undo the correction as thoroughly as a held row that minted a
+  // name it had only half read.
   e1_held_receipts.all(h => match h {
-    // Nothing to ask of a held read here: every arm of its legibility type is one a read may have,
-    // which is the point of giving it its own type. Its designator is checked by the two tests that
-    // hold held rows off the design list and off the board's presented names.
-    HeldDesignatorRead { designator: _, standing: _, legibility: _, legibility_basis: _, why: _ } =>
+    // Nothing to ask here: this arm has no field left to misuse. Its designator is checked by the
+    // two tests that hold held rows off the design list and off the board's presented names.
+    HeldExactDesignator { designator: _, standing: _, authority: _, why: _ } =>
       true
+    PartiallyTranscribedCandidate { source_key: _, proposed_name: n, standing: _,
+                                    partly_legible_in: _, obligation: _, why: _ } =>
+      // A label read in part is on the board as text and stays there: five of these ten are read rows
+      // whose citation says the bytes were never supplied, which is exactly the honest way to carry an
+      // unsettled spelling. What it may NOT do is lean on a stored frame. If the image that would
+      // settle the spelling were in the store, the receipts would say so and the row would be an exact
+      // read -- so a board reading that cites stored pixels for a name the receipts only half read is
+      // quoting an image that does not show what the row says it shows.
+      !any(p4261_e1_layout.designator_readings, d =>
+        string_eq(a: d.designator as String, b: n as String)
+        && match d.evidence {
+             OperatorPhotograph { citation: InStore { content: _, region: _ } } => true
+             OperatorPhotograph { citation: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } =>
+               false
+             SellerListingPhotograph { } => false
+             OperatorStatement { } => false
+           })
     UntranscribedCandidate { source_key: _, proposed_name: n, standing: _, why: _ } =>
       // No designator reading presents it...
       !any(p4261_e1_layout.designator_readings, d =>
@@ -483,12 +518,17 @@ test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
   p4261_e1_layout.unresolved.all(u => match u.designator {
     Present { value: d } =>
       any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: d), b: r.designator))
-        // Only a held READ can vouch for a presented designator. A candidate's proposed_name is text
-        // for the one reason that a Designator is an exact-spelling claim, so it cannot be the
-        // receipt behind a board row that presents a name as read.
+        // What may vouch for a presented name depends on what the board row claims. An unresolved row's
+        // designator is plain text, so a name the receipts read IN FULL vouches for it as a Designator,
+        // and a name read only in part vouches for it as the text it is: both are the board saying what
+        // it saw without settling the spelling. A name nobody ever read vouches for nothing -- that is
+        // the C3_F1 case, where the board has no business presenting characters no receipt produced.
         || any(e1_held_receipts, h => match h {
-          HeldDesignatorRead { designator: dn, standing: _, legibility: _, legibility_basis: _, why: _ } =>
+          HeldExactDesignator { designator: dn, standing: _, authority: _, why: _ } =>
             designator_eq(a: designator_of(verbatim: d), b: dn)
+          PartiallyTranscribedCandidate { source_key: _, proposed_name: n, standing: _,
+                                          partly_legible_in: _, obligation: _, why: _ } =>
+            string_eq(a: d as String, b: n as String)
           UntranscribedCandidate { source_key: _, proposed_name: _, standing: _, why: _ } => false
         })
     Absent { } => true
@@ -686,28 +726,59 @@ test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool 
 // carry no decidable order and this test does not pretend to compare them.
 test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
   e1_position_receipts.all(rec => authority_is_checkable(name: rec.designator.verbatim, basis: rec.rests_on))
-    && any(e1_held_receipts, held => candidate_cites_what_it_sees(held))
+    // General over both candidate arms, so a row cannot escape it by being the other shape: a frame a
+    // candidate cites is a frame the store holds. This is the half that keeps a digest typed from
+    // memory out of the model, whatever the row claims about the label.
+    && e1_held_receipts.all(h => candidate_frames_are_held(h))
+    // The pin, counted rather than `any`: one row carries the label the pass saw and never read, and
+    // a second row proposing the same name is as wrong as a missing one. It has to hold at least one
+    // frame the store has, which is the difference between 'nobody read it' and 'nobody looked'.
+    && count(filter(e1_held_receipts, h => is_unread_candidate(h))) == 1
+    && any(e1_held_receipts, h => unread_candidate_holds_a_frame(h))
 }
 
-// One frame the authority or the candidate names, checked against the store by content: a digest typed
-// from memory resolves nowhere, which is the failure this whole test exists to catch.
+// One frame an authority or a candidate names, checked against the store by content AND by the name the
+// store has for those bytes. Content alone lets a citation pair a real digest with the wrong file, and a
+// reader following the name lands somewhere else; a digest typed from memory resolves nowhere, which is
+// the failure this whole test exists to catch, and a name typed from memory is the same mistake quieter.
 fn frame_is_held(s: LabelSighting) -> Bool {
   match photograph_in_store(store: e1_photographs, content: s.digest) {
-    Present { value: _ } => true
+    Present { value: p } =>
+      string_eq(a: p.store.file_name as String, b: s.file_name as String)
     Absent { } => false
   }
 }
 
-// The board's own reading of this designator has to point at one of the very same bytes, not merely at
-// a photo taken on some day. The unstored arm is refused rather than excused: it says the bytes were
-// never supplied, which is the gap this authority was written to close.
+// The same pixels, not merely the same frame. An overview carries dozens of components, so agreeing on
+// which bytes the reading came from does not yet say the label was read off THIS part -- the lesson this
+// PR's own second review round taught, applied to a frame claim as well. Both sides have to state a box
+// and agree on it: a sighting with no box says only that somebody looked at the whole board.
+fn read_inside_the_same_box(sighting: LabelSighting, on_the_board: PixelRegion?) -> Bool {
+  match sighting.box {
+    Present { value: p } =>
+      match on_the_board {
+        Present { value: q } =>
+          p.left == q.left && p.top == q.top && p.width == q.width && p.height == q.height
+        Absent { } => false
+      }
+    Absent { } => false
+  }
+}
+
+// The board's own reading of this designator has to point at one of the very same bytes AND inside the
+// same box, not merely at a photo taken on some day. Digest alone is the weaker join this module spent
+// a review round removing: on a frame showing dozens of parts it says the bytes exist, not that the
+// label was read here. The unstored arm is refused rather than excused -- it says the bytes were never
+// supplied, which is the gap this authority was written to close -- and a board reading with no box is
+// refused too, because the claim being checked is about pixels somebody drew.
 fn board_reads_those_frames(name: NonEmptyStr, frames: List<LabelSighting>) -> Bool {
   any(p4261_e1_layout.designator_readings, d =>
     string_eq(a: d.designator as String, b: name as String)
     && any(frames, s =>
       match d.evidence {
-        OperatorPhotograph { citation: InStore { content: c, region: _ } } =>
+        OperatorPhotograph { citation: InStore { content: c, region: r } } =>
           string_eq(a: c.hex as String, b: s.digest.hex as String)
+            && read_inside_the_same_box(sighting: s, on_the_board: r)
         OperatorPhotograph { citation: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } =>
           false
         SellerListingPhotograph { } => false
@@ -721,23 +792,19 @@ fn authority_is_checkable(name: NonEmptyStr, basis: ReceiptBasis) -> Bool {
   match basis {
     RuleRead { } => true
     NamedException { why: _, authority: a } => match a {
-      // A receipt read the label. The receipts module holds that read to its own columns, and a frame
-      // cannot disagree with a receipt that never carried it; nothing here can settle it further.
-      FromReceipt { legibility: _, legibility_basis: _ } => true
-      FromStoredFrames { read_by: _, read_on: _, legibility: leg, frames: frames } =>
+      // A receipt read the label in full. The receipts module holds that read to its own columns, and a
+      // frame cannot disagree with a receipt that never carried it; nothing here can settle it further.
+      FromReceipt { basis: _ } => true
+      FromStoredFrames { read_by: _, read_on: _, frames: frames } =>
         // nothing is read off frames nobody has named
         count(frames) > 0
-        // every frame named is one the store holds, by content
+        // every frame named is one the store holds, by content and by name
         && frames.all(s => frame_is_held(s))
-        // a read claimed clear states where on the image it happened
-        && (match leg {
-             Clear { } => any(frames, s => match s.box {
-               Present { value: _ } => true
-               Absent => false
-             })
-             Partial { } => true
-             Unreadable { } => true
-             NotVisible { } => true
+        // A read that states every character has to say where on at least one image it read them: a
+        // claim with no box anywhere is somebody's impression of a label, not a read of it.
+        && any(frames, s => match s.box {
+             Present { value: _ } => true
+             Absent => false
            })
         // and the board's own reading of this designator points at the same pixels
         && board_reads_those_frames(name: name, frames: frames)
@@ -745,23 +812,47 @@ fn authority_is_checkable(name: NonEmptyStr, basis: ReceiptBasis) -> Bool {
   }
 }
 
-// C3_F1: no receipt transcribed it, and the operator reads the label as partly legible in a stored
-// frame. Both halves have to be in the row. 'No receipt read it' is not 'no frame shows it', and a row
-// that says only one of the two leaves a reader guessing which gap they are looking at -- which is how
-// this row came to be described as a label nobody had ever seen.
-fn candidate_cites_what_it_sees(held: HeldReceipt) -> Bool {
+// Every frame a candidate cites, from either candidate arm, is a frame the store holds. An exact row
+// cites no frames -- its claim is a receipt read or frames named in the authority -- so there is nothing
+// here to check, and that is said rather than left implicit: the arms with frames are the ones tested.
+fn candidate_frames_are_held(held: HeldReceipt) -> Bool {
   match held {
+    HeldExactDesignator { designator: _, standing: _, authority: _, why: _ } => true
+    PartiallyTranscribedCandidate {
+      source_key: _, proposed_name: _, standing: _, partly_legible_in: frames, obligation: _, why: _
+    } => frames.all(s => frame_is_held(s))
     UntranscribedCandidate {
-      source_key: k, proposed_name: n, standing: _, partly_legible_in: frames, obligation: _, why: _
+      source_key: _, proposed_name: _, standing: _, partly_legible_in: frames, obligation: _, why: _
+    } => frames.all(s => frame_is_held(s))
+  }
+}
+
+// The one row whose label a receipt never transcribed, keyed by the receipt row it came from rather than
+// by the name alone: two rows from two sources proposing the same text are two observations, and the
+// count that matters is the one this board made of this column.
+fn is_unread_candidate(held: HeldReceipt) -> Bool {
+  match held {
+    HeldExactDesignator { } => false
+    PartiallyTranscribedCandidate { } => false
+    UntranscribedCandidate {
+      source_key: k, proposed_name: n, standing: _, partly_legible_in: _, obligation: _, why: _
     } =>
       string_eq(a: k as String, b: C3_F1_SOURCE_KEY)
       && string_eq(a: n as String, b: "C3_F1")
-      // 'no receipt read it' without 'and here is the frame that shows it' is the half-truth this row
-      // carried before; a row that cites a frame the store does not hold is the same lie with a digest
-      && count(frames) > 0
-      && frames.all(s => frame_is_held(s))
-      // `obligation` says what would close it and is prose for a reader, like `why` and `read_by`: the
-      // frame citation is the checkable half, and no amount of text-searching the sentence proves it
-    HeldDesignatorRead { } => false
+  }
+}
+
+// And that row is the half-truth this module exists to prevent: 'no receipt read it' with no frame named
+// is a row that leaves a reader guessing whether anyone ever looked. C3_F1 is the frame case -- the
+// operator reads it as partly legible in a stored shot -- so the frames are the checkable half. The
+// `obligation` says what would close it and is prose for a reader, like `why` and `read_by`: no amount
+// of text-searching a sentence proves a label was seen, a digest does.
+fn unread_candidate_holds_a_frame(held: HeldReceipt) -> Bool {
+  match held {
+    HeldExactDesignator { } => false
+    PartiallyTranscribedCandidate { } => false
+    UntranscribedCandidate {
+      source_key: _, proposed_name: _, standing: _, partly_legible_in: frames, obligation: _, why: _
+    } => count(frames) > 0 && frames.all(s => frame_is_held(s))
   }
 }
