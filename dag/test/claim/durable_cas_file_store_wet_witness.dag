@@ -3,7 +3,8 @@ module test.claim.durable_cas_file_store_wet_witness
 import std.integer { int_to_decimal_string }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { Bool, Int, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String, list_length }
+import std.algebra { string_contains }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set {
   CasAttempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_attempt,
@@ -14,7 +15,7 @@ import std.durable_compare_and_set {
   cas_generation_count,
 }
 import std.checked_arithmetic { int_inclusive_max }
-import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
+import gunbc.durable_cas_file_store { slot_keys, file_slot_store, listed_slot_store, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, CasSlotKeysListed, CasSlotKeysAbsent, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
 
 // Wet controls for the file-backed CAS provider. Hermetic mint and classification
 // live in test.claim.durable_cas_file_store_witness. This file reaches the host.
@@ -353,4 +354,151 @@ test fn a_window_narrower_than_two_is_not_admitted() -> Bool {
     CasGenerationWindowTooNarrow { k: k } => k == 1
     CasGenerationWindowAdmitted { window: _ } => false
   }
+}
+
+// THE CENSUS OF A SLOT DIRECTORY, BY REAL EXECUTION -- three answers, and the third is the reason
+// the reading arm exists. Every row here reads through the sealed store surface that consumers use
+// (slot_keys on a file_slot_store), never through a root string, and each match names all four arms
+// explicitly: a census row with a default arm could not tell a reviewer which answer it expected.
+//
+// R1 listed-empty: an ESTABLISHED store with no slots is Listed with no keys. Under every mutant of
+// the absence decision this row must stay green -- it is the row that would go red if absence were
+// being reported as an empty listing.
+test fn a_census_of_an_established_empty_store_lists_no_keys_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let answered = match slot_keys(store: file_slot_store(root: root_path as NonEmptyStr)) {
+    CasSlotKeysListed { keys } => list_length(keys) == 0
+    CasSlotKeysAbsent { root: _ } => false
+    CasSlotKeysListingRefused { root: _, detail: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  answered && removed.success
+}
+
+// R2 declared-but-absent -- THE DISCRIMINATING ROW. A store root that was never created is answered
+// ABSENT, with the store the answer is about, because ENOENT is a fact about the subject and a lease
+// whose slots live in a store that no longer exists needs this proof in order to migrate. The mutant
+// that collapses not_found into "unreadable" must turn THIS row red and leave R1, R3 and R4 green;
+// without that asymmetry the third arm is decoration.
+test fn a_census_of_a_never_created_store_is_answered_absent_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let missing = concat(root_path, "/never-created")
+  let missing_root = missing as NonEmptyStr
+  let answered = match slot_keys(store: file_slot_store(root: missing_root)) {
+    CasSlotKeysAbsent { root: r } => r == missing_root
+    CasSlotKeysListed { keys: _ } => false
+    CasSlotKeysListingRefused { root: _, detail: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  answered && removed.success
+}
+
+// R3 unreadable: a store root that exists but cannot be read is refused, and the refusal names the
+// kind it observed instead of flattening into the same answer as absence. The setup is asserted
+// separately from the claim, and the row is written as a disjunction so that a host which ignores
+// mode 000 (a process that does not need permission) shows up as a LISTED answer rather than as a
+// failed assertion: a red on this row therefore means the setup broke, never that the absence
+// decision changed. Under the ENOENT-collapse mutant this row must stay green.
+// THE UNREADABLE CASE IS PLANTED AS A PATH THAT IS NOT A DIRECTORY, not as a permission bit: the host
+// answers not_a_directory, which is an admitted kind and is NOT not_found, so the census must refuse
+// and name the kind it saw. No mode bit is involved, so the row cannot pass or fail on whether a host
+// honors chmod 000. A Listed answer here would mean the listing channel reported contents for a
+// non-directory path -- a channel defect -- so that arm goes red rather than excusing itself.
+test fn a_census_of_an_unreadable_store_refuses_naming_the_kind_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let blocked = concat(root_path, "/blocked")
+  let planted = Filesystem.WriteCreateNew(path: blocked, content: "a file where a store directory belongs")
+  let reading = slot_keys(store: file_slot_store(root: blocked as NonEmptyStr))
+  let probe = Filesystem.List(path: blocked)
+  let answered = match reading {
+    CasSlotKeysListingRefused { root: _, detail: d } => string_contains(d, "not_a_directory") && probe.error_kind == "not_a_directory"
+    CasSlotKeysListed { keys } => false
+    CasSlotKeysAbsent { root: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  planted.success && answered && removed.success
+}
+
+// R4 absent-changes-nothing: the census is a census, not an actor. This row deliberately does NOT
+// assert which arm came back -- it asserts that the answer is STABLE across two readings and that
+// the file system is untouched by asking (the host still answers not_found for the same path). So
+// the ENOENT-collapse mutant leaves it green, which is what makes it the positive control beside R2:
+// if a future pass minted on a census, or freed a charge because a store could not be found, this
+// is the shape it would have to break. The charge-level version of this guard lives in the session
+// lane and needs the settle record's per-arm reading kind, which is named as residue on this PR.
+fn census_shape(c: CasSlotKeys) -> String {
+  match c {
+    CasSlotKeysListed { keys: _ } => "listed"
+    CasSlotKeysAbsent { root: _ } => "absent"
+    CasSlotKeysListingRefused { root: _, detail: _ } => "listing-refused"
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => "subject-refused"
+  }
+}
+
+test fn an_absent_census_creates_nothing_and_leaves_the_answer_unchanged_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let missing = concat(root_path, "/never-created")
+  let missing_root = missing as NonEmptyStr
+  let first = census_shape(c: slot_keys(store: file_slot_store(root: missing_root)))
+  let second = census_shape(c: slot_keys(store: file_slot_store(root: missing_root)))
+  let host_still_says_not_found = match Filesystem.List(path: missing) {
+    listing => (!listing.success) && listing.error_kind == "not_found"
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  first == second && host_still_says_not_found && removed.success
+}
+
+// THE SAME DISTINCTION AT THE ADMISSION SURFACE. listed_slot_store decides whether a store's OWN
+// directory can be handed to a consumer as a handle, and it used to answer "that store is not there"
+// and "I could not read that store" with one constructor. The cutover lane is where that collapse
+// decides whether work is finished, so the admission coproduct now carries the absent arm too. Both
+// consumers read the ONE seam fold (extdeps.filesystem.filesystem_io.filesystem_listing_absence), so
+// one mutant at that fold must turn this row AND the census row red while the listed and unreadable
+// controls stay green.
+
+test fn an_admission_of_a_never_created_store_answers_absent_naming_the_member_and_the_store_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let missing = concat(root_path, "/never-created-store")
+  let missing_root = missing as NonEmptyStr
+  let admitted = match listed_slot_store(member: "carry_source_store", root: missing_root) {
+    SlotStoreAbsent { member: m, root: r } => (m == "carry_source_store") && (r == missing_root)
+    SlotStoreListed { root: _ } => false
+    SlotStoreRefused { detail: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  admitted && removed.success
+}
+
+test fn an_admission_of_an_established_store_still_admits_it_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let here = concat(root_path, "/established-store")
+  let here_root = here as NonEmptyStr
+  let made = shell.Mkdir.NewOwnerOnly(path: here as FilePath).success
+  let admitted = match listed_slot_store(member: "carry_source_store", root: here_root) {
+    SlotStoreListed { root: r } => r == here_root
+    SlotStoreAbsent { member: _, root: _ } => false
+    SlotStoreRefused { detail: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  admitted && made && removed.success
+}
+
+// The control the collapse mutants must NOT turn red: a store path that exists but cannot be listed as
+// a directory is still a REFUSAL at the admission surface, and the refusal names the kind it saw. Same
+// planting as the census control (a regular file at the store path), so no permission semantics.
+test fn an_admission_of_an_unreadable_store_refuses_naming_the_kind_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let blocked = concat(root_path, "/blocked-store")
+  let blocked_root = blocked as NonEmptyStr
+  let planted = Filesystem.WriteCreateNew(path: blocked, content: "a file where a store directory belongs")
+  let answer = match listed_slot_store(member: "carry_source_store", root: blocked_root) {
+    SlotStoreRefused { detail: d } => string_contains(d, "not_a_directory")
+    SlotStoreAbsent { member: _, root: _ } => false
+    SlotStoreListed { root: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  planted.success && answer && removed.success
 }

@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_dashboard_instance_apply
 
 import std.algebra { trim, is_empty, string_contains }
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int }
 // The writer observation reads two cgroup files; their decoders belong to the module that owns cgroup v2.
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoded, decode_cgroup_events_populated, decode_cgroup_procs }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -10,6 +10,7 @@ import extdeps.shell
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.filesystem.filesystem_io
+import std.optional { Present, Absent }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_bundle_verify_argv,
@@ -23,6 +24,7 @@ import extdeps.git {
   shape_git_status_porcelain_argv,
   shape_git_fetch_remote_argv,
   shape_git_reset_hard_argv,
+  shape_git_rev_parse_verify_quiet_argv,
   shape_git_rev_parse_argv,
   git_local_config_get_command, git_shared_repository_posture_readbacks,
 }
@@ -67,6 +69,9 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
   dashboard_target_run,
   dashboard_exec_result_of_ran,
   TargetExec,
+  DashboardTargetRan,
+  TargetRan,
+  TargetNotRun,
   DashboardPathObservation,
   PathObservedPresent,
   PathObservedAbsent,
@@ -161,6 +166,17 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
   dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
   dashboard_git_worker_subtree_walk_depth,
+  // These three are CALLED by this file (in the subtree grant readback below) and declared here in
+  // gunbc.roadmap.roadmap_dashboard_instance, but were never listed in this import. They resolved
+  // only by proximity to some other importer of the module in the entry's closure --
+  // residual_class_names.bare_name_resolved_by_proximity_standing_in_for_resolution (gunbc#15247) --
+  // and the effect checker refuses such a callee with 'no established callee identity', the failing
+  // set varying by which entry pulled the module in. Note dashboard_git_subtree_readback_is_granted
+  // two lines up is imported and is NOT this one: a near name standing in for the real one is
+  // exactly how this residual hides. Pattern: gunbc#15753, gunbc#15755.
+  dashboard_git_subtree_readback_is_granted_under,
+  dashboard_git_worker_subtree_granted_directory_mode,
+  dashboard_git_worker_subtree_writes_files_in_place,
 }
 import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_device_login_command }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
@@ -176,6 +192,7 @@ import gunbc.owned_directory {
   owned_directory_install_args,
   owned_directory_decide,
   owned_directory_ensure,
+  owned_directory_ensure_observed,
   owned_directory_outcome_converged,
   owned_directory_outcome_detail,
 }
@@ -678,25 +695,97 @@ fn dashboard_ensure_source_repo(
         ], ""),
       )
     } else {
-      dashboard_run_target_argvs(instance: instance, commands: [
-        DashboardArgv {
-          program: "/usr/bin/git" as FilePath,
-          args: shape_git_fetch_remote_argv(
-            repo: repo,
-            remote: "origin" as NonEmptyStr,
-          ),
-        },
-        DashboardArgv {
-          program: "/usr/bin/git" as FilePath,
-          args: shape_git_reset_hard_argv(
-            repo: repo,
-            target: anchor_ref as GitRef,
-          ),
-        },
-      ])
+      // R3 ORDERING GUARD (loyal-deer-449): the lab's anchor (remote '.') is NOT brought in by
+      // `git fetch origin` -- CONVERGENCE populates it, so the cutover order is convergence first,
+      // ensure-source-repo second. A reset target that does not exist in the owned repo is refused
+      // by NAME, typed; falling back to origin/main would reintroduce exactly the shared-ref meaning
+      // collapse R3 removes (§5: a typed, located refusal, never a fabricated default).
+      let anchor_verify = dashboard_target_run(
+        instance: instance,
+        program: "/usr/bin/git" as FilePath,
+        args: shape_git_rev_parse_verify_quiet_argv(repo: repo, ref_name: anchor_ref as GitRef),
+        mode: TargetExec,
+      )
+      match dashboard_source_repo_reset_admission(
+        repo: repo as String,
+        anchor_ref: anchor_ref as String,
+        verify: dashboard_anchor_verify_of_ran(ran: anchor_verify),
+      ) {
+        Present { value: detail } => dashboard_exec_refused(detail: detail)
+        Absent => dashboard_run_target_argvs(instance: instance, commands: [
+          DashboardArgv {
+            program: "/usr/bin/git" as FilePath,
+            args: shape_git_fetch_remote_argv(
+              repo: repo,
+              remote: "origin" as NonEmptyStr,
+            ),
+          },
+          DashboardArgv {
+            program: "/usr/bin/git" as FilePath,
+            args: shape_git_reset_hard_argv(
+              repo: repo,
+              target: anchor_ref as GitRef,
+            ),
+          },
+        ])
+      }
     }
   }
 }
+}
+
+// What `git rev-parse --verify --quiet <anchor>` MEANS on the target. The exit code is the only
+// witness that separates "the ref is absent" (exit 1, the case the guard exists for) from "the
+// command could not speak" (transport died, repo missing, permissions) -- collapsing both into one
+// Bool would tell the operator to run convergence when the real fault is elsewhere (§5: a typed,
+// located diagnostic; no fabricated cause).
+type DashboardAnchorVerification
+  = AnchorPresent
+  | AnchorAbsent
+  | AnchorUnverifiable { exit_code: Int, detail: String }
+
+fn dashboard_anchor_verify_of_ran(ran: DashboardTargetRan) -> DashboardAnchorVerification {
+  match ran {
+    TargetRan { exit_code: exit_code, success: _, stdout: _, stderr: stderr } =>
+      if exit_code == 0 {
+        AnchorPresent
+      } else if exit_code == 1 {
+        AnchorAbsent
+      } else {
+        AnchorUnverifiable { exit_code: exit_code, detail: stderr }
+      }
+    TargetNotRun { reason } => AnchorUnverifiable { exit_code: -1, detail: reason }
+  }
+}
+
+// The reset admission as a PURE decision (witnessable without host IO): an anchor ref the owned repo
+// does not carry refuses the reset by NAME, stating the cutover order; an anchor the verify command
+// could not report refuses with the command's OWN failure passed through, never the absent-ref text;
+// a present anchor lets it run.
+fn dashboard_source_repo_reset_admission(
+  repo: String,
+  anchor_ref: String,
+  verify: DashboardAnchorVerification,
+) -> Optional<String> {
+  match verify {
+    AnchorPresent => Absent
+    AnchorAbsent => Present {
+      value: join([
+        "admitted anchor ref `", anchor_ref, "` does not exist in the owned repo ", repo,
+        "; convergence must populate it before any provision apply runs ensure-source-repo",
+        " (R3 cutover order); refusing rather than resetting to a missing ref or falling back",
+        " to a shared default",
+      ], ""),
+    }
+    AnchorUnverifiable { exit_code: exit_code, detail: detail } => Present {
+      value: join([
+        "could not verify anchor ref `", anchor_ref, "` in the owned repo ", repo,
+        ": rev-parse failed with exit ", to_string(value: exit_code),
+        " (not the absent-ref exit 1), so the fault is not the cutover order: ", detail,
+        "; refusing to reset without a witnessed anchor",
+      ], ""),
+    }
+  }
 }
 
 data dashboard_health_loopback_host: String = "127.0.0.1"
@@ -1419,7 +1508,7 @@ fn dashboard_apply_owned_directories(instance: HostDashboardInstance) -> Dashboa
       if !acc.running {
         acc
       } else {
-        let outcome = owned_directory_ensure(
+        let outcome = owned_directory_ensure_observed(
           policy: dashboard_directory_policy(instance: instance),
           target: target,
           observe: p => dashboard_owned_directory_observe(instance: instance, path: p),
