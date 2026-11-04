@@ -35,7 +35,7 @@ data g97v22332hr: ElectronicComponentRow = ElectronicComponentRow {
   vendor: amphenol,
   ordering_code: "G97V22332HR",
   package: "CONN EDGE DUAL FMALE 74POS 0.024",
-  top_marking: "G97V22332HR",
+  top_marking: Present { value: "G97V22332HR" },
   specification: ConnectorSpec { connector: ConnectorSpecification {
     series: "Mini Cool Edge IO",
     positions: 74,

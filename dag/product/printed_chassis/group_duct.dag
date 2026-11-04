@@ -11,7 +11,7 @@ import product.printed_chassis.assembly_geometry {
 import product.printed_chassis.fit_observations { a2_row_fit_plate_fit_display }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
 import product.printed_chassis.card_end_interface {
-  CardEndInterface, FinFreeBands, BandTaper, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved, feature_value, missing_feature,
+  CardEndInterface, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved,
 }
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading }
 import product.printed_chassis.gpu_duct { card_envelope_of }
@@ -23,17 +23,16 @@ import product.printed_chassis.card_installation {
 // ═══ A DUCT THAT SERVES A GROUP OF INSTALLED CARDS SIDE BY SIDE ═══
 //
 // The first multi-card realization (operator, 2026-11-02, for the four A2s on the ALTRAD8UD): one printed
-// part over every member's end face, seated by an outer lip around the whole row and gripped by tabs in each
-// card's fin-free tapered bands. Nothing enters the gaps between cards: at 20.32 mm per slot and an 18.62 mm
+// part over every member's end face, held by an outer sleeve around the whole row. Nothing enters the gaps between cards: at 20.32 mm per slot and an 18.62 mm
 // face, a gap is about 1.7 mm, too thin for two printed walls, so the part touches the row only on its
 // outside and on the faces themselves.
 //
 // WHAT IT IS BUILT FROM, AND NOTHING ELSE: the members' read end faces (product.printed_chassis
 // .card_end_interface), their separations from the installation (card_installation card_separation, the
 // board's slot positions times the CEM slot width), and the print-proven wall, flange and sleeve allowances
-// (duct_fit_policy plug_and_flange_print_policy). It fastens to no inserts, so it does not need them; it
-// needs the fin-free bands, because that is where its tabs go, and a card whose bands were not read refuses
-// by name. It covers each member's whole end face, so a member must have been OBSERVED to have no header
+// (duct_fit_policy plug_and_flange_print_policy). It fastens to no inserts and enters no face, so it needs
+// neither the inserts nor the fin-free bands. It covers each member's whole end face, so a member must have
+// been OBSERVED to have no header
 // there: a present header, or one nobody looked for, refuses until this realization carries a keep-out.
 // Its members come from a checked partition of the installation (card_installation partition_by_sizes),
 // which refuses an installation that cannot exist, so no geometry is drawn for cards that cannot be there.
@@ -43,7 +42,7 @@ import product.printed_chassis.card_installation {
 // height and nothing here reads where two different cards' faces sit relative to each other.
 //
 // THE FIT PLATE comes first (the A16's fit ring did the same): the card interface alone, printed to check the
-// separation, the lip and the tabs before any fan stage is printed. The fan stages are the next kind of root.
+// separation and the sleeve before any fan stage is printed. The fan stages are the next kind of root.
 
 // ═══ PLANS: AN INSTALLATION, THE OPERATOR'S GROUPING, AND WHICH GROUP ═══
 
@@ -69,7 +68,7 @@ fn nth_group(gs: List<CardGroup>, n: Int) -> CardGroup? {
 
 // ═══ ADMISSION ═══
 
-type GroupMemberFace { member: InstalledCard, face: CardEndInterface, bands: FinFreeBands, taper: BandTaper, offset: Micrometer, length: Micrometer }
+type GroupMemberFace { member: InstalledCard, face: CardEndInterface, offset: Micrometer, length: Micrometer }
 
 type GroupFitPlateAdmission
   = GroupFitPlateAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
@@ -83,17 +82,11 @@ type GroupFitPlateAdmission
 fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
   match m.instance.card.end_face {
     EndFaceNeedsReading { read_obligation: _ } => Absent
-    EndFaceRead { face: f } => match feature_value(f: f.fin_free_bands) {
+    EndFaceRead { face: f } => match card_separation(from: first, to: m) {
       Absent => Absent
-      Present { value: b } => match feature_value(f: b.taper) {
+      Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
         Absent => Absent
-        Present { value: tp } => match card_separation(from: first, to: m) {
-          Absent => Absent
-          Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
-            Absent => Absent
-            Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, bands: b, taper: tp, offset: s.across, length: c.length } }
-          }
-        }
+        Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, offset: s.across, length: c.length } }
       }
     }
   }
@@ -102,15 +95,9 @@ fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
 fn member_unfit_reason(first: InstalledCard, m: InstalledCard) -> String {
   match m.instance.card.end_face {
     EndFaceNeedsReading { read_obligation: o } => join(["end face not read: ", o as String], "")
-    EndFaceRead { face: f } => match feature_value(f: f.fin_free_bands) {
-      Absent => join(missing_feature(name: "fin-free bands (the tabs grip there)", f: f.fin_free_bands), "; ")
-      Present { value: b } => match feature_value(f: b.taper) {
-        Absent => join(missing_feature(name: "the fin-free bands' taper (the tabs follow it)", f: b.taper), "; ")
-        Present { value: _ } => match card_envelope_of(row: m.instance.card.row) {
-          Absent => "the card row states no length to draw its envelope from"
-          Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
-        }
-      }
+    EndFaceRead { face: _ } => match card_envelope_of(row: m.instance.card.row) {
+      Absent => "the card row states no length to draw its envelope from"
+      Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
     }
   }
 }
@@ -157,19 +144,22 @@ fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?) -> GroupFitPla
 // ═══ GEOMETRY ═══
 //
 // Part frame: Z is the airflow axis; the members' end faces lie in Z = 0 and the cards run toward +Z, so the
-// plate sits below Z = 0 and prints plate-down with its lip and tabs pointing up, support-free. X runs along
+// plate sits below Z = 0 and prints plate-down with its sleeve pointing up, support-free. X runs along
 // each face's length with the TOP end (away from the slot) toward +X and the face centred on X = 0. Y runs
 // across the slots: the first member's PCB-side edge is Y = 0 and each member is offset by its separation.
 
 fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
 
-// THE TAB IS THE BAND'S OWN SHAPE (second fit plate, after product.printed_chassis.fit_observations
-// a2_row_fit_plate_fit: the first plate's thin tabs struck the slope). Each tab is the band's section offset
-// clear of it: straight in past the lip, along the slope to the flat, and across the flat into the gap before
-// the first fin, stopping short of the fin. The slope is where it grips.
-data tab_slope_clearance: Micrometer = micrometer(count: 200)
-data tab_fin_clearance: Micrometer = micrometer(count: 300)
-data tab_width_inset: Micrometer = micrometer(count: 1000)
+// NO TABS: THE SLEEVE ALONE HOLDS THE PLATE (fourth fit plate). Three plates carried tabs into each card's
+// fin-free bands: thin blades struck the slope, whole-band wedges struck the fins, and tabs gripping only the
+// start of the slope still left the plate not resting flat on the faces (product.printed_chassis
+// .fit_observations a2_row_fit_plate_fit, a2_row_fit_plate_second_fit, a2_row_fit_plate_third_fit). The tabs
+// were the only part of the plate that entered a face, so they are removed, and the plate is held instead by
+// a sleeve running further along the outside of the row (operator, 2026-11-04: "get rid of those little
+// inlays, and just extend the sleeve onto the cards so it doesn't fall off"). 20 mm is twice the 10 mm sleeve
+// that went on without interference; it is the next trial, not a qualified figure, and what lies along the
+// outside of the row past 10 mm has not been read.
+data group_sleeve_depth: Micrometer = micrometer(count: 20000)
 
 // THE LIP CLEARANCE, per side, around the outside of the row. 0.3 mm (the unqualified sleeve allowance) was
 // loose on the first plate (fit_observations a2_row_fit_plate_fit); this is the next trial, not a qualified
@@ -180,43 +170,13 @@ fn opening_top_x(f: CardEndInterface) -> Int { um(m: f.face_length) / 2 - um(m: 
 fn opening_bottom_x(f: CardEndInterface) -> Int { opening_top_x(f: f) - um(m: f.window_length) }
 fn opening_low_y(mf: GroupMemberFace) -> Int { um(m: mf.offset) + um(m: mf.face.window_from_back) }
 
-// The finned part of the opening, less the strip each tab reaches into past its band: the bands are fin-free,
-// so covering them with plate costs no fin area, and the plate under them is what the tabs stand on.
-fn tab_reach_past_band(mf: GroupMemberFace) -> Int { um(m: mf.taper.fin_gap) - um(m: tab_fin_clearance) }
-
+// The whole read opening: nothing stands on the plate inside it.
 fn fin_window_cut(mf: GroupMemberFace, plate: Micrometer) -> Primitive {
   let t = um(m: plate)
-  let top = opening_top_x(f: mf.face) - um(m: mf.bands.top) - tab_reach_past_band(mf: mf)
-  let bottom = opening_bottom_x(f: mf.face) + um(m: mf.bands.bottom) + tab_reach_past_band(mf: mf)
+  let top = opening_top_x(f: mf.face)
+  let bottom = opening_bottom_x(f: mf.face)
   let wd = um(m: mf.face.window_depth)
   block(w: top - bottom, h: wd, d: t + 2000, x: (top + bottom) / 2, y: opening_low_y(mf: mf) + wd / 2, z: 0 - t / 2)
-}
-
-// One wedge in each band, its section in (X, Z) extruded across the opening's width, narrower than the
-// opening so it clears the pitched sides. `sign` is +1 for the top band (the edge at the top, the band running
-// toward -X) and -1 for the bottom band. It stands on the plate from Z = -t.
-fn band_wedge(mf: GroupMemberFace, edge: Int, band: Int, sign: Int, t: Int) -> Primitive {
-  let c = um(m: tab_slope_clearance)
-  let lip = um(m: mf.taper.lip_depth)
-  let deep = lip + um(m: mf.taper.slope_depth)
-  let inner = edge - sign * (band + tab_reach_past_band(mf: mf))
-  let w = um(m: mf.face.window_depth) - 2 * um(m: tab_width_inset)
-  let y = opening_low_y(mf: mf) + um(m: mf.face.window_depth) / 2
-  prism(outline: [
-    ProfileVertex { u: edge - sign * c, v: 0 - t },
-    ProfileVertex { u: edge - sign * c, v: lip },
-    ProfileVertex { u: edge - sign * (band + c), v: deep },
-    ProfileVertex { u: inner, v: deep },
-    ProfileVertex { u: inner, v: 0 - t },
-  ], axis: Axis3Y, length: w, x: 0, y: y, z: 0)
-}
-
-fn band_tabs(mf: GroupMemberFace, plate: Micrometer) -> List<Primitive> {
-  let t = um(m: plate)
-  [
-    band_wedge(mf: mf, edge: opening_top_x(f: mf.face), band: um(m: mf.bands.top), sign: 1, t: t),
-    band_wedge(mf: mf, edge: opening_bottom_x(f: mf.face), band: um(m: mf.bands.bottom), sign: 0 - 1, t: t),
-  ]
 }
 
 fn card_part(mf: GroupMemberFace, index: Int) -> AssemblyPart {
@@ -237,7 +197,7 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
   let t = um(m: policy.ring_exercised.flange_thickness)
   let wall = um(m: policy.ring_exercised.wall)
   let c = um(m: group_lip_clearance)
-  let sd = um(m: policy.allowances.sleeve_depth)
+  let sd = um(m: group_sleeve_depth)
   let half = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.face.face_length) / 2 > acc { um(m: mf.face.face_length) / 2 } else { acc })
   let y_hi = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.offset) + um(m: mf.face.face_thickness) > acc { um(m: mf.offset) + um(m: mf.face.face_thickness) } else { acc })
   let x_in = half + c
@@ -254,22 +214,21 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
     block(w: outer_w, h: wall, d: sd, x: 0, y: y_lo_in - wall / 2, z: sd / 2),
     block(w: outer_w, h: wall, d: sd, x: 0, y: y_hi_in + wall / 2, z: sd / 2),
   ]
-  let tabs = fold(faces, init: [], f: (acc, mf) => concat(acc, band_tabs(mf: mf, plate: policy.ring_exercised.flange_thickness)))
   let windows = map(faces, mf => fin_window_cut(mf: mf, plate: policy.ring_exercised.flange_thickness))
-  let plate_part = part(id: "FIT-PLATE", name: join(["Group fit plate: ", to_string(value: length(list: faces)), " end faces, outer lip and band tabs"], ""), kind: Printed, scope: FixedFrame,
-    adds: concat(concat([plate], lip), tabs),
+  let plate_part = part(id: "FIT-PLATE", name: join(["Group fit plate: ", to_string(value: length(list: faces)), " end faces and an outer sleeve"], ""), kind: Printed, scope: FixedFrame,
+    adds: concat([plate], lip),
     cuts: windows,
     x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -30000, plane: LayOnXY,
-    notes: "Print plate-down, support-free. Push it onto the row of card ends: the lip should slide over the outside of the row without force and each card's two tabs should enter its fin-free bands and grip. Checks the installed separation, the lip and the tabs before any fan stage is printed.")
+    notes: "Print plate-down, support-free. Push it onto the row of card ends: the sleeve should slide along the outside of the row and hold by friction, with the plate resting flat on every face. Checks the installed separation and the sleeve before any fan stage is printed.")
   let cards = fold(faces, init: IndexedFaces { index: 0, parts: [] }, f: (acc, mf) => IndexedFaces { index: acc.index + 1, parts: concat(acc.parts, [card_part(mf: mf, index: acc.index)]) })
   concat([plate_part], cards.parts)
 }
 
 fn group_fit_plate_joints(cards: List<String>) -> List<MechanicalInterface> {
   [mechanical_interface(id: "fit-plate-to-row", members: concat(["FIT-PLATE"], cards), fastener: FrictionFitSleeve, quantity: 1, status: Proposed,
-    requirement: "The lip locates over the outside of the row, 0.3 mm clear of the read faces; two tabs per card grip in its fin-free bands. Nothing enters the 1.7 mm gaps between cards, and nothing touches a PCB.")]
+    requirement: join(["The sleeve runs ", to_string(value: um(m: group_sleeve_depth)), " um along the outside of the row, ", to_string(value: um(m: group_lip_clearance)), " um clear of the read faces, and holds the plate flat on every face by friction. Nothing enters a face or the gaps between cards, and nothing touches a PCB."], ""))]
 }
 
 fn group_fit_plate_readme(p: GroupDuctPlan) -> String {
-  join(["Group fit plate for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nThe card interface of the group duct alone: one plate over every member's end face, an outer lip around the row, and two tabs per card in its fin-free bands.\nPrint plate-down without support. It should seat without force; check that every tab enters its band and that the lip clears the row.\n", p.fit_record, "\n"], "")
+  join(["Group fit plate for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nThe card interface of the group duct alone: one plate over every member's end face and an outer sleeve around the row.\nPrint plate-down without support. Push it on: check that the plate rests flat on every face, that the sleeve holds it on, and that nothing along the outside of the row stops the sleeve short.\n", p.fit_record, "\n"], "")
 }
