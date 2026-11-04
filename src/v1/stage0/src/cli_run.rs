@@ -206,7 +206,9 @@ mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
 mod source_layout_lookup;
-pub use demand_acquire::resolve_entry_graph_demand_acquired;
+pub use demand_acquire::{
+    resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_with_diagnostics,
+};
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -18177,37 +18179,30 @@ pub fn handle_serve(
         );
         std::process::exit(1);
     }
-    let index = process_shared_index_or_refuse(&source_roots);
-    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
-        Ok(sources) => sources,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    eprintln!("resolved {} sources", sources.len());
-    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
-        &index,
-        sources,
-        &entry_file,
-        ResolvedGraphMemoShare::Memoize,
-    )
-    .map_err(ResolveFailure::into_message)
-    {
-        Ok(parts) => parts,
-        Err(msg) => {
-            eprintln!("error: {}", msg);
-            std::process::exit(1);
-        }
-    };
-    if compile_clean_diags
+    // THE DEMAND-ACQUIRED RESOLVE, the same route `gunbc run` takes (#14046): the closure is found by
+    // source-layout lookup from the entry, so the whole-tree index (a parse of every module in the
+    // pool for a name census, ~2m15s of the lab's restart) is never built. Serving is not a reason
+    // to resolve a wider population than running.
+    let (graph, source_indices, compile_clean_diags) =
+        match resolve_entry_graph_demand_acquired_with_diagnostics(&source_roots, &entry_file) {
+            Ok(parts) => parts,
+            Err(msg) => {
+                eprintln!("error: {}", msg);
+                std::process::exit(1);
+            }
+        };
+    eprintln!("resolved {} sources", source_indices.len());
+    // ONE BLOCKING RULE WITH `gunbc run`: `is_interpreter_blocking_diagnostic`. Serve used to route
+    // through `compile_clean_diagnostic_is_hard`, whose only extra arm reads the `UnlistedImportUse`
+    // policy row by resolving and interpreting a second closure (~116 s measured at startup) to
+    // learn a Bool that is `false` today (`FloorNotYet`); `run` and `compile` already omit that read
+    // (gunbc#8286). The policy's own terminal shape is promotion in this single classifier.
+    let blocking: Vec<_> = compile_clean_diags
         .iter()
-        .any(|d| compile_clean_diagnostic_is_hard(d))
-    {
-        for d in compile_clean_diags
-            .iter()
-            .filter(|d| compile_clean_diagnostic_is_hard(d))
-        {
+        .filter(|d| crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+        .collect();
+    if !blocking.is_empty() {
+        for d in blocking {
             eprintln!("error: {}", format_error_node(d, &source_indices));
         }
         std::process::exit(1);

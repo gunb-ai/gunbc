@@ -1129,9 +1129,21 @@ fn regen_admit_generation_progress(
 // RELATIVE, not absolute, because the orchestrator's own footprint has not yet been read on its own
 // (it was always measured with generation 1 inside it); the first round that runs under this rule
 // prints it at every transition, and an absolute ceiling is that receipt's to set.
-// POLICY: one GiB of growth, about a tenth of the ~10 GB a generation adds to its slot
-// (the srv4 receipts above), so a generation-sized retention cannot hide under it.
-data regen_orchestrator_resident_growth_bound: ByteSize = byte_size(count: 1073741824)
+// POLICY, RE-DERIVED FROM ITS FIRST RECEIPT (the 1 GiB this row first carried was set before any
+// orchestrator had been read on its own, and refused the first round that ran under it). gunbc run
+// 41707802631 (srv3-18, 2026-11-03, the first heal round on this driver): the orchestrator was
+// 10692333568 bytes resident when generation 0 began and 12602740736 when generation 1 began --
+// 1.9 GB of ORCHESTRATION growth (planning, candidate admission, install) across a transition whose
+// generation had already exited, while generation 0 itself added about 8.9 GB to its slot (13.67 GB
+// at its begin, 22.55 GB peak). Three GiB is about 1.6 times the measured orchestration growth and
+// about a third of one generation, so a retained generation still cannot hide under it. The same
+// receipt shows the orchestrator's OWN footprint, about 10.7 GB before any generation, is the larger
+// share of the slot; that is gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal's open
+// trigger, not this bound's. AND THE 1.9 GB THIS BOUND ADMITS IS NOT EXPLAINED BY IT: whether that
+// growth is demanded by the next transition or retained from the last is an open trigger on the
+// same row (a second reading, run 41709366312, srv3-05, +1.83 GB); retained growth is deleted at the
+// step that holds it, and this bound then falls.
+data regen_orchestrator_resident_growth_bound: ByteSize = byte_size(count: 3221225472)
 
 type RegenGenerationBeginAdmission
   = RegenGenerationBeginAdmitted

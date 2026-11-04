@@ -355,6 +355,8 @@ fn established_rows(i: ComponentIdentification) -> List<ElectronicComponentRow> 
     ResistanceCodeRead { milliohms: _, marking: _ } => no_rows()
     MarkingUnresolved { marking: _, discriminator: _ } => no_rows()
     FootprintUnpopulated { evidence: _ } => no_rows()
+    // A body seen in a frame establishes no row: it says something is fitted, not what is fitted.
+    BodySeenMarkingUnread { evidence: _ } => no_rows()
   }
 }
 
@@ -415,6 +417,7 @@ fn identification_evidence(i: ComponentIdentification) -> EvidenceRef? {
     ResistanceCodeRead { milliohms: _, marking } => Present { value: marking.evidence }
     MarkingUnresolved { marking, discriminator: _ } => match marking { Absent => Absent, Present { value: m } => Present { value: m.evidence } }
     FootprintUnpopulated { evidence } => Present { value: evidence }
+    BodySeenMarkingUnread { evidence } => Present { value: evidence }
   }
 }
 
