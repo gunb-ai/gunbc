@@ -3291,7 +3291,6 @@ fn belt_spawn_stage(
       }
       }
   }
-      }
 }
 
 // ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider

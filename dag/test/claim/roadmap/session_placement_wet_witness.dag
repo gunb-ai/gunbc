@@ -778,8 +778,6 @@ test fn a_terminal_but_unsettled_slot_refuses_the_resume_reopen() -> Bool {
 // SAFETY -- a still-running worker's slot is KEPT by the pass and its LIVE state is never reopened by a
 // resume: a resume may not displace a running worker. The slot is launched and the unit reports still
 // running, so the pass keeps the seat; the resume reopen must refuse the Launching slot.
-  }
-  }
 test fn a_still_running_slot_is_kept_so_the_resume_never_displaces_it() -> Bool {
   let dir = fresh_dir(tag: "g5-settle-keep-refuse")
   match stores_at(dir: dir) {
@@ -792,6 +790,10 @@ test fn a_still_running_slot_is_kept_so_the_resume_never_displaces_it() -> Bool 
   match session_placement_open_for_acquisition(stores: stores, host: host, record: slot_a(opened: 99999), resume: true) {
     SessionPlacementOpenRefused { detail: _ } => charged && launched && kept_seat
     SessionPlacementOpened { slot: _, generation: _ } => false
+  }
+  }
+  }
+}
 
 // ── THE SRV1 2026-10-28 WEDGE: AN EXIT ARTIFACT WHOSE VARIABLES WERE NEVER SUBSTITUTED ──────────
 //
