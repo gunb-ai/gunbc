@@ -28,7 +28,10 @@ import gunbc.auth.session {
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_eq, principal_ref_label, fabric_workflow_principal, fabric_display_alias,
+  host_account_principal_authority, srv1_host_accounts_principal_namespace,
 }
+import gunbc.deployment_risk { DeploymentId, srv1_lab_codex_feedback_deployment }
+import std.algebra { non_empty }
 
 // THE ACCESS-PATH VOCABULARY, owned here and supplied to extdeps.http.server RequestSecurityContext
 // as its AccessPath type argument. It moved from that module because which front doors this
@@ -356,12 +359,56 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
 // approve: the exact stable-principal roster (the ruling's first production cut; hd alone is
 // org membership, never approval authority). The roster begins EMPTY -- refuse-all is the
 // fail-closed default until the first approver's principal is enrolled as a deployment row.
+//
+// agent_roster is the host-account principals a deployment lets act as THEMSELVES through its agent
+// door. It is a separate roster from approve_roster on purpose: an agent is never an approver. Its
+// consumer in this change is deployment_admits_agent_peer (whether a deployment derives an agent
+// door at all); the write-admission arm that reads it for individual actions is a later slice.
 type ServeWriteAuthorizationPolicy {
   approve_roster: List<PrincipalRef>
+  agent_roster: List<PrincipalRef>
 }
 
 data tracker_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteAuthorizationPolicy {
   approve_roster: [],
+  agent_roster: [],
+}
+
+// THE LAB AGENT. Grant, operator in chat 2026-10-17 ~04:55Z: "I really don't care for dev right now -
+// you should be allowed to completely control your dev environment, you shouldn't need me". The agent
+// that owns the srv1 lab acts as ITSELF under a dedicated host account that no lab process, worker,
+// verification or candidate code runs as (the lab runs as briansrls, and a unix socket is connectable
+// from any unit not restricting address families, so admitting the lab's own account would admit
+// model-driven code).
+//
+// DECLARED HERE, NOT YET IN gunbc.fleet.fleet_posix_accounts: that roster is a closed key coproduct
+// whose members carry allocated uids and prod-side convergence, and this account is lab-scoped and
+// created by the lab's owning agent at qualification (bright-moth-475 ruling). Modeling it there
+// means a FleetPosixAccountKey arm plus a lab-scoped convergence, which needs the uid allocation the
+// account does not have yet. Trigger: the account exists on srv1 and its uid is observed.
+data lab_agent_host_account: NonEmptyStr = "gunbc-lab-agent" as NonEmptyStr
+
+data lab_agent_principal: PrincipalRef = PrincipalRef {
+  authority: host_account_principal_authority,
+  namespace: srv1_host_accounts_principal_namespace,
+  subject: lab_agent_host_account,
+}
+
+// THE SCOPE IS POLICY KEYED ON THE DEPLOYMENT, not a forked code path: the lab deployment rosters the
+// agent principal; every other deployment gets the tracker policy, whose agent roster is empty.
+data lab_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteAuthorizationPolicy {
+  approve_roster: tracker_write_authorization_policy.approve_roster,
+  agent_roster: [lab_agent_principal],
+}
+
+fn write_authorization_policy_for(deployment: DeploymentId) -> ServeWriteAuthorizationPolicy {
+  if deployment == srv1_lab_codex_feedback_deployment { lab_write_authorization_policy } else { tracker_write_authorization_policy }
+}
+
+// Whether a deployment has an agent door at all is this policy's answer: a deployment that rosters
+// no agent principal has nobody the door could admit (gunbc.live_deploy.spec deployment_agent_door_socket).
+fn deployment_admits_agent_peer(deployment: DeploymentId) -> Bool {
+  non_empty(xs: write_authorization_policy_for(deployment: deployment).agent_roster)
 }
 
 // ── The human-write law, projected into std.access ─────────────────────────────────────────────

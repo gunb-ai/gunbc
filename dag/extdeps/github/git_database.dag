@@ -1,6 +1,6 @@
 module extdeps.github.git_database
 
-import std.types { Int, List, NonEmptyStr, String, Secret, Bool }
+import std.types { Bearer, Int, List, NonEmptyStr, String, Secret, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }

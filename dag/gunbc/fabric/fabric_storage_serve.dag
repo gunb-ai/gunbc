@@ -15,7 +15,10 @@ import std.fabric_storage {
   FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused,
 }
 import gunbc.fabric.fabric_storage_wire { FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested, fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
-import gunbc.fabric.fabric_writer_roster { fabric_door_writer_admission_over, fabric_door_principal_of, fabric_served_writer_roster, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
+import gunbc.fabric.fabric_writer_roster {
+  fabric_door_writer_admission_over, fabric_door_principal_of, fabric_served_writer_roster, fabric_door_local_roster,
+  FabricDoorWriterAdmitted, FabricDoorWriterRefused, FabricServedWriterRoster, ServedWriterRosterListed, ServedWriterRosterUnread,
+}
 import gunbc.fabric.fabric_storage_binding { fabric_storage_placement }
 import gunbc.roadmap.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
 import gunbc.fabric.fabric_storage_placement {
@@ -131,12 +134,20 @@ fn fabric_storage_serve_handle(method: String, path: String, body: String, tails
       if starts_with(s: path, prefix: concat(concat(fabric_storage_route_prefix, fabric_storage_state_suffix), "/")) {
         match fabric_state_storage_store(instance: i) {
           FabricStateStorageUnready { detail } => text_response(status: 503, body: join(["fabric_storage/1 the state store is unready: ", detail as String, "\n"], ""))
-          FabricStateStorageReady { store } => fabric_storage_protected_door_over(store: store, rosters: FabricDoorRosters { logins: fabric_served_writer_roster(), locals: fabric_door_local_roster() }, method: method, path: path, body: body, tailscale_identity: tailscale_identity, peer_user: peer_user)
+          FabricStateStorageReady { store } => match fabric_served_writer_roster() {
+            ServedWriterRosterUnread { detail } => text_response(status: 503, body: join(["fabric_storage/1 the writer roster is unread: ", detail, "
+"], ""))
+            ServedWriterRosterListed { logins: logins } => fabric_storage_protected_door_over(store: store, rosters: FabricDoorRosters { logins: logins, locals: fabric_door_local_roster() }, method: method, path: path, body: body, tailscale_identity: tailscale_identity, peer_user: peer_user)
+          }
         }
       } else {
         match fabric_storage_placed_store(instance: i) {
           FabricStoragePlacedRootRefused { detail } => text_response(status: 503, body: join(["fabric_storage/1 the store is unready: ", detail as String, "\n"], ""))
-          FabricStoragePlacedRootReady { store } => fabric_storage_serve_handle_over(store: store, rosters: FabricDoorRosters { logins: fabric_served_writer_roster(), locals: fabric_door_local_roster() }, method: method, path: path, body: body, tailscale_identity: tailscale_identity, peer_user: peer_user)
+          FabricStoragePlacedRootReady { store } => match fabric_served_writer_roster() {
+            ServedWriterRosterUnread { detail } => text_response(status: 503, body: join(["fabric_storage/1 the writer roster is unread: ", detail, "
+"], ""))
+            ServedWriterRosterListed { logins: logins } => fabric_storage_serve_handle_over(store: store, rosters: FabricDoorRosters { logins: logins, locals: fabric_door_local_roster() }, method: method, path: path, body: body, tailscale_identity: tailscale_identity, peer_user: peer_user)
+          }
         }
       }
   }

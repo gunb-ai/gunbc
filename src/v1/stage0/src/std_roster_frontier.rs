@@ -2,7 +2,7 @@
 // Source module: std.roster_frontier
 
 use self::FrontierSubject::*;
-pub use crate::std_algebra::collection_map_shape;
+pub use crate::std_algebra::{collection_map_shape, list_flat_map};
 use crate::std_decl_ref::DeclField::{NamedField, WholeDeclaration};
 pub use crate::std_decl_ref::{
     decl_field_ref, decl_ref, declaration_ref_display_key, declaration_ref_eq,
@@ -179,13 +179,7 @@ pub fn frontier_units(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {
 pub fn concat_frontier_row_groups(
     groups: Rc<Vec<Rc<Vec<Rc<FrontierRow>>>>>,
 ) -> Rc<Vec<Rc<FrontierRow>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for group in groups.iter().cloned() {
-            __result.extend((*group.clone()).iter().cloned());
-        }
-        __result
-    })
+    crate::std_algebra::list_flat_map(groups, |group| group.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

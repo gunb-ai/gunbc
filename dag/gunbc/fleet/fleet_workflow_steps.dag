@@ -18,10 +18,10 @@ module gunbc.fleet.fleet_workflow_steps
 // a cross-job artifact-transfer vocabulary to express that would be borrowing an architecture it
 // does not have.
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import std.measure { minute_count, second_count }
+import std.measure { minute_count, second_count, minute }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
 import gunbc.live_deploy.service_ready { approval_broker_readback_poll_bound }
-import std.types { Duration }
+import std.types { Duration, List, String, Int, NonEmptyStr }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
   Step, RunStep, UsesStep, 
@@ -31,7 +31,7 @@ import gunbc.action_use_admission { cache_action, checkout_action, download_arti
 import gunbc.ci.ci_workflow_expressions {
   ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
 }
-import gunbc.ci.ci_compile_jobs { compile_jobs_count_or_serial }
+import gunbc.ci.ci_compile_jobs { compile_jobs_count_or_serial, ci_compile_jobs }
 import gunbc.ci.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
@@ -73,7 +73,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var, bash_build_word_lit, bash_build_word_concat_from_nodes, bash_build_assign,
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_command_with_words,
 }
-import std.types { List, String, Int, NonEmptyStr }
 
 // THE SEED-BUILD ENVIRONMENT, consumed where this file's build steps compose their `run:` text.
 import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }
@@ -91,6 +90,7 @@ import gunbc.workflow_capability_closure {
   provides_only,
   consumes_only,
 }
+import std.algebra { list_map }
 
 fn ci_checkout_step() -> Step {
   UsesStep {

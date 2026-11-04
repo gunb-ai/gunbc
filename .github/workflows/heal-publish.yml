@@ -112,7 +112,6 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_publication.dag --function heal_publication_admit_wet
         env:
           HEAL_CANDIDATE_DIRECTORY: heal-candidate
-          GITHUB_TOKEN: ${{ github.token }}
         if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Federate to the publisher's own identity (access token only, five minutes)
         id: heal_publisher_wif
