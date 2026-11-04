@@ -12,7 +12,7 @@ import extdeps.ssh.keys { SshPublicKey, Ed25519, ssh_ed25519_key_identity }
 import gunbc.workspace_ssh_access { WorkspaceSshAccess, WorkspaceSshFromHost, WorkspaceSshThroughGateway }
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
-  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
+  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, HostAccountPeerEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
   ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCreateIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeActionDispatchNode, ServeActionStopNode, ServeActionPublishNode, ServeRouteAction,
   human_authentication_decision, csrf_write_decision, deployment_path_decision, write_refused,
 }
@@ -91,6 +91,7 @@ fn workspace_owner_admission(
         if principal_ref_eq(a: session.principal, b: owner) && any(policy.enrollments, e => principal_ref_eq(a: e.principal, b: session.principal)) { Permit }
         else { write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace owner and explicit allocation authorization required" }) }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
+      HostAccountPeerEvidence { account: _, principal: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
       SessionStandingInvalid { standing: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
       AuthAbsent => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
     },
@@ -118,7 +119,6 @@ fn workspace_write_admission(
     ServeActionDispatchNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionStopNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionPublishNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
-    ServeActionRetireLineage => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
   }
 }
 
@@ -165,6 +165,7 @@ fn workspace_request_admit(
       }
     }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: fn() { observed_at }) }
+    HostAccountPeerEvidence { account: _, principal: _ } => WorkspaceRequestAdmissionRefused { decision: write_refused(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" }) }
     SessionStandingInvalid { standing: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: fn() { observed_at }) }
     AuthAbsent => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: fn() { observed_at }) }
   }
