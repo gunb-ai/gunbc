@@ -549,6 +549,54 @@ type FilesystemListingObservation
 // arm and the empty subject would still be carried onward as a listing-shaped fact. Deciding the
 // subject first means BOTH `success` values for an inadmissible directory reach the same subject
 // refusal, and only an admitted directory reaches either transport-observation arm.
+// WHY A SECOND DECODER OVER THE SAME ANSWER, AND WHAT MAKES IT NOT A SECOND ROUTE.
+// filesystem_listing_observation answers WHAT A DIRECTORY HOLDS; its refusal arms carry an error
+// STRING, because for a consumer that only has to stop, why it could not read is enough. This fold
+// answers the question a store-level census asks instead: IS THE SUBJECT NOT THERE, or COULD IT NOT
+// BE READ. ENOENT is a fact about the subject -- a store that was never created -- and every other
+// kind is a fact about the reader. Conflating them lets an absent store be reported as an empty one,
+// or an unreadable one as an absent one, which is the census equivalent of recovering a hold because
+// its holder could not be found rather than because it was observed dead.
+// It is NOT a second effect and NOT a second authority: there is ONE Filesystem.List per listing, and
+// both folds are pure decoders over that one channel value, so they cannot disagree about what the
+// host answered.
+// DIVERGENCE, STATED, WITH ITS TRIGGER (bold-heron-131 ruling 2026-11-04, relayed by bright-moth-475).
+// The alternative was widening FilesystemListingObservation with a fourth arm. Measured, that forces
+// 28 existing match blocks in 18 files to state a judgement none of them is about -- 28 of the 29
+// name all three arms explicitly -- so widening would fabricate 28 policy judgements and churn 119
+// call sites. This fold is therefore kept beside the existing one. MEASURED CALLER COUNT, since the
+// trigger below is stated against how far this decoder reaches: TWO, both in gunbc.durable_cas_file_store
+// -- cas_slot_keys (the census of a store's slots) and listed_slot_store (the admission of a store's own
+// directory), each consulting it only in its failed-listing arm of the one List. Any third consumer
+// would raise that number and is the signal to re-run the widening measurement rather than trust this
+// sentence. TRIGGER FOR DISSOLUTION: when a consumer needs the
+// absent/readable split AND the contents in one step, or when widening the observation would no
+// longer force a judgement any consumer is not already making, delete this fold and move the absence
+// arm into FilesystemListingObservation.
+// The error_kind is not invented here: operation List declares error_kind, and the host emits
+// io_error_kind_name (src/v1/stage0/src/v1_interpreter.rs), which maps NotFound to "not_found".
+type FilesystemListingAbsence
+  = FilesystemDirectoryListingAbsent { directory: FilePath }
+  | FilesystemDirectoryListingUnreadable { directory: String, error: String, error_kind: String }
+
+// Decides a FAILED listing: is the subject provably not there, or could it not be read? Only the
+// admitted not_found kind makes a subject claim, and only about a directory this module admits as a
+// path; any other kind, recognized or not, answers unreadable and reports the kind it observed.
+fn filesystem_listing_absence(
+  directory: String,
+  error: String,
+  error_kind: String
+) -> FilesystemListingAbsence {
+  match admit_filesystem_failure_kind(observed: error_kind) {
+    FilesystemFailureKindAdmitted { kind: FilesystemNotFound } => match admit_filesystem_directory_path(directory: directory) {
+      FilesystemDirectoryPathAdmitted { path: p } => FilesystemDirectoryListingAbsent { directory: p }
+      FilesystemDirectoryPathRefused { directory: d, cause: _ } => FilesystemDirectoryListingUnreadable { directory: d, error: "the listing answered not_found, but this module does not admit that name as a directory path, so no claim is made about the subject", error_kind: error_kind }
+    }
+    FilesystemFailureKindAdmitted { kind: _ } => FilesystemDirectoryListingUnreadable { directory: directory, error: error, error_kind: error_kind }
+    FilesystemFailureKindUnrecognized { observed: k } => FilesystemDirectoryListingUnreadable { directory: directory, error: error, error_kind: k }
+  }
+}
+
 fn filesystem_listing_observation(
   directory: String,
   success: Bool,
@@ -715,6 +763,53 @@ fn filesystem_file_observation(
         FilesystemReadSucceeded { content: c } =>
           FilesystemFileRead { path: path, content: c }
       }
+  }
+}
+
+// AN ABSENT ANCESTOR ESTABLISHES THE ABSENCE OF EVERYTHING BELOW IT. filesystem_file_observation
+// establishes absence only from a listing of the file's own parent, so a parent directory that does
+// not exist yet makes that listing fail and the fold lands indeterminate -- although the chain
+// stops at a place a successful listing of an EARLIER ancestor already proved empty of the next
+// component. This fold takes that ancestor reading (the parent directory's entry presence, itself
+// derived from its own parent's listing, recursively, by the wet composition in
+// gunbc.filesystem_file_observe) and promotes an indeterminate observation to the established
+// absence only when the ancestor is established absent. An ancestor that could not be listed stays
+// indeterminate (never absent), an ancestor that is listed leaves the observation as it was (the
+// parent exists, so its own listing failing is a fault, not a missing chain), and a read that
+// succeeded despite an absent ancestor is a disagreement between two instants, never resolved by
+// precedence. The token returned names the ANCESTOR's directory and name, which is the subject the
+// proving listing actually observed; filesystem_established_absence_path therefore yields the
+// ancestor, never the deeper path, so the token authorizes nothing deeper than what was proved.
+fn filesystem_file_observation_below_ancestor(
+  observation: FilesystemFileObservation,
+  ancestor: FilesystemEntryPresence,
+  path: String,
+  read: FilesystemReadOutcome,
+) -> FilesystemFileObservation {
+  match observation {
+    FilesystemFileIndeterminate { cause: _ } =>
+      match ancestor {
+        FilesystemEntryAbsent(established) =>
+          match read {
+            FilesystemReadRefused { error: _ } => FilesystemFileAbsent(established)
+            FilesystemReadSucceeded { content: _ } =>
+              FilesystemFileObservationsDisagree {
+                path: path,
+                cause: join([
+                  filesystem_established_absence_detail(absence: established),
+                  ", and a read of ", path,
+                  " then succeeded -- the two observations describe different instants and neither is discarded",
+                ], ""),
+              }
+          }
+        FilesystemEntryListed { directory: _, name: _ } => observation
+        FilesystemEntryPresenceIndeterminate { cause: _ } => observation
+        FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => observation
+      }
+    FilesystemFileAbsent(_) => observation
+    FilesystemFileRead { path: _, content: _ } => observation
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => observation
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => observation
   }
 }
 

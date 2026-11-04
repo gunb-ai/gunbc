@@ -2,7 +2,7 @@ module gunbc.spark.dgx_pxe_boot
 
 import extdeps.pci.identity { PciVendorId, PciDeviceId }
 
-import std.types { NonEmptyStr, String, List, Bool }
+import std.types { NonEmptyStr, String, List, Bool, list_length }
 import std.decl_ref { DeclarationRef }
 import std.human_intervention {
   HumanIntervention,

@@ -350,6 +350,10 @@ pub type Secret = std::string::String;
 
 pub type SecretValue = std::string::String;
 
+pub fn secret_of_text(text: String) -> std::string::String {
+    text.clone()
+}
+
 pub type SemVer = String;
 
 pub type NonEmptyStr = String;

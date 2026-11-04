@@ -1,0 +1,17 @@
+module test.fixture.serve_seam_probe_twin
+
+import extdeps.http.server { ServeWireResponse }
+import std.types { String }
+
+// THE SAME HANDLER SPELLING IN A SECOND MODULE (control for the qualified handler identity). With
+// both modules in one closure, a binding naming test.fixture.serve_seam_probe serve_seam_probe must
+// run that module's handler, and one naming this module must run this one.
+data serve_seam_probe_twin_marker: String = "twin"
+
+fn serve_seam_probe(method: String, path: String, body: String) -> ServeWireResponse {
+  ServeWireResponse { headers: [],
+    status: 200,
+    content_type_label: "text/plain; charset=utf-8",
+    body: join(["twin method=", method, " path=", path], ""),
+  }
+}

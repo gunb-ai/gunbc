@@ -1,6 +1,6 @@
 module test.claim.host.microvm_controller_install_typed_witness
 
-import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.types { Bool, String, List, NonEmptyStr, Int, list_length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_at_optional }
 import std.content_hash { content_hash_validate_lower_hex_length }
@@ -301,4 +301,17 @@ test fn microvm_w5_the_route_sends_only_elevated_legs_to_the_elevated_side() -> 
   let elevated = sudo_elevate_command(command: argv_words(command: mkdir_parents_command(path: "/opt/gunbc/x")))
   !microvm_w5_is_local(t: elevation_route_transport(route: route, command: elevated))
     && microvm_w5_is_local(t: elevation_route_transport(route: route, command: mkdir_parents_command(path: "/tmp/x")))
+}
+
+// GREEN (1c): NO WRITE LEAVES A STAGED SIBLING BEHIND. A unit or script body installs straight from
+// /dev/stdin into its live path, so the only stage path any step names is the dispatch grant's, which
+// visudo -cf must read before it is installed. RED: put back the dd-to-<dest>.gunbc-stage-then-install
+// pair in microvm_controller_staged_write_steps and the first conjunct names those six stage paths.
+test fn microvm_w5_no_content_write_leaves_a_stage_file() -> Bool {
+  let staging = filter(microvm_w5_steps(), s => string_contains(s: microvm_controller_step_text(step: s), pattern: ".gunbc-stage"))
+  let unit_and_script_writes = filter(microvm_w5_steps(), s =>
+    microvm_controller_step_stdin(step: s) != "" && !string_contains(s: microvm_controller_step_name(step: s), pattern: "dispatch grant"))
+  all(staging, s => string_contains(s: microvm_controller_step_name(step: s), pattern: "dispatch grant"))
+    && list_length(items: unit_and_script_writes) >= 5
+    && all(unit_and_script_writes, s => string_contains(s: microvm_controller_step_text(step: s), pattern: "/dev/stdin"))
 }

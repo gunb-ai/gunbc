@@ -1283,7 +1283,10 @@ fn floor_expected_red_chunk_pair_serving_authority_wet_red() -> List<String> {
 // when the implementation lane lands, this roster reports them stale and the rows are deleted, leaving the claims as
 // permanent regression controls (DESIGN 4b(4)).
 fn floor_expected_red_chunk_append_log_store() -> List<String> {
-  Cons { head: "test.claim.durable_append_log_witness.a_log_member_cannot_be_written_through_the_generic_attempt_state_write", tail: Cons { head: "test.claim.durable_append_log_witness.the_raw_events_initializer_is_gone", tail: Empty {} } }
+  // Empty: implementation lane (PR #15576) landed -- log members left the generic attempt_state_write
+  // (a log member is a keyed type error there) and the raw events initializer was deleted, so both claims
+  // now pass as permanent regression controls (DESIGN 4b(4)).
+  Empty {}
 }
 
 // THE CASOUTCOME SEAL'S DELIBERATE RED, held while std.durable_compare_and_set does not seal `CasOutcome`

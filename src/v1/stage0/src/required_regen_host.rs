@@ -58,7 +58,11 @@ use bootstrap_stage0_crate_layout_generated::{
 /// before building on a prior receipt; what still rejects a stale record is `deny_unknown_fields`
 /// on the carrier, which refuses the `.v1` shape's `fixed_point_equal` and the deleted
 /// `fixed_point` variant's fields alike.
-const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v2";
+///
+/// Bumped from `.v2` when `FirstGeneration` gained the REQUIRED `surface_roles` (generation 0
+/// carries the round's surface roles to the orchestrator): a `.v2` first-generation receipt no
+/// longer parses, so the shape it names is a different carrier and gets a different name.
+const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v3";
 
 /// EACH VARIANT CARRIES ONLY WHAT ITS PASS MEASURED (operator ruling 2026-08-20). There is one pass
 /// now: the second-generation pass and its `FixedPoint` variant, which referenced the first pass's
@@ -67,6 +71,173 @@ const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v2";
 /// ever see nondeterminism. The declared drop is `gunbc.rung_drop`
 /// `floor_cut_regen_second_generation_agreement`.
 ///
+/// THE SURFACE-ROLE FACTS a convergence round plans from (`gunbc.regen_receipt` `RegenSurfaceRoles`),
+/// carried by the generation that derived them. Building them loads the module index and its
+/// per-file heads readings, so they are generation work under generation-state lifetime isolation
+/// (`v2.workflow.regen_convergence_transaction` `regen_admit_generation_begin`): generation 0's
+/// child computes them while its corpus is resident anyway and writes them into its receipt, and
+/// the orchestrator plans from the receipt instead of loading the corpus into its own lifetime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConvergenceSurfaceRoles {
+    pub basename_to_module: Vec<SurfaceOwnerRow>,
+    pub generation_modules: Vec<String>,
+    pub bootstrap_sources: Vec<String>,
+    pub bootstrap_products: Vec<String>,
+    pub seed_embedded_basenames: Vec<String>,
+    pub generated_product_roles: Vec<GeneratedProductRoleRow>,
+}
+
+/// `gunbc.regen_receipt` `RegenSurfaceOwner`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SurfaceOwnerRow {
+    pub basename: String,
+    pub module: String,
+}
+
+/// `gunbc.regen_receipt` `RegenGeneratedProductRole`: the two role facts are the closed coproducts of
+/// `gunbc.regen_affected_set`, serialized under the host-boundary labels that module projects
+/// (`regen_generated_product_generation_role_labels`, `regen_generated_product_seed_membership_labels`),
+/// so an unknown label is unwritable on the way in and does not deserialize on the way back.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeneratedProductRoleRow {
+    pub product: String,
+    pub generation_role: GeneratedProductGenerationRole,
+    pub seed_membership: GeneratedProductSeedMembership,
+}
+
+/// `gunbc.regen_affected_set` `GeneratedAggregateProductGenerationRole`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+pub enum GeneratedProductGenerationRole {
+    GenerationInput,
+    GenerationSubject,
+    NonSeedGeneratedOutput,
+}
+
+/// `gunbc.regen_affected_set` `GeneratedAggregateProductSeedMembership`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+pub enum GeneratedProductSeedMembership {
+    SeedEmbedded,
+    OutsideSeed,
+}
+
+impl GeneratedProductGenerationRole {
+    fn from_label(label: &str) -> Result<Self, String> {
+        match label {
+            "GenerationInput" => Ok(Self::GenerationInput),
+            "GenerationSubject" => Ok(Self::GenerationSubject),
+            "NonSeedGeneratedOutput" => Ok(Self::NonSeedGeneratedOutput),
+            other => Err(format!(
+                "SurfaceRolesReceiptUnknownRole: generation role {other:?}"
+            )),
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::GenerationInput => "GenerationInput",
+            Self::GenerationSubject => "GenerationSubject",
+            Self::NonSeedGeneratedOutput => "NonSeedGeneratedOutput",
+        }
+    }
+}
+
+impl GeneratedProductSeedMembership {
+    fn from_label(label: &str) -> Result<Self, String> {
+        match label {
+            "SeedEmbedded" => Ok(Self::SeedEmbedded),
+            "OutsideSeed" => Ok(Self::OutsideSeed),
+            other => Err(format!(
+                "SurfaceRolesReceiptUnknownRole: seed membership {other:?}"
+            )),
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::SeedEmbedded => "SeedEmbedded",
+            Self::OutsideSeed => "OutsideSeed",
+        }
+    }
+}
+
+/// The planning shape the convergence loop reads.
+type SurfaceRolesForPlanning = (
+    HashMap<String, String>,
+    BTreeSet<String>,
+    BTreeSet<String>,
+    BTreeSet<String>,
+    BTreeSet<String>,
+    HashMap<String, (String, String)>,
+);
+
+impl ConvergenceSurfaceRoles {
+    /// The receipt rows, sorted, so one tree's roles always serialize to the same bytes. A role
+    /// label outside the closed coproducts refuses.
+    fn from_planning(roles: SurfaceRolesForPlanning) -> Result<Self, String> {
+        let (owners, generation, sources, products, embedded, product_roles) = roles;
+        let mut basename_to_module: Vec<SurfaceOwnerRow> = owners
+            .into_iter()
+            .map(|(basename, module)| SurfaceOwnerRow { basename, module })
+            .collect();
+        basename_to_module.sort();
+        let mut generated_product_roles = product_roles
+            .into_iter()
+            .map(|(product, (generation_role, seed_membership))| {
+                Ok(GeneratedProductRoleRow {
+                    product,
+                    generation_role: GeneratedProductGenerationRole::from_label(&generation_role)?,
+                    seed_membership: GeneratedProductSeedMembership::from_label(&seed_membership)?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        generated_product_roles.sort();
+        Ok(ConvergenceSurfaceRoles {
+            basename_to_module,
+            generation_modules: generation.into_iter().collect(),
+            bootstrap_sources: sources.into_iter().collect(),
+            bootstrap_products: products.into_iter().collect(),
+            seed_embedded_basenames: embedded.into_iter().collect(),
+            generated_product_roles,
+        })
+    }
+
+    /// Back to the planning shape. A basename or product listed twice is refused rather than
+    /// resolved by whichever row came last.
+    fn into_planning(self) -> Result<SurfaceRolesForPlanning, String> {
+        let mut owners = HashMap::new();
+        for row in self.basename_to_module {
+            if owners.insert(row.basename.clone(), row.module).is_some() {
+                return Err(format!(
+                    "SurfaceRolesReceiptDuplicated: basename {} has two owner rows",
+                    row.basename
+                ));
+            }
+        }
+        let mut product_roles = HashMap::new();
+        for row in self.generated_product_roles {
+            let labels = (
+                row.generation_role.label().to_string(),
+                row.seed_membership.label().to_string(),
+            );
+            if product_roles.insert(row.product.clone(), labels).is_some() {
+                return Err(format!(
+                    "SurfaceRolesReceiptDuplicated: product {} has two role rows",
+                    row.product
+                ));
+            }
+        }
+        Ok((
+            owners,
+            self.generation_modules.into_iter().collect(),
+            self.bootstrap_sources.into_iter().collect(),
+            self.bootstrap_products.into_iter().collect(),
+            self.seed_embedded_basenames.into_iter().collect(),
+            product_roles,
+        ))
+    }
+}
+
 /// Authority: `gunbc.regen_receipt`.
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[serde(tag = "pass", deny_unknown_fields)]
@@ -82,6 +253,9 @@ pub enum RegenReceipt {
         changed_paths: Vec<String>,
         candidate_artifact: String,
         candidate_manifest: RegenCandidateManifest,
+        /// Required: a receipt without them does not parse, so an orchestrator can never plan a
+        /// round from roles nobody derived.
+        surface_roles: ConvergenceSurfaceRoles,
     },
     /// A POPULATION REFUSAL HAS NO MEASUREMENT, AND THIS VARIANT HAS NOWHERE TO WRITE ONE.
     ///
@@ -431,8 +605,14 @@ pub fn run_required_regen_scoped(
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
-    let (basename_to_module, _, _, _, _, _) =
-        convergence_surface_roles(&workspace, &convergence_roots)?;
+    let (
+        basename_to_module,
+        generation_modules,
+        bootstrap_sources,
+        bootstrap_products,
+        seed_embedded_basenames,
+        generated_product_roles,
+    ) = convergence_surface_roles(&workspace, &convergence_roots)?;
     report_cgroup_memory_diagnostic("child.after_surface_roles");
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
@@ -463,6 +643,14 @@ pub fn run_required_regen_scoped(
         changed_paths: changed_paths.clone(),
         candidate_artifact: candidate_dir_rel.to_string(),
         candidate_manifest,
+        surface_roles: ConvergenceSurfaceRoles::from_planning((
+            basename_to_module,
+            generation_modules,
+            bootstrap_sources,
+            bootstrap_products,
+            seed_embedded_basenames,
+            generated_product_roles,
+        ))?,
     };
     write_receipt(&receipt_path, &receipt)?;
 
@@ -3283,6 +3471,28 @@ struct RegenConvergenceModel {
     indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
 }
 
+/// THE ORCHESTRATOR'S ONE WAY TO LOAD AN INTERPRETED MODEL: the entry's own import closure, acquired
+/// through the source layout (`resolve_entry_graph_demand_acquired`, the route `gunbc run` takes), never
+/// the process-wide whole-tree index. Measured on main c0a1ba43, release, in the order the re-exec'd
+/// orchestrator runs: `RegenConvergenceModel::load` through `process_shared_index_or_refuse` took
+/// 169 s and left 10.13 GB resident to resolve a 26-module closure that the demand-acquired route
+/// resolves in 2.9 s at 150 MB -- the orchestrator's whole pre-generation footprint (heal runs read
+/// 10.69-10.70 GB at generation 0). A whole-tree index serving a handful of small entries is the
+/// duplication DESIGN section 2 orders removed before any cache is considered; every orchestrator-side
+/// model load goes through here so none of them rebuilds it later, between generations.
+fn resolve_orchestrator_model(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<
+    (
+        Rc<crate::v1_compiler_compile::ResolvedGraph>,
+        Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+    ),
+    String,
+> {
+    super::resolve_entry_graph_demand_acquired(source_roots, entry)
+}
+
 impl RegenConvergenceModel {
     fn load(source_roots: &[String]) -> Result<Self, String> {
         let entry = source_roots
@@ -3292,9 +3502,10 @@ impl RegenConvergenceModel {
             .ok_or_else(|| {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
-        let index = super::process_shared_index_or_refuse(source_roots);
-        let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
-            .map_err(|e| format!("refusal: convergence transaction model did not resolve: {e}"))?;
+        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
+            .map_err(|e| {
+            format!("refusal: convergence transaction model did not resolve: {e}")
+        })?;
         Ok(Self { graph, indices })
     }
 
@@ -3328,11 +3539,10 @@ impl SupervisedSubjectModel {
                  is outside source roots"
                     .to_string()
             })?;
-        let index = super::process_shared_index_or_refuse(source_roots);
-        let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
             .map_err(|e| {
-                format!("refusal: the supervised-subject liveness model did not resolve: {e}")
-            })?;
+            format!("refusal: the supervised-subject liveness model did not resolve: {e}")
+        })?;
         Ok(Self { graph, indices })
     }
 
@@ -3880,8 +4090,7 @@ fn rebuild_scope_decision_with(
 ) -> Result<ModelValue, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index_or_refuse(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -5092,8 +5301,7 @@ fn render_round_cost_receipt(
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index_or_refuse(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -5264,6 +5472,8 @@ struct PartitionRebuildActuation {
     /// The decision is the positively modeled partition-generation class (the partition mirror
     /// moved). Whether that move is EXPLAINED is derived by the host, never read from here.
     partition_generation_move: bool,
+    /// Projection of WholeCompilerRebuildRequired, including shared build inputs.
+    whole_compiler_required: bool,
 }
 
 type ModelValue = crate::v1_interpreter::Value;
@@ -5319,8 +5529,7 @@ fn partition_rebuild_actuation(
 ) -> Result<PartitionRebuildActuation, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index_or_refuse(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -5386,6 +5595,16 @@ fn partition_rebuild_actuation(
                 ))
             }
         };
+    let whole_compiler_required =
+        match call("stage0_partition_rebuild_requires_whole_compiler_today")? {
+            ModelValue::Bool(value) => value,
+            other => {
+                return Err(format!(
+                    "refusal: stage0_partition_rebuild_requires_whole_compiler_today returned {} instead of Bool",
+                    other.type_label_public()
+                ))
+            }
+        };
     Ok(PartitionRebuildActuation {
         actuatable,
         package_closure,
@@ -5393,6 +5612,7 @@ fn partition_rebuild_actuation(
         decision_line,
         release_scope_empty,
         partition_generation_move,
+        whole_compiler_required,
     })
 }
 
@@ -5661,6 +5881,7 @@ struct FirstGenerationConvergenceObservation {
     drifted: Vec<String>,
     authority_digest: String,
     manifest: RegenCandidateManifest,
+    surface_roles: ConvergenceSurfaceRoles,
 }
 
 fn read_first_generation_receipt(
@@ -5678,12 +5899,14 @@ fn read_first_generation_receipt(
             candidate_artifact: _,
             authority_digest,
             candidate_manifest,
+            surface_roles,
             ..
         } => Ok(FirstGenerationConvergenceObservation {
             committed_digest: committed_generated_digest,
             drifted: changed_paths,
             authority_digest,
             manifest: candidate_manifest,
+            surface_roles,
         }),
         RegenReceipt::Refused { reason, .. } => Err(format!(
             "regen refused before convergence planning: {reason}"
@@ -6413,7 +6636,15 @@ fn convergence_surface_roles(
     ),
     String,
 > {
-    let (edges, modules) = regen_module_edges(workspace)?;
+    // THE MODULE NAMES, NOT THE EDGES. This used to call `regen_module_edges`, which builds the
+    // whole-pool closure edge index (2065857 edges over 8098 modules on main 3637b4f651a; about
+    // 100 s and 2.5 GB of transient heap on a release build) and returns that index's module keys
+    // beside it -- and this function bound the edges and never read them. `regen_module_names` is
+    // the identical `source_files` key set of the identical index, so the answer is unchanged by
+    // construction and the undemanded edge build is gone (DESIGN section 2). This call runs in the
+    // generation child right after `regen.digest`: the point where the srv3 children went silent
+    // at memory.high.
+    let modules = regen_module_names(workspace);
     // Ownership includes emitted-not-committed modules. Joining through the committed mirror
     // population would erase exactly the new-module case the convergence transaction must
     // install, so derive the projection from the complete module index instead.
@@ -7039,7 +7270,15 @@ fn install_convergence_stage(
         &subject,
         |workspace| match &partition_move {
             Some(outcome) => partition_move_rebuild(workspace, &subject, outcome),
-            None if whole_compiler => seed_cargo_build(workspace, "round.rebuild_from_installed"),
+            // v1 maintenance purpose: realize the model's shared-input whole build so v2
+            // regeneration can converge. Partition moves retain their separate admission above.
+            None if whole_compiler || actuation.whole_compiler_required => {
+                println!(
+                    "partition-rebuild: selected whole-compiler build; boundary_files_changed={whole_compiler}; {}",
+                    actuation.decision_line
+                );
+                seed_cargo_build(workspace, "round.rebuild_from_installed")
+            }
             None => partitioned_rebuild_from_installed(workspace, &actuation),
         },
         || next_pass_executable_digest(workspace),
@@ -7900,14 +8139,8 @@ pub fn run_regen_round_cost(
     // ledger rows and the crate count reach the receipt.
     let carried_cost = handoff_in.as_ref().map(|h| h.cost.clone());
 
-    let (
-        basename_to_module,
-        generation_modules,
-        bootstrap_sources,
-        bootstrap_products,
-        seed_embedded_basenames,
-        generated_product_roles,
-    ) = convergence_surface_roles(&workspace, source_roots)?;
+    // The surface roles are NOT computed here. They are corpus-derived generation work
+    // (`ConvergenceSurfaceRoles`), carried by generation 0's receipt and bound once it is read.
     let scope = if affected_scope {
         regen_emission_scope_for_diff(&workspace, source_roots)?
     } else {
@@ -7942,6 +8175,14 @@ pub fn run_regen_round_cost(
     report_cgroup_memory_diagnostic("parent.end generation=0");
     v1_rt::trace_mark("round.built_seed_regen.done".to_string());
     let first = first?;
+    let (
+        basename_to_module,
+        generation_modules,
+        bootstrap_sources,
+        bootstrap_products,
+        seed_embedded_basenames,
+        generated_product_roles,
+    ) = first.surface_roles.clone().into_planning()?;
     let mut candidate_digest = first.manifest.candidate_tree_digest.clone();
     let starting_surface_digest = first.committed_digest;
     let mut candidate_tree_id = first.manifest.candidate_tree_id.clone();
@@ -10033,6 +10274,30 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
 /// uses (`whole_pool_closure_edge_index`: dotted references, which include every import line, plus bare
 /// references) -- one authority for "what pulls what", read here in reverse. A file the index
 /// names but cannot map to a module is a refusal: an edge dropped silently would shrink the bound.
+/// Every module the regen source roots declare: the `source_files` keys of the module index over
+/// `regen_source_roots()`, sorted. The edge-free half of `regen_module_edges`, for a caller that
+/// demands the names and not the dependency edges.
+pub fn regen_module_names(workspace: &Path) -> Vec<String> {
+    let abs_roots: Vec<String> = super::regen_source_roots()
+        .all()
+        .iter()
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let index = super::build_multi_entry_index(&abs_roots);
+    index
+        .source_files
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 pub fn regen_module_edges(
     workspace: &Path,
 ) -> Result<(Vec<(String, String)>, Vec<String>), String> {
@@ -11535,5 +11800,485 @@ mod generation_supervisor_tests {
                 assert!(cause.contains(&dir.display().to_string()), "{cause}");
             }
         }
+    }
+}
+
+/// THE SURFACE ROLES TRAVEL BY RECEIPT (generation-state lifetime isolation): generation 0's child
+/// derives them and its receipt carries them; the orchestrator never loads the corpus to derive them
+/// itself. These pin the carrier, not the derivation (`convergence_surface_roles` is unchanged
+/// except for the edge build it never read).
+#[cfg(test)]
+mod surface_roles_receipt_tests {
+    use super::*;
+
+    fn roles() -> SurfaceRolesForPlanning {
+        (
+            [
+                ("std_measure.rs".to_string(), "std.measure".to_string()),
+                (
+                    "v1_compiler_parse.rs".to_string(),
+                    "v1.compiler.parse".to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            ["std.measure".to_string()].into_iter().collect(),
+            BTreeSet::new(),
+            ["Cargo.toml".to_string()].into_iter().collect(),
+            ["std_measure.rs".to_string()].into_iter().collect(),
+            [(
+                "Cargo.toml".to_string(),
+                ("GenerationInput".to_string(), "OutsideSeed".to_string()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    }
+
+    #[test]
+    fn the_roles_round_trip_through_the_receipt_rows() {
+        let carried = ConvergenceSurfaceRoles::from_planning(roles()).unwrap();
+        let json = serde_json::to_string(&carried).unwrap();
+        let back: ConvergenceSurfaceRoles = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.clone().into_planning().unwrap(), roles());
+        // Sorted rows: one tree's roles serialize to one byte string whatever the map order was.
+        assert_eq!(
+            serde_json::to_string(&ConvergenceSurfaceRoles::from_planning(roles()).unwrap())
+                .unwrap(),
+            json
+        );
+    }
+
+    /// RED: a first-generation receipt with no surface roles does not parse, so the orchestrator
+    /// refuses the round instead of planning from roles nobody derived.
+    #[test]
+    fn a_receipt_without_surface_roles_refuses_the_round() {
+        let dir = std::env::temp_dir().join(format!("gunbc-roles-receipt-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("receipt.json");
+        let mut receipt = serde_json::to_value(RegenReceipt::FirstGeneration {
+            schema: RECEIPT_SCHEMA.to_string(),
+            commit_sha: "sha".to_string(),
+            authority_digest: "a".to_string(),
+            committed_generated_digest: "c".to_string(),
+            candidate_generated_digest: "d".to_string(),
+            first_generation_equal: false,
+            changed_paths: vec!["std_measure.rs".to_string()],
+            candidate_artifact: "target/stage0-regen-candidate".to_string(),
+            candidate_manifest: RegenCandidateManifest {
+                producer_seed_digest: "seed".to_string(),
+                generation_id: "generation".to_string(),
+                candidate_tree_id: "tree".to_string(),
+                candidate_tree_digest: "tree-digest".to_string(),
+                aggregate_digest: "aggregate".to_string(),
+                surfaces: Vec::new(),
+            },
+            surface_roles: ConvergenceSurfaceRoles::from_planning(roles()).unwrap(),
+        })
+        .unwrap();
+        // The carrier with required surface roles is the v3 shape; a v2 receipt is another carrier.
+        assert_eq!(receipt["schema"], "gunbc.regen_receipt.v3");
+        fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let read = read_first_generation_receipt(&path).expect("a complete receipt is read");
+        assert_eq!(read.surface_roles.into_planning().unwrap(), roles());
+        receipt.as_object_mut().unwrap().remove("surface_roles");
+        fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let refused = read_first_generation_receipt(&path)
+            .err()
+            .expect("a receipt without surface roles was accepted");
+        assert!(refused.contains("surface_roles"), "{refused}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The role facts are closed: an unknown label refuses on the way in and does not deserialize
+    /// on the way back.
+    #[test]
+    fn an_unknown_role_label_is_unwritable_in_the_receipt() {
+        let mut bad = roles();
+        bad.5.insert(
+            "x.rs".to_string(),
+            ("GenerationInputs".to_string(), "OutsideSeed".to_string()),
+        );
+        let refused =
+            ConvergenceSurfaceRoles::from_planning(bad).expect_err("a misspelt role was written");
+        assert!(
+            refused.contains("SurfaceRolesReceiptUnknownRole"),
+            "{refused}"
+        );
+        let json = serde_json::to_string(&ConvergenceSurfaceRoles::from_planning(roles()).unwrap())
+            .unwrap()
+            .replace("\"GenerationInput\"", "\"GenerationInputs\"");
+        assert!(serde_json::from_str::<ConvergenceSurfaceRoles>(&json).is_err());
+    }
+
+    #[test]
+    fn a_duplicated_owner_row_is_refused_not_last_write_wins() {
+        let mut carried = ConvergenceSurfaceRoles::from_planning(roles()).unwrap();
+        carried.basename_to_module.push(SurfaceOwnerRow {
+            basename: "std_measure.rs".to_string(),
+            module: "std.other".to_string(),
+        });
+        let refused = carried
+            .into_planning()
+            .expect_err("a duplicate owner was resolved");
+        assert!(
+            refused.contains("SurfaceRolesReceiptDuplicated"),
+            "{refused}"
+        );
+    }
+
+    /// The footprint this moves, measured: the module names alone (the identical key set of the
+    /// identical index) without the edge build. Run with --ignored --nocapture on a release build;
+    /// prints the orchestrator-shaped VmRSS readings the RFM row cites.
+    #[test]
+    #[ignore]
+    fn measure_module_names_versus_module_edges() {
+        let ws = workspace_root();
+        let rss = || {
+            fs::read_to_string("/proc/self/status")
+                .unwrap()
+                .lines()
+                .find(|l| l.starts_with("VmRSS"))
+                .unwrap()
+                .to_string()
+        };
+        let t = Instant::now();
+        let names = regen_module_names(&ws);
+        eprintln!("MEASURE names={} {:?} {}", names.len(), t.elapsed(), rss());
+        let t = Instant::now();
+        let (_edges, modules) = regen_module_edges(&ws).unwrap();
+        eprintln!(
+            "MEASURE edges path modules={} {:?} {}",
+            modules.len(),
+            t.elapsed(),
+            rss()
+        );
+        assert_eq!(
+            names, modules,
+            "the edge-free module set differs from the edge path's"
+        );
+    }
+}
+
+/// THE ORCHESTRATOR LOADS ITS MODELS FROM THEIR OWN CLOSURES, never through the whole-tree shared
+/// index. The discriminator is the thread's shared-index memo (`PROCESS_RESOLVE_INDEX` is
+/// thread-local and each test runs on its own thread): replaying the re-exec'd orchestrator's loads
+/// in PRODUCTION ORDER -- the liveness model, the convergence model, the round-cost decider -- must
+/// leave it empty, and a shared-index build over even a tiny root must not.
+#[cfg(test)]
+mod orchestrator_model_load_tests {
+    use super::*;
+
+    fn roots() -> Vec<String> {
+        ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Replace every `OccurrenceId { value: N }` by its order of first appearance in `text`.
+    fn canonical_occurrences(text: &str) -> String {
+        const MARK: &str = "OccurrenceId { value: ";
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(at) = rest.find(MARK) {
+            out.push_str(&rest[..at + MARK.len()]);
+            rest = &rest[at + MARK.len()..];
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            let next = seen.len();
+            let canonical = *seen.entry(digits.clone()).or_insert(next);
+            out.push_str(&format!("#{canonical}"));
+            rest = &rest[digits.len()..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    fn first_divergence(a: &str, b: &str) -> String {
+        let at = a
+            .bytes()
+            .zip(b.bytes())
+            .position(|(x, y)| x != y)
+            .unwrap_or(a.len().min(b.len()));
+        let window = |s: &str| s[at.saturating_sub(80)..(at + 120).min(s.len())].to_string();
+        format!("byte {at}: {:?} vs {:?}", window(a), window(b))
+    }
+
+    /// The renumbering is a bijection test, not a blur: two texts that differ in which occurrences
+    /// are the SAME still compare unequal.
+    #[test]
+    fn occurrence_canonicalization_keeps_sharing_and_forgets_only_numbering() {
+        let a = "x OccurrenceId { value: 6877 } y OccurrenceId { value: 6877 } z OccurrenceId { value: 9 }";
+        let renumbered = "x OccurrenceId { value: 1276332 } y OccurrenceId { value: 1276332 } z OccurrenceId { value: 5 }";
+        let unshared =
+            "x OccurrenceId { value: 1 } y OccurrenceId { value: 2 } z OccurrenceId { value: 3 }";
+        assert_eq!(canonical_occurrences(a), canonical_occurrences(renumbered));
+        assert_ne!(canonical_occurrences(a), canonical_occurrences(unshared));
+    }
+
+    #[test]
+    fn the_orchestrators_model_loads_build_no_shared_index() {
+        let roots = roots();
+        let _liveness = SupervisedSubjectModel::load(&roots).expect("liveness model");
+        let convergence = RegenConvergenceModel::load(&roots).expect("convergence model");
+        let entry = round_cost_entry(&roots).unwrap();
+        let _decider = resolve_orchestrator_model(&roots, &entry).expect("round-cost decider");
+        // The loaded model evaluates through the same bridge production uses.
+        assert_eq!(
+            admit_generation_begin_readings(&convergence, 1, 900_000_000, 900_000_000),
+            Ok(())
+        );
+        assert_eq!(
+            super::super::entry_resolve::shared_index_residency_control(),
+            Ok(0),
+            "an orchestrator model load built the whole-tree shared index"
+        );
+    }
+
+    /// RED for the discriminator: a shared-index build, here over a one-module fixture root, is seen.
+    #[test]
+    fn a_shared_index_build_is_seen_by_the_residency_read() {
+        // Under the workspace: a shared-index root must be one, or key normalization refuses it.
+        let root = workspace_root().join(format!(
+            "target/gunbc-shared-index-red-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("probe")).unwrap();
+        fs::write(
+            root.join("probe/fixture.dag"),
+            "module probe.fixture\n\nimport std.types { Int }\n\ndata fixture_value: Int = 1\n",
+        )
+        .unwrap();
+        let fixture_roots = vec![root.to_string_lossy().into_owned()];
+        let _ = super::super::entry_resolve::try_process_shared_index(&fixture_roots);
+        let resident = super::super::entry_resolve::shared_index_residency_control();
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            matches!(resident, Ok(n) if n >= 1),
+            "the residency read did not see a shared-index build: {resident:?}"
+        );
+    }
+
+    /// EQUIVALENCE, PER SITE: the demand-acquired route and the shared-index route resolve each
+    /// orchestrator entry to the SAME graph -- the same modules, the same item registry with every
+    /// item's resolved content, the same diagnostics -- and the model functions the five sites call
+    /// answer identically on fixed inputs. Two resolutions that could diverge silently would be two
+    /// authorities for one model (DESIGN section 3). The shared-index side costs about 169 s and
+    /// 10 GB, so this runs on demand: --ignored --test-threads=1 on a release build.
+    #[test]
+    #[ignore]
+    fn both_routes_resolve_every_orchestrator_entry_identically() {
+        use crate::v1_interpreter::{self, ExecutionMode, Value};
+        let roots = roots();
+        let entries = [
+            Path::new(&roots[1]).join("workflow/regen_convergence_transaction.dag"),
+            Path::new(&roots[0]).join("gunbc/host/memory_stall_refusal.dag"),
+            PathBuf::from(round_cost_entry(&roots).unwrap()),
+        ];
+        let shared = super::super::process_shared_index_or_refuse(&roots);
+        for entry in &entries {
+            let entry = entry.to_string_lossy().into_owned();
+            let (demand, demand_si) = resolve_orchestrator_model(&roots, &entry).unwrap();
+            let (whole, whole_si) =
+                super::super::resolve_entry_with_index(&shared, &entry).unwrap();
+            // EQUAL UP TO OCCURRENCE NUMBERING. Occurrence identities are minted from a per-process
+            // counter (std.occurrence_identity), so the route that resolved a whole tree first numbers
+            // the same occurrences from a different base (measured: 6877 against 1276332 for one
+            // binder). Both graphs are therefore compared after one consistent renumbering -- each
+            // distinct id replaced by its order of first appearance across the WHOLE rendering -- which
+            // holds exactly when a single bijection maps one graph's occurrences onto the other's.
+            let registry = |g: &crate::v1_compiler_compile::ResolvedGraph| {
+                let mut keys: Vec<&String> = g.item_registry.keys().collect();
+                keys.sort();
+                canonical_occurrences(
+                    &keys
+                        .iter()
+                        .map(|k| format!("{k} => {:?}", g.item_registry[*k]))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                )
+            };
+            let (demand_items, whole_items) = (registry(&demand), registry(&whole));
+            assert!(
+                demand_items == whole_items,
+                "{entry}: the two routes registered different items (first divergence: {})",
+                first_divergence(&demand_items, &whole_items)
+            );
+            let modules = |g: &crate::v1_compiler_compile::ResolvedGraph| {
+                let mut rendered: Vec<String> = g
+                    .modules
+                    .iter()
+                    .map(|m| canonical_occurrences(&format!("{m:?}")))
+                    .collect();
+                rendered.sort();
+                rendered
+            };
+            assert!(
+                modules(&demand) == modules(&whole),
+                "{entry}: the two routes resolved different modules"
+            );
+            let diags = |g: &crate::v1_compiler_compile::ResolvedGraph| {
+                let mut d: Vec<String> = g
+                    .diagnostics
+                    .iter()
+                    .map(|x| canonical_occurrences(&format!("{x:?}")))
+                    .collect();
+                d.sort();
+                d
+            };
+            assert!(
+                diags(&demand) == diags(&whole),
+                "{entry}: diagnostics differ"
+            );
+            // Behaviour on fixed inputs: the functions the sites call, both contexts.
+            let answer =
+                |g: &crate::v1_compiler_compile::ResolvedGraph,
+                 si: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+                 function: &str,
+                 args: &dyn Fn(&v1_interpreter::InterpContext) -> Vec<(Option<String>, Value)>|
+                 -> String {
+                    let ctx = super::super::make_eval_context(g, si, ExecutionMode::Hermetic);
+                    let args = args(&ctx);
+                    format!(
+                        "{:?}",
+                        v1_interpreter::with_active_context(&ctx, || {
+                            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+                        })
+                    )
+                };
+            let measure = |ctx: &v1_interpreter::InterpContext, n: i64| Value::Record {
+                type_name: ctx.sym("Measure"),
+                fields: Rc::new(vec![(ctx.sym("count"), Value::Int(n))]),
+            };
+            let probes: Vec<(
+                &str,
+                Box<dyn Fn(&v1_interpreter::InterpContext) -> Vec<(Option<String>, Value)>>,
+            )> = if entry.ends_with("regen_convergence_transaction.dag") {
+                vec![
+                    (
+                        "regen_admit_generation_begin",
+                        Box::new(move |ctx| {
+                            vec![
+                                (Some("ordinal".to_string()), Value::Int(2)),
+                                (
+                                    Some("resident_at_first".to_string()),
+                                    measure(ctx, 900_000_000),
+                                ),
+                                (
+                                    Some("resident_now".to_string()),
+                                    measure(ctx, 15_636_525_056),
+                                ),
+                            ]
+                        }),
+                    ),
+                    (
+                        "regen_admit_generation_begin",
+                        Box::new(move |ctx| {
+                            vec![
+                                (Some("ordinal".to_string()), Value::Int(1)),
+                                (
+                                    Some("resident_at_first".to_string()),
+                                    measure(ctx, 10_692_333_568),
+                                ),
+                                (
+                                    Some("resident_now".to_string()),
+                                    measure(ctx, 12_602_740_736),
+                                ),
+                            ]
+                        }),
+                    ),
+                ]
+            } else if entry.ends_with("memory_stall_refusal.dag") {
+                let reading = move |ctx: &v1_interpreter::InterpContext,
+                                    faults: i64,
+                                    cpu: i64,
+                                    events: i64,
+                                    full: i64| {
+                    Value::Record {
+                        type_name: ctx.sym("SupervisedSlotReading"),
+                        fields: Rc::new(vec![
+                            (ctx.sym("major_faults"), Value::Int(faults)),
+                            (ctx.sym("user_cpu"), measure(ctx, cpu)),
+                            (ctx.sym("envelope_events"), Value::Int(events)),
+                            (ctx.sym("pressure_body"), v1_interpreter::str_value(format!(
+                                "some avg10=0.00 avg60=0.00 avg300=0.00 total={}\nfull avg10=0.00 avg60=0.00 avg300=0.00 total={full}\n",
+                                full + 5
+                            ))),
+                        ]),
+                    }
+                };
+                vec![(
+                    "supervised_subject_window_between",
+                    Box::new(move |ctx| {
+                        vec![
+                            (
+                                Some("base".to_string()),
+                                reading(ctx, 100, 2000, 7, 1_000_000),
+                            ),
+                            (
+                                Some("now".to_string()),
+                                reading(ctx, 160, 2500, 419, 1_000_000 + 900_001 * 800),
+                            ),
+                            (Some("wall".to_string()), measure(ctx, 900_001)),
+                        ]
+                    }),
+                )]
+            } else {
+                vec![]
+            };
+            // RAW equality here, deliberately NOT renumbered: these are the values the five sites hand
+            // on (labels, verdict and refusal texts, decisions) and some reach persisted receipts, so
+            // an occurrence identity leaking into one would change those bytes between routes and
+            // must fail this claim rather than be renumbered away.
+            for (function, args) in &probes {
+                let (on_demand, on_whole) = (
+                    answer(&demand, demand_si.clone(), function, args.as_ref()),
+                    answer(&whole, whole_si.clone(), function, args.as_ref()),
+                );
+                assert!(
+                    !on_demand.contains("OccurrenceId"),
+                    "{entry}: {function} hands on an occurrence identity: {on_demand}"
+                );
+                assert_eq!(
+                    on_demand, on_whole,
+                    "{entry}: {function} answered differently on the two routes"
+                );
+            }
+            eprintln!(
+                "EQUIVALENT (up to occurrence numbering) {entry}: {} modules, {} items, {} diagnostics, {} behavioural probes",
+                demand.modules.len(),
+                demand.item_registry.len(),
+                demand.diagnostics.len(),
+                probes.len()
+            );
+        }
+    }
+
+    /// The footprint, in production order, on a release build in a fresh process: run alone with
+    /// --ignored --nocapture --test-threads=1. Prints the readings the RFM row cites.
+    #[test]
+    #[ignore]
+    fn measure_the_orchestrators_model_loads_in_production_order() {
+        let rss = || {
+            fs::read_to_string("/proc/self/status")
+                .unwrap()
+                .lines()
+                .find(|l| l.starts_with("VmRSS"))
+                .unwrap()
+                .to_string()
+        };
+        let roots = roots();
+        eprintln!("MEASURE start {}", rss());
+        let t = Instant::now();
+        let _liveness = SupervisedSubjectModel::load(&roots).unwrap();
+        let _convergence = RegenConvergenceModel::load(&roots).unwrap();
+        let entry = round_cost_entry(&roots).unwrap();
+        let _decider = resolve_orchestrator_model(&roots, &entry).unwrap();
+        eprintln!(
+            "MEASURE after the three orchestrator loads {:?} {}",
+            t.elapsed(),
+            rss()
+        );
     }
 }

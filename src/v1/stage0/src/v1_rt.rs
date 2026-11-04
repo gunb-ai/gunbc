@@ -286,19 +286,80 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
 /// RESIDUAL: a left-to-right walk through THIS function is still O(n^2), and a walk
 /// through the carrier is linear rather than constant per string -- a cursor surface
 /// that does not re-index from zero is that residual's next rung.
+/// LEGACY SPELLING, and the ONLY place the empty-text sentinel is still produced (the marker
+/// CHAR_AT-LEGACY-ADAPTER). It is one call to the indexing rule below, through the sentinel its
+/// callers still consume: clamp a negative position, unwrap absence to the empty text. That
+/// sentinel and clamp are the remaining defect named in gunbc.primitive_egress.dispositions_text
+/// and in gunbc.recurring_failure_mode absence_carried_by_a_second_representation, and this
+/// function's deletion trigger is the ambient-site cutover - the wave that moves the ~150
+/// `char_at` call sites off the builtin, after which callers take the typed answer.
 pub fn char_at(s: &str, pos: i64) -> String {
-    let pos = pos.max(0) as usize;
+    char_at_optional(s, pos.max(0)).unwrap_or_default()
+}
+
+/// The ONE indexing rule for a position in text (2026-11-01, valiant-deer-27 on tidy-ant-251's
+/// char_at ruling). Absence is typed: a negative position and a position at or past the end
+/// answer None -- no empty-text sentinel, no clamp. The ASCII fast path and the fallback are the
+/// ones STRING-INDEX-0 established, so the cost shape is unchanged: O(min(pos, n)) on a bare
+/// `&str`, never an unconditional O(n) rescan. This is what std.primitive_projection
+/// primitive_char_at realizes, through std.host_text's declaration.
+///
+/// The ambient spelling `char_at`, defined just above, is this same rule seen through the
+/// empty-text sentinel its callers still consume; CHAR_AT-LEGACY-ADAPTER names it.
+///
+pub fn char_at_optional(s: &str, pos: i64) -> Option<String> {
     let bytes = s.as_bytes();
-    if pos >= bytes.len() {
-        return String::new();
+    if pos < 0 || (pos as usize) >= bytes.len() {
+        return None;
     }
+    let pos = pos as usize;
     if bytes[..=pos].is_ascii() {
-        return String::from(bytes[pos] as char);
+        return Some(String::from(bytes[pos] as char));
     }
-    s.chars()
-        .nth(pos)
-        .map(|ch| ch.to_string())
-        .unwrap_or_default()
+    s.chars().nth(pos).map(|ch| ch.to_string())
+}
+
+// The legacy spelling: the one indexing rule above, plus the sentinel only this adapter still
+// produces. The test is the agreement pair the ruling asks for: the two spellings answer the same
+// value on every in-range position, and differ exactly where absence is involved.
+#[test]
+fn char_at_spellings_agree_in_range_and_only_the_adapter_invents_absence() {
+    for s in ["abc", "a\u{e9}b", "\u{e9}", ""] {
+        let n = string_length(s);
+        for p in 0..n {
+            assert_eq!(
+                char_at(s, p),
+                char_at_optional(s, p).unwrap_or_default(),
+                "in range: {} at {}",
+                s,
+                p
+            );
+        }
+        assert_eq!(
+            char_at_optional(s, n),
+            None,
+            "typed absence at its own length: {}",
+            s
+        );
+        assert_eq!(
+            char_at_optional(s, -1),
+            None,
+            "typed absence at a negative position: {}",
+            s
+        );
+        assert_eq!(
+            char_at(s, n),
+            String::new(),
+            "the adapter still answers the empty text: {}",
+            s
+        );
+        assert_eq!(
+            char_at(s, -1),
+            char_at(s, 0),
+            "the adapter still clamps a negative position: {}",
+            s
+        );
+    }
 }
 
 pub fn string_length(s: &str) -> i64 {
@@ -512,16 +573,27 @@ impl RcStr {
         Rc::ptr_eq(&a.rc, &b.rc)
     }
 
-    pub fn char_at(&self, pos: i64) -> String {
+    /// The carrier path of the ONE indexing rule: the handle carries the ASCII fact, so an
+    /// ASCII answer is a constant-time byte read and a non-ASCII text delegates to the free
+    /// function. Absence is typed the same way -- None for a negative position and for a
+    /// position at or past the end.
+    pub fn char_at_optional(&self, pos: i64) -> Option<String> {
         if !self.is_ascii {
-            return char_at(&self.rc, pos);
+            return char_at_optional(&self.rc, pos);
         }
-        let pos = pos.max(0) as usize;
-        let bytes = self.rc.as_bytes();
-        if pos >= bytes.len() {
-            return String::new();
+        if pos < 0 {
+            return None;
         }
-        String::from(bytes[pos] as char)
+        self.rc
+            .as_bytes()
+            .get(pos as usize)
+            .map(|b| String::from(*b as char))
+    }
+
+    /// CHAR_AT-LEGACY-ADAPTER, carrier side: the same rule, seen through the empty-text
+    /// sentinel its callers still consume.
+    pub fn char_at(&self, pos: i64) -> String {
+        self.char_at_optional(pos.max(0)).unwrap_or_default()
     }
 
     pub fn string_length(&self) -> i64 {
