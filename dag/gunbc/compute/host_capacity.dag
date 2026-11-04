@@ -24,7 +24,7 @@ import gunbc.fabric.fabric_event_log {
   SeatAcquisitionUnobserved, SeatAcquisitionStoreRefused, fabric_seat_acquisition_of, event_log_refusal_wire,
   PartitionReadOk, PartitionReadRefused, event_log_read_partition,
 }
-import product.capacity.event_chain { ChainEvent, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_generation }
+import product.capacity.event_chain { ChainEvent, ChainEnvelope, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_generation }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, owned_directory_path }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
@@ -690,7 +690,14 @@ type ComputeSeatCharge
 
 type SeatChargeScan { acquired_at: EpochSecs?, returned_at: EpochSecs?, release_reason: String? }
 
-fn seat_charge_scan_step(state: SeatChargeScan, event: ChainEvent<PoolEvent>, reference: NonEmptyStr) -> SeatChargeScan {
+// One pass over the partition's own events, answering the SAME question the ledger's existing reading
+// answers: compute_seat_acquisition_at in this module sets the hold on PoolAcquired and clears it on
+// PoolReleased / PoolSettled / PoolLapsed, and keeps it across PoolResetObserved. This scan keeps that
+// arm-for-arm semantics (it is a second READING of one fact, not a second authority over it) and adds only
+// the one extra thing the settlement needs: the instant and reason of the return, and whether the history
+// was read to its end. An unread history answers Unproven, never NeverAcquired and never Returned.
+fn seat_charge_scan_step(state: SeatChargeScan, wrapped: ChainEnvelope<PoolEvent>, reference: NonEmptyStr) -> SeatChargeScan {
+  let event = wrapped.event
   match event.payload {
     PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
       if (r as String) == (reference as String) { SeatChargeScan { acquired_at: Present { value: event.recorded_at }, returned_at: Absent, release_reason: Absent } } else { state }
@@ -703,9 +710,10 @@ fn seat_charge_scan_step(state: SeatChargeScan, event: ChainEvent<PoolEvent>, re
       } else { state }
     PoolSettled { reference: r, actual: _ } =>
       if (r as String) == (reference as String) { SeatChargeScan { acquired_at: state.acquired_at, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: "settled" } } } else { state }
-    PoolLapsed => SeatChargeScan { acquired_at: state.acquired_at, returned_at: Absent, release_reason: Absent }
+    // A lapse clears every hold in the partition, so this reference's acquisition is gone with it.
+    PoolLapsed => SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }
     PoolUpstreamObserved { remaining: _, term_seconds: _ } => state
-    PoolResetObserved { reset_at: _ } => SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }
+    PoolResetObserved { reset_at: _ } => state
   }
 }
 
@@ -719,7 +727,7 @@ fn compute_seat_charge_returned(store: FabricStorageBinding, partition: Partitio
         ChainBudgetExhausted { at: a } =>
           SeatChargeUnproven { detail: join(["the partition chain exceeded the read budget at ", a as String, "; the history was not read to its end"], "") }
         ChainWalked { oldest_first: xs } =>
-          match fold(xs, init: SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }, f: fn(acc, event) { seat_charge_scan_step(state: acc, event: event, reference: reference) }) {
+          match fold(xs, init: SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }, f: fn(acc, wrapped) { seat_charge_scan_step(state: acc, wrapped: wrapped, reference: reference) }) {
             SeatChargeScan { acquired_at: Absent, returned_at: _, release_reason: _ } => SeatChargeNeverAcquired { reference: reference }
             SeatChargeScan { acquired_at: Present { value: at }, returned_at: Absent, release_reason: _ } => SeatChargeStillHeld { reference: reference, acquired_at: at }
             SeatChargeScan { acquired_at: Present { value: at }, returned_at: Present { value: back }, release_reason: why } =>

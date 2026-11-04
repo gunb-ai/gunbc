@@ -10,7 +10,7 @@ import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   AttemptSlotsCutoverNotRun, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverStoresUnresolved,
   AttemptSlotsCutoverPassRecord, AttemptSlotsCensusSourceProvenAbsent, AttemptSlotsCarrySourceProvenAbsent,
-  attempt_slots_cutover_record_schema,
+  attempt_slots_cutover_record_mint,
 }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
@@ -3650,12 +3650,11 @@ test fn a_belt_tick_receipt_without_the_cutover_member_is_unreadable() -> Bool {
 // member moves, so a receipt cannot claim a different cutover outcome than the one it was cut from.
 test fn the_cutover_pass_member_distinguishes_recorded_from_stores_unresolved() -> Bool {
   let old_root = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/session-attempts"
-  let record = AttemptSlotsCutoverPassRecord {
-    schema: attempt_slots_cutover_record_schema,
+  let record = attempt_slots_cutover_record_mint(
     instance_id: "srv1-live" as NonEmptyStr,
     census: AttemptSlotsCensusSourceProvenAbsent { old_root: old_root as NonEmptyStr },
     carry: AttemptSlotsCarrySourceProvenAbsent { old_root: old_root as NonEmptyStr },
-  }
+  )
   let ran = belt_tick_receipt_from_result(
     result: BeltTickResult {
       wholesale: TickPassesRun,

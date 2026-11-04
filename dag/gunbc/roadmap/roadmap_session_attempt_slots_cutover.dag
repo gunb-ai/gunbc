@@ -695,14 +695,27 @@ type AttemptSlotsCutoverPassRecord sole_constructor {
 
 // THE PASS, TOTAL: every declared-row lookup answers something, so a pass that "did not look" is not
 // expressible -- there is no arm to hold it and no default to fall through to.
-fn attempt_slots_cutover_pass_for_instance(instance_id: NonEmptyStr, target: SessionAttemptSlotsStore) -> AttemptSlotsCutoverPassRecord {
-  let census = attempt_slots_census_for_instance(instance_id: instance_id, target: target)
+// A record is only ever built from a census answer and a carry answer, and the schema is minted HERE rather
+// than passed in: no caller can write a record whose schema or readings disagree with a pass. Production
+// records come from attempt_slots_cutover_pass_for_instance; this mint is exported so the write path and the
+// tick receipt face can be witnessed without forging a pass -- a witness that hand-built the record would be
+// testing a shape the pass never produces.
+fn attempt_slots_cutover_record_mint(instance_id: NonEmptyStr, census: AttemptSlotsCensus, carry: AttemptSlotsCarry) -> AttemptSlotsCutoverPassRecord {
   AttemptSlotsCutoverPassRecord {
     schema: attempt_slots_cutover_record_schema,
     instance_id: instance_id,
     census: census,
-    carry: attempt_slots_carry_for_instance(instance_id: instance_id, target: target),
+    carry: carry,
   }
+}
+
+fn attempt_slots_cutover_pass_for_instance(instance_id: NonEmptyStr, target: SessionAttemptSlotsStore) -> AttemptSlotsCutoverPassRecord {
+  let census = attempt_slots_census_for_instance(instance_id: instance_id, target: target)
+  attempt_slots_cutover_record_mint(
+    instance_id: instance_id,
+    census: census,
+    carry: attempt_slots_carry_for_instance(instance_id: instance_id, target: target),
+  )
 }
 
 // WHAT THE PASS ANSWERED, AS THE CALLER MUST HANDLE IT. The record is present in both write arms, so an

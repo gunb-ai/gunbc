@@ -346,6 +346,7 @@ fn released_unit(s: SessionSettlement) -> String {
     SessionSettlementKept { unit: _, why: _ } => ""
     SessionSettlementDone { unit: _, why: _ } => ""
     SessionSettlementRefused { unit: _, detail: _ } => ""
+    SessionSettlementRetiredUncharged { unit: _, attempt: _, detail: _ } => ""
   }
 }
 
@@ -355,6 +356,7 @@ fn kept(s: SessionSettlement) -> Bool {
     SessionSettlementReleaseAttempted { unit: _, freed: _, detail: _ } => false
     SessionSettlementDone { unit: _, why: _ } => false
     SessionSettlementRefused { unit: _, detail: _ } => false
+    SessionSettlementRetiredUncharged { unit: _, attempt: _, detail: _ } => false
   }
 }
 
@@ -364,6 +366,7 @@ fn done_settlement(s: SessionSettlement) -> Bool {
     SessionSettlementKept { unit: _, why: _ } => false
     SessionSettlementReleaseAttempted { unit: _, freed: _, detail: _ } => false
     SessionSettlementRefused { unit: _, detail: _ } => false
+    SessionSettlementRetiredUncharged { unit: _, attempt: _, detail: _ } => false
   }
 }
 
@@ -1412,40 +1415,34 @@ test fn the_declared_row_names_the_instance_the_pass_reads_and_the_root_it_left_
 // what a tick calls -- over the fixture's records directory, and the file read back is the evidence.
 test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_names_both_refusals() -> Bool {
   let dir = fresh_dir(tag: "cutover-cross")
-  let stores = stores_at(dir: dir)
-  let record = match stores {
-    Absent => AttemptSlotsCutoverPassRecord {
-      schema: "no fixture stores",
-      instance_id: srv1_dashboard_lab_id,
-      census: AttemptSlotsCensusNoDeclaredRow { instance_id: srv1_dashboard_lab_id },
-      carry: AttemptSlotsCarryNoDeclaredRow { instance_id: srv1_dashboard_lab_id },
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: s } => {
+      let record = attempt_slots_cutover_pass_for_instance(instance_id: srv1_dashboard_lab_id, target: s.slots)
+      let outcome = belt_attempt_slots_cutover_record_write(stores: s, record: record)
+      let path = attempt_slots_cutover_record_path(stores: s, instance_id: srv1_dashboard_lab_id)
+      let read_back = Filesystem.Read(path: path as FilePath)
+      (match record.census {
+        AttemptSlotsCensusRowRefused { refusal: r } =>
+          match r {
+            AttemptSlotsRowNamesAnotherInstance { row_instance: ri, store_instance: si } => (ri == srv1_dashboard_lab_id) && (si != srv1_dashboard_lab_id)
+            _ => false
+          }
+        _ => false
+      })
+        && (match record.carry { AttemptSlotsCarryRowRefused { refusal: _ } => true  _ => false })
+        && (record.schema == attempt_slots_cutover_record_schema)
+        && (record.instance_id == srv1_dashboard_lab_id)
+        && (attempt_slots_census_record_kind(census: record.census) == "row-refused")
+        && (attempt_slots_carry_record_kind(carry: record.carry) == "row-refused")
+        && (match outcome { AttemptSlotsCutoverRecorded { path: p, record: back } => (p == path) && (back.census == record.census)  _ => false })
+        && read_back.success
+        && string_contains(s: read_back.content, pattern: attempt_slots_cutover_record_schema)
+        && string_contains(s: read_back.content, pattern: "row-refused")
+        && !slot_is_launching(dir: dir)
+        && !slot_is_terminal(dir: dir)
     }
-    Present { value: s } => attempt_slots_cutover_pass_for_instance(instance_id: srv1_dashboard_lab_id, target: s.slots)
   }
-  let outcome = match stores {
-    Absent => AttemptSlotsCutoverRecordUnwritten { path: "no fixture stores", error: "no fixture stores", record: record }
-    Present { value: s } => belt_attempt_slots_cutover_record_write(stores: s, record: record)
-  }
-  let path = match stores {
-    Absent => ""
-    Present { value: s } => attempt_slots_cutover_record_path(stores: s, instance_id: srv1_dashboard_lab_id)
-  }
-  let read_back = Filesystem.Read(path: path as FilePath)
-  (match record.census {
-    AttemptSlotsCensusRowRefused { refusal: r } =>
-      match r { AttemptSlotsRowNamesAnotherInstance { row_instance: ri, store_instance: si } => (ri == srv1_dashboard_lab_id) && (si != srv1_dashboard_lab_id)  _ => false }
-    _ => false
-  })
-    && (match record.carry { AttemptSlotsCarryRowRefused { refusal: _ } => true  _ => false })
-    && (record.schema == attempt_slots_cutover_record_schema)
-    && (record.instance_id == srv1_dashboard_lab_id)
-    && (attempt_slots_census_record_kind(census: record.census) == "row-refused")
-    && (attempt_slots_carry_record_kind(carry: record.carry) == "row-refused")
-    && (match outcome { AttemptSlotsCutoverRecorded { path: p, record: back } => (p == path) && (back.census == record.census)  _ => false })
-    && string_contains(s: read_back.content, pattern: attempt_slots_cutover_record_schema)
-    && string_contains(s: read_back.content, pattern: "row-refused")
-    && !slot_is_launching(dir: dir)
-    && !slot_is_terminal(dir: dir)
 }
 
 // THE STATE A COMPLETED CUTOVER ENDS IN, TOLD APART FROM A BROKEN ONE. The replaced root of this fixture

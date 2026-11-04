@@ -21,6 +21,7 @@ import gunbc.roadmap.roadmap_session_placement {
   session_attempt_name_of, session_unit_wire, session_unit_unnameable_detail, session_settle_one, session_worker_unit_lifecycle_for_instance,
   SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused,
   SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
+  SessionSettlementRetiredUncharged,
   session_settlement_wire,
 }
 
@@ -163,6 +164,10 @@ fn activation_released_wire(s: SessionSettlement) -> Bool {
     SessionSettlementDone { unit: _, why: _ } => true
     SessionSettlementKept { unit: _, why: _ } => false
     SessionSettlementRefused { unit: _, detail: _ } => false
+    // The retirement fires only when the partition's own history positively shows the charge acquired and
+    // then returned, so by the time this arm can be reached the seat is not held: the answer matches Done's,
+    // and it is not a claim that this settlement returned anything.
+    SessionSettlementRetiredUncharged { unit: _, attempt: _, detail: _ } => true
   }
 }
 
