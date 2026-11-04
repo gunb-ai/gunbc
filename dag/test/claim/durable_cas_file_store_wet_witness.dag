@@ -115,6 +115,81 @@ test fn a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution(
     && removed.success
 }
 
+// THE EMPTY-STORE COUNTEREXAMPLE, AT THE STORE -- the case that retired an ordering.
+//
+// The module header retires "decide eligibility from the EXPECTATION, then write the successor of the
+// expected generation" with exactly this case: an attempt holding ExpectSlotGeneration(3) against a
+// store that holds NOTHING is admissible under the expectation alone, and a writer following that
+// ordering targets generation 4 and CREATES it -- a first write dressed as an update, and the shape of
+// an attempt resurrecting a slot it never read. The store probes the slot before it decides, and the arm
+// that refuses is here, not in a shared fold: cas_compare_and_set_outcome's ProbedAbsent arm answers
+// ExpectSlotAbsent by committing at cas_generation_first() and answers ExpectSlotGeneration with
+// CasPreconditionFailed { observed: CasReadableAbsent } -- dag/gunbc/durable_cas_file_store.dag:1050-1060.
+// That reasoning existed only in prose until this row.
+//
+// The claim is two halves: the refusal says the slot is ABSENT (not that it holds something else), and
+// the store's own census afterwards lists NO KEYS -- nothing was written, not even a stray generation.
+//
+// THE MUTANT IS THE RETIRED ORDERING ITSELF, in that one arm: ExpectSlotGeneration { generation: e }
+// against ProbedAbsent commits at cas_generation_successor(e) instead of refusing
+// (sharp-otter-429/d6-witness-main-mutant, one commit on top of this row). It is reachable ONLY when a
+// generation expectation meets a never-created slot, which is what makes it a usable mutant: it turns this
+// row red and leaves every other row here green. A broad change (ExpectSlotAbsent -> ExpectSlotGeneration
+// in a create route) refuses every create against an empty store and reddens rows that have nothing to do
+// with this case: that measures the mutant, not the row.
+//
+// ONE OBSERVATION FOR THE CAS OWNER, not fixed here. The same rule exists twice. std.durable_compare_and_set
+// has cas_expectation_admits (dag/std/durable_compare_and_set.dag:266-278), which refuses an
+// ExpectSlotGeneration against an absent observation, and it is consumed by exactly one module --
+// gunbc.roadmap.roadmap_event_carrier:447,450 -- NOT by this store, which decides inline at :1059. A rule
+// with two homes is two rules: nothing here makes them agree, and my first attempt at a mutant on the std
+// fold left this file's rows green, which is the shape that silence takes. Merging them, or at least citing
+// one from the other, is the CAS owner's call.
+//
+// WHY THE RULE IS PINNED HERE AND NOT IN THE FOLD'S OWN WITNESS. test.claim.durable_compare_and_set
+// (dag/test/claim/durable_compare_and_set.dag) is where a fold-level row would live, and I put one there
+// first. It cannot be executed: that file imports NOTHING (not std.types, which declares NonEmptyStr at
+// dag/std/types.dag:320, not std.durable_compare_and_set) and does not compile at its own entry --
+// measured on the base commit bbec474015b with the same gunbc used here: 134 hard errors, first
+// "unresolved type 'LiveTreeDisposition'" at :9:29, and the same 134 with --source-root src/v1 added. So
+// no row in that file is green by execution, and a row added there would inherit the orphan rather than
+// pin anything. This row runs the same rule through admit_cas_attempt and file_compare_and_set, which is
+// where the ordering did the damage. The orphan itself is reported, not repaired here: repairing it means
+// giving that file its imports and re-checking its ~15 existing rows, which is a change of its own.
+test fn a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let outcome = run_cas(
+    root: root,
+    attempt: honest(key: "never-written", payload: "would-have-been-generation-four", expected: ExpectSlotGeneration { generation: 3 }),
+  )
+  let refused_absent = match outcome {
+    CasPreconditionFailed { expected: _, observed: CasReadableAbsent } => true
+    CasPreconditionFailed { expected: _, observed: CasReadablePresent { version: _ } } => false
+    CasCommitted { committed: _ } => false
+    CasStoreRefused { cause: _ } => false
+  }
+  let nothing_written = match slot_keys(store: file_slot_store(root: root)) {
+    CasSlotKeysListed { keys } => list_length(keys) == 0
+    CasSlotKeysAbsent { root: _ } => false
+    CasSlotKeysListingRefused { root: _, detail: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  refused_absent && nothing_written && removed.success
+}
+
+// THE GENERATION THE STORE REPORTS AND THE GENERATION IT WRITES ARE ONE BINDING, not two facts a row
+// could align after the fact: cas_commit_at takes `let target = admitted.target` and uses that same
+// value for the path it writes (cas_file_slot_path(generation: target)) and for every CasCommitted it
+// returns (CasSlotVersion { generation: target, ... }) -- dag/gunbc/durable_cas_file_store.dag:866-867
+// and :880, :894, :902. A report of a generation other than the one committed is unrepresentable in
+// that shape, which is the answer to "does a create report the generation it committed?": there is no
+// second place for it to be wrong. The rows above still execute the equality -- each reads the file back
+// at the path of the generation it was told, and commit_then_independent_read_back_agrees_by_real_execution
+// reads the slot state independently of the commit return. RESIDUAL, stated rather than papered over: if
+// a future path derives the report separately from the write target, no single row here catches it at one
+// step -- the read-back pattern is what would go red, and only by inference across rows.
 test fn an_advance_after_commit_lands_generation_two_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let root = root_path as NonEmptyStr
