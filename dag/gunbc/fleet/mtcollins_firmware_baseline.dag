@@ -1,7 +1,7 @@
 module gunbc.fleet.mtcollins_firmware_baseline
 
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
 import std.pareto { AxisReading, ParetoEntry, SelectionAxis, HigherIsBetter }

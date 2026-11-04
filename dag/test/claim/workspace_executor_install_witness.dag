@@ -1,6 +1,6 @@
 module test.claim.workspace_executor_install_witness
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, list_length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.emit { microvm_slot_unit_file_with_workspace_root }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }

@@ -10,15 +10,20 @@ import gunbc.runner.runner_host_file_converge {
   DeploySlotAccountStep, DeploySlotAccountSettled, DeploySlotAccountCreate,
   DeploySlotAccountStanding, HostHasNoDeploySlot, DeploySlotAccountPresent, DeploySlotAccountCreated, DeploySlotAccountMissing,
   classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot, deploy_slot_role_dropin_bar,
-  DeploySlotTreeStanding, DeploySlotTreeHeld, DeploySlotTreeRebuilt, DeploySlotTreePending, DeploySlotTreeRefused,
-  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands, classify_deploy_slot_tree_owned, deploy_slot_tree_owned_find_argv,
-  deploy_slot_runner_stage_dir, deploy_slot_runner_stage_fetch_commands,
+  RunnerSlotTreeStanding, RunnerSlotTreeHeld, RunnerSlotTreeRebuilt, RunnerSlotTreePending, RunnerSlotTreeRefused,
+  RunnerSlotTreeStep, RunnerSlotTreeSettled, RunnerSlotTreeDrainThenRebuild, runner_slot_tree_step, runner_slot_tree_rebuild_commands, classify_runner_slot_tree_owned, runner_slot_tree_owned_find_argv,
+  RunnerSlotTreeTarget, runner_slot_tree_targets_of, runner_slot_tree_release_argv, classify_runner_slot_tree_release,
+  runner_slot_stage_dir, deploy_slot_runner_stage_fetch_commands,
   FleetHostFileDesired, RunnerHostFileWithheld,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
 }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
-import gunbc.runner.runner_slot_job_role { deploy_slot_account_operation }
+import gunbc.runner.runner_slot_job_role { deploy_slot_account_operation, DeployJobSlot, CiJobSlot }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_slot_provision { fleet_runner_slot_artifact }
+import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_336_0, actions_runner_release_2_338_2 }
 import gunbc.executor_privileged_operation { executor_privileged_operation_argv }
 import extdeps.sudo.elevation { sudo_program }
 
@@ -92,8 +97,8 @@ test fn the_role_dropin_waits_for_the_account_and_the_tree() -> Bool {
   let held = DeploySlotAccountPresent { uid: 996, passwd_line: "fixture" as NonEmptyStr }
   let unit = "actions-runner@srv1-02.service" as NonEmptyStr
   let missing = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: DeploySlotAccountMissing { cause: "fixture" as NonEmptyStr }, trees: []))
-  let pending = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: held, trees: [DeploySlotTreePending { unit: unit, cause: "fixture" as NonEmptyStr }]))
-  let ready = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: held, trees: [DeploySlotTreeRebuilt { unit: unit }]))
+  let pending = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: held, trees: [RunnerSlotTreePending { unit: unit, cause: "fixture" as NonEmptyStr }]))
+  let ready = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: held, trees: [RunnerSlotTreeRebuilt { unit: unit }]))
   map(missing.files, f => f.subject as String) == ["runner-depriv-dropin"]
     && map(missing.withheld, w => w.subject as String) == ["runner-slot-role-dropin"]
     && all(missing.withheld, w => string_contains(s: w.cause as String, pattern: "ghdeploy"))
@@ -101,30 +106,102 @@ test fn the_role_dropin_waits_for_the_account_and_the_tree() -> Bool {
     && length(ready.files) == 2 && length(ready.withheld) == 0
 }
 
-fn tree_settles_held(s: DeploySlotTreeStep) -> Bool {
+fn tree_settles_held(s: RunnerSlotTreeStep) -> Bool {
   match s {
-    DeploySlotTreeSettled { standing: DeploySlotTreeHeld { unit: _ } } => true
+    RunnerSlotTreeSettled { standing: RunnerSlotTreeHeld { unit: _ } } => true
     _ => false
   }
 }
 
-fn tree_rebuilds(s: DeploySlotTreeStep) -> Bool {
+fn tree_rebuilds(s: RunnerSlotTreeStep) -> Bool {
   match s {
-    DeploySlotTreeDrainThenRebuild => true
+    RunnerSlotTreeDrainThenRebuild => true
     _ => false
   }
 }
 
-// A TREE OWNED BY THE ACCOUNT IS HELD (control); one owned by anyone else is drained and rebuilt only
-// in a privileged apply, and an unread owner or a missing account never rebuilds (the reds).
+fn deploy_target() -> RunnerSlotTreeTarget {
+  RunnerSlotTreeTarget { unit: "actions-runner@srv1-02.service" as NonEmptyStr, slot_dir: "/opt/actions-runner/srv1-02" as NonEmptyStr, role: DeployJobSlot, owner: "ghdeploy" as NonEmptyStr }
+}
+
+fn ci_target() -> RunnerSlotTreeTarget {
+  RunnerSlotTreeTarget { unit: "actions-runner@srv3-11.service" as NonEmptyStr, slot_dir: "/opt/actions-runner/srv3-11" as NonEmptyStr, role: CiJobSlot, owner: "ghrunner" as NonEmptyStr }
+}
+
+fn pinned() -> ActionsRunnerRelease {
+  actions_runner_release_2_338_2
+}
+
+fn current() -> Bool? {
+  Present { value: true }
+}
+
+// A TREE OWNED BY THE ACCOUNT AND ON THE PINNED RELEASE IS HELD (control); one owned by anyone else is
+// drained and rebuilt only in a privileged apply, and an unread owner or a missing account never rebuilds
+// (the reds).
 test fn only_a_tree_owned_by_another_user_in_a_privileged_apply_is_rebuilt() -> Bool {
-  let u = "actions-runner@srv1-02.service" as NonEmptyStr
-  tree_settles_held(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: true }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: false, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+  let t = deploy_target()
+  tree_settles_held(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: Present { value: false }, release_current: current(), mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: none, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: false, owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: t, runner_release: pinned(), account_held: true, owned: Present { value: false }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+}
+
+// A TREE ITS ACCOUNT OWNS BUT WHOSE LISTENER IS ANOTHER RELEASE IS REBUILT, for a CI slot exactly as for
+// the deploy slot. This is the upgrade path: before it, a pin change reached only slots the provisioner was
+// adding, and 2.336.0 stayed on every existing slot up to its 2026-11-05 retirement. RED: drop the release
+// read from runner_slot_tree_step and the first two conjuncts settle held. An unread release refuses rather
+// than rebuilding (a tree this run could not see), and observe-only never rebuilds.
+test fn a_tree_on_another_runner_release_is_rebuilt() -> Bool {
+  let stale = Present { value: false }
+  tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: stale, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_rebuilds(s: runner_slot_tree_step(target: deploy_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: stale, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_settles_held(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: current(), mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: runner_slot_tree_step(target: ci_target(), runner_release: pinned(), account_held: true, owned: Present { value: true }, release_current: stale, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+}
+
+// THE RELEASE IS READ BY grep's EXIT ALONE, NEVER BY RUNNING THE LISTENER: the argv names grep and the
+// manifest, the marker is the pinned version as a whole word, and exit 0 / 1 / anything else are current /
+// another release / unread. RED: classify exit 2 (an absent manifest) as not current, and a slot whose
+// tree is missing would be removed and re-extracted on a read that established nothing.
+test fn the_tree_release_read_is_three_valued_and_executes_nothing_in_the_tree() -> Bool {
+  let argv = runner_slot_tree_release_argv(target: ci_target(), runner_release: pinned())
+  argv == ["grep", "-q", "-F", "-w", "-e", "Runner.Listener/2.338.2", "--", "/opt/actions-runner/srv3-11/bin/Runner.Listener.deps.json"]
+    && runner_slot_tree_release_argv(target: ci_target(), runner_release: actions_runner_release_2_336_0) != argv
+    && classify_runner_slot_tree_release(exit_code: 0) == Present { value: true }
+    && classify_runner_slot_tree_release(exit_code: 1) == Present { value: false }
+    && classify_runner_slot_tree_release(exit_code: 2) == none
+}
+
+// THE FLEET PINS 2.338.2, the release whose tree the read above discriminates. A pin left on 2.336.0 would
+// have the converge rebuild every slot back onto a release GitHub stops serving on 2026-11-05.
+test fn the_fleet_pins_the_release_the_tree_read_expects() -> Bool {
+  match fleet_runner_slot_artifact() {
+    Absent => false
+    Present { value: a } => (a.binary_release.version as String) == (pinned().version as String)
+  }
+}
+
+// THE TARGETS ARE THE HOST'S DESIRED SLOTS WITH THEIR ROLES, built from the real srv1 deploy row: srv1-02
+// is the deploy slot, owned by ghdeploy, and every other desired slot is a CI slot owned by the host's job
+// user. RED: build the targets from deploy_slot_identities (the fold's former population) and no CI slot is
+// judged at all.
+test fn the_tree_targets_are_every_desired_slot_with_its_role() -> Bool {
+  match runner_host_deploy_for(host: "srv1" as HostIdentity) {
+    RunnerHostDeployFound { deploy: d } => {
+      let ts = runner_slot_tree_targets_of(deploy: d)
+      let deploys = filter(ts, t => match t.role { DeployJobSlot => true CiJobSlot => false })
+      let cis = filter(ts, t => match t.role { DeployJobSlot => false CiJobSlot => true })
+      length(deploys) == 1
+        && all(deploys, t => (t.unit as String) == "actions-runner@srv1-02.service" && (t.owner as String) == "ghdeploy" && (t.slot_dir as String) == "/opt/actions-runner/srv1-02")
+        && length(cis) >= 1
+        && all(cis, t => (t.owner as String) == (d.job_user as String))
+    }
+    _ => false
+  }
 }
 
 // THE FAR-SIDE find ANSWERS OWNED ONLY BY PRINTING THE DIRECTORY ITSELF: printed is owned, exit 0 and
@@ -132,10 +209,10 @@ test fn only_a_tree_owned_by_another_user_in_a_privileged_apply_is_rebuilt() -> 
 // rebuild a tree on a read that established nothing).
 test fn the_tree_owner_read_is_three_valued() -> Bool {
   let d = "/opt/actions-runner/srv1-02"
-  classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/opt/actions-runner/srv1-02\n") == Present { value: true }
-    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "") == Present { value: false }
-    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 1, stdout: "") == none
-    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/somewhere/else\n") == none
+  classify_runner_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/opt/actions-runner/srv1-02\n") == Present { value: true }
+    && classify_runner_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "") == Present { value: false }
+    && classify_runner_slot_tree_owned(slot_dir: d, exit_code: 1, stdout: "") == none
+    && classify_runner_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/somewhere/else\n") == none
 }
 
 // THE TREE IS HELD ONLY OWNER-ONLY: the far-side find that answers "held" asks for the account AND the
@@ -143,14 +220,15 @@ test fn the_tree_owner_read_is_three_valued() -> Bool {
 // RSA key 0644 inside -- answers not held and is rebuilt (gunbc.recurring_failure_mode
 // a_slot_isolated_by_uid_leaves_its_runner_credentials_readable_by_other_uids). RED: drop the -perm word.
 test fn the_tree_is_held_only_at_the_owner_only_mode() -> Bool {
-  let argv = deploy_slot_tree_owned_find_argv(slot_dir: "/opt/actions-runner/srv1-02")
+  let argv = runner_slot_tree_owned_find_argv(target: deploy_target())
   argv == ["find", "/opt/actions-runner/srv1-02", "-maxdepth", "0", "-type", "d", "-user", "ghdeploy", "-perm", "0700"]
+    && runner_slot_tree_owned_find_argv(target: ci_target()) != ["find", "/opt/actions-runner/srv3-11", "-maxdepth", "0", "-type", "d", "-user", "ghrunner", "-perm", "0700"]
 }
 
 // THE REBUILD REMOVES THE WHOLE TREE, RECREATES IT OWNED BY THE ACCOUNT AND EXTRACTS AS THE ACCOUNT, in
 // that order, then removes the stage as root: no file of the old tree survives and no new file is root's.
 test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
-  let lines = map(deploy_slot_tree_rebuild_commands(slot_dir: "/opt/actions-runner/srv1-02", stage: "/var/lib/gunbc/stage", tarball: "/var/lib/gunbc/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
+  let lines = map(runner_slot_tree_rebuild_commands(target: deploy_target(), stage: "/var/lib/gunbc/stage", tarball: "/var/lib/gunbc/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
   length(lines) == 4
     && string_contains(s: nth(xs: lines, i: 0), pattern: "-rf /opt/actions-runner/srv1-02")
     && string_contains(s: nth(xs: lines, i: 1), pattern: "ghdeploy")
@@ -162,12 +240,24 @@ test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
     && string_contains(s: nth(xs: lines, i: 3), pattern: "-rf /var/lib/gunbc/stage")
 }
 
+// A CI SLOT'S REBUILD IS THE SAME SEQUENCE UNDER ITS OWN ROLE: recreated owned by the host's job user at the
+// CI mode and extracted as that user, never as the deploy account and never owner-only.
+test fn a_ci_slot_rebuild_extracts_as_its_job_user() -> Bool {
+  let lines = map(runner_slot_tree_rebuild_commands(target: ci_target(), stage: "/var/lib/gunbc/stage", tarball: "/var/lib/gunbc/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
+  length(lines) == 4
+    && string_contains(s: nth(xs: lines, i: 0), pattern: "-rf /opt/actions-runner/srv3-11")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "ghrunner")
+    && !string_contains(s: nth(xs: lines, i: 1), pattern: "-m 00700")
+    && string_contains(s: nth(xs: lines, i: 2), pattern: "-u ghrunner")
+    && !string_contains(s: nth(xs: lines, i: 2), pattern: "ghdeploy")
+}
+
 // THE EXTRACT LEAVES THE TREE AT THE MODE THE REBUILD MADE IT. The runner archive's leading `./` entry is
 // drwxr-xr-x, and GNU tar re-applies an existing directory's archived metadata to it, so L2 run 41154097819
 // (2026-10-31) extracted into a 0700 tree and left it 0755; the owner-only readback refused it. RED: the
 // default extract argv, without --no-overwrite-dir.
 test fn the_rebuild_extract_preserves_the_owner_only_tree_mode() -> Bool {
-  let lines = map(deploy_slot_tree_rebuild_commands(slot_dir: "/opt/actions-runner/srv1-02", stage: "/var/lib/gunbc/stage", tarball: "/var/lib/gunbc/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
+  let lines = map(runner_slot_tree_rebuild_commands(target: deploy_target(), stage: "/var/lib/gunbc/stage", tarball: "/var/lib/gunbc/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
   string_contains(s: nth(xs: lines, i: 2), pattern: "-C /opt/actions-runner/srv1-02")
     && ends_with(s: nth(xs: lines, i: 2), suffix: "--no-overwrite-dir")
     && length(filter(lines, l => string_contains(s: l, pattern: "--no-overwrite-dir"))) == 1
@@ -178,7 +268,7 @@ test fn the_rebuild_extract_preserves_the_owner_only_tree_mode() -> Bool {
 // removed and recreated root-owned before the fetch, and the fetch runs as root. An unelevated fetch or
 // a /tmp stage would let a pull-request job swap the verified archive before the deploy account extracts it.
 test fn the_runner_archive_stage_is_written_by_root_alone() -> Bool {
-  let stage = deploy_slot_runner_stage_dir()
+  let stage = runner_slot_stage_dir()
   let lines = map(deploy_slot_runner_stage_fetch_commands(stage: stage, url: "https://example.invalid/runner.tar.gz", tarball: join([stage, "/runner.tar.gz"], "")), c => join(argv_words(command: c), " "))
   starts_with(s: stage, prefix: "/var/lib/gunbc/")
     && !starts_with(s: stage, prefix: "/tmp")
