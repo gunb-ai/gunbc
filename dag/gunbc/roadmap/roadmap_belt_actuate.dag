@@ -327,7 +327,7 @@ import gunbc.compute.work_provider_local {
 }
 import gunbc.compute.compute_producer_lease { compute_producer_leases, ComputeProducerLeasesReady, ComputeProducerLeasesUnready }
 import gunbc.roadmap.roadmap_refused_retry {
-  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly,
+  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable,
   RefusalCauseInfrastructure, RefusalCauseCandidate,
   compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
   refused_retry_standing, refused_retry_wakes, refused_retry_ledger_entry_name, refused_retry_ledger_count, refused_retry_terminal_ordinal,
@@ -9029,13 +9029,17 @@ fn belt_verify_capture_gate(node_id: String, capture: SubmissionCaptureObservati
 // the receipt has fewer than the bound's entries, writes one ledger entry per retry carrying its cause,
 // and past the bound refuses with RetryExhausted instead of holding. A refusal about the candidate and
 // every recorded verdict pass through unchanged, and the operator resume bypasses the ledger.
-fn belt_verify_retry_ledger_count(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, receipt_basename: String) -> Int? {
+type RetryLedgerCount
+  = RetryLedgerCounted { n: Int }
+  | RetryLedgerUnreadable { reason: String }
+
+fn belt_verify_retry_ledger_count(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, receipt_basename: String) -> RetryLedgerCount {
   match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
-    AttemptStateUnready { detail: _ } => none
+    AttemptStateUnready { detail } => RetryLedgerUnreadable { reason: join(["the refused-retry ledger could not be opened: ", detail], "") }
     AttemptStateReady { store } =>
       match attempt_state_list(store: store, directory: AttemptDirectoryVerification) {
-        AttemptStateListingRead { entries } => Present { value: refused_retry_ledger_count(entries: entries, receipt_basename: receipt_basename) }
-        AttemptStateListingUnreadable { detail: _ } => none
+        AttemptStateListingRead { entries } => RetryLedgerCounted { n: refused_retry_ledger_count(entries: entries, receipt_basename: receipt_basename) }
+        AttemptStateListingUnreadable { detail } => RetryLedgerUnreadable { reason: join(["the refused-retry ledger could not be listed: ", detail], "") }
       }
   }
 }
@@ -9069,8 +9073,8 @@ fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progre
         Absent => RefusedRetryOperatorOnly
         Present { value: cause } =>
           match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
-            Absent => RefusedRetryOperatorOnly
-            Present { value: n } => refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: n)
+            RetryLedgerUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
+            RetryLedgerCounted { n } => refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: n)
           }
       }
   }
@@ -9136,8 +9140,9 @@ fn belt_verify_retry_gate(
     BeltVerificationDefer { reason: _ } => {
       let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
       match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: receipt_basename) {
-        Absent => decision
-        Present { value: n } =>
+        RetryLedgerUnreadable { reason } =>
+          BeltVerificationEvidenceUnreadable { reason: join(["the refused-retry ledger is unreadable, so the retry is neither run nor silently dropped: ", reason], "") }
+        RetryLedgerCounted { n } =>
           match belt_verification_retry_verdict(decision: decision, source: source, retries_recorded: n) {
             RefusedRetryPassThrough => decision
             RefusedRetryStop { reason } =>

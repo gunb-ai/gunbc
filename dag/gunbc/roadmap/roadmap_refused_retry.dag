@@ -34,6 +34,7 @@ type RefusedRetryStanding
   = RefusedRetryOwed { ordinal: Int }
   | RefusedRetryExhausted { attempts: Int }
   | RefusedRetryOperatorOnly
+  | RefusedRetryUnreadable { reason: String }
 
 data refused_retry_bound: Int = 3
 
@@ -103,6 +104,7 @@ fn refused_retry_wakes(standing: RefusedRetryStanding) -> Bool {
     RefusedRetryOwed { ordinal: _ } => true
     RefusedRetryExhausted { attempts } => attempts == refused_retry_bound
     RefusedRetryOperatorOnly => false
+    RefusedRetryUnreadable { reason: _ } => false
   }
 }
 
@@ -157,6 +159,7 @@ fn belt_verification_retry_verdict(
             RefusedRetryOwed { ordinal } => RefusedRetryRun { ordinal: ordinal, cause: validation_refusal_cause_detail(cause: cause) }
             RefusedRetryExhausted { attempts } => RefusedRetryStop { reason: refused_retry_exhausted_reason(attempts: attempts) }
             RefusedRetryOperatorOnly => RefusedRetryPassThrough
+            RefusedRetryUnreadable { reason: _ } => RefusedRetryPassThrough
           }
       }
     BeltVerificationRun => RefusedRetryPassThrough
