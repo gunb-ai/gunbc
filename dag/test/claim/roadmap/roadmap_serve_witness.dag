@@ -270,8 +270,8 @@ test fn assign_without_csrf_refuses_without_the_clock() -> Bool {
 
 // THE AGENT DOOR THROUGH THE REAL ASSIGN ROUTE (pairing obligation for the request_authentication
 // admission): an attested lab-agent host-account peer on the LAB instance passes the write law and
-// reaches the handler's own validation (the 400 is AFTER Permit, and the empty body keeps the
-// route off every host effect); the same request on a non-lab instance is 403 at the action axis.
+// reaches the handler's own lookup (the 404 is AFTER Permit, and the fixture plan has no such node,
+// which keeps the route off every host effect); the same request on a non-lab instance is 403 at the action axis.
 // The admitted write's author is the agent principal, never an operator.
 fn agent_door_assign(instance: HostDashboardInstance) -> ServeHttpResponse {
   serve_issue_assign_response_over(
@@ -294,7 +294,7 @@ test fn the_lab_agent_door_reaches_the_assign_handler_and_a_non_lab_instance_ref
   let lab = agent_door_assign(instance: srv1_lab_dashboard_instance())
   let other = agent_door_assign(instance: srv2_preview_dashboard_instance())
   let live = agent_door_assign(instance: srv1_live_dashboard_instance())
-  lab.status == 400 && string_contains(s: lab.body, pattern: "assignment refused")
+  lab.status == 404 && string_contains(s: lab.body, pattern: "issue not found")
     && other.status == 403 && live.status == 403
 }
 
