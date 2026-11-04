@@ -1,6 +1,8 @@
 module test.claim.roadmap.roadmap_dashboard_instance_apply_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, GitRef }
+import std.optional { Present, Absent }
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_source_repo_reset_admission }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_is_shallow_repository_argv,
@@ -645,9 +647,6 @@ test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
 // ── R3 ORDERING GUARD (loyal-deer-449): ensure-source-repo must never reset --hard to an admitted
 // anchor ref the owned repo does not carry. The lab's ref (remote '.') arrives only via CONVERGENCE,
 // so the pre-cutover ordering -- convergence first -- is enforced by a typed refusal, not a fallback.
-
-import std.optional { Present, Absent }
-import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_source_repo_reset_admission }
 
 test fn a_missing_anchor_ref_refuses_the_reset_by_name() -> Bool {
   match dashboard_source_repo_reset_admission(
