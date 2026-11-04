@@ -1387,11 +1387,16 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     publication_base_branch: srv1_lab_publication_base_branch,
     worker: WorkerDedicatedAccount,
     provision_parent_root: srv1_dashboard_lab_provision_parent,
-    // THE SRV1 LAB WIDENS TO 6. srv1 has 512 GiB, ~245 GiB MemAvailable observed 2026-11-04 08:10Z.
-    // 6 x the 22 GiB worker ceiling (dispatch_worker_memory_ceiling) = 132 GiB fits beside srv1-live
-    // (3 x 22 = 66 GiB) and srv1's compute build pool (2 x 22 = 44 GiB): 132 + 66 + 44 = 242 <= 245 GiB,
-    // a 3 GiB margin. 7 needs 264 > 245 and does not fit; the srv1 fabric router's route ceiling is 8
-    // (gunb-ai/gunbc#15789), so 6 is within it. See srv1_lab_belt_max_concurrent for the same figure.
+    // THE SRV1 LAB WIDENS TO 6. Operator ruling 2026-11-04, held as the row
+    // gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact (concurrency is a per-instance fact read
+    // through the instance; srv1 lab at 6, every other instance stays at 3). srv1 has 512 GiB, ~245 GiB
+    // MemAvailable observed 2026-11-04 08:10Z. 6 x the 22 GiB worker ceiling (dispatch_worker_memory_ceiling)
+    // = 132 GiB fits beside srv1-live (3 x 22 = 66 GiB) and srv1's compute build pool (2 x 22 = 44 GiB):
+    // 132 + 66 + 44 = 242 <= 245 GiB, a 3 GiB margin. 7 needs 264 > 245 and does not fit; the srv1 fabric
+    // router's route ceiling is 8 (gunb-ai/gunbc#15789), so 6 is within it. See srv1_lab_belt_max_concurrent
+    // for the same figure. NOTE the attempt-worker slice (live_deploy.slice_bounds) stays the operator's
+    // 2 x 22 GiB, so this belt admits 6 to LAUNCH while the resident transient-worker cgroup stays bounded by
+    // the operator's slice figure -- widening the slice is a separate operator decision (see the ruling).
     belt_max_concurrent: srv1_lab_belt_max_concurrent,
   )
 }

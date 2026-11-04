@@ -6,7 +6,6 @@ import std.types { Bool, NonEmptyStr, List, String, FilePath, Int }
 import std.optional { Present, Absent }
 import std.algebra { skip }
 import std.measure { kibibyte, kibibyte_count, second_count, byte_size_count }
-import std.integer { nat_to_int }
 import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.systemd {
@@ -25,7 +24,7 @@ import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_swap_max, user_work_slice_unit_name,
   attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
-  attempt_worker_slice_memory_high, attempt_worker_slice_charged_slots,
+  attempt_worker_slice_memory_high,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
 import gunbc.live_deploy.emit {
@@ -370,23 +369,6 @@ test fn the_full_install_apply_installs_the_attempt_worker_slice_with_bounds_bef
         && string_contains(s: text, pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], ""))
         && apply_needle_precedes(text: text, earlier: dest, later: grant)
   }
-}
-
-// THE ATTEMPT-WORKER SLICE FOLLOWS THE LAB ROW'S OWN BELT, not a constant authored beside it and not a
-// figure shared with srv1-live. Its slot count is the lab instance row's belt_max_concurrent and its
-// MemoryMax is that belt times the lab row's per-worker ceiling -- BOTH read through the instance (single
-// authority, DESIGN.md §3; the slice leaf and the lab row both read gunbc.roadmap.belt_concurrency). A single
-// belt constant shared by srv1-live and the lab would collapse the two rows to one width and go RED here, as
-// would widening the lab belt while forgetting the slice.
-test fn the_attempt_worker_slice_follows_the_lab_belt_not_a_shared_constant() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  let live = srv1_live_dashboard_instance()
-  let slots = nat_to_int(n: attempt_worker_slice_charged_slots)
-  let per_worker = byte_size_count(b: lab.dispatch_worker_memory_max)
-  slots == lab.belt_max_concurrent
-    && byte_size_count(b: attempt_worker_slice_memory_max) == per_worker * lab.belt_max_concurrent
-    && live.belt_max_concurrent != lab.belt_max_concurrent
-    && slots != live.belt_max_concurrent
 }
 
 fn instance_toolchain_has_systemd_run(instance: HostDashboardInstance) -> Bool {
