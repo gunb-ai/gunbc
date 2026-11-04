@@ -184,7 +184,20 @@ type FlexOwnedCard {
   running: Bool
   loading: Bool
   outbid: Bool
-  loading_age: Second
+  // The SAMPLED loading age, or UNREAD: now minus the first instant a pass sampled this card loading, so the
+  // card was loading at both samples and NOTHING is said between them. It is not a lower bound on the current
+  // loading spell: a card can run and load again between two samples, and its current spell is then shorter
+  // than this. The cut below therefore rests on a premise the carry cannot check, that a card sampled
+  // loading at both ends was loading throughout, and the field is named for what was measured (a sample
+  // span), so no reader takes it for a guarantee that a destroy cannot be early. A card not sighted inside a
+  // baseline taken from a COMPLETE roster started after that walk, so its sampled age is 0.
+  //
+  // The age is not on the Vast wire at all (GET /api/v1/instances/ carries no time field), so it is an
+  // observation the pass carries between passes; when that carry is missing, unreadable, or was written
+  // from an incomplete walk, the bound is Absent -- NOT zero. A default of zero would assert "this card
+  // just started loading" on a pass that cannot know it, and the loading cut is the consumer that must not
+  // act on a default.
+  loading_age_sampled: Second?
 }
 
 type FlexMarketQuote
@@ -748,8 +761,19 @@ fn flex_rank_policy(currency: CurrencyCode) -> SelectionPolicy {
   }
 }
 
+// A card is dead when the host has taken it back out from under our bid, or when its SAMPLED loading age
+// passes the launch envelope (flex_stale_loading), on the premise stated at FlexOwnedCard.loading_age_sampled
+// (loading throughout the span between the first and the latest sample). An UNREAD age never
+// dies by the loading cut: the age is not on the wire at all, and a pass that cannot say how long a card
+// has been loading must not destroy it on the strength of a default. The outbid arm is a fact of the
+// market -- read, or refused, never defaulted.
 fn flex_card_dead(card: FlexOwnedCard) -> Bool {
-  card.outbid || (card.loading && second_count(s: card.loading_age) >= second_count(s: flex_stale_loading))
+  card.outbid
+    || (card.loading
+      && match card.loading_age_sampled {
+        Absent => false
+        Present { value: age } => second_count(s: age) >= second_count(s: flex_stale_loading)
+      })
 }
 
 type FlexCapAssessment
