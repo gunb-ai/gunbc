@@ -86,21 +86,16 @@ fn fx_instance(tag: String) -> HostDashboardInstance {
 // questions the fence asks, so the test chooses what the host "says" by what it plants. The real transport
 // reaches /usr/bin/systemctl; the stand-in exercises the same argv through the same target.
 fn fx_fence_stub(i: HostDashboardInstance, active: String, enabled: String) -> LegacyWriterFence {
-  // The fence carries the PRODUCER's systemctl program, so this stub is what the real
-  // dashboard_metering_closing_writer_observation execs. It must answer every call that producer makes,
-  // in the argv shape it makes them in (extdeps.systemd.systemctl): `--user is-active <unit>`,
-  // `--user is-enabled <unit>`, and ONE `--user show --property=MainPID,ControlGroup <unit>`.
-  // Case is on $2 because $1 is always "--user" (systemd_user_*_argv). is-active exits 3 for an inactive
-  // unit, as systemd does (org.freedesktop.systemd1(1)); the producer reads the WORD, not the status.
-  // The QUIESCENT baseline: MainPID=0 (systemd's own answer for no main process, systemd.service(5)) and an
-  // empty ControlGroup (the unit's cgroup has been removed) with `show` succeeding -- an ESTABLISHED answer,
-  // which is what the producer's cgroup_read_established flag follows. A claim wanting a live writer or a
-  // failed read varies these, and none of these claims do; those axes are the pure group's claims plus the
-  // srv2 host receipt.
-  let stub = join([dashboard_instance_dispatch_attempt_state_root(instance: i) as String, "/../cutover-systemctl-", active, "-", enabled], "")
-  let body = join(["#!/bin/sh\ncase \"$2\" in is-active) echo ", active, "; exit 3;; is-enabled) echo ", enabled, "; exit 0;; show) echo MainPID=0; echo ControlGroup=; exit 0;; esac\nexit 1\n"], "")
-  let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
-  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/cutover-stub" }) as NonEmptyStr, units: [fx_unit(i: i)] }
+  // The fence carries the PRODUCER's systemctl program, so this is what the real
+  // dashboard_metering_closing_writer_observation execs. The stand-in is authored ONCE, in
+  // test.fixture.systemd_fence_stub (review 90677 / DESIGN §6b: two witnesses had grown their own
+  // string-concatenated copies and drifted); its verbs come from extdeps.systemd.systemctl's own verb
+  // authorities and its `show` answer keys from systemd_unit_property_wire, so the producer and the stub
+  // cannot drift again. The quiescent baseline it answers with -- MainPID=0 and an ESTABLISHED empty
+  // ControlGroup (show exits 0) -- is systemctl_stub_quiescent_answers; a claim wanting a live writer or a
+  // failed read varies those, and none of these claims do (those axes are the pure group plus the srv2
+  // host receipt).
+  LegacyWriterUnits { systemctl: systemctl_fence_stub_write(dir: dashboard_instance_dispatch_attempt_state_root(instance: i) as String, name_tag: join([active, "-", enabled], ""), answers: systemctl_stub_quiescent_answers(active: active, enabled: enabled)) as NonEmptyStr, units: [fx_unit(i: i)] }
 }
 
 // 1. THE FENCE NAMES THE UNIT THE OBLIGATION ENQUEUE LAUNCHES -- for both instances that declare one. The unit
