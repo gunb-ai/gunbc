@@ -329,6 +329,7 @@ import gunbc.compute.compute_producer_lease { compute_producer_leases, ComputePr
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable,
   RefusalCauseInfrastructure, RefusalCauseCandidate,
+  refusal_cause_class,
   compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
   refused_retry_standing, refused_retry_wakes, refused_retry_ledger_entry_name, refused_retry_ledger_count, refused_retry_terminal_ordinal,
   refused_retry_exhausted_reason, refused_retry_bound,
@@ -856,6 +857,7 @@ import gunbc.compute.compute_producer_lease { compute_producer_leases, ComputePr
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable,
   RefusalCauseInfrastructure, RefusalCauseCandidate,
+  refusal_cause_class,
   compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
   refused_retry_standing, refused_retry_wakes, refused_retry_ledger_entry_name, refused_retry_ledger_count, refused_retry_terminal_ordinal,
   refused_retry_exhausted_reason, refused_retry_bound,
