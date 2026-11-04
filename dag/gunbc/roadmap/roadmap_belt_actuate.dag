@@ -3209,11 +3209,16 @@ fn belt_prior_attempt_facts(instance: HostDashboardInstance, node_id: RoadmapNod
 // stream reads as no recovery: it can lose a resume, never manufacture one, and the lineage then ends
 // exactly as it did before this slice.
 fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SessionRecovery {
-  let read = Filesystem.Read(path: dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key))
-  if read.success {
-    session_recovery_of_events(lines: split(s: read.content, delimiter: "\n") |> filter(l => trim(l) != ""))
-  } else {
-    SessionRecoveryNone
+  match attempt_state_open(instance: instance, node: node_id as String, attempt_key: attempt_key) {
+    AttemptStateUnready { detail: _ } => SessionRecoveryNone
+    AttemptStateReady { store } => {
+      let read = Filesystem.Read(path: attempt_log_member_path(store: store, member: AttemptWorkerEvents))
+      if read.success {
+        session_recovery_of_events(lines: split(s: read.content, delimiter: "\n") |> filter(l => trim(l) != ""))
+      } else {
+        SessionRecoveryNone
+      }
+    }
   }
 }
 
