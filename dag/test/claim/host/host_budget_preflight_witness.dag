@@ -1,7 +1,7 @@
 module test.claim.host.host_budget_preflight_witness
 
-import std.types { Bool, Int, List, String }
-import std.algebra { length, join }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { length, join, string_contains }
 import std.optional { Present, Absent }
 import std.measure { ByteSize, byte_size }
 import gunbc.host.host_budget_preflight { BudgetProbe, BudgetProbeValue, ProbeLimited, ProbeUnlimited, ProbeUnreadable, HostBudgetPreflightVerdict, PreflightAdmitted, PreflightCeilingOverrideRefused, PreflightMembershipAbsent, PreflightNoBoundingBudget, admit_host_budget_probes, cgroup_ancestors, cgroup_parent_dir }
@@ -15,12 +15,14 @@ import gunbc.host.host_budget_preflight { BudgetProbe, BudgetProbeValue, ProbeLi
 data slot_max_bytes: ByteSize = byte_size(count: 27917287424)
 data slot_high_bytes: ByteSize = byte_size(count: 26843545600)
 
-fn probe_max(dir: String, value: BudgetProbeValue) -> BudgetProbe {
-  BudgetProbe { cgroup_dir: dir, file_name: "memory.max", value: value }
+// The witnesses build probes through the SAME constructor surface the module exposes -- source and
+// file are no longer two free strings a witness could typo into "no bound".
+fn probe_max(dir: String, v: BudgetProbeValue) -> BudgetProbe {
+  BudgetProbe { source: BudgetSourceCgroupMemoryMax { cgroup_dir: dir as NonEmptyStr }, value: v }
 }
 
-fn probe_high(dir: String, value: BudgetProbeValue) -> BudgetProbe {
-  BudgetProbe { cgroup_dir: dir, file_name: "memory.high", value: value }
+fn probe_high(dir: String, v: BudgetProbeValue) -> BudgetProbe {
+  BudgetProbe { source: BudgetSourceCgroupMemoryHigh { cgroup_dir: dir as NonEmptyStr }, value: v }
 }
 
 fn verdict_tag(v: HostBudgetPreflightVerdict) -> String {
@@ -165,27 +167,11 @@ test fn witness_chain_without_bound_refuses_with_all_probes() -> Bool {
   ) {
     PreflightNoBoundingBudget { probes: lines } =>
       length(lines) == 6
-        && string_contains(text: join(lines, " | "), needle: "system.slice/actions-runner@srv1.service/step/memory.max")
-        && string_contains(text: join(lines, " | "), needle: "system.slice/actions-runner@srv1.service/memory.high")
-        && string_contains(text: join(lines, " | "), needle: "/sys/fs/cgroup/memory.max")
+        && string_contains(s: join(lines, " | "), pattern: "memory.max (/sys/fs/cgroup/system.slice/actions-runner@srv1.service/step)")
+        && string_contains(s: join(lines, " | "), pattern: "memory.high (/sys/fs/cgroup/system.slice/actions-runner@srv1.service)")
+        && string_contains(s: join(lines, " | "), pattern: "memory.max (/sys/fs/cgroup)")
     _ => false
   }
 }
 
-fn contains_at(text: String, needle: String, index: Int, limit: Int) -> Bool {
-  if index + needle.length() > limit {
-    false
-  } else if text.substring(start: index, end: index + needle.length()) == needle {
-    true
-  } else {
-    contains_at(text: text, needle: needle, index: index + 1, limit: limit)
-  }
-}
 
-fn string_contains(text: String, needle: String) -> Bool {
-  if needle.length() > text.length() {
-    false
-  } else {
-    contains_at(text: text, needle: needle, index: 0, limit: text.length())
-  }
-}

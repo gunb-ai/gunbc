@@ -62,7 +62,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.proc_self_cgroup { proc_self_cgroup_unified_hierarchy_paths }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, parse_cgroup_memory_limit }
-import gunbc.host.host_budget_source { HostBudgetSource, BudgetSourceCgroupMemoryMax, BudgetSourceCgroupMemoryHigh, host_budget_source_label, host_budget_source_bounds_this_process }
+import gunbc.host.host_budget_source { HostBudgetSource, BudgetSourceCgroupMemoryMax, BudgetSourceCgroupMemoryHigh, HostBudgetObservation, HostBudgetObserved, host_budget_source_label, host_budget_source_bounds_this_process }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 
 data proc_self_cgroup_path: String = "/proc/self/cgroup"
@@ -70,12 +70,15 @@ data cgroup_memory_max_file_name: String = "memory.max"
 data cgroup_memory_high_file_name: String = "memory.high"
 data gunbc_typed_module_cache_max_entries_env_name: String = "GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES"
 
-// ONE PROBE RESULT: a (dir, file) pair and what the file said. Unreadable carries the transport's own
-// words -- "absent" and "not readable to this process" are different operators' problems and the
-// receipt must not blur them.
+// ONE PROBE RESULT: the authority's own source (gunbc.host.host_budget_source already distinguishes
+// which file was probed; a string key here would be a SECOND representation of that fact, and the
+// Absent arms of a string dispatch are exactly the validation §5's correctness-by-construction
+// forbids -- "Stronger than catching a wrong state is making it unwritable") and what the file said.
+// Only the two probe constructors below build one, so source and file are born together and cannot
+// desynchronize. Unreadable carries the transport's own words -- "absent" and "not readable to this
+// process" are different operators' problems and the receipt must not blur them.
 type BudgetProbe {
-  cgroup_dir: String,
-  file_name: String,
+  source: HostBudgetSource,
   value: BudgetProbeValue,
 }
 
@@ -89,16 +92,6 @@ type HostBudgetPreflightVerdict
   | PreflightCeilingOverrideRefused { env_name: String }
   | PreflightMembershipAbsent { detail: String }
   | PreflightNoBoundingBudget { probes: List<String> }
-
-fn host_budget_probe_source(p: BudgetProbe) -> Optional<HostBudgetSource> {
-  if p.file_name == cgroup_memory_max_file_name {
-    Present { value: BudgetSourceCgroupMemoryMax { cgroup_dir: p.cgroup_dir as NonEmptyStr } }
-  } else if p.file_name == cgroup_memory_high_file_name {
-    Present { value: BudgetSourceCgroupMemoryHigh { cgroup_dir: p.cgroup_dir as NonEmptyStr } }
-  } else {
-    Absent
-  }
-}
 
 // THE RULING, PURE ON THE PROBES. Admission needs a file whose source the authority calls a bound
 // (host_budget_source_bounds_this_process -- memory.max or its v1 analogue) AND whose read says a
@@ -114,37 +107,47 @@ fn admit_host_budget_probes(
   } else if !membership_readable {
     PreflightMembershipAbsent { detail: proc_self_cgroup_path }
   } else {
-    let bounding = filter(probes, p => match host_budget_probe_source(p: p) {
-      Present { value: source } => host_budget_source_bounds_this_process(s: source)
-        && match p.value { ProbeLimited { bytes: _ } => true ProbeUnlimited => false ProbeUnreadable { detail: _ } => false }
-      Absent => false
-    })
-    if length(bounding) > 0 {
-      match bounding.first() {
-        Present { value: winner } =>
-          match host_budget_probe_source(p: winner) {
-            Present { value: source } =>
-              match winner.value {
-                ProbeLimited { bytes: bytes } => PreflightAdmitted { source_label: host_budget_source_label(s: source) as String, bytes: bytes }
-                _ => PreflightNoBoundingBudget { probes: render_budget_probes(probes: probes) }
-              }
-            Absent => PreflightNoBoundingBudget { probes: render_budget_probes(probes: probes) }
-          }
-        Absent => PreflightNoBoundingBudget { probes: render_budget_probes(probes: probes) }
-      }
-    } else {
-      PreflightNoBoundingBudget { probes: render_budget_probes(probes: probes) }
+    // One fold, one decision: the first probe whose value the file says is a number AND whose
+    // source the authority calls a bound. Every arm of every match here is reachable -- the
+    // authority's own observation carrier (HostBudgetObserved) is the winner's shape, so the
+    // ruling never re-derives or re-validates what the fold already established.
+    match fold(probes, init: Absent as Optional<HostBudgetObservation>, f: first_bounding_observation) {
+      Present { value: HostBudgetObserved { source: source, bytes: bytes } } =>
+        PreflightAdmitted { source_label: host_budget_source_label(s: source) as String, bytes: bytes }
+      Absent => PreflightNoBoundingBudget { probes: render_budget_probes(probes: probes) }
     }
   }
 }
 
+// The fold step: a probe either IS a bounded observation (number + bounding source) or it is not;
+// no arm is unreachable, and a probe whose file name was never a memory.max/memory.high cannot be
+// built at all -- the source arrives fully constructed by the constructors below.
+fn first_bounding_observation(acc: Optional<HostBudgetObservation>, p: BudgetProbe) -> Optional<HostBudgetObservation> {
+  match acc {
+    Present { value: found } => Present { value: found }
+    Absent =>
+      match p.value {
+        ProbeLimited { bytes: bytes } =>
+          if host_budget_source_bounds_this_process(s: p.source) {
+            Present { value: HostBudgetObserved { source: p.source, bytes: bytes } }
+          } else {
+            Absent
+          }
+        ProbeUnlimited => Absent
+        ProbeUnreadable { detail: _ } => Absent
+      }
+  }
+}
+
+// The authority's label already spells file and directory ("cgroup memory.max (<dir>)"); the probe
+// line is that label plus what the file said.
 fn budget_probe_text(p: BudgetProbe) -> String {
   let value_text = match p.value {
     ProbeLimited { bytes: bytes } => join(["limited ", to_string(byte_size_count(b: bytes))], "")
     ProbeUnlimited => "unlimited"
     ProbeUnreadable { detail: detail } => join(["unreadable: ", detail], "")
   }
-  join([p.cgroup_dir, "/", p.file_name, " = ", value_text], "")
+  join([host_budget_source_label(s: p.source) as String, " = ", value_text], "")
 }
 
 fn render_budget_probes(probes: List<BudgetProbe>) -> List<String> {
@@ -168,16 +171,32 @@ fn host_budget_preflight_refusal(verdict: HostBudgetPreflightVerdict) -> String 
 // under each, hand the pure ruling everything it needs to name the absence. One Read per file; the
 // order is the hierarchy's own (innermost first), so the admitted source is the tightest probed bound
 // the hierarchy reports -- the fold derives its own cache cap and is authoritative for it.
-fn probe_cgroup_memory_file(cgroup_dir: String, file_name: String) -> BudgetProbe {
+fn read_budget_probe_value(cgroup_dir: String, file_name: String) -> BudgetProbeValue {
   let read = Filesystem.Read(path: join([cgroup_dir, "/", file_name], ""))
   if !read.success {
-    BudgetProbe { cgroup_dir: cgroup_dir, file_name: file_name, value: ProbeUnreadable { detail: read.error } }
+    ProbeUnreadable { detail: read.error }
   } else {
     match parse_cgroup_memory_limit(body: read.content) {
-      CgroupMemoryLimited { bytes: bytes } => BudgetProbe { cgroup_dir: cgroup_dir, file_name: file_name, value: ProbeLimited { bytes: bytes } }
-      CgroupMemoryUnlimited => BudgetProbe { cgroup_dir: cgroup_dir, file_name: file_name, value: ProbeUnlimited }
-      CgroupMemoryLimitUnparseable { body: body } => BudgetProbe { cgroup_dir: cgroup_dir, file_name: file_name, value: ProbeUnreadable { detail: join(["unparseable body: ", body], "") } }
+      CgroupMemoryLimited { bytes: bytes } => ProbeLimited { bytes: bytes }
+      CgroupMemoryUnlimited => ProbeUnlimited
+      CgroupMemoryLimitUnparseable { body: body } => ProbeUnreadable { detail: join(["unparseable body: ", body], "") }
     }
+  }
+}
+
+// THE ONLY TWO WAYS TO BUILD A PROBE: source arm and file name are born together here, so the
+// dispatch the string key used to need -- and the dead arms it carried -- cannot be expressed.
+fn probe_cgroup_max(cgroup_dir: String) -> BudgetProbe {
+  BudgetProbe {
+    source: BudgetSourceCgroupMemoryMax { cgroup_dir: cgroup_dir as NonEmptyStr },
+    value: read_budget_probe_value(cgroup_dir: cgroup_dir, file_name: cgroup_memory_max_file_name),
+  }
+}
+
+fn probe_cgroup_high(cgroup_dir: String) -> BudgetProbe {
+  BudgetProbe {
+    source: BudgetSourceCgroupMemoryHigh { cgroup_dir: cgroup_dir as NonEmptyStr },
+    value: read_budget_probe_value(cgroup_dir: cgroup_dir, file_name: cgroup_memory_high_file_name),
   }
 }
 
@@ -218,10 +237,7 @@ fn cgroup_ancestors(dir: String, mount: String) -> List<String> {
 }
 
 fn probe_cgroup_dirs(dirs: List<String>) -> List<BudgetProbe> {
-  concat(map(dirs, d => concat([
-    [probe_cgroup_memory_file(cgroup_dir: d, file_name: cgroup_memory_max_file_name)] as List<BudgetProbe>,
-    [probe_cgroup_memory_file(cgroup_dir: d, file_name: cgroup_memory_high_file_name)] as List<BudgetProbe>,
-  ])))
+  concat(map(dirs, d => [probe_cgroup_max(cgroup_dir: d), probe_cgroup_high(cgroup_dir: d)] as List<BudgetProbe>))
 }
 
 // THE STEP'S ENTRY. Reads only: /proc/self/cgroup, the two interface files per cgroup on each
