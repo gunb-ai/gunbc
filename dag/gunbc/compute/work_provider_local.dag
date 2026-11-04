@@ -135,7 +135,7 @@ import gunbc.compute.work_request {
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ComputePrincipalNotServiceUser, UnitLaunchRefused,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -2011,6 +2011,13 @@ fn compute_store(instance: HostDashboardInstance) -> ComputeStore? {
   }
 }
 
+// THE STORE'S OWN DIRECTORIES ARE DEMANDED IN gunbc.compute.compute_store_owned_directories
+// compute_store_owned_directories -- declared by the route that writes them, joined to the instance's
+// one list by gunbc.roadmap.dashboard_instance_directories. It lives in its own module because the
+// consumer list cannot import this one (its layer feeds gunbc.live_deploy.spec, which the list also
+// imports) -- the registry's rule is that each consumer declares its demand in a module the LIST can
+// reach.
+
 data compute_requests_frame: Frame = Frame { name: "compute-host-requests", kind: UnboundedSiblingsFrame }
 
 type ComputeMaterializationPlan
@@ -2879,28 +2886,115 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // request: attached if stored, produced once otherwise, and compile/claims consume its store. A wet
 // claim run is a FreshEffect the ladder answers Recompute (compute_materialization_plan): it runs per
 // occurrence, never reads the store and is never committed, so it is served here rather than refused.
+// THE PRINCIPAL GATE: the first arm of admission, before a toolchain is observed, a subject resolved,
+// a store opened, a capacity-ledger grant drawn or a compute root touched.
+//
+// WHY IT SITS HERE AND NOT IN THE FILESYSTEM. compute_root(instance) (gunbc.compute.host_capacity) is
+// the instance's SHARED compute directory and every reservation goes through the HOST capacity ledger
+// (/opt/gunbc/compute/capacity), so a principal the instance does not trust must never be the one
+// standing in front of either. The srv1 lab's dedicated worker used to be kept out by an ABSENCE --
+// the instance declared no materialization store, so MaterializationStoreUndeclared refused before
+// shared state was reachable (the store's whole exclusion power was accidental). The lab now declares
+// a store, because its verification obligation runs compute as the instance's SERVICE USER and a
+// store-less instance can never accept an attempt (measured on srv1 2026-10-25: attempt
+// 71ac07ca21af8e29 handed in, the belt committed the candidate, acceptance came back `unavailable`
+// with MaterializationStoreUndeclared). Declaring the store moved the worker's refusal from a typed
+// refusal to an EACCES somewhere in the ledger or the compute root -- an outcome that depends on the
+// modes the deploy happens to have set, which DESIGN 5 does not allow an exclusion to rest on. So the
+// worker is refused BY WHO IT IS, at admission, with a cause that says so.
+//
+// THE COMPARISON IS DERIVED, NEVER LITERAL. `instance.directory_owner.user` is the account the
+// instance's directories are owned by -- which IS its service user: it is derived from the instance's
+// service principal (gunbc.roadmap.roadmap_dashboard_instance linux_service_directory_owner), it is the
+// account the belt's verification obligation runs as, and an instance whose worker IS the service user
+// passes the gate by construction (dashboard_instance_worker_user's WorkerIsServiceUser arm returns
+// exactly this account). A dedicated worker's unit runs as the account that same fn derives from
+// fleet_posix_worker_user -- a DIFFERENT name, which is precisely what this gate refuses. The running
+// account comes from the existing observation,
+// shell.Id.UserName (extdeps.shell -- the same one gunbc.fabric.fabric_source_snapshot
+// observe_provider_principal reads); this module adds no uid constant and no host-specific literal.
+// A refusal whose principal is not the service user is refused for EVERY instance, including
+// macbook-local and srv2-deploy: the rule is about the principal, not about the lab.
+//
+// AN UNOBSERVABLE ACCOUNT REFUSES. If `id -un` cannot name the running account the request is refused
+// with the unobservable stand-in: DESIGN 5 fails closed, and admitting on an unread principal is the
+// shape this gate exists to remove.
+fn compute_principal_refusal(instance: HostDashboardInstance, principal: String) -> WorkInfrastructureRefusal? {
+  if principal == (instance.directory_owner.user as String) {
+    none
+  } else {
+    Present {
+      value: ComputePrincipalNotServiceUser {
+        instance_id: instance.instance_id as String,
+        principal: principal,
+      }
+    }
+  }
+}
+
+// THE RUNNING ACCOUNT, read through the observation the corpus already has. Empty output is unreadable,
+// in the same shape as the fabric readback that first used this observation.
+data compute_unobservable_principal: String = "unobserved"
+
+fn compute_running_principal() -> String {
+  let named = shell.Id.UserName()
+  if !named.success {
+    compute_unobservable_principal
+  } else {
+    let trimmed = trim(s: named.stdout)
+    if trimmed == "" {
+      compute_unobservable_principal
+    } else {
+      trimmed
+    }
+  }
+}
+
 fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
   compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op)
 }
 
+// The admitted route as the RUNNING account: the gate reads the principal through the observation and
+// refuses before any of the routes below can run.
 fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
-  match compute_observe_toolchain(instance: instance) {
-    ToolchainObservationRefused { detail } =>
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
-    ToolchainObserved { toolchain } =>
-      match compute_resolve_subject(instance: instance, commit: commit) {
-        SubjectResolutionRefused { detail } =>
-          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
-        SubjectResolved { subject } =>
-          match compute_store(instance: instance) {
-            Absent =>
-              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
-            Present { value: store } =>
-              match op {
-                BuildGunbcBinaries { profile: _, bins: _ } =>
-                  compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-                CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
-                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+  compute_provide_admitted_as(
+    instance: instance,
+    principal: compute_running_principal(),
+    owner: owner, commit: commit, op: op,
+  )
+}
+
+// The admitted route AS A GIVEN PRINCIPAL, so a witness can name the account it claims to be. The gate
+// is the FIRST arm: a principal that is not the instance's service user is refused here, with the
+// typed cause, and nothing below it -- no toolchain observation, no subject resolution, no store open,
+// no ledger grant, no compute root -- is reached. That order is the claim
+// test.claim.compute.compute_principal_admission_witness an_absent_store_is_not_the_workers_exclusion_anymore,
+// whose RED control removes the gate arm and expects the refusal's cause to change on a STILL
+// store-less instance: a refusal that is only about the missing store would survive that removal,
+// and this one does not.
+fn compute_provide_admitted_as(instance: HostDashboardInstance, principal: String, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
+  match compute_principal_refusal(instance: instance, principal: principal) {
+    Present { value: refusal } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: refusal }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+    Absent =>
+      match compute_observe_toolchain(instance: instance) {
+        ToolchainObservationRefused { detail } =>
+          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+        ToolchainObserved { toolchain } =>
+          match compute_resolve_subject(instance: instance, commit: commit) {
+            SubjectResolutionRefused { detail } =>
+              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+            SubjectResolved { subject } =>
+              match compute_store(instance: instance) {
+                Absent =>
+                  compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
+                Present { value: store } =>
+                  match op {
+                    BuildGunbcBinaries { profile: _, bins: _ } =>
+                      compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                    CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                  }
               }
           }
       }

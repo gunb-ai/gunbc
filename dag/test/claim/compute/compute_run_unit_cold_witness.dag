@@ -147,8 +147,17 @@ fn store_root_undeclared(root: MaterializationStoreRoot?) -> Bool {
 }
 
 // Literal persistent roots pick their declared scope, srv1 the host volume, the hermetic instance its
-// frame; the isolated preview/lab instances declare NO store (nothing in this closure requests one for
-// them), so compute refuses there with MaterializationStoreUndeclared rather than inventing a root.
+// frame. THE SRV1 LAB NOW DECLARES A PERSISTENT WORKSPACE STORE, and this claim is where the standing
+// decision is checked rather than assumed: the lab's verification obligation runs compute as the
+// instance's SERVICE USER, and an instance with no store refuses EVERY compute request with
+// MaterializationStoreUndeclared -- so the store-less lab could never accept an attempt (measured on
+// srv1 2026-10-25, attempt 71ac07ca21af8e29). The lab gets its store from its own scope root
+// (gunbc.persistent_instance_roots Srv1Lab), which is also its instance root: one authority. That
+// declaration is what the principal gate at compute admission is now for -- the dedicated worker is
+// excluded by WHO IT IS, not by an absent store -- and the claim that pins the worker's exclusion is
+// test.claim.compute.compute_principal_admission_witness, not the absence of this store.
+// The isolated preview and srv2's lab still declare NO store: nothing requests compute for them, and
+// there compute refuses with MaterializationStoreUndeclared rather than inventing a root.
 test fn each_instance_declares_the_store_its_lifetime_admits() -> Bool {
   store_root_is(root: macbook_local_dashboard_instance().materialization_store_root, persistent: true)
     && store_root_is(root: srv2_deploy_dashboard_instance().materialization_store_root, persistent: true)
@@ -162,13 +171,17 @@ test fn each_instance_declares_the_store_its_lifetime_admits() -> Bool {
           WitnessScratchRoot { root: _ } => false
         }
     }
-    && store_root_undeclared(root: srv1_lab_dashboard_instance().materialization_store_root)
+    && store_root_is(root: srv1_lab_dashboard_instance().materialization_store_root, persistent: true)
     && store_root_undeclared(root: srv2_preview_dashboard_instance().materialization_store_root)
     && store_root_undeclared(root: srv2_lab_dashboard_instance().materialization_store_root)
     && store_root_is(root: witness_hermetic_instance().materialization_store_root, persistent: false)
     && match compute_store(instance: srv2_preview_dashboard_instance()) {
       Absent => true
       Present { value: _ } => false
+    }
+    && match compute_store(instance: srv1_lab_dashboard_instance()) {
+      Absent => false
+      Present { value: _ } => true
     }
 }
 

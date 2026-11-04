@@ -72,6 +72,9 @@ fn instance_dedicated_at(root: String) -> HostDashboardInstance {
     publication_base_branch: "main" as NonEmptyStr,
     worker: WorkerDedicatedAccount,
     provision_parent_root: dashboard_home_provision_parent_root,
+    // No durable store: this witness drives the append-log create path only, never a compute
+    // request, so the instance whose worker is dedicated carries no materialization store.
+    materialization_store_root: none,
     belt_max_concurrent: belt_max_concurrent_default,
   )
 }
