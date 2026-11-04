@@ -2558,8 +2558,10 @@ data e1_designator_readings: List<DesignatorReading> = [
 // The device code read on the body of the four rectifiers at D2_P1, D8_P1, D2_P5 and D8_P5, projected
 // exactly. Only the two transcriptions the receipts record are accepted -- the _P1 pair reads left to
 // right, the _P5 pair leads with the logo -- so no other string can support the claim by resembling one,
-// and nothing here parses a text into pieces (std has no substring primitive, and a hand-rolled matcher
-// would be a second authority over the print, §3).
+// and nothing here parses a text into pieces. Substring matching is declined deliberately, not for
+// want of it -- std has .contains -- because deciding WHICH GLYPHS of a body print make up the device
+// code is a judgment that belongs to the receipt, not to a matcher inside the model. A matcher would
+// be a second, unaudited authority over the print, disagreeing with the first one quietly (§3).
 fn fsv20100v_device_code(reading: MarkingReading) -> NonEmptyStr? {
   if reading.text == "FSV20100V / JC03 / ON logo" { Present { value: "FSV20100V" } }
     else if reading.text == "(ON logo) JC03 FSV20100V" { Present { value: "FSV20100V" } }
