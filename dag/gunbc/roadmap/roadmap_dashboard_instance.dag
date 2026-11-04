@@ -39,7 +39,6 @@ import gunbc.persistent_instance_roots {
   materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
   MacbookLocal, Srv2Deploy,
 }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
@@ -654,8 +653,9 @@ type DashboardToolchain {
 // system /bin/ln would fail that probe BEFORE it could fail the flag at spawn time. That is the
 // difference between a typed preflight refusal naming the capability and a dispatch that dies
 // mid-attempt on an illegal option.
-// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY, DERIVED FROM THE SLOT AUTHORITY RATHER THAN
-// AUTHORED HERE. The first cut of this row was `byte_size(count: 17179869184)` with a hand
+// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY. HISTORY: IT WAS DERIVED FROM THE SLOT AUTHORITY, AND
+// IS AUTHORED AGAIN SINCE 2026-11-04 (see the row below); the paragraphs that follow are the reasoning
+// of the derived form, retained as method. The first cut of this row was `byte_size(count: 17179869184)` with a hand
 // justification about observed peaks, and that was the section 3 violation in its purest form: the
 // number is EXACTLY gunbc_runner_slot_desired().memory_max, which is not a coincidence to be
 // noted but an authority to be consumed. That row carries an operator ruling derived from 186
@@ -682,7 +682,13 @@ type DashboardToolchain {
 // the runner slots use, at which point this row stops being a per-attempt ceiling standing alone
 // and becomes one term in an allocation the fabric can express. Until then it is honest about being
 // a ceiling with no width beside it.
-data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memory_max
+// CUT LOOSE FROM THE RUNNER SLOT 2026-11-04 (review 90824 on #15850). This row was the CI runner slot
+// reused as the agent-session lease; the slot rose to 25 GiB (gunbc.design_ruling
+// slot_memory_overrun_crashes_not_throttles), and the operator's belt ruling says workers get "a much
+// smaller memory allocation, if any" -- so a slot ruling must not move them. It is authored at the 22 GiB
+// it carried when srv1-lab's belt width of 6 was justified (6 x 22 fits, 7 does not), and a later
+// worker-specific ruling lowers it; it no longer tracks the slot.
+data dispatch_worker_memory_ceiling: ByteSize = byte_size(23622320128)
 
 // THE BELT CONCURRENT-WORKER CEILING, AS A PER-INSTANCE FACT. This is the ONE source of the number a
 // belt holds at once: the instance row's HostDashboardInstance.belt_max_concurrent reads either this
