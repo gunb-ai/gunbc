@@ -4105,7 +4105,7 @@ fn rebuild_scope_decision_with(
 /// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
 /// fact this read supplies (its stem), not a spelling the fold recognises. `closure_modules`
 /// reads the declaration transitively, so a hand file a root module declares is owned too.
-fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
+fn host_shell_scope_modules(lib_rs: &Path, _manifest: &Path) -> Result<Vec<String>, String> {
     let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
     let root = lib_rs
         .file_stem()
@@ -7374,7 +7374,10 @@ fn install_convergence_stage(
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
-    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(
+        &stage0_src.join("lib.rs"),
+        &stage0_src.join("../Cargo.toml"),
+    )?;
     let changed_mirrors: Vec<String> = basenames
         .iter()
         .chain(base_rewritten_mirrors)
@@ -8745,7 +8748,10 @@ pub fn run_regen_round_cost(
         drained_marks,
     )
     .map_err(|cause| cause.to_string())?;
-    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(
+        &stage0_src.join("lib.rs"),
+        &stage0_src.join("../Cargo.toml"),
+    )?;
 
     // ONE AUTHORITY FOR THE RECEIPT'S BASE ARM, read by whichever image reports. The parent holds
     // what its own seed did. The handoff child seeds nothing (the handoff rule), so it DERIVES the
@@ -11629,7 +11635,17 @@ mod host_shell_scope_modules_tests {
         std::fs::write(dir.join("deeper.rs"), "").unwrap();
         std::fs::write(dir.join("sibling.rs"), "").unwrap();
         std::fs::write(dir.join("stray.rs"), "").unwrap();
-        let modules = host_shell_scope_modules(&dir.join("lib.rs")).unwrap();
+        // A second target root: `main.rs` is the `[[bin]]` root no `mod` declares, and it declares
+        // `bin_child` itself. Reading lib.rs alone owns neither.
+        std::fs::write(dir.join("main.rs"), "mod bin_child;\n").unwrap();
+        std::fs::write(dir.join("bin_child.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[[bin]]\nname = \"x\"\npath = \"main.rs\"\n",
+        )
+        .unwrap();
+        let modules =
+            host_shell_scope_modules(&dir.join("lib.rs"), &dir.join("Cargo.toml")).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         for owned in [
             "cli_run",
@@ -11639,6 +11655,8 @@ mod host_shell_scope_modules_tests {
             "deeper",
             "sibling",
             "lib",
+            "main",
+            "bin_child",
         ] {
             assert!(
                 modules.iter().any(|m| m == owned),
