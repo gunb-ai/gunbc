@@ -4117,15 +4117,15 @@ fn host_shell_scope_modules(lib_rs: &Path, manifest: &Path) -> Result<Vec<String
     let text = std::fs::read_to_string(manifest)
         .map_err(|e| format!("refusal: shell manifest {}: {e}", manifest.display()))?;
     // ONE READER of the manifest's bin roster (`cli_run`), not a second TOML walk here.
-    match super::cli_run::parse_stage0_cargo_manifest_bin_paths(&text) {
-        super::cli_run::Stage0CargoManifestBinParse::Parsed {
+    match super::parse_stage0_cargo_manifest_bin_paths(&text) {
+        super::Stage0CargoManifestBinParse::Parsed {
             authored_relative_paths,
         } => {
             for path in authored_relative_paths {
                 roots.push(package_dir.join(path));
             }
         }
-        super::cli_run::Stage0CargoManifestBinParse::Refused { detail } => {
+        super::Stage0CargoManifestBinParse::Refused { detail } => {
             return Err(format!(
                 "refusal: shell manifest {}: {detail}",
                 manifest.display()
