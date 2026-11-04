@@ -1,0 +1,150 @@
+module gunbc.plans.converged_ingress
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+fn section_0_claim() -> List<MarkdownBlock> {
+  [
+    h2(text: "0. The claim"),
+    p(text: "A gunbc program does not encode the passage of time or its deployment lifetime. An entry denotes one bounded answer to one explicit demand. Serving is not a verb and not a kind of program: it is a deployment binding of an ordinary entry to an ingress, at a locus and revision, under declared bounds. Convergence keeps a runtime realization of that binding present for as long as the intent is present; the runtime turns each arriving event into one independent demand. Therefore `gunbc serve`, `std.compiler_entry` `NativeServeDriver` as a kind of entry, and `while (true)` as a service model all disappear."),
+    p(text: "Operator direction, 2026-11-04 (session lively-stag-54): serving is a deployment decision; convergence makes actual match intent for a run of an ordinary entry; program code has no time dependence; the for-each over arriving requests is derived by the binding, not authored; keep it simple and compatible with the rest of the corpus. Lab cutover (the live srv1 lab units) is the lab's own work and is not sequenced here."),
+    p(text: "Status at main 38b6ca3d3e6: nothing built. The model homes, consumers and migration targets below come from `git grep` and source inspection at that revision (section 6 names the searches). They are a candidate set, not a census."),
+  ]
+}
+
+fn section_1_time() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. Why there is no loop in the program"),
+    p(text: "`gunbc.plans.for_while_loop_sugar` already refuses `while (true)` (its section 6) and withdrew the hidden `forever_iteration_bound` counter (6.1): a hidden bound misreports termination, leaves cancellation unrepresented, and `while true (accept; handle)` makes each accept wait on the previous handler, a false dependency. Its 6.3 deferred long-lived services to a separate design. This plan is that design, and its answer is that no construct is needed in the language at all."),
+    p(text: "A served program's lifetime is not a count of iterations; it is the lifetime of an intent, which is not a program fact. So the program is timeless: a handler from request facts to a response. Time enters only at boundaries: as arriving events (the runtime's), as the intent's presence (convergence's), as per-request bounds the realization enforces (deadline, read timeout, byte limits), or as a declared `Clock` effect whose reading is an input. A design step that makes program code depend on time passing belongs in one of those layers instead."),
+    p(text: "The binding's meaning is a pointwise map of the handler over a domain of arriving demands: for each demand, the handler's answer goes back to that demand's source. It is pointwise, not a fold: a fold yields only after its whole domain, which an arriving domain never finishes, and its carrier claims each request depends on the previous one. The corpus already records pointwise work spelled as a fold as a defect (`gunbc.plans.demand_engine_program`, the pointwise-work-spelled-as-a-fold specimen). The domain's size is declined, not infinite: a cardinality fact (DESIGN 3b), bound by the deployment, so cost is per-demand cost times demand count over the intent's lifetime and `std.computation` `SizeBound.Forever` is needed only by a capacity plan with an open horizon."),
+    p(text: "State. Every served entry inspected keeps its state outside the process, through effects: `gunbc.fabric.fabric_storage_serve` resolves its placed store per request; `gunbc.auth.approval_broker_serve` reads and writes the single-writer `gunbc.auth.approval_decision_store`. The handler contract carries no state argument. So ordering between requests comes from the stores' declared disciplines (single writer, `std.durable_compare_and_set`, `std.durable_exclusive_hold`), not from a carrier, and state survives the runtime being replaced by convergence. A scan (carried in-memory state, one output per demand) is a frontier, triggered by a service that needs in-memory state allowed to vanish on restart; none is known."),
+  ]
+}
+
+fn section_2_layers() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Four layers, each with an existing home"),
+    ul(items: [
+      li(text: "**Program entry.** An ordinary handler function. Routing stays in the program (`extdeps.http.server` `ServedRouteTable`, `ServedRouteSpec`). Its signature is unchanged from today's: it declares the request facts it consumes as parameters."),
+      li(text: "**Ingress binding (deployment intent).** Which entry and handler, which ingress adapter (HTTP over TCP, or over a unix socket with an attested peer), which locus and revision, which listener (`extdeps.http.server` `HttpServerListenConfig`), which per-request budget. Today these fields already exist, scattered: `gunbc.live_deploy.spec` `DeploymentServiceConfig` (serve_entry, serve_function, listen, serve_cpu_limit, serve_wall_limit, serve_binary) and `gunbc.roadmap.roadmap_dashboard_instance` `HostDashboardInstance`. M1 consolidates them into one binding type in the deployment layer; it is not a new concept."),
+      li(text: "**Convergence.** Whether the runtime exists and stays correct: materialize the revision, start or repair the unit, read back (`/livez` through `gunbc.serve_liveness`, the release identity through `gunbc.running_release_identity`), replace on intent change, drain and release on withdrawal. Home: `gunbc.live_deploy` (emit, readiness, service_ready, pre_swap_admission). It does not perform each accept."),
+      li(text: "**Runtime realization.** Socket bind and accept, byte read and write, peer attestation, per-request deadline enforcement, invoking the handler once per demand. Interpreted in v1 by the seed (`gunbc run`); natively by an emitted binary later (M3). Every decision between the reads and writes is a `gunbc.native_serve` fold (framing, limits, routing, `/livez`, the 40-hex release check), shared by both realizations."),
+    ]),
+    p(text: "Compatibility of an entry with an ingress is structural, by declared parameters over the closed request-fact vocabulary (method, path, body, tailscale_identity, release_revision, peer_user, request_headers). That rule exists today in the seed (`gunbc.serve_declared_binding_seed_growth`: `serve_handler_fact_plan` maps declared names onto `ServeRequestFact`). It moves from a seed-owned list to the binding's model; it is not re-invented."),
+  ]
+}
+
+fn section_3_slices() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Slices"),
+    ol(items: [
+      li(text: "**M1 — delete the verb (delete-first, DESIGN 3).** Declare the ingress binding type, consolidating the fields named in section 2. Teach `gunbc run` to realize a binding: it reads the binding by declaration reference and serves the entry it names, so a unit's argv carries no entry, function, budget or listener literal of its own (policy leaking into argv, DESIGN 3). Re-point every unit renderer (section 4.B) to it. Delete the `serve` verb row, `handle_serve`, `RetainedCommands::Serve` and the generated dispatch arm (4.A). Rewrite the three seed-growth triggers that wait for `serve` to become a v2 CLI verb (4.E). PURPOSE TEST (`gunbc.v1.v1_maintenance_standing` `v1_seed_standing`): this removes a seed verb and its policy surface and moves the binding into the deployment model; it must add no seed semantics. Evidence: the unit-emission witnesses (4.G) re-pointed and green; a served entry answering a real request under `gunbc run` with the binding; and a control that an entry not declared by any binding runs once and does not listen."),
+      li(text: "**M2 — the seed loop calls the folds.** The seed's hand-written limits, framing and release check (`cli_run` `serve_read_request`, `serve_write_response`, `serve_wire_header_line`, `serve_wire_fields` and the consts inside them) are replaced by calls to the `gunbc.native_serve` folds; the seed keeps only bind, accept, byte I/O and the peer uid read. This is where the seed shrinks; M1 alone only rehomes the seam. M2 may land inside M1 if it stays small."),
+      li(text: "**M3 — dissolve NativeServeDriver as a kind of entry.** A native realization becomes a choice in the binding, not a property of the program. The native door gains the two request facts the seed already supplies (request_headers; peer_user over an attested unix socket, `gunbc.native_serve` `native_serve_unix_socket_frontier_trigger`) and the per-request budget (`gunbc.rung_drop` `native_serve_request_budget_unrealized`). Its one production consumer, `gunbc.auth.approval_device_crypto_serve`, becomes an ordinary entry with a native binding. Reconcile `gunbc.plans.fabric_serving_router` S3 (a separate NativeServeDriver unit) with its owner before this slice lands (DESIGN 6b, two-sided)."),
+    ]),
+    h3(text: "Frontiers (named, not scheduled)"),
+    ul(items: [
+      li(text: "**Admission from store disciplines.** Today the seed admits one request at a time, which is correct only by accident. Trigger: the first concurrent realization. Then admission is derived from the effects the handler declares (a single-writer store serializes its writers; a CAS store admits concurrently and refuses conflicts). Related standing: `gunbc.rung_drop` `approval_store_single_writer_by_agreement`."),
+      li(text: "**Startup as materialization.** The roadmap unit's measured start (about 671 s on 2026-11-04 against `gunbc.live_deploy.service_ready` `live_deploy_roadmap_unit_expected_startup` of 240 s) is compilation repeated per restart for one (entry, revision) identity. Trigger: M1 landed. The compiled artifact is produced once per identity and read back (`std.materialization_ladder`), not optimized inside `run`."),
+      li(text: "**v2 executes the map itself.** The binding's meaning runs through the host in v1. Inside v2 it needs `gunbc.plans.for_while_loop_sugar` S0 (the domain-only Loop rule; today `v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop` and `v2.program` `program_step_loop` reject every Loop) and an arriving-demand domain beyond List (that plan's canonical-enumeration frontier)."),
+      li(text: "**Scan.** Section 1's stateful frontier."),
+    ]),
+  ]
+}
+
+fn section_4_targets() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Migration and consolidation targets"),
+    p(text: "Grouped by what happens to each. Symbols, not positions (DESIGN 3)."),
+    h3(text: "4.A Seed, deleted (M1, M2)"),
+    ul(items: [
+      li(text: "`gunbc.cli_dispatch_surface`: the `serve` verb row, realization `CliDelegatesToHostFn` symbol `handle_serve`; regenerating the dispatch removes `handle_serve` from `src/v1/stage0/src/gunbc_cli_dispatch_generated.rs`."),
+      li(text: "`src/v1/stage0/src/main.rs`: `RetainedCommands::Serve` and its dispatch arm, including the `cli_run::ServeEvaluationBudget` construction."),
+      li(text: "`src/v1/stage0/src/cli_run.rs`: `handle_serve`, `ServeEvaluationBudget`, `serve_bind`, `ServeListener`, `ServeBoundAddress`, `ServeRequestFact`, `serve_handler_fact_plan`, `ServeRequest`, `serve_handler_args`, `serve_peer_uid`, `serve_peer_user`, `serve_read_request`, `serve_write_response`, `serve_wire_header_line`, `serve_wire_fields`, `serve_json_string`, and their unit tests. The bind, accept, byte I/O and peer read survive under the binding runtime; the request-fact plan moves to the binding model; the rest is replaced by `gunbc.native_serve` folds (M2)."),
+      li(text: "`src/v1/stage0/src/v1_interpreter.rs` `declared_parameter_names`: kept if the binding runtime reads declared parameters through it, else deleted."),
+    ]),
+    h3(text: "4.B Unit emission, re-pointed to the binding (M1)"),
+    ul(items: [
+      li(text: "`gunbc.live_deploy.emit`: `live_deploy_serve_unit_file_over_listener` (the roadmap unit and, through `live_deploy_tailnet_door_unit_file`, the tailnet door), `live_deploy_fabric_storage_unit_file`, `live_deploy_approval_broker_unit_file_on`. Each renders `<binary> serve --source-root ... --entry ... --function ... <listener> --release-revision ... --eval-budget-cpu-ms ... --eval-budget-wall-ms ...` today. `live_deploy_device_crypto_sidecar_unit_file` is the native case (M3)."),
+      li(text: "`gunbc.roadmap.roadmap_dashboard_instance` `dashboard_instance_serve_argv` (lab instances, including the codex-feedback instance and its agent door), and `HostDashboardInstance`'s serve fields."),
+      li(text: "`gunbc.live_deploy.spec` `DeploymentServiceConfig` (the binding's fields, consolidated), and its uses in `gunbc.live_deploy.slice_bounds`, `readiness`, `service_ready`, `deployed_tree_report`, `pre_swap_admission` (`ServeEntryCompileVerdict`), `member_observe` (`fixed_serve_binary_path`), `serve_binary`."),
+      li(text: "`gunbc.host.host_layout` (`srv1_gunbc_serve_binary` and the prose naming `gunbc serve`)."),
+    ]),
+    h3(text: "4.C Served entries, unchanged in shape (prose and contract citations only)"),
+    ul(items: [
+      li(text: "`gunbc.roadmap.roadmap_serve`, `roadmap_static_site`, `roadmap_belt_actuate`, `roadmap_authority`."),
+      li(text: "`gunbc.auth.approval_broker_serve`, `approval_device_wire`, `approval_writer_authority`, `request_authentication` (its `IngressAttestedPeer` cites `gunbc serve --unix-socket` as the attesting listener; it now cites the binding's unix-socket ingress)."),
+      li(text: "`gunbc.fabric.fabric_storage_serve` (its entry comment names the shape `gunbc serve --function` binds), `fabric_storage_placement`."),
+      li(text: "`gunbc.site.web_fonts`, `gunbc.node_http_server_emit`, `extdeps.http.server` (comments naming `gunbc serve`)."),
+    ]),
+    h3(text: "4.D Native door, consolidated (M2 shares its folds, M3 dissolves the arm)"),
+    ul(items: [
+      li(text: "`std.compiler_entry` `NativeServeDriver` and `native_service_route_denominator` (the effect denominator moves to the native realization of a binding)."),
+      li(text: "`gunbc.native_serve` (its folds become HTTP ingress policy for both realizations; `NativeServeArgs` and the `--host`, `--port`, `--release-revision`, `--request-deadline-ms` argv fold read from the binding), `gunbc.serve_liveness`, `gunbc.running_release_identity`."),
+      li(text: "`gunbc.target_binding` `NativeServeProgramProducer`; `gunbc.instrument_targets` native-serve rows; `gunbc.native_serve_program_seed_growth`; `gunbc.native_serve_probe`, `gunbc.native_serve_probe_plan`; the fixtures under `gunbc.instruments` (`native_serve_fixture`, `native_serve_startup_refusal_fixture`, `native_serve_startup_slow_fixture`, `native_serve_startup_overrun_fixture`); `v1.compiler.emit_rust` `emit_native_serve_driver_main_rs`; `test.claim.native_effect_realization_admission_witness`."),
+      li(text: "`gunbc.auth.approval_device_crypto_serve` (the production native consumer) and `gunbc.ci.ci_release_bins` `approval_device_crypto_serve_release_bin_name`, `gunbc.live_deploy.release_locus`."),
+    ]),
+    h3(text: "4.E Seed-growth rows, retriggered or retired (M1)"),
+    ul(items: [
+      li(text: "`gunbc.serve_declared_binding_seed_growth`, `gunbc.serve_cookie_header_seed_growth`, `gunbc.fabric_door_socket_seed_growth`: each trigger waits for `serve` to be a verb of the v2-native CLI door (`v2.cli.compile_cli`). That verb will not exist. New trigger: the binding runtime reads requests as a modeled host effect (an extdeps socket interface carrying typed request headers and the attested peer)."),
+      li(text: "`gunbc.serve_liveness_seed_growth`: its trigger (answer a route without entering the evaluator) is unaffected; its prose cites the serve seam and is re-pointed."),
+    ]),
+    h3(text: "4.F Plans, ledgers and lens rows, re-pointed"),
+    ul(items: [
+      li(text: "`gunbc.plans.for_while_loop_sugar` 6.3: points to this plan. `gunbc.plans.fabric_serving_router`: S3 reconciled (M3). `gunbc.plans.demand_engine_program`: cited only."),
+      li(text: "`gunbc.recurring_failure_mode` `a_serve_contract_widened_for_one_handler_refuses_every_other`: its rung climbs when compatibility is the binding's structural judgment."),
+      li(text: "`gunbc.rung_drop` `native_serve_request_budget_unrealized` (M3), `approval_store_single_writer_by_agreement` (admission frontier), `fabric_storage_append_principal_unrefused` (prose)."),
+      li(text: "`std.emit_on_demand` (a reason row naming the serve accept loop as a seed seam), `v2.lens.realization_vocabulary_containment` (a dissolution naming gunbc serve belt B), `v2.workflow.dag_acceptance` (a refused route on gunbc serve)."),
+    ]),
+    h3(text: "4.G Witnesses and fixtures, re-pointed (M1)"),
+    ul(items: [
+      li(text: "`test.claim.live_deploy.emit`, `test.claim.live_deploy.unit_standing_witness`, `test.claim.live_deploy_unit_emission_oracle_witness`, `test.claim.live_deploy.tailnet_door_witness`, `test.claim.live_deploy.running_release_identity_witness`, `test.claim.serve_liveness_witness`, `test.fixture.serve_seam_probe` (its eval-budget control is the per-request budget's RED and must survive)."),
+      li(text: "Roadmap witnesses over the dashboard instance's serve argv: `test.claim.roadmap.roadmap_dashboard_instance_witness`, `roadmap_dashboard_instance_apply_witness`, `roadmap_belt_dispatch_instance_selection_witness`, `roadmap_serve_witness`, and `test.claim.live_deploy.apply_receipt_witness`."),
+    ]),
+  ]
+}
+
+fn section_5_refused() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Refused"),
+    ul(items: [
+      li(text: "`gunbc run` absorbing `handle_serve` with its Rust decisions intact: a rename of the seam, not its deletion."),
+      li(text: "A serve flag or mode on `gunbc run` read from argv literals: policy in argv. `run` reads the binding."),
+      li(text: "A large declared iteration bound, or a lifecycle construct in the language, as the service model (section 1)."),
+      li(text: "A second binding type beside `DeploymentServiceConfig`: M1 consolidates it, it does not sit beside it."),
+      li(text: "A per-transport fork of the handler: one handler; TCP and attested unix socket are ingress adapters of one binding."),
+    ]),
+  ]
+}
+
+fn section_6_open() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. Open questions and evidence scope"),
+    ul(items: [
+      li(text: "**Q1 — how `run` receives the binding.** Proposed: by declaration reference to the binding row, the converger rendering only that reference and genuinely per-host values. Alternative: a generic ingress host process. Either keeps the entry ordinary; settle in M1."),
+      li(text: "**Q2 — which limits are protocol-intrinsic and which are deployment policy.** Head and body byte limits and the read timeout are values in `gunbc.native_serve`'s contract; the per-request deadline and eval budgets vary per deployment today. M1 keeps each where it is; M2 states the split."),
+      li(text: "**Searches behind section 4** (main 38b6ca3d3e6): `git grep -l 'gunbc serve' -- dag src/v2`; `git grep -n NativeServeDriver -- dag src/v2`; `git grep -nE ' serve|--function|--unix-socket' -- dag`; `grep -nE '^(pub )?fn serve_|handle_serve|Serve[A-Z]' src/v1/stage0/src/cli_run.rs`. A text search is not a semantic absence proof; a consumer found later is added here, not treated as a blocker."),
+    ]),
+  ]
+}
+
+fn converged_ingress_body() -> List<MarkdownBlock> {
+  concat(section_0_claim(),
+  concat(section_1_time(),
+  concat(section_2_layers(),
+  concat(section_3_slices(),
+  concat(section_4_targets(),
+  concat(section_5_refused(), section_6_open()))))))
+}
+
+data converged_ingress_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "converged-ingress",
+  title: "Converged ingress: serving is a deployment binding of an ordinary entry, not a verb or a kind of program",
+  body: converged_ingress_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this plan when M1 to M3 have landed: no `serve` verb or seed serve seam exists, every served unit realizes an ingress binding declared in the deployment layer, NativeServeDriver is no longer a kind of entry, and the binding's rules are carried by its own module's declarations and witnesses.") },
+}
