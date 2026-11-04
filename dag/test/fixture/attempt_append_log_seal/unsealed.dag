@@ -1,0 +1,19 @@
+module test.fixture.attempt_append_log_seal.unsealed
+
+import std.types { NonEmptyStr, String }
+import gunbc.durable_append_log_store { AppendLogSlot }
+
+// THE STRIPPED TWIN for test.claim.roadmap.attempt_append_log_store_seal_witness: the SAME record with the SAME
+// field names and types as gunbc.roadmap.roadmap_attempt_state_store.AttemptAppendLogStore, but WITHOUT the
+// sole_constructor keyword. The same forged literal is run against this twin and must produce ZERO
+// SoleConstructorViolation, which shows the compiler's refusal of the real forged literal is attributable to the
+// sole_constructor keyword -- not to the record's shape, name, or field types.
+
+type AttemptAppendLogStore {
+  instance: NonEmptyStr
+  node: String
+  attempt_key: String
+  member_name: NonEmptyStr
+  directory: NonEmptyStr
+  slot: AppendLogSlot
+}

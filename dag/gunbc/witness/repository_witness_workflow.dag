@@ -121,6 +121,7 @@ import gunbc.witness.witness_roster {
 import gunbc.ci.ci_runner_target {
   ci_runner_target_spec
 }
+import std.algebra { list_flat_map }
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   SeedLaneSteps,

@@ -609,7 +609,7 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
     ProcessRevisionMismatch { expected: e, observed: o } =>
       join([
         "ProcessRevisionMismatch: the unit answered /healthz as a different release than the one this",
-        " deploy installed — gunbc serve binds its release identity once at process start, so this is the",
+        " deploy installed — the served process binds its release identity once at process start, so this is the",
         " pre-restart process still answering, or another candidate won this port. expected=", e,
         " observed=", o,
       ], "")
@@ -618,7 +618,7 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
     ServedSurfaceStale { observed: o, expected: e } =>
       join([
         "ServedSurfaceStale: the unit answered /healthz but its served surface is not this tree's",
-        " — gunbc serve binds its graph once at process start, so the pre-restart process is still",
+        " — the served process binds its graph once at process start, so the pre-restart process is still",
         " answering (or the source sync did not land). observed=", o, " expected=", e,
       ], "")
   }

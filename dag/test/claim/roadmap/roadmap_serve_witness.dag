@@ -1,10 +1,10 @@
 module test.claim.roadmap.roadmap_serve_witness
 import gunbc.site.document { site_styles }
 import std.access { Permit, Deny }
-import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView, ServeActionDispatchNode, RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
+import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView, ServeActionDispatchNode, RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested, HostAccountPeerEvidence, lab_agent_host_account, lab_agent_principal }
 
 import gunbc.roadmap.roadmap_serve {
-  RoadmapServeHandler, IssueQueryHandler, serve_issue_query,
+  RoadmapServeHandler, IssueQueryHandler, authenticated_write_author_principal, serve_issue_query,
   roadmap_serve_handle_over,
   RoadmapDailyPageHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
@@ -51,7 +51,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 }
 import gunbc.roadmap.roadmap_readiness { GapAccepted, GapDependencies, GapContract, GapNotAgentWork }
 import gunbc.roadmap.roadmap_execution_contract { OperatorExclusiveMode }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_preview_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv2_preview_dashboard_instance, srv1_lab_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source }
 import extdeps.http.server {
@@ -266,6 +266,45 @@ test fn assign_without_csrf_refuses_without_the_clock() -> Bool {
     params: [PathParamBinding { name: "node_id", value: "demo-node" }],
   )
   r.status == 403 && string_contains(s: r.body, pattern: "CSRF token")
+}
+
+// THE AGENT DOOR THROUGH THE REAL ASSIGN ROUTE (pairing obligation for the request_authentication
+// admission): an attested lab-agent host-account peer on the LAB instance passes the write law and
+// reaches the handler's own lookup (the 404 is AFTER Permit, and the fixture plan has no such node,
+// which keeps the route off every host effect); the same request on a non-lab instance is 403 at the action axis.
+// The admitted write's author is the agent principal, never an operator.
+fn agent_door_assign(instance: HostDashboardInstance) -> ServeHttpResponse {
+  serve_issue_assign_response_over(
+    instance: instance,
+    plan: fn() { caller_supplied_plan_fixture() },
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/issue/demo-node/assign",
+      body: "",
+      security: RequestSecurityContext {
+        access_path: AccessPathLocalDev,
+        authentication: HostAccountPeerEvidence { account: lab_agent_host_account, principal: lab_agent_principal },
+      },
+    },
+    params: [PathParamBinding { name: "node_id", value: "demo-node" }],
+  )
+}
+
+test fn the_lab_agent_door_reaches_the_assign_handler_and_a_non_lab_instance_refuses() -> Bool {
+  let lab = agent_door_assign(instance: srv1_lab_dashboard_instance())
+  let other = agent_door_assign(instance: srv2_preview_dashboard_instance())
+  let live = agent_door_assign(instance: srv1_live_dashboard_instance())
+  lab.status == 404 && string_contains(s: lab.body, pattern: "issue not found")
+    && other.status == 403 && live.status == 403
+}
+
+test fn the_admitted_agent_write_is_authored_by_the_agent_principal() -> Bool {
+  match authenticated_write_author_principal(security: RequestSecurityContext {
+    access_path: AccessPathLocalDev,
+    authentication: HostAccountPeerEvidence { account: lab_agent_host_account, principal: lab_agent_principal } }) {
+    Present { value: who } => principal_ref_eq(a: who, b: lab_agent_principal)
+    Absent => false
+  }
 }
 
 test fn unauthenticated_cleanup_refuses_before_actuation() -> Bool {

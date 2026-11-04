@@ -10,7 +10,9 @@ import extdeps.github.cli_api_include { GhApiIncludedParsed, GhApiIncludedUnread
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import gunbc.fleet.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable, OrganizationRunnerRosterEvidence }
 import gunbc.host.host_cli_dependency { HostCliDependencyAbsence }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if, fleet_converge_org_runner_roster_step_timeout_minutes }
+import gunbc.fleet.fleet_workflow_steps { gunbc_ci_aux_step_timeout_minutes }
+import std.measure { Second, second, second_count }
 import gunbc.fleet.organization_runner_roster_read {
   OrganizationRunnerScope,
   OrganizationRunnerListing,
@@ -53,7 +55,10 @@ import gunbc.fleet.organization_runner_roster_read {
   RunnerIdProbesUnparsable,
   runner_visibility_from_report,
   OrganizationRunnerRosterReport,
-  runner_id_observation_from_included
+  runner_id_observation_from_included,
+  roster_receipt_header,
+  organization_runner_roster_interrupted_reason,
+  organization_runner_roster_read_budget
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -559,4 +564,45 @@ test fn a_smaller_page_size_is_admitted_and_an_oversized_one_refuses() -> Bool {
     RosterPageSizeRefused { reason: _ } => false
   }
   fifty && too_big && default_max
+}
+
+// THE ROSTER STEP OUTLASTS ITS OWN STARTUP AND A FULL WALK. The measured startup is run 41655364699's
+// closure resolve on srv3 (resolve_entry_graph_inclusive=285166 ms), which the flat aux budget did not
+// cover: the step was killed twelve pages in. RED: put the step back on gunbc_ci_aux_step_timeout_minutes.
+data roster_step_measured_resolve: Second = second(count: 286)
+
+test fn the_roster_step_outlasts_its_measured_resolve_and_a_full_page_walk() -> Bool {
+  let needed = second(count: second_count(s: roster_step_measured_resolve) + second_count(s: organization_runner_roster_read_budget()))
+  fleet_converge_org_runner_roster_step_timeout_minutes() * 60 >= (second_count(s: needed) as Int)
+    && fleet_converge_org_runner_roster_step_timeout_minutes() > gunbc_ci_aux_step_timeout_minutes
+}
+
+// THE RECEIPT A TIMEOUT LEAVES IS A TYPED UNAVAILABLE, in the same header shape as a finished read, so
+// a reader of an interrupted run's artifact gets the arm and the reason rather than a missing file.
+// What this claim does not reach is the ORDER (the interrupted receipt written before the first
+// request): that is exercised by the fleet-converge mode org_runner_roster_observe, not here.
+test fn an_interrupted_read_leaves_a_typed_unavailable_receipt() -> Bool {
+  let header = roster_receipt_header(
+    org: gunb_ai,
+    page_size: github_max_page_size,
+    pages_read: "unobserved",
+    evidence: RosterReadUnavailable { reason: organization_runner_roster_interrupted_reason },
+    disputed_ids: [],
+    note: "n"
+  )
+  string_contains(s: header, pattern: " pages_read=unobserved roster=unavailable reason=interrupted: ")
+    && string_contains(s: header, pattern: "organization=gunb-ai page_size=100 ")
+}
+
+// THE FINISHED HEADER IS THE SAME RENDERER: a Partial reads as partial with both counts.
+test fn a_finished_partial_read_renders_its_counts_in_the_same_header() -> Bool {
+  let header = roster_receipt_header(
+    org: gunb_ai,
+    page_size: github_max_page_size,
+    pages_read: "12",
+    evidence: RosterObservedPartial { observed_on: "2026-11-03" as NonEmptyStr, registrations: [], observed_count: 1200, authority_total: 1290 },
+    disputed_ids: [],
+    note: "n"
+  )
+  string_contains(s: header, pattern: " pages_read=12 roster=partial observed_count=1200 authority_total=1290 ")
 }
