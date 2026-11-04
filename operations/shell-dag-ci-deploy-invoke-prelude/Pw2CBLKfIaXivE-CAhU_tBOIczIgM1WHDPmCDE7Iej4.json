@@ -1,0 +1,1 @@
+{"id": "5752c1fa9ba3006a", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-ci-deploy-invoke-prelude", "author": "principal:host-account/srv1/gunbc-lab-agent", "parent": "1a02b0aaeffbafe3", "kind": "claimed", "recorded_at": "2026-11-04T16:56:09Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:host-account/srv1/gunbc-lab-agent"}}
