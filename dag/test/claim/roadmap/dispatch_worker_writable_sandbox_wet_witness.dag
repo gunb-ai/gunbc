@@ -1021,6 +1021,7 @@ fn lab_instance_at_repo(root: FilePath) -> HostDashboardInstance {
     admitted_revision: lab.admitted_revision,
     toolchain: lab.toolchain,
     dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
+    belt_max_concurrent: lab.belt_max_concurrent,
     directory_owner: lab.directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: lab.materialization_store_root,

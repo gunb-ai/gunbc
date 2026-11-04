@@ -11,7 +11,9 @@ use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_algebra::{collection_concat_shape, list_head, CostShape, Ordering};
+pub use crate::std_algebra::{
+    collection_concat_shape, list_head, list_reverse, CostShape, Ordering,
+};
 pub use crate::std_checked_arithmetic::{
     checked_int_add, checked_int_multiply, checked_int_optional,
 };
@@ -925,7 +927,7 @@ pub fn cost_bound_params_into(b: Rc<CostBound>, seen: Rc<Vec<String>>) -> Rc<Vec
 }
 
 pub fn cost_bound_params(b: Rc<CostBound>) -> Rc<Vec<String>> {
-    v1_rt::reverse(cost_bound_params_into(b, Rc::new(vec![])))
+    crate::std_algebra::list_reverse(cost_bound_params_into(b, Rc::new(vec![])))
 }
 
 pub fn shape_for_growth_rank(r: GrowthRank) -> Option<CostShape> {

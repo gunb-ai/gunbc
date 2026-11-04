@@ -340,8 +340,12 @@ fn fan_mounting_pattern_is_verified(p: FanMountingPattern) -> Bool {
   }
 }
 
-// A RADIAL (CENTRIFUGAL) BLOWER'S HOUSING, as a part designed around it needs it: the box, its
-// thickness tolerance, and the mounting holes' count and size. The housing lies with its broad face in
+// A RADIAL (CENTRIFUGAL) BLOWER'S HOUSING, as a part designed around it needs it: the housing's
+// BOUNDING RECTANGLE, its thickness tolerance, and the mounting holes' count and size. The housing itself
+// is not a box: it is a scroll (volute) that curls around the impeller to the outlet, with rounded sides.
+// `housing_length` and `housing_depth` are its overall extents as a vendor drawing dimensions them, so a
+// conclusion drawn from them is a conclusion about the bounding rectangle; the scroll curve is not carried
+// here, and a vendor drawing that does not dimension it gives no figure for it. The housing lies with its broad face in
 // a plane and its thickness across it; air enters through the broad face and leaves through an outlet
 // on one edge, so a part may enclose an edge but must leave that face open. The figures' standing is a
 // sibling row in the product's own module.

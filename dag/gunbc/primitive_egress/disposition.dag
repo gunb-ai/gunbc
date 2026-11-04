@@ -142,8 +142,7 @@ type PrimitiveEvidence {
 }
 
 // ---------------------------------------------------------------------------------------------
-// QUALIFIED PREMISES: what the classifier actually reads. Produced only by
-// gunbc.primitive_egress.qualification, which joins every authored claim to the fact that owns
+// QUALIFIED PREMISES: what the classifier actually reads. The retired qualification joined every authored claim to the fact that owns
 // it (declaration resolution, algebra template, provider declaration, witness enrolment, the
 // surface join). The Verified arms carry what the join established; the unverified arms carry
 // why it did not, and the classifier turns each of those into a typed Unresolved.

@@ -1,0 +1,90 @@
+module gunbc.dispatch_replay_worker
+
+import std.types { String, NonEmptyStr, FilePath, Int }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.git
+import extdeps.git.plumbing { GitWorktreeAt, GitRepositoryAddress }
+import gunbc.dispatch_replay_recording {
+  RecordingId, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed,
+  recording_ref_of, replay_refusal_exit_code, RecordedSuccess, RecordedExitCode, recording_object_hex, recording_peel_to_tree_suffix, recording_replay_admission, RecordingReplayAdmitted, RecordingReplayBaseMismatch,
+}
+
+// THE REPLAY WORKER: what the replay executor runs inside the same transient unit, as the same gunbc-worker
+// account, under the same confinement as a real worker (gunbc.roadmap.roadmap_dispatch_actuator
+// ReplayDispatchProvider, whose container plan is the harness's). It replaces the model and nothing else: the
+// worktree is forced to the recorded tree and left UNCOMMITTED, and the process exits with the recorded status,
+// so the unit's ExecStopPost hook writes the exit record from a real exit exactly as for a real worker.
+//
+// IT DOES NOT COMMIT, AND THAT IS THE PREMISE, NOT AN OMISSION. A real worker under WorkerDedicatedAccount does
+// not mint its result commit: the BELT does, as the service user, through
+// gunbc.roadmap.roadmap_belt_actuate.belt_capture_candidate_commit and its belt_commit_staged (git add -A, then
+// git commit, the identity coming from the belt's own environment). Lab qualification of this executor,
+// 2026-10-26: the attempt ended with commits-since-base 0 and a dirty worktree, and the belt's checkpoint made
+// the commit whose tree the recording then carried. Minting that commit inside the unit would be a step the
+// worker whose end state is being replayed never takes -- and it cannot even be taken: the dedicated account
+// holds no git identity, so git refuses it with "Author identity unknown". The belt observes this worktree and
+// mints the commit exactly as it does for a real worker, which is the whole point of one route (DESIGN section
+// 6: no second path beside a modeled route).
+//
+// EXACT OR REFUSES: the attempt's base (the worktree HEAD) must equal the recording's base, and the recorded
+// ref's tree must equal the id's tree; any other answer exits 78 with the typed cause and leaves the worktree
+// untouched, never rebasing or merging toward the recording.
+fn replay_recorded_exit(id: RecordingId) -> ProcessExit {
+  match id.end {
+    RecordedSuccess => ExitSuccess
+    RecordedExitCode { status } => ExitFailure { code: status, reason: "replayed the recorded nonzero exit" }
+  }
+}
+
+fn replay_refused(reason: String) -> ProcessExit {
+  ExitFailure { code: replay_refusal_exit_code, reason: join(["replay refused: ", reason], "") }
+}
+
+fn replay_worker_cli(worktree: String, repo_root: String, recording_id: String) -> ProcessExit {
+  match recording_id_decode(text: recording_id) {
+    RecordingIdMalformed { text: _, reason } => replay_refused(reason: reason)
+    RecordingIdDecoded { id } => replay_worker_admit(worktree: worktree, id: id)
+  }
+}
+
+fn replay_worker_admit(worktree: String, id: RecordingId) -> ProcessExit {
+  let address = GitWorktreeAt { path: worktree as FilePath }
+  let tree_read = git.Plumbing.ObserveRef(address: address, ref_name: concat(recording_ref_of(id: id), recording_peel_to_tree_suffix))
+  let head_read = git.Plumbing.ObserveRef(address: address, ref_name: "HEAD")
+  if !(tree_read.exit_code == 0) {
+    replay_refused(reason: join(["the recording ref ", recording_ref_of(id: id), " could not be read (git exit ", to_string(tree_read.exit_code), "): ", trim(s: tree_read.stderr)], ""))
+  } else if trim(s: tree_read.revision) != recording_object_hex(oid: id.result_tree) {
+    replay_refused(reason: join(["the recording ref ", recording_ref_of(id: id), " does not resolve to the recorded tree ", recording_object_hex(oid: id.result_tree)], ""))
+  } else if !(head_read.exit_code == 0) {
+    replay_refused(reason: join(["the attempt's HEAD could not be read (git exit ", to_string(head_read.exit_code), "), so its base is not established: ", trim(s: head_read.stderr)], ""))
+  } else {
+    match recording_replay_admission(id: id, attempt_base: trim(s: head_read.revision)) {
+      RecordingReplayBaseMismatch { recorded_base, attempt_base } =>
+        replay_refused(reason: join(["base mismatch: recording is based on ", recorded_base, " but the attempt is based on ", attempt_base], ""))
+      RecordingReplayAdmitted { id: admitted } => replay_worker_apply(address: address, id: admitted)
+    }
+  }
+}
+
+// THE WORKTREE IS FORCED IN TWO STEPS, AND BOTH MUST SUCCEED OR NOTHING IS CLAIMED. read-tree -u --reset makes the
+// TRACKED content equal the recorded tree and says nothing about files the index has never heard of -- measured:
+// it exits 0 beside a `?? junk.txt` and a `?? sub/`. Those strays are exactly what a REUSED node worktree carries
+// from whatever attempt ran on that node before this one (a9's node had ended an attempt that left its worktree
+// dirty), and the belt commits with `git add -A`, so a surviving stray would land in the attempt's commit: the
+// recorded end state, plus files the recorded worker never had. That is an undeclared input deciding the outcome
+// (DESIGN section 5), so the untracked files go first, before the tracked content is forced, and either failure
+// exits 78 naming itself.
+fn replay_worker_apply(address: GitRepositoryAddress, id: RecordingId) -> ProcessExit {
+  let cleared = git.Plumbing.RemoveUntrackedFromWorktree(address: address)
+  if !(cleared.exit_code == 0) {
+    replay_refused(reason: join(["dropping the worktree's untracked files failed: ", trim(s: cleared.stderr)], ""))
+  } else {
+    let reset = git.Plumbing.ResetWorktreeToTree(address: address, treeish: recording_object_hex(oid: id.result_tree))
+    if !(reset.exit_code == 0) {
+      replay_refused(reason: join(["forcing the worktree to the recorded tree failed: ", trim(s: reset.stderr)], ""))
+    } else {
+      replay_recorded_exit(id: id)
+    }
+  }
+}
