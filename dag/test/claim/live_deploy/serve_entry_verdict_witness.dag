@@ -116,14 +116,14 @@ fn string_has_prefix(text: String, prefix: String) -> Bool {
 // ───────────────────────────── encode / decode round-trips ─────────────────────────────
 
 test fn witness_round_trip_admitted() -> Bool {
-  match serve_entry_verdict_decode(raw: serialize_json(value: serve_entry_verdict_json(record: fixture_admitted()))) {
+  match serve_entry_verdict_decode(raw: serialize_json(v: serve_entry_verdict_json(record: fixture_admitted()))) {
     ServeEntryVerdictDecoded { record } => record_tag(record) == "admitted"
     ServeEntryVerdictUndecoded { detail: _ } => false
   }
 }
 
 test fn witness_round_trip_blocked_keeps_blocking_and_diagnostics() -> Bool {
-  match serve_entry_verdict_decode(raw: serialize_json(value: serve_entry_verdict_json(record: fixture_blocked()))) {
+  match serve_entry_verdict_decode(raw: serialize_json(v: serve_entry_verdict_json(record: fixture_blocked()))) {
     ServeEntryVerdictDecoded { record } =>
       match record {
         ServeEntryVerdictBlocked { blocking: blocking, diagnostics_text: text, source_revision: revision, entry: _, argv_digest: _, compiler_bin_sha256_hex: _ } =>
@@ -135,7 +135,7 @@ test fn witness_round_trip_blocked_keeps_blocking_and_diagnostics() -> Bool {
 }
 
 test fn witness_round_trip_unobserved_keeps_detail() -> Bool {
-  match serve_entry_verdict_decode(raw: serialize_json(value: serve_entry_verdict_json(record: fixture_unobserved()))) {
+  match serve_entry_verdict_decode(raw: serialize_json(v: serve_entry_verdict_json(record: fixture_unobserved()))) {
     ServeEntryVerdictDecoded { record } =>
       match record {
         ServeEntryVerdictUnobserved { detail: detail, source_revision: _, entry: _, argv_digest: _, compiler_bin_sha256_hex: _ } => detail == "spawn refused"
@@ -313,8 +313,14 @@ test fn witness_argv_identity_binds_the_real_serve_entry() -> Bool {
 }
 
 test fn witness_argv_identity_binds_port_and_budgets() -> Bool {
-  let text = serve_entry_argv_identity_text(spec: selected_deployment_spec(row: srv1_production_desired_deployment()))
-  string_contains(s: text, pattern: " --entry ") && string_contains(s: text, pattern: " --port ")
+  let spec = selected_deployment_spec(row: srv1_production_desired_deployment())
+  let svc = spec.service
+  let text = serve_entry_argv_identity_text(spec: spec)
+  string_contains(s: text, pattern: " --entry ")
+    && string_contains(s: text, pattern: " --function ")
+    && string_contains(s: text, pattern: " --arg handler=")
+    && string_contains(s: text, pattern: " --arg listener=tcp:")
+    && string_contains(s: text, pattern: to_string(value: svc.listen.port))
 }
 
 test fn witness_argv_digest_is_deterministic_and_text_sensitive() -> Bool {

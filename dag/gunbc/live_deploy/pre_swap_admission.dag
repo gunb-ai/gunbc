@@ -17,12 +17,12 @@ import gunbc.live_deploy.desired {
   ProdRoleDeploymentRosterRefused,
   ProdRoleDeploymentHolderRowMismatch,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots, roadmap_ingress_function }
 import gunbc.live_deploy.emit {
-  live_deploy_serve_listener_fragment,
-  live_deploy_serve_argv_segments,
-  live_deploy_serve_budget_argv_segments,
+  live_deploy_ingress_argv_segments,
+  live_deploy_ingress_limit_argv_segments,
 }
+import gunbc.http_ingress { HttpIngressTcp }
 import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.actions_run_binding {
@@ -465,12 +465,13 @@ type ServeEntryVerdictDecode
 fn serve_entry_argv_identity_text(spec: DeploymentSpec) -> String {
   let svc = spec.service
   join(concat(
-    live_deploy_serve_argv_segments(
-      service: svc,
-      function: svc.serve_function,
-      listener: live_deploy_serve_listener_fragment(svc: svc),
+    live_deploy_ingress_argv_segments(
+      entry: svc.serve_entry,
+      binding_function: roadmap_ingress_function,
+      handler: svc.serve_function,
+      listener: HttpIngressTcp { host: svc.listen.host, port: svc.listen.port as Int },
     ),
-    live_deploy_serve_budget_argv_segments(service: svc),
+    live_deploy_ingress_limit_argv_segments(cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit),
   ), "")
 }
 
@@ -815,7 +816,7 @@ fn record_plan_serve_entry_verdict_for(row: DesiredDeployment) -> ProcessExit {
         compiler_bin_sha256_hex: digest.hex as String,
       )
       let path = serve_entry_verdict_path()
-      let write = Filesystem.Write(path: path, content: serialize_json(value: serve_entry_verdict_json(record: record)))
+      let write = Filesystem.Write(path: path, content: serialize_json(v: serve_entry_verdict_json(record: record)))
       if !write.success {
         exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — could not write ", path, ": ", write.error], ""))
       } else {
