@@ -2322,8 +2322,11 @@ data e1_designator_readings: List<DesignatorReading> = [
   // e1_position_receipts, which names every digest, file name and box. The atlas-pass witness requires
   // this row's digest to be one of the authority's, which is what makes it one read recorded twice
   // rather than a name asserted twice. The superseded bench citation is not lost: the authority says who
-  // read the label and on what day, and the unresolved row below names the 16 top photos the pass never
-  // read -- the reason it recorded J3 as 'overview only' in the first place.
+  // read the label and on what day, and the unresolved row below names the 15 numbered top close-ups the
+  // pass never read -- the count and the ranges are stated once, in J3's authority text in
+  // e1_position_receipts ("the 15 numbered close-ups it never read are 05-08, 14-18, 22-23 and 26-29"), and
+  // this comment defers to that rather than restating it -- the reason it recorded J3 as 'overview only'.
+  // Corrected 2026-11-04: this comment said 16, carried from the handoff before the receipts were counted.
   DesignatorReading { specimen: e1_j3, designator: "J3", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "471155264d4b3337a59c6eeaa55d14ce440a5d36b5b8d6e0d912d9eaec8e54db" as Sha256DigestHex }, left: 675, top: 1612, width: 50, height: 60) } },
   DesignatorReading { specimen: e1_j4, designator: "J4", evidence: e1_module_site_photo },
   DesignatorReading { specimen: e1_u3, designator: "U3", evidence: e1_u3_photo },
