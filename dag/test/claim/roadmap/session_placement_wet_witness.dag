@@ -1491,6 +1491,16 @@ fn retire_fixture_charge(stores: SessionPlacementStores) -> ComputeSeatCharge {
   compute_seat_charge_returned(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
 }
 
+// The partition's generation as a plain count, so a row can ask whether the pass WROTE anything: a release
+// or a settle appends an event, and an event moves the generation. 0 means the reading itself failed, which
+// is a reason to fail the row, not to pass it.
+fn retire_fixture_generation(stores: SessionPlacementStores) -> Int {
+  match retire_fixture_charge(stores: stores) {
+    SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => cas_generation_count(g: g)
+    _ => 0
+  }
+}
+
 test fn a_charge_returned_before_any_pass_reached_the_slot_is_read_from_the_partitions_own_history() -> Bool {
   let dir = fresh_dir(tag: "charge-returned-read")
   let stores = stores_at(dir: dir)
@@ -1538,7 +1548,7 @@ test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkee
   }
   let before = match stores {
     Absent => 0
-    Present { value: s } => cas_generation_count(g: match retire_fixture_charge(stores: s) { SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => g  _ => 0 })
+    Present { value: s } => retire_fixture_generation(stores: s)
   }
   let first = match stores {
     Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
@@ -1546,7 +1556,7 @@ test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkee
   }
   let after = match stores {
     Absent => 0
-    Present { value: s } => cas_generation_count(g: match retire_fixture_charge(stores: s) { SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => g  _ => 0 })
+    Present { value: s } => retire_fixture_generation(stores: s)
   }
   charged && opened && released && slot_is_launching(dir: dir) && (before > 0)
     && (match first {
@@ -1584,7 +1594,7 @@ test fn a_slot_already_retired_as_bookkeeping_reports_done_and_owes_no_second_re
   }
   let before = match stores {
     Absent => 0
-    Present { value: s } => cas_generation_count(g: match retire_fixture_charge(stores: s) { SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => g  _ => 0 })
+    Present { value: s } => retire_fixture_generation(stores: s)
   }
   let again = match stores {
     Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
@@ -1592,7 +1602,7 @@ test fn a_slot_already_retired_as_bookkeeping_reports_done_and_owes_no_second_re
   }
   let after = match stores {
     Absent => 0
-    Present { value: s } => cas_generation_count(g: match retire_fixture_charge(stores: s) { SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => g  _ => 0 })
+    Present { value: s } => retire_fixture_generation(stores: s)
   }
   charged && opened && released
     && (match first { SessionSettlementRetiredUncharged { unit: u, attempt: _, detail: _ } => (u == unit_a())  _ => false })
