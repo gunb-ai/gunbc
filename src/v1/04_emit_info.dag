@@ -624,13 +624,18 @@ type EmitGraphInfo {
   // its loop carries `__trmc_out`, the heads emitted so far, and every exit appends to it.
   trmc_out: Bool
 
-  // THE ONE PASS-DOWN THAT ASKS A CALL TO NAME ITS OWN TYPE ARGUMENTS. Set only while a by-ref
-  // bridge renders its bridged argument, by v1.compiler.emit_rust
-  // emit_info_names_callee_type_arguments; cleared again for everything that call renders inside
-  // itself, so at most one call per bridge site is annotated. It is false everywhere else, which
-  // is the whole reason it is a field rather than a parameter: the question "does this call stand
-  // where a borrow is the only thing pinning its type arguments?" is a fact about the SITE, and no
-  // argument expression can see its own position. `gunbc.recurring_failure_mode`
+  // THE ONE PASS-DOWN THAT ASKS A CALL TO NAME ITS OWN TYPE ARGUMENTS. Set only by a by-ref bridge,
+  // only for the expression it borrows, and only when that expression IS a call --
+  // v1.compiler.emit_rust `rust_by_ref_bridge_grant` makes the whole grant, and it is a fact about
+  // the EXPRESSION, not the site: a type-argument clause names a callee, and only a call has one. The
+  // call it is granted to clears it again for everything it renders inside itself
+  // (emit_info_callee_type_arguments_spent), so at most one call per bridge site is annotated; the
+  // fold-body rebuilds in v1.compiler.emit_rust pin it false for the same reason. A borrowed `if`,
+  // `match`, field access or block therefore keeps main's spelling, and no call nested in one is
+  // refused for a defect it does not have. It is false everywhere else, which is the whole reason it
+  // is a field rather than a parameter: the question "does this call stand where a borrow is the only
+  // thing pinning its type arguments?" cannot be seen from an argument expression's own position.
+  // `gunbc.recurring_failure_mode`
   // `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow` is the class.
   names_callee_type_arguments: Bool
 

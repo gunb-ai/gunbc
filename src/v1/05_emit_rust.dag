@@ -12387,6 +12387,43 @@ fn rust_by_ref_bridge_argument(base: String) -> String {
   concat("&", base)
 }
 
+// THE PERMISSION IS A FACT ABOUT THE EXPRESSION, NOT ABOUT THE BORROW. A type-argument clause is a
+// fact about a CALLEE: it names the type arguments the callee was left to invent. Only an expression
+// that IS a call has a callee, so only such an expression may be handed the permission -- an `if`, a
+// `match`, a field access or a block has none, and every call rendered inside one of those would
+// otherwise ride the outer borrow's permission and be asked to name type arguments its own branch
+// already pins. Annotating there is not a conservative widening: for a call the branch context
+// resolves, the clause is unwanted and an unreadable witness turns it into a `compile_error!` for a
+// defect the site does not have, which DESIGN section 5 refuses ("every path succeeds fully or fails
+// with a typed, located diagnostic"), and seed builds green on main would break. Where the borrowed
+// expression is not a call the borrow is spelled exactly as on main and nothing is annotated.
+// `ExprCall` only, not `ExprMethodCall`: the single renderer that spends this permission is
+// `emit_typed_call`'s declared-call path, which is where a callee's type arguments can be written.
+// Granting on a method-call node would set a flag no renderer consumes, and the flag would then be
+// inherited by the sub-expressions that rendering does -- the leak again, one variant over. A method
+// callee that needs its own type arguments named is its own shape, named as the next rung in
+// `gunbc.recurring_failure_mode` `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow`.
+fn rust_by_ref_bridge_expression_is_call(texpr: Node) -> Bool {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } => true
+    _ => false
+  }
+}
+
+// THE ONE GRANT, BOTH SPELLINGS. A by-ref bridge takes its argument two ways -- `map_keys(m: x)` as a
+// primitive's first argument, `x.map_keys()` as a method receiver -- and the borrow is the same fact,
+// so the grant is made by this one call at the two positions that make the borrow. Neither spelling can
+// be annotated while the other silently is not, and neither can hand the permission to something with
+// no callee: the decision is `rust_by_ref_bridge_expression_is_call`, taken once here rather than at
+// each site.
+fn rust_by_ref_bridge_grant(emit_info_in: EmitGraphInfo, borrowed: Node) -> EmitGraphInfo {
+  if rust_by_ref_bridge_expression_is_call(texpr: borrowed) {
+    emit_info_names_callee_type_arguments(emit_info: emit_info_in)
+  } else {
+    emit_info_in
+  }
+}
+
 // ONE WITNESS PER DECLARED TYPE PARAMETER, READ OFF THE PLAN THE TYPED CALL ALREADY CARRIES.
 //
 // WHY THIS IS A READING AND NOT A GUESS. `ResolvedFormal` carries the same parameter TWICE:
@@ -14037,10 +14074,12 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     let arg_emit_info = if callee != none && !is_rt { user_call_lambda_emit_info(arg: arg_value(n: a), emit_info: typed_emit_info, si: scope.type_env.source_indices) } else { typed_emit_info }
     let arg_scope = lambda_argument_scope(arg: arg_value(n: a), scope: scope)
     if is_rt_ref_map && idx == 0 {
-      // THE SITE GRANTS, THE CALLEE DECIDES. This is the one position where a borrow is the only
-      // thing telling rustc what the argument's callee was instantiated at, so the argument is
-      // rendered with the permission to name its own type arguments; nothing else about it changes.
-      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: emit_info_names_callee_type_arguments(emit_info: arg_emit_info))
+      // THE SITE GRANTS, THE CALLEE DECIDES -- AND ONLY A CALLEE CAN BE GRANTED. This is the one
+      // position where a borrow is the only thing telling rustc what the argument's callee was
+      // instantiated at, so the argument is rendered with the permission to name its own type
+      // arguments; nothing else about it changes. A borrowed expression that is not a call keeps the
+      // permission it was handed (`none` of it, in practice): `rust_by_ref_bridge_grant`.
+      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: rust_by_ref_bridge_grant(emit_info_in: arg_emit_info, borrowed: arg_value(n: a)))
       rust_by_ref_bridge_argument(base: base)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
@@ -14459,6 +14498,10 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 // them from the fold body or refuses loudly. An earlier cut of this repair instead widened the
 // "under-resolved accumulator" test to prefer the contextual type; that was a measured NON-EVENT
 // (falsifier m09: removing it reddened nothing, and the four sites stayed) and is deleted.
+// The two emit_info rebuilds below render the fold's BODY -- the accumulator binding and the fold's
+// own sub-expressions -- which sit INSIDE whatever expression the by-ref bridge borrowed. They pin
+// `names_callee_type_arguments: false` rather than copying it: a call rendered here is not the
+// borrowed expression, so it has no claim on the annotation (rust_by_ref_bridge_grant).
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -14546,7 +14589,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails,
               trmc_out: emit_info.trmc_out,
-              names_callee_type_arguments: emit_info.names_callee_type_arguments,
+              names_callee_type_arguments: false,
               dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
@@ -14591,7 +14634,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails,
               trmc_out: emit_info.trmc_out,
-              names_callee_type_arguments: emit_info.names_callee_type_arguments,
+              names_callee_type_arguments: false,
               dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
@@ -14956,7 +14999,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
     // the borrow exactly as `map_keys(m: fold_list(..))` does, so the rule sits where the borrow is
     // made rather than being repeated per spelling -- and both spellings grant the same permission,
     // so neither can be annotated while the other silently is not.
-    rust_by_ref_bridge_argument(base: emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info_names_callee_type_arguments(emit_info: emit_info)))
+    rust_by_ref_bridge_argument(base: emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: rust_by_ref_bridge_grant(emit_info_in: emit_info, borrowed: receiver)))
   } else {
     emit_cloned_arg(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }

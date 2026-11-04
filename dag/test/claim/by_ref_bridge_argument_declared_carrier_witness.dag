@@ -23,8 +23,8 @@ module test.claim.by_ref_bridge_argument_declared_carrier_witness
 // differential in the PR body is its evidence: shape A is main's plain borrow, shape B the refused block,
 // shape C this form compiling and running, shape D the refusal.
 //
-// WHAT THESE CLAIMS ARE, AND WHAT THEY ARE NOT. Two arms over two programs, each one seed compile, both
-// pinning EMITTED TEXT. They are shape evidence and nothing more: each goes red when the rule is deleted
+// WHAT THESE CLAIMS ARE, AND WHAT THEY ARE NOT. Three arms over three programs, each one seed compile,
+// each pinning EMITTED TEXT. They are shape evidence and nothing more: each goes red when the rule is deleted
 // (the required text disappears and the plain-borrow form returns), and the name arm goes red if the rule
 // is widened into a wrapper at sites that need no clause. They are NOT execution evidence, and this
 // header does not pretend otherwise. No lane under `.github/workflows` evaluates the claim pool these
@@ -54,6 +54,14 @@ fn by_ref_plain_name_source() -> String {
   "module byrefplainname\n\nimport std.types { Int, String }\n\nfn use_len(s: String) -> Int {\n  string_length(s: s)\n}\n"
 }
 
+// The same bridge over an `if` whose branches are calls to the generic `fold_list`. The borrowed
+// expression has no callee, so the permission must stop at it: the calls its branches render are not
+// the bridged argument and their own branch context is what pins their type arguments. This is the
+// third shape the rule must refuse to touch.
+fn by_ref_branch_call_argument_source() -> String {
+  "module byrefbrancharg\n\nimport std.algebra { fold_list, empty_map, map_insert }\nimport std.types { Bool, Int, List, Map }\n\nfn keyed_ids(flag: Bool, ids: List<Int>) -> List<Int> {\n  sorted_map_keys(if flag { fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }) } else { empty_map() })\n}\n"
+}
+
 test fn by_ref_bridge_over_a_call_argument_names_its_own_type_arguments() -> Bool {
   compile_dag_rust_emit_check(
     by_ref_generic_call_argument_source(),
@@ -69,5 +77,27 @@ test fn by_ref_bridge_over_a_name_keeps_the_plain_borrow() -> Bool {
     "src/byrefplainname.rs",
     ["v1_rt::string_length(&s"],
     ["v1_rt::string_length(&{"]
+  )
+}
+
+// WHY THE THIRD CLAIM EXISTS. The permission to name type arguments is granted at the borrow, and a
+// borrow can point at anything: `sorted_map_keys(if flag { fold_list(..) } else { empty_map() })` borrows
+// an `if`, not a call. Granting on the site alone handed that permission to the whole borrowed expression,
+// so each branch's `fold_list` rode it and was asked to name type arguments its own branch already pins --
+// and a witness the plan left unreadable would then have emitted a `compile_error!` at a call that never
+// had the defect, breaking a seed build that is green on main. That is a diagnostic for a state the site
+// is not in, which DESIGN section 5 refuses ("every path succeeds fully or fails with a typed, located
+// diagnostic"), so the grant is made by v1.compiler.emit_rust `rust_by_ref_bridge_grant` only when the
+// borrowed expression IS a call. This claim is what reddens a grant made on the site instead of the
+// expression: it requires the branches to keep main's clause-free spelling and forbids any clause on them.
+// The branches' own context is what pins those callees -- the shape compiles and asserts its result with
+// no annotation, rustc fixture shape E in the row's differential -- and the `&if` spelling this program
+// emits is what main emits and what rustc accepts, so nothing here asks for parentheses.
+test fn by_ref_bridge_over_a_branch_call_keeps_the_plain_borrow() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_branch_call_argument_source(),
+    "src/byrefbrancharg.rs",
+    ["v1_rt::sorted_map_keys(&if flag.clone() {", "crate::std_algebra::fold_list(ids, v1_rt::rc_empty_map::<_, _>(), |m, id| v1_rt::rc_map_insert(m, id, true))"],
+    ["fold_list::<", "__by_ref_arg", "::<_>"]
   )
 }
