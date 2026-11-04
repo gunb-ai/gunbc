@@ -4,6 +4,8 @@ import std.types { String, Bool }
 import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import extdeps.bazel.label { render_label }
+import extdeps.exec.command { shell_command_render }
+import gunbc.gunbc_cli_command { gunbc_test_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions { RunStep, Step, UsesStep }
 import gunbc.drift_watch_workflow { drift_watch_check_step }
@@ -23,9 +25,15 @@ import gunbc.instruments.tier_o_drift_check { tier_o_content_finding }
 // produced by the native claim route.
 //
 // THE CONTROLS THIS OWES (and the first is the reason the file exists): a control that goes RED if the
-// step is reverted to `gunbc run --function`, and a planted drift that is still caught. Both are below,
-// and both are evaluated in the roster, on the required path -- not only by the scheduled lane they
-// describe, which cannot report its own disappearance.
+// step is reverted to `gunbc run --function`, and a planted drift that is still caught. Both are below.
+//
+// THEIR STANDING, stated where the controls live rather than in a PR body: no `gunbc.emitted_subject_build_gate`
+// row and no claim-roster entry names this module, so nothing executes it today -- it is compiled by CI, which
+// checks every `test fn` types and its functions resolve, and that is all. The scheduled lane it constrains
+// cannot report its own disappearance either. So these are written controls, not executed ones, and the gap is
+// deliberate: enrolling them means a subject row in the REQUIRED gate, which is load-bearing and not this lane's
+// to grow. Trigger for the gap closing: a row naming `dag/test/claim/drift_verdict_route_witness.dag` and its
+// main, ruled on by the owner of the required gate.
 
 data committed_drift_workflow: String = ".github/workflows/drift-watch.yml"
 data interpreter_verb: String = "gunbc run --function"
@@ -54,17 +62,27 @@ test fn the_drift_row_names_the_instrument_the_registry_binds() -> Bool {
   }
 }
 
-// RED CONTROL ON THE ROUTE. The emitted step invokes the instrument by label through `gunbc test`, and
-// it does NOT hand the corpus to the interpreter. Reverting the step builder to the seed route -- or
-// rewriting the row's label -- turns this red, and it is evaluated by the roster rather than by the
-// lane it constrains.
+// RED CONTROL ON THE ROUTE, PINNED TO THE ONE SPELLING. The step body must contain the exact command
+// `gunbc.gunbc_cli_command` renders for this label -- the launcher path, the `test` verb and the label as three
+// adjacent quoted words -- because substring checks on "test" and on the label alone admit any script that
+// merely mentions them, including one that then hands the corpus to the interpreter. The interpreter route is
+// refused by every word it is spelled with: `gunbc run --function`, `--entry`, `--source-root`, and the quoted
+// `'run'` verb the seed route emits. Reverting the step builder, rewriting the row's label, or routing through
+// `compose_gunbc_run_statements` turns this red. See the module header for who executes it: today, CI compiles
+// it and nothing runs it.
 test fn the_drift_step_is_a_compiled_route_verdict_and_never_the_interpreter() -> Bool {
   let run = drift_step_run()
+  let exact = shell_command_render(
+    command: gunbc_test_command(label: render_label(l: tier_o_drift_check_label()))
+  )
   run != ""
-    && string_contains(s: run, pattern: test_verb)
-    && string_contains(s: run, pattern: render_label(l: tier_o_drift_check_label()))
+    && exact != ""
+    && string_contains(s: run, pattern: exact)
     && !string_contains(s: run, pattern: interpreter_verb)
     && !string_contains(s: run, pattern: "--function")
+    && !string_contains(s: run, pattern: "--entry")
+    && !string_contains(s: run, pattern: "--source-root")
+    && !string_contains(s: run, pattern: "'run'")
 }
 
 // THE COMMITTED YAML CARRIES THE SAME STEP. The emitter is one authority and the committed workflow is
