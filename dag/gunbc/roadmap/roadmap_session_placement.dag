@@ -2035,12 +2035,8 @@ fn session_reviewer_placement_acquire(
       match now_epoch_seconds() {
         Absent => SessionReviewerPlacementRefused { detail: "the host clock could not be read as epoch seconds, and a reviewer's slot carries a launch deadline" }
         Present { value: now } =>
-      match session_placement_pool() {
-        // THE WORKERS' SEAT COUNT IS NEEDED TO CHARGE THE SHARED PARENT: the slice leg bills the
-        // sum of the partitions that land in the work slice, and the agent partition is one of them.
-        // No pool size means no honest sum, and an honest sum is what a refusal or a grant rests on.
-        Absent => SessionReviewerPlacementRefused { detail: "the session pool has no size, so the workers sharing the slice with the reviewers cannot be charged" }
-        Present { value: agent_pool } => {
+      {
+        let agent_pool = session_placement_pool(instance: instance)
           let agent_slots = host_capacity_pool_slots(pool: agent_pool)
           let class_grant = work_class_grant(class: WorkClassReviewerSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
           let record = session_reviewer_attempt_record(
@@ -2069,7 +2065,6 @@ fn session_reviewer_placement_acquire(
               }
           }
         }
-      }
       }
     SystemdUnitNameStemEmpty => SessionReviewerPlacementRefused { detail: join(["the review unit name for ", node_id, ":", attempt_key, ":", criterion_key, " is empty"], "") }
     SystemdUnitNameDisallowedCharacter { stem: _, character: ch } => SessionReviewerPlacementRefused { detail: join(["the review unit name carries ", ch, ", which systemd refuses, so no unit could have run this review"], "") }
@@ -2334,6 +2329,7 @@ fn session_reviewer_placement_settle_pass_at(
           [SessionSettlementKept { unit: k as String, why: join(["the reviewer slot store entry ", k as String, " is unreadable, so its owner cannot be named and its hold is kept: ", d], "") }]
       }) }
     AttemptSlotKeysRefused { detail: d } => SessionSettlePassRefused { detail: join(["the reviewer slot store could not be listed: ", d], "") }
+    AttemptSlotKeysAbsent { store: _ } => SessionSettlePassRefused { detail: "the reviewer slot store was never created: nothing settled, nothing released" }
   }
 }
 

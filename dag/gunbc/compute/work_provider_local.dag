@@ -68,7 +68,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
-  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
   compute_pre_launch_ceiling_seconds,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -3433,6 +3433,7 @@ fn compute_seat_offer(instance: HostDashboardInstance, seat: ComputeSeatStore, r
 fn compute_seat_offers_in(instance: HostDashboardInstance, seat: ComputeSeatStore) -> ComputeSeatSweep {
   match attempt_slot_keys(store: seat.slots) {
     AttemptSlotKeysRefused { detail } => ComputeSeatSweepRefused { detail: detail }
+    AttemptSlotKeysAbsent { store: _ } => ComputeSeatSweepRefused { detail: "the seat's slot store was never created, so the sweep did not look; absence is not an empty seat" }
     AttemptSlotKeysListed { keys } => ComputeSeatsSwept { recoveries: keys |> flat_map(r => compute_seat_offer(instance: instance, seat: seat, reference: r)) }
   }
 }

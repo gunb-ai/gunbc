@@ -110,6 +110,7 @@ type SessionReviewerSlotsStoreReading
 fn session_reviewer_slots_store(instance: HostDashboardInstance) -> SessionReviewerSlotsStoreReading {
   match listed_slot_store(member: session_reviewer_slots.member as String, root: session_reviewer_slots_path(instance: instance)) {
     SlotStoreRefused { detail: d } => SessionReviewerSlotsStoreUnready { detail: d }
+    SlotStoreAbsent { member: _, root: _ } => SessionReviewerSlotsStoreUnready { detail: "the reviewer store's own directory was never created -- admission refuses rather than reading it as an empty store" }
     SlotStoreListed { root: r } => SessionReviewerSlotsStoreReady { store: SessionReviewerSlotsStore { instance: instance.instance_id as NonEmptyStr, lane: ReviewerSlotLane, slots: file_slot_store(root: r) } }
   }
 }
