@@ -35,7 +35,7 @@ fn fixture_spin(n: Int, acc: Int) -> Int {
   if n == 0 { acc } else { fixture_spin(n: n - 1, acc: (acc * 31 + n) % 1000003) }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha) -> ServeWireResponse {
   if path == "/hello" && method == "GET" {
     fixture_text(status: 200, body: concat("hello, ", concat(tailscale_identity, "\n")))
   } else if path == "/redirect" && method == "GET" {
@@ -48,6 +48,8 @@ fn native_serve_handle(method: String, path: String, body: String, tailscale_ide
     fixture_text(status: 200, body: concat("quotient ", concat(to_string(value: 1 / (string_length(s: path) - string_length(s: path))), "\n")))
   } else if path == "/spin" && method == "GET" {
     fixture_text(status: 200, body: concat("spun ", concat(to_string(value: fixture_spin(n: 1000000000000000, acc: 7)), "\n")))
+  } else if path == "/authorization-present" && method == "GET" {
+    fixture_text(status: 200, body: if authorization == "Bearer native-probe-only" { "credential received\n" } else { "credential absent or different\n" })
   } else if path == "/echo" && method == "POST" {
     fixture_text(status: 200, body: body)
   } else if path == "/effects/clock" && method == "GET" {

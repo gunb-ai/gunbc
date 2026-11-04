@@ -63,7 +63,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.compiler.dependency_demand_census { DemandCensusUnboundLocus, UnboundNamed, UnboundShaped, demand_census_unbound_locus_from_diagnostics }
+import v2.compiler.dependency_demand_facts { DemandFactsUnboundLocus, UnboundNamed, UnboundShaped, demand_facts_unbound_locus_from_diagnostics }
 import v2.std.lens_verdict { DiagnosticPosition, lens_verdict_diagnostic_position_in_spans }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
@@ -460,7 +460,7 @@ fn closure_emission_refused_count(emission: ClosureEmission) -> Int {
 // diagnostic the member already produced.
 type ClosureRefusalSite {
   fatal: Diagnostic
-  unbound: Optional<DemandCensusUnboundLocus>
+  unbound: Optional<DemandFactsUnboundLocus>
   position: Optional<DiagnosticPosition>
 }
 
@@ -468,14 +468,14 @@ fn closure_refusal_site(d: NonEmptyDiagnostics, spans: SpanIndex) -> ClosureRefu
   let fatal = diagnostics_fatal(d: d)
   ClosureRefusalSite {
     fatal: fatal,
-    unbound: demand_census_unbound_locus_from_diagnostics(d: d),
+    unbound: demand_facts_unbound_locus_from_diagnostics(d: d),
     position: lens_verdict_diagnostic_position_in_spans(d: fatal, index: spans)
   }
 }
 
 // The spelling the author wrote at an unbound site, when the site has one: a bare name, or the
 // qualified reference of a composite mention. A site that is only a node kind has no spelling.
-fn closure_refusal_unbound_spelling(u: Optional<DemandCensusUnboundLocus>) -> Optional<String> {
+fn closure_refusal_unbound_spelling(u: Optional<DemandFactsUnboundLocus>) -> Optional<String> {
   match u {
     Absent => Absent
     Present { value: loc } =>

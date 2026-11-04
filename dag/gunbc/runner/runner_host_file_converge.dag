@@ -153,7 +153,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command, TarNoOverwriteDir }
 import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
-  SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunning,
+  SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunningLeftUnmasked, drain_runner_slot_under_over, NeverMaskARunningUnit, slot_drain_pending_cause_wire,
   activate_runner_slot_over, drain_and_mask_runner_slot_over,
   slot_actuation_settled, slot_actuation_outcome_wire,
 }
@@ -2426,8 +2426,12 @@ fn converge_runner_slot_tree(
   match runner_slot_tree_step(target: target, runner_release: runner_release, account_held: account_held, owned: owned, release_current: release_current, mode: mode, privilege: privilege) {
     RunnerSlotTreeSettled { standing: st } => st
     RunnerSlotTreeDrainThenRebuild =>
-      match drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: unit) {
-        SlotDrainPending { unit: _, cause: _ } => RunnerSlotTreePending { unit: unit, cause: "masked; a job is still running or the unit is still stopping, so the rebuild waits for a later run" as NonEmptyStr }
+      // NEVER MASK A RUNNING UNIT (gunbc.runner.runner_slot_actuation NeverMaskARunningUnit): an idle slot is
+      // stopped and then masked; a busy or stopping one is left untouched and unmasked for a later run. The
+      // MaskWhileRunning drain this fold used before masked twelve busy srv4 slots on 2026-11-04 (run
+      // 41861708547); the mask's reload stripped their cap drop-ins and slice mid-job.
+      match drain_runner_slot_under_over(target: subject.target, context: context, unit: unit, admission: NeverMaskARunningUnit) {
+        SlotDrainPending { unit: _, cause: c } => RunnerSlotTreePending { unit: unit, cause: join(["not drained: ", slot_drain_pending_cause_wire(c: c), "; the rebuild waits for a later run"], "") as NonEmptyStr }
         SlotActuationRefused { unit: _, step: st, reason: why } => RunnerSlotTreeRefused { unit: unit, cause: join(["the drain refused at ", st, ": ", why], "") as NonEmptyStr }
         SlotActivated { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the drain answered activated" as NonEmptyStr }
         SlotNotInstalled { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the slot's unit is not installed, so there is no drained slot whose tree this run may remove" as NonEmptyStr }
@@ -2724,7 +2728,7 @@ fn runner_slot_tree_actuation(standing: RunnerSlotTreeStanding) -> SlotActuation
   match standing {
     RunnerSlotTreeHeld { unit: _ } => none
     RunnerSlotTreeRebuilt { unit: _ } => none
-    RunnerSlotTreePending { unit: u, cause: _ } => Present { value: SlotDrainPending { unit: u, cause: DrainPendingJobRunning } }
+    RunnerSlotTreePending { unit: u, cause: _ } => Present { value: SlotDrainPending { unit: u, cause: DrainPendingJobRunningLeftUnmasked } }
     RunnerSlotTreeRefused { unit: u, cause: c } => Present { value: SlotActuationRefused { unit: u, step: "slot-tree", reason: c as String } }
   }
 }
