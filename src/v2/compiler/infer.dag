@@ -103,6 +103,7 @@ fn inferred_facts_subject_node(facts: InferredFacts) -> Node {
   match facts.grounding {
     DerivedGrounding { grounding: g } => g.node
     GroundingNotDerived { node: n, site: _ } => n
+    GroundingNoValue { node: n } => n
   }
 }
 
@@ -114,6 +115,10 @@ fn inferred_facts_grounding_derived(facts: InferredFacts) -> Bool {
   match facts.grounding {
     DerivedGrounding { grounding: _ } => true
     GroundingNotDerived { node: _, site: _ } => false
+    // A node that decidely produces no value has no derived grounding -- and it is not a frontier either.
+    // A consumer that reads this flag to decide "unknown, so count it" must not treat it as one: the arm
+    // that owes a value matches GroundingNoValue itself and refuses.
+    GroundingNoValue { node: _ } => false
   }
 }
 
@@ -121,6 +126,7 @@ fn inferred_facts_canonical_admitted(facts: InferredFacts) -> Bool {
   match facts.grounding {
     DerivedGrounding { grounding: g } => canonical_grounding_admits_infer_facts(grounding: g)
     GroundingNotDerived { node: _, site: _ } => false
+    GroundingNoValue { node: _ } => false
   }
 }
 
@@ -129,6 +135,8 @@ fn inferred_facts_grounding_witness(facts: InferredFacts) -> Witness<CanonicalGr
     DerivedGrounding { grounding: g } => Holds { value: g }
     GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+    GroundingNoValue { node: n } =>
+      Violates { diagnostic: infer_branch_else_less_as_value_diagnostic(node: n) }
   }
 }
 
@@ -137,6 +145,8 @@ fn inferred_facts_resolved_type(facts: InferredFacts) -> Witness<Node> {
     DerivedGrounding { grounding: g } => Holds { value: g.witness.structural.evidence }
     GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+    GroundingNoValue { node: n } =>
+      Violates { diagnostic: infer_branch_else_less_as_value_diagnostic(node: n) }
   }
 }
 
@@ -146,6 +156,8 @@ fn inferred_facts_algebra_ref(facts: InferredFacts) -> Witness<AlgebraRef> {
       Holds { value: algebra_ref_from_grounding(grounding: g) }
     GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+    GroundingNoValue { node: n } =>
+      Violates { diagnostic: infer_branch_else_less_as_value_diagnostic(node: n) }
   }
 }
 
@@ -154,6 +166,8 @@ fn inferred_facts_canonical_witness(facts: InferredFacts) -> Witness<CanonicalGr
     DerivedGrounding { grounding: g } => Holds { value: g.witness }
     GroundingNotDerived { node: n, site: _ } =>
       Violates { diagnostic: infer_grounding_not_derived_diagnostic(at: node_locus(node: n)) }
+    GroundingNoValue { node: n } =>
+      Violates { diagnostic: infer_branch_else_less_as_value_diagnostic(node: n) }
   }
 }
 
