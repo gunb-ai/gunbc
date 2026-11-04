@@ -163,7 +163,9 @@ import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
 import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
 import gunbc.boot_artifact_delivery {
   BootArtifactStagingBinding,
+  BootDeliveryCandidate,
   BootDeliveryPlan,
+  BootDeliveryPlanCandidateDisposition,
   BootDeliveryPlanned,
   BootDeliveryPolicy,
   BootControlByFirmwareBootOrder,
@@ -175,6 +177,7 @@ import gunbc.boot_artifact_delivery {
   BootDeliverySolution,
   BootFromRemovableMedia,
   BoundBootDeliveryEvidence,
+  CandidateCapabilityAbsent,
   CandidateConfigfsUnestablished,
   CandidateEvidenceForOtherTarget,
   CandidateIneligible,
@@ -946,6 +949,44 @@ test fn megarac_route_without_image_redirection_refuses() -> Bool {
         _ => false
       }
     BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// OEM REMOTE MEDIA IS NOT REDFISH VIRTUAL MEDIA. gunbc.host.controller_capability
+// virtual_media_established counts OEM remote media as a media-attach surface,
+// and its one consumer (the MegaRAC IPMI boot selection) needs exactly that.
+// The Redfish candidate asks a narrower question: it requires
+// CapabilityVirtualMedia itself. This world serves everything else the Redfish
+// arm reads -- a Redfish route, the live SurfaceRedfishVirtualMedia, a probe
+// receipt at the plan floor and a staged image with the requested digest -- and
+// its row carries OEM remote media but not CapabilityVirtualMedia. So the only
+// thing that can refuse the Redfish arm is the capability gate. If OEM media
+// were counted as Redfish virtual media, Redfish would be planned here.
+data oem_row_with_redfish_surfaces_profile: BmcAccessProfile = profile_of(
+  routes: [redfish_route, IpmiLanplusRoute { cipher_suite: Absent }, MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }],
+  surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia],
+  row: oem_only_row,
+)
+
+// The plan verdicts naming one candidate. Read directly rather than through
+// boot_delivery_candidate_standing_of, whose fold answers CandidateCapabilityAbsent
+// for a candidate that was never considered -- the RED below must not pass on a
+// missing verdict.
+fn plan_verdicts_for(verdicts: List<BootDeliveryPlanCandidateVerdict>, candidate: BootDeliveryCandidate) -> List<BootDeliveryPlanCandidateDisposition> {
+  map(filter(verdicts, v => v.candidate == candidate), v => v.disposition)
+}
+
+// RED + POSITIVE CONTROL in one solve. RED: the Redfish candidate is ineligible
+// with CandidateCapabilityAbsent, and exactly one such verdict exists.
+// POSITIVE CONTROL: the same row's OEM remote media plans the MegaRAC arm, so
+// the row is not refused wholesale and OEM media stays an established surface.
+test fn oem_remote_media_does_not_establish_redfish_virtual_media() -> Bool {
+  match solve(profile: oem_row_with_redfish_surfaces_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia], probe: Present { value: probe_https }), staging: staging_all) {
+    BootDeliveryPlanned { plan: p } =>
+      plan_verdicts_for(verdicts: p.eligibility.considered, candidate: CandidateRedfishVirtualMedia) == [PlanCandidateIneligible { cause: CandidateCapabilityAbsent }]
+        && plan_verdicts_for(verdicts: p.eligibility.considered, candidate: CandidateMegaRacRestRemoteMedia) == [PlanCandidateSelected]
+        && match p.delivery { MegaRacRestRemoteMedia { params: _ } => true _ => false }
+    BootDeliveryRefused { cause: _ } => false
   }
 }
 
