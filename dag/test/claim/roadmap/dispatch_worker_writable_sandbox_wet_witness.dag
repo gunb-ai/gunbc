@@ -1,7 +1,10 @@
 module test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worktree_path_for_instance, session_process_bounds }
+import gunbc.roadmap.dispatch_worker_unit_confinement {
+  dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worktree_path_for_instance,
+  session_process_bounds, dispatch_worker_credstore_path,
+}
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -29,6 +32,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   WorkerIsServiceUser,
   HostDashboardInstance,
   srv1_live_dashboard_instance,
+  srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
 }
 // THE SUPPLIED-ROOT FIXTURE (PR #15627). Every claim in this file builds its lab row
@@ -39,14 +43,17 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_gid_command, witness_group_name_command, witness_effective_user_command,
   witness_supplied_root_is_refused, witness_supplied_roots_are_off_the_live_host,
   witness_refused_instance, witness_unnameable_principal,
+  witness_supplied_credstore_dir, witness_supplied_credential_source, witness_supplied_credential_is_confined,
   wet_ok, wet_out,
 }
 import extdeps.tools.stat { stat_mode_command }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command,
+  install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, cp_command, cp_recursive_command, pwd_command,
   printenv_value_command,
 }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartRequest,
   attempt_system_unit_enqueue_start, attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
@@ -69,9 +76,11 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_stage_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
   attempt_exit_vendor_pane_entry_name, attempt_exit_spool_prepare,
 }
+import extdeps.git { git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command, git_rev_parse_tree_command }
+import gunbc.harness.harness_operator_credential { operator_route_credential_file }
 import gunbc.host.host_layout {
   attempt_exit_inbox_dir, attempt_exit_done_dir,
-  attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
+  attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
 }
 import gunbc.roadmap.spool_stall { SpoolStallClaim, SpoolStallListRequests, spool_stall_read_at, SpoolStallHeld, SpoolStallNone, SpoolStallUnreadable }
@@ -175,7 +184,8 @@ fn wet_supplied_lab_instance(scratch_parent: String) -> HostDashboardInstance {
     )
     if witness_supplied_root_is_refused(candidate: scratch_parent)
       || witness_supplied_root_is_refused(candidate: repo)
-      || !witness_supplied_roots_are_off_the_live_host(instance: candidate) {
+      || !witness_supplied_roots_are_off_the_live_host(instance: candidate)
+      || !witness_supplied_credential_is_confined(scratch_parent: scratch_parent, instance: candidate) {
       witness_refused_instance(repo: repo as FilePath)
     } else {
       candidate
@@ -235,6 +245,28 @@ fn wet_plant_guest_sources(instance: HostDashboardInstance) -> Bool {
     && wet_ok(command: cp_recursive_command(source: join([checkout, "/dag"], ""), destination: join([repo, "/dag"], "")))
     && wet_ok(command: mkdir_parents_command(path: join([repo, "/src"], "")))
     && wet_ok(command: cp_recursive_command(source: join([checkout, "/src/v2"], ""), destination: join([repo, "/src/v2"], "")))
+    && wet_make_source_repository(instance: instance)
+}
+
+// THE SOURCE IS A REPOSITORY, NOT A DIRECTORY WITH FILES IN IT. srv2 (stern, 2026-11-04) measured
+// `git -C <root>/source worktree add --detach` dying 128 with "not a git repository": copying dag/ and
+// src/v2 in reproduces the WORKING TREE of the checkout and nothing of its object database, so every
+// leg that takes a worktree, commits, or reads a gitfile was failing at git's first syscall instead of
+// at the confinement boundary. `git` is host-said (extdeps.git's git_program, one argv word at a time,
+// no PATH guessing and no shell string) and the commit identity is the host-said principal, so the
+// plant does not invent an author either. The control claim
+// the_supplied_source_is_a_real_repository reads the result back through git itself.
+fn wet_make_source_repository(instance: HostDashboardInstance) -> Bool {
+  let principal = wet_principal()
+  let repo = instance.repo_root as String
+  wet_ok(command: git_init_quiet_command(repository_dir: repo))
+    && wet_ok(command: git_add_all_force_command(repository_dir: repo))
+    && wet_ok(command: git_commit_snapshot_command(
+      repository_dir: repo,
+      identity_name: principal.user as String,
+      identity_email: join([principal.user as String, "@wet-witness.invalid"], ""),
+      message: "wet witness: supplied source plant" as NonEmptyStr,
+    ))
 }
 
 // THE SERVED BINARY IS THE ONE THE OPERATOR NAMED, OR THE LEG REFUSES. There is no honest way for
@@ -288,12 +320,69 @@ fn wet_plant_confined_tree(instance: HostDashboardInstance) -> Bool {
     && wet_ok(command: mkdir_parents_command(path: repo))
     && wet_ok(command: mkdir_parents_command(path: join([repo, "/.git/hooks"], "")))
     && wet_ok(command: mkdir_parents_command(path: join([repo, "/.git/objects"], "")))
+    && wet_plant_unit_credential(instance: instance)
+}
+
+// THE CREDENTIAL FILE A SUPPLIED UNIT COULD BE HANDED, IF IT IS EVER HANDED ONE. It is installed
+// beside the instance the witness supplied, at witness_supplied_credential_source, and NEVER at
+// dispatch_worker_credstore_path's answer for the lab row -- that one is
+// /etc/credstore/<identifier>-<instance id>, a live root, and reading it is what exited srv2's units
+// 243 (CREDENTIALS) before any claim command ran. Mode 0400 because a credential is not world-readable
+// anywhere, including in a witness.
+fn wet_plant_unit_credential(instance: HostDashboardInstance) -> Bool {
+  let principal = wet_principal()
+  wet_ok(command: mkdir_parents_command(path: witness_supplied_credstore_dir(instance: instance)))
+    && wet_ok(command: install_empty_file_command(
+      path: witness_supplied_credential_source(instance: instance, file: operator_route_credential_file) as String,
+      octal_mode: "0400" as NonEmptyStr,
+      uid: principal.uid,
+      gid: principal.gid,
+    ))
 }
 
 // THE WAY OUT: the claim's own root is removed, and the removal is ANDed into the claim, so a
 // claim that leaves its tree behind is RED rather than tidy.
 fn wet_clean_claim_root(root: String) -> Bool {
   root != "" && wet_ok(command: rm_recursive_force_command(path: root))
+}
+
+// THE SPOOL TREE THE ROW DERIVES, CREATED BEFORE ANY LEG MAY NAME IT. The drain writes each request
+// as <instance_root>/attempt-unit-spool/requests-staging/<key>.staging. On srv2 (stern, 2026-11-04)
+// the unit's own `mkdir -m 00700 .../requests-staging/<key>.staging` returned ENOENT and six launch
+// legs died before asserting anything: the live lab root arrives with that tree already provisioned by
+// the operator, so a supplied root that skips provisioning turns a confinement claim into a
+// filesystem accident -- the same vacuity this file's plant comment refuses elsewhere. Every directory
+// is one of gunbc.host.host_layout's accessors over the row's own instance_root, never a restated
+// literal, so deleting a derivation takes the claim red instead of leaving it standing on a guess; the
+// 0700 is what the drain asks for when it creates the staging leaf itself.
+fn wet_attempt_unit_spool_dirs(instance_root: String) -> List<String> {
+  [
+    attempt_unit_spool_root(instance_root: instance_root),
+    attempt_unit_spool_request_dir(instance_root: instance_root),
+    attempt_unit_spool_staging_dir(instance_root: instance_root),
+    attempt_unit_spool_claimed_dir(instance_root: instance_root),
+    attempt_unit_spool_answer_dir(instance_root: instance_root),
+  ]
+}
+
+fn wet_prepare_attempt_unit_spool(instance: HostDashboardInstance) -> Bool {
+  // install -d in ONE step with the final mode and ownership, over the same builder the production
+  // attempt-exit spool uses (roadmap_attempt_exit_spool:149) and the same declared mode the drain's own
+  // `mkdir -m 00700` means: DirectoryOwnerOnly. Owner and group are the INVOKING principal's own names,
+  // read from the host, which is the one spelling install(1) accepts without privilege.
+  let principal = wet_principal()
+  fold(
+    wet_attempt_unit_spool_dirs(instance_root: instance.instance_root as String),
+    init: true,
+    f: (ok, dir) =>
+      ok
+        && wet_ok(command: install_directory_owned_argv_command(
+             mode: declared_directory_mode(m: DirectoryOwnerOnly),
+             owner: principal.user,
+             group: principal.group,
+             path: dir,
+           )),
+  )
 }
 
 fn prepare_probe_attempt(instance: HostDashboardInstance) -> Bool {
@@ -305,6 +394,7 @@ fn prepare_probe_attempt(instance: HostDashboardInstance) -> Bool {
   let wt = probe_attempt_worktree(instance: instance)
   fold(preps, init: true, f: (ok, p) => ok && shell.Exec.RunArgv(program: p.program, arguments: p.args).exit_code == 0)
     && shell.Exec.RunArgv(program: "install", arguments: ["-d", "--", wt]).exit_code == 0
+    && wet_prepare_attempt_unit_spool(instance: instance)
 }
 
 fn probe_attempt_dir(instance: HostDashboardInstance) -> String {
@@ -1545,4 +1635,89 @@ fn wet_run_nonce() -> String {
   } else {
     fold(split(s: tmp.path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE THREE SRV2 FIXTURE FAULTS, EACH WITH A CONTROL THAT GOES RED HERE.
+//
+// stern ran the ten launch legs on srv2 on 2026-11-04 (sudo -n true rc=0, binary 61cdeb10..., the
+// entry resolved at 1437 modules): 3 PASS / 9 FAIL, and NOT ONE of the nine was a sandbox verdict.
+// They were three fixture faults, all of them "the supplied root is not a provisioned root", and all
+// of them invisible from this container because the leg that would have caught them needs
+// systemd-run. Each fault now has a conjunct that needs no unit and no second principal, so the next
+// regression is a red claim in THIS lane rather than a srv2 log line:
+//   (A) missing attempt-unit-spool/requests-staging  -> the_supplied_root_carries_the_attempt_unit_spool_tree
+//   (B) the lab row's /etc/credstore credential       -> the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused
+//   (C) <root>/source copied but never initialised    -> the_supplied_source_is_a_real_repository
+// They are scheduled, so they run in the wet lane, and they are readbacks over accessors, so removing
+// the derivation that supplies each path takes the matching claim red.
+
+test fn the_supplied_root_carries_the_attempt_unit_spool_tree() -> Bool {
+  // srv2, cause (A): the drain writes each request as
+  // <instance_root>/attempt-unit-spool/requests-staging/<key>.staging, and with a bare supplied root the
+  // unit's own mkdir returned ENOENT for six claims. This is that directory tree, read back with the
+  // host's own `test -d` after prepare_probe_attempt, over the same accessor list the plant creates.
+  let root = wet_claim_root(tag: "spool" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let dirs = wet_attempt_unit_spool_dirs(instance_root: inst.instance_root as String)
+  wet_claim_is_confined(instance: inst, root: root)
+    // Every entry is under the claim's own root, AND the staging directory the srv2 unit could not
+    // create is named outright -- a fold over an empty list would be vacuously true, so the fault path
+    // itself is a conjunct and cannot be dropped by emptying the accessor list.
+    && is_under(text: attempt_unit_spool_staging_dir(instance_root: inst.instance_root as String), root: root)
+    && fold(dirs, init: true, f: (ok, dir) => ok && is_under(text: dir, root: root))
+    && prepare_probe_attempt(instance: inst)
+    && fold(dirs, init: true, f: (ok, dir) => ok && wet_path_exists(path: dir))
+    && wet_octal_mode(path: attempt_unit_spool_staging_dir(instance_root: inst.instance_root as String)) == "700"
+    && wet_clean_claim_root(root: root)
+}
+
+test fn the_supplied_source_is_a_real_repository() -> Bool {
+  // srv2, cause (C): `git -C <root>/source worktree add --detach` died 128 "not a git repository",
+  // because a copied working tree is not a repository. The readback asks GIT, not the filesystem:
+  // `git rev-parse HEAD` of the planted source must be an accepted command that prints a tree -- on a
+  // tree with no commit git exits 128, and on a directory with no repository git says so, so an empty
+  // or refused reading is the fault this claim exists to catch.
+  let root = wet_claim_root(tag: "gitrepo" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let repo = inst.repo_root as String
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_guest_sources(instance: inst)
+    && wet_path_exists(path: join([repo, "/.git"], ""))
+    && wet_ok(command: git_rev_parse_tree_command(repository_dir: repo, revision: "HEAD" as NonEmptyStr))
+    && wet_out(command: git_rev_parse_tree_command(repository_dir: repo, revision: "HEAD" as NonEmptyStr)) != ""
+    && wet_clean_claim_root(root: root)
+}
+
+test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused() -> Bool {
+  // srv2, cause (B): the unit carried -p LoadCredential=gunbc-gpu-pod-api-key:/etc/credstore/... and
+  // exited 243 (CREDENTIALS) before the claim's command ran, because the supplied row kept the lab
+  // row's WorkerDedicatedAccount and dispatch_worker_credstore_path is a data constant (/etc/credstore)
+  // plus identifier plus instance id. Three things, all readable without systemd: the credential a
+  // supplied unit could be handed lives under the claim's own root at mode 0400; the lab row's own
+  // derived credential path does NOT; and the fixture's arm therefore REFUSES the lab row, so putting
+  // that variant back into a supplied row is a red claim here instead of a status code on another host.
+  let root = wet_claim_root(tag: "credential" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let source = witness_supplied_credential_source(instance: inst, file: operator_route_credential_file) as String
+  let lab = srv1_lab_dashboard_instance()
+  let lab_source = witness_supplied_credential_source(instance: lab, file: operator_route_credential_file) as String
+  wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && is_under(text: source, root: root)
+    && wet_path_exists(path: source)
+    && wet_octal_mode(path: source) == "400"
+    && is_under(text: witness_supplied_credstore_dir(instance: inst), root: root)
+    // THE LIVE SPELLING, NAMED BY ITS OWN AUTHORITY AND REFUSED. This is the path srv2's unit was
+    // handed: dispatch_worker_credstore_path is <systemd_system_credstore_directory>/<identifier>-<id>,
+    // a constant outside every claim root, and it is reachable from a row ONLY through
+    // WorkerDedicatedAccount. The lab row carries that variant, so the witness placement for the lab row
+    // also lands under the live lab root (/opt/gunbc-lab/instances/...) -- two live roots, one variant.
+    // The fixture's arm therefore refuses any row whose credential source escapes the claim root, which
+    // is what makes putting `worker: lab.worker` back into a supplied row a red claim here rather than a
+    // status 243 on some other host.
+    && starts_with(s: dispatch_worker_credstore_path(instance: lab, file: operator_route_credential_file) as String, prefix: "/etc/credstore/")
+    && !is_under(text: lab_source, root: root)
+    && !witness_supplied_credential_is_confined(scratch_parent: root, instance: lab)
+    && wet_clean_claim_root(root: root)
 }

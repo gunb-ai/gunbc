@@ -4065,6 +4065,35 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "the_planted_guest_inputs_reach_the_paths_the_row_derives",
       expectation: ExpectedToHold {}
     },
+
+    // THE THREE SRV2 FIXTURE FAULTS, EACH WITH A CONTROL THAT RUNS WITHOUT systemd-run AND
+    // WITHOUT A SECOND PRINCIPAL. stern ran the ten launch legs on srv2 on 2026-11-04 (sudo -n true
+    // rc=0, binary 61cdeb10..., entry resolved at 1437 modules) and got 3 PASS / 9 FAIL -- none of the
+    // nine a sandbox verdict: the drain's requests-staging directory did not exist (ENOENT, six claims,
+    // so the two sudo legs never reached sudo); the unit carried the lab row's
+    // -p LoadCredential=gunbc-gpu-pod-api-key:/etc/credstore/... and exited 243 (CREDENTIALS) before the
+    // claim command ran; and `git worktree add` died 128 "not a git repository" because a copied working
+    // tree is not a repository. Each fault now has a readback here, so the next time one of them appears
+    // it is a red claim in the wet lane rather than a status code on another host. See the block comment
+    // above them in the entry file.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_supplied_root_carries_the_attempt_unit_spool_tree" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_supplied_root_carries_the_attempt_unit_spool_tree",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_supplied_source_is_a_real_repository" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_supplied_source_is_a_real_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",

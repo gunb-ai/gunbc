@@ -3,6 +3,8 @@ module test.claim.roadmap.witness_supplied_instance
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.optional { Optional, Present, Absent }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
+import gunbc.harness.harness_operator_credential { OperatorCredentialFile }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
 import gunbc.command_runner { run_shell_command_capture }
@@ -16,6 +18,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_dashboard_lab_id,
   srv1_dashboard_lab_root,
   srv1_dashboard_lab_provision_parent,
+  WorkerIsServiceUser,
   dashboard_instance_child,
   dashboard_inbox_under,
   dashboard_execution_environment,
@@ -125,6 +128,36 @@ fn wet_out(command: ArgvCommand) -> String {
 // THE ONE PROCESS THE FIXTURE NEEDS TO GET A ROOT. Callers run this with `run_shell_command_observe` and read
 // the created path off stdout; an empty or absent stdout is `Absent`, which every claim turns into a refusal
 // rather than a default.
+// THE CREDENTIAL A SUPPLIED UNIT IS HANDED, UNDER THE WITNESS'S OWN ROOT. The identifier is the
+// route's own (OperatorCredentialFile.identifier), so the file the unit is handed and the file the
+// harness looks up in $CREDENTIALS_DIRECTORY stay one datum; only the SOURCE moves, from the system
+// credstore to a directory beside the instance the witness supplied.
+fn witness_supplied_credstore_dir(instance: HostDashboardInstance) -> String {
+  join([instance.provision_parent_root as String, "/witness-credstore"], "")
+}
+
+fn witness_supplied_credential_source(instance: HostDashboardInstance, file: OperatorCredentialFile) -> NonEmptyStr {
+  join([
+    witness_supplied_credstore_dir(instance: instance),
+    "/",
+    file.identifier as String,
+    "-",
+    instance.instance_id as String,
+  ], "") as NonEmptyStr
+}
+
+// THE ARM THAT MAKES THE LIVE CREDSTORE A REFUSAL, NOT A SURPRISE. Reads the FINISHED row through the
+// production accessor, so a row that reintroduces WorkerDedicatedAccount -- or any future variant that
+// derives a credential outside the supplied root -- is refused here, on every host, instead of reaching
+// for /etc/credstore and failing inside the unit where the only diagnostic is a status code.
+fn witness_supplied_credential_is_confined(scratch_parent: String, instance: HostDashboardInstance) -> Bool {
+  fold(
+    dispatch_worker_credentials(instance: instance),
+    init: true,
+    f: (ok, credential) => ok && is_under(text: credential.credstore_path as String, root: scratch_parent),
+  )
+}
+
 fn witness_scratch_parent_command() -> ArgvCommand {
   mktemp_directory_command(template: witness_scratch_template() as NonEmptyStr)
 }
@@ -306,7 +339,20 @@ fn witness_supplied_instance(
       user: principal.user,
       group: principal.group,
     },
-    worker: lab.worker,
+    // THE WORKER VARIANT IS NOT THE LAB ROW'S. srv1_lab_dashboard_instance() is
+    // WorkerDedicatedAccount, and dispatch_worker_credentials turns that variant into a
+    // LoadCredential= whose source is dispatch_worker_credstore_path --
+    // systemd_system_credstore_directory ("/etc/credstore", a data constant in
+    // extdeps.systemd.unit_file) + <identifier>-<instance id>. A supplied row that kept the variant
+    // therefore asked the systemd MANAGER to read a file under /etc/credstore: on srv2, 2026-11-04,
+    // that is exactly what killed launch legs of the sandbox witness with unit exit 243 (CREDENTIALS)
+    // before the claim's own command ran, and /etc/credstore is a live root the witness has no
+    // business touching. A supplied row carries WorkerIsServiceUser -- the variant srv1_live's own
+    // fleet rows carry -- and the credential a supplied unit is handed is built under the witness's
+    // own root by witness_supplied_credential_source below. Flipping this field back is not a silent
+    // escape: witness_supplied_credential_is_confined reads dispatch_worker_credentials over the
+    // finished row and refuses a credential whose path is not under the scratch parent.
+    worker: WorkerIsServiceUser,
     materialization_store_root: lab.materialization_store_root,
   }
 }
