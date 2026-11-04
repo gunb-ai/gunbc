@@ -886,13 +886,21 @@ type UnitPropertyReading {
 //   WriterUnsubstituted   -- an entry for this seat still spells the stop variables in its name, which
 //                            names its WRITER as broken (srv1 2026-10-28). It is not an answer about the
 //                            holder: a broken artifact cannot show a process alive, and cannot show one dead.
-//   NoUid                 -- this process cannot name its own uid, so it has no directory to read at all.
+//   NoUid                 -- this process cannot name its own uid, so it has no directory to read at all:
+//                            a defect in the READER's deployment, and it is only ever issued by
+//                            compute_seat_stop_record after trying to name this process's uid.
+//   NotConsulted          -- THIS ROUTE opened no seat's spool at all: its reading is the manager only.
+//                            It is a fact about the route, never about the seat, and it must not be dressed
+//                            as NoUid -- review 90511 caught that sending an operator to fix a uid that
+//                            exists. It never frees a charge by itself: like every arm except Found, it
+//                            leaves the decision to the accounts that hold real evidence.
 type SeatStopRecord
   = SeatStopRecordFound { invocation_id: String, end: String }
   | SeatStopRecordNone
   | SeatStopRecordUnreadable { cause: String }
   | SeatStopRecordWriterUnsubstituted { entries: List<String>, variables: List<String> }
   | SeatStopRecordNoUid { cause: String }
+  | SeatStopRecordNotConsulted { reason: String }
 
 fn seat_stop_record_wire(r: SeatStopRecord) -> String {
   match r {
@@ -902,6 +910,7 @@ fn seat_stop_record_wire(r: SeatStopRecord) -> String {
     SeatStopRecordWriterUnsubstituted { entries, variables } =>
       join(["an entry still spells the stop variables ", join(variables, ","), " -- its writer did not go through the manager's substitution: ", join(entries, ",")], "")
     SeatStopRecordNoUid { cause } => join(["no uid for this provider process: ", cause], "")
+    SeatStopRecordNotConsulted { reason } => join(["this route consulted no exit spool: ", reason], "")
   }
 }
 
@@ -1128,6 +1137,11 @@ fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation)
             unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and the only entry for this seat names its own writer as broken, which is evidence about the writer and not about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], ""))
           SeatStopRecordNoUid { cause } =>
             unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and this provider cannot name the uid whose exit spool it would read: ", cause], ""))
+          // A route that read NO spool is not a route whose uid is broken: the reason names the route, and
+          // the seat's end still comes only from an account that holds evidence -- the hook's record (not
+          // this arm) or the seat's own wait below.
+          SeatStopRecordNotConsulted { reason } =>
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and this route read no exit spool at all, so the hook says nothing here: ", reason], ""))
         }
       } else {
         // The manager still lists the unit, or its load state could not be read at all: no absence is
@@ -1210,6 +1224,11 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
             unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and the only entry for this seat names its own writer as broken, which is evidence about the writer and not about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], ""))
           SeatStopRecordNoUid { cause } =>
             unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and this provider cannot name the uid whose exit spool it would read: ", cause], ""))
+          // Recovery routes that hold a seat read its record through compute_seat_stop_record; the routes
+          // that reach this arm hold no seat and consulted nothing. Their absence claim stays unproven, and
+          // the reason names the route rather than a uid defect that does not exist.
+          SeatStopRecordNotConsulted { reason } =>
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and this route read no exit spool at all: ", reason], ""))
         }
       } else if !o.active_state.queried {
         UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
@@ -3378,7 +3397,12 @@ type UnitLifecycleSource
 
 fn unit_lifecycle_from_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitLifecycle {
   match source {
-    ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit, stop_record: SeatStopRecordNoUid { cause: "this instrument observes the manager only; it reads no seat's exit spool" })
+    // THIS READING NEVER OPENS A SPOOL, so it answers with its own arm. Stated gap, named rather than
+    // hidden: the recovery door (compute_recover_cli) and the belt's resolver come through here, so a
+    // seat's record-bearing absence is not reachable on THOSE routes yet -- only on routes that hold the
+    // seat and read compute_seat_stop_record for it. Widening the door is its own change with its own wet
+    // witness; see recurring_failure_mode hold_recovered_by_age_not_observed_holder_death's named next rung.
+    ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit, stop_record: SeatStopRecordNotConsulted { reason: "this reading observes the manager only; the route that holds the seat reads its record through compute_seat_stop_record" })
     SuppliedUnitLifecycle { lifecycle: l } => l
     SuppliedStoppableUnit { before: b, after_stop: _ } => b
   }

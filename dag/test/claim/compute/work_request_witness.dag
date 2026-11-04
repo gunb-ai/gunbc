@@ -8,6 +8,7 @@ import gunbc.compute.work_provider_local {
   NoPathVirtualization, UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
   UnitPropertyReading, UnitObservations, unit_termination_decide,
   SeatStopRecord, SeatStopRecordNone, SeatStopRecordFound, SeatStopRecordUnreadable, SeatStopRecordWriterUnsubstituted, SeatStopRecordNoUid,
+  SeatStopRecordNotConsulted,
   AttemptWaitRecorded, AttemptWaitUnrecorded, seat_end_without_record,
   unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
   ProvideResult, ProvideFresh, ProvideAttached, HostRecordStatus, HostRecordWritten, HostRecordLost,
@@ -411,6 +412,13 @@ test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
   && !unit_termination_frees_capacity(t: decided_no_wait(load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n")))
   && string_contains(s: unit_termination_wire(t: decided_no_wait(load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))), pattern: "no wait was ever recorded")
   && string_contains(s: unit_termination_wire(t: decided_no_wait(load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))), pattern: "the seat releases when")
+  // A ROUTE THAT READ NO SPOOL IS NOT A ROUTE WITH A BROKEN UID. Review 90511: this arm used to be spelled
+  // NoUid, which told an operator to fix a uid the process does have. It is handled here as what it is --
+  // the hook cannot speak, so the seat's own wait is the only account, with the same demand as every other
+  // arm: a cgroup the kernel confirms empty. An inadmissible wait keeps the charge, and the refusal names
+  // the route reading nothing.
+  && !unit_termination_frees_capacity(t: decided_with(done: false, record: SeatStopRecordNotConsulted { reason: "manager-only reading" }, load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n")))
+  && string_contains(s: unit_termination_wire(t: decided_with(done: false, record: SeatStopRecordNotConsulted { reason: "manager-only reading" }, load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))), pattern: "read no exit spool")
 }
 
 // THE ONE PLACE THE TWO FOLDS ARE ALLOWED TO DISAGREE, NAMED SO THE AGREEMENT DOES NOT LOOK BROKEN. On
@@ -609,6 +617,12 @@ test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool 
   let collected_recorded = lifecycle_of_record(
     record: SeatStopRecordFound { invocation_id: "0123456789abcdef0123456789abcdef", end: "exit(0)" },
     load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: unknown_pop)
+  // THE MANAGER-ONLY READING ANSWERS AS ITSELF: a route that consulted no spool keeps the seat charged and
+  // says it consulted nothing, instead of blaming a uid (review 90511). Recovery runs no wait, so this arm
+  // has no admissible account at all -- which is the point: absence without the record frees nothing.
+  let collected_not_consulted = lifecycle_of_record(
+    record: SeatStopRecordNotConsulted { reason: "manager-only reading" },
+    load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: unknown_pop)
 
   let occupied_but_forgotten = lifecycle_of(load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: occupied)
   let no_manager = lifecycle_of(load: unqueried, active: unqueried, result: unqueried, pop: unknown_pop)
@@ -622,6 +636,8 @@ test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool 
     && lifecycle_word(u: running) == "still-running"
     && lifecycle_word(u: collected) == "unknown"
     && string_contains(s: unit_lifecycle_wire(u: collected), pattern: "no stop-hook record")
+    && lifecycle_word(u: collected_not_consulted) == "unknown"
+    && string_contains(s: unit_lifecycle_wire(u: collected_not_consulted), pattern: "read no exit spool")
     && lifecycle_word(u: collected_recorded) == "terminated-cause-unknown"
     && string_contains(s: unit_lifecycle_wire(u: collected_recorded), pattern: "its stop hook recorded")
 

@@ -587,7 +587,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, AttemptSupervisorRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
-  AttemptWorkerRole, AttemptUnitRoleDecoded,
+  AttemptWorkerRole, AttemptExitRecordRoleOf, AttemptExitRecordRoleNone,
   attempt_exit_record_role, attempt_exit_record_names_attempt,
   AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit,
   attempt_exit_record_put_worker_exited, attempt_exit_record_put_vendor_pane_death,
@@ -15239,14 +15239,15 @@ fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String
 
 // THE ROLE IS MATCHED, NOT COMPARED. The entry is decoded and its role answered as the closed arm from
 // gunbc.roadmap.roadmap_attempt_exit_spool declaration attempt_exit_record_role; this route never renders a
-// role into a token just to test which role it was. A compute seat's record answers Unknown (naming the
-// entry it came from) and falls to the false arm without being compared to a roadmap role it never had.
+// role into a token just to test which role it was, and never re-parses one. A compute seat's record answers
+// AttemptExitRecordRoleNone (its entry carries no role part at all) and falls to the false arm without ever
+// being compared against a roadmap role it never had.
 // Adding an arm to AttemptUnitRole reaches here: the renderer, the inverse decoder and these matches are
 // the three places one new role has to be answered.
 fn belt_exit_entry_is_worker(entry: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryDecoded { record } => match attempt_exit_record_role(record: record) {
-      AttemptUnitRoleDecoded { role: AttemptWorkerRole } => true
+      AttemptExitRecordRoleOf { role: AttemptWorkerRole } => true
       _ => false
     }
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
@@ -15293,7 +15294,7 @@ fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, Str
 fn belt_exit_entry_is_obligation(entry: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryDecoded { record } => match attempt_exit_record_role(record: record) {
-      AttemptUnitRoleDecoded { role: AttemptObligationRole } => true
+      AttemptExitRecordRoleOf { role: AttemptObligationRole } => true
       _ => false
     }
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false

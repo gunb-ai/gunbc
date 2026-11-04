@@ -21,6 +21,7 @@ import extdeps.systemd {
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole, AttemptReviewerRole,
   attempt_unit_role_token, attempt_unit_role_of, AttemptUnitRoleDecoded, AttemptUnitRoleUnknown,
+  AttemptExitRecordRoleOf, AttemptExitRecordRoleNone,
   AttemptUnitRoleMalformed, AttemptObligationRole, AttemptSupervisorRole,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptProcessExitedWith, AttemptProcessSignaled,
@@ -178,7 +179,7 @@ test fn a_records_role_is_part_of_its_subject() -> Bool {
   }
   let reviewer_found = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptReviewerRole { criterion_key: "conformance-leasing", head_sha: "abc123" }, listings: [AttemptExitStageNames { names: ["n-1+k1+worker+inv+success+exited+0", "n-1+k1+review.conformance-leasing.abc123+inv+success+exited+0"] }]) {
     AttemptExitRecordFound { record } => match attempt_exit_record_role(record: record) {
-      AttemptUnitRoleDecoded { role: AttemptReviewerRole { criterion_key, head_sha } } => criterion_key == "conformance-leasing" && head_sha == "abc123"
+      AttemptExitRecordRoleOf { role: AttemptReviewerRole { criterion_key, head_sha } } => criterion_key == "conformance-leasing" && head_sha == "abc123"
       _ => false
     }
     AttemptExitRecordNone => false
@@ -293,7 +294,7 @@ test fn the_reviewer_record_derives_the_review_unit_for_its_criterion() -> Bool 
     AttemptExitEntryDecoded { record } =>
       record.unit == dispatch_review_unit_name(node_id: "node-a", attempt_key: "key-1", criterion_key: "conformance-leasing")
         && (match attempt_exit_record_role(record: record) {
-             AttemptUnitRoleDecoded { role: AttemptReviewerRole { criterion_key, head_sha } } => criterion_key == "conformance-leasing" && head_sha == "2f3a9c1d"
+             AttemptExitRecordRoleOf { role: AttemptReviewerRole { criterion_key, head_sha } } => criterion_key == "conformance-leasing" && head_sha == "2f3a9c1d"
              _ => false
            })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
@@ -378,12 +379,13 @@ test fn a_compute_seats_entry_derives_the_units_name_from_its_identity() -> Bool
 // a worker's exit and settle a seat it does not own.
 test fn a_compute_seats_record_is_never_read_as_an_attempts_worker() -> Bool {
   match attempt_exit_entry_decode(entry_name: "0a1b2c3d4e5f6789.occurrence.1793000000+0123456789abcdef0123456789abcdef+completed+exited+0") {
-    // The role question is answered, not refused by silence: a compute record has no role token, so it
-    // decodes to Unknown carrying the ENTRY IT CAME FROM, which is what makes this row falsifiable -- a
-    // decode that filled a roadmap role from the positional fields would answer Decoded here.
+    // The role question is answered, not refused by silence: a compute record carries no role part, so it
+    // answers AttemptExitRecordRoleNone naming the identity it came from, which is what makes this row
+    // falsifiable -- a decoder that filled the roadmap role fields positionally, or a role answer that
+    // fabricated a token out of the entry name, would answer RoleOf here and turn this row red.
     AttemptExitEntryDecoded { record } =>
       (match attempt_exit_record_role(record: record) {
-         AttemptUnitRoleUnknown { token } => token == record.entry_name
+         AttemptExitRecordRoleNone { reason } => string_contains(s: reason, pattern: "0a1b2c3d4e5f6789.occurrence.1793000000")
          _ => false
        })
         && !attempt_exit_record_names_attempt(record: record, node_id: "0a1b2c3d4e5f6789.occurrence.1793000000", attempt_key: "0123456789abcdef0123456789abcdef")

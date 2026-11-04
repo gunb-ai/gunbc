@@ -170,14 +170,14 @@ fn attempt_unit_role_of(token: String) -> AttemptUnitRoleDecode {
 // The token grammar is attempt_unit_role_token's own: criterion keys and head shas carry no '.', because
 // that function joins them with '.'. If a token splits some other way it is refused rather than guessed.
 type AttemptExitUnitDerivation
-  = AttemptExitUnitDerived { unit: NonEmptyStr }
+  = AttemptExitUnitDerived { unit: NonEmptyStr, role: AttemptUnitRole }
   | AttemptExitUnitUnclaimed { role_token: String }
   | AttemptExitUnitRefusedShape { role_token: String, detail: String }
   | AttemptExitUnitRefusedName { role_token: String, admission: SystemdUnitNameAdmission }
 
-fn attempt_exit_unit_admission(derivation: SystemdUnitNameAdmission, role_token: String) -> AttemptExitUnitDerivation {
+fn attempt_exit_unit_admission(derivation: SystemdUnitNameAdmission, role_token: String, role: AttemptUnitRole) -> AttemptExitUnitDerivation {
   match derivation {
-    SystemdUnitNameAdmitted { name } => AttemptExitUnitDerived { unit: systemd_unit_name_wire(name: name) }
+    SystemdUnitNameAdmitted { name } => AttemptExitUnitDerived { unit: systemd_unit_name_wire(name: name), role: role }
     SystemdUnitNameStemEmpty => AttemptExitUnitRefusedName { role_token: role_token, admission: SystemdUnitNameStemEmpty }
     SystemdUnitNameDisallowedCharacter { stem, character } => AttemptExitUnitRefusedName { role_token: role_token, admission: SystemdUnitNameDisallowedCharacter { stem: stem, character: character } }
     SystemdUnitNameOverlong { length } => AttemptExitUnitRefusedName { role_token: role_token, admission: SystemdUnitNameOverlong { length: length } }
@@ -200,23 +200,30 @@ fn attempt_exit_unit_of(node_id: String, attempt_key: String, role_token: String
 // returns an admission verdict, so only it can be refused by systemd's own name grammar.
 fn attempt_exit_unit_for_role(node_id: String, attempt_key: String, role: AttemptUnitRole, role_token: String) -> AttemptExitUnitDerivation {
   match role {
-    AttemptWorkerRole => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token)
-    AttemptObligationRole => AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key) }
-    AttemptReviewerRole { criterion_key, head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key) }
-    AttemptAuditorRole { head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key) }
-    AttemptSupervisorRole { turn } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key, turn: turn) }
+    AttemptWorkerRole => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token, role: role)
+    AttemptObligationRole => AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key), role: role }
+    AttemptReviewerRole { criterion_key, head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key), role: role }
+    AttemptAuditorRole { head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key), role: role }
+    AttemptSupervisorRole { turn } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key, turn: turn), role: role }
   }
 }
 
-// The role a record was written for, as the CLOSED ARM rather than as a token a consumer would have to
-// parse. A subject whose token this grammar does not name decodes to Unknown or Malformed and is reported
-// as such -- it is not quietly treated as some role.
-fn attempt_exit_record_role(record: AttemptExitRecord) -> AttemptUnitRoleDecode {
+// THE ROLE A RECORD WAS WRITTEN FOR, answered from the arm the decoder already put in the subject. This
+// function parses nothing: reading the token a second time here would be a second grammar for one fact, and
+// (review 90511) it let a compute seat's record be handed a FABRICATED role token built from its entry name,
+// which is no token of this grammar at all. A roadmap record whose token this grammar does not name never
+// reaches a consumer: the decoder refused the whole entry and named the token it could not read.
+type AttemptExitRecordRole
+  = AttemptExitRecordRoleOf { role: AttemptUnitRole }
+  // A compute seat's entry carries no role part: its identity names the unit. Saying so is the answer;
+  // answering some role, or answering Unknown with a string that was never a role token, would let a
+  // consumer compare a seat against a roadmap role it never had.
+  | AttemptExitRecordRoleNone { reason: String }
+
+fn attempt_exit_record_role(record: AttemptExitRecord) -> AttemptExitRecordRole {
   match record.subject {
-    RoadmapAttemptExit { node_id: _, attempt_key: _, role } => attempt_unit_role_of(token: role)
-    // A compute seat record carries no role token at all, so there is nothing to decode: the refusal names
-    // the entry it came from rather than inventing an empty token.
-    ComputeAttemptExit { identity: _ } => AttemptUnitRoleUnknown { token: record.entry_name }
+    RoadmapAttemptExit { node_id: _, attempt_key: _, role } => AttemptExitRecordRoleOf { role: role }
+    ComputeAttemptExit { identity } => AttemptExitRecordRoleNone { reason: join(["the exit record names compute seat identity ", identity, ", whose entry carries no role part"], "") }
   }
 }
 
@@ -343,8 +350,13 @@ type AttemptProcessEnd
 // disagree, and consumers would then choose which copy to trust (the door's match on one, the freeing
 // detail on the other). Both arms therefore stay in the same shape: keys that say WHOSE, never a second
 // copy of something the record already says.
+//
+// The roadmap arm carries the role as the CLOSED ARM that attempt_unit_role_token renders, not as the
+// token: the decoder read the token once, and a consumer that parsed the string again would be a second
+// grammar for one fact (DESIGN 6b). The raw token lives only on AttemptExitEntrySubject, which is what an
+// entry names BEFORE it has been decoded -- that is where an undecodable token stays reportable.
 type AttemptExitSubject
-  = RoadmapAttemptExit { node_id: String, attempt_key: String, role: String }
+  = RoadmapAttemptExit { node_id: String, attempt_key: String, role: AttemptUnitRole }
   | ComputeAttemptExit { identity: String }
 
 // WHAT AN ENTRY NAMES BEFORE IT CAN BE DECODED. A malformed entry yields no record, so deciding whether
@@ -378,7 +390,7 @@ fn attempt_exit_entry_subject(name: String) -> AttemptExitEntrySubject {
 fn attempt_exit_subject_of_record(record: AttemptExitRecord) -> AttemptExitEntrySubject {
   match record.subject {
     RoadmapAttemptExit { node_id, attempt_key, role } =>
-      RoadmapEntrySubject { node_id: node_id, attempt_key: attempt_key, role: role, invocation_id: record.invocation_id }
+      RoadmapEntrySubject { node_id: node_id, attempt_key: attempt_key, role: attempt_unit_role_token(role: role), invocation_id: record.invocation_id }
     ComputeAttemptExit { identity } => ComputeEntrySubject { identity: identity, invocation_id: record.invocation_id }
   }
 }
@@ -529,10 +541,10 @@ fn attempt_exit_roadmap_entry_decode(entry_name: String, parts: List<String>) ->
               entry_name: entry_name,
               reason: join(["the unit for role ", role_token, " is refused: ", systemd_unit_name_refusal_detail(admission: admission)], ""),
             }
-            AttemptExitUnitDerived { unit } =>
+            AttemptExitUnitDerived { unit, role: role_arm } =>
               AttemptExitEntryDecoded {
                 record: AttemptExitRecord {
-                  subject: RoadmapAttemptExit { node_id: node_id, attempt_key: attempt_key, role: role },
+                  subject: RoadmapAttemptExit { node_id: node_id, attempt_key: attempt_key, role: role_arm },
                   unit: unit,
                   invocation_id: invocation_id,
                   result: service_result_of_wire(word: result_word),
