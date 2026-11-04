@@ -38,7 +38,6 @@ type SystemctlStubAnswers {
   enabled_exit: Int,
   show_lines: List<String>,
   show_exit: Int,
-  counter_file: String,
   flip_after: Int,
   active_late_answer: String
 }
@@ -64,18 +63,19 @@ fn systemctl_stub_quiescent_answers(active: String, enabled: String) -> Systemct
       systemctl_stub_show_line(unit_property: ControlGroup, value: ""),
     ],
     show_exit: 0,
-    counter_file: "",
     flip_after: -1,
     active_late_answer: "",
   }
 }
 
 // The script itself: verbs from the upstream authorities, each answer on its verb, unknown verbs exit 1.
-fn systemctl_fence_stub_script(answers: SystemctlStubAnswers) -> String {
+// `counter_file` is the flip control's tally, threaded by `systemctl_fence_stub_write` (derived from the
+// stub's own path) rather than by the caller, so no witness has to predict where the stub lands.
+fn systemctl_fence_stub_script(answers: SystemctlStubAnswers, counter_file: String) -> String {
   let active_arm =
     (if answers.flip_after >= 0 {
       join([
-        "n=$(cat ", answers.counter_file, " 2>/dev/null || echo 0); n=$((n+1)); echo $n > ", answers.counter_file,
+        "n=$(cat ", counter_file, " 2>/dev/null || echo 0); n=$((n+1)); echo $n > ", counter_file,
         "; if [ $n -gt ", to_string(value: answers.flip_after), " ]; then echo ", answers.active_late_answer,
         "; else echo ", answers.active_answer, "; fi; exit ", to_string(value: answers.active_exit), ";;",
       ], "")
@@ -98,7 +98,7 @@ fn systemctl_fence_stub_script(answers: SystemctlStubAnswers) -> String {
 // than passing on a stale stub).
 fn systemctl_fence_stub_write(dir: String, name_tag: String, answers: SystemctlStubAnswers) -> String {
   let path = join([dir, "/../fence-systemctl-", name_tag], "")
-  let body = systemctl_fence_stub_script(answers: answers)
+  let body = systemctl_fence_stub_script(answers: answers, counter_file: join([path, ".n"], ""))
   let written = Filesystem.WriteCreateNewWithMode(path: path, content: body, mode: 493).success || Filesystem.Read(path: path).content == body
   if written { path } else { "/nonexistent/fence-stub" }
 }
