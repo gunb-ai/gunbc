@@ -177,7 +177,7 @@ fn metering_closing_writer_refusal(o: MeteringClosingWriterObservation) -> Strin
     Absent => Present { value: join(["the writer unit ", o.unit as String, " gave no ActiveState systemd understands (an empty or unparseable `systemctl is-active` answer); a read that failed is not a stopped state and cannot certify the writer idle", ""]) }
     Present { value: s } =>
       if !metering_closing_active_state_stopped(state: s) {
-        Present { value: join(["the writer unit ", o.unit as String, " reports ActiveState=", systemd_unit_active_state_wire_label(s: s), "; only `inactive` and `failed` are stopped, and `deactivating` in particular is NOT -- its processes are still running while systemd tears them down"]) }
+        Present { value: join(["the writer unit ", o.unit as String, " reports ActiveState=", systemd_unit_active_state_wire_label(s: s), "; only `inactive` and `failed` are stopped, and `deactivating` in particular is NOT -- its processes are still running while systemd tears them down; a writer is running now, so the cutover waits instead of instructing a drain"]) }
       } else {
         metering_closing_unit_file_refusal(o: o)
       }

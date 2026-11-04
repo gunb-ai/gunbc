@@ -175,8 +175,10 @@ test fn a_removed_cgroup_is_positive_absence_not_a_missing_answer() -> Bool {
   // claim 4 where the file exists but never answered -- both are "no processes", only one is a fact.
   // MainPID is "0": systemd's own answer for a unit with no main process (org.freedesktop.systemd1(5)
   // Unit.MainPID, systemd.service(5)). The empty string is NOT that answer -- review 90637 rules a failed
-  // read that must refuse. An empty ControlGroup is a different fact again: a cgroup systemd has removed.
-  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "", cgroup_events: fx_unparseable(), cgroup_read_established: false, writer_process_count: 0)
+  // read that must refuse. An empty ControlGroup is a different fact again: a cgroup systemd has removed,
+  // which is only readable as such when the read itself SUCCEEDED (cgroup_read_established: true); a failed
+  // read refuses upstream (claim 4), it is not a removed cgroup.
+  let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "masked", main_pid_word: "0", control_group: "", cgroup_events: fx_unparseable(), cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_writer_quiescent_one(o: o) {
     WriterQuiescent { unit: u } => u == fx_unit
     WriterNotQuiescent { unit: _, reason: _ } => false

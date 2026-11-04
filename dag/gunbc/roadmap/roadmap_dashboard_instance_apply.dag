@@ -96,9 +96,10 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
 // declares the answer set -- so no word of systemd's lives in this file to drift from systemd.
 import extdeps.systemd {
   parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show,
+  SystemdUnitProperty, MainPID, ControlGroup,
 }
 import extdeps.systemd.systemctl {
-  systemctl_user_show_properties_argv, systemctl_show_property_value, SystemdUnitProperty, MainPID, ControlGroup,
+  systemctl_user_show_properties_argv, systemctl_show_property_value,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
