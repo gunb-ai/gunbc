@@ -393,6 +393,34 @@ data tracker_web_test_environment_client: TrackerWebEnvironmentClient = TrackerW
   readback: Present { value: tracker_web_test_console_readback_row },
 }
 
+// Operator console readback of client tracker-web-stage (created 2026-11-04T07:44:23Z, secret ****cQes
+// enabled, no JS origins). The URI is a literal, independent of the emitter: the witness compares the
+// emitted redirect URI to it byte for byte.
+data tracker_web_stage_console_observed_redirect_uris: List<NonEmptyStr> = [
+  "https://srv1.tailecbe08.ts.net/auth/google/callback" as NonEmptyStr,
+]
+
+data tracker_web_stage_console_readback_observed_at: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
+  date: Iso8601CivilDate { year: 2026, month: 11, day: 4 },
+  since_midnight: second(count: 9 * 60 * 60 + 5 * 60),
+}
+
+data tracker_web_stage_console_readback_valid_until: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
+  date: Iso8601CivilDate { year: 2026, month: 12, day: 4 },
+  since_midnight: second(count: 9 * 60 * 60 + 5 * 60),
+}
+
+data tracker_web_stage_console_readback_observed_at_epoch: Second? = tracker_web_console_instant_unix_at(at: tracker_web_stage_console_readback_observed_at)
+
+data tracker_web_stage_console_readback_valid_until_epoch: Second? = tracker_web_console_instant_unix_at(at: tracker_web_stage_console_readback_valid_until)
+
+data tracker_web_stage_console_readback_row: TrackerWebConsoleReadbackRow = TrackerWebConsoleReadbackRow {
+  observed_redirect_uris: tracker_web_stage_console_observed_redirect_uris,
+  observed_at: tracker_web_stage_console_readback_observed_at,
+  valid_until: tracker_web_stage_console_readback_valid_until,
+  evidence: "operator 2026-11-04 console readback of client 433089409875-q072i67ddv7fghlpf978cbi8bv6r5pql (redirect URI srv1 portless /auth/google/callback); no Auth Platform write API" as NonEmptyStr,
+}
+
 data tracker_web_stage_environment_client: TrackerWebEnvironmentClient = TrackerWebEnvironmentClient {
   environment: GoogleLoginEnvironmentStage,
   client_id: tracker_web_stage_oauth_client_id,
@@ -400,7 +428,7 @@ data tracker_web_stage_environment_client: TrackerWebEnvironmentClient = Tracker
   secret_ref: tracker_web_stage_oauth_client_secret_ref,
   secret_host_path: tracker_web_stage_oauth_client_secret_host_path,
   config_host_path: tracker_web_stage_oidc_config_host_path,
-  readback: none,
+  readback: Present { value: tracker_web_stage_console_readback_row },
 }
 
 type TrackerWebOidcServeConfig {

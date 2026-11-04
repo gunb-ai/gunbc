@@ -35,6 +35,8 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_test_console_readback_valid_until_epoch,
   tracker_web_test_console_readback_observed_at,
   tracker_web_test_console_readback_valid_until,
+  tracker_web_stage_console_readback_observed_at_epoch, tracker_web_stage_console_readback_valid_until_epoch,
+  tracker_web_stage_console_observed_redirect_uris,
   tracker_web_console_instant_unix_int,
   tracker_web_test_console_observed_redirect_uris,
   tracker_web_unassigned_redirects,
@@ -71,15 +73,15 @@ test fn lab_rendered_oidc_config_names_lab_redirect_and_secret_path() -> Bool {
   }
 }
 
-test fn production_serve_unit_emits_without_an_observer_clock() -> Bool {
+test fn stage_srv1_live_serve_unit_refuses_without_an_observer_clock() -> Bool {
   match live_deploy_serve_unit_emission(
     spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
     revision: witness_revision(),
     now_epoch: Absent,
   ) {
-    LiveDeployServeUnitEmitted { file } =>
-      !string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
-    LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+    LiveDeployServeUnitOidcReadbackRefused { cause } =>
+      string_contains(s: cause as String, pattern: "observer clock unreadable")
+    LiveDeployServeUnitEmitted { file: _ } => false
   }
 }
 
@@ -95,7 +97,7 @@ test fn lab_serve_unit_refuses_without_an_observer_clock() -> Bool {
   }
 }
 
-test fn stage_srv1_live_serve_unit_refuses_on_absent_readback() -> Bool {
+test fn stage_srv1_live_serve_unit_carries_oidc_env_inside_the_readback_window() -> Bool {
   match tracker_web_instance_environment(instance_id: srv1_dashboard_live_id) {
     Present { value: GoogleLoginEnvironmentStage } => true
     _ => false
@@ -108,14 +110,32 @@ test fn stage_srv1_live_serve_unit_refuses_on_absent_readback() -> Bool {
       TrackerWebOauthClientUnbound { environment: _, reason: _ } => true
       TrackerWebOauthClientBound { binding: _ } => false
     }
-    && match live_deploy_serve_unit_emission(
+    && match tracker_web_stage_console_readback_observed_at_epoch {
+      Absent => false
+      Present { value: now } => match live_deploy_serve_unit_emission(
+        spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
+        revision: witness_revision(),
+        now_epoch: Present { value: now },
+      ) {
+        LiveDeployServeUnitEmitted { file } =>
+          string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
+        LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+      }
+    }
+}
+
+test fn stage_srv1_live_serve_unit_refuses_when_console_readback_expired() -> Bool {
+  match tracker_web_stage_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: until } => match live_deploy_serve_unit_emission_at(
       spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
       revision: witness_revision(),
-      now_epoch: claim_oidc_now(),
+      now_epoch: until,
     ) {
-      LiveDeployServeUnitEmitted { file: _ } => false
       LiveDeployServeUnitOidcReadbackRefused { cause: _ } => true
+      LiveDeployServeUnitEmitted { file: _ } => false
     }
+  }
 }
 
 test fn lab_serve_unit_carries_oidc_env() -> Bool {
@@ -322,22 +342,16 @@ test fn stage_redirect_uri_is_the_portless_https_callback_and_lab_keeps_its_port
     && (tracker_web_test_lab_redirect_uri as String) == "https://srv1.tailecbe08.ts.net:8444/auth/google/callback"
 }
 
-test fn stage_without_readback_refuses_and_never_borrows_tests() -> Bool {
+test fn stage_readback_is_its_own_and_equals_the_emitted_redirect_uri_byte_for_byte() -> Bool {
   match tracker_web_stage_environment_client.readback {
-    Absent => true
-    Present { value: _ } => false
+    Absent => false
+    Present { value: r } =>
+      r.observed_redirect_uris == tracker_web_stage_console_observed_redirect_uris
+        && r.observed_redirect_uris == tracker_web_workspace_identity_binding(client: tracker_web_stage_environment_client).redirect_uris
+        && r.observed_redirect_uris == [tracker_web_stage_srv1_live_redirect_uri]
   }
     && match tracker_web_registered_web_client_console_readback(client: tracker_web_stage_environment_client) {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match tracker_web_test_console_readback_observed_at_epoch {
       Absent => false
-      Present { value: now } =>
-        match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_live_id, now_epoch: now) {
-          TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: c } => string_contains(s: c as String, pattern: "readback absent")
-          _ => false
-        }
+      Present { value: _ } => true
     }
 }
-
