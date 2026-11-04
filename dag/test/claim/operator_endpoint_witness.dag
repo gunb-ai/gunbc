@@ -30,7 +30,7 @@ import gunbc.harness.harness_reasoning_wire {
   harness_unit_model_id, harness_unit_reasoning_field,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
-import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
+import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 
 // SUPPLIED READINGS ONLY. The /health and /v1/models bodies below are values handed to the pure standing and
 // roster folds; the live probe (harness_observe_operator_reading) is effectful and its live reading is the
