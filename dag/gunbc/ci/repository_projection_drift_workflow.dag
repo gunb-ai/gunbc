@@ -1,8 +1,8 @@
 module gunbc.ci.repository_projection_drift_workflow
 
-import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.types { Bool, Int, List, String, NonEmptyStr, Secret }
 import std.measure { byte_size_count, minute_count }
-import std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent, optional_is_absent }
 import std.algebra { list_map, fold_list }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
@@ -74,6 +74,7 @@ import gunbc.ci.repository_seed_steps {
   record_seed_revision_step,
   SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps
 }
+import extdeps.auth.jwt { JwtCompactSerialization }
 
 // repository_projection_drift_workflow.dag — THE ONE drift-check emitter, for a repository whose
 // authorities live in a SEED checked out beside it. The question is the same one gunbc's own drift watch
@@ -648,6 +649,58 @@ fn measurement_plant_receipts(names: List<String>, noisy: Optional<List<String>>
     concat(
       measurement_plant_g2_absent_arm(noisy: noisy),
       concat(list_map(xs: [], f: (u) => u), concat(list_map(xs: [], f: (u) => u), [measurement_plant_g3_typed_init_input_cast(items: names), measurement_plant_control_admitted_pair(subject: "measurement")]))
+    )
+  )
+}
+
+// measurement_plant_a_*: MEASUREMENT ONLY, never land. What do inference and emit admit TODAY
+// about crossing a branded String into the nominal_opaque Secret (dag/std/types.dag:293
+// `type Secret nominal_opaque = String`)? The five real refusals are `jwt as Secret`, where the
+// source is `type JwtCompactSerialization = NonEmptyStr where brand("JwtCompactSerialization")`
+// (dag/extdeps/auth/jwt.dag:108) -- gunbc/github_effect_perform.dag:239/:658/:688 and
+// gunbc/auth/github_app_control_plane_observe.dag:168/:180. A5 is the finding stern-bat-401 named
+// as the real one: `String as Secret` is admitted today (extdeps/shell/credentials.dag:30, in a
+// live chain), so raw text becomes a Secret with no check. A2 is measured as INFORMATION about
+// where the refusal lives and is NOT proposed as a fix: chaining two admitted hops to get past a
+// refusal the single hop gives is the §5 workaround tell. Readout: which of these names appear in
+// the emit refusal list, and with which pair. Reached only from measurement_plant_a_receipts,
+// which nothing calls -- that is the second thing this measures (see measurement_plant_receipts).
+fn measurement_plant_a1_direct(jwt: JwtCompactSerialization) -> Optional<Secret> {
+  Present { value: jwt as Secret }
+}
+
+fn measurement_plant_a2_two_hop(jwt: JwtCompactSerialization) -> Optional<Secret> {
+  Present { value: (jwt as String) as Secret }
+}
+
+fn measurement_plant_a3_brand_to_string(jwt: JwtCompactSerialization) -> String {
+  jwt as String
+}
+
+fn measurement_plant_a4_brand_to_carrier(jwt: JwtCompactSerialization) -> NonEmptyStr {
+  jwt as NonEmptyStr
+}
+
+fn measurement_plant_a5_string_to_secret(text: String) -> Optional<Secret> {
+  Present { value: text as Secret }
+}
+
+fn measurement_plant_a6_mark(o: Optional<Secret>) -> String {
+  if optional_is_absent(opt: o) { "A" } else { "P" }
+}
+
+fn measurement_plant_a_receipts(jwt: JwtCompactSerialization, text: String) -> String {
+  concat(
+    measurement_plant_a3_brand_to_string(jwt: jwt),
+    concat(
+      measurement_plant_a4_brand_to_carrier(jwt: jwt) as String,
+      concat(
+        measurement_plant_a6_mark(o: measurement_plant_a1_direct(jwt: jwt)),
+        concat(
+          measurement_plant_a6_mark(o: measurement_plant_a2_two_hop(jwt: jwt)),
+          measurement_plant_a6_mark(o: measurement_plant_a5_string_to_secret(text: text))
+        )
+      )
     )
   )
 }
