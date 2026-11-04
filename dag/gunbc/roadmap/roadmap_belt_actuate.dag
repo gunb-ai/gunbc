@@ -2752,7 +2752,6 @@ fn belt_actuate_spawn_with_origin(
   }
   }
   }
-  }
 }
 
 // THE PER-ATTEMPT PROOF, run by the SPAWN and nothing else. The grant argv come in the spawn bundle
