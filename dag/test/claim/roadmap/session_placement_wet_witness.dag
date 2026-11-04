@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_entry_parts, Atte
 import extdeps.systemd.service_exec { exec_word_render, ExecWordRendered, ExecWordRefused }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_lab_dashboard_instance, srv1_dashboard_lab_id }
-import gunbc.roadmap.roadmap_session_attempt_slots_root { SessionAttemptSlotsStore, WorkerAttemptSlots, session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { SessionAttemptSlotsStore, session_attempt_slot_store_handle, WorkerAttemptSlots, session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready }
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs, FilePath }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import gunbc.systemd_unit_invocation_liveness {
@@ -51,7 +51,8 @@ import gunbc.compute.attempt_lifecycle {
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, AttemptUnitAbsent }
 import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, SessionPlacementOpen, SessionPlacementOpened, SessionPlacementOpenRefused, session_placement_open_for_acquisition }
+import gunbc.roadmap.operator_session_lease_release { operator_release_succeeded }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, session_operator_settle_one, session_operator_settle_decide, session_settle_execute, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -1547,5 +1548,127 @@ test fn the_declared_row_names_the_instance_the_pass_reads_and_the_root_it_left_
       && match pending { FrontierExpiryReport { unbound_count: u1, pending_count: p, fired_still_present_count: f } => (u1 == 0) && (p == 1) && (f == 0) }
       && match fired { FrontierExpiryReport { unbound_count: u2, pending_count: p, fired_still_present_count: f } => (u2 == 0) && (p == 0) && (f == 1) }
     _ => false
+  }
+}
+
+
+// ── THE OPERATOR-DIRECTED SETTLE (gunbc.roadmap.operator_session_lease_release, PR #15813) ──────────
+//
+// The operator route runs the pass's own admission and execution (session_operator_settle_one) over PLANTED
+// stores: a real file slot store and a real file ledger in the witness's directory. Every verdict below is read
+// from the typed SessionSettlement, the slot's generation and the ledger, never from a rendered line.
+
+fn slot_generation_count(dir: String) -> Int {
+  match slot_store_at(dir: dir) {
+    Absent => 0 - 1
+    Present { value: slots } =>
+      match attempt_slot_read(store: slots, reference: unit_a() as NonEmptyStr) {
+        AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g)
+        AttemptSlotAbsent => 0 - 1
+        AttemptSlotUnreadable { detail: _ } => 0 - 1
+      }
+  }
+}
+
+fn operator_settle(dir: String) -> SessionSettlement {
+  match stores_at(dir: dir) {
+    Absent => SessionSettlementRefused { unit: "", detail: "no stores" }
+    Present { value: stores } => session_operator_settle_one(stores: stores, host: host, key: unit_a() as NonEmptyStr, reason: "operator read the unit absent and the process gone" as NonEmptyStr)
+  }
+}
+
+// POSITIVE: an admitted launching slot is terminated at the generation read and its seat released.
+test fn an_operator_settle_terminates_an_admitted_launching_slot_and_returns_its_seat() -> Bool {
+  let dir = fresh_dir(tag: "op1")
+  match launched_with_real_seat(dir: dir) {
+    Absent => false
+    Present { value: _ } => {
+      let before = slot_generation_count(dir: dir)
+      let s = operator_settle(dir: dir)
+      (released_unit(s: s) == unit_a()) && operator_release_succeeded(s: s) && slot_is_terminal(dir: dir)
+        && (slot_generation_count(dir: dir) == before + 1) && !ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// A SLOT KEYED UNDER ONE NAME THAT RECORDS ANOTHER ATTEMPT is the shape the pass refuses to touch. The operator
+// route performs NEITHER transition NOR release: generation unchanged, still launching, seat still in the
+// ledger, no release record.
+test fn an_operator_settle_of_an_inconsistently_bound_slot_transitions_and_releases_nothing() -> Bool {
+  let dir = fresh_dir(tag: "op2")
+  match reserve_real(dir: dir) {
+    Absent => false
+    Present { value: _ } =>
+      if !launched_ok(dir: dir, rec: colliding_slot(opened: 1000)) { false } else {
+        let before = slot_generation_count(dir: dir)
+        let s = operator_settle(dir: dir)
+        kept(s: s) && !operator_release_succeeded(s: s) && slot_is_launching(dir: dir)
+          && (slot_generation_count(dir: dir) == before) && (release_text(dir: dir) == "") && ledger_still_holds(dir: dir)
+      }
+  }
+}
+
+// ABSENT FROM THE CURRENT STORE REFUSES, with no ledger call: the seat the ledger holds stays held and no
+// release record is written.
+test fn an_operator_settle_of_a_slot_absent_from_the_current_store_refuses_without_touching_the_ledger() -> Bool {
+  let dir = fresh_dir(tag: "op3")
+  match reserve_real(dir: dir) {
+    Absent => false
+    Present { value: _ } => {
+      let s = operator_settle(dir: dir)
+      kept(s: s) && !operator_release_succeeded(s: s) && (release_text(dir: dir) == "") && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// A LOST CAS RACE: the decision reads the slot at generation g; the slot then moves; executing the decision
+// refuses and releases nothing.
+test fn an_operator_settle_whose_slot_moved_between_read_and_terminate_releases_nothing() -> Bool {
+  let dir = fresh_dir(tag: "op4")
+  match launched_with_real_seat(dir: dir) {
+    Absent => false
+    Present { value: _ } =>
+      match stores_at(dir: dir) {
+        Absent => false
+        Present { value: stores } => {
+          let key = unit_a() as NonEmptyStr
+          let slot = attempt_slot_read(store: session_attempt_slot_store_handle(ref: stores.slots), reference: key)
+          let decision = session_operator_settle_decide(key: key, slot: slot, reason: "operator evidence" as NonEmptyStr, release_settled: false)
+          let moved = match slot {
+            AttemptSlotHeld { record: _, generation: g } => match attempt_terminate(store: session_attempt_slot_store_handle(ref: stores.slots), reference: key, expected: g, verdict: AttemptRecovered, detail: "another closer won") {
+              AttemptAdvanced { state: _, generation: _ } => true
+              AttemptLostRace { expected: _, observed: _ } => false
+              AttemptTransitionRefused { detail: _ } => false
+            }
+            AttemptSlotAbsent => false
+            AttemptSlotUnreadable { detail: _ } => false
+          }
+          let s = session_settle_execute(stores: stores, host: host, key: key, decision: decision, closing: r => r)
+          moved && (match s { SessionSettlementRefused { unit: _, detail: _ } => true  _ => false }) && !operator_release_succeeded(s: s)
+            && (release_text(dir: dir) == "") && ledger_still_holds(dir: dir)
+        }
+      }
+  }
+}
+
+// A REFUSED LEDGER RELEASE IS A NONZERO COMMAND OUTCOME, whatever line is rendered: the exit is decided from
+// the type, and a refused release after a closed slot is exactly the case the rendered-prefix test missed.
+// Nothing-to-release (the ledger holds no seat) is success because the desired state holds.
+test fn the_command_outcome_is_decided_from_the_settlement_type() -> Bool {
+  let refused = SessionSettlementReleaseAttempted { unit: "u", freed: ComputeReleaseRefused { detail: "ledger refused" }, detail: "slot terminated" }
+  let nothing = SessionSettlementReleaseAttempted { unit: "u", freed: ComputeNothingToRelease { detail: "no seat" }, detail: "slot terminated" }
+  !operator_release_succeeded(s: refused) && operator_release_succeeded(s: nothing)
+    && !operator_release_succeeded(s: SessionSettlementKept { unit: "u", why: "x" })
+    && !operator_release_succeeded(s: SessionSettlementRefused { unit: "u", detail: "x" })
+    && operator_release_succeeded(s: SessionSettlementDone { unit: "u", why: "closed and released" })
+}
+
+// REAL ROUTE FOR NOTHING-TO-RELEASE: an admitted slot whose reservation never landed is closed and the ledger
+// answers NothingToRelease; the command succeeds.
+test fn an_operator_settle_of_a_slot_with_no_ledger_seat_closes_the_slot_and_succeeds() -> Bool {
+  let dir = fresh_dir(tag: "op5")
+  if !launched_without_a_ledger_seat(dir: dir) { false } else {
+    let s = operator_settle(dir: dir)
+    operator_release_succeeded(s: s) && slot_is_terminal(dir: dir) && (released_unit(s: s) == "")
   }
 }

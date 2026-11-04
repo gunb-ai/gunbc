@@ -20,7 +20,7 @@ import gunbc.harness.harness_turn {
   harness_tool_contract_wire,
 }
 import gunbc.harness.harness_wire { AnthropicMessagesShape, OpenAiChatCompletionsShape }
-import gunbc.harness.harness_tool { harness_offered_tools }
+import gunbc.harness.harness_tool { harness_offered_tools, ValidationRoutedTo }
 import gunbc.harness.harness_tool_kind { HarnessTool, ReadFileTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderAwaitingAcceptance, ProviderCompleted, ProviderRunning,
@@ -151,9 +151,10 @@ fn wire_names_the_tool(wire: String, tool: HarnessTool) -> Bool {
 }
 
 test fn the_wire_contract_is_the_offered_tools() -> Bool {
-  let a = harness_tool_contract_wire(shape: AnthropicMessagesShape)
-  let o = harness_tool_contract_wire(shape: OpenAiChatCompletionsShape)
-  all(harness_offered_tools(), t => wire_names_the_tool(wire: a, tool: t) && wire_names_the_tool(wire: o, tool: t))
+  let routed = ValidationRoutedTo { repo_root: "/r" }
+  let a = harness_tool_contract_wire(shape: AnthropicMessagesShape, validation: routed)
+  let o = harness_tool_contract_wire(shape: OpenAiChatCompletionsShape, validation: routed)
+  all(harness_offered_tools(validation: routed), t => wire_names_the_tool(wire: a, tool: t) && wire_names_the_tool(wire: o, tool: t))
     && !wire_names_the_tool(wire: a, tool: ReadFileTool)
     && !wire_names_the_tool(wire: o, tool: ReadFileTool)
 }

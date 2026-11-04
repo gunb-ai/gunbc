@@ -13,9 +13,14 @@ import extdeps.languages.json.parse {
 import gunbc.harness.harness_wire {
   HarnessWireBlock, WireToolUseBlock, HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.compute.test_run {
+  test_pattern_cli, compile_entry_cli, test_process_receipt_path, compile_process_receipt_path,
+}
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
-  WaitJobsTool, ReadJobOutputTool, KillJobTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool, ValidateWorktreeTool,
   harness_tool_wire_name,
   HarnessToolRecognized, HarnessToolUnrecognized, harness_tool_of_wire_name,
 }
@@ -175,12 +180,24 @@ type HarnessToolEnvironment {
   job_output_directory: FilePath
   jobs: List<HarnessShellJob>
   wait_pace: HarnessWaitPace
+  validation: HarnessValidationRoute
 }
+
+// WHETHER THIS HARNESS OFFERS validate_worktree, AND THE REPOSITORY ROOT ITS COMPUTE ROUTE RESOLVES
+// THE DEPLOYMENT FROM. The tool compiles or tests the snapshot of THIS environment's working
+// directory through gunbc.compute.test_run, which submits it to the compute pool
+// (gunbc.compute.work_provider_local compute_provide, a ComputeBuildPool grant, its own unit and
+// memory cap). A role with no deployment to resolve (probe, review) is not offered the tool, and a
+// call that reaches it anyway is a typed refusal, never a run in this process's own cgroup.
+type HarnessValidationRoute
+  = ValidationNotOffered
+  | ValidationRoutedTo { repo_root: String }
 
 fn harness_tool_environment(
   working_directory: FilePath,
   timeout_program: FilePath,
   job_output_directory: FilePath,
+  validation: HarnessValidationRoute,
 ) -> HarnessToolEnvironment {
   HarnessToolEnvironment {
     working_directory: working_directory,
@@ -188,6 +205,7 @@ fn harness_tool_environment(
     job_output_directory: job_output_directory,
     jobs: [],
     wait_pace: WaitPaceReset,
+    validation: validation,
   }
 }
 
@@ -239,6 +257,7 @@ fn harness_env_with_jobs(
     job_output_directory: environment.job_output_directory,
     jobs: jobs,
     wait_pace: wait_pace,
+    validation: environment.validation,
   }
 }
 
@@ -762,6 +781,37 @@ fn harness_execute_tool_use(
                   detail: "hand_in is realized by the turn, which binds the candidate and waits for its outcome; this dispatcher does not run it",
                 },
               )
+            ValidateWorktreeTool =>
+              match environment.validation {
+                ValidationNotOffered =>
+                  harness_unchanged_refusal(
+                    environment: environment,
+                    disposition: ToolEffectRefused {
+                      detail: "validate_worktree is not offered to this harness role: no deployment root is routed for it, and it never falls back to running the build or test in this process",
+                    },
+                  )
+                ValidationRoutedTo { repo_root } =>
+                  match harness_tool_use_input_string(block: block, member: "kind") {
+                    Absent =>
+                      harness_unchanged_refusal(
+                        environment: environment,
+                        disposition: ToolInputMemberMissing { tool: "validate_worktree", member: "kind" },
+                      )
+                    Present { value: kind } =>
+                      match harness_tool_use_input_string(block: block, member: "target") {
+                        Absent =>
+                          harness_unchanged_refusal(
+                            environment: environment,
+                            disposition: ToolInputMemberMissing { tool: "validate_worktree", member: "target" },
+                          )
+                        Present { value: target } =>
+                          HarnessToolStep {
+                            environment: environment,
+                            outcome: harness_validate_worktree(environment: environment, repo_root: repo_root, kind: kind, target: target),
+                          }
+                      }
+                  }
+              }
           }
       }
     WireTextBlock { text: _ } =>
@@ -800,6 +850,7 @@ type OfferedHarnessTool
   | OfferedWaitJobsTool
   | OfferedReadJobOutputTool
   | OfferedKillJobTool
+  | OfferedValidateWorktreeTool
 
 fn harness_offered_tool_kind(tool: OfferedHarnessTool) -> HarnessTool {
   match tool {
@@ -808,18 +859,26 @@ fn harness_offered_tool_kind(tool: OfferedHarnessTool) -> HarnessTool {
     OfferedWaitJobsTool => WaitJobsTool
     OfferedReadJobOutputTool => ReadJobOutputTool
     OfferedKillJobTool => KillJobTool
+    OfferedValidateWorktreeTool => ValidateWorktreeTool
   }
 }
 
-fn harness_offered_tool_rows() -> List<OfferedHarnessTool> {
-  [
-    OfferedRunCommandTool, OfferedWaitJobsTool, OfferedReadJobOutputTool,
-    OfferedKillJobTool, OfferedHandInTool,
-  ]
+// validate_worktree is offered exactly when the role has a routed deployment (HarnessValidationRoute).
+fn harness_offered_tool_rows(validation: HarnessValidationRoute) -> List<OfferedHarnessTool> {
+  concat(
+    [
+      OfferedRunCommandTool, OfferedWaitJobsTool, OfferedReadJobOutputTool,
+      OfferedKillJobTool, OfferedHandInTool,
+    ],
+    match validation {
+      ValidationNotOffered => []
+      ValidationRoutedTo { repo_root: _ } => [OfferedValidateWorktreeTool]
+    },
+  )
 }
 
-fn harness_offered_tools() -> List<HarnessTool> {
-  map(harness_offered_tool_rows(), t => harness_offered_tool_kind(tool: t))
+fn harness_offered_tools(validation: HarnessValidationRoute) -> List<HarnessTool> {
+  map(harness_offered_tool_rows(validation: validation), t => harness_offered_tool_kind(tool: t))
 }
 
 data harness_run_command_description: String = "Run a shell command in the attempt's working directory. Finishes inline if it exits within the hold; otherwise returns a background job. Do not poll with sleep."
@@ -875,6 +934,7 @@ fn harness_offered_tool_schema(tool: OfferedHarnessTool) -> JsonValue {
     OfferedWaitJobsTool => harness_wait_schema()
     OfferedReadJobOutputTool => harness_job_id_schema(description: "Job id from the command table.")
     OfferedKillJobTool => harness_job_id_schema(description: "Job id whose process group to kill.")
+    OfferedValidateWorktreeTool => harness_validate_worktree_schema()
   }
 }
 
@@ -885,6 +945,7 @@ fn harness_offered_tool_description(tool: OfferedHarnessTool) -> String {
     OfferedWaitJobsTool => harness_wait_description
     OfferedReadJobOutputTool => harness_job_output_description
     OfferedKillJobTool => harness_job_kill_description
+    OfferedValidateWorktreeTool => harness_validate_worktree_description
   }
 }
 
@@ -909,6 +970,80 @@ fn harness_offered_tool_json(shape: HarnessWireShape, tool: OfferedHarnessTool) 
   }
 }
 
-fn harness_offered_tools_json(shape: HarnessWireShape) -> JsonValue {
-  json_array(elements: map(harness_offered_tool_rows(), t => harness_offered_tool_json(shape: shape, tool: t)))
+fn harness_offered_tools_json(shape: HarnessWireShape, validation: HarnessValidationRoute) -> JsonValue {
+  json_array(elements: map(harness_offered_tool_rows(validation: validation), t => harness_offered_tool_json(shape: shape, tool: t)))
+}
+
+// VALIDATION IS A SUBMISSION, AND THE HARNESS IS THE SUBMITTER. gunbc.compute.test_run's two entries
+// snapshot the worktree and hand the work to the compute provider, which reserves a ComputeBuildPool
+// grant and runs the build or test in its own unit under that grant. Reached from a shell command,
+// those entries needed a second full compiler process (`gunbc run`) booted inside the caller's cgroup
+// just to submit; reached here, the submit is a call in the process that already holds the compiler.
+// Whether the pool grants is the provider's typed answer (a refused or held request is a nonzero
+// exit carrying its ending), and no arm of this function runs the work itself.
+//
+// THE DURATION LIMIT HERE IS THE PROVIDER'S, not environment.duration_limit_seconds: that limit kills
+// a shell child, and this call has no child to kill. The provider's own bounds (the unit's
+// RuntimeMaxSec and the lease term) end a validation that does not finish.
+fn harness_validate_worktree(environment: HarnessToolEnvironment, repo_root: String, kind: String, target: String) -> HarnessToolOutcome {
+  let worktree = environment.working_directory as String
+  if kind == "test" {
+    harness_validation_outcome(
+      exit: test_pattern_cli(repo_root: repo_root, worktree: worktree, pattern: target, receipt_path: test_process_receipt_path(worktree: worktree)),
+      receipt_path: test_process_receipt_path(worktree: worktree),
+    )
+  } else if kind == "compile" {
+    harness_validation_outcome(
+      exit: compile_entry_cli(repo_root: repo_root, worktree: worktree, entry: target, receipt_path: compile_process_receipt_path(worktree: worktree)),
+      receipt_path: compile_process_receipt_path(worktree: worktree),
+    )
+  } else {
+    ToolRefused {
+      disposition: ToolEffectRefused {
+        detail: join(["validate_worktree kind must be \"test\" or \"compile\", got: ", kind], ""),
+      },
+    }
+  }
+}
+
+fn harness_validation_outcome(exit: ProcessExit, receipt_path: String) -> HarnessToolOutcome {
+  match exit {
+    ExitSuccess => {
+      let receipt = Filesystem.Read(path: receipt_path)
+      let bounded = harness_bounded_tool_text(
+        text: if receipt.success { receipt.content } else { join(["validation passed; receipt unreadable at ", receipt_path, ": ", receipt.error], "") },
+      )
+      ToolCompleted { text: bounded.text, exit_code: 0, standing: bounded.standing }
+    }
+    ExitFailure { code, reason } => {
+      let bounded = harness_bounded_tool_text(text: reason)
+      ToolCompleted { text: bounded.text, exit_code: code, standing: bounded.standing }
+    }
+  }
+}
+
+fn harness_validate_worktree_schema() -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "object")),
+    json_kv(key: "properties", value: json_object([
+      json_kv(key: "kind", value: json_object([
+        json_kv(key: "type", value: json_string(s: "string")),
+        json_kv(key: "enum", value: json_array(elements: [json_string(s: "test"), json_string(s: "compile")])),
+        json_kv(key: "description", value: json_string(s: "test: run the witness modules a target pattern selects. compile: compile one entry .dag and its closure.")),
+      ])),
+      json_kv(key: "target", value: json_object([
+        json_kv(key: "type", value: json_string(s: "string")),
+        json_kv(key: "description", value: json_string(s: "For test, a bazel target pattern such as //dag/test/claim/<package>/... . For compile, the entry .dag path relative to the worktree.")),
+      ])),
+    ])),
+    json_kv(key: "required", value: json_array(elements: [json_string(s: "kind"), json_string(s: "target")])),
+  ])
+}
+
+data harness_validate_worktree_description: String = "Compile or test the current state of the attempt's working directory in the compute pool, under its own memory grant, and return the receipt. Use this for every build or test; do not run gunbc yourself. A refused or held grant is returned as a failed result."
+
+// THE SPELLING OF A validate_worktree CALL IN GUIDANCE, derived from the same wire members the schema
+// declares ("kind", "target"), so the prompt cannot teach a call the tool refuses.
+fn harness_validate_worktree_call(kind: String, target: String) -> String {
+  join(["validate_worktree {\"kind\": \"", kind, "\", \"target\": \"", target, "\"}"], "")
 }

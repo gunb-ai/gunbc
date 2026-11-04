@@ -18,7 +18,7 @@ import gunbc.harness.harness_shell_job_policy {
 }
 import gunbc.harness.harness_tool {
   HarnessToolEnvironment, HarnessToolOutcome, ToolJob, ToolCompleted, ToolReport, ToolRefused, DurationExceeded,
-  harness_tool_environment, harness_run_command_scheduled, harness_wait_jobs_scheduled,
+  harness_tool_environment, ValidationNotOffered, harness_run_command_scheduled, harness_wait_jobs_scheduled,
   harness_kill_job, harness_read_job_output, harness_outcome_text, harness_env_with_jobs,
 }
 import extdeps.posix.process { StillRunning, Exited, Signaled, ReapRefused }
@@ -58,6 +58,7 @@ fn env_at(worktree: String, output: String) -> HarnessToolEnvironment {
     working_directory: worktree as FilePath,
     timeout_program: "/usr/bin/timeout" as FilePath,
     job_output_directory: output as FilePath,
+    validation: ValidationNotOffered,
   )
 }
 

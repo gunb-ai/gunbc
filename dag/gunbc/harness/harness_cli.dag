@@ -13,7 +13,7 @@ import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape
 import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.filesystem { path_parent_directory }
-import gunbc.harness.harness_tool { HarnessToolEnvironment, harness_tool_environment }
+import gunbc.harness.harness_tool { harness_validate_worktree_call, HarnessToolEnvironment, harness_tool_environment, HarnessValidationRoute, ValidationNotOffered, ValidationRoutedTo }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnAcceptanceUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, HarnessAcceptanceRoute, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_resume_turn, TurnBackendRefusedUnexplained, TurnResumeRefused, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
@@ -24,8 +24,8 @@ import gunbc.harness.harness_guidance {
   harness_worker_guidance_at, harness_guidance_prose, harness_probe_guidance,
 }
 import gunbc.compute.test_run {
-  test_process_command, test_process_receipt_path, test_process_pattern_placeholder,
-  compile_process_command, compile_process_receipt_path, compile_process_entry_placeholder,
+  test_process_receipt_path, test_process_pattern_placeholder,
+  compile_process_receipt_path, compile_process_entry_placeholder,
 }
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
@@ -227,6 +227,7 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
     working_directory: harness_macbook_working_directory,
     timeout_program: harness_macbook_timeout_program,
     job_output_directory: path_parent_directory(path: harness_request_scratch_path as String) as FilePath,
+    validation: ValidationNotOffered,
   )
 }
 
@@ -364,8 +365,8 @@ type HarnessSeatWait {
 
 // Stated CLI policy: batch belt turns do not value delay. A per-invocation flag is a
 // declared frontier — gunbc run --function has no --arg for this field.
-fn harness_bind_belt_seat(role: String, system_prompt: String, brief: String, actor: NonEmptyStr, attempt: NonEmptyStr, turn: HarnessCallerTurn?) -> HarnessSeatBinding {
-  harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: role, shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: actor, attempt: attempt, policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: turn)
+fn harness_bind_belt_seat(role: String, system_prompt: String, brief: String, actor: NonEmptyStr, attempt: NonEmptyStr, turn: HarnessCallerTurn?, validation: HarnessValidationRoute) -> HarnessSeatBinding {
+  harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: role, shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief, validation: validation), actor: actor, attempt: attempt, policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: turn)
 }
 
 fn harness_bind_seat_waiting(
@@ -376,17 +377,18 @@ fn harness_bind_seat_waiting(
   attempt: NonEmptyStr,
   events_path: String,
   turn: HarnessCallerTurn?,
+  validation: HarnessValidationRoute,
 ) -> HarnessSeatBinding {
   let waited = fold(
     nat_range_inclusive(lo: 1, hi: harness_seat_wait_cap),
-    init: HarnessSeatWait { binding: harness_bind_belt_seat(role: role, system_prompt: system_prompt, brief: brief, actor: actor, attempt: attempt, turn: turn), waits: 0 },
+    init: HarnessSeatWait { binding: harness_bind_belt_seat(role: role, system_prompt: system_prompt, brief: brief, actor: actor, attempt: attempt, turn: turn, validation: validation), waits: 0 },
     f: (acc, _) =>
       match acc.binding {
         HarnessSeatPending { detail } => {
           let wait = acc.waits + 1
           match harness_seat_wait_announce_and_sleep(wait: wait, detail: detail, events_path: events_path) {
             Present { value: refusal } => HarnessSeatWait { binding: HarnessSeatRefused { detail: refusal }, waits: wait }
-            Absent => HarnessSeatWait { binding: harness_bind_belt_seat(role: role, system_prompt: system_prompt, brief: brief, actor: actor, attempt: attempt, turn: turn), waits: wait }
+            Absent => HarnessSeatWait { binding: harness_bind_belt_seat(role: role, system_prompt: system_prompt, brief: brief, actor: actor, attempt: attempt, turn: turn, validation: validation), waits: wait }
           }
         }
         HarnessSeatRefused { detail: _ } => acc
@@ -463,19 +465,19 @@ fn harness_probe_attempt(label: String) -> NonEmptyStr {
 // before any supplier is chosen: the role, the system instructions exactly as the model will see
 // them, the user input, the tool contract exactly as the wire carries it, and the generation
 // settings. They are collected HERE, by one function every entry calls, rather than hand-picked
-// per entry: the worker's system prompt is rendered from gunbc_program among other things, and an
+// per entry: the worker's system prompt is rendered from the worktree among other things, and an
 // entry that listed [worktree, repo_root, brief] gave two turns with different rendered prompts
 // one Work. Rendering the prompt once and hashing what was rendered removes the list to maintain.
 //
 // LEFT OUT, DELIBERATELY: the event file, the scratch path, the timeout program, the attempt (that
 // is the Demand), the selected endpoint and its model name (offer facts), and the context budget
 // (derived from the bound unit after selection -- a supplier-side limit).
-fn harness_model_request_inputs(role: String, shape: HarnessWireShape, system_prompt: String, user_input: String) -> List<String> {
+fn harness_model_request_inputs(role: String, shape: HarnessWireShape, system_prompt: String, user_input: String, validation: HarnessValidationRoute) -> List<String> {
   [
     role,
     system_prompt,
     user_input,
-    harness_tool_contract_wire(shape: shape),
+    harness_tool_contract_wire(shape: shape, validation: validation),
     to_string(harness_default_max_tokens),
     harness_reasoning_level_wire(level: harness_reasoning_mode) as String,
   ]
@@ -641,7 +643,7 @@ fn harness_release_admitted(partition: String, reference: String, grant: String,
 // bypass that only a diagnostic uses is still a bypass, and it is the one most likely to be run
 // while something else is in flight.
 fn harness_probe_cli() -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: none)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt, validation: ValidationNotOffered), actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: none)
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -678,6 +680,7 @@ fn harness_probe_cli() -> ProcessExit {
 // harness needs: an attempt that runs elsewhere carries its scratch with it instead of contending
 // for one host's /tmp.
 fn harness_worker_config(
+  validation: HarnessValidationRoute,
   worktree: FilePath,
   timeout_program: FilePath,
   request_scratch_path: FilePath,
@@ -704,6 +707,7 @@ fn harness_worker_config(
       working_directory: worktree,
       timeout_program: timeout_program,
       job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
+      validation: validation,
     ),
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
@@ -722,12 +726,12 @@ fn harness_acceptance_capacity_of(binding: HarnessSeatBinding, admission: Admiss
   }
 }
 
-fn harness_worker_system_prompt_at(worktree: String, repo_root: String, gunbc_program: String) -> String {
+fn harness_worker_system_prompt_at(worktree: String) -> String {
   harness_guidance_prose(rows: harness_worker_guidance_at(
     worktree: worktree,
-    test_command: test_process_command(gunbc_program: gunbc_program, repo_root: repo_root, worktree: worktree, pattern: test_process_pattern_placeholder),
+    test_command: harness_validate_worktree_call(kind: "test", target: test_process_pattern_placeholder),
     test_receipt_path: test_process_receipt_path(worktree: worktree),
-    compile_command: compile_process_command(gunbc_program: gunbc_program, repo_root: repo_root, worktree: worktree, entry: compile_process_entry_placeholder),
+    compile_command: harness_validate_worktree_call(kind: "compile", target: compile_process_entry_placeholder),
     compile_receipt_path: compile_process_receipt_path(worktree: worktree),
   ))
 }
@@ -961,8 +965,8 @@ fn harness_worker_turn_cli(
   turn: HarnessCallerTurn?,
   run: HarnessWorkerRun,
 ) -> ProcessExit {
-  let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
-  let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: turn)
+  let system_prompt = harness_worker_system_prompt_at(worktree: worktree)
+  let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: turn, validation: ValidationRoutedTo { repo_root: repo_root })
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -971,6 +975,7 @@ fn harness_worker_turn_cli(
         Present { value: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
         Absent => {
           let config = harness_worker_config(
+              validation: ValidationRoutedTo { repo_root: repo_root },
               worktree: worktree as FilePath,
               timeout_program: timeout_program as FilePath,
               request_scratch_path: request_scratch_path as FilePath,
@@ -1046,6 +1051,7 @@ fn harness_reviewer_config(
       working_directory: worktree,
       timeout_program: timeout_program,
       job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
+      validation: ValidationNotOffered,
     ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
@@ -1069,7 +1075,7 @@ fn harness_reviewer_cli(
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_reviewer_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
-  let binding = harness_bind_seat_waiting(role: "reviewer", system_prompt: system_prompt, brief: brief, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: none)
+  let binding = harness_bind_seat_waiting(role: "reviewer", system_prompt: system_prompt, brief: brief, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: none, validation: ValidationNotOffered)
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -1131,6 +1137,7 @@ fn harness_auditor_config(
       working_directory: worktree,
       timeout_program: timeout_program,
       job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
+      validation: ValidationNotOffered,
     ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
@@ -1153,7 +1160,7 @@ fn harness_auditor_cli(
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_auditor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
-  let binding = harness_bind_seat_waiting(role: "auditor", system_prompt: system_prompt, brief: brief, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: none)
+  let binding = harness_bind_seat_waiting(role: "auditor", system_prompt: system_prompt, brief: brief, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: none, validation: ValidationNotOffered)
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -1186,7 +1193,7 @@ fn harness_auditor_cli(
 // AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall
 // with a door beside it.
 fn harness_probe_report() -> String {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: none)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt, validation: ValidationNotOffered), actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: none)
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     BindingPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")
@@ -1272,6 +1279,7 @@ fn harness_hosted_probe_cli(worktree: String, timeout_program: String, request_s
           } else {
             let outcome = harness_run_turn(
               config: harness_worker_config(
+                validation: ValidationNotOffered,
                 worktree: worktree as FilePath,
                 timeout_program: timeout_program as FilePath,
                 request_scratch_path: request_scratch_path as FilePath,

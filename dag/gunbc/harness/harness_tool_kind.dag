@@ -20,6 +20,7 @@ type HarnessTool
   | WaitJobsTool
   | ReadJobOutputTool
   | KillJobTool
+  | ValidateWorktreeTool
 
 fn harness_tool_wire_name(tool: HarnessTool) -> String {
   match tool {
@@ -31,6 +32,7 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
     WaitJobsTool => "wait"
     ReadJobOutputTool => "job_output"
     KillJobTool => "job_kill"
+    ValidateWorktreeTool => "validate_worktree"
   }
 }
 
@@ -40,7 +42,7 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
 fn all_harness_tools() -> List<HarnessTool> {
   [
     RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
-    WaitJobsTool, ReadJobOutputTool, KillJobTool,
+    WaitJobsTool, ReadJobOutputTool, KillJobTool, ValidateWorktreeTool,
   ]
 }
 
@@ -78,6 +80,7 @@ fn harness_tool_item_type(tool: HarnessTool) -> String {
     WaitJobsTool => "job_wait"
     ReadJobOutputTool => "job_output"
     KillJobTool => "job_kill"
+    ValidateWorktreeTool => "worktree_validation"
   }
 }
 

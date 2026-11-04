@@ -101,6 +101,7 @@ import gunbc.harness.harness_tool {
   HarnessToolStep,
   harness_execute_tool_use, harness_outcome_text, harness_outcome_is_error,
   harness_offered_tools_json,
+  HarnessValidationRoute,
 }
 import gunbc.harness.harness_shell_job { harness_hand_in_blocked_by_running_jobs }
 import gunbc.harness.harness_tool_kind {
@@ -800,7 +801,7 @@ fn harness_messages_request_json(
     json_kv(key: "max_tokens", value: json_int(n: config.max_tokens)),
     json_kv(key: "system", value: json_string(s: config.system_prompt)),
     json_kv(key: "messages", value: json_array(elements: messages)),
-    json_kv(key: "tools", value: harness_tool_contract_json(shape: AnthropicMessagesShape)),
+    json_kv(key: "tools", value: harness_tool_contract_json(shape: AnthropicMessagesShape, validation: config.environment.validation)),
   ], reasoning_kwargs))
 }
 
@@ -820,7 +821,7 @@ fn harness_chat_request_json(
         json_kv(key: "content", value: json_string(s: config.system_prompt)),
       ]),
     ], messages))),
-    json_kv(key: "tools", value: harness_tool_contract_json(shape: OpenAiChatCompletionsShape)),
+    json_kv(key: "tools", value: harness_tool_contract_json(shape: OpenAiChatCompletionsShape, validation: config.environment.validation)),
   ], reasoning_kwargs))
 }
 
@@ -828,12 +829,12 @@ fn harness_chat_request_json(
 // it is part of the normalized request identity a turn is placed under (gunbc.harness.harness_cli
 // harness_model_request_inputs), so the identity cannot drift from what the model is actually
 // offered. One schema, two envelopes.
-fn harness_tool_contract_json(shape: HarnessWireShape) -> JsonValue {
-  harness_offered_tools_json(shape: shape)
+fn harness_tool_contract_json(shape: HarnessWireShape, validation: HarnessValidationRoute) -> JsonValue {
+  harness_offered_tools_json(shape: shape, validation: validation)
 }
 
-fn harness_tool_contract_wire(shape: HarnessWireShape) -> String {
-  serialize_json(v: harness_tool_contract_json(shape: shape))
+fn harness_tool_contract_wire(shape: HarnessWireShape, validation: HarnessValidationRoute) -> String {
+  serialize_json(v: harness_tool_contract_json(shape: shape, validation: validation))
 }
 
 // INLINE REASONING IS DECODED, NOT REFUSED. When the serving unit carries no reasoning parser, a

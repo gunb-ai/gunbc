@@ -9,7 +9,7 @@ import gunbc.harness.harness_throughput {
 }
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
-  WaitJobsTool, ReadJobOutputTool, KillJobTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool, ValidateWorktreeTool,
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRunning,
@@ -236,6 +236,7 @@ fn build_meter_tool_kind(tool: HarnessTool) -> BuildMeterKind {
     WaitJobsTool => BuildMeterRun
     ReadJobOutputTool => BuildMeterRead
     KillJobTool => BuildMeterRun
+    ValidateWorktreeTool => BuildMeterRun
   }
 }
 

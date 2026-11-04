@@ -30,7 +30,7 @@ import gunbc.auth.session {
   SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
   SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
 }
-import gunbc.principal_projection { principal_ref_eq }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
 import gunbc.deployment_risk { srv1_lab_codex_feedback_deployment, srv1_daily_workspace_deployment }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, AuthAbsent,
@@ -38,10 +38,11 @@ import gunbc.auth.request_authentication {
   FabricServiceEvidenceSubmissionMac,
   DeploymentAccessPolicy,
   ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionRetireLineage, ServeActionDispatchNode,
+  ServeRouteAction,
+  ServeActionStopNode, ServeActionPublishNode, ServeActionCreateIssue,
   ServeWriteAuthorizationPolicy,
-  tracker_write_authorization_policy, operator_approver_principal,
+  tracker_write_authorization_policy, operator_approver_principal, write_authorization_policy_for, srv1_host_account_enrolments,
   HostAccountPeerEvidence, HostAccountEnrolment, host_account_evidence_of_ingress, lab_agent_principal, lab_agent_host_account,
-  write_authorization_policy_for, srv1_host_account_enrolments,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
@@ -658,7 +659,7 @@ test fn retiring_a_lineage_admits_exactly_the_approve_roster() -> Bool {
         authorization_policy: open_write_policy(),
         deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
         csrf_presented: "csrf-1",
-        observed_at: "2026-09-25T00:05:00Z",
+        observed_at: fn() { "2026-09-25T00:05:00Z" },
       ) {
         Deny { refusal } =>
           match refusal.cause {
@@ -674,7 +675,7 @@ test fn retiring_a_lineage_admits_exactly_the_approve_roster() -> Bool {
           authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
           deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
           csrf_presented: "csrf-1",
-          observed_at: "2026-09-25T00:05:00Z",
+          observed_at: fn() { "2026-09-25T00:05:00Z" },
         ) == Permit
   }
 }
@@ -687,9 +688,10 @@ test fn the_production_approve_roster_is_exactly_the_enrolled_operator() -> Bool
     && all(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
 }
 
-// ── LAB-AGENT-OPERATOR-1 (claims 1-4) ───────────────────────────────────────────────────────────
-// The retire admission over SUPPLIED evidence, so each claim varies exactly one term: the policy the
-// deployment selects, or the evidence presented.
+// ── LAB AGENT ASSIGN + DISPATCH ─────────────────────────────────────────────────────────────────
+// GRANT, operator in chat 2026-11-04: "can i make it so you can also assign/dispatch so i don't need to
+// click the button?". Each claim varies one term over SUPPLIED evidence: the policy the deployment
+// selects, the action, or the evidence presented.
 
 fn agent_security() -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
@@ -698,70 +700,48 @@ fn agent_security() -> RequestSecurityContext<RequestAccessPath, RequestAuthenti
   }
 }
 
-fn retire_admitted_under(policy: ServeWriteAuthorizationPolicy, security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> Bool {
+fn agent_admitted_under(action: ServeRouteAction, policy: ServeWriteAuthorizationPolicy, security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> Bool {
   human_write_admission(
-    route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
-    action: ServeActionRetireLineage,
+    route_path: "/agent-witness" as NonEmptyStr,
+    action: action,
     security: security,
     authorization_policy: policy,
     deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
     csrf_presented: "",
-    observed_at: "2026-10-17T05:00:00Z",
+    observed_at: fn() { "2026-11-04T14:30:00Z" },
   ) == Permit
 }
 
-// CLAIM 1 (RED before this change): the lab deployment's policy admits the authenticated agent.
-test fn claim_1_the_lab_deployment_admits_the_authenticated_agent_to_retire() -> Bool {
-  retire_admitted_under(policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: agent_security())
+test fn the_lab_deployment_admits_the_authenticated_agent_to_assign() -> Bool {
+  agent_admitted_under(action: ServeActionAssignIssue, policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: agent_security())
 }
 
-// CLAIM 2: the same evidence under every other deployment's policy is refused.
-test fn claim_2_a_non_lab_deployment_refuses_the_same_agent_evidence() -> Bool {
-  !retire_admitted_under(policy: write_authorization_policy_for(deployment: srv1_daily_workspace_deployment), security: agent_security())
-    && !retire_admitted_under(policy: tracker_write_authorization_policy, security: agent_security())
+test fn the_lab_deployment_admits_the_authenticated_agent_to_dispatch() -> Bool {
+  agent_admitted_under(action: ServeActionDispatchNode, policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: agent_security())
 }
 
-// CLAIM 2 (neighbour): the agent is admitted for retire only; any other action stays a human act.
-test fn claim_2_the_agent_is_admitted_for_retire_alone() -> Bool {
-  human_write_admission(
-    route_path: "/approve/abc" as NonEmptyStr,
-    action: ServeActionApproveDecision,
-    security: agent_security(),
-    authorization_policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment),
-    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
-    csrf_presented: "",
-    observed_at: "2026-10-17T05:00:00Z",
-  ) != Permit
+test fn a_non_lab_deployment_refuses_agent_assign_and_dispatch() -> Bool {
+  !agent_admitted_under(action: ServeActionAssignIssue, policy: write_authorization_policy_for(deployment: srv1_daily_workspace_deployment), security: agent_security())
+    && !agent_admitted_under(action: ServeActionDispatchNode, policy: write_authorization_policy_for(deployment: srv1_daily_workspace_deployment), security: agent_security())
+    && !agent_admitted_under(action: ServeActionAssignIssue, policy: tracker_write_authorization_policy, security: agent_security())
+    && !agent_admitted_under(action: ServeActionDispatchNode, policy: tracker_write_authorization_policy, security: agent_security())
 }
 
-// CLAIM 3: the operator's session retires under both policies (the lab grant removes nobody).
-test fn claim_3_the_operator_principal_retires_under_both_policies() -> Bool {
-  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
-    SessionRefused { cause: _ } => false
-    SessionMinted { session: s } =>
-      match human_write_admission(
-        route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
-        action: ServeActionRetireLineage,
-        security: session_security(session: s),
-        authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
-        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
-        csrf_presented: "csrf-1",
-        observed_at: "2026-09-25T00:05:00Z",
-      ) {
-        Permit => true
-        Deny { refusal: _ } => false
-      }
-        && any(write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment).approve_roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
-        && any(write_authorization_policy_for(deployment: srv1_daily_workspace_deployment).approve_roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
-  }
+test fn the_agent_is_refused_every_action_but_assign_and_dispatch() -> Bool {
+  let lab = write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment)
+  !agent_admitted_under(action: ServeActionApproveDecision, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionCreateIssue, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionCommentIssue, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionStopNode, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionPublishNode, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionRetireLineage, policy: lab, security: agent_security())
 }
 
-// CLAIM 4: no evidence, and a peer that is not enrolled (a claimed name), authenticate as nothing.
-test fn claim_4_absent_and_unenrolled_identities_are_refused_on_both() -> Bool {
+test fn absent_and_unenrolled_identities_are_refused_assign_and_dispatch_on_the_lab() -> Bool {
   let absent = RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent }
   let lab = write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment)
-  !retire_admitted_under(policy: lab, security: absent)
-    && !retire_admitted_under(policy: tracker_write_authorization_policy, security: absent)
+  !agent_admitted_under(action: ServeActionAssignIssue, policy: lab, security: absent)
+    && !agent_admitted_under(action: ServeActionDispatchNode, policy: lab, security: absent)
     && match host_account_evidence_of_ingress(ingress: IngressAttestedPeer { peer_user: "briansrls" }, enrolments: srv1_host_account_enrolments) {
       Present { value: _ } => false
       Absent => true
@@ -770,6 +750,18 @@ test fn claim_4_absent_and_unenrolled_identities_are_refused_on_both() -> Bool {
       Present { value: _ } => false
       Absent => true
     }
+    && match host_account_evidence_of_ingress(ingress: IngressAttestedPeer { peer_user: "gunbc-lab-agent" }, enrolments: srv1_host_account_enrolments) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}
+
+test fn an_unrostered_host_account_principal_is_refused_even_on_the_lab() -> Bool {
+  let stranger = RequestSecurityContext {
+    access_path: AccessPathLocalDev,
+    authentication: HostAccountPeerEvidence { account: "someone-else" as NonEmptyStr, principal: PrincipalRef { authority: lab_agent_principal.authority, namespace: lab_agent_principal.namespace, subject: "someone-else" as NonEmptyStr } },
+  }
+  !agent_admitted_under(action: ServeActionAssignIssue, policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: stranger)
 }
 
 // THE PRODUCTION ROSTER NEVER GAINS AN AGENT: the policy every non-lab deployment selects has no agent.

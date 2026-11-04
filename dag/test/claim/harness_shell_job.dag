@@ -22,7 +22,7 @@ import gunbc.harness.harness_shell_job_policy {
   WaitRequestedMinutes, WaitMalformedMinutes, WaitNonPositiveMinutes, WaitUseDefault, WaitPaceReset,
 }
 import gunbc.harness.harness_tool {
-  harness_wait_request_from_block, harness_kill_job, harness_tool_environment,
+  harness_wait_request_from_block, harness_kill_job, harness_tool_environment, ValidationNotOffered,
   harness_env_with_jobs, harness_outcome_text, harness_job_output_for_state,
   harness_text_with_table, harness_job_backstop_exit_outcome,
   ToolRefused, ToolCompleted, ToolReport, ToolJob, OutputComplete,
@@ -78,6 +78,7 @@ test fn job_kill_refuses_a_finished_job_by_name() -> Bool {
     working_directory: "/tmp" as FilePath,
     timeout_program: "/usr/bin/timeout" as FilePath,
     job_output_directory: "/tmp" as FilePath,
+    validation: ValidationNotOffered,
   )
   let with_job = harness_env_with_jobs(
     environment: env,

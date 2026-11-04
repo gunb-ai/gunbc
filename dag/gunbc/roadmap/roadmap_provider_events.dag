@@ -17,7 +17,7 @@ import extdeps.languages.json.grammar {
 }
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
-  WaitJobsTool, ReadJobOutputTool, KillJobTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool, ValidateWorktreeTool,
   ItemIsHarnessToolUse, ItemIsUnrecognizedToolUse, ItemIsNotAHarnessToolUse,
   harness_tool_item_read,
 }
@@ -448,6 +448,7 @@ fn harness_tool_item_activity(tool: HarnessTool) -> ProviderItemActivity {
     WaitJobsTool => HarnessWaitingOnJobs
     ReadJobOutputTool => HarnessReadingJobOutput
     KillJobTool => HarnessKillingJob
+    ValidateWorktreeTool => RunningCommand
   }
 }
 

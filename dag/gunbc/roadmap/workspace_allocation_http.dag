@@ -7,7 +7,7 @@ import std.access { Permit, Deny, access_refusal_reason }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, ServeResponseHeaderNoStore, application_json_utf8 }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, json_object, json_kv, json_string, json_array, json_int, json_bool, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
-import gunbc.auth.request_authentication { RequestAccessPath, RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy, ServeActionCreateAllocation, ServeActionReleaseAllocation }
+import gunbc.auth.request_authentication { RequestAccessPath, RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, HostAccountPeerEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy, ServeActionCreateAllocation, ServeActionReleaseAllocation }
 import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, workspace_write_admission, workspace_owner_admission, workspace_request_admit, WorkspaceRequestAdmitted, WorkspaceRequestAdmissionRefused, WorkspaceRequestPolicyRefused }
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, workspace_profile_wire }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceRunning, WorkspaceWanted, workspace_phase_wire, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_record_request_at, workspace_request_release_at, WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_json, workspace_allocation_store }

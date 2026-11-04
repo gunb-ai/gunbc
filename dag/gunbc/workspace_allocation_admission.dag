@@ -12,7 +12,7 @@ import extdeps.ssh.keys { SshPublicKey, Ed25519, ssh_ed25519_key_identity }
 import gunbc.workspace_ssh_access { WorkspaceSshAccess, WorkspaceSshFromHost, WorkspaceSshThroughGateway }
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
-  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
+  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, HostAccountPeerEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
   ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCreateIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeActionDispatchNode, ServeActionStopNode, ServeActionPublishNode, ServeRouteAction,
   human_authentication_decision, csrf_write_decision, deployment_path_decision, write_refused,
 }
@@ -166,7 +166,7 @@ fn workspace_request_admit(
       }
     }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: fn() { observed_at }) }
-    HostAccountPeerEvidence { account: _, principal: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: fn() { observed_at }) }
+    HostAccountPeerEvidence { account: _, principal: _ } => WorkspaceRequestAdmissionRefused { decision: write_refused(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" }) }
     SessionStandingInvalid { standing: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: fn() { observed_at }) }
     AuthAbsent => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: fn() { observed_at }) }
   }

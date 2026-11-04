@@ -12,7 +12,7 @@ import extdeps.crypto.mac {
 }
 import gunbc.auth.approval_decision_store { ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, read_mac_keyring }
 import gunbc.auth.request_authentication {
-  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent,
+  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, HostAccountPeerEvidence, SessionStandingInvalid, AuthAbsent,
   fabric_service_principal,
 }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }

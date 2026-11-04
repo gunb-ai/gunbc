@@ -386,10 +386,11 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
 // org membership, never approval authority). The roster begins EMPTY -- refuse-all is the
 // fail-closed default until the first approver's principal is enrolled as a deployment row.
 //
-// agent_roster is the host-account principals a deployment lets act as THEMSELVES on the actions
-// serve_route_action_agent_admissible names (retire-lineage today). It is a separate roster from
-// approve_roster on purpose: an agent is never an approver, so ServeActionApproveDecision reads
-// approve_roster alone and the production approve roster stays exactly the operator.
+// agent_roster is the host-account principals a deployment lets act as THEMSELVES through its agent
+// door. It is a separate roster from approve_roster on purpose: an agent is never an approver. Its
+// consumer in this change is deployment_admits_agent_peer (whether a deployment derives an agent
+// door at all) and the human_action_authorization_decision arm that admits a HostAccountPeerEvidence
+// whose principal is rostered, for exactly the actions serve_route_action_agent_admissible names.
 type ServeWriteAuthorizationPolicy {
   approve_roster: List<PrincipalRef>
   agent_roster: List<PrincipalRef>
@@ -430,10 +431,6 @@ data lab_agent_principal: PrincipalRef = PrincipalRef {
   subject: lab_agent_host_account,
 }
 
-data srv1_host_account_enrolments: List<HostAccountEnrolment> = [
-  HostAccountEnrolment { account: lab_agent_host_account, principal: lab_agent_principal },
-]
-
 // THE SCOPE IS POLICY KEYED ON THE DEPLOYMENT, not a forked code path: the lab deployment admits the
 // agent principal on its agent door; every other deployment gets the tracker policy, whose agent
 // roster is empty, so the same evidence is refused there.
@@ -441,6 +438,10 @@ data lab_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteA
   approve_roster: [operator_approver_principal],
   agent_roster: [lab_agent_principal],
 }
+
+data srv1_host_account_enrolments: List<HostAccountEnrolment> = [
+  HostAccountEnrolment { account: lab_agent_host_account, principal: lab_agent_principal },
+]
 
 fn write_authorization_policy_for(deployment: DeploymentId) -> ServeWriteAuthorizationPolicy {
   if deployment == srv1_lab_codex_feedback_deployment { lab_write_authorization_policy } else { tracker_write_authorization_policy }
@@ -452,21 +453,24 @@ fn deployment_admits_agent_peer(deployment: DeploymentId) -> Bool {
   non_empty(xs: write_authorization_policy_for(deployment: deployment).agent_roster)
 }
 
-// The actions an agent peer may take when its deployment rosters it. Everything else (approval, the
-// browser-only composers, allocations) stays a human act.
+// The actions an agent peer may take when its deployment rosters it. GRANT, operator in chat
+// 2026-11-04: "can i make it so you can also assign/dispatch so i don't need to click the button?" --
+// assign and dispatch, nothing else. Every other action (approval, the browser-only composers,
+// stop, publish, allocations) stays a human act; each arm is listed so a new action must be
+// decided here, never inherited.
 fn serve_route_action_agent_admissible(action: ServeRouteAction) -> Bool {
   match action {
-    ServeActionAssignIssue => false
+    ServeActionAssignIssue => true
     ServeActionCreateIssue => false
     ServeActionCommentIssue => false
     ServeActionSaveOwnView => false
+    ServeActionDispatchNode => true
+    ServeActionStopNode => false
+    ServeActionPublishNode => false
     ServeActionApproveDecision => false
     ServeActionCreateAllocation => false
     ServeActionReleaseAllocation => false
-    ServeActionRetireLineage => true
-    ServeActionDispatchNode => false
-    ServeActionStopNode => false
-    ServeActionPublishNode => false
+    ServeActionRetireLineage => false
   }
 }
 
@@ -524,7 +528,7 @@ fn human_write_admission(
         csrf_presented: csrf_presented,
         observed_at: observed_at,
       )
-    SessionStandingInvalid { standing: _ } =>
+    HostAccountPeerEvidence { account: _, principal: _ } =>
       human_write_admission_non_session(
         route_path: route_path,
         action: action,
@@ -534,7 +538,7 @@ fn human_write_admission(
         csrf_presented: csrf_presented,
         observed_at: observed_at,
       )
-    HostAccountPeerEvidence { account: _, principal: _ } =>
+    SessionStandingInvalid { standing: _ } =>
       human_write_admission_non_session(
         route_path: route_path,
         action: action,
@@ -708,6 +712,7 @@ fn csrf_write_decision(
   csrf_presented: String,
 ) -> AccessDecision {
   match security.authentication {
+    HostAccountPeerEvidence { account: _, principal: _ } => Permit
     GoogleOidcSession { session } =>
       match csrf_decision(session: session, presented_wire: csrf_presented) {
         CsrfAdmitted => Permit
@@ -719,7 +724,6 @@ fn csrf_write_decision(
             cause: AccessEvidenceRejected { evidence: "csrf-token", reason: csrf_refusal_reason(c: c) },
           )
       }
-    HostAccountPeerEvidence { account: _, principal: _ } => Permit
     FabricServiceEvidence { kind: _, authenticated_at: _ } =>
       write_refused(
         route_path: route_path,

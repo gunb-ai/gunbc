@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_auth_routes
 
 import gunbc.auth.login_browser_binding { auth_login_browser_binding, auth_login_browser_admitted, auth_login_browser_cookie }
 
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, request_authentication_evidence_of_standing, RequestAccessPath }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, HostAccountPeerEvidence, SessionStandingInvalid, request_authentication_evidence_of_standing, RequestAccessPath }
 import gunbc.auth.session { SessionCookieAbsent, SessionCookieUnread, SessionCookieMalformed, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed, session_cookie_id_of_header, AuthenticatedSession, SessionMinted, SessionRefused, SessionRefusalCause, SessionVerdictRefused, SessionTransactionExpired, SessionTransactionNonceMismatch, SessionClientTrackerWeb, mint_authenticated_session, session_cookie_set_cookie, session_cookie_clear, session_cookie_standing_reason }
 import gunbc.auth.session_store_root { SessionStore, SessionStoreReady, SessionStoreUnready, session_store }
 import gunbc.auth.session_store { session_cookie_standing_of_lookup, session_store_save, session_store_delete, session_store_purge_principal, SessionStoreSaved, SessionStoreSaveRefused, SessionStoreDeleted, SessionStoreNothingToDelete, SessionStoreDeleteRefused, SessionStorePurged, SessionStorePurgeRefused }
