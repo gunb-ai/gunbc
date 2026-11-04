@@ -14912,7 +14912,6 @@ fn belt_verify_retry_wakes(instance: HostDashboardInstance, progress: WorkflowAt
     CaptureObligation => false
     ReviewObligation => false
     AuditObligation => false
-    AcceptanceOutcomeObligation => false
     PublishObligation => false
   }
 }
