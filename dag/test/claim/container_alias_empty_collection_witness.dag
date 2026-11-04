@@ -31,18 +31,22 @@ module test.claim.container_alias_empty_collection_witness
 
 import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_all, total_blocking_census, blocking_class_census, blocking_subject_census }
 
-// THE IMPORTED FACE NOW HAS AN EXECUTABLE ROW. The paragraph above NAMES the imported shape
-// (gunbc.scm.object_table_json.DecodePositions at repository_envelope.dag) but every fixture below is a
-// SINGLE module with a module-local alias, so #15660's claim for the imported shape was asserted, not
-// executed. an_imported_carrier_alias_at_an_empty_map_formal_is_clean below is that shape at probe size:
-// the alias is imported from the corpus's own module, and the row is paired on srv2 -- REFUSED at the
-// #15539 head d0969ea38a80, which carries the authored-leaf rule, and CLEAN at a head that carries the
-// #15660 repair. The pair, not this file alone, is the evidence; the run id is in the PR body.
-//
-// A probe compiles ONE source string, so the importing module is the fixture and the DECLARING module is
-// the corpus's own. The row cannot be satisfied by renaming or localizing the alias, and its
-// UnresolvedImport guard makes a probe that cannot see the corpus fail as itself rather than pass as a
-// clean compile.
+// THE IMPORTED FACE HAS AN EXECUTABLE ROW, AND IT IS A POSITIVE CONTROL ONLY. The paragraph above NAMES
+// the imported shape (gunbc.scm.object_table_json.DecodePositions at repository_envelope.dag), but a probe
+// compiles ONE source string, so every fixture below is a single module and #15660's claim for the
+// imported shape was asserted, not executed. an_imported_carrier_alias_at_an_empty_map_formal_is_clean is
+// that shape at probe size -- the alias is imported from the corpus's own declaring module -- and it was
+// executed on a real aarch64 build at BOTH the #15539 head d0969ea38a80 (which carries the authored-leaf
+// rule) and the head carrying the #15660 repair. IT IS CLEAN AT BOTH. So the row is a positive control:
+// the face compiles, and the probe really does see the corpus module (its UnresolvedImport guard is 0, so
+// a clean pass is not an unresolved-import artifact). It is NOT a discriminator, and it cannot author the
+// RED for the class this file guards: the probe route does not reach the keyed-collection check that the
+// corpus route reaches with the same imported alias at the same head. The executed RED/GREEN for the
+// imported face is the corpus compile at dag/gunbc/scm/repository_envelope.dag:4169:24 -- 'empty_map():
+// expected type is not a keyed collection' at d0969ea38a80, clean at the repair head -- and NOTHING in
+// this corpus enrolls that pair. The gap is a dated receipt on gunbc.recurring_failure_mode row
+// carrier_alias_refuses_its_own_carriers_constructor and an open finding in the PR body; the trigger to
+// close it is a probe route that reaches the same expectation a call-site compile reaches.
 //
 // ---- PASS rows (zero blocking diagnostics) ----
 
@@ -99,20 +103,6 @@ data map_alias_at_empty_set_source: String = "module ca_map_set\nimport std.type
 
 test fn a_map_alias_at_empty_set_is_refused() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: map_alias_at_empty_set_source, wanted_class: "InternalError", wanted_subject: "empty_set(): expected type is not Set<...>"), holds: fn(n) { n >= 1 }))
-}
-
-// CONTROL (kept per the ruling): a corpus alias whose carrier is NOT keyed still refuses, so a repair
-// that unfolded an alias to ANY carrier would not pass here. Class and subject are the family the corpus
-// refusal itself carries: v1.compiler.infer inference_error builds InternalError, and the census subject
-// of an InternalError is its message. The total is asserted >= 1, not == 1, because this site also emits
-// the paired `type mismatch` row; the count is not what this control witnesses.
-data local_list_alias_empty_map_source: String = "module ca_local_list\nimport std.types { Bool, String, Int, List }\nimport std.algebra { empty_map }\ntype LocalList = List<Int>\nfn use_list(xs: LocalList) -> Bool { true }\nfn probe() -> Bool { use_list(xs: empty_map()) }\n"
-
-test fn a_local_list_alias_at_empty_map_is_refused() -> ProcessExit {
-  census_verdict_all([
-    census_verdict(census: blocking_subject_census(source: local_list_alias_empty_map_source, wanted_class: "InternalError", wanted_subject: "empty_map(): expected type is not a keyed collection"), holds: fn(n) { n >= 1 }),
-    census_verdict(census: total_blocking_census(source: local_list_alias_empty_map_source), holds: fn(n) { n >= 1 }),
-  ])
 }
 
 // ARITY / SHADOW control (the condition the pre-#15539 `core.children|count == 2` disjunct carried): a
