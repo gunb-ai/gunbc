@@ -58,6 +58,7 @@ import gunbc.auth.privileged_effect_census {
   Conforms, DivergesWithReason, Diverges, SiteNotDecidable, mtcollins1_host_key_mint_effect,
 }
 import gunbc.auth.authorization_pattern_selection { HumanSurfaceOnly, PatternSelected, FederatedScopedGrant }
+import gunbc.auth.access_token_source { selected_access_token_source }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_hermetic_witness_fixture,
   fixture_public_key,
@@ -513,9 +514,11 @@ test fn the_readback_scan_effect_is_census_classified() -> Bool {
 // test.claim.authorization_pattern_selection_witness and test.claim.access_token_source_witness.)
 test fn the_transport_route_cites_the_executed_selectors() -> Bool {
   let pattern_cited = anchored_host_pattern_citation(host: operator_host_mtcollins1)
-  let source_cited = anchored_host_token_source_citation()
+  let selected_cited = anchored_host_token_source_citation(selection: selected_access_token_source(workload_present: true, supplied: none))
+  let unavailable_cited = anchored_host_token_source_citation(selection: selected_access_token_source(workload_present: false, supplied: none))
   string_contains(s: pattern_cited, pattern: "select_authorization_pattern:")
-  && string_contains(s: source_cited, pattern: "select_access_token_source:")
+  && string_contains(s: selected_cited, pattern: "select_access_token_source: AccessTokenSourceSelected")
+  && string_contains(s: unavailable_cited, pattern: "select_access_token_source: AccessTokenSourceUnavailable")
 }
 
 // THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries four frontier
@@ -671,7 +674,7 @@ test fn the_runbook_mints_nothing_and_still_installs_the_anchor() -> Bool {
 // A well-formed ed25519 blob (RFC 8709), so the parser's blob check passes; the hermetic fixture key above is a placeholder that is not a parseable blob.
 data per_boot_valid_key_b64: String = "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL"
 
-data per_boot_fixture_fingerprint: String = "SHA256:HERMETICWITNESSFIXTUREFINGERPRINT0"
+data per_boot_fixture_fingerprint: String = "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w"
 
 fn per_boot_console_line(boot_id: String, key_b64: String) -> String {
   join(["GUNBC-HOST-KEY boot_id=", boot_id, " ssh-ed25519 ", key_b64, " ", per_boot_fixture_fingerprint], "")
@@ -745,6 +748,7 @@ test fn no_per_boot_pin_refuses_and_so_does_every_malformed_console_read() -> Bo
   && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a=b ssh-ed25519 ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
   && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-ed25519 ", key], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
   && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-rsa ", key, " ", per_boot_fixture_fingerprint], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(console: join(["GUNBC-HOST-KEY boot_id=boot-a ssh-ed25519 ", key, " SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86x"], ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
   && per_boot_binding(console: per_boot_console_line(boot_id: "boot-a", key_b64: "AAAAC3NzaC1lZDI1NTE5"), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
 }
 

@@ -33,7 +33,7 @@ import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow, ScannedFirstContact, ConsolePerBoot, ProvisionedInstall, known_hosts_line, fleet_name_at_ssh_port,
 }
 import gunbc.provisioning.network_install_receipt { NetworkInstallReceipt, InstalledToDisk, InstallNotEstablished, network_install_client, CurrentInstallForHost, CurrentInstallEstablished, CurrentInstallUnestablished }
-import extdeps.ssh.keys { Ed25519, ssh_key_algorithm_token, ssh_key_blob_parses_for }
+import extdeps.ssh.keys { Ed25519, ssh_key_algorithm_token, ssh_key_blob_parses_for, ssh_key_blob_sha256_fingerprint }
 import extdeps.network.mac { mac_addresses_are_equal }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_bound_transport {
@@ -50,7 +50,7 @@ import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern,
 }
 import gunbc.auth.access_token_source {
-  AccessTokenSourceSelected, AccessTokenSourceUnavailable,
+  AccessTokenSourceSelection, AccessTokenSourceSelected, AccessTokenSourceUnavailable,
   select_access_token_source,
 }
 import std.human_intervention {
@@ -437,7 +437,7 @@ fn host_key_console_line_of_fields(fields: List<String>) -> HostKeyConsoleLine? 
           Present { value: key_b64 } => match fields |> skip(n: 4) |> first {
             Absent => none
             Present { value: fingerprint } =>
-              if marker == per_boot_console_marker && key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && starts_with_sha256(f: fingerprint) {
+              if marker == per_boot_console_marker && key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && fingerprint_names_blob(blob: key_b64, fingerprint: fingerprint) {
                 host_key_console_line_of(boot_field: boot_field, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint)
               } else { none }
           }
@@ -495,10 +495,12 @@ fn per_boot_pin_from_console_line(row: AnchoredHostRow, line: String) -> PerBoot
   }
 }
 
-fn starts_with_sha256(f: String) -> Bool {
-  match split(s: f, delimiter: ":") |> first {
-    Present { value: head } => head == "SHA256"
+// The console's fingerprint is accepted only when it IS the fingerprint of the blob beside it, derived by
+// extdeps.ssh.keys; a line whose two fields disagree is no pin (§5), never a row whose fingerprint lies.
+fn fingerprint_names_blob(blob: String, fingerprint: String) -> Bool {
+  match ssh_key_blob_sha256_fingerprint(material: blob as NonEmptyStr) {
     Absent => false
+    Present { value: derived } => derived == fingerprint
   }
 }
 
@@ -730,8 +732,11 @@ fn anchored_host_pattern_citation(host: HostIdentity) -> String {
 
 // THE TOKEN-SOURCE CITATION. select_access_token_source resolves the credential the leg would run under
 // from the run's environment; its typed output is cited whole, never flattened to a bool.
-fn anchored_host_token_source_citation() -> String {
-  match select_access_token_source() {
+// The selection is a SUPPLIED value (the route passes select_access_token_source(), the environment read), so the
+// citation's two arms are witnessed without ambient state; the route that passes the real read is the two
+// call sites below.
+fn anchored_host_token_source_citation(selection: AccessTokenSourceSelection) -> String {
+  match selection {
     AccessTokenSourceSelected { source: _ } => "select_access_token_source: AccessTokenSourceSelected"
     AccessTokenSourceUnavailable { cause: cause } => join(["select_access_token_source: AccessTokenSourceUnavailable -- ", cause as String], "")
   }
@@ -776,7 +781,7 @@ fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
         "GATED: the ", row.host as String, " host-key readback does not run without GUNBC_HOST_KEY_READBACK_GO in the environment ",
         "(the operator go for the live boot and scan comes from merry-fox-82, relayed by snappy-koi-83); nothing contacted, nothing minted.\n",
         "prepared argv: ", anchored_host_key_scan_argv_text(row: row), "\n",
-        "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(), "\n",
+        "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(selection: select_access_token_source()), "\n",
       ], "")
       Present { value: _ } =>
         match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
@@ -784,7 +789,7 @@ fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
             "scan host=", row.host as String, " outcome=observed\n",
             "presented ", trim(s: key_text), "\n",
             "record this presented line through the REAL dispatch (lost_boot_sweep_effect_pairing_frontier); ",
-            "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(), "\n",
+            "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(selection: select_access_token_source()), "\n",
           ], "")
           ProcessOutputAbsent => join(["scan host=", row.host as String, " outcome=no-key-offered; nothing to anchor-match\n"], "")
           ProcessRefused { exit_code: _, stderr: e } => join(["scan host=", row.host as String, " outcome=refused cause=", trim(s: e), "\n"], "")
