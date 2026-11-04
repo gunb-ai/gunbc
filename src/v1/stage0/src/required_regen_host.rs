@@ -4116,20 +4116,20 @@ fn host_shell_scope_modules(lib_rs: &Path, manifest: &Path) -> Result<Vec<String
     let mut roots = vec![lib_rs.to_path_buf()];
     let text = std::fs::read_to_string(manifest)
         .map_err(|e| format!("refusal: shell manifest {}: {e}", manifest.display()))?;
-    let document: toml::Table = toml::from_str(&text)
-        .map_err(|e| format!("refusal: shell manifest {}: {e}", manifest.display()))?;
-    if let Some(bins) = document.get("bin") {
-        let bins = bins
-            .as_array()
-            .ok_or_else(|| format!("refusal: {} `bin` is not an array", manifest.display()))?;
-        for bin in bins {
-            let path = bin.get("path").and_then(|p| p.as_str()).ok_or_else(|| {
-                format!(
-                    "refusal: {} has a [[bin]] without a path",
-                    manifest.display()
-                )
-            })?;
-            roots.push(package_dir.join(path));
+    // ONE READER of the manifest's bin roster (`cli_run`), not a second TOML walk here.
+    match super::cli_run::parse_stage0_cargo_manifest_bin_paths(&text) {
+        super::cli_run::Stage0CargoManifestBinParse::Parsed {
+            authored_relative_paths,
+        } => {
+            for path in authored_relative_paths {
+                roots.push(package_dir.join(path));
+            }
+        }
+        super::cli_run::Stage0CargoManifestBinParse::Refused { detail } => {
+            return Err(format!(
+                "refusal: shell manifest {}: {detail}",
+                manifest.display()
+            ));
         }
     }
     let mut modules = Vec::new();
