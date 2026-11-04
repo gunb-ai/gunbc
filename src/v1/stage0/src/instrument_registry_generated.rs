@@ -19,27 +19,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "behavioral-receipt-plan".to_string(),
-            },
-            TargetProducer::BehavioralReceiptPlan,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "behavioral-receipt-census".to_string(),
-            },
-            TargetProducer::BehavioralReceiptCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "behavioral-receipt-selftest".to_string(),
-            },
-            TargetProducer::BehavioralReceiptSelftest,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "compile-clean-diagnostic-census".to_string(),
             },
             TargetProducer::CompileCleanDiagnosticCensus,
