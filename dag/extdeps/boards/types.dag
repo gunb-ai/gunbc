@@ -13,7 +13,7 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.board_authority { BoardAuthorityRef }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -21,6 +21,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Motherboard"
   }
+}
+
+// A BOARD'S EXPANSION SLOTS, AS POSITIONS ALONG THE REAR EDGE. A slot is named by the vendor's
+// designator; its position is counted in expansion-slot pitches along the rear I/O edge, so two slots
+// whose positions differ by N sit N pitches apart, centre to centre. The pitch itself is not a board
+// fact: it is the PCIe CEM slot width (extdeps.standards.pcie_cem cem_slot_width), and a product
+// multiplies the position difference by it. The positions carry ONE standing for the whole list,
+// because they are read together, from one drawing or one ruler pass; a board whose drawing gives no
+// dimensions carries the read that would settle them.
+type BoardExpansionSlot {
+  designator: NonEmptyStr
+  position: Nat
+}
+
+type BoardExpansionSlots {
+  slots: List<BoardExpansionSlot>
+  positions: CitedFigureStanding
 }
 
 // A vendor manual copy a board model was read from. Title and sha256 are optional: a reading
@@ -39,6 +56,7 @@ type BaseboardCatalogRow {
   model_label: NonEmptyStr
   vendor: Vendor<Hardware>
   bmc_firmware: BmcFirmwareFamily
+  onboard_ethernet_ports: OnboardEthernetPortRows
 }
 
 type ServerBaseboard {
@@ -154,6 +172,29 @@ type BoardFunction
   = BmcManagementFunction
   | BmcGraphicsController
   | PcieErrorFirmwareFirstHandling
+  | OnboardEthernetPort { port: OnboardEthernetPortRow }
+
+// AN ONBOARD ETHERNET PORT AS ITS BOARD'S MANUAL NAMES IT: the rear-panel designator, the controller
+// behind it, whether the manual states that the BMC may share the port, and how the manual says the
+// port is switched off -- on the row, so the port and its switch are one fact. A shared port is one
+// function serving two consumers (the host's network and the BMC's sideband), so a consumer may not
+// switch it off on the host's account alone. Silence about sharing is BmcSharingNotStated, a fact
+// about the manual.
+type OnboardEthernetBmcSharing = BmcSharingStated | BmcSharingNotStated
+
+type OnboardEthernetPortRow {
+  designator: NonEmptyStr
+  controller: NonEmptyStr
+  bmc_sharing: OnboardEthernetBmcSharing
+  switch: BoardFunctionSwitch
+  citation: NonEmptyStr
+}
+
+// A CATALOG ROW STATES ITS BOARD'S PORTS OR SAYS THEY ARE UNREAD, so a board cannot be catalogued with
+// its ports silently missing: an unread port list is a typed refusal in every plan for that board.
+type OnboardEthernetPortRows
+  = PortRowsStated { rows: List<OnboardEthernetPortRow> }
+  | PortRowsNotRead { obligation: NonEmptyStr }
 
 // HOW A BOARD'S HELD MANUAL SAYS A FUNCTION IS SWITCHED OFF. Silence is SwitchNotStated, a fact about
 // the manual, not a claim that the board has no switch; `coarser` names a stated switch that removes

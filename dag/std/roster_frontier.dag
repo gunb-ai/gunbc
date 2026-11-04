@@ -32,7 +32,7 @@ import std.keyed_roster {
   keyed_roster_build,
 }
 import std.types { NonEmptyStr, String, List }
-import std.algebra { collection_map_shape }
+import std.algebra { collection_map_shape, list_flat_map }
 
 type FrontierSubject
   = PathSubject { path: String }
@@ -133,7 +133,7 @@ fn frontier_units(rows: List<FrontierRow>) -> List<String> {
 }
 
 fn concat_frontier_row_groups(groups: List<List<FrontierRow>>) -> List<FrontierRow> {
-  flat_map(groups, group => group)
+  list_flat_map(xs: groups, f: group => group)
 }
 
 type FrontierExpiryReport {
