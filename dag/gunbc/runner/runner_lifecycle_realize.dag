@@ -25,8 +25,7 @@ import gunbc.runner.runner_slot_actuation {
 }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.runner.runner_lifecycle { RunnerSlotIdentity }
-import gunbc.fleet.fleet_runner_connectivity { observe_slot_registrations, slot_registration_observation_wire, slot_registration_observation_settled }
-import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
+import gunbc.fleet.fleet_runner_connectivity { RosterReadUnavailable, observe_slot_registrations, slot_registration_observation_wire, slot_registration_observation_settled }
 import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
 import std.types { NonEmptyStr, String }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -195,7 +194,7 @@ fn runner_lifecycle_realize_observe_github_runner_registration(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match intent.effect {
     ObserveGitHubRunnerRegistration { slot: slot, organization: _ } => {
-      let o = observe_slot_registrations(slot: slot, roster: organization_runner_roster_live_read())
+      let o = observe_slot_registrations(slot: slot, roster: RosterReadUnavailable { reason: "this realization holds no admitted token; the roster is read by runner_connectivity_observe_wet" })
       if slot_registration_observation_settled(o: o) {
         Converged { evidence: ShellEffectApplied { exit_code: 0, stdout: slot_registration_observation_wire(o: o), stderr: "" }, applied: intent }
       } else {
