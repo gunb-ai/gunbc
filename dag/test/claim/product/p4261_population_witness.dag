@@ -111,7 +111,7 @@ import product.p4261.k1_a { k1_converter_near, k1_converter_near_footprint, k1_u
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
 fn with_parts(base: CarrierLayoutObservation, components: List<InstalledComponent>, readings: List<DesignatorReading>) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey, management_io: base.management_io, components: components, measured: base.measured, input: base.input,
@@ -120,7 +120,7 @@ fn with_parts(base: CarrierLayoutObservation, components: List<InstalledComponen
 }
 
 fn as_revision_k1(base: CarrierLayoutObservation) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: p4261_k1, markings: base.markings, module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: base.measured, input: base.input,
@@ -131,7 +131,7 @@ fn as_revision_k1(base: CarrierLayoutObservation) -> CarrierLayoutObservation {
 // A second E1 held under another asset and its own identity space, with the E1-B's records copied.
 fn second_e1(components: List<InstalledComponent>, readings: List<DesignatorReading>) -> CarrierLayoutObservation {
   let b = p4261_e1_layout
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: "p4261-e1-supplied-second" as PhysicalAssetIdentity, design: "p4261-e1-supplied-second" as ElectricalDesignIdentity, revision: b.revision, markings: b.markings,
     module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors, j20: b.j20, j20_calipers: b.j20_calipers,
     edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey, management_io: b.management_io,
@@ -153,7 +153,7 @@ fn k1_lift_refitted() -> CarrierLayoutObservation {
       phases: b.phases, transitions: b.transitions, pole_closures: b.pole_closures,
     } }
   }
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: measured, input: base.input,
@@ -325,13 +325,30 @@ test fn a_component_is_bound_only_to_its_own_boards_revision() -> Bool {
   let unobserved = component_instance_identity(design: e1_design, local_identity: "supplied component with no observation")
   let foreign = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: k1_u1_p5, d: "U1_P5")]))
   let not_seen = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: unobserved, d: "U1_P5")]))
-  let k1_only = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: e1_converter_near, d: "U2_P2")]))
+  // A designator the E1 list does not hold at all. Before the atlas pass U2_P2 was K1-only and served
+  // here; the pass listed it for the E1 (the inventory reads it clear), so it can no longer stand for
+  // "no such position". J141 is read uncertain in the receipts and was deliberately never minted, so it
+  // is the honest name for a position this board does not have.
+  let no_such_position = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: e1_converter_near, d: "J141")]))
   let twice = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: e1_q21, d: "Q21_P5"), read(c: e1_q21, d: "Q22_P5"), read(c: e1_u1_p5, d: "U1_P5")]))
-  count(e1.refused) == 0 && count(e1.admitted) == count(p4261_e1_layout.designator_readings)
+  // The atlas pass listed 262 E1 positions and read a designator at every one of them, but it only looked
+  // at 191 parts. A DesignatorReading is a sighting of printed text; an InstalledComponent is an observation
+  // of a body. Binding the two is what admit_correspondence does, so it must refuse the readings whose
+  // part this board has never been shown -- giving such a row an InstalledComponent would assert an
+  // installation nobody observed (DESIGN §4d). The numbers are pinned, not derived from the code under test:
+  // if a future edit starts binding unobserved parts, this claim goes red rather than following along.
+  // The 2026-11-03 body sightings move exactly 66 of them from refused to admitted, so 191 + 66 = 257 and
+  // 71 - 66 = 5. The five that stay refused, each for a reason of its own: D1_P1 and U3_P3, where the pass
+  // sighted a body and an empty footprint in the same region and claims neither, and U40, whose body was
+  // seen with no kind read; J31 and J540, headers whose silkscreen was read from frames in the store but
+  // whose bodies were never resolved to anything. All five are held as UnresolvedPart rows in
+  // product.p4261.e1_b with an obligation naming what would settle them, so a refusal never deletes a
+  // reading -- see what_was_refused_is_held_with_an_obligation in p4261_atlas_pass_witness.
+  count(e1.admitted) == 257 && count(e1.refused) == 5 && all(e1.refused, r => refused_as(r: r, want: 4))
     && count(k1.refused) == 0 && count(k1.admitted) == count(p4261_k1_layout.designator_readings)
     && count(foreign.admitted) == 0 && count(foreign.refused) == 1 && all(foreign.refused, r => refused_as(r: r, want: 0))
     && count(not_seen.admitted) == 0 && count(not_seen.refused) == 1 && all(not_seen.refused, r => refused_as(r: r, want: 4))
-    && count(k1_only.admitted) == 0 && count(k1_only.refused) == 1 && all(k1_only.refused, r => refused_as(r: r, want: 1))
+    && count(no_such_position.admitted) == 0 && count(no_such_position.refused) == 1 && all(no_such_position.refused, r => refused_as(r: r, want: 1))
     && count(twice.admitted) == 1 && count(twice.refused) == 2 && all(twice.refused, r => refused_as(r: r, want: 3))
 }
 
@@ -363,7 +380,13 @@ test fn each_reading_bears_by_what_it_establishes() -> Bool {
     && supported(o: assess_on(layout: e1, p: e1_at(d: "D2")))
     && supported(o: assess_on(layout: e1, p: e1_at(d: "F300")))
     && missing(o: assess_on(layout: e1, p: e1_at(d: "U10_P2")))
-    && missing(o: assess_on(layout: e1, p: e1_at(d: "Q300")))
+    // Q300 (and Q301) no longer claim a part at all, so the assessment is not "claimed but unevidenced"
+    // -- it is "nothing is claimed here". main held a claim to bss138 over a mere candidate body, which
+    // was EvidenceMissing; dropping the claim moves the position to NotAttributable/NoPopulationClaim,
+    // which is what gap_is(want: 0) states. The position is still listed and still carries its maker
+    // obligation on the board row in product.p4261.e1_b, so nothing read has been lost.
+    && gap_is(o: assess_on(layout: e1, p: e1_at(d: "Q300")), want: 0)
+    && gap_is(o: assess_on(layout: e1, p: e1_at(d: "Q301")), want: 0)
     && gap_is(o: assess_on(layout: e1, p: e1_at(d: "U2_P5")), want: 0)
     && missing(o: assess_on(layout: k1, p: k1_at(d: "F300")))
     && supported(o: assess_on(layout: k1, p: k1_at(d: "U10_P2")))

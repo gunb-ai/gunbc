@@ -40,7 +40,7 @@ data sn74avc4t774_rsv: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "SN74AVC4T774RSVR",
   package: "UQFN-16 (RSV), 2.6 mm x 1.8 mm",
-  top_marking: "ZVK",
+  top_marking: Present { value: "ZVK" },
   specification: LevelTranslatorSpec { translator: LevelTranslatorSpecification {
     channels: 4,
     supply_a: MillivoltRange { minimum: millivolt(count: 1100), maximum: millivolt(count: 3600) },

@@ -1048,6 +1048,9 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
     RootOfTrustSpec { root_of_trust: _ } => []
     SerialFlashSpec { flash: _ } => []
     SwitchingRegulatorSpec { regulator: _ } => []
+    BusMultiplexerSpec { multiplexer: _ } => []
+    UsbHubSpec { hub: _ } => []
+    ClockFanoutSpec { clock: _ } => []
   }
 }
 
@@ -1061,6 +1064,7 @@ fn sensor_trace_text(c: InstalledComponent) -> List<String> {
     ResistanceCodeRead { milliohms: _, marking: _ } => []
     MarkingUnresolved { marking: _, discriminator: _ } => []
     FootprintUnpopulated { evidence: _ } => []
+    BodySeenMarkingUnread { evidence: _ } => []
   }
 }
 
@@ -1177,6 +1181,9 @@ fn family_spec_text(row: ElectronicComponentRow) -> String {
     RootOfTrustSpec { root_of_trust: _ } => ""
     SerialFlashSpec { flash: _ } => ""
     SwitchingRegulatorSpec { regulator } => join([" (synchronous step-down converter, ", millivolt_text(n: millivolt_count(v: regulator.input.minimum)), " to ", millivolt_text(n: millivolt_count(v: regulator.input.maximum)), " in, ", to_string(ampere_count(a: regulator.continuous_output_current)), " A, ", to_string(count(regulator.pins)), " pins)"], "")
+    BusMultiplexerSpec { multiplexer } => join([" (bus multiplexer, ", to_string(multiplexer.channels), " channels of ", to_string(multiplexer.inputs_per_channel), ")"], "")
+    UsbHubSpec { hub } => join([" (USB hub, ", to_string(hub.downstream_ports), " downstream ports, ", hub.generation as String, ", ", to_string(hub.upstream_ports), " upstream)"], "")
+    ClockFanoutSpec { clock } => join([" (clock fan-out, ", to_string(clock.inputs), " inputs, ", to_string(clock.outputs), " outputs)"], "")
   }
 }
 
