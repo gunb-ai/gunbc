@@ -18257,7 +18257,7 @@ pub fn handle_serve(
     // (gunbc#8286). The policy's own terminal shape is promotion in this single classifier.
     let blocking: Vec<_> = compile_clean_diags
         .iter()
-        .filter(|d| v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+        .filter(|d| crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
         .collect();
     if !blocking.is_empty() {
         for d in blocking {
