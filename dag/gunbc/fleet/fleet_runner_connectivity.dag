@@ -1035,3 +1035,46 @@ fn roster_unavailable_yields_unknown_not_detached(
     RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => true
   }
 }
+
+// ── ObserveGitHubRunnerRegistration: what the organization roster says about ONE slot ─────────────
+
+// THE SLOT'S REGISTRATIONS, JOINED THROUGH decode_registration_slot AND NOT BY NAME, so a JIT-named
+// registration reaches its slot (live or as a dead incarnation) and a stranger reaches none. The count
+// of live and dead registrations is the whole answer; a roster that is partial or unavailable answers
+// `unobserved`, never zero, because absence from a prefix is not absence from the organization.
+type SlotRegistrationObservation
+  = SlotRegistrationsObserved { slot: RunnerSlotIdentity, live: Int, dead: Int }
+  | SlotRegistrationsUnobserved { slot: RunnerSlotIdentity, reason: String }
+
+fn slot_registration_count(slot: RunnerSlotIdentity, registrations: List<GitHubSelfHostedRunnerRegistration>, want_live: Bool) -> Int {
+  fold(registrations, init: 0, f: (acc, reg) =>
+    match decode_registration_slot(reg: reg) {
+      RegistrationNamesCommittedSlot { slot: s } =>
+        if want_live && runner_slot_instance_name(slot: s) == runner_slot_instance_name(slot: slot) { acc + 1 } else { acc }
+      RegistrationNamesDeadIncarnation { slot: s } =>
+        if !want_live && runner_slot_instance_name(slot: s) == runner_slot_instance_name(slot: slot) { acc + 1 } else { acc }
+      RegistrationNamesNoCommittedSlot { registration_name: _ } => acc
+      RegistrationHostWidthUnresolved { registration_name: _, host: _, cause: _ } => acc
+    })
+}
+
+fn observe_slot_registrations(slot: RunnerSlotIdentity, roster: OrganizationRunnerRosterEvidence) -> SlotRegistrationObservation {
+  match roster {
+    RosterObserved { observed_on: _, registrations: regs } =>
+      SlotRegistrationsObserved { slot: slot, live: slot_registration_count(slot: slot, registrations: regs, want_live: true), dead: slot_registration_count(slot: slot, registrations: regs, want_live: false) }
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: n, authority_total: t } =>
+      SlotRegistrationsUnobserved { slot: slot, reason: join(["roster partial: observed ", to_string(n), " of ", to_string(t)], "") }
+    RosterReadUnavailable { reason: r } => SlotRegistrationsUnobserved { slot: slot, reason: concat("roster unavailable: ", r) }
+  }
+}
+
+fn slot_registration_observation_wire(o: SlotRegistrationObservation) -> String {
+  match o {
+    SlotRegistrationsObserved { slot: s, live: l, dead: d } => join(["observe-registration ", runner_slot_instance_name(slot: s), " live=", to_string(l), " dead=", to_string(d)], "")
+    SlotRegistrationsUnobserved { slot: s, reason: r } => join(["observe-registration ", runner_slot_instance_name(slot: s), " UNOBSERVED ", r], "")
+  }
+}
+
+fn slot_registration_observation_settled(o: SlotRegistrationObservation) -> Bool {
+  match o { SlotRegistrationsObserved { slot: _, live: _, dead: _ } => true SlotRegistrationsUnobserved { slot: _, reason: _ } => false }
+}
