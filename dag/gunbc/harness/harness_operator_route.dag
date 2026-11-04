@@ -17,7 +17,7 @@ import gunbc.harness.srv4_strata_wire_qualification { srv4_strata_observed_activ
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list }
 import extdeps.pool.pool_front {
   PoolFrontCertificate, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
-  pool_front_authorization_header_line, pool_front_session_header_line, pool_front_model_id,
+  pool_front_authorization_header_line, pool_front_session_header_line, pool_front_model_id, pool_front_any_card_model_id,
   pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text, pool_front_status_meaning,
   PoolFrontNoTlsCardServing, PoolFrontCardUnanswered, PoolFrontUpstreamsBusy, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
 }
@@ -570,9 +570,14 @@ fn operator_route_standing(route: HarnessOperatorRoute, reading: OperatorModelsR
             NinferModelsUnreadable { cause: c } => OperatorRouteUnreadable { cause: c as String }
             NinferModelsAdvertised { ids: ids } => {
               let wanted = harness_unit_model_id(unit: route.unit)
-              // The request names the any-card alias, so the alias must be listed AND every other listed id must be
-              // the card model whose wire facts the unit carries: a second family behind the alias refuses here.
-              let one_family = fold(ids, init: true, f: (ok, i) => ok && (i == (wanted as String) || i == (pool_front_model_id as String)))
+              // The ONE-FAMILY guard belongs to a request that names the any-card ALIAS: an alias may be answered
+              // by any id behind it, so every other listed id must be the card model whose wire facts the unit
+              // carries, and a second family behind the alias refuses here. A request that names a CONCRETE id
+              // is routed only to that id's upstreams (lab hotfix 5: the srv1 router lists flash-next,
+              // Qwen3.8-Flash-Next and qwen3.8-flash-next-iq3_s, and the route asks the last), so for it the id
+              // need only be listed; other listed ids cannot answer it.
+              let asks_alias = (wanted as String) == (pool_front_any_card_model_id as String)
+              let one_family = if asks_alias { fold(ids, init: true, f: (ok, i) => ok && (i == (wanted as String) || i == (pool_front_model_id as String))) } else { true }
               if list_member(xs: ids, x: wanted as String, eq: (a, b) => a == b) && one_family {
                 OperatorRouteServing { model: wanted }
               } else {

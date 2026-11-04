@@ -633,3 +633,25 @@ test fn the_pin_plan_is_the_files_curl_is_handed_and_lies_beside_the_header_file
     && (plan.pubkey_file as String) == "/s/d/pinned-pubkey.pem"
     && !string_contains(s: plan.ca_file as String, pattern: "gunbc-pool-front")
 }
+
+// LAB HOTFIX 5: the router's real /v1/models list (2026-11-04) carries three ids. The selected route asks a CONCRETE id
+// (qwen3.8-flash-next-iq3_s), so the other listed ids don't refuse it. RED before the fix: the one-family guard
+// written for the any-card alias refused it model-not-admitted.
+test fn the_router_listing_three_ids_admits_the_route_that_asks_a_concrete_one() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "{\"object\": \"list\", \"data\": [{\"id\": \"flash-next\", \"object\": \"model\"}, {\"id\": \"Qwen3.8-Flash-Next\", \"object\": \"model\"}, {\"id\": \"qwen3.8-flash-next-iq3_s\", \"object\": \"model\"}]}" }) {
+    OperatorRouteServing { model: m } => (m as String) == "qwen3.8-flash-next-iq3_s"
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+    OperatorRouteUnreadable { cause: _ } => false
+  }
+}
+
+// CONTROL: a concrete id that is NOT listed is still refused.
+test fn a_router_listing_without_the_routes_concrete_id_is_not_admitted() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "{\"object\": \"list\", \"data\": [{\"id\": \"flash-next\", \"object\": \"model\"}, {\"id\": \"Qwen3.8-Flash-Next\", \"object\": \"model\"}]}" }) {
+    OperatorRouteModelNotAdmitted { advertised: _ } => true
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+    OperatorRouteUnreadable { cause: _ } => false
+  }
+}
