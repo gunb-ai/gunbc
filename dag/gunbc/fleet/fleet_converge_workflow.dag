@@ -2,6 +2,9 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.ci.ci_spec { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
+// The row this step reads is declared over there; naming it in the import list is what gives the effect
+// join an identity to join, instead of one borrowed from proximity in this module.
+import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }

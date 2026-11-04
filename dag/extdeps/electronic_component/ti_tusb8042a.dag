@@ -1,0 +1,70 @@
+module extdeps.electronic_component.ti_tusb8042a
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow,
+  UsbHubSpec,
+  UsbHubSpecification,
+}
+
+// TI's TUSB8042A data sheet, SLLSF93A (June 2019, revised January 2025), fetched from
+// www.ti.com/lit/ds/symlink/tusb8042a.pdf and read 2026-11-03. What this row takes from it:
+//   - the cover: "Four-Port USB 3.2 x1 Gen1 Hub", with the feature bullet "Four port USB 3.2 x1 Gen1
+//     (5Gbps) hub" -- four downstream ports, one upstream, which is what `hub` carries;
+//   - the package drawing: VQFN, 1 mm max height, RGC0064G -- 64 pins;
+//   - the package addendum's orderable table (7-Nov-2025): the part marking column gives
+//     "TUSB8042A" for TUSB8042AIRGCR, TUSB8042AIRGCT, TUSB8042ARGCR, TUSB8042ARGCT and
+//     TUSB8042ARGCTG4, and "TUSB8042A1" for the A1 revision parts, all in VQFN (RGC) | 64.
+//
+// WHY `ordering_code` IS THE MARKING AND NOT A SKU. Five orderables share the marking "TUSB8042A";
+// they differ in operating-temperature grade (0 to 70 C or -40 to 85 C) and in tape (R = 2000/unit
+// large T&R, T = 250/unit small T&R). None of that is legible on a body. Naming one SKU here would
+// be choosing, from the air, which part NVIDIA bought: the row therefore names the part as marked,
+// and says so. A consumer that needs the SKU needs the purchase record, not this datasheet.
+//
+// WHY THE PIN TABLE IS Absent AND NOT EMPTY. The 64-ball table is in the document and was not
+// transcribed: a pin table is read only by a pin-level net relation, and extdeps.nvidia.p4261.netlist
+// currently records reach at position grain. `pins: Absent {}` states "not read"; `[]` would claim
+// the hub has no balls to name, which is false.
+//
+// WHAT THE BOARD SAYS. The E1's U816 was read as "TUSB8042A" (product.p4261.e1_b cites the frame and
+// the box). That is the marking column's own string for the part, so the identification is by marking;
+// the grade and tape stay unrecorded, and this row does not pretend otherwise.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/ds/symlink/tusb8042a.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_tusb8042a",
+      decl_name: "tusb8042a_rgc",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data tusb8042a_rgc: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "TUSB8042A",
+  package: "VQFN (RGC), 64 pins",
+  top_marking: Present { value: "TUSB8042A" },
+  specification: UsbHubSpec { hub: UsbHubSpecification {
+    downstream_ports: 4,
+    upstream_ports: 1,
+    generation: "USB 3.2 x1 Gen1 (5 Gbps)",
+    pins: Absent { },
+  } },
+  vendor_application_statements: [
+    "Four port USB 3.2 x1 Gen1 (5Gbps) hub",
+    "The marking TUSB8042A is shared by TUSB8042AIRGCR, TUSB8042AIRGCT, TUSB8042ARGCR, TUSB8042ARGCT and TUSB8042ARGCTG4; the A1 revision is marked TUSB8042A1.",
+  ],
+}

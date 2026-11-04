@@ -313,6 +313,21 @@ type InputConnector {
   fuse_terminal: ElectricalTerminalRef
 }
 
+/// One spelling, two candidate positions -- and the sighting is kept as read, not corrected. The
+/// board was photographed showing `verbatim` on the silkscreen; a canonical position with that
+/// spelling already exists elsewhere on the board, and another designator would explain the pixels
+/// better. Which explanation is right is an obligation on a photograph, never an edit to the
+/// sighting: destroying the observation to fit the theory is how a board starts agreeing with us.
+/// An ambiguous reading mints NO position (an invented position is a fabricated NVIDIA fact) and is
+/// not a population claim; it is what a re-shoot is for.
+type AmbiguousDesignatorReading {
+  verbatim: NonEmptyStr
+  candidate: NonEmptyStr
+  conflict: NonEmptyStr
+  leading_explanation: NonEmptyStr
+  evidence: EvidenceRef
+}
+
 type CarrierLayoutObservation {
   asset: PhysicalAssetIdentity
   design: ElectricalDesignIdentity
@@ -330,6 +345,10 @@ type CarrierLayoutObservation {
   input: InputConnector?
   unresolved: List<UnresolvedPart>
   designator_readings: List<DesignatorReading>
+  /// Sightings whose spelling cannot be reconciled with the canonical positions, held
+  /// here rather than corrected away. Empty is a claim that none was seen, so a board
+  /// that has not been surveyed at this grain says Absent-by-empty only after a pass.
+  ambiguous_designators: List<AmbiguousDesignatorReading>
 }
 
 // ── WHICH OF OUR COMPONENTS SITS AT WHICH OF NVIDIA'S DESIGN POSITIONS ──────────────────────────
