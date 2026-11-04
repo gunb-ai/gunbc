@@ -705,8 +705,8 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
   // the supplied row, so the tree has to be planted for the leg to reach the policy at all.
   let root = wet_claim_root(tag: "launcher-refused" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  prepare_probe_attempt(instance: inst)
-    && wet_claim_is_confined(instance: inst, root: root)
+  wet_claim_is_confined(instance: inst, root: root)
+    && prepare_probe_attempt(instance: inst)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
     && launcher_write_refused(
@@ -815,8 +815,8 @@ test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
   // install as its subject, and the tree it could have touched afterwards was the served one.
   let root = wet_claim_root(tag: "sudo-true" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  prepare_probe_attempt(instance: inst)
-    && wet_claim_is_confined(instance: inst, root: root)
+  wet_claim_is_confined(instance: inst, root: root)
+    && prepare_probe_attempt(instance: inst)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
     && match launcher_sudo_n_true(instance: inst) {
@@ -833,8 +833,8 @@ test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
   let root = wet_claim_root(tag: "sudo-touch" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let escaped_target = join([path_parent_directory(path: inst.serve_binary as String), "/x"], "")
-  prepare_probe_attempt(instance: inst)
-    && wet_claim_is_confined(instance: inst, root: root)
+  wet_claim_is_confined(instance: inst, root: root)
+    && prepare_probe_attempt(instance: inst)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
     && wet_write_refused(
