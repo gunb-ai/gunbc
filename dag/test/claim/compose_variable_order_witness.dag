@@ -33,6 +33,10 @@ import v2.extdeps.languages.bash_build {
 }
 import gunbc.ci.repository_compose_overlay {
   ComposeOrderingDefect,
+  ComposePathDefect,
+  compose_composed_dir_literal,
+  compose_step_path_defects,
+  compose_step_reads_compose,
   ComposeSpec,
   command,
   command_words,
@@ -244,10 +248,48 @@ fn step_defect_texts(step: ComposeOrderingSweep) -> List<String> {
       )
     ]
   } else {
-    compose_step_ordering_defects(steps: step.steps, inputs: step.inputs).map(
-      d => concat(concat(step.label, ": reads $"), defect_text(defect: d))
+    concat(
+      concat(
+        compose_step_ordering_defects(steps: step.steps, inputs: step.inputs).map(
+          d => concat(concat(step.label, ": reads $"), defect_text(defect: d))
+        ),
+        concat(
+          compose_step_path_defects(steps: step.steps).map(
+            d => concat(concat(step.label, ": path under $COMPOSE repeats the composed directory: "), path_defect_text(defect: d))
+          ),
+          path_law_blind_text(step: step)
+        )
+      )
     )
   }
+}
+
+// The path law is blind when a step expands COMPOSE but the statement that assigns it carries no literal
+// for the composed directory: it would report nothing about paths it cannot see. Reported, not passed --
+// the same anti-vacuity discipline as `compose_step_is_swept`, for the other law.
+fn path_law_blind_text(step: ComposeOrderingSweep) -> List<String> {
+  if !compose_step_reads_compose(steps: step.steps, i: 0) {
+    []
+  } else {
+    match compose_composed_dir_literal(steps: step.steps, i: 0) {
+      Present { value: name } =>
+        if name == "" {
+          [concat(step.label, ": the step expands $COMPOSE but its assignment carries no composed directory for the path law to read")]
+        } else {
+          []
+        }
+      Absent =>
+        [concat(step.label, ": the step expands $COMPOSE but assigns it in a shape the path law cannot read")]
+    }
+  }
+}
+
+// One path defect as text: where it was, the name it repeated, and the path that repeated it.
+fn path_defect_text(defect: ComposePathDefect) -> String {
+  concat(
+    concat(concat(int_to_decimal_string(defect.step_index), " "), defect.compose_dir_literal),
+    concat(" in ", defect.literal)
+  )
 }
 
 // One defect as text: the name, the statement that reads it, and the statement that assigns it -- or
@@ -266,6 +308,11 @@ fn defect_text(defect: ComposeOrderingDefect) -> String {
 // The i-th defect, or Absent. Absent rather than an empty value: a claim that reads a defect which is not
 // there must be unable to say anything true about it.
 fn defect_at(defects: List<ComposeOrderingDefect>, i: Int) -> Optional<ComposeOrderingDefect> {
+  defects.skip(n: i).first()
+}
+
+// The i-th path defect, under the same rule as above: no empty value standing in for "no such defect".
+fn defect_path_at(defects: List<ComposePathDefect>, i: Int) -> Optional<ComposePathDefect> {
   defects.skip(n: i).first()
 }
 
@@ -339,6 +386,57 @@ fn quoted_equals_steps() -> List<Node> {
     ),
     command(words: [word(text: "echo"), var_word(name: "PATTERN")])
   ]
+}
+
+// THE COMPOSED-PATH CONTROLS. Both shapes are built from the same statement builders the emitters use;
+// they differ only in whether the tail between $COMPOSE and the directory it names repeats the composed
+// directory name. The first is the shape the seal step shipped when it wrote its overlay one level below
+// where the run read it -- a step whose text reads plausibly either way, which is why the rule reads the
+// statements.
+fn compose_dir_declaration() -> Node {
+  bash_build_assign(
+    name: "COMPOSE",
+    value: bash_build_word_concat_from_nodes(
+      parts: [var_word(name: "RUNNER_TMP_ROOT"), word(text: "/gunbc-mirror-compose")]
+    )
+  )
+}
+
+fn doubled_overlay_step() -> List<Node> {
+  concat(
+    concat([set_strict_stmt(), scratch_declaration(), compose_dir_declaration()], [
+      command(
+        words: [
+          word(text: "mkdir"),
+          word(text: "-p"),
+          bash_build_word_concat_from_nodes(
+            parts: [
+              var_word(name: "COMPOSE"),
+              word(text: "/gunbc-mirror-compose/private_overlay")
+            ]
+          )
+        ]
+      ),
+      command(words: [word(text: "cd"), var_word(name: "COMPOSE")])
+    ])
+  )
+}
+
+fn singly_overlay_step() -> List<Node> {
+  concat(
+    concat([set_strict_stmt(), scratch_declaration(), compose_dir_declaration()], [
+      command(
+        words: [
+          word(text: "mkdir"),
+          word(text: "-p"),
+          bash_build_word_concat_from_nodes(
+            parts: [var_word(name: "COMPOSE"), word(text: "/private_overlay")]
+          )
+        ]
+      ),
+      command(words: [word(text: "cd"), var_word(name: "COMPOSE")])
+    ])
+  )
 }
 
 // ── THE CLAIMS ──────────────────────────────────────
@@ -418,3 +516,32 @@ test fn a_quoted_word_carrying_equals_is_not_an_assignment() -> Bool {
          Absent => false
        }
 }
+
+// A PATH THAT REPEATS THE COMPOSED DIRECTORY IS REPORTED, and the same step without the repeat is not.
+// This is the mirror's seal step: the copy landed at `$COMPOSE/<compose dir>/private_overlay` while the
+// run, working in `$COMPOSE`, was told its source root was `private_overlay/dag`. Nothing about either
+// statement's own text says which side of the composition a path is on; the statements know, because one
+// of them names the directory COMPOSE was assigned from.
+test fn a_path_that_repeats_the_composed_directory_is_reported() -> Bool {
+  let defects = compose_step_path_defects(steps: doubled_overlay_step())
+  match defect_path_at(defects: defects, i: 0) {
+    Present { value: first } =>
+      count(defects) == 1
+        && first.compose_dir_literal == "/gunbc-mirror-compose"
+        && first.literal == "/gunbc-mirror-compose/private_overlay"
+        && first.step_index == 7
+        && count(compose_step_path_defects(steps: singly_overlay_step())) == 0
+    Absent => false
+  }
+}
+
+// THE PATH LAW IS NOT ASKED A VACUOUS QUESTION. Both planted steps really do expand COMPOSE (so the
+// passing one passed something), and a step that composes nothing is not silently clean: the law reads no
+// paths there, and the claim says which of the two it looked at.
+test fn the_path_law_reports_only_steps_that_compose() -> Bool {
+  compose_step_reads_compose(steps: singly_overlay_step(), i: 0)
+    && compose_step_reads_compose(steps: doubled_overlay_step(), i: 0)
+    && !compose_step_reads_compose(steps: unassigned_probe_steps(), i: 0)
+    && count(compose_step_path_defects(steps: unassigned_probe_steps())) == 0
+}
+
