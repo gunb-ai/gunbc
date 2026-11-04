@@ -97,6 +97,7 @@ import product.electrical.measured_netlist {
   node_of,
   netlist_text,
 }
+import product.electrical.photograph { photograph_citation_text }
 import product.electrical.continuity {
   ModuleState,
   ReadingOrder,
@@ -107,6 +108,7 @@ import product.electrical.continuity {
   ModuleInstalled,
   ReachabilityGraph,
   reachability_graph,
+  reach,
   ContinuityObservation,
   BenchConditions,
   Unpowered,
@@ -302,7 +304,6 @@ import product.p4261.e1_b {
   e1_w4_end,
   e1_y50,
   p4261_e1_layout,
-  p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.k1_a {
   k1_label_photo,
@@ -450,6 +451,7 @@ import product.p4261.report {
   u4_configuration_text,
   u5_2_root_of_trust_text,
 }
+import product.p4261.investigation { p4261_near_4r7_converter_hypothesis }
 import product.p4261.findings {
   CarrierFinding,
   CarrierPhaseObserved,
@@ -483,7 +485,7 @@ import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
 fn layout_with(base: CarrierLayoutObservation, components: List<InstalledComponent>, measured: MeasuredBoard?, input: InputConnector?) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset,
     design: base.design,
     revision: base.revision,
@@ -782,7 +784,7 @@ fn shared_marking_evidence(c: ComponentInstanceIdentity) -> List<String> {
 fn evidence_text(e: EvidenceRef) -> String {
   match e {
     OperatorStatement { stated_on, verbatim } => join([stated_on as String, verbatim as String], " ")
-    OperatorPhotograph { taken_on, locator } => join([taken_on as String, locator as String], " ")
+    OperatorPhotograph { citation } => photograph_citation_text(citation: citation)
     _ => "listing"
   }
 }
@@ -808,7 +810,7 @@ fn low_can_row() -> ElectronicComponentRow {
     vendor: eeh_zu1j151.vendor,
     ordering_code: "supplied 16 V can",
     package: "supplied",
-    top_marking: "supplied",
+    top_marking: Present { value: "supplied" },
     specification: CapacitorSpec { capacitor: CapacitorSpecification { capacitance_microfarads: 100, rated_voltage: volt(count: 16) } },
     vendor_application_statements: [],
   }
@@ -1089,7 +1091,7 @@ test fn counts_are_derived_from_inventories() -> Bool {
 // ── THE REPORT IS RENDERED FROM THE TYPED MODEL ───────────────────────────────────────────────
 
 fn with_survey(base: CarrierLayoutObservation, survey: ManagementIoSurvey) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset,
     design: base.design,
     revision: base.revision,
@@ -2859,7 +2861,7 @@ test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
 // received board, never the listing; the E1 recorded against the K1's revision is contradicted by its
 // own label, and the rendered label carries the revision and its uncited standing.
 fn with_revision(base: CarrierLayoutObservation, revision: P4261AssemblyRevision) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset,
     design: base.design,
     revision: revision,
@@ -2894,7 +2896,7 @@ fn is_contradicted_on_board(s: AssemblyRevisionStanding) -> Bool {
 }
 
 fn with_markings(base: CarrierLayoutObservation, markings: List<BoardMarking>) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset,
     design: base.design,
     revision: base.revision,

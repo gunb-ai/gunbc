@@ -68,7 +68,7 @@ data lm5066i_pwp: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "LM5066IPMHE/NOPB",
   package: "HTSSOP-28 (PWP), exposed pad to ground",
-  top_marking: "LM5066I",
+  top_marking: Present { value: "LM5066I" },
   specification: HotSwapControllerSpec { controller: HotSwapControllerSpecification {
     pins: [
       ControllerPin { number: 1, name: "OUT", role: OutputFeedback },

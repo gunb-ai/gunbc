@@ -1,0 +1,117 @@
+module extdeps.linux.efivarfs
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.algebra { trim, list_push }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.numeric.base16 { base16_word_value }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
+import std.machine_word { Width8, Width32, WordReady, WordRefused, word_from_octets }
+import extdeps.toolchain.architecture_profile { LittleEndian }
+import extdeps.tools.coreutils_od
+
+import std.algebra { take_prefix }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/filesystems/efivarfs.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.efivarfs",
+      decl_name: "efivarfs_variable_path",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// efivarfs (Linux, docs.kernel.org/filesystems/efivarfs.html) exposes each UEFI variable as one file
+// `<VariableName>-<VendorGuid>` under its mount point. The file's content is the variable's attributes as a
+// little-endian 32-bit word, then the variable's data exactly as firmware holds it. A variable is therefore
+// identified by name AND vendor GUID, and its payload is bytes, not text.
+data efivarfs_mount_point: NonEmptyStr = "/sys/firmware/efi/efivars"
+
+type EfiVariableIdentity {
+  name: NonEmptyStr
+  vendor_guid: NonEmptyStr
+}
+
+// The width of the attribute word that precedes the data in every efivarfs file.
+data efivarfs_attribute_octet_count: Int = 4
+
+fn efivarfs_variable_path(variable: EfiVariableIdentity) -> NonEmptyStr {
+  join([efivarfs_mount_point as String, "/", variable.name as String, "-", variable.vendor_guid as String], "") as NonEmptyStr
+}
+
+// WHAT ONE READ OF A VARIABLE GAVE: its attribute word and its data octets, or why neither was read. A
+// reading that did not happen is Unread with its cause, never an empty payload.
+type EfiVariableReading
+  = EfiVariableRead { attributes: Int, payload: List<Int> }
+  | EfiVariableUnread { cause: String }
+
+// The little-endian unsigned field of `width` octets (1 or 4, the widths HII checkbox and numeric items use)
+// at `offset` of a data payload, decoded by std.machine_word, or none when the payload does not reach that far
+// or the width is another: a short variable never reads as zero.
+fn efi_variable_unsigned_at(payload: List<Int>, offset: Int, width: Int) -> Int? {
+  let field = take_prefix(xs: skip(xs: payload, n: offset), n: width)
+  let word_width = if width == 1 { Present { value: Width8 } } else { if width == 4 { Present { value: Width32 } } else { none } }
+  if offset < 0 || length(field) != width { none } else {
+    match word_width {
+      Absent => none
+      Present { value: w } =>
+        match uint8_octets_of_ints(values: field) {
+          QualifiedOctetsRefused { observed: _ } => none
+          QualifiedOctetsReady { value: q } =>
+            match word_from_octets(width: w, octets: q, endianness: LittleEndian) {
+              WordRefused { cause: _ } => none
+              WordReady { word } => Present { value: word.value }
+            }
+        }
+    }
+  }
+}
+
+// od prints sixteen two-digit hex octets to a line. Anything else in the output refuses.
+fn efivarfs_hex_octets(stdout: String) -> List<Int>? {
+  let tokens = flat_map(split(s: stdout, delimiter: "\n"), line => filter(split(s: trim(s: line), delimiter: " "), t => t != ""))
+  fold(tokens, init: Present { value: [] }, f: fn(acc, token) {
+    match acc {
+      Absent => none
+      Present { value: octets } =>
+        match base16_word_value(word: token, max_digits: 2) {
+          Absent => none
+          Present { value: o } => Present { value: list_push(xs: octets, item: o) }
+        }
+    }
+  })
+}
+
+// THE DECODE, over supplied od output: the attribute word is the first four octets, the payload the rest.
+fn efivarfs_decode(stdout: String) -> EfiVariableReading {
+  match efivarfs_hex_octets(stdout: stdout) {
+    Absent => EfiVariableUnread { cause: "the od output held something other than two-digit hex octets" }
+    Present { value: octets } =>
+      match efi_variable_unsigned_at(payload: octets, offset: 0, width: efivarfs_attribute_octet_count) {
+        Absent => EfiVariableUnread { cause: "the file is shorter than the four attribute octets every efivarfs variable starts with" }
+        Present { value: attributes } => EfiVariableRead { attributes: attributes, payload: octets.skip(n: efivarfs_attribute_octet_count) }
+      }
+  }
+}
+
+// THE READ: the file's octets through od, then the decode. Reading a variable needs no privilege beyond the
+// file being readable; efivarfs files are root-only on a stock kernel.
+fn efivarfs_read(variable: EfiVariableIdentity) -> EfiVariableReading {
+  let read = coreutils.Od.HexBytes(path: efivarfs_variable_path(variable: variable))
+  if !read.success {
+    EfiVariableUnread { cause: join(["od could not read ", efivarfs_variable_path(variable: variable) as String, ": ", read.stderr], "") }
+  } else {
+    efivarfs_decode(stdout: read.stdout)
+  }
+}
