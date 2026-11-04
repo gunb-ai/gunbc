@@ -2073,6 +2073,35 @@ fn roadmap_serve_handle_srv1_lab(
   )
 }
 
+// THE AGENT DOOR: the lab's owning agent's listener (gunbc.live_deploy.spec deployment_agent_door_socket).
+// Same instance and the same routes as roadmap_serve_handle_srv1_lab; the only difference is that the
+// kernel-attested peer user is handed to the seam as the request's ingress, as the tailnet door's entry
+// does. The host-account evidence that turns an enrolled peer into an acting principal is a later
+// slice (lineage retire as the agent); until it lands, a peer here is read exactly as on the lab's
+// loopback entry, and an account that is not the tailnet proxy mints no tailnet path.
+fn roadmap_serve_handle_srv1_lab_agent_door(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  peer_user: String,
+  request_headers: List<ServeRequestHeader>,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv1_lab_dashboard_instance(),
+    plan: fn() { roadmap_plan_projection() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    ingress: IngressAttestedPeer { peer_user: peer_user },
+    request_headers: request_headers,
+    release_revision: release_revision,
+  )
+}
+
 fn roadmap_serve_handle_srv2_preview(
   method: String,
   path: String,
