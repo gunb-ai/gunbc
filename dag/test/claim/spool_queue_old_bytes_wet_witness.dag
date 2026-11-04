@@ -2,7 +2,7 @@ module test.claim.spool_queue_old_bytes_wet_witness
 
 import extdeps.shell
 import std.optional { Present, Absent }
-import std.types { Bool, String, List, Int }
+import std.types { Bool, String, List, Int, FilePath }
 import gunbc.spool_queue {
   SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, SpoolPublication, SpoolRole, RolePending, RoleClaimed,
   spool_open, spool_role_path, spool_declared_roles, spool_queue_list, spool_queue_observe, spool_entry_key_of_name,

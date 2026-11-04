@@ -1,6 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, path_segment_is_safe }
+import std.algebra { trim }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
