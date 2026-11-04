@@ -8,7 +8,8 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, T
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.process { ExitSuccess }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.guarantee_stall { NextRungTrigger }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
+import gunbc.target_syntax_transcription { target_syntax_debts, debt_declarations }
 import extdeps.shell
 
 // THE INTEGRATION REGISTER: where an unfinished reconciliation is recorded instead of remembered
@@ -345,7 +346,46 @@ data duct_placement_chosen_by_hand: IntegrationConcern = IntegrationConcern {
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand]
+// Every module the target-syntax ledger rows implicate, read from the ledger rather than restated, so
+// a row added there widens this concern's relevance with no edit here.
+data target_syntax_ledger_ref: DeclarationRef = decl_ref(module_path: "gunbc.target_syntax_transcription", decl_name: "target_syntax_debts")
+data target_syntax_built_by_hand_in_application_modules: IntegrationConcern = IntegrationConcern {
+  identity: "target_syntax_built_by_hand_in_application_modules",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetValueExpressionProjection"),
+    requirement: "an application written as ordinary .dag is emitted to Swift and TypeScript by the target model and each language's grammar rows, so no application module names a target language's syntax constructors (DESIGN section 4, one grammar read in both directions)",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_transcribed_swift_frontier") } },
+  },
+  affected: FreeSemigroup { head: target_syntax_ledger_ref, tail: flat_map(target_syntax_debts, d => debt_declarations(d: d)) },
+  question: "Which forms must the shared value-expression projection and the declaration door gain -- and which browser and Node surfaces must be modelled as extdeps -- before each ledgered module can be written as ordinary .dag and emitted, and in what order do they unblock the most modules?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "fe796707f7a302c58830523b17b528c02c988f61",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: target_syntax_ledger_ref },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v2.extdeps.languages.swift_expr_door", decl_name: "swift_syntax_forms_outside_value_expression_projection_frontier") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_bodied_member_frontier") },
+        ],
+      },
+      account: "Read with git grep over dag/ and src/ for calls to any function named sw_* or ts_*, excluding the grammars (extdeps/languages and src/v2/extdeps/languages) and the compiler's emit and parse claims, and three name collisions that are not builders (v2.compiler.infer ts_declared_inhabitants_*, gunbc.instruments.emit_host_transport ts_host_stdout_is_the_sum, test.claim.scoped_authorization_scope_wire sw_scope). Swift: the five approve_ios_swift_* printers build every generated app file's tree; three of them are recorded by the app's own frontier rows, the two that print from a model (enrolment machine, operation errors) were recorded nowhere, and six app files are hand-written with retained rows. TypeScript: twelve browser and server client modules build their scripts as ts_* trees -- the largest are gunbc.roadmap.roadmap_component and gunbc.roadmap.roadmap_issue_sort, mostly ts_ident, ts_member, ts_call, ts_binop and string literals over DOM, fetch, timers and storage -- and none carried a dissolution or frontier row, so that debt was an untracked stall until the ledger. On the route side: the Swift door spells only identifiers, positional calls, member access, bool and int literals and memberwise init, and lists the rest at swift_syntax_forms_outside_value_expression_projection_frontier; the TypeScript route already emits closures, enum unions, imports and record construction from ordinary .dag by execution (src/v2/test/claim/execution typescript_*_by_execution), but has no row naming the forms it cannot, and no extdeps model of the browser surfaces the clients call. Not read: other targets (bash, YAML, CSS, HTML), and whether any client could migrate today.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetValueExpressionProjection") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "approve_ios_wire_swift_file"),
+        control: Absent,
+        statement: "a migrated module's emitted file stays what its consumer runs today: the app's Swift files and the served scripts change only where the migration intends, read against the files the printers produce at the revision the migration starts from",
+      },
+    ],
+    next: climbs_when(capability: "the shared value-expression projection and the declaration door print the forms the ledgered modules use (statements, closures, string and collection literals, operators, switch bodies), and the browser and Node surfaces they call are modelled as extdeps, SUFFICIENT FOR one ledgered module per target -- a Swift model printer and a TypeScript client -- to be rewritten as ordinary .dag, emitted by the route, and its ledger row removed"),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

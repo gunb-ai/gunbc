@@ -19,6 +19,7 @@ import extdeps.electronic_component.ti_tca9546a { tca9546a_pw }
 import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
 import extdeps.electronic_component.ti_lsf0108 { lsf0108_pw }
 import extdeps.electronic_component.ti_tusb8042a { tusb8042a_rgc }
+import extdeps.electronic_component.onsemi_fsv20100v { onsemi_schottky_fsv20100v }
 import extdeps.electronic_component.diodes_pi6c49x0208 { pi6c49x0208_zhie }
 import std.optional { Absent, Present }
 import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_10cx085yf672e6g }
@@ -2554,6 +2555,40 @@ data e1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: e1_component(local: "Q1_5"), designator: "Q1_5", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "88f340c86f07e2e7942fb8c273e7eec05156f67d3e8570a4598838d5ed47f45f" as Sha256DigestHex }, left: 1490, top: 1205, width: 575, height: 260) } },
   DesignatorReading { specimen: e1_component(local: "Q3_5"), designator: "Q3_5", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "4fc5010698a4f51c8e99c77e77832e54dca1ffcb94694720fba19fcf6b6d6fc3" as Sha256DigestHex }, left: 2675, top: 981, width: 318, height: 567) } },]
 
+// The device code read on the body of the four rectifiers at D2_P1, D8_P1, D2_P5 and D8_P5, projected
+// exactly. Only the two transcriptions the receipts record are accepted -- the _P1 pair reads left to
+// right, the _P5 pair leads with the logo -- so no other string can support the claim by resembling one,
+// and nothing here parses a text into pieces. Substring matching is declined deliberately, not for
+// want of it -- std has .contains -- because deciding WHICH GLYPHS of a body print make up the device
+// code is a judgment that belongs to the receipt, not to a matcher inside the model. A matcher would
+// be a second, unaudited authority over the print, disagreeing with the first one quietly (§3).
+fn fsv20100v_device_code(reading: MarkingReading) -> NonEmptyStr? {
+  if reading.text == "FSV20100V / JC03 / ON logo" { Present { value: "FSV20100V" } }
+    else if reading.text == "(ON logo) JC03 FSV20100V" { Present { value: "FSV20100V" } }
+    else { Absent { } }
+}
+
+// The identification is CONSTRUCTED from the join rather than asserted beside it: the device code we
+// read must BE the mark the vendor row prints, or the position stays a lead with its obligation named.
+// Pair these rows with the wrong component, or corrupt one glyph of the print, and they land in
+// MarkingCandidate where the witnesses say so loudly (§4b: construction over proof).
+fn fsv20100v_identification(marking: MarkingReading) -> ComponentIdentification {
+  match fsv20100v_device_code(reading: marking) {
+    Absent => MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
+      discriminator: "the print we read is not one of the two receipt transcriptions, so no device code joins the vendor mark" }
+    Present { value: code } => match onsemi_schottky_fsv20100v.top_marking {
+      Absent => MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
+        discriminator: "the vendor row carries no printed mark to join" }
+      Present { value: printed } => if code == printed {
+        IdentifiedByMarking { row: onsemi_schottky_fsv20100v, marking: marking }
+      } else {
+        MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
+          discriminator: "the observed device code is not the mark the vendor row prints" }
+      }
+    }
+  }
+}
+
 data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   asset: p4261_e1_b,
   design: e1_design,
@@ -2787,11 +2822,36 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q73"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "K38", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q73", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q74"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "K38", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q74", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q75"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "K38", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q75", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
-      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D2_P1"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "FSV20100V / JC03 / ON logo", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "D2_P1", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; onsemi FSV20100V; the document that ties this marking to an orderable would close it" } },
-      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D2_P5"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "(ON logo) JC03 FSV20100V", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "5479ddfab054192750b98213bb71611bce5350f68976d58324f5f7de6923cac7" as Sha256DigestHex }, left: 0, top: 2135, width: 1236, height: 889) } }, discriminator: "the marking is read but names no part we can cite; onsemi FSV20100V; the document that ties this marking to an orderable would close it" } },
+            // Cited to b4_02/b4_03 by content hash: this frame's own receipt line records
+      // marking_legibility clear for this position and the body box cited below, so the row is
+      // checkable against the image it was read from.
+      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D2_P1"), terminals: [], identification: fsv20100v_identification(marking: MarkingReading { text: "FSV20100V / JC03 / ON logo", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "db40a1c3f694256e912169d91e247308c670e7ee6870be30420ec14332848f14" as Sha256DigestHex }, left: 910, top: 1212, width: 294, height: 198) } }) },
+            // This row used to cite e1_sd_photo_p089, whose own receipt reads
+      // "FSV20100? / JC03 / ON logo (marking rotated 180 deg; last char of first line cut by left
+      // frame edge)" -- so the text asserted here could not be seen in the frame it pointed at.
+      // Grain A cites the photo the reading came from: b4_02 reads it clear, and the box is
+      // b4_02's body box for this position ("left large diode x 2000-2165, y 1306-1561").
+      // p089 stays a fact about that frame, not a conflict: an explicitly unreadable glyph is
+      // silence. The designator itself comes from a printed label, and the receipt records how
+      // that label is tied to this body: "The label sits directly above this diode (in the
+      // overview it sits beside the upper diode of the pair), so the association is by
+      // proximity." What is claimed here is carried by the body, not by that proximity: the
+      // device code is printed on the package.
+      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D2_P5"), terminals: [], identification: fsv20100v_identification(marking: MarkingReading { text: "(ON logo) JC03 FSV20100V", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "8f5cdfc7d68b9020cd351281399b53cc910e88897c062a46cca4a8b86fc79849" as Sha256DigestHex }, left: 2000, top: 1306, width: 165, height: 255) } }) },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D3_P5"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "?", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "810d00d7c0ba25787180eefc410e47e6b7c861291bfd60660c0c17a13220ad75" as Sha256DigestHex }, left: 2650, top: 1915, width: 345, height: 925) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
-      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D8_P1"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "FSV20100V / JC03 / ON logo", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "D8_P1", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; onsemi FSV20100V; the document that ties this marking to an orderable would close it" } },
-      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D8_P5"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "(ON logo) JC03 FSV20100V", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "D8_P5", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; onsemi FSV20100V; the document that ties this marking to an orderable would close it" } },
+            // Cited by content hash to the frame whose receipt line reads this marking at this body box
+      // with marking_legibility clear.
+      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D8_P1"), terminals: [], identification: fsv20100v_identification(marking: MarkingReading { text: "FSV20100V / JC03 / ON logo", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "db40a1c3f694256e912169d91e247308c670e7ee6870be30420ec14332848f14" as Sha256DigestHex }, left: 915, top: 1017, width: 289, height: 184) } }) },
+            // b4_02 names the designator on the label beside the body and the marking on the body
+      // itself. Its marking_legibility is partial, and the receipt says what is soft: "The lot
+      // code looks like JC03 but is less sharp than on D2_P5; FSV20100V is readable." The
+      // identification rests on the device code, which the datasheet's MARKING DIAGRAM legend
+      // makes the identifying field; the lot code is unread here and stays unread. The archived
+      // receipts on this row read: the per-photo sighting's standing is uncertain
+      // (per_photo_readings.jsonl); inventory_bottom.csv gives reading_standing=confirmed,
+      // marking_legibility=partial and category_standing=inferred. The soft item is the lot code,
+      // not the device code, and category_standing concerns the zone, not the marking.
+      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D8_P5"), terminals: [], identification: fsv20100v_identification(marking: MarkingReading { text: "(ON logo) JC03 FSV20100V", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "8f5cdfc7d68b9020cd351281399b53cc910e88897c062a46cca4a8b86fc79849" as Sha256DigestHex }, left: 2190, top: 1306, width: 160, height: 255) } }) },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q2_P1"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "K72?", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q2_P1", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q2_P5"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "?", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q2_P5", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q3_P1"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "BC4X?", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q3_P1", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
