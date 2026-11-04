@@ -1,12 +1,11 @@
 module test.claim.network_boot_actuation_witness
 
-import gunbc.boot_artifact_delivery { BootDeliverySolution, BootFromRemovableMedia }
-import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution, intake_subject }
+import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliverySolution, BootFromNetworkPxe, BootFromRemovableMedia }
+import test.fixture.boot_delivery_plans { removable_media_plan, uefi_http_plan_serving, intake_artifact, pxe_plan, pxe_solution, refused_solution, removable_media_solution, intake_subject }
 import std.types { Bool, String, EpochMs, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { decl_ref }
 import extdeps.bmc.types { BootTargetPxe, BootTargetCd }
-import gunbc.os_install_mechanism { PxeHttpInstall, VirtualMediaInstall }
 import std.measure { finite_byte_size, positive_measure_count }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_5_live_server_arm64 }
 import gunbc.provisioning.ubuntu_network_origin_observation {
@@ -23,6 +22,7 @@ import gunbc.provisioning.provisioning_arm {
   provisioning_arm_consumer_ref,
   AttemptBinding,
   ProvisioningArm,
+  ArmShape,
   VirtualMediaStanding,
   VirtualMediaAvailable,
   provisioning_arm_derive,
@@ -249,23 +249,23 @@ fn evidence_with_origin(origin: UbuntuNetworkOrigin?) -> DeliveryEvidence {
 fn is_withheld(a: NetworkBootActuation) -> Bool {
   match a {
     ArmActuationWithheld { attempt: _, shape: _ } => true
-    ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => false
-    ArmActuationVirtualMedia { attempt: _, mechanism: _, boot_target: _, media_observation: _, origin: _, seed: _ } => false
+    ArmActuationPxe { attempt: _, boot_control: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => false
+    ArmActuationVirtualMedia { attempt: _, boot_control: _, boot_target: _, media_observation: _, origin: _, seed: _ } => false
   }
 }
 
-test fn a_pxe_arm_names_the_pxe_mechanism_and_target() -> Bool {
+test fn a_pxe_arm_names_the_pxe_boot_control_and_target() -> Bool {
   match actuate(solution: pxe_solution, evidence: full_evidence()) {
-    ArmActuationPxe { attempt: _, mechanism: m, boot_target: t, chain: _, firmware: _, origin: _, seed: _ } =>
-      m == PxeHttpInstall && t == BootTargetPxe
+    ArmActuationPxe { attempt: _, boot_control: m, boot_target: t, chain: _, firmware: _, origin: _, seed: _ } =>
+      m == BootFromNetworkPxe && t == BootTargetPxe
     _ => false
   }
 }
 
-test fn a_virtual_media_arm_names_the_virtual_media_mechanism_and_target() -> Bool {
+test fn a_virtual_media_arm_names_the_removable_media_boot_control_and_target() -> Bool {
   match actuate(solution: removable_media_solution, evidence: full_evidence()) {
-    ArmActuationVirtualMedia { attempt: _, mechanism: m, boot_target: t, media_observation: _, origin: _, seed: _ } =>
-      m == VirtualMediaInstall && t == BootTargetCd
+    ArmActuationVirtualMedia { attempt: _, boot_control: m, boot_target: t, media_observation: _, origin: _, seed: _ } =>
+      m == BootFromRemovableMedia && t == BootTargetCd
     _ => false
   }
 }
@@ -275,7 +275,7 @@ test fn the_actuation_carries_exactly_what_the_pxe_arm_bound() -> Bool {
   match arm.shape {
     ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
       match network_boot_arm_actuator_steps(arm: arm) {
-        ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: c2, firmware: f2, origin: o2, seed: s2 } =>
+        ArmActuationPxe { attempt: _, boot_control: _, boot_target: _, chain: c2, firmware: f2, origin: o2, seed: s2 } =>
           c == c2 && f == f2 && o == o2 && s == s2 && f != FirmwareAlreadyReady
         _ => false
       }
@@ -288,7 +288,7 @@ test fn the_actuation_carries_exactly_what_the_media_arm_bound() -> Bool {
   match arm.shape {
     ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
       match network_boot_arm_actuator_steps(arm: arm) {
-        ArmActuationVirtualMedia { attempt: _, mechanism: _, boot_target: _, media_observation: m2, origin: o2, seed: s2 } =>
+        ArmActuationVirtualMedia { attempt: _, boot_control: _, boot_target: _, media_observation: m2, origin: o2, seed: s2 } =>
           m == m2 && o == o2 && s == s2
         _ => false
       }
@@ -319,7 +319,7 @@ test fn two_pxe_arms_differing_only_in_chainloader_yield_different_actuations() 
 test fn a_ready_firmware_standing_carries_no_preparation_route() -> Bool {
   let e = evidence_with(firmware: fixture_firmware_ready(), chain: pinned(), virtual_media: media_available())
   match actuate(solution: pxe_solution, evidence: e) {
-    ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: _, firmware: FirmwareAlreadyReady, origin: _, seed: _ } => true
+    ArmActuationPxe { attempt: _, boot_control: _, boot_target: _, chain: _, firmware: FirmwareAlreadyReady, origin: _, seed: _ } => true
     _ => false
   }
 }
@@ -337,7 +337,7 @@ test fn a_refused_arm_is_withheld_not_actuated_as_the_other_strategy() -> Bool {
 test fn the_attempt_is_carried_through_as_data() -> Bool {
   let arm = arm_for(solution: pxe_solution, evidence: full_evidence())
   match network_boot_arm_actuator_steps(arm: arm) {
-    ArmActuationPxe { attempt: a, mechanism: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => provisioning_arm_attempt(arm: arm) == Present { value: a }
+    ArmActuationPxe { attempt: a, boot_control: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => provisioning_arm_attempt(arm: arm) == Present { value: a }
     _ => false
   }
 }
@@ -449,4 +449,60 @@ test fn a_refused_binding_carries_the_binders_blocker_typed() -> Bool {
 
 test fn the_attempt_entry_frontier_names_the_install_attempt_step() -> Bool {
   network_boot_attempt_actuation_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_install_attempt", decl_name: "network_boot_install_attempt_step")
+}
+
+// P1b: the control target is the ADMITTED PLAN'S, so a PXE arm cannot be substituted for another plan. A UEFI
+// HTTP plan is not admitted in this stack (its eligibility is not established), so it is Withheld whatever
+// shape is supplied, and in particular never actuated as BootFromNetworkPxe.
+test fn a_uefi_http_plan_is_never_actuated_as_pxe() -> Bool {
+  is_withheld(actuate(solution: BootDeliveryPlanned { plan: uefi_http_plan_serving(digest: intake_artifact.digest) }, evidence: full_evidence()))
+}
+
+// The unadmitted-HTTP negative on the actuation boundary itself: a hand-built arm carrying the HTTP plan and a
+// PXE-or-HTTP shape (which the derive would never pair) is Withheld, not read from the shape alone.
+test fn a_hand_built_arm_with_an_unadmitted_http_plan_is_withheld() -> Bool {
+  match arm_for(solution: pxe_solution, evidence: full_evidence()).shape {
+    shape =>
+      is_withheld(network_boot_arm_actuator_steps(arm: ProvisioningArm {
+        plan: Present { value: uefi_http_plan_serving(digest: intake_artifact.digest) },
+        shape: shape,
+      }))
+  }
+}
+
+// Positive: the PXE arm's control is the admitted plan's own boot_control, not a constant.
+test fn a_pxe_arm_takes_its_control_from_the_admitted_plan() -> Bool {
+  match actuate(solution: pxe_solution, evidence: full_evidence()) {
+    ArmActuationPxe { attempt: _, boot_control: m, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } =>
+      m == pxe_plan.boot_control
+    _ => false
+  }
+}
+
+fn arm_shape_of(solution: BootDeliverySolution) -> ArmShape {
+  arm_for(solution: solution, evidence: full_evidence()).shape
+}
+
+// A shape must be the admitted plan's own delivery family. Each RED pairs a plan with the OTHER family's
+// real shape (derived from the paired solution), and each has its correctly paired positive control.
+test fn a_pxe_plan_with_a_virtual_media_shape_is_withheld() -> Bool {
+  is_withheld(network_boot_arm_actuator_steps(arm: ProvisioningArm { plan: Present { value: pxe_plan }, shape: arm_shape_of(solution: removable_media_solution) }))
+}
+
+test fn a_removable_media_plan_with_a_network_shape_is_withheld() -> Bool {
+  is_withheld(network_boot_arm_actuator_steps(arm: ProvisioningArm { plan: Present { value: removable_media_plan }, shape: arm_shape_of(solution: pxe_solution) }))
+}
+
+test fn a_pxe_plan_with_its_own_shape_is_actuated_as_pxe() -> Bool {
+  match network_boot_arm_actuator_steps(arm: ProvisioningArm { plan: Present { value: pxe_plan }, shape: arm_shape_of(solution: pxe_solution) }) {
+    ArmActuationPxe { attempt: _, boot_control: _, boot_target: t, chain: _, firmware: _, origin: _, seed: _ } => t == BootTargetPxe
+    _ => false
+  }
+}
+
+test fn a_removable_media_plan_with_its_own_shape_is_actuated_as_media() -> Bool {
+  match network_boot_arm_actuator_steps(arm: ProvisioningArm { plan: Present { value: removable_media_plan }, shape: arm_shape_of(solution: removable_media_solution) }) {
+    ArmActuationVirtualMedia { attempt: _, boot_control: _, boot_target: t, media_observation: _, origin: _, seed: _ } => t == BootTargetCd
+    _ => false
+  }
 }
