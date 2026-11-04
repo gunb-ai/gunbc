@@ -26,6 +26,7 @@ import gunbc.live_deploy.pre_swap_admission {
 }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.live_deploy.desired { srv1_production_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.apply { operator_local_deploy_dissolved_refusal }
 
 // THE PLAN'S SERVE-ENTRY VERDICT, WITNESSED AT THE DISTINCTIONS IT EXISTS FOR. The rule this
 // document carries is: the swap consumes the plan's compile answer ONLY under a four-way identity
@@ -318,4 +319,17 @@ test fn witness_argv_identity_binds_port_and_budgets() -> Bool {
 test fn witness_argv_digest_is_deterministic_and_text_sensitive() -> Bool {
   serve_entry_argv_digest_of_text(text: "serve --x 1") == serve_entry_argv_digest_of_text(text: "serve --x 1")
     && serve_entry_argv_digest_of_text(text: "serve --x 1") != serve_entry_argv_digest_of_text(text: "serve --x 2")
+}
+
+// ── THE OPERATOR-LOCAL DEPLOY ROUTE, DISSOLVED (review 90661, prod gap 1 F1) ─────────────────
+// The route ends in a typed refusal that must (a) name the retired route and its verb, (b) name
+// the ONE surviving deploy path, (c) state that nothing was mutated, and (d) not offer a
+// fix-it-yourself verdict path (the verdict travels with the plan artifact only).
+
+test fn the_operator_local_route_refusal_names_the_dissolution_and_the_surviving_path() -> Bool {
+  let text = operator_local_deploy_dissolved_refusal()
+  string_contains(s: text, pattern: "OperatorLocalDeployDissolved")
+    && string_contains(s: text, pattern: "--mode deploy")
+    && string_contains(s: text, pattern: "dashboard_deploy")
+    && string_contains(s: text, pattern: "Nothing was mutated")
 }
