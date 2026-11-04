@@ -66,25 +66,22 @@ data operator_router_certificate: PinnedServerCertificate = PinnedServerCertific
   sha256_fingerprint: "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52" as NonEmptyStr,
 }
 
-// The certificate the selected route pins.
-data operator_pinned_certificate: PinnedServerCertificate = harness_operator_route.pinned_certificate
-
-fn operator_endpoint_origin() -> NonEmptyStr? {
-  Present { value: harness_operator_route.origin }
+fn operator_endpoint_origin(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  Present { value: route.origin }
 }
 
-fn operator_endpoint_url(path: NonEmptyStr) -> NonEmptyStr? {
-  Present { value: join([harness_operator_route.origin as String, path as String], "") as NonEmptyStr }
+fn operator_endpoint_url(route: HarnessOperatorRoute, path: NonEmptyStr) -> NonEmptyStr? {
+  Present { value: join([route.origin as String, path as String], "") as NonEmptyStr }
 }
 
-fn operator_models_url() -> NonEmptyStr? {
-  operator_endpoint_url(path: harness_operator_route.models_path)
+fn operator_models_url(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  operator_endpoint_url(route: route, path: route.models_path)
 }
 
 // The URL a turn POSTs to: the existing chat-completions POST (harness_wire) is reused, only its target
 // is this route's.
-fn operator_chat_completions_url() -> NonEmptyStr? {
-  operator_endpoint_url(path: harness_operator_route.chat_completions_path)
+fn operator_chat_completions_url(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  operator_endpoint_url(route: route, path: route.chat_completions_path)
 }
 
 // THE QUALITY FLOOR. A route that answers at a quantization the caller does not choose is a different quality
@@ -302,10 +299,10 @@ type OperatorCertificatePin
   = OperatorCertificatePinned { certificate_pem: String, public_key_pem: String }
   | OperatorCertificateRefused { detail: String }
 
-fn operator_certificate_pin_decision(fingerprint_stdout: String) -> Bool {
+fn operator_certificate_pin_decision(pinned: PinnedServerCertificate, fingerprint_stdout: String) -> Bool {
   match openssl_fingerprint_from_stdout(stdout: fingerprint_stdout) {
     Absent => false
-    Present { value: f } => pinned_server_certificate_is_pinned(pinned: operator_pinned_certificate, presented: f)
+    Present { value: f } => pinned_server_certificate_is_pinned(pinned: pinned, presented: f)
   }
 }
 
@@ -328,10 +325,10 @@ fn operator_read_certificate(route: HarnessOperatorRoute) -> OperatorCertificate
   }
 }
 
-fn operator_pin_staged_certificate(staged: NonEmptyStr, pem: String) -> OperatorCertificatePin {
+fn operator_pin_staged_certificate(route: HarnessOperatorRoute, staged: NonEmptyStr, pem: String) -> OperatorCertificatePin {
   let fp = openssl.X509.Sha256Fingerprint(cert_file: staged as String)
-  if fp.exit_code != 0 || !operator_certificate_pin_decision(fingerprint_stdout: fp.stdout) {
-    OperatorCertificateRefused { detail: join(["the route's certificate file is not the pinned certificate (expected SHA-256 ", operator_pinned_certificate.sha256_fingerprint as String, "); nothing was sent"], "") }
+  if fp.exit_code != 0 || !operator_certificate_pin_decision(pinned: route.pinned_certificate, fingerprint_stdout: fp.stdout) {
+    OperatorCertificateRefused { detail: join(["the route's certificate file is not the pinned certificate (expected SHA-256 ", route.pinned_certificate.sha256_fingerprint as String, "); nothing was sent"], "") }
   } else {
     let pub = openssl.X509.PublicKeyPem(cert_file: staged as String)
     if pub.exit_code != 0 || trim(s: pub.stdout) == "" {
@@ -370,7 +367,7 @@ fn operator_open_header(route: HarnessOperatorRoute) -> OperatorHeaderOpen {
                       let cleaned = shell.Remove.RecursiveForce(path: dir.path)
                       OperatorHeaderRefused { detail: "could not write the operator bearer header file or the pinned certificate file" }
                     } else {
-                      match operator_pin_staged_certificate(staged: plan.ca_file, pem: pem) {
+                      match operator_pin_staged_certificate(route: route, staged: plan.ca_file, pem: pem) {
                         OperatorCertificateRefused { detail: d } => {
                           let cleaned = shell.Remove.RecursiveForce(path: dir.path)
                           OperatorHeaderRefused { detail: d }

@@ -324,7 +324,7 @@ fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> Harness
 // one is unreadable with the refusal named, and a rejected key is the status the router answered. None falls
 // back to another route (DESIGN section 5).
 fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorModelsReading {
-  match operator_models_url() {
+  match operator_models_url(route: route) {
     Absent => OperatorFrontUnanswered { url: "the operator endpoint URL could not be composed" }
     Present { value: models } =>
       match operator_open_header(route: route) {
@@ -361,7 +361,7 @@ fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorMode
 }
 
 fn harness_operator_roster_step(acc: HarnessRosterFold, route: HarnessOperatorRoute, standing: OperatorRouteStanding) -> HarnessRosterFold {
-  match operator_endpoint_origin() {
+  match operator_endpoint_origin(route: route) {
     Absent => HarnessRosterFold { serving: acc.serving, declined: acc.declined, unresolved: concat(acc.unresolved, ["the operator endpoint origin could not be composed" as NonEmptyStr]) }
     Present { value: endpoint } =>
       match standing {

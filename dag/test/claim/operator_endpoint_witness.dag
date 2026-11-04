@@ -3,8 +3,8 @@ module test.claim.operator_endpoint_witness
 import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import gunbc.harness.harness_operator_route {
-  operator_pinned_certificate, operator_pin_plan, operator_pinned_post_request, operator_pinned_probe_request,
-  harness_operator_route, harness_router_operator_route, operator_models_url, operator_chat_completions_url, operator_endpoint_origin,
+  operator_pin_plan, operator_pinned_post_request, operator_pinned_probe_request,
+  harness_operator_route, harness_router_operator_route, HarnessOperatorRoute, PinnedServerCertificate, operator_models_url, operator_chat_completions_url, operator_endpoint_origin,
   operator_header_line_from_key_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
@@ -223,9 +223,36 @@ test fn the_route_urls_are_the_routers_origin_plus_its_declared_paths() -> Bool 
   let site = router_dev_srv1_site()
   let origin = join(["https://", site.listen_address, ":", to_string(site.listen_port)], "")
   origin == "https://192.168.1.203:18443"
-    && (match operator_endpoint_origin() { Present { value: o } => (o as String) == origin  Absent => false })
-    && (match operator_models_url() { Present { value: u } => (u as String) == "https://192.168.1.203:18443/v1/models"  Absent => false })
-    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://192.168.1.203:18443/v1/chat/completions"  Absent => false })
+    && (match operator_endpoint_origin(route: harness_router_operator_route) { Present { value: o } => (o as String) == origin  Absent => false })
+    && (match operator_models_url(route: harness_router_operator_route) { Present { value: u } => (u as String) == "https://192.168.1.203:18443/v1/models"  Absent => false })
+    && (match operator_chat_completions_url(route: harness_router_operator_route) { Present { value: u } => (u as String) == "https://192.168.1.203:18443/v1/chat/completions"  Absent => false })
+}
+
+// REVIEW 90638: THE HELPERS READ THE ROUTE THEY ARE GIVEN. A second row (another origin, another pinned
+// certificate) is built from the router row and must answer with ITS OWN origin and ITS OWN pin; the router's
+// fingerprint is refused under it and its fingerprint is refused under the router's. Before the fix both
+// helpers read the module-wide router row, so this claim was red.
+data other_pinned_certificate: PinnedServerCertificate = PinnedServerCertificate { sha256_fingerprint: "AA:BB:CC:DD" as NonEmptyStr }
+
+data other_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
+  unit: harness_router_operator_route.unit,
+  origin: "https://203.0.113.9:9443" as NonEmptyStr,
+  models_path: harness_router_operator_route.models_path,
+  chat_completions_path: harness_router_operator_route.chat_completions_path,
+  pinned_certificate: other_pinned_certificate,
+  group_wire: "operator:other" as NonEmptyStr,
+  credential: harness_router_operator_route.credential,
+  certificate: harness_router_operator_route.certificate,
+  concurrency_ceiling: harness_router_operator_route.concurrency_ceiling,
+  quality_floor: harness_router_operator_route.quality_floor,
+}
+
+test fn a_second_route_is_answered_with_its_own_origin_and_its_own_pin() -> Bool {
+  let router_fp = join(["sha256 Fingerprint=", harness_router_operator_route.pinned_certificate.sha256_fingerprint as String, "\n"], "")
+  (match operator_models_url(route: other_operator_route) { Present { value: u } => (u as String) == "https://203.0.113.9:9443/v1/models"  Absent => false })
+    && operator_certificate_pin_decision(pinned: other_pinned_certificate, fingerprint_stdout: "sha256 Fingerprint=AA:BB:CC:DD\n")
+    && !operator_certificate_pin_decision(pinned: other_operator_route.pinned_certificate, fingerprint_stdout: router_fp)
+    && !operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: "sha256 Fingerprint=AA:BB:CC:DD\n")
 }
 
 test fn the_selected_route_is_the_router_row_serving_the_flash_next_alias() -> Bool {
@@ -251,16 +278,16 @@ test fn the_route_carries_the_labs_declared_ceiling_and_its_reason_not_a_reading
 // INHABITANCE FRONTIER: no claim executes the real openssl/curl effects (operator_pin_staged_certificate,
 // operator_open_header); the real-route reading is the first live run on the lab host.
 test fn a_certificate_with_another_fingerprint_is_not_pinned() -> Bool {
-  let pinned = operator_pinned_certificate.sha256_fingerprint as String
-  (operator_certificate_pin_decision(fingerprint_stdout: join(["sha256 Fingerprint=", pinned, "\n"], "")))
-    && !(operator_certificate_pin_decision(fingerprint_stdout: "sha256 Fingerprint=1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:53\n"))
-    && !(operator_certificate_pin_decision(fingerprint_stdout: "sha256 Fingerprint=AA:BB:CC\n"))
-    && !(operator_certificate_pin_decision(fingerprint_stdout: ""))
-    && !(operator_certificate_pin_decision(fingerprint_stdout: "no fingerprint here"))
+  let pinned = harness_router_operator_route.pinned_certificate.sha256_fingerprint as String
+  (operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: join(["sha256 Fingerprint=", pinned, "\n"], "")))
+    && !(operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: "sha256 Fingerprint=1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:53\n"))
+    && !(operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: "sha256 Fingerprint=AA:BB:CC\n"))
+    && !(operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: ""))
+    && !(operator_certificate_pin_decision(pinned: harness_router_operator_route.pinned_certificate, fingerprint_stdout: "no fingerprint here"))
 }
 
 test fn the_pinned_certificate_is_the_routers_listener_certificate() -> Bool {
-  (operator_pinned_certificate.sha256_fingerprint as String) == "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52"
+  (harness_router_operator_route.pinned_certificate.sha256_fingerprint as String) == "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52"
     && (harness_operator_route.certificate.identifier as String) == (operator_route_certificate_file.identifier as String)
     && (harness_operator_route.certificate.relative_path as String) == (operator_route_certificate_file.relative_path as String)
 }
