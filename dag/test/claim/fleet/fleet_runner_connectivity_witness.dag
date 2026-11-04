@@ -44,6 +44,11 @@ import gunbc.fleet.fleet_runner_connectivity {
   SlotConnectivityUnknown,
   FleetRunnerCapacityWidthSnapshot,
   decode_registration_slot,
+  observe_slot_registrations,
+  slot_registration_observation_wire,
+  slot_registration_observation_settled,
+  SlotRegistrationsObserved,
+  SlotRegistrationsUnobserved,
   RegistrationNamesCommittedSlot,
   RegistrationNamesDeadIncarnation,
   RegistrationNamesNoCommittedSlot,
@@ -482,4 +487,43 @@ test fn a_jit_registration_decodes_to_its_slot_live_or_dead_and_a_stranger_stays
     && decodes_as_dead_incarnation(reg: jit_row(id: 2, name: "srv4-01-1793701320-333", online: false))
     && decodes_as_foreign(reg: jit_row(id: 3, name: "srv4-01-notanumber-333", online: true))
     && decodes_as_foreign(reg: jit_row(id: 4, name: "elsewhere-01-1793701320-333", online: false))
+}
+
+data srv4_01_slot: RunnerSlotIdentity = RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }
+
+fn srv4_01_registrations_are(roster: OrganizationRunnerRosterEvidence, live: Int, dead: Int) -> Bool {
+  match observe_slot_registrations(slot: srv4_01_slot, roster: roster) {
+    SlotRegistrationsObserved { slot: _, live: l, dead: d } => l == live && d == dead
+    SlotRegistrationsUnobserved { slot: _, reason: _ } => false
+  }
+}
+
+fn srv4_01_registrations_unobserved(roster: OrganizationRunnerRosterEvidence) -> Bool {
+  match observe_slot_registrations(slot: srv4_01_slot, roster: roster) {
+    SlotRegistrationsObserved { slot: _, live: _, dead: _ } => false
+    SlotRegistrationsUnobserved { slot: _, reason: _ } => true
+  }
+}
+
+// ObserveGitHubRunnerRegistration over the real decode: past the first hundred other-slot rows, srv4-01's one
+// online JIT row counts live and its two ghosts count dead; the other slot's hundred count for neither.
+test fn the_registration_observation_counts_a_slots_live_and_dead_jit_rows_through_the_decode() -> Bool {
+  srv4_01_registrations_are(
+    roster: jit_complete_roster(rows: concat(concat(jit_other_slot_rows, jit_ghost_rows), [jit_row(id: 8103, name: "srv4-01-1793701320-333", online: true)])),
+    live: 1,
+    dead: 2,
+  )
+}
+
+// POSITIVE CONTROL for the RED below: a slot with no rows of its own reads live=0 dead=0 on a complete roster.
+test fn a_complete_roster_without_the_slots_rows_observes_zero_and_zero() -> Bool {
+  srv4_01_registrations_are(roster: jit_complete_roster(rows: jit_other_slot_rows), live: 0, dead: 0)
+}
+
+// RED: absence from a prefix is not absence from the organization. A partial or unavailable roster is
+// UNOBSERVED, and is never rendered as the zero the control above proves a complete roster can answer.
+test fn a_partial_or_unavailable_roster_never_observes_a_zero() -> Bool {
+  srv4_01_registrations_unobserved(roster: RosterObservedPartial { observed_on: "2026-11-04" as NonEmptyStr, registrations: jit_other_slot_rows, observed_count: 100, authority_total: 233 })
+    && srv4_01_registrations_unobserved(roster: RosterReadUnavailable { reason: "no token" })
+    && !slot_registration_observation_settled(o: observe_slot_registrations(slot: srv4_01_slot, roster: RosterReadUnavailable { reason: "no token" }))
 }
