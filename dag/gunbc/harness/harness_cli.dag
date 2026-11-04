@@ -15,7 +15,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, harness_tool_contract_wire,
-  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_resume_turn, TurnBackendRefusedUnexplained, TurnResumeRefused, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
+  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_resume_turn, TurnBackendRefusedUnexplained, TurnResumeRefused, TurnRequestPending, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
   harness_outcome_detail, harness_event_placement_waiting, harness_events_append, HarnessEventsUnwritable, HarnessEventsWritten,
 }
 import gunbc.harness.harness_guidance {
@@ -292,6 +292,7 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
       ExitSuccess
     TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
     TurnStepBudgetExhausted { steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnRequestPending { re_deliveries: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnTransportRefused { detail: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnResponseUnreadable { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)

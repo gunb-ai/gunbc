@@ -572,7 +572,7 @@ import gunbc.roadmap.roadmap_lineage_retire_record {
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded, ContinuationResume,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationHoldUntil, ContinuationComplete, ContinuationEnded, ContinuationResume,
   continuation_decision, continuation_decision_with_retirement,
   LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
 }
@@ -2384,6 +2384,7 @@ fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, pr
     ContinuationSpawnFresh { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationRefused { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationHold { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationEnded { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
   }
@@ -2550,6 +2551,7 @@ fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRou
     ContinuationResume { reason: _, attempt_key, ordinal, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
     ContinuationRefused { reason } => SpawnRouteNone { step: "continuation", detail: reason }
     ContinuationHold { reason } => SpawnRouteNone { step: "continuation-hold", detail: reason }
+    ContinuationHoldUntil { reason, attempt_key: _, redeliver_at: _ } => SpawnRouteNone { step: "continuation-hold-until", detail: reason }
     ContinuationComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
     ContinuationEnded { reason } => SpawnRouteNone { step: "lineage-ended", detail: reason }
   }
@@ -2675,6 +2677,7 @@ fn belt_prior_attempt_facts(instance: HostDashboardInstance, node_id: RoadmapNod
     goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
     recovery: belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
     verification_retry: belt_verify_retry_standing(instance: instance, progress: progress),
+    now: now_epoch_seconds(),
   }
 }
 
@@ -2723,6 +2726,8 @@ fn belt_lineage_retire_panel_for_instance(instance: HostDashboardInstance, node_
             ContinuationSpawnFresh { reason: _ } => LineageRetirePanelNone
             ContinuationRefused { reason: _ } => LineageRetirePanelNone
             ContinuationHold { reason: _ } => LineageRetirePanelNone
+            ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => LineageRetirePanelNone
+            ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageRetirePanelNone
             ContinuationComplete { reason: _ } => LineageRetirePanelNone
           }
       }
