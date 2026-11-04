@@ -809,6 +809,31 @@ fn demand_facts_normalize_callees(functions: List<FunctionFact>, operations: Lis
   })
 }
 
+// THE CLOSURE-LEVEL FACT ENTRY -- THE PRODUCER'S CONTRACT FOR EVERY CONSUMER OF THE WALK.
+//
+// demand_facts_module_facts is per module, and the callee normalization above needs the KNOWN SET of the
+// whole closure (a callee may name a declaration that lives in another module of the ingest), so
+// normalization cannot happen at module scope and must not be re-implemented by each consumer: that is a
+// second local implementation of one rule. Accumulate the per-module facts, take them through this entry,
+// and the FunctionFacts you receive already carry normalized callees.
+type DemandFactsClosureFacts {
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+}
+
+fn demand_facts_closure_facts(modules: List<DemandFactsModuleFacts>) -> DemandFactsClosureFacts {
+  let functions = fold_list(xs: modules, empty: Empty, cons: fn(acc, m) {
+    fold_list(xs: m.functions, empty: acc, cons: fn(inner, f) { list_snoc_item(xs: inner, item: f) })
+  })
+  let operations = fold_list(xs: modules, empty: Empty, cons: fn(acc, m) {
+    fold_list(xs: m.operations, empty: acc, cons: fn(inner, o) { list_snoc_item(xs: inner, item: o) })
+  })
+  DemandFactsClosureFacts {
+    functions: demand_facts_normalize_callees(functions: functions, operations: operations),
+    operations: operations
+  }
+}
+
 type DemandKnownScan {
   prefix: QualifiedName
   longest: Optional<QualifiedName>
