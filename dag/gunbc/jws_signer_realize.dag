@@ -1,7 +1,6 @@
 module gunbc.jws_signer_realize
 
 import std.types { String, NonEmptyStr, Int, List }
-import std.integer { UInt8 }
 import extdeps.auth.jws { JwsAlgorithm, JwsRs256, JwsEs256, jws_es256_coordinate_octets, JwsSigningKeyRef, HostKeyFile, JwsSignOutcome, JwsSigned, JwsSignRefused }
 import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
 import extdeps.standards.rfc_5280 { ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide }
@@ -40,7 +39,7 @@ fn jws_sign(alg: JwsAlgorithm, signing_input: NonEmptyStr, key: JwsSigningKeyRef
   }
 }
 
-fn jws_signature_of_openssl(alg: JwsAlgorithm, octets: List<UInt8>) -> JwsSignOutcome {
+fn jws_signature_of_openssl(alg: JwsAlgorithm, octets: List<Int>) -> JwsSignOutcome {
   match alg {
     JwsRs256 => JwsSigned { signature: octets }
     JwsEs256 =>

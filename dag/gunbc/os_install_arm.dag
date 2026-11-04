@@ -1,0 +1,36 @@
+module gunbc.os_install_arm
+
+import gunbc.boot_artifact_delivery {
+  BootArtifactDelivery,
+  MegaRacRestRemoteMedia,
+  OpenBmcConfigfsUsbGadget,
+  OpenBmcNbdProxyWebsocket,
+  PxeChainBoot,
+  RedfishVirtualMediaPull,
+  UefiHttpBoot,
+}
+
+// What gunbc.os_install can realize of a planned delivery arm. It lives apart from gunbc.os_install only
+// because that module already names extdeps.provisioning.network_boot's UefiHttpBoot boot mode, and
+// BootArtifactDelivery's UefiHttpBoot arm is a different concept under the same spelling. Virtual media
+// (standard Redfish or the nbd-proxy) installs as an ISO and the PXE chain as a network boot; the other
+// three arms are refused here, typed, because nothing in gunbc.os_install stages them.
+type OsInstallArmRefusal {
+  delivery: BootArtifactDelivery
+}
+
+type OsInstallArm
+  = OsInstallArmVirtualMediaIso
+  | OsInstallArmNetworkBoot
+  | OsInstallArmNotRealizable { refusal: OsInstallArmRefusal }
+
+fn os_install_arm_of(delivery: BootArtifactDelivery) -> OsInstallArm {
+  match delivery {
+    RedfishVirtualMediaPull { params: _ } => OsInstallArmVirtualMediaIso
+    OpenBmcNbdProxyWebsocket { params: _ } => OsInstallArmVirtualMediaIso
+    PxeChainBoot { evidence: _ } => OsInstallArmNetworkBoot
+    MegaRacRestRemoteMedia { params: _ } => OsInstallArmNotRealizable { refusal: OsInstallArmRefusal { delivery: delivery } }
+    OpenBmcConfigfsUsbGadget { params: _ } => OsInstallArmNotRealizable { refusal: OsInstallArmRefusal { delivery: delivery } }
+    UefiHttpBoot { params: _ } => OsInstallArmNotRealizable { refusal: OsInstallArmRefusal { delivery: delivery } }
+  }
+}

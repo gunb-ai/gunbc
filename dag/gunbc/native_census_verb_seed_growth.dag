@@ -18,7 +18,7 @@ data native_census_verb_seed_growth_justification: SeedGrowthJustification = See
     }
   ],
 
-  reason: "The one producer arm for every whole-corpus census (gunbc.target_binding NativeCensusVerbProducer { verb }); it replaces the per-census arms DependencyDemandCensusProducer and DeclRefCensusProducer, so a further census is a .dag verb in v2.compiler.source_root_eval plus an instrument_targets row naming it, never another Rust arm. Its host part is only what no .dag fold can do: emit and build the compiler closure through the existing prepare_emitted_compiler, spawn the built binary in the row's verb, and relay its stdout and status unjudged. Every line and the exit are decided by the verb inside the emitted binary, so the host adds no verdict. It sits in the host because a census reads the whole corpus through the emitted front end, which no interpreted .dag entry can afford.",
+  reason: "The one producer arm for every whole-corpus census (gunbc.target_binding NativeCensusVerbProducer { verb }); it carries the demand-census verb (the one verb left in gunbc.native_census_verb), so a further census is a .dag verb in v2.compiler.source_root_eval plus an instrument_targets row naming it, never another Rust arm. Its host part is only what no .dag fold can do: emit and build the compiler closure through the existing prepare_emitted_compiler, spawn the built binary in the row's verb, and relay its stdout and status unjudged. Every line and the exit are decided by the verb inside the emitted binary, so the host adds no verdict. It sits in the host because a census reads the whole corpus through the emitted front end, which no interpreted .dag entry can afford.",
 
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
 

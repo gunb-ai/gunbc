@@ -39,7 +39,7 @@ data sn74lv1t08_dck: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "SN74LV1T08DCKR",
   package: "SC70-5 (DCK)",
-  top_marking: "WEJ (one of 1QZ, WE3, WEJ, WES)",
+  top_marking: Present { value: "WEJ (one of 1QZ, WE3, WEJ, WES)" },
   specification: LogicGateSpec { gate: LogicGateSpecification {
     function: GateFunction { inputs: 2, inverted_output: false },
     supply: MillivoltRange { minimum: millivolt(count: 1600), maximum: millivolt(count: 5500) },
