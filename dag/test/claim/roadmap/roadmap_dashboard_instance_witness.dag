@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_dashboard_instance_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, Port }
+import std.algebra { list_map }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
@@ -533,7 +534,11 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
       anchor_ref,
     } =>
       controller_repo == srv1_dashboard_controller_repo
-        && anchor_ref == "refs/remotes/origin/main"
+        // THE BUNDLE IS PREPARED FROM THE INSTANCE'S OWN ANCHOR, compared by equality against that
+        // authority: srv1 lab's row names its admitted ref (roadmap_dashboard_instance
+        // srv1_lab_dashboard_instance), so the literal this claim used to carry -- the ref the row no
+        // longer reads -- had gone stale on main and nothing ran it (CI runs no dag/test/claim).
+        && anchor_ref as String == instance_anchor_ref(i: lab)
     _ => false
   })
     && any(plan, op => match op {
@@ -662,12 +667,25 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
 // shared literal. Two labs may lawfully follow the same ref (srv1 and srv2 labs both follow main).
 
 test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
+  let srv1 = srv1_lab_dashboard_instance()
+  let srv2 = srv2_lab_dashboard_instance()
   let synthetic = instance_anchor_ref(i: witness_synthetic_instance())
-  let srv2_lab = instance_anchor_ref(i: srv2_lab_dashboard_instance())
-  let srv1_lab = instance_anchor_ref(i: srv1_lab_dashboard_instance())
+  let srv1_lab = instance_anchor_ref(i: srv1)
+  let srv2_lab = instance_anchor_ref(i: srv2)
+  // EACH LAB'S SERVE ANCHOR IS THE REF ITS OWN ROW ADMITS, compared by EQUALITY against that
+  // authority instead of a literal: srv1 lab's row passes srv1_lab_admitted_revision_source.ref_name
+  // (roadmap_dashboard_instance srv1_lab_dashboard_instance -- it used to read a ref convergence also
+  // wrote as a scratch target, so the lab's admitted revision and a shared remote-tracking ref held
+  // two meanings), and srv2 lab follows the fleet authority. The two labs therefore differ, which is
+  // what per-instance means; re-pinning either row to a shared literal fails here. The two literals
+  // this claim used to carry had gone stale against main's own anchor changes (srv1 lab now names its
+  // admitted ref; the fleet anchor is named by fleet_main_revision fleet_landed_main_ref_name), and
+  // because CI runs no dag/test/claim nothing executed them -- the authority-comparison form cannot go
+  // stale the same way.
   synthetic == "refs/heads/witness-anchor"
-    && srv2_lab == "refs/remotes/origin/main"
-    && srv1_lab == "refs/remotes/origin/main"
+    && srv1_lab == srv1.admitted_revision.ref_name as String
+    && srv2_lab == srv2.admitted_revision.ref_name as String
+    && srv1_lab != srv2_lab
 }
 
 // serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists.

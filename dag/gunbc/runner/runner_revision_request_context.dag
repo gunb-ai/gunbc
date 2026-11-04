@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, FilePath, List }
 import gunbc.durable_handoff_host { host_request_directory_members, host_request_child_path }
 import std.error_primitives { Result, Ok, Err }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
-import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreRefused }
+import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused }
 import gunbc.auth.request_api_key_store { RequestApiKeyStore, request_api_key_store }
 
 import std.effect_grant { Read, Write, Execute }
@@ -32,6 +32,7 @@ fn revision_request_context(tree: HostStateTree) -> Result<RevisionRequestContex
   match listed_slot_store(member: revision_request_store_member as String, root: revision_request_store_path(tree: tree)) {
     SlotStoreRefused { detail: why } => Err { value: why }
     SlotStoreListed { root: root } => Ok { value: RevisionRequestContext { keys: keys, request_root: root } }
+    SlotStoreAbsent { member: m, root: r } => Err { value: join(["the ", m, " store's directory at ", r, " was never created -- admission answers absence, and an absent store is not an empty store"], "") }
   }
 }
 
