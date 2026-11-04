@@ -24,8 +24,6 @@ import extdeps.git {
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
-import std.integer { nat_to_int }
-import gunbc.roadmap.belt_concurrency { srv1_lab_belt_max_concurrent_nat }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
 import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
@@ -292,8 +290,10 @@ type HostDashboardInstance {
   // srv1 lab overrides to srv1_lab_belt_max_concurrent because 512 GiB of host and ~245 GiB MemAvailable
   // (observed 2026-11-04 08:10Z) hold 6 x the 22 GiB worker ceiling (dispatch_worker_memory_ceiling) with
   // margin beside srv1-live (3 x 22 GiB) and the compute build pool (compute_pool_slots x 22 GiB); 7 would
-  // need 264 GiB and does not fit. See srv1_lab_dashboard_instance for the arithmetic.
-  belt_max_concurrent: Int
+  // need 264 GiB and does not fit. See srv1_lab_dashboard_instance for the arithmetic. A Nat, because a
+  // worker count has no negative case: the readers that need Int (BeltCapacity.max_concurrent, the
+  // launch-admission fold) convert the total way; nothing here validates against a value the type admits.
+  belt_max_concurrent: Nat
   directory_owner: PosixOwnerNames
   // THE ACCOUNT A DISPATCHED WORKER UNIT RUNS AS. Equal to directory_owner is the STAGED form of a
   // replacement migration (DESIGN section 3, gap-intolerant boundary): the worker as the service user is
@@ -690,17 +690,19 @@ data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memo
 // (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent, which now merely wraps this
 // default as a BeltCapacity) reads the instance field instead. It was 3 for EVERY instance; it is now a
 // per-instance fact so one host's lab can widen without widening its neighbours -- and the session-memory
-// pool slots and their appropriation, and the host's attempt-worker slice, all follow from this figure.
+// pool slots and their appropriation follow from this figure. The attempt-worker slice does NOT follow it:
+// that slice is the operator's own 2-slot figure (live_deploy.slice_bounds.attempt_worker_slice_charged_slots,
+// msg_57614325) and is deliberately unchanged here -- see gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact.
 // srv1_lab_belt_max_concurrent is the widest belt; see srv1_lab_dashboard_instance for why srv1 can hold it.
-data belt_max_concurrent_default: Int = 3
+data belt_max_concurrent_default: Nat = 3
 
-// THE SRV1 LAB RUNS SIX WORKERS AT ONCE. The figure is the canonical Nat in gunbc.roadmap.belt_concurrency
-// srv1_lab_belt_max_concurrent_nat (a leaf both this module and the live-deploy slice bounds can read); the
-// Int here is DERIVED from it so the number has one source. The arithmetic that puts srv1 at 6 (512 GiB, ~245
-// GiB MemAvailable observed 2026-11-04 08:10Z: 6 x 22 GiB fits beside srv1-live 3 x 22 and the compute build
-// pool 2 x 22 = 242 <= 245 GiB; 7 needs 264 and does not fit; router ceiling 8) is recorded there and on
-// srv1_lab_dashboard_instance.
-data srv1_lab_belt_max_concurrent: Int = nat_to_int(n: srv1_lab_belt_max_concurrent_nat)
+// THE SRV1 LAB RUNS SIX WORKERS AT ONCE. A Nat, so no negative width is representable and no reader has
+// to validate against one. The arithmetic that puts srv1 at 6 (512 GiB, ~245 GiB MemAvailable observed
+// 2026-11-04 08:10Z: 6 x 22 GiB fits beside srv1-live 3 x 22 and the compute build pool 2 x 22 = 242 <=
+// 245 GiB; 7 needs 264 and does not fit; router ceiling 8) is the operator's dated ruling, recorded in
+// gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact and on srv1_lab_dashboard_instance -- not
+// comment arithmetic and not a hand-typed reader elsewhere.
+data srv1_lab_belt_max_concurrent: Nat = 6
 
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,
@@ -1311,7 +1313,7 @@ fn isolated_dashboard_instance_admitting(
   publication_base_branch: NonEmptyStr,
   worker: WorkerIdentity,
   provision_parent_root: FilePath,
-  belt_max_concurrent: Int,
+  belt_max_concurrent: Nat,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,

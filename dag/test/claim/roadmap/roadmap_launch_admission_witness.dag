@@ -2,6 +2,7 @@ module test.claim.roadmap.roadmap_launch_admission_witness
 
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, srv1_lab_belt_max_concurrent, belt_max_concurrent_default }
 import std.types { String, Int, List, Bool, NonEmptyStr }
+import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap.roadmap_status { Unsigned }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
@@ -420,14 +421,16 @@ test fn witness_launch_admission_refuses_the_lab_at_its_own_ceiling() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab_cap = belt_capacity_of_instance(instance: lab)
   let live_cap = belt_capacity_of_instance(instance: live)
-  // the lab fills exactly at its own ceiling and refuses the next; srv1-live at the default.
-  belt_free_slots_int(cap: lab_cap, occupied_count: srv1_lab_belt_max_concurrent - 1) > 0
-    && belt_free_slots_int(cap: lab_cap, occupied_count: srv1_lab_belt_max_concurrent) == 0
-    && belt_free_slots_int(cap: live_cap, occupied_count: belt_max_concurrent_default - 1) > 0
-    && belt_free_slots_int(cap: live_cap, occupied_count: belt_max_concurrent_default) == 0
+  // the lab fills exactly at its own ceiling and refuses the next; srv1-live at the default. The belt
+  // figures are Nats; the launch-admission fold takes an Int occupied_count, so each crosses the total
+  // nat_to_int (a worker count has no negative case to guard).
+  belt_free_slots_int(cap: lab_cap, occupied_count: nat_to_int(n: srv1_lab_belt_max_concurrent) - 1) > 0
+    && belt_free_slots_int(cap: lab_cap, occupied_count: nat_to_int(n: srv1_lab_belt_max_concurrent)) == 0
+    && belt_free_slots_int(cap: live_cap, occupied_count: nat_to_int(n: belt_max_concurrent_default) - 1) > 0
+    && belt_free_slots_int(cap: live_cap, occupied_count: nat_to_int(n: belt_max_concurrent_default)) == 0
     // THE DISCRIMINATOR: with srv1-live's full count running, the LAB still admits more -- only true because
     // the lab's ceiling is its own per-instance figure, not the shared 3 the old constant imposed on all.
-    && belt_free_slots_int(cap: lab_cap, occupied_count: belt_max_concurrent_default) > 0
+    && belt_free_slots_int(cap: lab_cap, occupied_count: nat_to_int(n: belt_max_concurrent_default)) > 0
 }
 
 // reserved: a fold that already admitted `free` launches admits no more this round.

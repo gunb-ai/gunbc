@@ -2,7 +2,6 @@ module gunbc.roadmap.roadmap_session_placement
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Seconds }
 import std.nat { Nat }
-import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count, cas_generation_first }
 import product.capacity.lease { LeaseGrant }
@@ -144,11 +143,10 @@ data session_placement_term_seconds: Nat = 14400
 // never for a count launch admission did not impose. Because slots come from the SAME per-instance figure,
 // the pool's appropriation (dispatch_worker_memory_max x slots, host_capacity_pool_appropriation) follows
 // automatically. srv1-live gets belt_max_concurrent_default slots; the srv1 lab gets srv1_lab_belt_max_concurrent.
-fn session_placement_pool(instance: HostDashboardInstance) -> HostCapacityPool? {
-  match checked_int_to_nat(n: instance.belt_max_concurrent) {
-    Absent => none
-    Present { value: slots } => Present { value: AgentSessionPool { slots: slots } }
-  }
+fn session_placement_pool(instance: HostDashboardInstance) -> HostCapacityPool {
+  // slots is a Nat and belt_max_concurrent is now a Nat too -- the assignment is direct, and there is no
+  // "not a natural number" case to refuse: a worker count has no negative representative to reject.
+  AgentSessionPool { slots: instance.belt_max_concurrent }
 }
 
 // ── THE BINDING: WHICH ATTEMPT, WHICH UNIT, WHICH HOLD ─────────────────────────────────────────
@@ -246,10 +244,8 @@ fn session_placement_records_dir(instance: HostDashboardInstance) -> String {
 }
 
 fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresResolution {
-  match session_placement_pool(instance: instance) {
-    Absent => SessionStoresUnresolved { detail: join(["the belt's max_concurrent ", to_string(value: instance.belt_max_concurrent), " is not a natural number, so the session pool has no size"], "") }
-    Present { value: pool } =>
-      match host_capacity_subject(instance: instance, pool: pool) {
+  let pool = session_placement_pool(instance: instance)
+  match host_capacity_subject(instance: instance, pool: pool) {
         ComputeSubjectHostUnresolved { host } => SessionStoresUnresolved { detail: join(["no dashboard instance is declared for host ", host as String, ", so it has no session ledger"], "") }
         ComputeSubjectResolved { subject, appropriation: _ } =>
           match session_attempt_slots_store(instance: instance) {
@@ -269,7 +265,6 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
               }
           }
       }
-  }
 }
 
 // ── ACQUISITION: SLOT FIRST, THEN THE LEDGER ───────────────────────────────────────────────────
@@ -314,9 +309,9 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
     SystemdUnitNameOverlong { length: n } =>
       SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) }
     SystemdUnitNameAdmitted { name } =>
-  match session_placement_pool(instance: instance) {
-    Absent => SessionPlacementRefused { detail: "the session pool has no size" }
-    Present { value: pool } => {
+  {
+    let pool = session_placement_pool(instance: instance)
+    {
       let class_grant = work_class_grant(class: WorkClassAgentSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
       match now_epoch_seconds() {
         Absent => SessionPlacementRefused { detail: "the host clock could not be read as epoch seconds, and the session's slot carries a launch deadline" }

@@ -17,6 +17,7 @@ import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
+import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metering_roster_admit,
@@ -11120,7 +11121,9 @@ fn belt_launch_host_standing_for_page_over(
 // launch standing (and so launch_gate_capacity -> belt_free_slots_int) and the timer's reconcile fold all
 // carry this instance-built capacity.
 fn belt_capacity_of_instance(instance: HostDashboardInstance) -> BeltCapacity {
-  BeltCapacity { max_concurrent: instance.belt_max_concurrent }
+  // A total Nat -> Int conversion: the field is a Nat (no negative width), and BeltCapacity.max_concurrent
+  // is an Int because the launch-admission fold (belt_free_slots_int) and json_int consume it as an Int.
+  BeltCapacity { max_concurrent: nat_to_int(n: instance.belt_max_concurrent) }
 }
 
 fn belt_launch_host_standing_for_instance(instance: HostDashboardInstance, mode: SpawnMode) -> LaunchHostStanding {

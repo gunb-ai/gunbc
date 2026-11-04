@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_belt
 
 import std.types { String, Int, List, Bool }
+import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap.roadmap_document { RoadmapDocument }
 import gunbc.roadmap.roadmap_spawner { SpawnFrontier, spawn_frontier }
@@ -78,7 +79,7 @@ fn belt_free_slots_int(cap: BeltCapacity, occupied_count: Int) -> Int {
 // session_placement_pool. This default remains the value an instance that does not override carries, and
 // the explicit cap a belt test passes when it wants the stock figure.
 data roadmap_belt_default_capacity: BeltCapacity =
-  BeltCapacity { max_concurrent: belt_max_concurrent_default }
+  BeltCapacity { max_concurrent: nat_to_int(n: belt_max_concurrent_default) }
 
 data roadmap_belt_production_spawn_mode: SpawnMode = ManualReady
 
