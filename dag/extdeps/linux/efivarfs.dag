@@ -1,4 +1,3 @@
-import std.algebra { take_prefix }
 module extdeps.linux.efivarfs
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -13,6 +12,7 @@ import std.machine_word { Width8, Width32, WordReady, WordRefused, word_from_oct
 import extdeps.toolchain.architecture_profile { LittleEndian }
 import extdeps.tools.coreutils_od
 
+import std.algebra { take_prefix }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
