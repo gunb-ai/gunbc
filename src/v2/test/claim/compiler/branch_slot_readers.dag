@@ -120,17 +120,35 @@ fn bsr_reason_is(chosen: Outcome<Node>, reason: Symbol) -> Bool {
   }
 }
 
-// The whole-node shape preflight (count(children) == 3) precedes the condition dispatch, so a malformed
-// Branch with a non-Bool condition refuses with the SHAPE reason, not the condition reason.
-test fn bsr_a_malformed_branch_with_a_non_bool_condition_refuses_with_the_shape_reason() -> Bool {
-  let two = node_synthetic(
+// CONTRACT (statement-form else-less if): a two-positional Branch is the else-less shape, so the shape
+// preflight admits it and a non-Bool condition reaches the condition dispatch and refuses with the
+// CONDITION reason. The shape reason now belongs only to a Branch the slot table cannot read (one or four
+// positionals) and to a false condition on an else-less Branch (no arm to take).
+test fn bsr_a_two_positional_branch_with_a_non_bool_condition_refuses_with_the_condition_reason() -> Bool {
+  bsr_reason_is(chosen: program_choose_branch(node: bsr_branch_two_positional(), condition: program_literal_one_value(), _env: bsr_env()), reason: ^program_branch_condition_rejected)
+}
+
+// An else-less Branch with a true condition takes the then arm through the same slot table.
+test fn bsr_a_two_positional_branch_with_a_true_condition_takes_the_then_arm() -> Bool {
+  bsr_chosen_is(chosen: program_choose_branch(node: bsr_branch_two_positional(), condition: program_bool_value(is_true: true), _env: bsr_env()), expected: program_literal_one())
+}
+
+// With a false condition there is no arm to take: the else slot is Absent. The preflight admitted the shape,
+// so the refusal names the cause the table answered -- else-less -- and not "malformed". Statement-form
+// lowering (the else-less if as a statement) is what turns "no else" into "evaluate nothing"; at a VALUE
+// position the refusal stays, with its own reason.
+test fn bsr_a_two_positional_branch_with_a_false_condition_refuses_because_there_is_no_else_arm() -> Bool {
+  bsr_reason_is(chosen: program_choose_branch(node: bsr_branch_two_positional(), condition: program_bool_value(is_true: false), _env: bsr_env()), reason: ^program_branch_else_less_rejected)
+}
+
+fn bsr_branch_two_positional() -> Node {
+  node_synthetic(
     kind: ComputationNode { behavior: Branch },
     children: [
       Edge { label: Positional, target: program_kw_true(), declaration: NotADeclaration },
       Edge { label: Positional, target: program_literal_one(), declaration: NotADeclaration }
     ]
   )
-  bsr_reason_is(chosen: program_choose_branch(node: two, condition: program_literal_one_value(), _env: bsr_env()), reason: ^program_branch_shape_rejected)
 }
 
 // Three positionals plus an extra LABELED child: branch_slot_target counts positionals only, so the
@@ -403,4 +421,66 @@ test fn bsr_target_refuses_a_non_bool_literal_in_the_condition_slot() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+}
+
+// ---- the else-less Branch at each VALUE route: its own reason, not the malformed-shape reason ----
+
+// The slot table separates "no else" (two positionals: Absent at the else slot only) from "malformed" (Absent
+// at every slot). A route that reported both with the shape reason would fuse the two causes the table just
+// split (DESIGN 5), so each value route names the cause it actually hit, and the malformed controls keep the
+// shape reason.
+
+fn bsr_branch_two_positional_value() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: program_kw_true(), declaration: NotADeclaration },
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
+    ]
+  )
+}
+
+fn bsr_branch_one_positional_value() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: program_kw_true(), declaration: NotADeclaration }
+    ]
+  )
+}
+
+fn bsr_target_reason_is(o: Outcome<TargetValueExpression>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
+  }
+}
+
+// The target route reads the condition and the then arm and finds the else slot Absent: an else-less Branch
+// cannot become a value, and it is not malformed either.
+test fn bsr_target_refuses_an_else_less_branch_with_its_own_reason() -> Bool {
+  bsr_target_reason_is(o: bsr_project(body: bsr_branch_two_positional_value()), reason: ^target_value_expr_reason_branch_else_less_as_value)
+}
+
+// Control: a Branch the table refuses outright keeps the malformed-shape reason.
+test fn bsr_target_refuses_a_one_positional_branch_with_the_shape_reason() -> Bool {
+  bsr_target_reason_is(o: bsr_project(body: bsr_branch_one_positional_value()), reason: ^target_value_expr_reason_transform_shape_invalid)
+}
+
+fn bsr_infer_reason_is(root: Node, reason: Symbol) -> Bool {
+  match infer_and_discharge(tree: bsr_resolved(root: root)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
+  }
+}
+
+// The infer route types a Branch as a value: the condition and the then arm are read and the else arm is
+// missing, so the refusal names the else-less cause.
+test fn bsr_infer_refuses_an_else_less_branch_value_with_its_own_reason() -> Bool {
+  bsr_infer_reason_is(root: bsr_branch_two_positional_value(), reason: ^infer_branch_else_less_as_value)
+}
+
+// Control: a one-positional Branch is malformed, and keeps the shape reason.
+test fn bsr_infer_refuses_a_one_positional_branch_with_the_shape_reason() -> Bool {
+  bsr_infer_reason_is(root: bsr_branch_one_positional_value(), reason: ^infer_branch_shape_invalid)
 }

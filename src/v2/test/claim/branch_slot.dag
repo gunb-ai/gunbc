@@ -72,6 +72,48 @@ fn bs_branch_four() -> Node {
   }
 }
 
+fn bs_branch_two() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared), declaration: NotADeclaration },
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared), declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn bs_branch_one() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared), declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// CONTRACT (statement-form else-less if): a TWO-positional Branch is the else-less shape, not a malformed
+// one. The table answers Present for the condition and the then arm and Absent for BranchElseSlot, so a
+// reader tells "no else" from "malformed" at the table: the else-less Branch resolves its two arms, the
+// one-positional Branch answers Absent for EVERY slot.
+test fn bs_d_two_positional_branch_reads_as_else_less_holds() -> Bool {
+  match branch_slot_target(n: bs_branch_two(), slot: BranchConditionSlot) {
+    Present { value: c } =>
+      node_same_occurrence(a: c, b: bs_atom(s: ^bs_shared))
+        && match branch_slot_target(n: bs_branch_two(), slot: BranchThenSlot) {
+          Present { value: t } =>
+            node_same_occurrence(a: t, b: bs_atom(s: ^bs_shared))
+              && optional_eq(a: branch_slot_target(n: bs_branch_two(), slot: BranchElseSlot), b: optional_absent(), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+              && optional_eq(a: branch_slot_target(n: bs_branch_one(), slot: BranchConditionSlot), b: optional_absent(), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+              && optional_eq(a: branch_slot_target(n: bs_branch_one(), slot: BranchThenSlot), b: optional_absent(), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+              && optional_eq(a: branch_slot_target(n: bs_branch_one(), slot: BranchElseSlot), b: optional_absent(), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
 test fn bs_b_shared_condition_and_then_resolve_by_slot_holds() -> Bool {
   match branch_slot_target(n: bs_branch(), slot: BranchElseSlot) {
     Present { value: e } =>

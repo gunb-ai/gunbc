@@ -251,6 +251,17 @@ fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
+// The condition and the then arm are read and only the else arm is missing: that is the ELSE-LESS shape, not
+// a malformed Branch. This route types a Branch as a VALUE, and a value needs an arm for the path the
+// condition does not take, so it refuses -- with the cause the slot table actually answered (DESIGN 5).
+fn infer_branch_else_less_as_value_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_branch_else_less_as_value,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_branch_cond_not_bool,
@@ -2671,7 +2682,7 @@ fn infer_branch_bool_if_else_admitted(
           Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
           Present { value: then_target } =>
             match branch_slot_target(n: node, slot: BranchElseSlot) {
-              Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+              Absent => outcome_rejected(infer_branch_else_less_as_value_diagnostic(node: node))
               Present { value: else_target } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
@@ -8184,7 +8195,9 @@ fn infer_gather_hand_up_failed(node: Node, start: InferHoldResolution, r: NonEmp
   )
 }
 
-// THE BRANCH'S OWN ADMISSION BEFORE ITS TYPE IS PUBLISHED: three positional children and a Bool condition. A hand-up
+// THE BRANCH'S OWN ADMISSION BEFORE ITS TYPE IS PUBLISHED: an arity the slot table reads (three
+// positionals, or two for the else-less shape -- v2.std.node branch_positional_arity_admitted) and a Bool
+// condition. A hand-up
 // (infer_gather_branch_hand_up) publishes its first held arm's type without the arm agreement of infer_branch_bool_if_else, but
 // never without this judgment, so a non-Bool condition cannot be admitted because an enclosing join closes the arms.
 fn infer_branch_condition_refusal(node: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Diagnostic> {
