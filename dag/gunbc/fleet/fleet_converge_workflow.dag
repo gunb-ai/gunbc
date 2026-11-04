@@ -2096,7 +2096,7 @@ fn fleet_converge_admit_plan_run_pointer_step(if_condition: String) -> Step {
     working_directory: none,
     if_condition: Present { value: if_condition },
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -2115,7 +2115,7 @@ fn fleet_converge_admit_apply_run_pointer_step(if_condition: String) -> Step {
     working_directory: none,
     if_condition: Present { value: if_condition },
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -2141,7 +2141,7 @@ fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 

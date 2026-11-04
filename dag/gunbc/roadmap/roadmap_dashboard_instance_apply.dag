@@ -165,6 +165,7 @@ import gunbc.owned_directory {
   owned_directory_install_args,
   owned_directory_decide,
   owned_directory_ensure,
+  owned_directory_ensure_observed,
   owned_directory_outcome_converged,
   owned_directory_outcome_detail,
 }
@@ -1281,7 +1282,7 @@ fn dashboard_apply_owned_directories(instance: HostDashboardInstance) -> Dashboa
       if !acc.running {
         acc
       } else {
-        let outcome = owned_directory_ensure(
+        let outcome = owned_directory_ensure_observed(
           policy: dashboard_directory_policy(instance: instance),
           target: target,
           observe: p => dashboard_owned_directory_observe(instance: instance, path: p),
