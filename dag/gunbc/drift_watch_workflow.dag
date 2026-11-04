@@ -1,13 +1,13 @@
 module gunbc.drift_watch_workflow
 import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
-
-
-
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { minute_count }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.cron.schedule_model { CronSchedule, CronField, Wildcard, Exact }
+import extdeps.bazel.label { render_label }
+import extdeps.exec.command { shell_command_render }
+import gunbc.gunbc_cli_command { gunbc_test_command }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -79,16 +79,14 @@ fn drift_watch_check_step(row: ProjectionDrift) -> Step {
   RunStep {
     name: Present { value: "Compare each Tier O artifact with its authority (read-only)" },
     id: none,
-    // THE CHECK TARGET, FROM THE REPOSITORY'S ROW. The row's `check` is the same DagInvocation the
-    // mirror's drift emitter reads, so one invocation answers both repositories' "are the committed bytes
-    // what the authority emits" question; this emitter no longer reaches past the row for it.
-    run: gunbc_run_step_script(
-      source_roots: witness_layer_roots,
-      entry: row.check.entry as String,
-      function: row.check.function as String,
-      claim_run: false,
-      receipt_rel: none
-    ),
+    // THE CHECK TARGET, FROM THE REPOSITORY'S ROW: a declared instrument LABEL, the same fact the
+    // mirror's drift emitter reads, so one verdict answers both repositories' "are the committed bytes what
+    // the authority emits" question. `gunbc test <label>` is the route where the seed emits and builds the
+    // instrument and THAT binary judges the tree; the lane no longer hands its own corpus to the v1
+    // interpreter with `gunbc run --function` (DESIGN 'Building & checks'). The label travels through the
+    // quoted argv transport (gunbc.gunbc_cli_command gunbc_test_command), not the unquoted step emitter,
+    // whose alphabet has no ':' — the reason is stated on that builder, and widening it is not available.
+    run: shell_command_render(command: gunbc_test_command(label: render_label(l: row.check))),
     shell: none,
     env: none,
     working_directory: none,

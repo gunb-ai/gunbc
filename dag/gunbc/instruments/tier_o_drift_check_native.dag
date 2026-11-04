@@ -1,0 +1,35 @@
+module gunbc.instruments.tier_o_drift_check_native
+
+import std.types { String, List }
+import std.optional { Present, Absent }
+import std.compiler_entry { NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
+import gunbc.tier_o_artifact_emit { tier_o_artifacts }
+import gunbc.instruments.tier_o_drift_check { tier_o_finding }
+
+// THE TIER O PROJECTION VERDICT ON THE COMPILED PATH. The same fold the seed-route instrument
+// performs (each committed Tier O artifact compared with the bytes its .dag authority emits), judged
+// by a binary built from the seed's emission rather than by a lane handing the corpus to the v1
+// interpreter (DESIGN: Building & checks). Filesystem-only: every observation is a Filesystem.Read
+// inside tier_o_finding, so the entry sits in the NativeClaimDriver denominator and the binding row
+// in gunbc.instrument_targets is the only realization it needs. A drift finding is NativeClaimNotHeld
+// naming the drifted paths; the finding text still carries the remedy.
+fn drift_findings() -> List<String> {
+  fold(tier_o_artifacts(), init: [], f: fn(acc, a) {
+    match tier_o_finding(a: a) {
+      Present { value: f } => concat(acc, [f])
+      Absent => acc
+    }
+  })
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let findings = drift_findings()
+  if findings.length() == 0 {
+    NativeClaimReport { stdout: "tier O projections agree with their authorities\n", terminal: NativeClaimHeld }
+  } else {
+    NativeClaimReport {
+      stdout: join(findings, "\n"),
+      terminal: NativeClaimNotHeld { reason: concat(to_string(value: findings.length()), " tier O projection(s) drifted from their authority") }
+    }
+  }
+}

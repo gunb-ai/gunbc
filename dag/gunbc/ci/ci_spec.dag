@@ -1459,11 +1459,6 @@ data gunbc_ci_seed_build_artifacts_regen_target: GunbcRunStepTarget = GunbcRunSt
   function: "main_wet",
 }
 
-data gunbc_ci_tier_o_drift_check_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/tier_o_drift_check.dag",
-  function: "main",
-}
-
 data gunbc_ci_heal_publication_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/heal_publication.dag",
   function: "heal_publication_admit_wet",
@@ -1599,7 +1594,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_candidate_stage0_target,
     gunbc_ci_heal_stage0_overlap_target,
     gunbc_ci_seed_build_artifacts_regen_target,
-    gunbc_ci_tier_o_drift_check_target,
     gunbc_ci_heal_publication_admit_target,
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,

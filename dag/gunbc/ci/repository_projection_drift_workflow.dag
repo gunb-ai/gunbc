@@ -11,6 +11,7 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.cron.schedule_model { CronSchedule }
+import extdeps.bazel.label { Label }
 import extdeps.github.actions {
   Job,
   Opened,
@@ -37,7 +38,6 @@ import gunbc.action_use_admission {
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.repository_ci_profile {
-  DagInvocation,
   HealSeal,
   OverlayIngest,
   ProjectionDrift,
@@ -53,6 +53,7 @@ import gunbc.ci.repository_compose_overlay {
   SealEnvBinding,
   composed_source_roots,
   compose_gunbc_run_statements,
+  compose_gunbc_test_statements,
   compose_preamble_statements,
   head_tree_compose_statements,
   heal_seal_env,
@@ -161,12 +162,8 @@ fn drift_check_statements(
   seed: PublicSeed,
   overlay: OverlayIngest,
   program: DriftProgram,
-  check: DagInvocation
+  check: Label
 ) -> List<Node> {
-  let roots = composed_source_roots(
-    profile_roots: profile.roster.source_roots,
-    overlay: overlay
-  )
   let notes = [
     program.check_authority_banner as String,
     overlay_note(overlay: overlay),
@@ -174,12 +171,7 @@ fn drift_check_statements(
   ]
   concat(
     compose_preamble_statements(seed: seed, c: merge_checkout_compose(seed: seed, overlay: overlay, notes: notes)),
-    compose_gunbc_run_statements(
-      overlay: overlay,
-      source_roots: roots,
-      entry: check.entry,
-      function: check.function
-    )
+    compose_gunbc_test_statements(label: check)
   )
 }
 
@@ -188,7 +180,7 @@ fn drift_check_script(
   seed: PublicSeed,
   overlay: OverlayIngest,
   program: DriftProgram,
-  check: DagInvocation
+  check: Label
 ) -> Outcome<String> {
   bash_emit_stmts(
     statements: drift_check_statements(
