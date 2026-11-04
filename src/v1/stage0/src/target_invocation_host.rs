@@ -266,7 +266,6 @@ pub enum TargetProducer {
     EvaluationStoreAddressExactHead,
     TypedGraphExclusiveBytes,
     TypedGraphExclusiveBytesFloorSubject,
-    RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     /// `NativeCensusVerbProducer { verb }`: a whole-corpus census is a verb of the emitted compiler,
@@ -802,11 +801,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
             "take_self_host_behavioral_equivalence_receipt",
         ),
-        TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
-            "required-lane-resolution-census",
-            "dag/gunbc/required_lane_resolution_census_live.dag",
-            "required_lane_resolution_census_exit",
-        ),
     }
 }
 
@@ -818,8 +812,7 @@ fn run_cli_wire_program(entry: &'static str, function: &'static str) -> Invocati
 
 /// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
 /// entry, evaluate the named function, print the wire bytes on every termination, and map the
-/// wire exit to a Termination through the one classifier in `cli_run`. The required-lane
-/// resolution census shares it; a new instrument of that
+/// wire exit to a Termination through the one classifier in `cli_run`. A new instrument of that
 /// shape is a label row plus one arm naming its entry and function, never a second runner.
 fn run_cli_wire_census(
     label: &'static str,
