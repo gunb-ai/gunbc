@@ -20,7 +20,9 @@ import std.durable_append_log {
 // UNSEALED DATA, NOT A WALL (amend to #15471: the seal moved to the declaring roadmap module; DESIGN 4b, do
 // not claim a rung you did not take). `AppendLogStore` and `AppendLogParent` carry NO `sole_constructor` here,
 // so any module can build one over a literal path -- exactly the accepted residual recorded by
-// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module (file_slot_store_over).
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module, whose evidence names
+// gunbc.durable_cas_file_store file_slot_store as the path-taking constructor and
+// test.claim.slot_store_seal_witness a_plain_store_over_a_literal_path_is_accepted_today as the executing probe.
 // The wall is one rung up: `sole_constructor type AttemptAppendLogStore` in
 // gunbc.roadmap.roadmap_attempt_state_store, whose one mint takes the business key (instance, node, attempt_key,
 // member) and never a path. Nothing declared in this file is sealed.
@@ -125,15 +127,21 @@ fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: 
 }
 
 // ── THE DISPOSITION CENSUS, at identity grain ─────────────────────────────────────────────────────
-// Identity is (inventory row_id, member name). Sixteen rows from Seeadecb2 (the per-attempt dispatch
-// state), one from S88241eea (gcp_iam_bootstrap), one from the approval decision store. The census read the
+// Identity is (inventory row_id, member name). Twelve rows: eight from Seeadecb2 (the per-attempt dispatch
+// state: the directory wire member, the four `*RequestScratch` members, the three verdict members) and four from
+// S88241eea (gcp_iam_bootstrap intent/elected/closed/retired). It held twenty until #15576: the eight attempt
+// log members' rows were deleted together with the census-key join they fed, because their slots now come from
+// the total `AttemptLogMember -> AppendLogSlot` function in the module that declares the members. What is left
+// here is exactly the set that has NO declaring-module slot function. The census read the
 // merged disposition tables of #15417, #15412, #15068, #15104, #15081, #15396 and #15414; the other
 // `Blocked` rows there (capacity store, cleanup authority root-per-call, tailnet door cutover journal,
 // transition lease) are blocked on other capabilities and are NOT this contract's: capacity store (S9892f19f), fabric cleanup authority (S703c0e8e), tailnet door cutover journal (S78f330a6), deploy transition lease (S33f05980; the ReleasedOnEvidence arm now exists, so its own trigger should be re-read by that lane).
 //
-// THE GROUNDING THAT CHANGED THE SHAPE. `dispatch_attempt_events_initialize_for_instance` creates the events
-// file (create-new, group-writable under a dedicated worker account) and the sandboxed worker then appends
-// it; `attempt_state_prepare_argvs_for_instance` creates the wire directory the harness writes
+// THE GROUNDING THAT CHANGED THE SHAPE (historic: the raw events initializer, deleted by #15576; its absence is
+// pinned by test.claim.durable_append_log_witness deleted_callable_route_is_gone. That callable created the
+// events file create-new group-writable under a dedicated worker account and the sandboxed worker then appended
+// it). What the grounding established still holds:
+// `attempt_state_prepare_argvs_for_instance` creates the wire directory the harness writes
 // `<events>.wire/<round>.{request,response}.json` into. So every `multi-writer` member is a host create
 // followed by ONE sandbox window, and the contract is a sequence of exclusive windows, not concurrent writers.
 type MemberDisposition
