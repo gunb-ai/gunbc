@@ -718,6 +718,53 @@ fn filesystem_file_observation(
   }
 }
 
+// AN ABSENT ANCESTOR ESTABLISHES THE ABSENCE OF EVERYTHING BELOW IT. filesystem_file_observation
+// establishes absence only from a listing of the file's own parent, so a parent directory that does
+// not exist yet makes that listing fail and the fold lands indeterminate -- although the chain
+// stops at a place a successful listing of an EARLIER ancestor already proved empty of the next
+// component. This fold takes that ancestor reading (the parent directory's entry presence, itself
+// derived from its own parent's listing, recursively, by the wet composition in
+// gunbc.filesystem_file_observe) and promotes an indeterminate observation to the established
+// absence only when the ancestor is established absent. An ancestor that could not be listed stays
+// indeterminate (never absent), an ancestor that is listed leaves the observation as it was (the
+// parent exists, so its own listing failing is a fault, not a missing chain), and a read that
+// succeeded despite an absent ancestor is a disagreement between two instants, never resolved by
+// precedence. The token returned names the ANCESTOR's directory and name, which is the subject the
+// proving listing actually observed; filesystem_established_absence_path therefore yields the
+// ancestor, never the deeper path, so the token authorizes nothing deeper than what was proved.
+fn filesystem_file_observation_below_ancestor(
+  observation: FilesystemFileObservation,
+  ancestor: FilesystemEntryPresence,
+  path: String,
+  read: FilesystemReadOutcome,
+) -> FilesystemFileObservation {
+  match observation {
+    FilesystemFileIndeterminate { cause: _ } =>
+      match ancestor {
+        FilesystemEntryAbsent(established) =>
+          match read {
+            FilesystemReadRefused { error: _ } => FilesystemFileAbsent(established)
+            FilesystemReadSucceeded { content: _ } =>
+              FilesystemFileObservationsDisagree {
+                path: path,
+                cause: join([
+                  filesystem_established_absence_detail(absence: established),
+                  ", and a read of ", path,
+                  " then succeeded -- the two observations describe different instants and neither is discarded",
+                ], ""),
+              }
+          }
+        FilesystemEntryListed { directory: _, name: _ } => observation
+        FilesystemEntryPresenceIndeterminate { cause: _ } => observation
+        FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => observation
+      }
+    FilesystemFileAbsent(_) => observation
+    FilesystemFileRead { path: _, content: _ } => observation
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => observation
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => observation
+  }
+}
+
 // THE ABSENCE ITSELF IS RENDERABLE WITHOUT BEING FORGEABLE. A consumer needs to say what it did not
 // find; reading the two fields off an established absence is exactly that, and it is the reason the
 // carrier holds them rather than being a token.
