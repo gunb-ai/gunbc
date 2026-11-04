@@ -309,7 +309,7 @@ test fn the_observation_asks_systemctl_exactly_what_the_upstream_builders_compos
   active_ok && enabled_ok && show_ok
 }
 
-// 15. A CENSUS THAT COULD NOT BE ESTABLISHED REFUSES, IT DOES NOT COUNT AS ZERO (blocker 1 of stern-ram-763's
+// 18. A CENSUS THAT COULD NOT BE ESTABLISHED REFUSES, IT DOES NOT COUNT AS ZERO (blocker 1 of stern-ram-763's
 // side-chat review of #15574). Before the fix a failed `ls -1R` and a failed presence check both landed on the
 // same arm as "0 markers", so the gate opened on the very failure that means "we do not know". The census is a
 // sum with a refusal case now, and the refusal is what this claim drives: writer fully excluded, census refused
@@ -324,7 +324,7 @@ test fn a_census_that_could_not_be_established_refuses_the_gate() -> Bool {
   }
 }
 
-// 16. AND AN ESTABLISHED ABSENCE IS NOT THE SAME THING AS A REFUSAL. The census walked the tree and found no
+// 19. AND AN ESTABLISHED ABSENCE IS NOT THE SAME THING AS A REFUSAL. The census walked the tree and found no
 // plain closing marker: that is the answer, not a failure to answer, and the gate must close on it. Paired with
 // claim 15 so the two cannot be collapsed into one arm again -- if AbsentEstablished were folded into the refusal
 // this claim goes red, and if the refusal were folded into the count claim 15 goes red.
