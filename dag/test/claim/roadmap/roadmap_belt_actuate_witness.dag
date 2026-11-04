@@ -14,7 +14,9 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
   attempt_process_for_node, BeltAttemptPanesObserved,
   belt_seat_discharge_pass_outcome_from,
+  belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout, belt_covered_claims_all_passed,
 }
+import gunbc.roadmap.roadmap_execution_contract { GunbcClaimValidation, CargoFmtValidation }
 import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
@@ -3608,4 +3610,28 @@ test fn the_seat_discharge_pass_reaches_the_tick_receipt_typed_and_counted() -> 
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop, refused] }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "r2") && string_contains(s: r, pattern: "charge kept")  _ => false })
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [refused, red, noop] }) { BeltPassFailed { reason: r } => string_contains(s: r, pattern: "r3")  _ => false })
     && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRefused { reason: "stage unreadable" }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "stage unreadable")  _ => false })
+}
+
+// ONE ENTRY IS ONE RUN, EACH CLAIM ITS OWN VERDICT. Three claims of entry e plus one of entry g and a non-claim
+// collapse to three units (first claim of e, g, the non-claim); the e unit covers all three e claims. In a
+// claim_batch document where `a` passes, `b` fails and `c` printed no line, only `a` passed: b's FAIL cannot
+// be read as a's, c's absence is not a pass, and the group as a whole is not passed.
+test fn claims_of_one_entry_are_one_unit_and_each_keeps_its_own_verdict() -> Bool {
+  let e = "dag/test/claim/e.dag" as FilePath
+  let g = "dag/test/claim/g.dag" as FilePath
+  let a = GunbcClaimValidation { entry: e, function: "a" as NonEmptyStr }
+  let b = GunbcClaimValidation { entry: e, function: "b" as NonEmptyStr }
+  let c = GunbcClaimValidation { entry: e, function: "c" as NonEmptyStr }
+  let other = GunbcClaimValidation { entry: g, function: "a" as NonEmptyStr }
+  let all = [a, b, other, c, CargoFmtValidation]
+  let doc = "PASS a\nFAIL b (returned `false`)\nPASS other_fn"
+  count(belt_validation_units(validations: all)) == 3
+    && count(belt_claims_of_entry(validations: all, entry: e)) == 3
+    && belt_claim_passed(document: doc, function: "a" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "b" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "c" as NonEmptyStr)
+    && string_contains(s: belt_claim_stdout(document: doc, function: "b" as NonEmptyStr), pattern: "FAIL b")
+    && !string_contains(s: belt_claim_stdout(document: doc, function: "b" as NonEmptyStr), pattern: "PASS a")
+    && !belt_covered_claims_all_passed(covered: belt_claims_of_entry(validations: all, entry: e), document: doc)
+    && belt_covered_claims_all_passed(covered: [a], document: doc)
 }
