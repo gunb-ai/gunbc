@@ -144,7 +144,7 @@ fn tracker_web_instance_login_rows() -> List<TrackerWebInstanceLoginRow> {
     },
     TrackerWebInstanceLoginRow {
       instance_id: srv1_dashboard_live_id,
-      environment: GoogleLoginEnvironmentProd,
+      environment: GoogleLoginEnvironmentStage,
       redirect_uri: none,
     },
   ]
