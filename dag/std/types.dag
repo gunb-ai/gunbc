@@ -300,13 +300,15 @@ type SecretValue  = Secret where string_non_empty
 // not validation -- so a caller holding text it has decided is sensitive says so here, in one
 // place, instead of relying on `as` having let this one crossing through.
 //
-// WHY IT EXISTS AS A ROUTE AND NOT AS A CAST: the corpus today admits `text as Secret` while it
-// refuses a branded text to Secret (the five JWT sites, census run 41768647568), which is the same
-// crossing judged two ways by how many where-refinements stand in between. That unevenness is
-// filed as gunbc.recurring_failure_mode.a_cast_admitted_from_a_carrier_refused_from_its_refined_alias;
-// the migration of those `as Secret` sites to this function is that row's stated trigger. Do not
-// add a second route beside this one: a checked constructor belongs here only if Secret ever gains
-// a property to check, and then this stays as the total route for callers that have already checked.
+// WHY A ROUTE AND NOT A CAST: gunbc.recurring_failure_mode
+// .a_cast_admitted_from_a_carrier_refused_from_its_refined_alias owns this crossing - what was
+// refused, what each leg of it admits, and the count of spellings that `as` already lets through.
+// This function satisfies that refusal; it repairs nothing. What retires the class is that row's
+// trigger, the composite-cast verdict at v1.compiler.infer grounded_cast_verdict - not callers
+// moving off `as`, which routes around the stall rather than restoring anything.
+//
+// One route only. A checked constructor belongs here if and when Secret gains a property to check,
+// and then this stays as the total route for callers that have already checked.
 fn secret_of_text(text: String) -> Secret {
   text as Secret
 }
