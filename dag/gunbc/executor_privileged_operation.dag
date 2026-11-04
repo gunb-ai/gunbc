@@ -694,16 +694,42 @@ data executor_privileged_operation_converge_command_emit_scaffold: Disposition =
 }
 
 fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperation) -> String {
-  let check = operation_precondition_argv(p: executor_privileged_operation_precondition(op: op))
+  precondition_guarded_shell_command(
+    precondition: executor_privileged_operation_precondition(op: op),
+    command: executor_privileged_operation_shell_command(op: op),
+  )
+}
+
+// THE ONE `check || operation` JOIN, shared by the elevated converge above and the as-root one below, so
+// the residue named above is still written in one place.
+fn precondition_guarded_shell_command(precondition: OperationPrecondition, command: String) -> String {
+  let check = operation_precondition_argv(p: precondition)
   if list_length(items: check) == 0 {
-    executor_privileged_operation_shell_command(op: op)
+    command
   } else {
     join([
       join(map(check, w => posix_single_quote(spelling: w as String)), " "),
       " >/dev/null 2>&1 || ",
-      executor_privileged_operation_shell_command(op: op),
+      command,
     ], "")
   }
+}
+
+// THE SYSTEM-ACCOUNT ENSURE FOR A CALLER THAT ALREADY RUNS AS ROOT, such as an installer stage on a booted
+// medium (gunbc.runner.runner_host_medium runner_host_up_stages), where there is no sudo grant to go
+// through. It is the same operation: EnsureSystemAccount's own argv, its own AccountExistsCheck
+// precondition, and the same join, with only the sudo prefix left off. That is sound because
+// EnsureSystemAccount's principal is RunsAsRoot (executor_privileged_operation_principal), so the
+// unelevated words are what that principal runs.
+// It takes the account's fields rather than any ExecutorPrivilegedOperation because an operation whose
+// principal is RunsAsAccount has no as-root rendering without a modeled drop of privilege. Widening this
+// to the RunsAsRoot operations generally is a follow-up, made when a second as-root caller needs one.
+fn ensure_system_account_converge_command_as_root(login: NonEmptyStr, shell: NonEmptyStr) -> NonEmptyStr {
+  let op = EnsureSystemAccount { login: login, shell: shell }
+  precondition_guarded_shell_command(
+    precondition: executor_privileged_operation_precondition(op: op),
+    command: join(map(executor_privileged_operation_argv(op: op), w => posix_single_quote(spelling: w as String)), " "),
+  ) as NonEmptyStr
 }
 
 fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
