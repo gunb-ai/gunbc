@@ -279,32 +279,32 @@ test fn every_held_receipt_is_recorded_on_the_board() -> Bool {
   // it -- a two-argument `count` is not the repository idiom (`count(filter(list, pred))`,
   // `.all`, `.any` are) and does not filter. The same mutant turns this red.
   //
-  // The two held arms are held to separately, because they hold different things. A held READ
-  // survives as an unresolved row that presents its designator. A CANDIDATE -- a label the pass saw
-  // and never transcribed -- survives as an unresolved row that presents NO designator, carrying its
-  // proposed name in the obligation where a reader can find it. Deleting that row would throw away
-  // the one observation the C3_F1 correction is about: that a label was seen.
+  // The two held arms are held to separately, because they hold different things. A held READ survives
+  // as an unresolved row that presents its designator. A CANDIDATE -- a label read in part, or one the
+  // pass saw and never transcribed -- survives as an unresolved row that presents NO designator and
+  // carries its proposed name in the obligation, where a reader can find it. Deleting such a row throws
+  // away the one observation the C3_F1 correction is about: that a label was seen.
   e1_held_receipts.all(r => match r {
     HeldExactDesignator { designator: dn, standing: _, authority: _, why: _ } =>
       any(p4261_e1_layout.unresolved, u => match u.designator {
         Present { value: d } => designator_eq(a: designator_of(verbatim: d), b: dn)
         Absent { } => false
       })
-    PartiallyTranscribedCandidate { source_key: _, proposed_name: n, standing: _,
-                                    partly_legible_in: _, obligation: _, why: _ } =>
-      any(p4261_e1_layout.unresolved, u => match u.designator {
-        // Same reason as the candidate below: a name that was only partly read is not a read
-        // designator, so an unresolved row presenting it is not a match.
-        Present { value: _ } => false
-        Absent { } => true
-      })
-    UntranscribedCandidate { source_key: _, proposed_name: n, standing: _, why: _ } =>
-      any(p4261_e1_layout.unresolved, u => match u.designator {
-        // A candidate's name presented as a read designator is the contradiction this whole
-        // correction removed, so an unresolved row that does it is not a match.
+    // One arm, one rule, for both kinds of candidate. A candidate has no designator to present, so its
+    // board row is one that presents NOTHING and carries the name as text in its obligation -- and the
+    // count is over rows whose obligation carries THIS candidate's name, which must be exactly one. The
+    // `any` this replaces never mentioned the candidate: it asked whether some unresolved row presented
+    // nothing, which C3_F1's row answers for the whole set, so all ten partly-read rows could be deleted
+    // and this stayed green (parent's D1, 2026-11-04). Counting catches both directions: a row flipped
+    // back to `Present` leaves no Absent row to count, and a name copied into two rows makes two.
+    DesignatorCandidate { source_key: _, proposed_name: n, standing: _, receipt_read: _,
+                          partly_legible_in: _, obligation: _, why: _ } =>
+      1 == count(filter(p4261_e1_layout.unresolved, u => match u.designator {
+        // A candidate's name presented as a read designator is the contradiction this whole correction
+        // removed -- for a partly-read label exactly as much as for an unread one.
         Present { value: _ } => false
         Absent { } => string_contains(s: u.obligation, pattern: n)
-      })
+      }))
   })
 }
 
@@ -412,15 +412,11 @@ test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
         Present { value: _ } => false
         Absent { } => true
       }
-    PartiallyTranscribedCandidate { source_key: _, proposed_name: n, standing: _,
-                                    partly_legible_in: _, obligation: _, why: _ } =>
-      // A name with characters missing is exactly as unadmitted as a name nobody read: both are
-      // text, and text does not enter NVIDIA's design list.
-      match p4261_position_at(positions: p4261_e1_positions, verbatim: n) {
-        Present { value: _ } => false
-        Absent { } => true
-      }
-    UntranscribedCandidate { source_key: _, proposed_name: n, standing: _, why: _ } =>
+    DesignatorCandidate { source_key: _, proposed_name: n, standing: _, receipt_read: _,
+                          partly_legible_in: _, obligation: _, why: _ } =>
+      // A name with characters missing is exactly as unadmitted as a name nobody read: both are text,
+      // and text does not enter NVIDIA's design list. One arm says it once; two arms said it twice, and
+      // a duplicate is where a future edit lands on one kind and misses the other.
       match p4261_position_at(positions: p4261_e1_positions, verbatim: n) {
         Present { value: _ } => false
         Absent { } => true
@@ -467,47 +463,36 @@ test fn every_named_exception_reaches_the_board() -> Bool {
 // photograph authority, and a candidate's proposed name kept off the board.)
 
 test fn the_held_arms_carry_only_what_they_may() -> Bool {
-  // The three held shapes are not interchangeable, and none of them is allowed to be silently true
-  // here. An EXACT read carries the label it read in full and an authority that licenses every
-  // character of it -- there is no legibility field on it to fail, which is the point: the state
-  // 'exact name, partly read' has no constructor. A PARTLY TRANSCRIBED row and a NEVER TRANSCRIBED
-  // row both carry a proposed name as plain text, because Designator is the identity the whole model
-  // joins on and a spelling that is not settled must not enter it. What the shapes cannot close is
-  // the cross-row direction: a proposed name reappearing on the board as a read designator, from
-  // either candidate arm, which would undo the correction as thoroughly as a held row that minted a
-  // name it had only half read.
+  // The two held shapes are not interchangeable, and neither is allowed to be silently true here. An
+  // EXACT read carries the label it read in full, so it carries the authority that licenses every
+  // character of it -- there is no legibility field to fail, which is the point: the state 'exact
+  // name, partly read' has no constructor. A CANDIDATE carries a proposed name as plain text, whether
+  // the receipts read it in part or not at all, because Designator is the identity the whole model
+  // joins on and a spelling that is not settled must not enter it. What the shapes cannot close is the
+  // cross-row direction: a proposed name reappearing on the board as a read designator, which would
+  // undo the correction as thoroughly as a held row that minted a name it had only half read.
   e1_held_receipts.all(h => match h {
-    // Nothing to ask here: this arm has no field left to misuse. Its designator is checked by the
-    // two tests that hold held rows off the design list and off the board's presented names.
-    HeldExactDesignator { designator: _, standing: _, authority: _, why: _ } =>
-      true
-    PartiallyTranscribedCandidate { source_key: _, proposed_name: n, standing: _,
-                                    partly_legible_in: _, obligation: _, why: _ } =>
-      // A label read in part is on the board as text and stays there: five of these ten are read rows
-      // whose citation says the bytes were never supplied, which is exactly the honest way to carry an
-      // unsettled spelling. What it may NOT do is lean on a stored frame. If the image that would
-      // settle the spelling were in the store, the receipts would say so and the row would be an exact
-      // read -- so a board reading that cites stored pixels for a name the receipts only half read is
-      // quoting an image that does not show what the row says it shows.
-      !any(p4261_e1_layout.designator_readings, d =>
-        string_eq(a: d.designator as String, b: n as String)
-        && match d.evidence {
-             OperatorPhotograph { citation: InStore { content: _, region: _ } } => true
-             OperatorPhotograph { citation: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } =>
-               false
-             SellerListingPhotograph { } => false
-             OperatorStatement { } => false
-           })
-    UntranscribedCandidate { source_key: _, proposed_name: n, standing: _, why: _ } =>
-      // No designator reading presents it...
-      !any(p4261_e1_layout.designator_readings, d =>
-        designator_eq(a: designator_of(verbatim: n), b: designator_of(verbatim: d.designator)))
-      // ...and no unresolved row presents it either; the row that carries this candidate holds its
-      // designator Absent, which is what its own test above checks from the other side.
-      && !any(p4261_e1_layout.unresolved, u => match u.designator {
-        Present { value: v } => designator_eq(a: designator_of(verbatim: n), b: designator_of(verbatim: v))
-        Absent { } => false
-      })
+    // The exact arm carries a designator, so it carries the burden that goes with one: its authority
+    // has to check out, through the same checker a position's exception uses and the same rules, with
+    // the board table named by the caller (parent's D3). Not `true`: `FromStoredFrames` is writable on
+    // this arm, and an arm that waved it through would let a held row cite frames the store has never
+    // seen. No row takes that arm today, which is exactly when the check is cheapest to have.
+    HeldExactDesignator { designator: dn, standing: _, authority: a, why: _ } =>
+      authority_is_checkable(name: designator_text(dn), authority: a, on_the_board: UnresolvedRows { })
+    DesignatorCandidate { source_key: _, proposed_name: n, standing: _, receipt_read: _,
+                          partly_legible_in: _, obligation: _, why: _ } =>
+      // Its frames resolve, and nothing on the board presents the label as read -- not a designator
+      // reading of any evidence kind, and not an unresolved row's designator. Stronger than the two arms
+      // it replaces, which each forbade a different half (one banned stored pixels behind a partly-read
+      // name, the other banned any presentation of an unread one). Under one arm there is one rule: the
+      // receipts hold this spelling unsettled, so the board may not say it read it.
+      held_is_checkable(h)
+        && !any(p4261_e1_layout.designator_readings, d =>
+          string_eq(a: d.designator as String, b: n as String))
+        && !any(p4261_e1_layout.unresolved, u => match u.designator {
+          Present { value: v } => string_eq(a: v as String, b: n as String)
+          Absent { } => false
+        })
   })
 }
 
@@ -526,10 +511,12 @@ test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
         || any(e1_held_receipts, h => match h {
           HeldExactDesignator { designator: dn, standing: _, authority: _, why: _ } =>
             designator_eq(a: designator_of(verbatim: d), b: dn)
-          PartiallyTranscribedCandidate { source_key: _, proposed_name: n, standing: _,
-                                          partly_legible_in: _, obligation: _, why: _ } =>
-            string_eq(a: d as String, b: n as String)
-          UntranscribedCandidate { source_key: _, proposed_name: _, standing: _, why: _ } => false
+          // Neither kind of candidate vouches for a presented name, and one arm says so once. The
+          // partly-read arm used to vouch by text equality, which licensed the board saying 'J141' as
+          // read while the receipts say only part of it was read: the contradiction C3_F1 was removed
+          // for, one rung down the same ladder (parent's D2).
+          DesignatorCandidate { source_key: _, proposed_name: _, standing: _, receipt_read: _,
+                                partly_legible_in: _, obligation: _, why: _ } => false
         })
     Absent { } => true
   })
@@ -725,11 +712,13 @@ test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool 
 // for a reader; the store's capture days are free text ("2026-11-02, the atlas pass day ..."), so they
 // carry no decidable order and this test does not pretend to compare them.
 test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
-  e1_position_receipts.all(rec => authority_is_checkable(name: rec.designator.verbatim, basis: rec.rests_on))
-    // General over both candidate arms, so a row cannot escape it by being the other shape: a frame a
-    // candidate cites is a frame the store holds. This is the half that keeps a digest typed from
-    // memory out of the model, whatever the row claims about the label.
-    && e1_held_receipts.all(h => candidate_frames_are_held(h))
+  e1_position_receipts.all(rec => position_is_checkable(rec))
+    // Every held row too, exact or candidate, and through the SAME checker: an exact row's authority is
+    // held to the rules a position's exception is held to, with only the board table named differently
+    // (parent's D3). The version of this test checked positions and let any held authority through, so
+    // `HeldExactDesignator { authority: FromStoredFrames { ... } }` was writable with frames the store
+    // has never seen -- no row takes that arm today, which is when a check is cheapest to have.
+    && e1_held_receipts.all(h => held_is_checkable(h))
     // The pin, counted rather than `any`: one row carries the label the pass saw and never read, and
     // a second row proposing the same name is as wrong as a missing one. It has to hold at least one
     // frame the store has, which is the difference between 'nobody read it' and 'nobody looked'.
@@ -771,61 +760,109 @@ fn read_inside_the_same_box(sighting: LabelSighting, on_the_board: PixelRegion?)
 // label was read here. The unstored arm is refused rather than excused -- it says the bytes were never
 // supplied, which is the gap this authority was written to close -- and a board reading with no box is
 // refused too, because the claim being checked is about pixels somebody drew.
-fn board_reads_those_frames(name: NonEmptyStr, frames: List<LabelSighting>) -> Bool {
-  any(p4261_e1_layout.designator_readings, d =>
-    string_eq(a: d.designator as String, b: name as String)
-    && any(frames, s =>
-      match d.evidence {
-        OperatorPhotograph { citation: InStore { content: c, region: r } } =>
-          string_eq(a: c.hex as String, b: s.digest.hex as String)
-            && read_inside_the_same_box(sighting: s, on_the_board: r)
-        OperatorPhotograph { citation: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } =>
-          false
-        SellerListingPhotograph { } => false
-        // A spoken "it says J3" is the shape this arm exists to refuse: a name with no image behind it
-        // is exactly what a position's identity must not be able to lean on.
-        OperatorStatement { } => false
-      }))
+type BoardReadingTable =
+  | DesignatorReadings { }
+  | UnresolvedRows { }
+
+// One board citation against one sighting the authority names: the same bytes AND the same pixels, or it
+// is not a join. Written once so both tables answer to one rule. Digest alone was the weaker join this
+// module spent a review round removing -- on a frame showing dozens of parts it says the bytes exist, not
+// that the label was read here -- and the unstored arm is refused rather than excused, because it says
+// the bytes were never supplied, which is the very gap an authority was written to close.
+fn cites_this_label(citation: PhotographCitation, s: LabelSighting) -> Bool {
+  match citation {
+    InStore { content: c, region: r } =>
+      string_eq(a: c.hex as String, b: s.digest.hex as String)
+        && read_inside_the_same_box(sighting: s, on_the_board: r)
+    // A spoken "it says J3" is the shape this arm exists to refuse: a name with no image behind it is
+    // exactly what an identity must not be able to lean on.
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
 }
 
-fn authority_is_checkable(name: NonEmptyStr, basis: ReceiptBasis) -> Bool {
-  match basis {
+// Some board row that names this designator has to point at one of the very same bytes inside the same
+// box. The rule is `cites_this_label`, written once; what differs per table is which rows to walk and how
+// a row spells its name, because a designator reading and an unresolved row are different records. That
+// is the whole of the duplication -- two walks sharing one join -- and it beats the alternative of a
+// second checker for held rows, which is how `held` came to mean one thing here and another there.
+fn board_reads_those_frames(name: NonEmptyStr, frames: List<LabelSighting>,
+                            on_the_board: BoardReadingTable) -> Bool {
+  match on_the_board {
+    DesignatorReadings { } =>
+      any(p4261_e1_layout.designator_readings, d =>
+        string_eq(a: d.designator as String, b: name as String)
+        && any(frames, s =>
+          match d.evidence {
+            OperatorPhotograph { citation: c } => cites_this_label(citation: c, s: s)
+            SellerListingPhotograph { } => false
+            OperatorStatement { } => false
+          }))
+    UnresolvedRows { } =>
+      any(p4261_e1_layout.unresolved, u => match u.designator {
+        Present { value: v } =>
+          string_eq(a: v as String, b: name as String)
+          && any(frames, s =>
+            match u.evidence {
+              OperatorPhotograph { citation: c } => cites_this_label(citation: c, s: s)
+              SellerListingPhotograph { } => false
+              OperatorStatement { } => false
+            })
+        // A row that presents no designator is not a row that read this label.
+        Absent { } => false
+      })
+  }
+}
+
+fn authority_is_checkable(name: NonEmptyStr, authority: DesignatorAuthority,
+                          on_the_board: BoardReadingTable) -> Bool {
+  match authority {
+    // A receipt read the label in full. The receipts module holds that read to its own columns, and a
+    // frame cannot disagree with a receipt that never carried it; nothing here can settle it further.
+    FromReceipt { basis: _ } => true
+    FromStoredFrames { read_by: _, read_on: _, frames: frames } =>
+      // nothing is read off frames nobody has named
+      count(frames) > 0
+      // every frame named is one the store holds, by content and by name
+      && frames.all(s => frame_is_held(s))
+      // A read that states every character has to say where on at least one image it read them: a claim
+      // with no box anywhere is somebody's impression of a label, not a read of it.
+      && any(frames, s => match s.box {
+           Present { value: _ } => true
+           Absent { } => false
+         })
+      // and a board row that names this designator points at the same pixels
+      && board_reads_those_frames(name: name, frames: frames, on_the_board: on_the_board)
+  }
+}
+
+// A position's exception is checkable when its authority is, joined to the bench's readings. A row the
+// base rule admitted has nothing to check here: the rule is its authority, and it admitted the row from
+// columns that said the label was read in full.
+fn position_is_checkable(rec: PositionReceipt) -> Bool {
+  match rec.rests_on {
     RuleRead { } => true
-    NamedException { why: _, authority: a } => match a {
-      // A receipt read the label in full. The receipts module holds that read to its own columns, and a
-      // frame cannot disagree with a receipt that never carried it; nothing here can settle it further.
-      FromReceipt { basis: _ } => true
-      FromStoredFrames { read_by: _, read_on: _, frames: frames } =>
-        // nothing is read off frames nobody has named
-        count(frames) > 0
-        // every frame named is one the store holds, by content and by name
-        && frames.all(s => frame_is_held(s))
-        // A read that states every character has to say where on at least one image it read them: a
-        // claim with no box anywhere is somebody's impression of a label, not a read of it.
-        && any(frames, s => match s.box {
-             Present { value: _ } => true
-             Absent => false
-           })
-        // and the board's own reading of this designator points at the same pixels
-        && board_reads_those_frames(name: name, frames: frames)
-    }
+    NamedException { why: _, authority: a } =>
+      authority_is_checkable(name: designator_text(rec.designator), authority: a,
+                             on_the_board: DesignatorReadings { })
   }
 }
 
-// Every frame a candidate cites, from either candidate arm, is a frame the store holds. An exact row
-// cites no frames -- its claim is a receipt read or frames named in the authority -- so there is nothing
-// here to check, and that is said rather than left implicit: the arms with frames are the ones tested.
-fn candidate_frames_are_held(held: HeldReceipt) -> Bool {
+// A held row, same checker. An exact read's authority joins to the board row that carries its label --
+// the unresolved row, because a held row was never admitted as a position and so has no designator
+// reading. A candidate cites frames rather than presenting a name, and the most that can be asked of it
+// is that those frames are the store's own.
+fn held_is_checkable(held: HeldReceipt) -> Bool {
   match held {
-    HeldExactDesignator { designator: _, standing: _, authority: _, why: _ } => true
-    PartiallyTranscribedCandidate {
-      source_key: _, proposed_name: _, standing: _, partly_legible_in: frames, obligation: _, why: _
-    } => frames.all(s => frame_is_held(s))
-    UntranscribedCandidate {
-      source_key: _, proposed_name: _, standing: _, partly_legible_in: frames, obligation: _, why: _
-    } => frames.all(s => frame_is_held(s))
+    HeldExactDesignator { designator: dn, standing: _, authority: a, why: _ } =>
+      authority_is_checkable(name: designator_text(dn), authority: a, on_the_board: UnresolvedRows { })
+    DesignatorCandidate { source_key: _, proposed_name: _, standing: _, receipt_read: _,
+                          partly_legible_in: frames, obligation: _, why: _ } =>
+      frames.all(s => frame_is_held(s))
   }
 }
+
+// (candidate_frames_are_held is gone: `held_is_checkable` above covers both arms, and covers the exact
+// arm's authority as well, which this function let through unchecked.)
 
 // The one row whose label a receipt never transcribed, keyed by the receipt row it came from rather than
 // by the name alone: two rows from two sources proposing the same text are two observations, and the
@@ -833,12 +870,17 @@ fn candidate_frames_are_held(held: HeldReceipt) -> Bool {
 fn is_unread_candidate(held: HeldReceipt) -> Bool {
   match held {
     HeldExactDesignator { } => false
-    PartiallyTranscribedCandidate { } => false
-    UntranscribedCandidate {
-      source_key: k, proposed_name: n, standing: _, partly_legible_in: _, obligation: _, why: _
+    DesignatorCandidate {
+      source_key: k, proposed_name: n, standing: _, receipt_read: rr,
+      partly_legible_in: _, obligation: _, why: _
     } =>
-      string_eq(a: k as String, b: C3_F1_SOURCE_KEY)
-      && string_eq(a: n as String, b: "C3_F1")
+      // The field, not the arm: the row whose label a receipt never read.
+      match rr {
+        PartlyRead { } => false
+        NotRead { } =>
+          string_eq(a: k as String, b: C3_F1_SOURCE_KEY)
+          && string_eq(a: n as String, b: "C3_F1")
+      }
   }
 }
 
@@ -850,9 +892,13 @@ fn is_unread_candidate(held: HeldReceipt) -> Bool {
 fn unread_candidate_holds_a_frame(held: HeldReceipt) -> Bool {
   match held {
     HeldExactDesignator { } => false
-    PartiallyTranscribedCandidate { } => false
-    UntranscribedCandidate {
-      source_key: _, proposed_name: _, standing: _, partly_legible_in: frames, obligation: _, why: _
-    } => count(frames) > 0 && frames.all(s => frame_is_held(s))
+    DesignatorCandidate {
+      source_key: _, proposed_name: _, standing: _, receipt_read: rr,
+      partly_legible_in: frames, obligation: _, why: _
+    } =>
+      match rr {
+        PartlyRead { } => false
+        NotRead { } => count(frames) > 0 && frames.all(s => frame_is_held(s))
+      }
   }
 }
