@@ -689,7 +689,7 @@ test fn w_a_page_body_carrying_a_cookie_and_token_leaves_nothing_of_them_in_the_
   let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http)
   let outcome = MegaRacUiRunOutcome {
     lines: [ui_page_line(reading)],
-    found_excerpt: false,
+    attempts: [],
     session_closed: true,
   }
   let receipt = ui_receipt_text(outcome: outcome, credential_env: "mtcollins1_fan_password_file" as NonEmptyStr)
@@ -802,7 +802,7 @@ test fn w_the_decoded_window_rehashes_to_the_digest_on_the_same_line() -> Bool {
 }
 
 test fn w_a_refused_excerpt_prints_no_window_bytes() -> Bool {
-  match megarach_ui_status_excerpt_of_asset(
+  match megarac_ui_status_excerpt_of_asset(
     asset_text: witness_asset(head: "", gap: 0),
     asset_path: witness_asset_path(),
     served_release: "0.32" as NonEmptyStr,
