@@ -262,7 +262,7 @@ fn session_security(session: AuthenticatedSession) -> RequestSecurityContext<Req
 }
 
 fn open_write_policy() -> ServeWriteAuthorizationPolicy {
-  ServeWriteAuthorizationPolicy { approve_roster: [] }
+  ServeWriteAuthorizationPolicy { approve_roster: [], agent_roster: [] }
 }
 
 // THE GREEN CONTROL: a live Google session + action authorization + the CSRF proof + the
@@ -447,7 +447,7 @@ test fn login_does_not_grant_approval_authority() -> Bool {
           route_path: "/approve/abc" as NonEmptyStr,
           action: ServeActionApproveDecision,
           security: session_security(session: s),
-          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal] },
+          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
           deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
           csrf_presented: "csrf-1",
           observed_at: fn() { "2026-09-25T00:05:00Z" },

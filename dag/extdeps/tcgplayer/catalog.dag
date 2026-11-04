@@ -1,4 +1,5 @@
 module extdeps.tcgplayer.catalog
+import std.types { Bearer }
 
 import std.types { NonEmptyStr, Timestamp, AuthScheme }
 import extdeps.external_authority { ExternalAuthority }

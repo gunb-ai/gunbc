@@ -36,14 +36,21 @@ import gunbc.command_runner { run_shell_command_observe }
 import extdeps.shell
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.extdeps.languages.bash_build { bash_build_assign_lit, bash_build_command_with_words, bash_build_word_concat_from_nodes, bash_build_word_lit, bash_build_word_var, bash_build_with_redir_to_file }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign, bash_build_assign_lit, bash_build_command_with_words, bash_build_word_concat_from_nodes,
+  bash_build_word_lit, bash_build_word_var, bash_build_with_redir_to_file,
+}
 import gunbc.ci.repository_compose_overlay { command_words }
 import gunbc.witness.repository_witness_workflow {
   annotation_compile_statements, read_refusals_or_refuse
 }
 import gunbc.ci.repository_ci_profile { AnnotationStep, DagInvocation, RepositoryCiProfile }
 import gunbc.heal_publisher_workflow { heal_publisher_candidate_directory }
-import test.claim.repository_ci_profile_witness { fixture_seed, mirror_profile_with_annotation }
+import test.claim.repository_ci_profile_witness {
+  fixture_seed, mirror_profile_with_annotation, wet_seed, wet_seed_pin, wet_seed_pin_parent,
+}
+import gunbc.action_use_admission { seed_pin_verifier_output_name }
+import gunbc.ci.repository_seed_steps { seed_pin_verification_statements }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -431,6 +438,140 @@ test fn the_relative_candidate_directory_resolves_at_the_workspace() -> Bool {
 // reason names every scenario that did not hold. It returns a ProcessExit because the host maps a run's
 // verdict to an exit code. It reaches the process runner, so it must be run OUTSIDE --claim-run (the wet
 // way), which is also why the file is enrolled as a wet row rather than left to hermetic discovery.
+// ── THE SEED-PIN VERIFIER, RUN ─────────────────────────────────────────────────────────────────
+//
+// A PROOF IS ONLY AS REAL AS A FAILURE YOU CAN PRODUCE. The verifier's second proof asks what the fetch
+// actually brought (`rev-parse --verify FETCH_HEAD` after one `git fetch` into a store created empty
+// seconds earlier). The model can state that question but cannot answer it -- only git can -- and a check
+// whose forbidden state cannot be produced is a decoration that later gets cited as coverage (DESIGN 4b).
+// The first version of this proof was exactly that: it ran `git rev-parse <pin>`, which prints the sha it
+// was handed whether or not anything was fetched, and every control stayed green. So the scenarios below
+// run the EMITTED statement list -- `seed_pin_verification_statements`, the same function the verifier
+// step's script is rendered from -- against the real public repository, and then against the same run with
+// a second fetch appended behind it that moves FETCH_HEAD to the pin's parent.
+//
+// The harness adds only what a runner would have supplied anyway: RUNNER_TEMP is already pinned by
+// `render_and_run`, plus `GITHUB_OUTPUT` and, for the poisoned scenario, a `PATH` entry holding a stand-in
+// `git` that forwards everything to the real one and appends the second fetch after a real one succeeds.
+// No statement of the script under test is written here.
+
+fn seed_verifier_body() -> List<Node> {
+  seed_pin_verification_statements(seed: wet_seed(), pin: wet_seed_pin)
+}
+
+fn seed_verifier_harness(dir: String) -> List<Node> {
+  [
+    bash_build_assign_lit(name: "GITHUB_OUTPUT", text: under(dir, "github_output")),
+    bash_build_assign_lit(name: "POISON_SHA", text: wet_seed_pin_parent),
+  ]
+}
+
+// THE STAND-IN GIT. Eight lines, each a word the emitter quotes: forward everything, and after a real
+// `fetch` succeed, fetch one more object into the same store so FETCH_HEAD names something other than the
+// pin. Positional arguments are the verifier's own fetch form (`git -C <store> fetch --quiet --no-tags
+// --depth 1 <url> <pin>`), so `$2` is the store and `$8` the remote it was told to trust.
+fn seed_verifier_poison_stmts(dir: String) -> List<Node> {
+  let shim = under(dir, "bin/git")
+  let lines = [
+    "#!/bin/sh",
+    "if [ $3 = fetch ]",
+    "then",
+    "/usr/bin/git $*",
+    "/usr/bin/git -C $2 fetch --quiet --no-tags --depth 1 $8 $POISON_SHA",
+    "exit 0",
+    "fi",
+    "exec /usr/bin/git $*",
+  ]
+  [
+    command_words(rest: ["mkdir", "-p", under(dir, "bin")]),
+    bash_build_with_redir_to_file(
+      inner: bash_build_command_with_words(
+        words: concat(
+          [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n")],
+          list_map(xs: lines, f: line => bash_build_word_lit(text: line))
+        )
+      ),
+      path: bash_build_word_lit(text: shim)
+    ),
+    command_words(rest: ["chmod", "+x", shim]),
+    bash_build_assign(name: "PATH", value: bash_build_word_lit(text: concat([dir, "/bin:$PATH"], ""))),
+  ]
+}
+
+fn seed_verifier_run(dir: String, poisoned: Bool) -> LaneRun {
+  render_and_run(
+    stmts: concat(
+      if poisoned { seed_verifier_poison_stmts(dir: dir) } else { [] },
+      concat(seed_verifier_harness(dir: dir), seed_verifier_body())
+    ),
+    dir: dir
+  )
+}
+
+fn github_output_file(dir: String) -> String {
+  under(dir, "github_output")
+}
+
+// A COMMIT THE LANE CAN FETCH IS ADMITTED, and admitted WITH the pin: the honest scenario is what stops
+// the two refusal scenarios below from passing because the harness never worked. The step's whole contract
+// is one line in $GITHUB_OUTPUT, and the control reads that line back from the file the run wrote.
+test fn the_emitted_seed_verifier_admits_the_pinned_commit() -> Bool {
+  with_lane_dir(dir => {
+    let run = seed_verifier_run(dir: dir, poisoned: false)
+    let written = render_and_run(
+      stmts: [command_words(rest: ["cat", github_output_file(dir: dir)])],
+      dir: dir
+    )
+    run.rendered
+      && run.status == 0
+      && written.rendered
+      && string_contains(
+           s: written.out,
+           pattern: join([seed_pin_verifier_output_name(), "=", wet_seed_pin], "")
+         )
+  })
+}
+
+// THE FETCH THAT BROUGHT SOMETHING ELSE IS REFUSED, AND WRITES NOTHING. The pin IS in the store -- the
+// first fetch put it there, so the type proof passes -- and only the identity of what the fetch delivered
+// differs. This is the forbidden state the second proof exists for; had the proof stayed at `rev-parse
+// <pin>`, this scenario would have admitted the poisoned store and printed the pin as its output.
+test fn the_emitted_seed_verifier_refuses_a_fetch_that_brought_another_commit() -> Bool {
+  with_lane_dir(dir => {
+    let run = seed_verifier_run(dir: dir, poisoned: true)
+    let silent = render_and_run(
+      stmts: [command_words(rest: ["test", "!", "-s", github_output_file(dir: dir)])],
+      dir: dir
+    )
+    run.rendered
+      && run.status != 0
+      && string_contains(s: run.out, pattern: "SeedPinFetchedObjectIsNotThePin")
+      && silent.rendered
+      && silent.status == 0
+  })
+}
+
+// A PIN NOTHING CAN FETCH NEVER REACHES THE OUTPUT EITHER. Where it dies is the fetch itself: the step is
+// rendered with `set -e`, so the store stays empty and the step ends nonzero on git's own diagnostic
+// rather than on my refusal token. That is the honest shape of the refusal -- the lane refuses before any
+// proof is consulted -- and the assertion is the one that matters: no output, nonzero exit.
+test fn the_emitted_seed_verifier_refuses_a_pin_it_cannot_fetch() -> Bool {
+  with_lane_dir(dir => {
+    let run = render_and_run(
+      stmts: concat(
+        seed_verifier_harness(dir: dir),
+        seed_pin_verification_statements(seed: wet_seed(), pin: "0000000000000000000000000000000000000000")
+      ),
+      dir: dir
+    )
+    let silent = render_and_run(
+      stmts: [command_words(rest: ["test", "!", "-s", github_output_file(dir: dir)])],
+      dir: dir
+    )
+    run.rendered && run.status != 0 && silent.rendered && silent.status == 0
+  })
+}
+
 fn run_executed_scenarios() -> ProcessExit {
   let clean = the_executed_lane_body_passes_a_clean_compile()
   let odd = the_executed_lane_body_refuses_an_unexpected_exit_by_its_number()
@@ -441,7 +582,10 @@ fn run_executed_scenarios() -> ProcessExit {
   let missed = the_relative_candidate_directory_finds_nothing_from_the_composed_root()
   let workspace = the_relative_candidate_directory_resolves_at_the_workspace()
   let inherited = an_inherited_runner_temp_leaves_the_outside_tree_untouched()
-  let all_held = clean && odd && refusal && no_count && unreadable && anchored && missed && workspace && inherited
+  let admitted = the_emitted_seed_verifier_admits_the_pinned_commit()
+  let poisoned = the_emitted_seed_verifier_refuses_a_fetch_that_brought_another_commit()
+  let unreachable = the_emitted_seed_verifier_refuses_a_pin_it_cannot_fetch()
+  let all_held = clean && odd && refusal && no_count && unreadable && anchored && missed && workspace && inherited && admitted && poisoned && unreachable
   if all_held {
     ExitSuccess
   } else {
@@ -458,7 +602,10 @@ fn run_executed_scenarios() -> ProcessExit {
           if anchored { "" } else { " the anchored candidate directory resolves from the composed root;" },
           if missed { "" } else { " a relative candidate directory finds nothing from the composed root;" },
           if workspace { "" } else { " a relative candidate directory resolves at the workspace;" },
-          if inherited { "" } else { " an inherited RUNNER_TEMP drew a phase body outside the allocated fixture;" }
+          if inherited { "" } else { " an inherited RUNNER_TEMP drew a phase body outside the allocated fixture;" },
+          if admitted { "" } else { " the emitted seed verifier admitted the pinned commit and wrote its output;" },
+          if poisoned { "" } else { " the emitted seed verifier admitted a fetch that delivered another commit;" },
+          if unreachable { "" } else { " the emitted seed verifier wrote an output for a pin it could not fetch;" }
         ],
         ""
       )

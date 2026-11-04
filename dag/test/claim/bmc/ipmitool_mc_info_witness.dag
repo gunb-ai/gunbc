@@ -1,0 +1,170 @@
+module test.claim.bmc.ipmitool_mc_info_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.bmc.ipmitool_mc_info {
+  IpmiMcInfoReading,
+  IpmiMcInfoReport,
+  ipmitool_mc_info_of,
+  ipmitool_mc_info_fields_of,
+  ipmitool_mc_info_missing_labels,
+  render_ipmitool_mc_info,
+}
+
+// THE FAMILY-NEUTRAL `mc info` PARSER: REAL CAPTURES, AND WHAT A MISSING LABEL DOES.
+//
+// INHABITANCE CLAIM (bounded, reads the committed captures): decoding the three committed `ipmitool mc info`
+// captures reproduces, field for field, the identity each capture's own record asserts. These are the reads
+// the hand-authored IpmiDeviceIdentity literals in gunbc.machine_intake.bmc_inband_recovery_receipts stood
+// for; the parser is now their only producer. REDS: a body missing a required label REFUSES NAMING that label
+// (positive control: the same probe over the whole capture names nothing); a yes/no that is neither refuses;
+// an empty body refuses as unlabelled rather than answering zero.
+//
+// The captures are read through Filesystem.Read (the model's own file source), the same source the committed
+// capture fold of gunbc.machine_intake.bmc_first_contact_reading reads.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn mc_info_capture(path: String) -> String uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => concat("READ FAILED ", e)
+    FilesystemReadSucceeded { content: text } => text
+  }
+}
+
+// artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/mc_info.txt — MegaRAC 2.11.104000.
+fn mtjade1_mc_info_body() -> String {
+  mc_info_capture(path: "artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/mc_info.txt")
+}
+
+// artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/mc-info.txt — ATEN firmware 1.52.
+fn h11ssl_unit1_mc_info_body() -> String {
+  mc_info_capture(path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/mc-info.txt")
+}
+
+// artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt — the in-band transcript:
+// `mc info` at the head, and LATER commands that failed. The parser must decode the report the transcript
+// contains and must not refuse the whole body because a later command failed.
+fn altrad8ud_inband_body() -> String {
+  mc_info_capture(path: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt")
+}
+
+test fn mtjade1_capture_decodes_the_identity_its_record_asserts() -> Bool uses fs: std.resources.Filesystem {
+  match ipmitool_mc_info_of(stdout: mtjade1_mc_info_body()) {
+    McInfoReported { report: r } => {
+      let i = r.identity
+      i.device_id == 32
+        && i.device_revision == 1
+        && i.firmware_revision_major == 2
+        && i.firmware_revision_minor == 11
+        && i.manufacturer_id == 52538
+        && i.manufacturer_name == "Ampere Computing"
+        && i.product_id == 130
+        && i.product_name == "Unknown (0x82)"
+        && r.device_available == true
+        && r.provides_device_sdrs == true
+    }
+    McInfoUnreadable { cause: cause } => false
+  }
+}
+
+test fn h11ssl_unit1_capture_decodes_the_aten_identity() -> Bool uses fs: std.resources.Filesystem {
+  match ipmitool_mc_info_of(stdout: h11ssl_unit1_mc_info_body()) {
+    McInfoReported { report: r } => {
+      let i = r.identity
+      i.device_id == 32
+        && i.device_revision == 1
+        && i.firmware_revision_major == 1
+        && i.firmware_revision_minor == 52
+        && i.manufacturer_id == 10876
+        && i.manufacturer_name == "Super Micro Computer Inc."
+        && i.product_id == 6659
+        && i.product_name == "H11SSL-i/c/nc"
+        && r.device_available == true
+        && r.provides_device_sdrs == false
+    }
+    McInfoUnreadable { cause: cause } => false
+  }
+}
+
+test fn altrad8ud_inband_transcript_decodes_despite_its_failed_later_commands() -> Bool uses fs: std.resources.Filesystem {
+  let body = altrad8ud_inband_body()
+  if string_contains(s: body, pattern: "IPMI command failed") == false {
+    false
+  } else {
+    match ipmitool_mc_info_of(stdout: body) {
+      McInfoReported { report: r } => {
+        let i = r.identity
+        i.firmware_revision_major == 3
+          && i.firmware_revision_minor == 22
+          && i.manufacturer_id == 49622
+          && i.product_id == 8245
+          && r.device_available == true
+      }
+      McInfoUnreadable { cause: cause } => false
+    }
+  }
+}
+
+// THE RENDER SIDE, BESIDE THE PARSE SIDE (DESIGN §2: model a concept once and derive every use): what the renderer prints is what the parser
+// reads back, so a dry controller's `mc info` is a rendering of state and not a stored reply.
+test fn rendered_report_parses_back_to_the_same_report() -> Bool uses fs: std.resources.Filesystem {
+  match ipmitool_mc_info_of(stdout: h11ssl_unit1_mc_info_body()) {
+    McInfoReported { report: original } =>
+      match ipmitool_mc_info_of(stdout: render_ipmitool_mc_info(report: original)) {
+        McInfoReported { report: again } => again.identity == original.identity
+          && again.device_available == original.device_available
+          && again.provides_device_sdrs == original.provides_device_sdrs
+        McInfoUnreadable { cause: cause } => false
+      }
+    McInfoUnreadable { cause: cause } => false
+  }
+}
+
+// RED: a body with Product Name stripped REFUSES, naming that label. POSITIVE CONTROL: the same probe over
+// the intact capture names no label at all.
+test fn capture_missing_product_name_refuses_naming_it() -> Bool uses fs: std.resources.Filesystem {
+  let body = h11ssl_unit1_mc_info_body()
+  if string_contains(s: body, pattern: "Product Name") == false {
+    false
+  } else {
+    let lines: List<String> = filter(split(s: body, delimiter: "\n"), l => string_contains(s: l, pattern: "Product Name") == false)
+    let stripped = join(lines, "\n")
+    match ipmitool_mc_info_of(stdout: stripped) {
+      McInfoUnreadable { cause: cause } =>
+        string_contains(s: cause as String, pattern: "Product Name")
+          && count(ipmitool_mc_info_missing_labels(fields: ipmitool_mc_info_fields_of(stdout: body))) == 0
+      McInfoReported { report: r } => false
+    }
+  }
+}
+
+// RED: `Device Available : maybe` is not a yes/no, so the report is unreadable — a claim that was not made
+// does not become false, and does not become true. POSITIVE CONTROL: the intact capture decodes it as true.
+test fn device_available_that_is_not_yes_or_no_refuses() -> Bool uses fs: std.resources.Filesystem {
+  let body = h11ssl_unit1_mc_info_body()
+  let lines: List<String> = map(split(s: body, delimiter: "\n"), l =>
+    if string_contains(s: l, pattern: "Device Available") { "Device Available               : maybe" } else { l }
+  )
+  match ipmitool_mc_info_of(stdout: join(lines, "\n")) {
+    McInfoUnreadable { cause: cause } =>
+      string_contains(s: cause as String, pattern: "Device Available")
+        && match ipmitool_mc_info_of(stdout: body) {
+             McInfoReported { report: r } => r.device_available == true
+             McInfoUnreadable { cause: other } => false
+           }
+    McInfoReported { report: r } => false
+  }
+}
+
+// RED: an empty body is not an identity of zeroes — it refuses as unlabelled.
+test fn empty_body_refuses_as_unlabelled_not_as_zeroes() -> Bool {
+  match ipmitool_mc_info_of(stdout: "") {
+    McInfoUnreadable { cause: cause } => string_contains(s: cause as String, pattern: "no labelled field")
+    McInfoReported { report: r } => false
+  }
+}

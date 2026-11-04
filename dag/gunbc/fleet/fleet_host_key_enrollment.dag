@@ -2,7 +2,9 @@ module gunbc.fleet.fleet_host_key_enrollment
 
 import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.auth.fleet_convergence_federation { fleet_convergence_principal_set, fleet_convergence_provider_resource }
-import std.algebra { trim }
+import std.algebra { trim, list_sort_by_key, string_total_order }
+import std.list { first_duplicate_by_key }
+import std.optional { optional_is_absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -19,7 +21,8 @@ import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_fin
 import extdeps.ssh.keys { ssh_public_key_line }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, run_shell_command_stdin_local, process_outcome_admitted, process_outcome_receipt_text }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.network.mac { Eui48Address }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, render_network_host }
 import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
@@ -79,6 +82,23 @@ type HostKeyEnrollmentProvenance
   = ScannedFirstContact { scanned_from: NonEmptyStr }
   | IndependentlyAnchored { authority: NonEmptyStr }
   | ConsolePerBoot { boot_id: NonEmptyStr, channel: NonEmptyStr }
+  // ProvisionedInstall (T2, gunbc.plans.host_trust_provisioned_key): the key was minted ON
+  // the install target during a named provisioning attempt and its public half was announced
+  // over that attempt's console; the row is enrolled from that install's record, so
+  // install_attempt names the attempt whose network_install_receipt row grounds the installed
+  // root, and authority cites the console capture and that receipt. install_client_mac is the
+  // identity of the MACHINE that installed: the client MAC of that install's boot, in the
+  // receipt's own currency. The receipt world has no HostIdentity (the bridge from
+  // install-subject to fleet identity is the persistence axis's, not the catalog's), so the
+  // pin carries machine identity directly and gunbc.host.anchored_host_transport refuses a
+  // record whose install-boot MAC differs -- an attempt id alone is unique across hosts only
+  // by convention, and the compare does not trust conventions. Both string fields are
+  // NonEmptyStr: an arm that cannot name its record has no constructor. The row vouches for
+  // THAT installed system only - anchored_host_transport also matches install_attempt against
+  // the host's current complete receipt and refuses a superseded one - and unlike
+  // ScannedFirstContact it is never a provisional state awaiting a flip: the enrollment IS
+  // the record. Minted per host AND per install; never baked into a reusable image.
+  | ProvisionedInstall { install_client_mac: Eui48Address, install_attempt: NonEmptyStr, authority: NonEmptyStr }
 
 type KnownHostKeyRow {
   host: HostIdentity
@@ -192,7 +212,89 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
     ScannedFirstContact { scanned_from: _ } => "scanned-first-contact"
     IndependentlyAnchored { authority: _ } => "independently-anchored"
     ConsolePerBoot { boot_id: _, channel: _ } => "console-per-boot"
+    ProvisionedInstall { install_client_mac: _, install_attempt: _, authority: _ } => "provisioned-install"
   }
+}
+
+// T2 CATALOG RULE (gunbc.plans.host_trust_provisioned_key): a public half belongs to ONE
+// host identity; within that host, ONE install attempt may own it and ONE (address, record)
+// slot may state it. Legal: one host's one key recorded at several of its addresses, and
+// corroborated by several independent records. Refused: the same half under two host
+// identities -- the clone case, one private key minted once riding two machines -- two
+// install attempts of one host sharing one half (the key survived a reinstall; a reinstall
+// mints a new one and re-enrols), and the same slot stating one half twice, the verbatim
+// paste included, the most likely copy-paste mistake. This rule did not exist before T2: the
+// Spark rows' key-distinctness cross-check was manual prose. It compares the public half
+// itself, so provenance arms cannot dodge it. SCOPE, stated honestly: this form is SCOPED and
+// NARROWS the catalog-wide rule the note's approval (msg_34308ee8) named; the narrowing was
+// accepted by side-chat review at 7e4e926b (merry-fox-82, msg_548aac01).
+// RUNG, stated honestly (DESIGN 4b): this rule is evaluated when the claim
+// dag/test/claim/fleet/fleet_host_key_enrollment_witness is RUN, against the catalog itself.
+// That run is NOT on the required path - DESIGN's Building & checks keeps witnesses off it, and
+// the claim lane was withdrawn from it (gunbc.rung_drop v1_required_lanes_withdrawn). So a
+// contradicting row enters the catalog unnoticed by the required gate and is caught when the
+// witness runs. Two closures exist for that gap and neither is built yet: the write-time gate,
+// the enrolment admission fold named in gunbc.plans.host_trust_provisioned_key (step ENROL: the
+// fold admits a ProvisionedInstall row under its duplicate and staleness rules), and any later
+// row putting this check onto a required gate. Until one lands, do not read this name as
+// construction-time or required-path enforcement.
+// Both scans are single passes (DESIGN 6 cost-shape rule): std.list's fold-with-see-map over
+// the (half, host, address) slot, and a fold over the halves in std.algebra's string order
+// carrying each half-group's state -- its first host and its first recorded install attempt.
+type PublicHalfGroup {
+  half: String?
+  host: HostIdentity?
+  attempt: NonEmptyStr?
+  broken: Bool
+}
+
+// The install attempt a provenance arm records, if any; scan and transcription arms record
+// no install and so own no attempt.
+fn public_half_provisioned_attempt(p: HostKeyEnrollmentProvenance) -> NonEmptyStr? {
+  match p {
+    ProvisionedInstall { install_client_mac: _, install_attempt: attempt, authority: _ } => Present { value: attempt }
+    ScannedFirstContact { scanned_from: _ } => Absent
+    IndependentlyAnchored { authority: _ } => Absent
+    ConsolePerBoot { boot_id: _, channel: _ } => Absent
+  }
+}
+
+fn fleet_host_key_public_halves_are_unique(rows: List<KnownHostKeyRow>) -> Bool {
+  let slots_clear = optional_is_absent(opt: first_duplicate_by_key(xs: rows, key: k => k.public_key_base64 + " " + (k.host as String) + " " + known_host_row_field(k: k)))
+  let groups = fold(list_sort_by_key(xs: rows, key: k => k.public_key_base64, order: string_total_order()), init: PublicHalfGroup { half: Absent, host: Absent, attempt: Absent, broken: false }, f: (acc, row) => {
+      let same_half = match acc.half {
+        Absent => false
+        Present { value: seen_half } => seen_half == row.public_key_base64
+      }
+      let host_clash = same_half
+        && match acc.host {
+          Absent => true
+          Present { value: owner } => !host_identity_eq(a: owner, b: row.host)
+        }
+      let attempt = public_half_provisioned_attempt(p: row.provenance)
+      let attempt_clash = same_half
+        && match acc.attempt {
+          Absent => false
+          Present { value: recorded } => match attempt {
+            Absent => false
+            Present { value: this_one } => (recorded as String) != (this_one as String)
+          }
+        }
+      PublicHalfGroup {
+        half: Present { value: row.public_key_base64 },
+        host: if same_half { acc.host } else { Present { value: row.host } },
+        attempt: if same_half {
+          match acc.attempt {
+            Absent => attempt
+            Present { value: recorded } => Present { value: recorded }
+          }
+        } else {
+          attempt
+        },
+        broken: acc.broken || host_clash || attempt_clash,
+      }
+    })
+  slots_clear && !groups.broken
 }
 
 data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-receipt.txt"

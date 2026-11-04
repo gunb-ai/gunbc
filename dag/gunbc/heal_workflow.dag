@@ -1,4 +1,5 @@
 module gunbc.heal_workflow
+import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 
 import extdeps.github.expressions { Expression, ContextAccess, ExpressionTemplate, Inputs, Github, LiteralText, Interpolation, LogicalOr, interpolate, serialize_template }
 

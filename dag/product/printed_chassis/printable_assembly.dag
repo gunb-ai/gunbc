@@ -78,13 +78,26 @@ fn duct_root_kind_suffix(kind: DuctRootKind) -> String {
 // printable_assembly_selection. That module also ENUMERATES the duct roots, from the roster -- they cannot be
 // enumerated here, because this module is the one the card-reading geometry imports, so the roster is not
 // reachable from it (printable_assembly_selection duct_card_root, printed_assembly_roots).
-type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | DuctCardRoot { card: NonEmptyStr, kind: DuctRootKind }
+// A GROUP ROOT NAMES A GROUP DUCT PLAN (product.printed_chassis.group_duct GroupDuctPlan: an installation,
+// the operator's grouping and which group) and a shape. Its wire spelling is "<plan id>-<shape>"
+// ("a2-altra-row-fit-plate"). The plans are enumerated in printable_assembly_selection, for the same
+// import-cycle reason as the card roster.
+type GroupRootKind = GroupFitPlate | GroupDuct
+
+data group_root_kinds: List<GroupRootKind> = [GroupFitPlate, GroupDuct]
+
+fn group_root_kind_suffix(kind: GroupRootKind) -> String {
+  match kind { GroupFitPlate => "fit-plate" GroupDuct => "duct" }
+}
+
+type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | DuctCardRoot { card: NonEmptyStr, kind: DuctRootKind } | CardGroupRoot { plan: NonEmptyStr, kind: GroupRootKind }
 
 fn printed_assembly_root_wire(root: PrintedAssemblyRoot) -> String {
   match root {
     ResidentialCassette => "residential-cassette"
     CassetteRackReview => "cassette-rack-review"
     DuctCardRoot { card: card, kind: kind } => join([card as String, "-", duct_root_kind_suffix(kind: kind)], "")
+    CardGroupRoot { plan: plan, kind: kind } => join([plan as String, "-", group_root_kind_suffix(kind: kind)], "")
   }
 }
 
