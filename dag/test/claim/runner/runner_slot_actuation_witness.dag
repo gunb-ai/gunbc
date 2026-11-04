@@ -9,6 +9,7 @@ import extdeps.systemd { UnitLoadError, Failed }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv }
 import gunbc.runner.runner_slot_actuation {
+  SlotLocalObservation, SlotLocalObserved, SlotLocalUnobserved, slot_local_observation_settled, slot_local_observation_wire,
   SlotActuationReading,
   DrainWaitForStop, DrainPendingJobRunning, DrainPendingStopInProgress,
   SlotActivationPlan, ActivationAlreadyActive, ActivationSteps, ActivationRefused,
@@ -332,4 +333,17 @@ test fn an_unattributed_listing_refuses_and_does_not_stop() -> Bool {
       DrainUnitNotInstalled => false
     })
     && (match slot_activity_of_listing(listing: "actions-runner@srv3-18.service Runner.Listener\n", unit: slot_u) { SlotIdle => true SlotActivityUnobserved { cause: _ } => false SlotHasLiveWorker => false })
+}
+
+// ObserveRunnerLocalState settles only when every leg was read. POSITIVE CONTROL: unit, worker and MainPID read.
+test fn a_fully_read_local_observation_is_settled_and_carries_the_main_pid() -> Bool {
+  let o = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main_pid_raw: "333" }
+  slot_local_observation_settled(o: o) && slot_local_observation_wire(o: o) == concat("observe ", concat(slot_u as String, " MainPID=333 worker=idle"))
+}
+
+// RED: an unread MainPID, an unobserved worker, or a refused unit read never settles, and the wire names the leg.
+test fn an_unread_leg_never_settles_the_local_observation() -> Bool {
+  !slot_local_observation_settled(o: SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main_pid_raw: "unread:ssh refused" })
+    && !slot_local_observation_settled(o: SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotActivityUnobserved { cause: "ps refused" as NonEmptyStr }, main_pid_raw: "333" })
+    && !slot_local_observation_settled(o: SlotLocalUnobserved { unit: slot_u, step: "unit-read", reason: "ssh refused" })
 }
