@@ -346,18 +346,28 @@ fn user_slice_backstop_memory_swap_max() -> ByteSize {
 // shares no systemd hierarchy prefix with a serving slice (a dash is a parent edge).
 data attempt_worker_slice_unit_name: NonEmptyStr = "gunbc-attempt-worker.slice"
 
-// APPROPRIATION: as many 22 GiB slots as srv1's widest belt, the same function as
-// user_work_slice_memory_max_of. This slice is this deployment's (srv1's) host budget, and it hosts the
-// system-manager attempt workers of EVERY instance on srv1 -- srv1-live (belt 3) and the srv1 lab (belt 6).
-// So it is sized to srv1's widest belt, srv1_lab_belt_max_concurrent (6), read from the shared leaf
-// gunbc.roadmap.belt_concurrency (slice_bounds cannot import the instance module), so 6 workers actually fit
-// rather than queue/OOM in a slice built for fewer. That is 6 x 22 GiB = 132 GiB of MemoryMax. The figure
-// FOLLOWS the per-instance belt figure rather than being authored beside it (single authority, §3); a witness
-// ties these two together so a widened belt that forgets the slice is caught RED.
-// (Supersedes operator decision 2026-10-15 msg_57614325 "stack this 2 x 22 GiB ... srv1 CI width 7 to 5":
-// that sized the slice for a narrower belt. The charge is served_deployment_slice_allowance, not the wrap, so
-// widening it to 6 x 22 GiB grows the served-deployment allowance and lowers the derived srv1 CI runner width
-// further -- reported, not hidden.)
+// APPROPRIATION: as many 22 GiB slots as the LAB DEPLOYMENT's belt width, the same function
+// user_work_slice_memory_max_of uses. This is THE LAB DEPLOYMENT's transient-attempt-unit cgroup
+// (/etc/systemd/system/<attempt_worker_slice_unit_name>), installed by the lab apply (see the
+// attempt_system_unit_launch witness 'the_full_install_apply_installs_the_attempt_worker_slice_with_bounds_before_the_drain').
+// A transient unit is what a non-tmux provider (replay, the gunbc harness, headless Claude Code; see
+// dispatch_session_container_for_provider) gets for an enforceable memory bound, so the slice must fit the
+// lab's own belt: srv1_lab_belt_max_concurrent (6), read from the shared leaf gunbc.roadmap.belt_concurrency
+// (slice_bounds cannot import the instance module without closing a cycle through host_layout), so 6 workers
+// actually fit rather than queue/OOM in a slice built for fewer. That is 6 x 22 GiB = 132 GiB of MemoryMax.
+// The figure FOLLOWS the lab instance's belt_max_concurrent rather than being authored beside it (single
+// authority, §3); the discriminating witness 'the_attempt_worker_slice_follows_the_lab_belt_not_a_shared_constant'
+// reads the lab row's belt_max_concurrent and the lab's worker ceiling and requires the slice MemoryMax to equal
+// their product, while pinning srv1-live at 3 -- so a widened lab belt that forgets the slice, or one figure
+// shared by both instances, is caught RED.
+// NOT a sum over srv1 instances. It is the lab's bound, not a host-wide cap over every instance's belt:
+// srv1-live is a codex lane whose attempt workers run as tmux panes (CodexDispatchProvider -> tmux, not a
+// systemd transient), so they never enter this slice; and the operator's own sizing was 2 x 22 GiB -- already
+// BELOW srv1-live's belt of 3 -- which no host-wide-sum model would have produced. (Supersedes operator decision
+// 2026-10-15 msg_57614325 "stack this 2 x 22 GiB ... srv1 CI width 7 to 5". The charge is
+// served_deployment_slice_allowance, not the wrap, so widening it to 6 x 22 GiB grows the served-deployment
+// allowance and lowers the derived srv1 CI runner width further -- reported, not hidden; host-scoping that
+// charge per instance is a follow-up if srv1-live ever routes transient units here too.)
 data attempt_worker_slice_charged_slots: Nat = srv1_lab_belt_max_concurrent_nat
 
 data attempt_worker_slice_memory_max: ByteSize = user_work_slice_memory_max_of(slots: attempt_worker_slice_charged_slots)
