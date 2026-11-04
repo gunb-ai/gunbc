@@ -317,7 +317,6 @@ type HttpIngressArgument
   = HttpIngressTextArgument { name: String, value: String }
   | HttpIngressHeadersArgument { name: String, value: List<ServeRequestHeader> }
 
-data http_ingress_upper_ascii: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 data http_ingress_lower_ascii: String = "abcdefghijklmnopqrstuvwxyz"
 
 fn http_ingress_lower_char(c: String) -> String {

@@ -32,7 +32,16 @@ pub enum IngressAnswer {
     Bound(Value),
 }
 
-/// Classify an entry's answer. The type is read from the value, never from the entry's name.
+/// The declaration an ingress answer must inhabit. A runtime variant carries only its spellings, so
+/// the spelling is not the identity: the arm must be declared, in this run's closure, by exactly this
+/// module's coproduct.
+const INGRESS_MODULE: &str = "gunbc.http_ingress";
+const INGRESS_COPRODUCT: &str = "HttpIngressAdmission";
+
+/// Classify an entry's answer. A value is an ingress binding only when its arm is declared solely by
+/// `gunbc.http_ingress` `HttpIngressAdmission` in the run's closure. A same-spelled lookalike declared
+/// elsewhere is an ordinary answer, and a closure in which both declare the arm refuses, because the
+/// value could denote either.
 pub fn ingress_answer(value: &Value, ctx: &InterpContext) -> IngressAnswer {
     let Value::Variant {
         type_name,
@@ -42,10 +51,26 @@ pub fn ingress_answer(value: &Value, ctx: &InterpContext) -> IngressAnswer {
     else {
         return IngressAnswer::NotABinding;
     };
-    if !ctx.sym_eq(*type_name, "HttpIngressAdmission") {
+    if !ctx.sym_eq(*type_name, INGRESS_COPRODUCT) {
         return IngressAnswer::NotABinding;
     }
-    if ctx.sym_eq(*variant_name, "HttpIngressBound") {
+    let arm = ctx.resolve(*variant_name);
+    let declarers = ctx.variant_arm_declarers(&arm);
+    let ours = (INGRESS_MODULE.to_string(), INGRESS_COPRODUCT.to_string());
+    if !declarers.contains(&ours) {
+        return IngressAnswer::NotABinding;
+    }
+    if declarers.len() > 1 {
+        return IngressAnswer::Refused(format!(
+            "the answer's arm `{arm}` is declared by more than one coproduct in this closure ({}), so it cannot be read as {INGRESS_MODULE} {INGRESS_COPRODUCT}",
+            declarers
+                .iter()
+                .map(|(m, c)| format!("{m} {c}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if arm == "HttpIngressBound" {
         match ctx.field(fields, "binding") {
             Some(binding) => IngressAnswer::Bound(binding.clone()),
             None => IngressAnswer::Refused("HttpIngressBound carries no binding".to_string()),
@@ -53,10 +78,7 @@ pub fn ingress_answer(value: &Value, ctx: &InterpContext) -> IngressAnswer {
     } else {
         match ctx.field(fields, "reason") {
             Some(Value::Str(s)) => IngressAnswer::Refused(s.to_string()),
-            _ => IngressAnswer::Refused(format!(
-                "HttpIngressAdmission::{} is not a binding",
-                ctx.resolve(*variant_name)
-            )),
+            _ => IngressAnswer::Refused(format!("HttpIngressAdmission::{arm} is not a binding")),
         }
     }
 }
