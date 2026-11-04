@@ -45,15 +45,10 @@ test fn witness_jws_signing_input_leads_with_the_rs256_header_unpadded() -> Bool
 
 // 0xFB 0xFF is "+/8=" in the standard alphabet and "-_8" in base64url: one input that goes red for
 // the wrong alphabet AND for kept padding, which are the two ways a signature segment is mis-encoded.
-// BOTH fields are judged, not the interim alone: `jwt` is the authority on what the value IS (see the
-// note on extdeps.auth.jws.JwsSerializationOutcome), `text` is the declared duplicate, and their
-// equality is the control that keeps the duplicate from drifting out of the single `let` that fills
-// them. Dropping the `jwt` half here would leave the brand with no executing check while the witness
-// stayed green.
 test fn witness_jws_signature_segment_is_base64url_without_padding() -> Bool {
   match jws_compact_serialization(signing_input: "h.p", signature: [251, 255]) {
     JwsSignatureNotOctets { observed: _ } => false
-    JwsSerialized { jwt: jwt, text: text } => ((jwt as String) == text) && (text == "h.p.-_8")
+    JwsSerialized { jwt: jwt } => (jwt as String) == "h.p.-_8"
   }
 }
 
@@ -66,7 +61,7 @@ test fn witness_jws_signature_segment_is_base64url_without_padding() -> Bool {
 // only.
 test fn witness_a_non_octet_signature_member_refuses_and_names_what_was_observed() -> Bool {
   match jws_compact_serialization(signing_input: "h.p", signature: [251, 256]) {
-    JwsSerialized { jwt: _, text: _ } => false
+    JwsSerialized { jwt: _ } => false
     JwsSignatureNotOctets { observed: o } => o == 256
   }
 }

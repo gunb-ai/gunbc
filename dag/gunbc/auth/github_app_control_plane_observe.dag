@@ -164,8 +164,8 @@ fn observe_github_app_control_plane(
       match app_jwt_for(dispatch_app_id: app.app_id.value, key: key, now_epoch_secs: now) {
         AppJwtUnsigned { detail: d } =>
           control_plane_unreached(app: app, detail: concat("App JWT unsigned: ", d), required: required, reason: reason)
-        AppJwtSigned { jwt: _, text: text } => {
-          let read: RestResult<GitHubAppPublicRecord> = match github.AuthenticatedApp.GetAuthenticatedApp(app_jwt: secret_of_text(text)) {
+        AppJwtSigned { jwt: jwt } => {
+          let read: RestResult<GitHubAppPublicRecord> = match github.AuthenticatedApp.GetAuthenticatedApp(app_jwt: secret_of_text(jwt as String)) {
             RestAnswered { answer } => RestAnswered { answer: answer.result }
             RestRefused { refusal } => RestRefused { refusal: refusal }
           }
@@ -177,7 +177,7 @@ fn observe_github_app_control_plane(
                 app: app,
                 custody: custody,
                 registration: registration,
-                observed: installation_of_read(outcome: match github.AuthenticatedApp.GetAppInstallation(app_jwt: secret_of_text(text), installation_id: installation.value) {
+                observed: installation_of_read(outcome: match github.AuthenticatedApp.GetAppInstallation(app_jwt: secret_of_text(jwt as String), installation_id: installation.value) {
                   RestAnswered { answer } => RestAnswered { answer: answer.result }
                   RestRefused { refusal } => RestRefused { refusal: refusal }
                 }),

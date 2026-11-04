@@ -193,7 +193,7 @@ fn mint_apns_provider_token(provider: ApnsProviderIdentity, key: JwsSigningKeyRe
         JwsSigned { signature: sig } =>
           match jws_compact_serialization(signing_input: input as NonEmptyStr, signature: sig) {
             JwsSignatureNotOctets { observed: o } => ApnsProviderTokenUnavailable { detail: concat("the signer returned a member outside octet range: ", to_string(o)) }
-            JwsSerialized { jwt: jwt, text: _ } => ApnsProviderTokenReady { token: jwt }
+            JwsSerialized { jwt: jwt } => ApnsProviderTokenReady { token: jwt }
           }
       }
   }
