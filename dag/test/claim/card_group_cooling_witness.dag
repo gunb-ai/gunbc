@@ -5,13 +5,13 @@ import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup }
 import std.measure { micrometer, micrometer_count, watt, millilitre_per_second, celsius_delta }
 import product.printed_chassis.card_end_interface {
-  CardEndInterface, EndFaceFeature, FaceConnector, FinFreeBands, BandTaper, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved, a16_card_end, a2_card_end,
+  CardEndInterface, EndFaceFeature, FaceConnector, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved, a16_card_end, a2_card_end,
 }
 import product.printed_chassis.gpu_duct { screwed_end_cap_of, ScrewedEndCap, ScrewedEndCapMissing }
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, a2_duct_card, a16_duct_card }
 import product.printed_chassis.group_duct {
-  GroupDuctPlan, GroupFitPlateAdmission, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
-  GroupMembersNotSideBySide, GroupMemberFaceUnfit,
+  GroupDuctPlan, GroupFitPlateAdmission, a2_altra_row_plan, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
+  GroupMembersNotSideBySide,
 }
 import product.printed_chassis.printable_assembly { CardGroupRoot, GroupFitPlate, PrintableAssemblyReady, PrintableAssemblyRefused }
 import product.printed_chassis.printable_assembly_selection { group_fit_plate_selection }
@@ -106,7 +106,6 @@ fn face_with(inserts_absent: Bool) -> CardEndInterface {
     window_length: micrometer(count: 52370), window_depth: micrometer(count: 14200),
     window_from_top: micrometer(count: 1600), window_from_back: micrometer(count: 16400),
     fin_setback: micrometer(count: 1000),
-    fin_free_bands: FeatureNotObserved { read_obligation: "supplied" },
     inserts: if inserts_absent { FeatureAbsentObserved } else { FeatureNotObserved { read_obligation: "supplied: not looked for" } },
     connector: FeatureAbsentObserved,
   }
@@ -182,7 +181,7 @@ fn a2_with_connector(id: NonEmptyStr, designator: NonEmptyStr, connector: EndFac
   let face = CardEndInterface {
     source: f.source, face_length: f.face_length, face_thickness: f.face_thickness,
     window_length: f.window_length, window_depth: f.window_depth, window_from_top: f.window_from_top, window_from_back: f.window_from_back,
-    fin_setback: f.fin_setback, fin_free_bands: f.fin_free_bands, inserts: f.inserts, connector: connector,
+    fin_setback: f.fin_setback, inserts: f.inserts, connector: connector,
   }
   InstalledCard { instance: CardInstance { id: id, card: DuctCard { row: a2_duct_card.row, end_face: EndFaceRead { face: face } } }, slot: altra_slot(designator: designator) }
 }
@@ -211,26 +210,12 @@ test fn a_fit_plate_is_refused_across_an_empty_slot() -> Bool {
     && selects(p: supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_at(id: "b", designator: "PCIE5")]))
 }
 
-// A TAB IS NEVER DRAWN PAST THE READ SLOPE: the tabs follow the slope for a fixed grip depth, so a taper read
-// with no depth, or shallower than the grip, refuses by name before any geometry; the A2's own taper selects.
-fn a2_with_slope(id: NonEmptyStr, designator: NonEmptyStr, slope_um: Int) -> InstalledCard {
-  let f = a2_card_end
-  let bands = FinFreeBands { top: micrometer(count: 4900), bottom: micrometer(count: 4900), taper: FeaturePresent { value: BandTaper { lip_depth: micrometer(count: 1000), slope_depth: micrometer(count: slope_um), fin_gap: micrometer(count: 1000) } } }
-  let face = CardEndInterface {
-    source: f.source, face_length: f.face_length, face_thickness: f.face_thickness,
-    window_length: f.window_length, window_depth: f.window_depth, window_from_top: f.window_from_top, window_from_back: f.window_from_back,
-    fin_setback: f.fin_setback, fin_free_bands: FeaturePresent { value: bands }, inserts: f.inserts, connector: f.connector,
+
+// THE REAL A2 ROW PLATE IS THE PLATE AND ITS SLEEVE ALONE: the operator's plan admits, and the printed part
+// is one plate body plus four sleeve walls, with nothing standing on the plate inside a face.
+test fn the_a2_row_fit_plate_is_the_plate_and_its_sleeve_alone() -> Bool {
+  match admit_group_fit_plate(p: a2_altra_row_plan) {
+    GroupFitPlateAdmitted { parts: ps, interfaces: _ } => any(ps, x => x.id == "FIT-PLATE" && length(list: x.adds) == 5 && length(list: x.cuts) == 4)
+    _ => false
   }
-  InstalledCard { instance: CardInstance { id: id, card: DuctCard { row: a2_duct_card.row, end_face: EndFaceRead { face: face } } }, slot: altra_slot(designator: designator) }
 }
-
-fn slope_plan(slope_um: Int) -> GroupDuctPlan {
-  supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_with_slope(id: "b", designator: "PCIE5", slope_um: slope_um)])
-}
-
-test fn a_band_tab_is_refused_on_a_taper_too_shallow_for_its_grip() -> Bool {
-  let flat = match admit_group_fit_plate(p: slope_plan(slope_um: 0)) { GroupMemberFaceUnfit { instance: i, reason: r } => i == "b" && string_contains(s: r, pattern: "read as 0 um deep") _ => false }
-  flat && refusal_says(p: slope_plan(slope_um: 1000), pattern: "b: the band taper's slope is read as 1000 um deep, and the tabs follow it for 1500 um")
-    && selects(p: slope_plan(slope_um: 4000))
-}
-

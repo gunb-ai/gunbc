@@ -1,0 +1,46 @@
+module gunbc.recurring_failure_mode.a_stale_projection_carrying_its_own_regeneration_step
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// THE CLASS: an emitted file whose job is to regenerate emitted files, where the regeneration is invoked
+// by commands written INSIDE that same file. While the file is current the loop closes. Once it is stale,
+// the only step able to repair it is the step whose own text is the staleness, so the generation cannot be
+// brought back into agreement by the lane that owns it, and a required check that refuses the divergence
+// has no remedy to offer: refusing is exactly what keeps the remedy from running.
+//
+// THIS IS NOT THE SAME CLASS as gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror.
+// That row is a hand edit past a carrier, repaired by the round that regenerates the file. Here nothing was
+// hand edited: every byte came from the emitter, and the emitter is right. The defect is that the emitted
+// text was wrong when it was written, and the lane's authority to rewrite it lives in the text itself.
+data a_stale_projection_carrying_its_own_regeneration_step: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_stale_projection_carrying_its_own_regeneration_step" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "a composition produced by a step whose own commands are not the projection being repaired, so the lane can refuse a divergence in a generated CI file and still produce the bytes that satisfy the refusal, with one emission as the authority for both" } },
+
+  receipts: [
+    "INVALID STATE: a repository's committed CI projection contains a step that composes a tree and invokes the compiler to regenerate the repository's projections, and the committed text of that step disagrees with what its authority now emits. The drift check reports the divergence and fails, which is correct; the step that would produce the repaired bytes is the divergent text, so it cannot run to completion; the candidate it would hand the publisher is never produced; and the lane stays red with a true verdict and no route to green inside itself.",
+
+    "MEASURED INSTANCE, gunb-ai/gunbc-private's drift lane, run 41758062064, job 126338849282. The seal step's own output was 'line 6: RUNNER_TMP_ROOT: unbound variable' with exit 1 - a first defect in the same step, repaired by gunbc#15750. With that repaired, the step's remaining geometry is still wrong: it assigns COMPOSE to the composed directory, creates the overlay and the head link one level BELOW that directory, and then cd-s into COMPOSE and runs the compiler reading the overlay and the head tree from COMPOSE. Measured against the committed statement list with the scratch root set: the cwd is the composed directory, the overlay and head link resolve to nothing, and both live one directory deeper. The step fails at the head tree the entry roots its writes at, with the copy present one level below the read. The overlay copy is masked in the real job, because the check step earlier in the same job composes the overlay correctly and puts it where the run looks; the head link has no such earlier creator, so the refusal lands there. That masking is why the location had to be measured rather than inferred.",
+
+    "WHY IT IS A CLASS AND NOT AN ANECDOTE. The composed step had two spellings of one rule in the same module: one renderer built its in-tree paths as a name hanging directly off the composed directory, and the other re-inserted the composed directory name between the variable and the thing it names. The wrong spelling is what emitted the broken step. gunbc#15801 unifies them behind one helper, so the doubled form is not something a caller can spell, and the family sweep gained a law over the same statements: a statement that expands the composed directory may not repeat its name, the name read off the statement that assigns the variable rather than written into the check. That repairs what is emitted FROM NOW ON. It cannot repair what is already committed, because the repair is emitted INTO the file the step lives in - which is the class.",
+
+    "WHAT IS NOT THIS CLASS. A projection whose regeneration is invoked from a different file: there the lane repairs a stale generation on the next run, which is the normal case and is what heal exists for. A hand edit of a generated file: that is regen_candidate_reverts_hand_authored_mirror, and its remedy is the round, not an authority run. A step that fails for a reason independent of its own text: a red required check with a working repair step is heal's ordinary business, not this. The tell that separates this class is that the failing step's commands and the file containing them are the same bytes.",
+
+    "THE ROUTE OUT, AND ITS PRICE. One generation must be produced by an authority run OUTSIDE the lane, so that the step's text is no longer both the patient and the surgeon. That run is a one-time harness on a host that can read both repositories, and it is admissible only receipted: the seed commit it built from, the sha256 of the compiler binary it ran, the exact generator command, and the run it came from - the same evidence the emitted step's own manifest carries. Once that generation is committed, the lane verifies every generation after it, which is the state the class was missing. A bootstrap that is not receipted is indistinguishable from a hand edit and must be refused; the receipt is what makes it a generation rather than an edit.",
+
+    "RUNG: found below the ladder - the emitted step could not repair its own file and nothing said so until a run reached it; CURRENT: the same, since no lane run has yet produced a repaired generation; ceiling and the next-rung trigger are the standing's, and the ceiling is reached when the regeneration commands are structurally separate from the projection being repaired: a property of the composition, not of any row's contents, which is why it is StructurallyGuaranteed. While that separation is absent no run inside the lane can produce the generation that satisfies the lane's own refusal, so the sameness of the bytes is the invalid state and the separation is the ceiling. The blocker is one grounding: the design that decouples the carrying file from the regeneration exists as an accepted narrow form and as no declaration.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.ci.repository_compose_overlay", decl_name: "head_tree_compose_statements", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.ci.repository_compose_overlay", decl_name: "path_under", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.ci.repository_compose_overlay", decl_name: "composed_source_roots", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.ci.repository_projection_drift_workflow", decl_name: "heal_seal_statements", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.ci.repository_ci_profile", decl_name: "ProjectionDrift", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror", decl_name: "regen_candidate_reverts_hand_authored_mirror", field: WholeDeclaration },
+  ],
+}
