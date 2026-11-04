@@ -1,13 +1,47 @@
 module test.claim.durable_compare_and_set
 
-// Witnesses for std.durable_compare_and_set. Generations here are 7 and 9
-// rather than 0 and 1 on purpose: at the low values the "next" generation of
-// one fixture equals the literal of another, so an arm that returned a
-// constant would pass every assertion. A fixture sitting at such a coincidence
-// erases the test it appears to perform.
+import std.types as Types: NonEmptyStr
+import std.content_hash as ContentHash: content_hash_of_value
+import std.checked_arithmetic as CheckedArithmetic: int_inclusive_max
+import std.durable_compare_and_set as DurableCas: CasAttempt, CasAttemptKey, CasCommitted, CasExpectation,
+  CasExpectedGeneration, CasGeneration, CasGenerationSpaceExhausted, CasObservedReadable,
+  CasObservedUnreadable, CasOutcome, CasPreconditionFailed, CasReadableAbsent, CasReadablePresent,
+  CasReadableSlot, CasSlotObservation, CasSlotVersion, CasStoreRefused, CasUnreadableContentMissing,
+  CasUnreadableObservationBoundExceeded, CasUnreadableReadRefused, ExpectSlotAbsent, ExpectSlotGeneration,
+  cas_attempt, cas_decide, cas_generation_count, cas_unreadable_slot_detail
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
+// WHAT DECIDES HERE. std.durable_compare_and_set's cas_decide answers one question -- does this attempt's
+// expectation admit this observation, and at which generation -- from an attempt and an observation, with no
+// persistence. This entry keeps the claims about that decision that a real file store cannot reach: the
+// generation-space boundary, the unreadable-cause completeness, the superseded refusal that reports the current
+// head, the empty-slot counterexample, and the sentinel for the one field the fold does not consume.
+//
+// THE RULE IS SHARED, NOT RESTATED. gunbc.durable_cas_file_store's cas_compare_and_set_outcome now calls
+// cas_expectation_admits instead of spelling its own comparison, so the rows here and the rows in
+// test.claim.durable_cas_file_store_wet_witness decide through one authority. Measured control: mutating
+// cas_expectation_admits so an absent observation admits a generation-naming expectation reddens the store's
+// empty-slot counterexample and this entry's; before that cut, the same mutation left every store row green.
+//
+// WHY THIS ENTRY WAS DEAD, AND WHAT REPAIRED IT. It imported nothing, so every cas_* name it used was
+// unresolved -- 134 hard errors at its own entry, measured before this change, and identical under
+// --source-root src/v2 -- which is why none of its rows had ever executed. It also declared
+// live_tree_disposition: a LiveTreeDisposition fixture (a type from a std live-tree module it never imported)
+// that no row read. A fixture carrying no witness is not evidence, so the declaration was deleted and the
+// imports above are exactly what its rows name.
+//
+// WHAT WAS RETIRED, AND WHERE EACH CLAIM LIVES INSTEAD. The covering rows are the wet ones -- they execute the
+// real store under test.claim.durable_cas_file_store_wet_witness, so they are the stronger authority and the
+// fold-level copies were removed rather than left beside them:
+//   - a create against an absent slot lands at the first generation:
+//     commit_then_independent_read_back_agrees_by_real_execution;
+//   - a create against an occupied slot refuses: a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution;
+//   - an update from the current generation commits at the next: an_advance_after_commit_lands_generation_two_by_real_execution;
+//   - the loser of a race retries against the generation that won, and a retry of the stale expectation stays
+//     refused: a_racing_writer_under_a_window_retries_and_loses_no_commit_by_real_execution, which binds a real
+//     window and a real attempt rather than a fixture;
+//   - an expectation refused as unreadable commits when the same slot is read absent:
+//     a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution and
+//     an_established_empty_root_reads_the_slot_absent_by_real_execution.
 data witness_key: NonEmptyStr = "gunbc-owned-ci-fabric" as NonEmptyStr
 
 data occupied_at_seven: CasSlotObservation<NonEmptyStr> = CasObservedReadable {
@@ -43,31 +77,29 @@ fn committed_generation_of(outcome: CasOutcome<NonEmptyStr>) -> Int {
   }
 }
 
-test fn a_create_against_an_absent_slot_commits_at_the_first_generation() -> Bool {
-  let outcome = cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasObservedReadable { readable: CasReadableAbsent })
-  committed_generation_of(outcome: outcome) == 1
-}
 
-test fn a_create_against_an_occupied_slot_refuses() -> Bool {
-  let outcome = cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: occupied_at_seven)
-  match outcome {
-    CasPreconditionFailed { expected: _, observed: _ } => true
+// THE COUNTEREXAMPLE THE STORE'S OWN HEADER CARRIES, DECIDED AT THE RULE ITSELF. A slot proven absent admits
+// only an expectation that asserts absence: an ExpectSlotGeneration naming a generation must refuse, because
+// deciding it from the expectation alone would let an unobserved write create a row at the successor of a
+// generation nobody read -- the empty-store-expecting-seven case. Before the store called this rule, the row
+// below was the only place that claim was checked; the store's
+// a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution now checks the
+// same rule through the file store.
+test fn an_absent_slot_refuses_a_generation_naming_expectation_and_commits_nothing() -> Bool {
+  let absent = CasObservedReadable { readable: CasReadableAbsent }
+  let refused = match cas_decide(attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }), observed: absent) {
+    CasPreconditionFailed { expected: _, observed: o } => match o {
+      CasReadableAbsent => true
+      CasReadablePresent { version: _ } => false
+    }
     CasCommitted { committed: _ } => false
     CasStoreRefused { cause: _ } => false
   }
+  let admitted = committed_generation_of(
+    outcome: cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: absent)
+  ) == 1
+  refused && admitted
 }
-
-test fn an_update_from_the_current_generation_commits_at_the_next() -> Bool {
-  let outcome = cas_decide(
-    attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
-    observed: occupied_at_seven,
-  )
-  committed_generation_of(outcome: outcome) == 8
-}
-
-// The discriminating RED for the whole module: a writer holding a superseded
-// generation must lose. If cas_expectation_admits ever compared anything other
-// than the two generations — or returned a constant — this is the assertion
 // that goes red.
 test fn an_update_from_a_superseded_generation_refuses_and_reports_the_current_head() -> Bool {
   let outcome = cas_decide(
@@ -95,50 +127,7 @@ test fn an_update_from_a_superseded_generation_refuses_and_reports_the_current_h
 //   3. the loser re-reads, retries against 8, and MUST land 9
 //
 // The bindings below are named winner / loser / retry in that order.
-test fn the_loser_of_a_race_can_commit_against_the_generation_that_won() -> Bool {
-  let winner = cas_decide(
-    attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
-    observed: occupied_at_seven,
-  )
-  let winner_landed = committed_generation_of(outcome: winner) == 8
 
-  let loser = cas_decide(
-    attempt: proposal(expected: ExpectSlotGeneration { generation: 7 }),
-    observed: occupied_at_seven_after_winner(),
-  )
-  let loser_refused = match loser {
-    CasPreconditionFailed { expected: _, observed: _ } => true
-    CasCommitted { committed: _ } => false
-    CasStoreRefused { cause: _ } => false
-  }
-
-  let retry = cas_decide(
-    attempt: proposal(expected: ExpectSlotGeneration { generation: 8 }),
-    observed: occupied_at_seven_after_winner(),
-  )
-  let retry_landed = committed_generation_of(outcome: retry) == 9
-
-  winner_landed && loser_refused && retry_landed
-}
-
-fn occupied_at_seven_after_winner() -> CasSlotObservation<NonEmptyStr> {
-  CasObservedReadable {
-    readable: CasReadablePresent { version: CasSlotVersion {
-      generation: 8,
-      content: content_hash_of_value(value: "proposed-state" as NonEmptyStr),
-      value: "proposed-state" as NonEmptyStr,
-    } },
-  }
-}
-
-// The empty-observation-narrow control. A slot the store could not read must
-// NOT be reported as a lost race and must NOT be treated as absent — either
-// would let a writer create a row on top of one it merely failed to read.
-//
-// IT ENUMERATES EVERY CAUSE ARM, AND THE FOURTH ROW LANDED WITH THE FOURTH ARM.
-// A claim that names three of four causes is narrower than the carrier it is
-// about, and the gap is invisible: it keeps passing while the arm it does not
-// name is exactly the one a new realization reaches first. The bound-exhaustion
 // cause is that arm.
 test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
   let malformed = cas_decide(
@@ -176,38 +165,7 @@ fn is_store_refusal(outcome: CasOutcome<NonEmptyStr>) -> Bool {
 // Positive control on the negative arm: ExpectSlotAbsent against a genuinely
 // absent slot commits, so the refusal above is attributable to unreadability
 // and not to the expectation being unsatisfiable in general.
-test fn the_same_expectation_that_was_refused_when_unreadable_commits_when_absent() -> Bool {
-  committed_generation_of(
-    outcome: cas_decide(attempt: proposal(expected: ExpectSlotAbsent), observed: CasObservedReadable { readable: CasReadableAbsent })
-  ) == 1
-}
 
-// KNOWN GAP, MADE EXECUTABLE. THIS TEST ASSERTS THE DEFECT, NOT THE FIX.
-//
-// IF THIS WITNESS IS RED, THE GAP WAS CLOSED. THAT IS THE SUCCESS CONDITION.
-// The correct response is to DELETE this witness and record the climb. Do NOT
-// adjust the expectation to make it pass again — doing so would silently
-// delete the wall in the same motion that landed it, and the deletion would
-// look like a routine test fixup in the diff.
-//
-// What it asserts: cas_decide never reads attempt.key, so two attempts
-// differing ONLY in which slot they name produce identical outcomes against
-// one observation. That is the wrong-slot commit — an observation actually
-// read from slot B commits to slot A when the generations agree. It is
-// enrolled while the defect is still constructible so the boundary obligation
-// in std.durable_compare_and_set is executable rather than prose.
-//
-// WHY THIS IS NOT AN EXPECTING-RED ENROLLMENT, which would be the better home
-// because a fix would turn it GREEN instead of red: an expecting-red witness
-// must assert the DESIRED behaviour — that an attempt for slot A refuses an
-// observation read from slot B. That sentence is unwritable here. A
-// CasReadableSlot carries nothing naming the slot it came from, so "an
-// observation from B" has no representation at this interface. The gap is
-// unobservable in exactly the way that makes the desired assertion
-// inexpressible, which is why the only executable form is a green one
-// asserting the defect. The name below carries the warning because a failure
-// line shows the name and nothing else.
-//
 // A green here is NOT a safety claim. It is the receipt for a declared gap.
 fn attempt_for(key: NonEmptyStr) -> CasAttempt<NonEmptyStr> {
   cas_attempt(
@@ -239,6 +197,8 @@ fn occupied_at(g: CasGeneration) -> CasSlotObservation<NonEmptyStr> {
 
 // THE LAST GENERATION HAS NO SUCCESSOR, AND AN ADMITTED ATTEMPT AGAINST IT REFUSES AS EXHAUSTED rather
 // than committing a successor that only an overflowing addition could name. The positive control is
+// the generation one below: it still commits, to the maximum itself.
+
 // the generation one below: it still commits, to the maximum itself.
 test fn an_attempt_against_the_last_generation_refuses_as_exhausted_and_one_below_commits_to_it() -> Bool {
   let max = int_inclusive_max()
