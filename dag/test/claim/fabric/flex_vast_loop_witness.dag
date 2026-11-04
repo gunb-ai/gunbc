@@ -2,7 +2,7 @@ module test.claim.fabric.flex_vast_loop_witness
 
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, List, Bool, Int, String }
+import std.types { NonEmptyStr, List, Bool, Int, String, list_length }
 import std.optional { Present, Absent }
 import std.decimal { ExactDecimal }
 import std.decl_ref { decl_ref }
@@ -58,10 +58,8 @@ import test.claim.fabric.flex_bid_admission_witness {
   t_policy, t_attempt, t_account, t_window, empty_occupancy, t_machine, one_dollar_wire, one_ten, usd_hour,
 }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
-import extdeps.cloud.vast_ai { VastAiCharges }
 import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected }
 import gunbc.serving.rented_release { RentedInstanceObserved, rented_bound_instance_id }
-import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation { rented_allocation_wire }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

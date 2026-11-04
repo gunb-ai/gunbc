@@ -31,7 +31,7 @@ import product.printed_chassis.assembly_inventory { inventory_report, captured_i
 import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory, cassette_inventory_store, CassetteInventoryStoreReady, CassetteInventoryStoreUnready }
 import gunbc.host_state_root { host_state_tree }
 import product.printed_chassis.prepared_bundle_store { prepared_bundle_stage, PreparedBundleStaging, PreparedBundleStagingReady, PreparedBundleStagingUnready, prepared_bundle_stage_directory, prepared_bundle_stage_queues, PreparedQueuesWritten, PreparedQueuesRefused, prepared_bundle_publish, PreparedPublished, PreparedPublishRefused, PreparationInputs, prepared_bundle_published, PreparedBundleReady, PreparedBundleNotPrepared, PreparedBundleAmbiguous, PreparedBundleCorrupt, PreparedBundleUnready }
-import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctCardRoot, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_wire }
+import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, DuctCardRoot, CardGroupRoot, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_wire }
 import product.printed_chassis.printable_assembly_selection { select_printable_assembly, printed_assembly_root_from_wire }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 
@@ -190,6 +190,7 @@ fn inventory_root(plan_file:String) -> InventoryRoot {
       }
       CassetteRackReview=>InventoryRootRefused
       DuctCardRoot {card:_,kind:_}=>InventoryRootRefused
+      CardGroupRoot {plan:_,kind:_}=>InventoryRootRefused
      }
     }
    }

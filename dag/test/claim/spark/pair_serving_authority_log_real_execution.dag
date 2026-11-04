@@ -14,7 +14,10 @@ import product.capacity.lease { LeaseGrant, LeasePolicy, lease_grant, lease_fenc
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import product.capacity.event_chain { EventId, HeadAbsent, HeadAt, head_expectation_eq }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  FabricWetStore, FabricWetStoreReady, FabricWetStoreUnready, fabric_wet_store, fabric_fixture_instance,
+}
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
 import gunbc.spark.host_commitment {
   SparkHostAdmitted, SparkHostRefused, HostEffectHandle, admit_unplaced_host_over, release_host_effect_over,
@@ -53,15 +56,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the current authority at generation 1; a second transition decided against the state the first
 // one LEFT is stale, carries the state now current, and appends nothing.
 
-fn alr_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+fn alr_with_temp_dir(scenario: fn(FabricStorageBinding, FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
-  let observed = scenario(dir.path)
+  let observed = match alr_witness_store(dir: dir.path) {
+    FabricWetStoreUnready { area: _, detail: _ } => false
+    FabricWetStoreReady { store: ops } => scenario(FabricStorageLocalFiles { operations: ops }, dir.path)
+  }
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && observed && cleaned.success
 }
 
-fn alr_witness_layout(dir: FilePath) -> FabricStorageBinding {
-  FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr) }
+// THE SCENARIO'S STORE IS OPENED THROUGH THE ONE MINT over the declared chain and an isolated instance of
+// the temporary directory (test.claim.fabric.fabric_storage_fixture fabric_wet_store /
+// fabric_fixture_instance, the recorded witness route). It is resolved ONCE, in alr_with_temp_dir, and the
+// scenario receives a standing store: a scenario whose store will not stand fails, and no scenario can
+// name a store directory.
+fn alr_witness_store(dir: FilePath) -> FabricWetStore {
+  fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as String))
 }
 
 // THE RESTING ROW IS SUPPLIED, not read from the source roster: the roster claims no group, and
@@ -72,14 +83,14 @@ fn alr_resting() -> PairServingGroupAuthority {
 }
 
 fn alr_witness_root_ready(dir: FilePath) -> Bool {
-  match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr)) { FabricStorageRootReady => true  _ => false }
+  match alr_witness_store(dir: dir) { FabricWetStoreReady { store: _ } => true  FabricWetStoreUnready { area: _, detail: _ } => false }
 }
 
 // A ready remote has group B's supplied resting row ESTABLISHED on its partition (the durable
 // genesis the fold reads from), at 990, before any scenario event.
-fn alr_witness_remote_ready(dir: FilePath) -> Bool {
+fn alr_witness_remote_ready(store: FabricStorageBinding, dir: FilePath) -> Bool {
   alr_witness_root_ready(dir: dir)
-    && (match pair_serving_authority_establish(store: alr_witness_layout(dir: dir), group: FabricGroupB {}, authority: alr_resting(), actor: "witness" as NonEmptyStr, at: 990) { AuthorityEstablishedAt { id: _ } => true  AuthorityEstablishmentRefused { group: _, step: _, reason: _ } => false })
+    && (match pair_serving_authority_establish(store: store, group: FabricGroupB {}, authority: alr_resting(), actor: "witness" as NonEmptyStr, at: 990) { AuthorityEstablishedAt { id: _ } => true  AuthorityEstablishmentRefused { group: _, step: _, reason: _ } => false })
 }
 
 fn alr_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
@@ -134,10 +145,9 @@ fn alr_current_may_launch(c: CurrentAuthority) -> Bool {
 // expecting the resting row is stale and names the current.
 test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
-    alr_with_temp_dir(scenario: fn(dir) {
-      let store = alr_witness_layout(dir: dir)
+    alr_with_temp_dir(scenario: fn(store, dir) {
       let resting = alr_resting()
-      alr_witness_remote_ready(dir: dir)
+      alr_witness_remote_ready(store: store, dir: dir)
         && alr_current_is(c: current_pair_serving_authority(store: store, group: FabricGroupB {}, at: 1000), expected: resting, generation: 0)
         && (match pair_serving_authority_transition(store: store, group: FabricGroupB {}, expected: resting, next: alr_w_pending(h: h), transaction: "tx-real" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
               AuthorityTransitionAppended { id: admitting, generation: g1, next: _ } =>
@@ -173,8 +183,7 @@ test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_exec
 // log is never touched.
 test fn an_unclaimed_group_is_refused_at_the_claim_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
-    alr_with_temp_dir(scenario: fn(dir) {
-      let store = alr_witness_layout(dir: dir)
+    alr_with_temp_dir(scenario: fn(store, dir) {
       alr_witness_root_ready(dir: dir)
         && (match current_pair_serving_authority(store: store, group: FabricGroupB {}, at: 1000) {
               CurrentAuthorityUnread { group: _, step: s, reason: _ } => s == "claim"
@@ -265,12 +274,11 @@ fn alr_release_with_quiet(handle: HostEffectHandle, store: FabricStorageBinding,
 // host another live claim holds refuses at `held`.
 test fn an_overdue_host_effect_claim_fences_until_released_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
-    alr_with_temp_dir(scenario: fn(dir) {
-      let store = alr_witness_layout(dir: dir)
+    alr_with_temp_dir(scenario: fn(store, dir) {
       let released = ReleasedToFleet { group: FabricGroupB {}, release_receipt: h }
       let srv = match get(xs: fabric_group_hosts(g: FabricGroupB {}), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv10") }
       let resting = alr_resting()
-      alr_witness_remote_ready(dir: dir)
+      alr_witness_remote_ready(store: store, dir: dir)
         && (match pair_serving_authority_transition(store: store, group: FabricGroupB {}, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
         && (match host_effect_admit(store: store, host: srv, purpose: "a crashed lane" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 10), residue: alr_residue(pattern: "/srv/build"), at: 1001) {
               HostEffectClaimed { id: claim } =>
@@ -293,11 +301,10 @@ test fn an_overdue_host_effect_claim_fences_until_released_by_real_execution() -
 // refused at `evidence` (it is not live), and a third claim is admitted again.
 test fn an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
-    alr_with_temp_dir(scenario: fn(dir) {
-      let store = alr_witness_layout(dir: dir)
+    alr_with_temp_dir(scenario: fn(store, dir) {
       let host = alr_srv(s: "witness-ungrouped-host")
       let spec = alr_residue(pattern: "/srv/build")
-      alr_witness_remote_ready(dir: dir)
+      alr_witness_remote_ready(store: store, dir: dir)
         && (match host_effect_admit(store: store, host: host, purpose: "a witness build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1000) {
               HostEffectClaimed { id: c } =>
                 (match host_effect_admit(store: store, host: host, purpose: "a second build" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1001) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "held"  _ => false })
@@ -319,8 +326,7 @@ test fn an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_executio
 // placement partition shows group B's live commitment naming the host.
 test fn a_claim_on_an_unestablished_groups_host_fences_its_establishment_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
-  alr_with_temp_dir(scenario: fn(dir) {
-    let store = alr_witness_layout(dir: dir)
+  alr_with_temp_dir(scenario: fn(store, dir) {
     let host = match get(xs: fabric_group_hosts(g: FabricGroupB {}), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv14") }
     let spec = alr_residue(pattern: "/srv/build")
     let active_b = PairServingActive { group: FabricGroupB {}, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }
@@ -356,8 +362,7 @@ data alr_sleeper_fixture: String = "import os, sys, time\npid = os.fork()\nif pi
 
 test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
-    alr_with_temp_dir(scenario: fn(dir) {
-      let store = alr_witness_layout(dir: dir)
+    alr_with_temp_dir(scenario: fn(store, dir) {
       let released = ReleasedToFleet { group: FabricGroupB {}, release_receipt: h }
       let srv = match get(xs: fabric_group_hosts(g: FabricGroupB {}), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv10") }
       let script = join([dir as String, "/sleeper.py"], "")
@@ -366,7 +371,7 @@ test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool {
       let spawned = python.Interpreter.RunFile(workdir: dir, script_path: script as FilePath, args: ["60"])
       let pid = trim(s: spawned.stdout)
       let resting = alr_resting()
-      let remote_ready = alr_witness_remote_ready(dir: dir)
+      let remote_ready = alr_witness_remote_ready(store: store, dir: dir)
       let released_from_resting = (match pair_serving_authority_transition(store: store, group: FabricGroupB {}, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
       let effect_lifecycle_holds = (match host_effect_admit(store: store, host: srv, purpose: "a witness build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1001) {
               HostEffectClaimed { id: c } => {
@@ -425,13 +430,12 @@ fn alr_authority_read_then_claim_is_stale(store: FabricStorageBinding, srv: Host
 // preparation no authority event consumed lands, and the host is claimable again.
 test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
-    alr_with_temp_dir(scenario: fn(dir) {
-      let store = alr_witness_layout(dir: dir)
+    alr_with_temp_dir(scenario: fn(store, dir) {
       let released = ReleasedToFleet { group: FabricGroupB {}, release_receipt: h }
       let srv = match get(xs: fabric_group_hosts(g: FabricGroupB {}), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv10") }
       let spec = alr_residue(pattern: "/srv/build")
       let resting = alr_resting()
-      alr_witness_remote_ready(dir: dir)
+      alr_witness_remote_ready(store: store, dir: dir)
         && (match pair_serving_authority_transition(store: store, group: FabricGroupB {}, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _, placement: PlacementFinalizedAt { preparation: _, id: _ } } => true  _ => false })
         && alr_stale_read_cannot_commit_a_claimed_host(store: store, srv: srv, spec: spec, released: released, resting: resting)
         && (match pair_serving_authority_transition(store: store, group: FabricGroupB {}, expected: resting, next: released, transaction: "tx-release-2" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1004) { AuthorityTransitionAppended { id: _, generation: g3, next: _ } => g3 == 3  _ => false })
@@ -457,14 +461,13 @@ test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Boo
 // consuming authority event, and the finalization from that join lands and frees them.
 test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_aborted_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
-    alr_with_temp_dir(scenario: fn(dir) {
-      let store = alr_witness_layout(dir: dir)
+    alr_with_temp_dir(scenario: fn(store, dir) {
       let released = ReleasedToFleet { group: FabricGroupB {}, release_receipt: h }
       let srv = match get(xs: fabric_group_hosts(g: FabricGroupB {}), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv10") }
       let spec = alr_residue(pattern: "/srv/build")
       let a_hosts = fabric_group_hosts(g: FabricGroupB {})
       let resting = alr_resting()
-      alr_witness_remote_ready(dir: dir)
+      alr_witness_remote_ready(store: store, dir: dir)
         && (match placement_prepare(store: store, group: FabricGroupB {}, previous_hosts: a_hosts, next_hosts: [] as List<HostIdentity>, operation: "tx-release-crashed" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1000) {
               PlacementPreparedAt { id: prep } =>
                   (match placement_prepare(store: store, group: FabricGroupB {}, previous_hosts: a_hosts, next_hosts: [] as List<HostIdentity>, operation: "tx-release-again" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1001) { PlacementPreparationRefused { step: _, reason: r } => r.contains("one saga at a time")  _ => false })
@@ -518,8 +521,7 @@ test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_abo
 // refusal appends nothing -- the placement partition reads back with no host-effect record. RED: an
 // admission that ignored the arm commitment would claim the host and append a host effect.
 test fn a_serving_arm_host_is_refused_by_the_real_commitment_and_nothing_is_appended_by_real_execution() -> Bool {
-  alr_with_temp_dir(scenario: fn(dir) {
-    let store = alr_witness_layout(dir: dir)
+  alr_with_temp_dir(scenario: fn(store, dir) {
     alr_witness_root_ready(dir: dir)
       && (match admit_unplaced_host_over_roster(raw: "srv9", units: [alr_srv(s: "srv9")], arm_claims: [ServingArmHostClaim { arm: glm_group_b_serving_arm, host: alr_srv(s: "srv9"), basis: "fixture: retired canary placement on sold srv9" as NonEmptyStr }], purpose: "a witness build" as NonEmptyStr, term: second(count: 100), residue: alr_residue(pattern: "/srv/build"), store: store, executor: "executor-1" as NonEmptyStr, at: 1000) {
         SparkHostRefused { cause: c } => string_contains(s: c as String, pattern: "a serving arm is placed on it")
@@ -538,8 +540,7 @@ test fn a_serving_arm_host_is_refused_by_the_real_commitment_and_nothing_is_appe
 // standing at all and admission refuses srv9 as not a unit, appending nothing. RED: deleting the
 // live delegation, or supplying a roster on it, changes this verdict.
 test fn the_live_rosters_hold_no_spark_unit_and_admission_refuses_by_real_execution() -> Bool {
-  alr_with_temp_dir(scenario: fn(dir) {
-    let store = alr_witness_layout(dir: dir)
+  alr_with_temp_dir(scenario: fn(store, dir) {
     alr_witness_root_ready(dir: dir)
       && (match spark_host_standings_over(store: store, at: 1000) {
         CurrentStandingsRead { standings: st } => length(st) == 0
