@@ -62,6 +62,7 @@ import gunbc.ci.repository_compose_overlay {
   overlay_note,
   seal_ran_and_repo_alive
 }
+import gunbc.toolchain_home_standing { admit_workflow_toolchain_homes, toolchain_home_refusal_reason }
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   seed_build_step,
@@ -71,7 +72,7 @@ import gunbc.ci.repository_seed_steps {
   seed_pin_verifier_job,
 
   record_seed_revision_step,
-  toolchain_install_step
+  SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps
 }
 
 // repository_projection_drift_workflow.dag — THE ONE drift-check emitter, for a repository whose
@@ -309,16 +310,20 @@ fn projection_drift_steps(
         Absent => []
       }
         concat(
-          [
-          repository_checkout_step(step_name: program.checkout_step_name),
-          seed_lane.guard,
-          seed_lane.checkout,
-          record_step,
-          toolchain_install_step(step_name: program.toolchain_step_name),
-          build_step,
-          check_step
-          ],
-          seal_steps
+          concat(
+            [
+              repository_checkout_step(step_name: program.checkout_step_name),
+              seed_lane.guard,
+              seed_lane.checkout,
+              record_step
+            ],
+            // THE TOOLCHAIN LANE AS ONE UNIT (isolation, install, pin), owned by
+            // gunbc.ci.repository_seed_steps: this job seals candidates on the repository's own runner
+            // group, and a toolchain installed into a home that persists across jobs is the defect
+            // gunbc.toolchain_home_standing exists to refuse.
+            seed_toolchain_lane_steps(lane: seed_toolchain_lane(step_name: program.toolchain_step_name))
+          ),
+          concat([build_step, check_step], seal_steps)
         )
 }
 
@@ -556,6 +561,17 @@ fn expected_projection_drift_workflow_yml(
               reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.ci.repository_projection_drift_workflow", refusals: crs)
             }
             WorkflowCheckoutRefsAdmitted =>
+          // THE SAME ADMISSION THE PUBLISHER CALLS, on the workflow about to be emitted: a seed
+          // route that installs a toolchain without isolating HOME/RUSTUP_HOME/CARGO_HOME has no
+          // standing on a self-hosted runner, and a mirror's drift lane runs self-hosted. Refusing
+          // here means the emitter cannot ship that step even if the shared lane were changed; the
+          // isolation-drop mutation is refused by this line and not only by the controls.
+          match admit_workflow_toolchain_homes(workflow: drift_workflow) {
+            WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+              ProjectionDriftWorkflowGenerationRefused {
+                reason: toolchain_home_refusal_reason(job_id: j, refusal: r)
+              }
+            WorkflowToolchainHomesAdmitted =>
           match emit_yaml(v: project_workflow_to_yaml(workflow: drift_workflow)) {
             EmittedYaml { text: t } => ProjectionDriftWorkflowGenerated { content: t }
             YamlEmitRefused { path: p, reason: r } =>
@@ -563,6 +579,7 @@ fn expected_projection_drift_workflow_yml(
                 reason: yaml_emit_refusal_text(module_path: "gunbc.ci.repository_projection_drift_workflow", path: p, reason: r)
               }
             }
+          }
           }
           }
           }

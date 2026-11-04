@@ -1,4 +1,5 @@
 module extdeps.cloud.packet_ai
+import std.types { Bearer }
 
 import std.resources { Network }
 import std.types { Int, Bool, NonEmptyStr, String, Secret, List }

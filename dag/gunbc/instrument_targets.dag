@@ -883,22 +883,6 @@ fn member_home_cost_binding() -> TargetBinding {
   TargetBinding { target: member_home_cost_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/member_home_cost_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
-fn claim_coverage_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "claim-coverage-census" } }
-}
-
-fn claim_coverage_census_entry() -> String {
-  "dag/gunbc/claim_coverage_census_live.dag"
-}
-
-fn claim_coverage_census_function() -> String {
-  "claim_coverage_census_exit"
-}
-
-fn claim_coverage_census_binding() -> TargetBinding {
-  TargetBinding { target: claim_coverage_census_label() producer: CliWireProgramProducer { entry: claim_coverage_census_entry() function: claim_coverage_census_function() } }
-}
-
 // THE KNOWN-RED DERIVATION. The label exists to print a list no file holds: which ExpectedToHold claims
 // fail at the head this run executed on. Its producer is asked only for a head and a population — it
 // reads the schedule from the wet lane's own accessor and the enrollment from floor_expected_red — so
@@ -1297,6 +1281,38 @@ fn behavioral_receipt_source_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
+// THE ORPHAN, BROUGHT HOME. The host's emitted-crate-workspace instrument read a source-root list
+// that existed only in the host; the instrument's own module never stated it. Stated here so the
+// corpus it measures is the instrument's fact, rendered into the host by
+// `gunbc.instruments.instrument_registry_emit`.
+fn emitted_crate_workspace_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+// WHICH CORPUS AN INSTRUMENT MEASURES, IN ONE LIST.
+//
+// A row is a MEASURED SUBJECT, not a label: the three behavioral producers measure one corpus and
+// share one list, so the key is the subject's name -- the same word the supplying `*_source_roots`
+// function is built from -- and the values come from that function and nowhere else. The host used to
+// hand-list these six bodies beside the code that reads them, which is the same subject held twice
+// with the dispatch reading the unbound copy; the emitter renders them from here, so a subject that
+// loses its row loses its host function and the seed stops compiling rather than measuring nothing.
+type InstrumentSourceRootsRow {
+  name: String
+  roots: List<String>
+}
+
+fn instrument_source_roots_rows() -> List<InstrumentSourceRootsRow> {
+  [
+    InstrumentSourceRootsRow { name: "heads_reading_differential" roots: heads_reading_differential_source_roots() }
+    InstrumentSourceRootsRow { name: "self_host" roots: self_host_source_roots() }
+    InstrumentSourceRootsRow { name: "v2_native_cli" roots: v2_native_cli_source_roots() }
+    InstrumentSourceRootsRow { name: "emitted_crate_workspace" roots: emitted_crate_workspace_source_roots() }
+    InstrumentSourceRootsRow { name: "bare_reference_channel" roots: bare_reference_channel_source_roots() }
+    InstrumentSourceRootsRow { name: "behavioral_receipt" roots: behavioral_receipt_source_roots() }
+  ]
+}
+
 // WHAT AN INVOCATION OF THIS INSTRUMENT DOES NOT ESTABLISH, STATED HERE RATHER THAN ASSUMED SAFE.
 //
 // The differential's producer reads an UNPINNED LIVE WORKING TREE. Nothing binds the bytes it
@@ -1344,7 +1360,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

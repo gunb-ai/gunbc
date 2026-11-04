@@ -2,6 +2,9 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.ci.ci_spec { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
+// The row this step reads is declared over there; naming it in the import list is what gives the effect
+// join an identity to join, instead of one borrowed from proximity in this module.
+import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
@@ -77,7 +80,7 @@ import gunbc.action_use_admission {
 }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
-import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name, organization_runner_roster_read_budget, organization_runner_roster_request_allowance }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
@@ -2694,7 +2697,7 @@ fn fleet_converge_host_primary_network_converge_step() -> Step {
     name: "Primary network: stage the population, netplan try on the target, confirm only on a readback from the observer",
     invoke: gunbc_ci_host_primary_network_converge_invoke(),
     if_condition: fleet_converge_host_primary_network_converge_step_if,
-    timeout_minutes: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: primary_network_apply_phase_budgets()),
+    timeout_minutes: fleet_converge_gunbc_run_step_timeout_minutes(phases: primary_network_apply_phase_budgets()),
   )
 }
 
@@ -2860,6 +2863,20 @@ fn fleet_converge_org_actions_step() -> Step {
 // mode because it answers a different question: which registrations the organization holds, read
 // to exhaustion, rather than whether the runner-group settings match policy. Its receipt uploads on
 // every outcome, because a Partial or an Unavailable roster is exactly the evidence worth keeping.
+// THE ROSTER STEP'S TIMEOUT IS THE ONE RULE ABOVE, NOT THE FLAT AUX BUDGET. Run 41655364699 (srv3,
+// 2026-11-03) spent 285 s of its 5-minute aux budget resolving the entry's closure
+// (resolve_entry_graph_inclusive=285166 ms) and was killed twelve pages into an organization holding
+// more than 1,100 registrations. Its phases after startup are the credential prelude's two requests --
+// the Secret Manager read of the App key and the installation-token mint, two curls that carry no
+// --max-time, so each is given one request allowance rather than gunbc_ci_sm_max_time, which bounds
+// a different prelude -- and the read's own budget (gunbc.fleet.organization_runner_roster_read
+// organization_runner_roster_read_budget). The job timeout needs no new term: it is the backstop plus
+// the runner-host bracket's steps (fleet_converge_host_cap_job_floor_minutes), which this mode never
+// runs and which exceed this step's excess over the aux budget many times over.
+fn fleet_converge_org_runner_roster_step_timeout_minutes() -> Int {
+  fleet_converge_gunbc_run_step_timeout_minutes(phases: [organization_runner_roster_request_allowance, organization_runner_roster_request_allowance, organization_runner_roster_read_budget()])
+}
+
 fn fleet_converge_org_runner_roster_step() -> Step {
   RunStep {
     name: Present { value: "Org runner roster: paginated read of GitHub self-hosted runner registrations" },
@@ -2874,7 +2891,7 @@ fn fleet_converge_org_runner_roster_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_org_runner_roster_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: fleet_converge_org_runner_roster_step_timeout_minutes() }
   }
 }
 
@@ -3055,7 +3072,7 @@ fn fleet_converge_runner_host_step_timeout_minutes(phases: List<Second>) -> Int 
   fleet_converge_step_timeout_minutes(startup_seconds: second_count(s: runner_host_closure_resolve_budget) as Int, phases: phases)
 }
 
-fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
+fn fleet_converge_gunbc_run_step_timeout_minutes(phases: List<Second>) -> Int {
   fleet_converge_step_timeout_minutes(startup_seconds: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, phases: phases)
 }
 
@@ -3081,7 +3098,7 @@ fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_kvm_observer_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_kvm_observer_probe_bound()]) }
+    timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_kvm_observer_probe_bound()]) }
   }
 }
 
@@ -3099,7 +3116,7 @@ fn fleet_converge_mtcollins1_kvm_observer_release_step() -> Step {
     working_directory: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_mtcollins1_kvm_observer_observe_step_if], "") },
     continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [megarac_kvm_observer_release_allowance]) }
+    timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [megarac_kvm_observer_release_allowance]) }
   }
 }
 
