@@ -18250,14 +18250,17 @@ pub fn handle_serve(
             }
         };
     eprintln!("resolved {} sources", source_indices.len());
-    if compile_clean_diags
+    // ONE BLOCKING RULE WITH `gunbc run`: `is_interpreter_blocking_diagnostic`. Serve used to route
+    // through `compile_clean_diagnostic_is_hard`, whose only extra arm reads the `UnlistedImportUse`
+    // policy row by resolving and interpreting a second closure (~116 s measured at startup) to
+    // learn a Bool that is `false` today (`FloorNotYet`); `run` and `compile` already omit that read
+    // (gunbc#8286). The policy's own terminal shape is promotion in this single classifier.
+    let blocking: Vec<_> = compile_clean_diags
         .iter()
-        .any(|d| compile_clean_diagnostic_is_hard(d))
-    {
-        for d in compile_clean_diags
-            .iter()
-            .filter(|d| compile_clean_diagnostic_is_hard(d))
-        {
+        .filter(|d| v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+        .collect();
+    if !blocking.is_empty() {
+        for d in blocking {
             eprintln!("error: {}", format_error_node(d, &source_indices));
         }
         std::process::exit(1);
