@@ -370,6 +370,21 @@ fn done_settlement(s: SessionSettlement) -> Bool {
   }
 }
 
+// THE SLOT'S OWN ACCOUNT OF WHY IT CLOSED. The retirement writes its statement into the slot record, and
+// that record is what a later reader trusts; the settlement outcome is only the echo. A row that asserted
+// only the echo would let the record's claim drift.
+fn slot_terminal_detail(dir: String) -> String {
+  match slot_store_at(dir: dir) {
+    Absent => ""
+    Present { value: slots } =>
+      match attempt_slot_read(store: slots, reference: unit_a() as NonEmptyStr) {
+        AttemptSlotHeld { record, generation: _ } => match record.state { AttemptTerminal { verdict: _, detail: d } => d  _ => "" }
+        AttemptSlotAbsent => ""
+        AttemptSlotUnreadable { detail: _ } => ""
+      }
+  }
+}
+
 fn slot_is_terminal(dir: String) -> Bool {
   match slot_store_at(dir: dir) {
     Absent => false
@@ -1509,10 +1524,12 @@ test fn a_charge_returned_before_any_pass_reached_the_slot_is_read_from_the_part
   let released = match stores {
     Absent => false
     Present { value: s } =>
-      match session_settle_release(stores: s, host: host, unit: unit_a() as NonEmptyStr, attempt: SessionAttemptName { node_id: node_a, attempt_key: key_a }, reason: "witness: the ledger release that ran while the slot was unreachable") {
-        SessionSettlementReleaseAttempted { unit: u, freed: freed, detail: _ } => ((u == unit_a()) && ledger_returned(Present { value: freed }))
-        _ => false
-      }
+      // THE LEDGER DOOR, NOT THE SETTLE ROUTE. What ran on srv1 on 2026-11-04 was a release of the
+      // reference in the capacity partition; it wrote no placement record for the slot. Reaching the same
+      // ledger state through session_settle_release would ALSO write a settled-release placement record,
+      // which is a different state and would send the next pass down the "closed and released" arm instead
+      // of the one under test. So the release goes straight to gunbc.compute.host_capacity.compute_release_on.
+      ledger_returned(Present { value: compute_release_on(store: s.store, partition: s.partition, appropriation: fixture_appropriation, reference: unit_a() as NonEmptyStr, reason: "witness: the ledger release that ran while the slot was unreachable" as NonEmptyStr) })
   }
   let charge = match stores {
     Absent => SeatChargeUnproven { detail: "no fixture stores" }
@@ -1541,10 +1558,12 @@ test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkee
   let released = match stores {
     Absent => false
     Present { value: s } =>
-      match session_settle_release(stores: s, host: host, unit: unit_a() as NonEmptyStr, attempt: SessionAttemptName { node_id: node_a, attempt_key: key_a }, reason: "witness: the ledger release that ran while the slot was unreachable") {
-        SessionSettlementReleaseAttempted { unit: u, freed: freed, detail: _ } => ((u == unit_a()) && ledger_returned(Present { value: freed }))
-        _ => false
-      }
+      // THE LEDGER DOOR, NOT THE SETTLE ROUTE. What ran on srv1 on 2026-11-04 was a release of the
+      // reference in the capacity partition; it wrote no placement record for the slot. Reaching the same
+      // ledger state through session_settle_release would ALSO write a settled-release placement record,
+      // which is a different state and would send the next pass down the "closed and released" arm instead
+      // of the one under test. So the release goes straight to gunbc.compute.host_capacity.compute_release_on.
+      ledger_returned(Present { value: compute_release_on(store: s.store, partition: s.partition, appropriation: fixture_appropriation, reference: unit_a() as NonEmptyStr, reason: "witness: the ledger release that ran while the slot was unreachable" as NonEmptyStr) })
   }
   let before = match stores {
     Absent => 0
@@ -1561,10 +1580,14 @@ test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkee
   charged && opened && released && slot_is_launching(dir: dir) && (before > 0)
     && (match first {
       SessionSettlementRetiredUncharged { unit: u, attempt: _, detail: d } =>
-        (u == unit_a()) && string_contains(s: d, pattern: "no release is issued") && string_contains(s: d, pattern: "no holder-death claim")
+        (u == unit_a()) && string_contains(s: d, pattern: "no release was issued") && string_contains(s: d, pattern: "charge was already returned")
       _ => false
     })
     && slot_is_terminal(dir: dir)
+    // WHAT THE SLOT RECORD SAYS ABOUT ITSELF: the record, not the outcome echo, is what the next reader
+    // trusts. It must name the return it relied on and must not claim the holder died.
+    && string_contains(s: slot_terminal_detail(dir: dir), pattern: "retired as bookkeeping")
+    && string_contains(s: slot_terminal_detail(dir: dir), pattern: "no holder-death claim")
     // NOTHING WAS WRITTEN TO THE LEDGER: the retirement closed the slot and stopped. Had it released again,
     // the partition would carry another event and this generation would have moved.
     && (after == before)
@@ -1583,10 +1606,12 @@ test fn a_slot_already_retired_as_bookkeeping_reports_done_and_owes_no_second_re
   let released = match stores {
     Absent => false
     Present { value: s } =>
-      match session_settle_release(stores: s, host: host, unit: unit_a() as NonEmptyStr, attempt: SessionAttemptName { node_id: node_a, attempt_key: key_a }, reason: "witness: the ledger release that ran while the slot was unreachable") {
-        SessionSettlementReleaseAttempted { unit: u, freed: freed, detail: _ } => ((u == unit_a()) && ledger_returned(Present { value: freed }))
-        _ => false
-      }
+      // THE LEDGER DOOR, NOT THE SETTLE ROUTE. What ran on srv1 on 2026-11-04 was a release of the
+      // reference in the capacity partition; it wrote no placement record for the slot. Reaching the same
+      // ledger state through session_settle_release would ALSO write a settled-release placement record,
+      // which is a different state and would send the next pass down the "closed and released" arm instead
+      // of the one under test. So the release goes straight to gunbc.compute.host_capacity.compute_release_on.
+      ledger_returned(Present { value: compute_release_on(store: s.store, partition: s.partition, appropriation: fixture_appropriation, reference: unit_a() as NonEmptyStr, reason: "witness: the ledger release that ran while the slot was unreachable" as NonEmptyStr) })
   }
   let first = match stores {
     Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
