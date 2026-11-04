@@ -1,0 +1,219 @@
+module test.claim.native_ingress_program_witness
+
+import std.types { String, Bool, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_rows_of_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: v1.compiler.emit_rust native_ingress_program_resolution, the closed typed boundary by which a
+// std.compiler_entry NativeIngressDriver { program } row names its native program (gunbc.plans.converged_ingress M2a).
+// Every claim compiles a real fixture through the real compile route (gunbc.instruments.multi_module_compile_fixture)
+// and reads the typed refusal it produced, NativeIngressProgramRefused, or its absence. The refusals are the REDs:
+// an absent descriptor, a descriptor whose declared type is a homonym of NativeIngressProgram, a reference to a field
+// rather than a whole declaration, a reference that names the descriptor itself where a function is owed (the only
+// way a reference cycle can be written, refused as the wrong kind), a constructor returning a homonym admission, an
+// effectful constructor, a constructor argument argv cannot supply, a handler whose request facts are not the M2a
+// contract, a startup whose payload is not the handler's trailing parameter, and a module outside the closure. The
+// admissions are the positive controls: a minimal program, an unrelated effectful declaration in the binding module
+// that neither the handler nor the startup reaches (neither admitted nor bound), and a pure handler whose startup
+// alone demands an admitted effect. An AMBIGUOUS reference (two whole declarations of one kind under one qualified
+// identity) is refused by the same function but is not authorable here: a module cannot declare one name twice.
+//
+// The fixtures are isolated, so the declarations the resolution judges BY IDENTITY are stubbed at their owning
+// module paths (nipw_stub_sources): std.compiler_entry NativeIngressProgram, gunbc.http_ingress
+// HttpIngressAdmission, extdeps.http.server ServeWireResponse, gunbc.native_serve NativeServeStartup. The real route
+// over the real modules is //gunbc/instruments:native-serve and its siblings.
+
+fn nipw_stub_sources() -> List<FixtureSource> {
+  [
+    fixture_source("std/decl_ref.dag", "module std.decl_ref\ntype DeclField = WholeDeclaration | NamedField \{ field_name: String \}\ntype DeclarationRef \{ module_path: String, decl_name: String, field: DeclField \}\n"),
+    fixture_source("std/compiler_entry.dag", "module std.compiler_entry\nimport std.decl_ref \{ DeclarationRef \}\ntype CompilerEntryDriver = NativeCliDriver | NativeClaimDriver | NativeIngressDriver \{ program: DeclarationRef \}\ntype NativeIngressStartup \{ fold: DeclarationRef, bound: Int \}\ntype NativeIngressProgram \{ binding: DeclarationRef, handler: DeclarationRef, startup: NativeIngressStartup? \}\n"),
+    fixture_source("extdeps/http/server.dag", "module extdeps.http.server\ntype ServeWireResponse \{ status: Int, body: String \}\n"),
+    fixture_source("gunbc/http_ingress.dag", "module gunbc.http_ingress\ntype HttpIngressAdmission = HttpIngressBound \{ handler: String \} | HttpIngressRefused \{ reason: String \}\n"),
+    fixture_source("gunbc/native_serve.dag", "module gunbc.native_serve\ntype NativeServeStartup<S> = NativeServeStartupPassed \{ line: String, value: S \} | NativeServeStartupRefused \{ reason: String \}\n")
+  ]
+}
+
+data nipw_ok_body: String = "  ServeWireResponse \{ status: 200, body: \"\" \}\n"
+
+fn nipw_ref(module_path: String, decl_name: String) -> String {
+  concat("DeclarationRef \{ module_path: \"", concat(module_path, concat("\", decl_name: \"", concat(decl_name, "\", field: WholeDeclaration \}"))))
+}
+
+// One program module: imports, the descriptor, the driver row, the binding constructor, the handler and anything
+// extra. Each part is a parameter so a claim changes exactly the part it is about.
+fn nipw_module(module_path: String, imports: String, descriptor: String, driver_program: String, ingress: String, handler: String, extra: String) -> String {
+  concat("module ", concat(module_path, concat("\n",
+  concat("import std.decl_ref \{ DeclarationRef, WholeDeclaration, NamedField \}\nimport std.compiler_entry \{ CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram, NativeIngressStartup \}\nimport extdeps.http.server \{ ServeWireResponse \}\nimport gunbc.http_ingress \{ HttpIngressAdmission, HttpIngressRefused \}\nimport gunbc.native_serve \{ NativeServeStartup, NativeServeStartupPassed \}\n",
+  concat(imports,
+  concat(descriptor,
+  concat("data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver \{ program: ", concat(driver_program, concat(" \}\n",
+  concat(ingress, concat(handler, extra))))))))))
+}
+
+fn nipw_descriptor(module_path: String, binding: String, handler: String, startup: String) -> String {
+  concat("data program: NativeIngressProgram = NativeIngressProgram \{\n  binding: ", concat(binding,
+  concat(",\n  handler: ", concat(handler, concat(",\n  startup: ", concat(startup, ",\n\}\n"))))))
+}
+
+fn nipw_default_descriptor(module_path: String) -> String {
+  nipw_descriptor(module_path: module_path, binding: nipw_ref(module_path: module_path, decl_name: "ingress"), handler: nipw_ref(module_path: module_path, decl_name: "handle"), startup: "Absent")
+}
+
+data nipw_ingress: String = "fn ingress(handler: String, listener: String, cpu_limit_ms: Int) -> HttpIngressAdmission \{\n  HttpIngressRefused \{ reason: listener \}\n\}\n"
+
+fn nipw_handler(uses: String, body: String) -> String {
+  concat("fn handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse\n", concat(uses, concat("\{\n", concat(body, "\}\n"))))
+}
+
+// The source the effect-admission witness builds its ingress cases from (test.claim.native_effect_realization_admission_witness).
+fn nipw_program_source(module_path: String, imports: String, handler_uses: String, handler_body: String, extra: String) -> String {
+  nipw_module(module_path: module_path, imports: imports, descriptor: nipw_default_descriptor(module_path: module_path),
+    driver_program: nipw_ref(module_path: module_path, decl_name: "program"), ingress: nipw_ingress,
+    handler: nipw_handler(uses: handler_uses, body: handler_body), extra: extra)
+}
+
+fn nipw_run(entry_source: String, peers: List<FixtureSource>) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: concat(concat([fixture_source("nipw/serve.dag", entry_source)], nipw_stub_sources()), peers),
+    entry: "nipw/serve.dag"
+  })
+}
+
+fn nipw_rows(o: MultiModuleCompileFixtureOutcome, class: String) -> List<CompileDiagnosticCensusRow> {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => fixture_rows_of_class(rows, class)
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => fixture_rows_of_class(rows, class)
+    FixtureInstrumentRefused { cause: _ } => []
+  }
+}
+
+fn nipw_refused_naming(o: MultiModuleCompileFixtureOutcome, marker: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      (nipw_rows(o: o, class: "NativeIngressProgramRefused") |> filter(r => r.blocking && string_contains(s: r.subject_name, pattern: marker)) |> count) == 1
+    _ => false
+  }
+}
+
+fn nipw_admitted(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: _, emitted_files: files, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      (nipw_rows(o: o, class: "NativeIngressProgramRefused") |> count) == 0 && (nipw_rows(o: o, class: "NativeEffectRealizationRefused") |> count) == 0 && (files |> count) > 0
+    _ => false
+  }
+}
+
+fn nipw_default_handler() -> String { nipw_handler(uses: "", body: nipw_ok_body) }
+
+fn nipw_with(descriptor: String, driver_program: String, ingress: String, handler: String, extra: String, imports: String) -> String {
+  nipw_module(module_path: "nipw.serve", imports: imports, descriptor: descriptor, driver_program: driver_program, ingress: ingress, handler: handler, extra: extra)
+}
+
+fn nipw_program_ref() -> String { nipw_ref(module_path: "nipw.serve", decl_name: "program") }
+
+data nipw_lookalike_source: String = "module nipw.lookalike\nimport std.decl_ref \{ DeclarationRef \}\ntype NativeIngressProgram \{ binding: DeclarationRef, handler: DeclarationRef, startup: Int? \}\ntype HttpIngressAdmission = LookalikeBound | LookalikeRefused\n"
+data nipw_entropy_source: String = "module std.resources\nresource Entropy \{\n  kind: Observation\n  mode: Read\n  acquire \{\}\n  release \{\}\n\}\n"
+data nipw_clock_source: String = "module extdeps.clock\nservice Clock \{\n  operation Now \{\n    requires none\n    input \{\}\n    output \{ timestamp: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"date\", \"-u\"] \}\n    exit \{\n      0 => Unit\n      nonzero => String \"date failed\"\n    \}\n  \}\n\}\n"
+
+// ── POSITIVE CONTROLS ──────────────────────────────────────────────────────────────────────────
+
+test fn a_minimal_native_ingress_program_is_admitted() -> Bool {
+  nipw_admitted(o: nipw_run(entry_source: nipw_program_source(module_path: "nipw.serve", imports: "", handler_uses: "", handler_body: nipw_ok_body, extra: ""), peers: []))
+}
+
+// An effectful declaration of the binding module that neither the handler nor the startup reaches is not demanded:
+// Entropy is outside the ingress denominator, so admitting it would refuse; it is neither admitted nor bound.
+test fn an_unrelated_effectful_declaration_in_the_binding_module_is_neither_admitted_nor_bound() -> Bool {
+  nipw_admitted(o: nipw_run(entry_source: nipw_program_source(module_path: "nipw.serve", imports: "import std.resources \{ Entropy \}\n", handler_uses: "", handler_body: nipw_ok_body,
+    extra: "fn unrelated() -> String\n  uses rng: Entropy\n\{\n  \"never called\"\n\}\n"), peers: [fixture_source("std/resources.dag", nipw_entropy_source)]))
+}
+
+// A pure handler whose startup alone reads the clock: the program is admitted, its effects being the union of the two.
+test fn a_pure_handler_whose_startup_alone_demands_an_admitted_effect_is_admitted() -> Bool {
+  let startup = concat("Present \{ value: NativeIngressStartup \{ fold: ", concat(nipw_ref(module_path: "nipw.serve", decl_name: "boot"), ", bound: 30 \} \}"))
+  let descriptor = nipw_descriptor(module_path: "nipw.serve", binding: nipw_ref(module_path: "nipw.serve", decl_name: "ingress"), handler: nipw_ref(module_path: "nipw.serve", decl_name: "handle"), startup: startup)
+  let handler = "fn handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String, at: String) -> ServeWireResponse \{\n  ServeWireResponse \{ status: 200, body: at \}\n\}\n"
+  let boot = "fn boot(executable_octets: List<Int>) -> NativeServeStartup<String> \{\n  let r = Clock.Now()\n  NativeServeStartupPassed \{ line: r.timestamp, value: r.timestamp \}\n\}\n"
+  nipw_admitted(o: nipw_run(entry_source: nipw_with(descriptor: descriptor, driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: handler, extra: boot, imports: "import extdeps.clock \{ Clock \}\n"), peers: [fixture_source("extdeps/clock.dag", nipw_clock_source)]))
+}
+
+// ── REDS ───────────────────────────────────────────────────────────────────────────────────────
+
+test fn a_program_reference_to_an_undeclared_descriptor_refuses() -> Bool {
+  nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: "", driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: nipw_default_handler(), extra: "", imports: ""), peers: []),
+    marker: "the program reference names nipw.serve.program, which is not declared")
+}
+
+test fn a_program_reference_to_a_module_outside_the_closure_refuses() -> Bool {
+  nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: nipw_default_descriptor(module_path: "nipw.serve"), driver_program: nipw_ref(module_path: "nipw.elsewhere", decl_name: "program"), ingress: nipw_ingress, handler: nipw_default_handler(), extra: "", imports: ""), peers: []),
+    marker: "whose module nipw.elsewhere is not in the emitted closure")
+}
+
+test fn a_program_reference_to_a_field_rather_than_the_whole_declaration_refuses() -> Bool {
+  nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: nipw_default_descriptor(module_path: "nipw.serve"), driver_program: "DeclarationRef \{ module_path: \"nipw.serve\", decl_name: \"program\", field: NamedField \{ field_name: \"handler\" \} \}", ingress: nipw_ingress, handler: nipw_default_handler(), extra: "", imports: ""), peers: []),
+    marker: "not the whole declaration")
+}
+
+// A descriptor typed by a HOMONYM of NativeIngressProgram (same spelling, same fields, another module) is not a program.
+test fn a_descriptor_typed_by_a_homonym_of_the_program_type_refuses() -> Bool {
+  let descriptor = "data program: NativeIngressProgram = NativeIngressProgram \{\n  binding: DeclarationRef \{ module_path: \"nipw.serve\", decl_name: \"ingress\", field: WholeDeclaration \},\n  handler: DeclarationRef \{ module_path: \"nipw.serve\", decl_name: \"handle\", field: WholeDeclaration \},\n  startup: Absent,\n\}\n"
+  let src = concat("module nipw.serve\nimport std.decl_ref \{ DeclarationRef, WholeDeclaration \}\nimport std.compiler_entry \{ CompilerEntryDriver, NativeIngressDriver \}\nimport nipw.lookalike \{ NativeIngressProgram \}\nimport extdeps.http.server \{ ServeWireResponse \}\nimport gunbc.http_ingress \{ HttpIngressAdmission, HttpIngressRefused \}\n",
+    concat(descriptor, concat("data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver \{ program: ", concat(nipw_program_ref(), concat(" \}\n", concat(nipw_ingress, nipw_default_handler()))))))
+  nipw_refused_naming(o: nipw_run(entry_source: src, peers: [fixture_source("nipw/lookalike.dag", nipw_lookalike_source)]),
+    marker: "whose declared type is not std.compiler_entry NativeIngressProgram")
+}
+
+// The only way to write a reference cycle: the binding reference names the descriptor itself. It is the wrong kind.
+test fn a_binding_reference_naming_the_descriptor_itself_refuses_as_the_wrong_kind() -> Bool {
+  let descriptor = nipw_descriptor(module_path: "nipw.serve", binding: nipw_ref(module_path: "nipw.serve", decl_name: "program"), handler: nipw_ref(module_path: "nipw.serve", decl_name: "handle"), startup: "Absent")
+  nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: descriptor, driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: nipw_default_handler(), extra: "", imports: ""), peers: []),
+    marker: "the binding constructor names nipw.serve.program, which is not a function")
+}
+
+test fn a_constructor_returning_a_homonym_admission_refuses() -> Bool {
+  let src = concat("module nipw.serve\nimport std.decl_ref \{ DeclarationRef, WholeDeclaration \}\nimport std.compiler_entry \{ CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram \}\nimport extdeps.http.server \{ ServeWireResponse \}\nimport nipw.lookalike \{ HttpIngressAdmission, LookalikeRefused \}\n",
+    concat(nipw_default_descriptor(module_path: "nipw.serve"), concat("data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver \{ program: ", concat(nipw_program_ref(), concat(" \}\n",
+    concat("fn ingress(handler: String, listener: String, cpu_limit_ms: Int) -> HttpIngressAdmission \{\n  LookalikeRefused\n\}\n", nipw_default_handler()))))))
+  nipw_refused_naming(o: nipw_run(entry_source: src, peers: [fixture_source("nipw/lookalike.dag", nipw_lookalike_source)]),
+    marker: "not gunbc.http_ingress HttpIngressAdmission")
+}
+
+test fn an_effectful_binding_constructor_refuses() -> Bool {
+  let ingress = "fn ingress(handler: String, listener: String, cpu_limit_ms: Int) -> HttpIngressAdmission \{\n  let r = Clock.Now()\n  HttpIngressRefused \{ reason: r.timestamp \}\n\}\n"
+  nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: nipw_default_descriptor(module_path: "nipw.serve"), driver_program: nipw_program_ref(), ingress: ingress, handler: nipw_default_handler(), extra: "", imports: "import extdeps.clock \{ Clock \}\n"), peers: [fixture_source("extdeps/clock.dag", nipw_clock_source)]),
+    marker: "the binding constructor demands effects")
+}
+
+test fn a_constructor_argument_argv_cannot_supply_refuses() -> Bool {
+  let ingress = "fn ingress(handler: String, listener: String, verbose: Bool) -> HttpIngressAdmission \{\n  HttpIngressRefused \{ reason: listener \}\n\}\n"
+  nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: nipw_default_descriptor(module_path: "nipw.serve"), driver_program: nipw_program_ref(), ingress: ingress, handler: nipw_default_handler(), extra: "", imports: ""), peers: []),
+    marker: "binding constructor argument verbose is Bool")
+}
+
+test fn a_handler_whose_request_facts_are_not_the_m2a_contract_refuses() -> Bool {
+  let handler = "fn handle(method: String, target: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse \{\n  ServeWireResponse \{ status: 200, body: target \}\n\}\n"
+  nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: nipw_default_descriptor(module_path: "nipw.serve"), driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: handler, extra: "", imports: ""), peers: []),
+    marker: "the handler's leading parameters are [method, target, body, tailscale_identity, release_revision]")
+}
+
+test fn a_startup_whose_payload_is_not_the_handlers_trailing_parameter_refuses() -> Bool {
+  let startup = concat("Present \{ value: NativeIngressStartup \{ fold: ", concat(nipw_ref(module_path: "nipw.serve", decl_name: "boot"), ", bound: 30 \} \}"))
+  let descriptor = nipw_descriptor(module_path: "nipw.serve", binding: nipw_ref(module_path: "nipw.serve", decl_name: "ingress"), handler: nipw_ref(module_path: "nipw.serve", decl_name: "handle"), startup: startup)
+  let handler = "fn handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String, n: Int) -> ServeWireResponse \{\n  ServeWireResponse \{ status: n, body: path \}\n\}\n"
+  let boot = "fn boot(executable_octets: List<Int>) -> NativeServeStartup<String> \{\n  NativeServeStartupPassed \{ line: \"ok\", value: \"ok\" \}\n\}\n"
+  nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: descriptor, driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: handler, extra: boot, imports: ""), peers: []),
+    marker: "the handler's trailing parameter is Int but the startup passes String")
+}

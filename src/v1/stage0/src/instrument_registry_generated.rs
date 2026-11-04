@@ -426,7 +426,7 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
                 target: "native-serve-device-crypto".to_string(),
             },
             TargetProducer::NativeServeProgram {
-                entry: "dag/gunbc/auth/approval_device_crypto_serve.dag",
+                entry: "dag/gunbc/auth/approval_device_crypto_ingress.dag",
             },
         ),
         (

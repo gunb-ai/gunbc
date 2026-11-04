@@ -1,21 +1,41 @@
 module gunbc.instruments.native_serve_startup_refusal_fixture
 
 import std.types { String, Int, List, CommitSha }
-import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram, NativeIngressStartup }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 import extdeps.http.server { ServeWireResponse }
-import gunbc.native_serve { native_serve_application_json, NativeServeStartup, NativeServeStartupPassed, NativeServeStartupRefused }
+import gunbc.native_serve { native_serve_application_json, native_serve_startup_deadline, NativeServeStartup, NativeServeStartupPassed, NativeServeStartupRefused }
 import gunbc.auth.approval_device_crypto_realization { DeviceCryptoObligation, DeviceCryptoHandlerReceipt, device_crypto_obligations, device_crypto_handler_identity }
 import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_startup }
 
-// THE CONTROL SERVICE FOR THE STARTUP FOLD (gunbc.native_serve native_serve_startup_entry_function): a NativeServeDriver
-// entry whose startup mints, for EACH obligation of device_crypto_obligations, a receipt that covers every OTHER
+// THE CONTROL SERVICE FOR THE STARTUP FOLD (std.compiler_entry NativeIngressStartup): a native ingress program
+// whose startup mints, for EACH obligation of device_crypto_obligations, a receipt that covers every OTHER
 // obligation and asks the one receipt judge (gunbc.auth.approval_device_crypto_receipt device_crypto_receipt_startup)
 // about it. When every one of those receipts refuses, the startup refuses, and the door must exit without binding; when
 // any dropped obligation were admitted, the startup passes, the service binds and announces, and the reader
 // (gunbc.instruments.native_serve_startup_refusal_probe) is red. So the control is discriminating twice: it establishes
 // that dropping any one obligation makes the receipt refuse, and that a refusing startup fold blocks the bind.
 // Its handler answers nothing the reader looks at.
-data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+data native_serve_startup_refusal_fixture_program: NativeIngressProgram = NativeIngressProgram {
+  binding: DeclarationRef { module_path: "gunbc.instruments.native_serve_startup_refusal_fixture", decl_name: "native_serve_startup_refusal_fixture_ingress", field: WholeDeclaration },
+  handler: DeclarationRef { module_path: "gunbc.instruments.native_serve_startup_refusal_fixture", decl_name: "native_serve_startup_refusal_fixture_handle", field: WholeDeclaration },
+  startup: Present { value: NativeIngressStartup {
+    fold: DeclarationRef { module_path: "gunbc.instruments.native_serve_startup_refusal_fixture", decl_name: "native_serve_startup_refusal_fixture_startup", field: WholeDeclaration },
+    bound: native_serve_startup_deadline,
+  } },
+}
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver {
+  program: DeclarationRef { module_path: "gunbc.instruments.native_serve_startup_refusal_fixture", decl_name: "native_serve_startup_refusal_fixture_program", field: WholeDeclaration },
+}
+
+fn native_serve_startup_refusal_fixture_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
+  http_ingress_binding(
+    handler_module: native_serve_startup_refusal_fixture_program.handler.module_path as String, handler: handler, listener: listener,
+    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+  )
+}
 
 fn without_obligation(dropped: DeviceCryptoObligation) -> List<DeviceCryptoObligation> {
   filter(device_crypto_obligations, o => o != dropped)
@@ -28,7 +48,7 @@ fn dropped_refusal(dropped: DeviceCryptoObligation) -> String? {
   }
 }
 
-fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
+fn native_serve_startup_refusal_fixture_startup(executable_octets: List<Int>) -> NativeServeStartup<DeviceCryptoHandlerReceipt> {
   let refusals = flat_map(device_crypto_obligations, o =>
     match dropped_refusal(dropped: o) {
       Present { value: why } => [why]
@@ -41,6 +61,6 @@ fn native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup<Devi
   }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
+fn native_serve_startup_refusal_fixture_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   ServeWireResponse { status: 200, content_type_label: native_serve_application_json, body: "unreachable\n", headers: [] }
 }

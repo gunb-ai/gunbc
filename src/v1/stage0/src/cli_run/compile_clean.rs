@@ -958,6 +958,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ModuleFilenameCollision { filename: s(), modules: istrings(), span: no_span() },
         EmittedSymbolCollision { symbol: s(), identities: istrings(), span: no_span() },
         NativeEffectRealizationRefused { entry: s(), refusals: istrings(), span: no_span() },
+        NativeIngressProgramRefused { program: s(), reasons: istrings(), span: no_span() },
         EffectSummaryIncompleteAtFunctionValue { caller: s(), span: no_span() },
         EffectSummaryIncompleteAtLocalBinding { caller: s(), name: s(), span: no_span() },
         CallArgumentNameUnknown { callee: s(), argument: s(), declared: istrings(), span: no_span() },
@@ -1437,6 +1438,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NativeEffectRealizationRefused { .. } => {
             "NativeEffectRealizationRefused"
         }
+        CompilerDiagnostic::NativeIngressProgramRefused { .. } => "NativeIngressProgramRefused",
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => {
             "EffectSummaryIncompleteAtFunctionValue"
         }
@@ -1570,6 +1572,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "{entry}: {}",
             refusals.iter().cloned().collect::<Vec<_>>().join("; ")
         ),
+        CompilerDiagnostic::NativeIngressProgramRefused {
+            program, reasons, ..
+        } => format!(
+            "{program}: {}",
+            reasons.iter().cloned().collect::<Vec<_>>().join("; ")
+        ),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller, .. } => caller.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller, .. } => caller.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
@@ -1701,6 +1709,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::MissingField { .. } => None,
         CompilerDiagnostic::ModuleFilenameCollision { .. } => None,
         CompilerDiagnostic::NativeEffectRealizationRefused { .. } => None,
+        CompilerDiagnostic::NativeIngressProgramRefused { .. } => None,
         CompilerDiagnostic::NonExhaustiveMatch { .. } => None,
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => None,
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => None,
