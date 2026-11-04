@@ -7,6 +7,9 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolate
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptDirectoryPublication, attempt_state_directory_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_worktree_path_for_instance }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun,
+}
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -1431,6 +1434,7 @@ test fn observe_refused_spawn_does_not_zero_the_discovery_pass() -> Bool {
     teardown_outcomes: [],
     seat_discharge: SeatDischargeSkipped { why: "witness" },
     discovery: BeltDiscovered { owed: 1, enqueues: [BeltObligationStarted { unit: "gunbc-obligation-attempt-n-k.service" as NonEmptyStr }] },
+    slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
   }
   let receipt = belt_tick_receipt_from_result(
     result: result,
@@ -1451,6 +1455,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       teardown_outcomes: [],
       seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: "the attempts ledger is unobservable" },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1467,6 +1472,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
         BeltObligationHeld { unit: "gunbc-obligation-attempt-a-1.service" as NonEmptyStr },
         BeltObligationEnqueueRefused { unit: "gunbc-obligation-attempt-b-2.service" as NonEmptyStr, reason: "systemd-run exited 1" },
       ] },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1515,6 +1521,7 @@ test fn verification_presentation_reads_the_attempts_own_verify_step() -> Bool {
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRefused { reason: "the attempts ledger is unobservable" },
+    slots_cutover_pass: BeltPassDeferred { reason: "witness tick: the cutover pass did not run" },
   }
   let blocked = belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-own-node"),
@@ -2430,6 +2437,7 @@ fn all_passes_refused_with(receipt: BeltTickReceipt, pattern: String) -> Bool {
   pass_refused_with(o: receipt.spawn_pass, pattern: pattern)
     && pass_refused_with(o: receipt.teardown_pass, pattern: pattern)
     && pass_refused_with(o: receipt.discovery_pass, pattern: pattern)
+    && pass_refused_with(o: receipt.slots_cutover_pass, pattern: pattern)
 }
 
 test fn transition_halted_tick_refuses_every_pass() -> Bool {
@@ -2460,6 +2468,7 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
       teardown_outcomes: [],
       seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 0, enqueues: [] },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
