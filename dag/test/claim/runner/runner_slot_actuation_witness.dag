@@ -6,10 +6,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.procps.ps { ps_unit_runs_command }
 import extdeps.systemd { UnitLoadError, Failed }
+import gunbc.runner.runner_local_state { MainProcessUngrounded, NoMainProcess }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv }
 import gunbc.runner.runner_slot_actuation {
-  SlotLocalObservation, SlotLocalObserved, SlotLocalUnobserved, slot_local_observation_settled, slot_local_observation_wire,
+  SlotLocalObservation, SlotLocalObserved, SlotLocalUnobserved, slot_local_observation_settled, slot_main_process_of, slot_main_process_wire,
   SlotActuationReading,
   DrainWaitForStop, DrainPendingJobRunning, DrainPendingStopInProgress,
   SlotActivationPlan, ActivationAlreadyActive, ActivationSteps, ActivationRefused,
@@ -335,15 +336,36 @@ test fn an_unattributed_listing_refuses_and_does_not_stop() -> Bool {
     && (match slot_activity_of_listing(listing: "actions-runner@srv3-18.service Runner.Listener\n", unit: slot_u) { SlotIdle => true SlotActivityUnobserved { cause: _ } => false SlotHasLiveWorker => false })
 }
 
-// ObserveRunnerLocalState settles only when every leg was read. POSITIVE CONTROL: unit, worker and MainPID read.
-test fn a_fully_read_local_observation_is_settled_and_carries_the_main_pid() -> Bool {
-  let o = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main_pid_raw: "333" }
-  slot_local_observation_settled(o: o) && slot_local_observation_wire(o: o) == concat("observe ", concat(slot_u as String, " MainPID=333 worker=idle"))
+// ObserveRunnerLocalState settles only when every leg was read. POSITIVE CONTROL: unit, worker and a grounded
+// main process read; the pid is a ProcessIdentity, never a bare number.
+test fn a_fully_read_local_observation_is_settled_and_carries_the_grounded_main_process() -> Bool {
+  let m = slot_main_process_of(raw: "333", boot: Present { value: "boot-a\n" }, stat: Present { value: "333 (runner) S 1 333 333 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 987654 0 0" })
+  let o = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main: m }
+  slot_local_observation_settled(o: o) && slot_main_process_wire(m: m) == "main=pid 333 boot=boot-a start=987654"
 }
 
-// RED: an unread MainPID, an unobserved worker, or a refused unit read never settles, and the wire names the leg.
-test fn an_unread_leg_never_settles_the_local_observation() -> Bool {
-  !slot_local_observation_settled(o: SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main_pid_raw: "unread:ssh refused" })
-    && !slot_local_observation_settled(o: SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotActivityUnobserved { cause: "ps refused" as NonEmptyStr }, main_pid_raw: "333" })
+// RED (the review's case): MainPID `0` is NoMainProcess ("supervises nothing"), NOT a pid reading; an unread or
+// unintelligible answer is MainProcessUnread and never settles.
+test fn a_zero_main_pid_is_no_main_process_and_an_unread_one_never_settles() -> Bool {
+  let idle = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main: slot_main_process_of(raw: "0", boot: none, stat: none) }
+  let unread = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main: slot_main_process_of(raw: "unread:ssh refused", boot: none, stat: none) }
+  let junk = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main: slot_main_process_of(raw: "abc", boot: none, stat: none) }
+  slot_main_process_wire(m: slot_main_process_of(raw: "0", boot: none, stat: none)) == "main=none"
+    && slot_local_observation_settled(o: idle)
+    && !slot_local_observation_settled(o: unread)
+    && !slot_local_observation_settled(o: junk)
+}
+
+// A pid whose boot id or start time was not read is MainProcessUngrounded, never a MainProcess identity.
+test fn a_pid_without_its_grounding_is_ungrounded_not_an_identity() -> Bool {
+  match slot_main_process_of(raw: "333", boot: none, stat: Present { value: "333 (runner) S 1 333 333 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 987654 0 0" }) {
+    MainProcessUngrounded { pid: _, cause: _ } => true
+    _ => false
+  }
+}
+
+// An unread worker leg or a refused unit read never settles.
+test fn an_unobserved_worker_or_unit_leg_never_settles_the_local_observation() -> Bool {
+  !slot_local_observation_settled(o: SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotActivityUnobserved { cause: "ps refused" as NonEmptyStr }, main: NoMainProcess })
     && !slot_local_observation_settled(o: SlotLocalUnobserved { unit: slot_u, step: "unit-read", reason: "ssh refused" })
 }
