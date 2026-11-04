@@ -7,7 +7,7 @@ import extdeps.languages.json.emit { JsonNull }
 import gunbc.auth.request_api_key { RequestApiKeyUser }
 import gunbc.runner.runner_revision_request_context { RevisionRequestContext }
 import gunbc.runner.runner_revision_job_spec { decode_revision_job_spec, RevisionJobSpecDecoded, RevisionJobSpecRefused }
-import gunbc.durable_handoff_rest { host_request_rest, host_request_response }
+import gunbc.durable_handoff_rest { host_request_rest, host_request_outcome_response, OutcomeUnauthenticated, OutcomeForbidden }
 import gunbc.fabric.fabric_writer_admission { fabric_door_principal_from_api_key, fabric_door_writer_admission_over, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
 
 // Shared request policy has no compiler entry. Both native entries consume it,
@@ -24,11 +24,11 @@ fn revision_job_request_payload(text: String) -> Result<NonEmptyStr, String> {
 fn revision_job_request_respond(context: RevisionRequestContext, permitted_users: List<NonEmptyStr>,
   verified: RequestApiKeyUser, method: String, path: String, body: String) -> ServeWireResponse {
   if (verified.store != context.keys) {
-    return host_request_response(status: 401, request_id: "", standing: "rejected", detail: "API key belongs to another request store", result: JsonNull)
+    return host_request_outcome_response(request_id: "", outcome: OutcomeUnauthenticated { detail: "API key belongs to another request store" }, result: JsonNull)
   }
   let principal = fabric_door_principal_from_api_key(verified: verified)
   match fabric_door_writer_admission_over(logins: permitted_users, locals: [], principal: principal) {
-    FabricDoorWriterRefused { refusal: _ } => host_request_response(status: 403, request_id: "", standing: "rejected", detail: "request principal is not admitted", result: JsonNull)
+    FabricDoorWriterRefused { refusal: _ } => host_request_outcome_response(request_id: "", outcome: OutcomeForbidden { detail: "request principal is not admitted" }, result: JsonNull)
     FabricDoorWriterAdmitted { principal: p } => host_request_rest(
       root: context.request_root, principal: p, method: method, path: path, body: body, admit_payload: revision_job_request_payload,
     )

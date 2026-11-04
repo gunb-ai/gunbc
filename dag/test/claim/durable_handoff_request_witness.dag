@@ -60,8 +60,10 @@ test fn get_does_not_enqueue_and_rejection_is_distinct_from_storage_uncertainty(
   let blocked = Filesystem.Write(path: concat(root as String, "/file"), content: "not a directory")
   let unavailable = host_request_rest(root: concat(root as String, "/file") as NonEmptyStr, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
   let unreadable = host_request_rest(root: concat(root as String, "/file") as NonEmptyStr, principal: "alice", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+  // Method labels are case-sensitive: lowercase "get" is refused (405), never normalized to GET.
+  let lowercase = host_request_rest(root: root, principal: "alice", method: "get", path: "/requests/request-1", body: "", admit_payload: payload)
   let removed = shell.Remove.RecursiveForce(path: root as String)
-  absent.status == 404 && untouched && invalid.status == 400 && blocked.success && unavailable.status == 503 && unreadable.status == 503 && removed.success
+  lowercase.status == 405 && absent.status == 404 && untouched && invalid.status == 400 && blocked.success && unavailable.status == 503 && unreadable.status == 503 && removed.success
 }
 
 test fn results_are_bound_to_the_accepted_request_and_never_overwritten() -> Bool {
@@ -96,7 +98,7 @@ fn request_fixture_root() -> NonEmptyStr? {
 
 fn request_fixture_handle(method: String, path: String, body: String) -> extdeps.http.server.ServeWireResponse {
   match request_fixture_root() {
-    Absent => gunbc.durable_handoff_rest.host_request_response(status: 503, request_id: "", standing: "unknown", detail: "test root unset", result: extdeps.languages.json.emit.JsonNull)
+    Absent => gunbc.durable_handoff_rest.host_request_outcome_response(request_id: "", outcome: gunbc.durable_handoff_rest.OutcomeUnknown { detail: "test root unset" }, result: extdeps.languages.json.emit.JsonNull)
     Present { value: root } => host_request_rest(root: root, principal: "alice", method: method, path: path, body: body, admit_payload: payload)
   }
 }
