@@ -14,6 +14,7 @@ import extdeps.github.workflow_runs { WorkflowRun, GitHubUser, User, InProgress,
 import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import gunbc.fleet.fleet_converge_plan_revision {
   RunPointerAdmission,
+  run_pointer_wire_label,
   RunPointerAdmitted,
   RunPointerMalformed,
   RunPointerRunRefused,
@@ -157,4 +158,25 @@ test fn a_missing_or_expired_artifact_refuses() -> Bool {
 // A BRANCH RUN IS NOT A PRODUCTION PLAN.
 test fn a_run_off_the_default_branch_refuses() -> Bool {
   verdict_tag(a: admit("7", answered(a_fleet_converge_run(branch: "session/someone", status_in_progress: false, conclusion_success: true)), artifacts_with(["fleet-converge-plan"], false))) == "off-default-branch"
+}
+
+// ── MISSING WIRE FIELDS READ AS NAMED ABSENCES (path/head_branch are Optional on the wire).
+
+fn a_run_without_path(r: WorkflowRun) -> WorkflowRun {
+  WorkflowRun {
+    id: r.id, name: r.name, display_title: r.display_title, path: none,
+    head_sha: r.head_sha, head_branch: r.head_branch, event: r.event, status: r.status, conclusion: r.conclusion,
+    workflow_id: r.workflow_id, run_number: r.run_number, run_attempt: r.run_attempt,
+    actor: r.actor, triggering_actor: r.triggering_actor, html_url: r.html_url,
+    created_at: r.created_at, updated_at: r.updated_at, pull_requests: r.pull_requests,
+  }
+}
+
+test fn a_run_with_no_path_at_all_is_the_wrong_workflow_named_absent() -> Bool {
+  verdict_tag(a: admit("7", answered(a_run_without_path(the_run())), artifacts_with(["fleet-converge-plan"], false))) == "wrong-workflow"
+}
+
+test fn the_wire_label_renders_the_named_absence() -> Bool {
+  run_pointer_wire_label(value: none) == "(absent)"
+    && run_pointer_wire_label(value: Present { value: "refs/heads/main" }) == "refs/heads/main"
 }

@@ -1319,6 +1319,7 @@ fn isolated_dashboard_instance(
     serve_function: serve_function, listen_port: listen_port, source_anchor_ref: source_anchor_ref,
     actuation: actuation, provision_transport: provision_transport,
     admitted_revision: fleet_admitted_revision_source,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
     publication_base_branch: "main" as NonEmptyStr,
     worker: WorkerIsServiceUser,
     provision_parent_root: dashboard_home_provision_parent_root,
@@ -1341,6 +1342,12 @@ fn isolated_dashboard_instance_admitting(
   actuation: DashboardActuationPosture,
   provision_transport: DashboardProvisionTransport,
   admitted_revision: DashboardAdmittedRevisionSource,
+  // The ref a fresh attempt forks from, named PER INSTANCE: the srv1 lab names its admitted ref
+  // (refs/gunbc/srv1-lab-admitted) so its attempts fork from the revision it actually serves --
+  // "origin/main" there was a third spelling of an already-forked meaning, and once convergence
+  // stops advancing that shared ref (R3), a lab forking from it would fork from a base that never
+  // moves again (silent staleness, worse than today).
+  dispatch_base_ref: NonEmptyStr,
   publication_base_branch: NonEmptyStr,
   worker: WorkerIdentity,
   provision_parent_root: FilePath,
@@ -1356,7 +1363,7 @@ fn isolated_dashboard_instance_admitting(
     local_origin_root: dashboard_instance_child(root: root, child: "origin.git"),
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "source"),
-    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_base_ref: dispatch_base_ref,
     publication_base_branch: publication_base_branch,
     dispatch_state_scope: DispatchStateInstanceOwned {
       worktree_child: "attempts" as NonEmptyStr,
@@ -1414,10 +1421,17 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     root: srv1_dashboard_lab_root,
     serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
     listen_port: 18081,
-    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
+    // THE LAB HAS ONE ADMITTED-REVISION REF, AND IT IS THE ROW'S OWN admitted_revision (R3).
+    // source_anchor_ref used to read refs/remotes/origin/main -- a name convergence also wrote as a
+    // deployment scratch target in every clone git makes -- so the lab's admitted revision and the
+    // shared remote-tracking ref held two meanings across two checkouts (§3). The serve anchor, the
+    // dispatch fork base, and the convergence writer's target are now THE SAME ref the operator
+    // advances: refs/gunbc/srv1-lab-admitted.
+    source_anchor_ref: srv1_lab_admitted_revision_source.ref_name as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     admitted_revision: srv1_lab_admitted_revision_source,
+    dispatch_base_ref: srv1_lab_admitted_revision_source.ref_name as NonEmptyStr,
     publication_base_branch: srv1_lab_publication_base_branch,
     worker: WorkerDedicatedAccount,
     provision_parent_root: srv1_dashboard_lab_provision_parent,
@@ -1591,7 +1605,12 @@ fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
     root: srv2_dashboard_lab_root,
     serve_function: "roadmap_serve_handle_srv2_lab" as NonEmptyStr,
     listen_port: 18083,
-    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
+    // Same R3 closure as the srv1 lab row: the anchor reads the row's OWN admitted authority (the
+    // wrapper gives declared instances fleet_admitted_revision_source), so the roadmap serve, the
+    // readback and the convergence writer all speak one ref. Leaving this at
+    // refs/remotes/origin/main would have made it a frozen stale base the moment convergence
+    // stopped advancing that shared ref.
+    source_anchor_ref: fleet_admitted_revision_source.ref_name as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
   )

@@ -741,7 +741,15 @@ fn compose_statement_path_defects(
           compose_dir_literal: compose_dir_literal,
           i: i + 1
         )
-      } else if string_contains(s: literal, pattern: compose_dir_literal) {
+      } else if string_contains(
+        s: concat(literal, "/"),
+        pattern: concat(compose_dir_literal, "/")
+      ) {
+        // SEGMENT-BOUNDED, not a bare substring. Both sides gain a trailing slash before the test, so the
+        // composed name has to appear as a whole path segment to count as a repeat. A sibling directory
+        // whose name merely BEGINS with the composed name is a different directory, and reporting it would
+        // make the law cry wolf on a step that composes correctly. The equality branch above stays: the
+        // statement that ASSIGNS COMPOSE names the directory, it does not repeat it.
         concat(
           [
             ComposePathDefect {

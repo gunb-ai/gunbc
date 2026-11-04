@@ -13,6 +13,7 @@ import extdeps.electronic_component.types {
 import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_10cx085yf672e6g }
 import extdeps.electronic_component.microchip_cec1736 { cec1736 }
 import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
+import extdeps.electronic_component.onsemi_fsv20100v { onsemi_schottky_fsv20100v }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.micron_mt25qu01g { mt25qu01gbbb8e12 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
@@ -396,12 +397,12 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   e1_unclaimed(designator: "Q73"),
   e1_unclaimed(designator: "Q74"),
   e1_unclaimed(designator: "Q75"),
-  e1_unclaimed(designator: "D2_P1"),
-  e1_unclaimed(designator: "D2_P5"),
+  e1_part(designator: "D2_P1", row: onsemi_schottky_fsv20100v),
+  e1_part(designator: "D2_P5", row: onsemi_schottky_fsv20100v),
   e1_unclaimed(designator: "D3_P1"),
   e1_unclaimed(designator: "D3_P5"),
-  e1_unclaimed(designator: "D8_P1"),
-  e1_unclaimed(designator: "D8_P5"),
+  e1_part(designator: "D8_P1", row: onsemi_schottky_fsv20100v),
+  e1_part(designator: "D8_P5", row: onsemi_schottky_fsv20100v),
   e1_unclaimed(designator: "Q2_P1"),
   e1_unclaimed(designator: "Q2_P5"),
   e1_unclaimed(designator: "Q3_P1"),

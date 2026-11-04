@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   owned_directory_is_agent_door,
 }
 import gunbc.owned_directory { ForeignOwnershipRefuses, owned_directory_group_adoption }
-import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
+import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import test.claim.live_deploy.live_deploy_apply_plan_witness { plan_for, legs_of, has_step, payload_at, step_index }
 
@@ -38,7 +38,7 @@ fn agent_door_revision() -> ReleaseRevisionBinding {
 }
 
 fn agent_door_unit_text(spec: DeploymentSpec) -> String {
-  match live_deploy_agent_door_unit_file(spec: spec, revision: agent_door_revision(), now_epoch: claim_oidc_now()) {
+  match live_deploy_agent_door_unit_file(spec: spec, revision: agent_door_revision(), now_epoch: claim_oidc_now_for(spec: spec)) {
     LiveDeployTailnetDoorUnitNotDeployed => ""
     LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => ""
     LiveDeployTailnetDoorUnitEmitted { file } => serialize_systemd_unit_file(file: file)
