@@ -8,13 +8,20 @@ import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   AttemptSlotsCarry, AttemptSlotsCarryReported, AttemptSlotsCarryReport, AttemptSlotsCarryRowRefused,
   AttemptSlotsCarryNoDeclaredRow, AttemptSlotsRowNamesAnotherInstance,
   AttemptSlotsCarryOutcome, AttemptSlotsCarried, AttemptSlotsCarryAlreadyCarried, AttemptSlotsCarryRefused,
-  AttemptSlotsCensus, AttemptSlotsCensusOf, AttemptSlotsCensusRefused, AttemptSlotsCensusNoDeclaredRow,
+  AttemptSlotsCarrySourceProvenAbsent, AttemptSlotsCarrySourceUnreadable, AttemptSlotsCarryKeysRefused,
+  AttemptSlotsCensus, AttemptSlotsCensusOf, AttemptSlotsCensusNoDeclaredRow,
+  AttemptSlotsCensusSourceProvenAbsent, AttemptSlotsCensusSourceUnreadable, AttemptSlotsCensusKeysRefused,
   AttemptSlotsCensusEntry, AttemptSlotsCensusCounts, attempt_slots_census_buckets_sum_to_total,
   AttemptSlotsSlotReading, SlotRead, SlotAbsent, SlotUnreadable,
   AttemptSlotsPayloadRelation, PayloadsIdentical, PayloadsDifferent, PayloadRelationUndecided,
-  attempt_slots_cutover_frontier_expiry, attempt_slots_cutover_seam_ref, attempt_slots_cutover_run_ref,
+  attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_schema,
+  AttemptSlotsCutoverPassRecord, attempt_slots_census_record_kind, attempt_slots_carry_record_kind,
+  AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverRecordUnwritten,
+  AttemptSlotsCensusRowRefused,
 }
-import std.roster_frontier { FrontierExpiryReport }
+// The executing route's record write, so the row that witnesses the record exercises the SAME function the
+// belt tick calls -- a witness that wrote the file itself would witness a different act.
+import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_slots_cutover_record_write }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout, attempt_exit_inbox_dir, attempt_exit_refused_dir }
@@ -37,6 +44,7 @@ import gunbc.compute.host_capacity { compute_capacity_directories, ComputeCapaci
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, host_capacity_subject_in, AgentSessionPool, compute_reserve_against, compute_capacity_store, compute_release_on,
   compute_seat_acquisition_at, SeatAcquisitionRead, SeatAcquisitionNotHeld, SeatAcquisitionRefused,
+  compute_seat_charge_returned, ComputeSeatCharge, SeatChargeReturned, SeatChargeStillHeld, SeatChargeNeverAcquired, SeatChargeUnproven,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
 }
@@ -46,12 +54,13 @@ import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptReserved, AttemptLaunching, AttemptTerminal,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
   attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  attempt_slot_keys, AttemptSlotKeysListed,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, AttemptUnitAbsent }
 import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, SessionAttemptName, session_settle_release, SettleRetireUncharged, SessionSettlementRetiredUncharged, session_ledger_fold_ceiling }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -1387,14 +1396,191 @@ test fn an_instance_with_no_declared_row_is_refused_by_name_and_reads_nothing() 
 test fn the_declared_row_names_the_instance_the_pass_reads_and_the_root_it_left_behind() -> Bool {
   let lookup = replaced_attempt_slots_root_for(instance_id: srv1_lab_dashboard_instance().instance_id)
   let live_root = session_attempt_slots_path(instance: srv1_lab_dashboard_instance()) as String
-  let pending = attempt_slots_cutover_frontier_expiry(present_decls: [attempt_slots_cutover_seam_ref()])
-  let fired = attempt_slots_cutover_frontier_expiry(present_decls: [attempt_slots_cutover_seam_ref(), attempt_slots_cutover_run_ref()])
   match lookup {
     ReplacedAttemptSlotsRootFound { row: row } =>
       (row.instance_id == srv1_lab_dashboard_instance().instance_id)
       && ((row.old_slots_root as String) != live_root)
-      && match pending { FrontierExpiryReport { unbound_count: u1, pending_count: p, fired_still_present_count: f } => (u1 == 0) && (p == 1) && (f == 0) }
-      && match fired { FrontierExpiryReport { unbound_count: u2, pending_count: p, fired_still_present_count: f } => (u2 == 0) && (p == 0) && (f == 1) }
     _ => false
   }
+}
+
+// THE PASS RUNS AGAINST A STORE FOR A DIFFERENT INSTANCE, AND SAYS SO IN ITS RECORD. The executing route
+// looks the replaced root up by instance, so a row declared for one instance can never census another
+// instance's slots into this store; the pass is total and returns the record that names BOTH refusals, and
+// the record it writes is the same values it read (the renderers carry the arm, they do not re-encode a
+// kind), so a record cannot disagree with the census it came from. The write is the belt's own function --
+// what a tick calls -- over the fixture's records directory, and the file read back is the evidence.
+test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_names_both_refusals() -> Bool {
+  let dir = fresh_dir(tag: "cutover-cross")
+  let stores = stores_at(dir: dir)
+  let record = match stores {
+    Absent => AttemptSlotsCutoverPassRecord {
+      schema: "no fixture stores",
+      instance_id: srv1_dashboard_lab_id,
+      census: AttemptSlotsCensusNoDeclaredRow { instance_id: srv1_dashboard_lab_id },
+      carry: AttemptSlotsCarryNoDeclaredRow { instance_id: srv1_dashboard_lab_id },
+    }
+    Present { value: s } => attempt_slots_cutover_pass_for_instance(instance_id: srv1_dashboard_lab_id, target: s.slots)
+  }
+  let outcome = match stores {
+    Absent => AttemptSlotsCutoverRecordUnwritten { path: "no fixture stores", error: "no fixture stores", record: record }
+    Present { value: s } => belt_attempt_slots_cutover_record_write(stores: s, record: record)
+  }
+  let path = match stores {
+    Absent => ""
+    Present { value: s } => attempt_slots_cutover_record_path(stores: s, instance_id: srv1_dashboard_lab_id)
+  }
+  let read_back = Filesystem.Read(path: path as FilePath)
+  (match record.census {
+    AttemptSlotsCensusRowRefused { refusal: r } =>
+      match r { AttemptSlotsRowNamesAnotherInstance { row_instance: ri, store_instance: si } => (ri == srv1_dashboard_lab_id) && (si != srv1_dashboard_lab_id)  _ => false }
+    _ => false
+  })
+    && (match record.carry { AttemptSlotsCarryRowRefused { refusal: _ } => true  _ => false })
+    && (record.schema == attempt_slots_cutover_record_schema)
+    && (record.instance_id == srv1_dashboard_lab_id)
+    && (attempt_slots_census_record_kind(census: record.census) == "row-refused")
+    && (attempt_slots_carry_record_kind(carry: record.carry) == "row-refused")
+    && (match outcome { AttemptSlotsCutoverRecorded { path: p, record: back } => (p == path) && (back.census == record.census)  _ => false })
+    && string_contains(s: read_back.content, pattern: attempt_slots_cutover_record_schema)
+    && string_contains(s: read_back.content, pattern: "row-refused")
+    && !slot_is_launching(dir: dir)
+    && !slot_is_terminal(dir: dir)
+}
+
+// THE STATE A COMPLETED CUTOVER ENDS IN, TOLD APART FROM A BROKEN ONE. The replaced root of this fixture
+// was NEVER CREATED -- no row called old_store here, so the directory does not exist -- and the census and
+// the carry answer it as proven absent, not as "could not be listed". That distinction is what the reading
+// arm (SlotStoreAbsent, CasSlotKeysAbsent) exists to carry, and the collapse mutant is what keeps it honest:
+// fold a missing listing back into a refusal and this row goes red. Nothing is carried, nothing is written,
+// and the store the pass reads still holds no slot for that reference.
+test fn a_replaced_root_that_was_never_created_is_proven_absent_to_census_and_carry_and_carries_nothing() -> Bool {
+  let dir = fresh_dir(tag: "cutover-absent")
+  let stores = stores_at(dir: dir)
+  let row = moved_row(dir: dir)
+  let census = match stores {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "session-wet" as NonEmptyStr }
+    Present { value: s } => attempt_slots_census(target: s.slots, moved: row)
+  }
+  let carry = match stores {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "session-wet" as NonEmptyStr }
+    Present { value: s } => attempt_slots_carry(target: s.slots, moved: row)
+  }
+  let old_root = old_slots_dir(dir: dir)
+  (old_root != "")
+    && (match census { AttemptSlotsCensusSourceProvenAbsent { old_root: r } => (r as String) == old_root  _ => false })
+    && (match carry { AttemptSlotsCarrySourceProvenAbsent { old_root: r } => (r as String) == old_root  _ => false })
+    && !slot_is_launching(dir: dir)
+    && !slot_is_terminal(dir: dir)
+    && (match stores {
+      Absent => false
+      Present { value: s } => match attempt_slot_keys(store: s.slots.slots) {
+        AttemptSlotKeysListed { keys: ks } => length(ks) == 0
+        _ => false
+      }
+    })
+}
+
+// THE CHARGE WAS RETURNED BEFORE ANY PASS COULD REACH THE SLOT, SO THE SLOT IS RETIRED AS BOOKKEEPING.
+// This is the state a real lease reached on 2026-11-04: the ledger's own release ran while the slot sat
+// under a root no pass enumerates, which removed the acquisition instant the holder-death evidence reads
+// (session_holder_evidence refuses when compute_seat_acquisition_at finds no term), so the ordinary close
+// can never fire for it. The settle pass now answers that state with SettleRetireUncharged: the slot is
+// taken terminal at the generation READ FROM THE SLOT, no compute_release_on call is made (there is nothing
+// left to return, and a second release would be a claim about a charge the ledger already closed), and the
+// detail makes no holder-death claim. The second pass settles nothing, so the route is idempotent.
+test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkeeping_and_not_released_again() -> Bool {
+  let dir = fresh_dir(tag: "retire-uncharged")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
+  let released = match stores {
+    Absent => false
+    Present { value: s } =>
+      match session_settle_release(stores: s, host: host, unit: unit_a() as NonEmptyStr, attempt: SessionAttemptName { node_id: node_a, attempt_key: key_a }, reason: "witness: the ledger release that ran while the slot was unreachable") {
+        SessionSettlementReleaseAttempted { unit: u, freed: freed, detail: _ } => ((u == unit_a()) && ledger_returned(Present { value: freed }))
+        _ => false
+      }
+  }
+  let charge = match stores {
+    Absent => SeatChargeUnproven { detail: "no fixture stores" }
+    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
+  }
+  let first = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  let again = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  charged && opened && released
+    // the ledger release did NOT touch the slot: it is still the launching record no pass could reach
+    && slot_is_launching(dir: dir)
+    && (match charge {
+      SeatChargeReturned { reference: r, acquired_at: a, returned_at: b, release_reason: _, generation: g } =>
+        (r == unit_a()) && (b > a) && (cas_generation_count(g: g) > 0)
+      _ => false
+    })
+    && (match first {
+      SessionSettlementRetiredUncharged { unit: u, attempt: _, detail: d } =>
+        (u == unit_a()) && string_contains(s: d, pattern: "no release is issued") && string_contains(s: d, pattern: "no holder-death claim")
+      _ => false
+    })
+    && slot_is_terminal(dir: dir)
+    && done_settlement(again)
+}
+
+// THE CONTROL THAT KEEPS THE RETIREMENT FROM BEING A CLEANUP SWEEP. A slot whose acquisition the ledger has
+// never recorded is NOT retired: the condition is a POSITIVE acquisition-then-return in the partition's own
+// history (compute_seat_charge_returned walks the event chain in append order and closes the still-open
+// acquisition), never the mere absence of a hold -- a slot planted before its acquire is recorded is a
+// launch/acquire ordering, not an orphan. It is kept, and the keep reason names what was not shown.
+test fn a_slot_whose_charge_was_never_acquired_is_kept_and_not_retired() -> Bool {
+  let dir = fresh_dir(tag: "charge-never-acquired")
+  let stores = stores_at(dir: dir)
+  let seeded = launched_without_a_ledger_seat(dir: dir)
+  let charge = match stores {
+    Absent => SeatChargeUnproven { detail: "no fixture stores" }
+    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
+  }
+  let settled = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  seeded
+    && (match charge { SeatChargeNeverAcquired { reference: r } => (r == unit_a())  _ => false })
+    && (match settled {
+      SessionSettlementKept { unit: u, why: w } => (u == unit_a()) && string_contains(s: w, pattern: "does not positively show this charge as returned")
+      _ => false
+    })
+    && slot_is_launching(dir: dir)
+    && !slot_is_terminal(dir: dir)
+}
+
+// THE ORDINARY CLOSE STILL OWNS THE ORDINARY CASE. A slot whose charge is STILL HELD is closed by
+// terminate-and-release on the holder's death, never by the retirement: the charge reading says held, the
+// settlement is ReleaseAttempted, the ledger shows the charge returned by that release, and the slot is
+// terminal. If the retirement arm ever fired here it would be releasing nothing for a lease that was still
+// held, which is the leak this whole change exists to close.
+test fn a_slot_whose_charge_is_still_held_is_closed_by_the_ordinary_terminate_and_release() -> Bool {
+  let dir = fresh_dir(tag: "charge-still-held")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
+  let charge = match stores {
+    Absent => SeatChargeUnproven { detail: "no fixture stores" }
+    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
+  }
+  let settled = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  charged && opened
+    && (match charge { SeatChargeStillHeld { reference: r, acquired_at: a } => (r == unit_a()) && (a > 0)  _ => false })
+    && (match settled {
+      SessionSettlementReleaseAttempted { unit: u, freed: freed, detail: _ } => (u == unit_a()) && ledger_returned(Present { value: freed })
+      _ => false
+    })
+    && slot_is_terminal(dir: dir)
 }
