@@ -7,6 +7,7 @@ import std.content_hash { Sha256Digest }
 import extdeps.crypto.sha2 { sha256_computed_digest }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, IpmiMcInfoFirmwareRevision }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -70,16 +71,29 @@ fn ipmitool_raw_two_bytes(first_hex: String, second_hex: String) -> String {
   join([" ", first_hex, " ", second_hex, "\n"], "")
 }
 
-// `ipmitool mc info` against the Mt. Collins BMC: the two fields the corpus has read from this
-// controller -- Firmware Revision 0.32 and IPMI Version 2.0 (gunbc.machine_intake.mtcollins1_access_observation)
-// in ipmitool's `<name> : <value>` field layout. No verbatim stdout is retained, so the layout, and
-// the absence of the other fields ipmitool prints, carry this standing. The boot's reachability read
-// consumes only the exit and stderr.
-data ipmitool_mc_info_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "a retained stdout of `ipmitool mc info` against the Mt. Collins BMC, cited by digest" as NonEmptyStr
+// THE MT. COLLINS `mc info` FACTS THE CORPUS HAS, IN THE UPSTREAM'S OWN PARSED SHAPE, so a scenario can MODEL
+// this controller's `mc info` answer (`gunbc.bmc_model bmc_with_mc_info`) and have the dry realization RENDER it
+// at the moment it is asked -- state first, bytes second -- instead of the handler reciting one machine's
+// transcript to every dry controller in the repository. Only Firmware Revision 0.32 is representable:
+// `IpmiMcInfoFields` carries no IPMI Version label (no consumer reads that line), and a field the corpus never
+// read stays absent rather than invented. ITS STANDING IS TRANSCRIBED, NOT OBSERVED
+// (extdeps.external_authority.CitedFigureStanding#TranscribedUncited): these fields were read off a transcript
+// that was never retained, and the read that would turn them into an observation is a retained stdout of
+// `ipmitool mc info` against the Mt. Collins BMC, cited by digest. Its consumer is the Mt. Collins boot
+// scenario (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix world_with_console), which seeds a
+// modeled controller with these fields instead of reciting a transcript at every dry controller.
+data ipmitool_mc_info_mt_collins_transcribed_fields: IpmiMcInfoFields = IpmiMcInfoFields {
+  device_id: none,
+  device_revision: none,
+  firmware: Present { value: IpmiMcInfoFirmwareRevision { major: 0, minor: 32 } },
+  manufacturer_id: none,
+  manufacturer_name: none,
+  product_id: none,
+  product_name: none,
+  device_available: none,
+  provides_device_sdrs: none,
 }
 
-data ipmitool_mc_info_mt_collins: String = "Firmware Revision         : 0.32\nIPMI Version              : 2.0\n"
 
 // `ipmitool fru print 0` against the Mt. Collins BMC: the board inventory the boot's pre-power
 // retention keeps (gunbc.machine_intake.megarac_boot_diagnostic_bundle mtcollins1_boot_fru_print_retain)

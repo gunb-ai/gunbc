@@ -3,7 +3,7 @@ module gunbc.instruments.compute_run_unit_cold
 import gunbc.compute.compute_attempt_slots_root { compute_seat_directory, ComputeFlatSeat }
 import gunbc.owned_directory { owned_directory_path }
 import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
-import std.algebra { trim, length }
+import std.algebra { trim, length, list_append }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure {
   ByteSize, Kibibyte, gibibyte, gibibyte_to_byte_size,

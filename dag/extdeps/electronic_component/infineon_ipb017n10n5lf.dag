@@ -38,7 +38,7 @@ data ipb017n10n5lf: ElectronicComponentRow = ElectronicComponentRow {
   vendor: infineon,
   ordering_code: "IPB017N10N5LF",
   package: "PG-TO263-7 (D2PAK 7-pin)",
-  top_marking: "017N10LF",
+  top_marking: Present { value: "017N10LF" },
   specification: MosfetSpec { mosfet: MosfetSpecification {
     channel: NChannel,
     drain_source_maximum: volt(count: 100),

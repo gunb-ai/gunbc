@@ -19,6 +19,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cssl_seed_linked_closure_assembly.rs",
     "required_regen_host.rs",
     "target_invocation_host.rs",
+    "behavioral_receipt_host.rs",
     "partition_crate_boundary_host.rs",
     "generated_artifact_boundary_host.rs",
     "emitted_closure_compile_host.rs",
@@ -32,6 +33,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "gunbc_file_transport_generated.rs",
     "release_locus_seed_constants_generated.rs",
     "native_route_seed_boundary_generated.rs",
+    "instrument_registry_generated.rs",
     "main.rs"
 ];
 
