@@ -105,9 +105,17 @@ fn flex_key_from_custody(custody: CustodyStanding) -> FlexKeyStanding {
   }
 }
 
-data flex_run_pass_caller_frontier: DissolutionCondition = unbound_dissolution(description: "flex_run_pass has a production caller, gunbc.fleet.flex_pass_run pass (fleet-converge mode flex_pass), which reads the key from Secret Manager, walks the instance and charge pages, and runs the pass with no cards, no allocations and no prior create standing. TWO GAPS REMAIN. (1) It has not executed: TRIGGER a dispatched flex_pass on srv1 whose receipt shows complete instance and charge walks and the planned outcome; SUFFICIENT FOR narrowing this row to (2). (2) Nothing feeds a previous pass's create standing through flex_reconcile_ours into flex_reconciled_allocation, and the pass's cards and allocations are not yet built from the labelled instances it observes: TRIGGER the entry builds FlexOwnedCard and RentedServingAllocation from the observed labelled roster and reconciles a lost create from that observation (the A3 placement-after-create slice); SUFFICIENT FOR deleting this row once both triggers hold.")
+data flex_run_pass_caller_frontier: DissolutionCondition = unbound_dissolution(description: "flex_run_pass has a production caller, gunbc.fleet.flex_pass_run pass (fleet-converge mode flex_pass), which reads the key from Secret Manager, walks the instance and charge pages, and feeds the pass the CARDS the labelled roster accounts for (product.fabric.flex_vast_shadow flex_cards_from_roster, aged by the loading sightings the pass carries in its own carry file, because GET /api/v1/instances/ has no time field) and the PREVIOUS pass's create standing and cooldown. TWO GAPS REMAIN. (1) It has not executed: TRIGGER a dispatched flex_pass on srv1 whose receipt shows complete instance and charge walks, the cards= line (built n=, or the typed reason it is not built), the reconcile= line and the planned outcome; SUFFICIENT FOR narrowing this row to (2). (2) RentedServingAllocation is still not built from the observed roster: the standing is carried and reconciled by flex_reconcile_acquisition, but the allocation needs the PLACEMENT of the instance the create yielded, which is the A3 placement-after-create slice named by FlexPlacementSupplied's producer obligation; TRIGGER the entry builds RentedServingAllocation from the carried standing plus that placement and hands it to the enrollment frontier (flex_rented_allocation_enrollment_frontier); SUFFICIENT FOR deleting this row once both triggers hold.")
 
 data flex_select_supply_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "No wet or dry pass quotes shadow-field offers through serving_card_hourly into product.fabric.selection select_supply with flex_objective and flex_delay_unvalued: flex_plan_pass takes its candidate offer and quote as supplied, so those two values and serving_cache_bytes have no production consumer. TRIGGER: the srv1 fleet-converge entry (flex_run_pass_caller_frontier) builds FlexPassInput's offer and quote through select_supply under flex_objective. SUFFICIENT FOR deleting this row.")
+
+// THE RELEASE INPUTS HAVE NO PRODUCER. flex_run_pass takes FlexReleaseInputs { roots, protected, readings }
+// and the srv1 entry passes none, so a wet destroy stops TYPED at FlexPassReleaseReadingsUnread, naming the
+// allocation whose readings are owed -- nothing is silently skipped and nothing is guessed. The readings
+// (RentedReleaseReadings, gunbc.serving.rented_release) are read by the rented_* carriers: that lane (S5) is
+// the producer this consumer waits on. Nothing outside gunbc.serving.rented_release and this module even
+// names the type, which is how a missing producer looks from the consumer side.
+data flex_release_inputs_producer_frontier: DissolutionCondition = unbound_dissolution(description: "The release route has its consumer wired (flex_pass_step runs the release fold when a wet destroy is planned) and no producer: nothing in the repository constructs RentedReleaseReadings, so the entry cannot build FlexReleaseInputs and passes none. TRIGGER: the entry supplies FlexReleaseInputs built from the serving recipe's store roots and protected paths PLUS a RentedReleaseReadings read of the host and instance under the allocation the pass plans to destroy (the rented_* carriers, S5). SUFFICIENT FOR deleting this row: a wet destroy that reads the host and instance under it before releasing, instead of stopping at FlexPassReleaseReadingsUnread.")
 
 data flex_rented_allocation_enrollment_frontier: DissolutionCondition = unbound_dissolution(description: "The allocation join stops at constructing RentedServingAllocation; handing it to rented_allocation_enrollment (startup, key binding, enroll-and-seat) is deep-bear-539's S-plan (S3 #14109, S4), not this loop. TRIGGER: rented_allocation_enrollment has a production caller that receives the allocation from flex_created_outcome or flex_reconciled_allocation. SUFFICIENT FOR deleting this row.")
 
@@ -207,11 +215,22 @@ type FlexRentCooldown {
   until: EpochMs
 }
 
+// WHAT THE PASS KNOWS ABOUT THE CARRY THE PREVIOUS PASS LEFT. The carry is what stops a pass renting on
+// top of an ask it cannot see: the standing of the last create, and the cooldown it recorded. When the
+// file cannot be read, the header is not the declared one, or a line cannot be parsed, that standing is
+// UNKNOWN - and unknown must never read as "nothing in flight", because "nothing in flight" authorizes a
+// create (DESIGN 5: a failure arm refuses, never widens). The reason is carried so the receipt says which
+// kind of cannot it is.
+type FlexCarryTrust
+  = FlexCarryTrusted
+  | FlexCarryUntrusted { reason: NonEmptyStr }
+
 type FlexPassInput {
   policy: FlexPolicy
   gates: FlexWetGates
   now: EpochMs
   cooldown: FlexRentCooldown?
+  carry: FlexCarryTrust
   observation: FlexPassObservation
   cards: List<FlexOwnedCard>
   allocations: List<RentedServingAllocation>
@@ -554,6 +573,7 @@ type FlexPassRefusal
   | FlexPassCreateRefused { refusal: FlexCreateRefusal }
   | FlexPassNoAllocationForCard { id: NonEmptyStr }
   | FlexPassCooldownActive { until: EpochMs }
+  | FlexPassCarryUnread { reason: NonEmptyStr }
   | FlexPassNotAWritePlan
 
 type FlexPassPlan
@@ -654,14 +674,22 @@ fn flex_plan_release_or_create(input: FlexPassInput, decision: FlexWriteDecision
           match input.intent {
             Absent => FlexPlanIdle
             Present { value: intent } =>
-              match input.cooldown {
-                Present { value: c } =>
-                  if input.now < c.until {
-                    FlexPlanRefused { refusal: FlexPassCooldownActive { until: c.until } }
-                  } else {
-                    flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
+              // FIRST: does this pass know what the last one asked for? An unread carry is not an empty
+              // one. If the standing of the previous ask is unknown, creating here can double-rent a card
+              // the account is already paying for - the exact failure the carry exists to prevent. The
+              // refusal is typed and names the reason; it does not fall through to the cooldown arm.
+              match input.carry {
+                FlexCarryUntrusted { reason: r } => FlexPlanRefused { refusal: FlexPassCarryUnread { reason: r } }
+                FlexCarryTrusted =>
+                  match input.cooldown {
+                    Present { value: c } =>
+                      if input.now < c.until {
+                        FlexPlanRefused { refusal: FlexPassCooldownActive { until: c.until } }
+                      } else {
+                        flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
+                      }
+                    Absent => flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
                   }
-                Absent => flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
               }
           }
       }
@@ -860,6 +888,8 @@ fn flex_pass_refusal_wire(r: FlexPassRefusal) -> String {
     FlexPassCreateRefused { refusal: c } => concat("create-refused ", flex_create_refusal_wire(r: c))
     FlexPassNoAllocationForCard { id: id } => concat("no-allocation-for-card ", id as String)
     FlexPassCooldownActive { until: u } => concat("cooldown-active until_ms=", int_to_decimal_string(value: u))
+    FlexPassCarryUnread { reason: r } =>
+      concat("carry-unread reason=", r, " (the standing of the last ask is unknown, so no create is authorized)")
     FlexPassNotAWritePlan => "not-a-write-plan"
   }
 }
