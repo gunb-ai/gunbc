@@ -5,7 +5,7 @@ import std.upsert_decision { ObservationVerdict, Noop, Apply, Refuse, UpsertClas
 import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import gunbc.compute.attempt_lifecycle {
-  AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
+  AttemptSlotKeysAbsent, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused, AttemptPayloadCodec,
   UnitLifecycle, UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended,
   attempt_state_wire, attempt_state_decode, attempt_member, attempt_member_epoch, attempt_transition_wire,
@@ -560,6 +560,7 @@ fn worktree_claim_ensure_pass_at(
             WorktreeClaimUnreadable { detail } => WorktreeClaimKept { subject: k as String, reason: detail }
           }),
       }
+    AttemptSlotKeysAbsent { store: _ } => WorktreeClaimPassRefused { detail: "no worktree claim store is present -- the pass claims nothing and releases nothing on an absent census" }
     AttemptSlotKeysRefused { detail: d } => WorktreeClaimPassRefused { detail: join(["the worktree claim store: ", d], "") }
   }
 }

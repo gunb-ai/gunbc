@@ -2,7 +2,6 @@ module gunbc.roadmap.roadmap_session_placement
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Seconds }
 import std.nat { Nat }
-import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, kibibyte_ceiling, millicore }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count, cas_generation_first }
 import product.capacity.lease { LeaseGrant }
@@ -18,7 +17,7 @@ import gunbc.roadmap.roadmap_session_attempt_slots_root {
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
-  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_reopen_settled, attempt_record_with_state, attempt_transition_wire, attempt_state_wire,
   compute_pre_launch_ceiling_seconds,
@@ -40,7 +39,6 @@ import gunbc.compute.work_class_grant {
   WorkClassAgentSession, WorkClassReviewerSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
 }
 import gunbc.compute.unit_bounds { UnitProcessBounds }
-import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import extdeps.linux.kernel_random { kernel_boot_id_path }
 import extdeps.linux.proc_stat { proc_stat_path }
@@ -185,14 +183,16 @@ data session_placement_schema: String = "gunbc.session-placement/v1"
 // carried as EpochSecs (SessionPlacementRecord.granted_at / expires_at), so they are not part of it.
 data session_placement_term_seconds: Nat = 14400
 
-// THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT, derived rather than chosen: the belt already
-// admits at most max_concurrent workers, so a pool of that many ceilings refuses only for memory the
-// machine lacks, never for a count launch admission did not impose.
-fn session_placement_pool() -> HostCapacityPool? {
-  match checked_int_to_nat(n: roadmap_belt_default_capacity.max_concurrent) {
-    Absent => none
-    Present { value: slots } => Present { value: AgentSessionPool { slots: slots } }
-  }
+// THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT FOR THAT INSTANCE, derived from it rather than
+// chosen (and never a hand-written number -- DESIGN.md §4): the belt already admits at most the instance's
+// belt_max_concurrent workers, so a pool of that many ceilings refuses only for memory the machine lacks,
+// never for a count launch admission did not impose. Because slots come from the SAME per-instance figure,
+// the pool's appropriation (dispatch_worker_memory_max x slots, host_capacity_pool_appropriation) follows
+// automatically. srv1-live gets belt_max_concurrent_default slots; the srv1 lab gets srv1_lab_belt_max_concurrent.
+fn session_placement_pool(instance: HostDashboardInstance) -> HostCapacityPool {
+  // slots is a Nat and belt_max_concurrent is now a Nat too -- the assignment is direct, and there is no
+  // "not a natural number" case to refuse: a worker count has no negative representative to reject.
+  AgentSessionPool { slots: instance.belt_max_concurrent }
 }
 
 // ── THE BINDING: WHICH ATTEMPT, WHICH UNIT, WHICH HOLD ─────────────────────────────────────────
@@ -298,10 +298,8 @@ fn session_placement_records_dir(instance: HostDashboardInstance) -> String {
 // session store, and saying that is more useful than reporting a ledger problem the pass never reached. The
 // refusal is a resolution refusal -- the pass does not continue over a root it spelled for itself.
 fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresResolution {
-  match session_placement_pool() {
-    Absent => SessionStoresUnresolved { detail: join(["the belt's max_concurrent ", to_string(value: roadmap_belt_default_capacity.max_concurrent), " is not a natural number, so the session pool has no size"], "") }
-    Present { value: pool } =>
-      match session_attempt_slots_store(instance: instance) {
+  let pool = session_placement_pool(instance: instance)
+  match session_attempt_slots_store(instance: instance) {
         SessionAttemptSlotsStoreUnready { detail: d } => SessionStoresUnresolved {
           detail: join(["the session slot store of instance ", instance.instance_id as String, " is not admitted: ", d], ""),
         }
@@ -323,7 +321,6 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
               }
           }
       }
-  }
 }
 
 // ── ACQUISITION: SLOT FIRST, THEN THE LEDGER ───────────────────────────────────────────────────
@@ -425,9 +422,9 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
     SystemdUnitNameOverlong { length: n } =>
       SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) }
     SystemdUnitNameAdmitted { name } =>
-  match session_placement_pool() {
-    Absent => SessionPlacementRefused { detail: "the session pool has no size" }
-    Present { value: pool } => {
+  {
+    let pool = session_placement_pool(instance: instance)
+    {
       let class_grant = work_class_grant(class: WorkClassAgentSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
       match now_epoch_seconds() {
         Absent => SessionPlacementRefused { detail: "the host clock could not be read as epoch seconds, and the session's slot carries a launch deadline" }
@@ -1583,6 +1580,12 @@ fn session_placement_slot_records(stores: SessionPlacementStores) -> SessionSlot
       }
     }
     AttemptSlotKeysRefused { detail: d } => SessionSlotRecordsRefused { detail: join(["the session slot store could not be listed: ", d], "") }
+    // ABSENCE IS A CENSUS ANSWER, NOT A SETTLEMENT OR A RECORD. The census proved this store's own
+    // directory was never created; the honest answer is that NO slot record is claimed, reported as a
+    // refusal so the serve surface cannot render "no attempts" as though it had read an empty store.
+    // The constructor is the one this site already used for a listing failure, so nothing moves on an
+    // existing route -- only the named fact in the detail changes.
+    AttemptSlotKeysAbsent { store: _ } => SessionSlotRecordsRefused { detail: "the session slot store's own directory was never created; the census proves there is no attempt-slot key to read, and no record is claimed" }
   }
 }
 
@@ -1593,6 +1596,13 @@ fn session_placement_settle_pass_at(stores: SessionPlacementStores, host: String
   match attempt_slot_keys(store: session_attempt_slot_store_handle(ref: stores.slots)) {
     AttemptSlotKeysListed { keys } => SessionSettlePassRan { settlements: map(keys, k => session_settle_one(stores: stores, host: host, key: k, lifecycle: lifecycle_of(k), now: now)) }
     AttemptSlotKeysRefused { detail: d } => SessionSettlePassRefused { detail: join(["the session slot store could not be listed: ", d], "") }
+    // THE SETTLE PASS IS THE RELEASE ROUTE, SO A CENSUS ANSWER MUST NEVER ACTIVATE IT. A store whose
+    // directory was never created answers as a refusal here, exactly as an unreadable store did: the
+    // pass reports NOTHING SETTLED and says the store was absent. Reporting
+    // SessionSettlePassRan { settlements: [] } would record "I never looked" as "everything settled",
+    // which is hold_recovered_by_age_not_observed_holder_death on new substrate. Same constructor as
+    // the refused arm, so no existing route moves.
+    AttemptSlotKeysAbsent { store: _ } => SessionSettlePassRefused { detail: "the session slot store's own directory was never created; a census answer is never a settlement pass, so nothing is settled and nothing is released" }
   }
 }
 

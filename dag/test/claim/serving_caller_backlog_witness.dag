@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, Int, List, EpochSecs }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import std.nat { Nat }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
-import std.algebra { length }
+import std.algebra { length, list_append }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
 import extdeps.accounting.budget { Appropriation }

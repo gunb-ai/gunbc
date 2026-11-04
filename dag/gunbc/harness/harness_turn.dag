@@ -24,7 +24,6 @@ import extdeps.openrouter.openrouter {
   openrouter_decode_rate_limited, openrouter_rate_limit_wire,
 }
 import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_status }
-import gunbc.harness.harness_operator_route { OperatorRoundFault, OperatorNoCapacity, OperatorCardUnanswered, OperatorUpstreamsBusy, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost, operator_round_fault, operator_pinned_post_request }
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
   session_validation_resumable, session_event_recovery_needed, session_cause_text, session_event_request_pending, session_event_request_redelivered, session_request_pending_since_of, session_request_redeliveries_of, SessionRecoveryRequestPending,
@@ -51,6 +50,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding
 }
 import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.http.client
+import gunbc.harness.harness_operator_route { OperatorRoundFault, operator_round_fault, operator_round_fault_text, operator_pinned_post_request, OperatorCapacityAnswer, operator_capacity_answer, operator_capacity_answer_text }
 import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text }
@@ -758,7 +758,7 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
       ], "")
     TurnRequestPending { re_deliveries: w, steps_taken: n } =>
       join([
-        "after ", to_string(value: n), " tool rounds the request drew no answer: the pool front answered 503, 502 or 429, or the post returned without any response at all",
+        "after ", to_string(value: n), " tool rounds the request drew no answer: the operator route answered 503, 502 or 429, or the post returned without any response at all",
         " (the client's --max-time is only its observation window). No output came back and the request had no effect, so IT STANDS: this worker slept beside nothing and",
         " retried nothing in-process; the session carries one durable turn.request_pending event and the belt re-delivers the same round when the next",
         " re-delivery is due (", to_string(value: w), " recorded so far), for as long as it takes. The session is not ended, not failed, and not an engine refusal.",
@@ -1421,24 +1421,30 @@ fn harness_send_round(
       HarnessPostedRound {
         read: HarnessResponseUnreadable {
           cause: join([
-            "the backend refused the request or the transport failed; ", harness_refusal_body_text(config: config, body: posted.body),
+            "the backend refused the request or the transport failed; ",
+            match posted.fault { Present { value: f } => operator_round_fault_text(fault: f)  Absent => "" },
+            harness_refusal_body_text(config: config, body: posted.body),
           ], ""),
         },
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         hosted_failure: none,
-        // A POOL FRONT'S OWN TYPED ANSWER (503 no TLS card, a certificate that is not the pinned one) IS EXPLAINED:
-        // it is the front speaking or the handshake refusing, so it is never classified as an engine that refused
-        // for no reason (the S3 recovery would otherwise resume a session against a front that has no card).
+        // A CERTIFICATE REFUSAL OR A CAPACITY ANSWER ON THE OPERATOR ROUTE IS EXPLAINED: the handshake refusing, or
+        // the route saying nothing was served, so it is never classified as an engine that refused for no reason
+        // (an S3 recovery would otherwise resume a session against a route that had no capacity).
         unexplained: match posted.fault {
           Present { value: _ } => none
-          Absent => harness_unexplained_refusal(
+          Absent =>
+            match harness_operator_capacity_answer(access: config.backend_access, posted: posted) {
+              Present { value: _ } => none
+              Absent => harness_unexplained_refusal(
             route_qualifies: harness_route_is_fleet_engine(access: config.backend_access),
             success: posted.success,
             body: posted.body,
             headers: posted.headers,
             request_body: Filesystem.Read(path: config.request_scratch_path as String).content,
           )
+            }
         },
         pool_fault: posted.fault,
         pending_cause: harness_request_pending_cause(access: config.backend_access, posted: posted),
@@ -1525,32 +1531,52 @@ fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
   })
 }
 
-// WHY THE REQUEST STANDS PENDING, in the front's own words, or none when the round was not a patient-request
-// case. The front's typed 503 (no TLS card serving), 502 (a card was chosen and did not answer) and 429
-// (every compatible upstream busy) each mean NOTHING WAS SERVED and no effect was taken, so the request
-// stands. A post that drew no response at all -- including one the client's --max-time window closed: that
-// window is only the client's observation, never the request's deadline -- stands for the same reason. A
+// THE OPERATOR ROUTE'S CAPACITY ANSWER for this post, read from the status in its response-header dump
+// (gunbc.harness.harness_operator_route operator_capacity_answer). Only the operator route is read this way: a seat
+// and a hosted quota keep their own refusal readings.
+fn harness_operator_capacity_answer(access: HarnessBackendAccess, posted: HarnessPostOutcome) -> OperatorCapacityAnswer? {
+  match access {
+    BackendAdmittedByOperatorEndpoint { header_file: _ } =>
+      if posted.success {
+        none
+      } else {
+        match posted.headers {
+          Present { value: d } => operator_capacity_answer(status: http_header_dump_status(dump: d))
+          Absent => none
+        }
+      }
+    BackendAdmittedBySeat => none
+    BackendAdmittedByHostedQuota { header_file: _, quota: _ } => none
+  }
+}
+
+// WHY THE REQUEST STANDS PENDING, or none when the round was not a patient-request case. On the operator route a
+// 503 (no capacity), 502 (the chosen upstream did not answer) or 429 (every compatible upstream busy) means
+// NOTHING WAS SERVED and no effect was taken, so the request stands. A post that drew no
+// response at all means NOTHING WAS SERVED and no effect was taken, so the request stands, including one the
+// client's --max-time window closed: that window is only the client's observation, never the request's deadline. A
 // refused certificate is terminal (the same certificate fails the same way; no byte was sent), any 4xx is
-// the front refusing THIS request, and a hosted route never holds: today's behaviour stands.
+// the route refusing THIS request, and a hosted route never holds: today's behaviour stands.
 fn harness_request_pending_cause(access: HarnessBackendAccess, posted: HarnessPostOutcome) -> String? {
   if !harness_route_is_fleet_engine(access: access) {
     none
   } else {
     match posted.fault {
-      Present { value: OperatorNoCapacity } => Present { value: "the pool front answered 503 (no TLS card serving)" }
-      Present { value: OperatorCardUnanswered } => Present { value: "the pool front answered 502 (the card did not answer)" }
-      Present { value: OperatorUpstreamsBusy } => Present { value: "the pool front answered 429 (every compatible upstream busy)" }
       // A refused certificate is terminal even though it drew no bytes back: the same certificate fails
       // the same way and no byte of the request was sent, so there is nothing for the belt to re-deliver
       // differently. It must not fall into the no-response reading.
       Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => none
       Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => none
       _ =>
+        match harness_operator_capacity_answer(access: access, posted: posted) {
+          Present { value: answer } => Present { value: operator_capacity_answer_text(answer: answer) }
+          Absent =>
         if harness_post_drew_no_response(posted: posted) {
           // --max-time expiry lands here: the client stopped watching; the request it delivered does not die with the watch.
           Present { value: "the request drew no response at all; the client's --max-time is only its observation window, and a timeout means stopped watching -- never failed, never cancelled" }
         } else {
           none
+        }
         }
     }
   }
@@ -1563,23 +1589,6 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
   harness_post_json_once(config: config, header_file: header_file)
 }
 
-type HarnessRawPost {
-  body: String
-  success: Bool
-  curl_exit: Int?
-}
-
-fn harness_post_unpinned(config: HarnessTurnConfig, hf: NonEmptyStr, max_seconds: NonEmptyStr) -> HarnessRawPost {
-  let posted = http.Client.PostJsonFromFileWithHeaderFile(
-    url: config.backend_url as NonEmptyStr,
-    request_body_file: config.request_scratch_path as String as NonEmptyStr,
-    header_file: hf,
-    response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
-    max_seconds: max_seconds,
-  )
-  HarnessRawPost { body: posted.body, success: posted.success, curl_exit: none }
-}
-
 fn harness_post_json_once(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> HarnessPostOutcome {
   match header_file {
     Absent => {
@@ -1590,47 +1599,60 @@ fn harness_post_json_once(config: HarnessTurnConfig, header_file: NonEmptyStr?) 
       )
       HarnessPostOutcome { body: posted.body, success: posted.success, headers: none, fault: none }
     }
-    Present { value: hf } => {
-      let max_seconds = to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr
-      // ONE POST, WHICHEVER BACKEND: only the transport arguments differ. The operator endpoint is the pool's TLS
-      // front, so its post pins the certificate (the same operation shape plus the pinned files); a refused pin
-      // fails in the handshake, before the request body is sent.
-      let posted = match config.backend_access {
-        BackendAdmittedByOperatorEndpoint { header_file: _ } => {
-          let req = operator_pinned_post_request(url: config.backend_url as NonEmptyStr, request_body_file: config.request_scratch_path as String as NonEmptyStr, response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr, max_seconds: max_seconds, hf: hf)
-          // RESIDUAL, REVIEW-GUARDED: an operation takes fields, not a record, so each field is copied from req here by
-          // hand; the claims render the argv from req and cannot see this copy. A repointed field is the seam.
-          let pinned = http.Client.PostJsonFromFileWithHeaderFilePinned(
-            url: req.url,
-            request_body_file: req.request_body_file,
-            header_file: req.header_file,
-            response_headers_file: req.response_headers_file,
-            ca_file: req.ca_file,
-            pinned_pubkey_file: req.pinned_pubkey_file,
-            max_seconds: req.max_seconds,
-          )
-          HarnessRawPost { body: pinned.body, success: pinned.success, curl_exit: Present { value: pinned.exit_code } }
-        }
-        BackendAdmittedBySeat => harness_post_unpinned(config: config, hf: hf, max_seconds: max_seconds)
-        BackendAdmittedByHostedQuota { header_file: _, quota: _ } => harness_post_unpinned(config: config, hf: hf, max_seconds: max_seconds)
+    Present { value: hf } =>
+      match config.backend_access {
+        BackendAdmittedByOperatorEndpoint { header_file: _ } => harness_post_json_pinned(config: config, hf: hf)
+        BackendAdmittedBySeat => harness_post_json_with_header(config: config, hf: hf)
+        BackendAdmittedByHostedQuota { header_file: _, quota: _ } => harness_post_json_with_header(config: config, hf: hf)
       }
-      let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
-      let header_dump = if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } }
-      HarnessPostOutcome {
-        body: posted.body,
-        success: posted.success,
-        headers: Present { value: header_dump },
-        fault: match config.backend_access {
-          BackendAdmittedByOperatorEndpoint { header_file: _ } =>
-            match posted.curl_exit {
-              Present { value: x } => operator_round_fault(success: posted.success, curl_exit: x, status: http_header_dump_status(dump: header_dump))
-              Absent => none
-            }
-          BackendAdmittedBySeat => none
-          BackendAdmittedByHostedQuota { header_file: _, quota: _ } => none
-        },
-      }
-    }
+  }
+}
+
+fn harness_post_json_with_header(config: HarnessTurnConfig, hf: NonEmptyStr) -> HarnessPostOutcome {
+  let posted = http.Client.PostJsonFromFileWithHeaderFile(
+    url: config.backend_url as NonEmptyStr,
+    request_body_file: config.request_scratch_path as String as NonEmptyStr,
+    header_file: hf,
+    response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
+    max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+  )
+  let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+  HarnessPostOutcome {
+    body: posted.body,
+    success: posted.success,
+    headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+    fault: none,
+  }
+}
+
+// THE OPERATOR ENDPOINT IS POSTED ONLY OVER THE PINNED CERTIFICATE. The request is built once from
+// gunbc.harness.harness_operator_route operator_pinned_post_request (the pin files sit beside the header file
+// operator_open_header wrote after it had checked the custody certificate against the pin), and curl verifies
+// both the certificate and its public key in the handshake, so a different certificate sends no request byte.
+// The exit code is read into the typed fault: a refused certificate is never retried as an unreachable server.
+fn harness_post_json_pinned(config: HarnessTurnConfig, hf: NonEmptyStr) -> HarnessPostOutcome {
+  let r = operator_pinned_post_request(
+    url: config.backend_url as NonEmptyStr,
+    request_body_file: config.request_scratch_path as String as NonEmptyStr,
+    response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
+    max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+    hf: hf,
+  )
+  let posted = http.Client.PostJsonFromFileWithHeaderFilePinned(
+    url: r.url,
+    request_body_file: r.request_body_file,
+    header_file: r.header_file,
+    response_headers_file: r.response_headers_file,
+    ca_file: r.ca_file,
+    pinned_pubkey_file: r.pinned_pubkey_file,
+    max_seconds: r.max_seconds,
+  )
+  let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+  HarnessPostOutcome {
+    body: posted.body,
+    success: posted.success,
+    headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+    fault: operator_round_fault(success: posted.success, curl_exit: posted.exit_code),
   }
 }
 
@@ -1842,53 +1864,26 @@ fn harness_turn_after_post(
           }
           Absent =>
             match posted_round.pending_cause {
-              // THE PATIENT REQUEST CONTRACT (operator route): the front's 503/502/429, or a post that drew no
-              // response at all, means NOTHING WAS SERVED and no effect was taken. ONE durable event, one typed
+              // THE PATIENT REQUEST CONTRACT (operator route): a 503/502/429 capacity answer, or a post that drew no response at all means NOTHING WAS SERVED and no effect was taken. ONE durable event, one typed
               // outcome, and the worker exits -- it does not sleep and does not re-post.
               Present { value: pending } =>
                 harness_record_request_pending(config: config, events: events_after_wire, cause: pending, steps_taken: steps_taken, messages: messages)
               Absent =>
-            // THE FRONT'S TYPED 503/502/429 NEVER REACH HERE: they are the pending cases above, read once
-            // from the post's evidence. What remains typed here is the certificate refusal -- terminal,
-            // because the same certificate fails the same way and no byte of the request was sent.
+            // What is typed here is the certificate refusal -- terminal, because the same certificate fails the
+            // same way and no byte of the request was sent.
             match posted_round.pool_fault {
               Present { value: OperatorCertificateNotPinned { curl_exit: x } } => {
                 let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
                 match harness_write_events(config: config, events: failed) {
                   HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the pool front's certificate is not the pinned one (curl exit ", to_string(value: x), "); the request was refused in the handshake and no byte of it was sent"], "") }
+                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the router's certificate is not the pinned one (curl exit ", to_string(value: x), "); the request was refused in the handshake and no byte of it was sent"], "") }
                 }
               }
               Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: x } } => {
                 let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
                 match harness_write_events(config: config, events: failed) {
                   HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the pool front's certificate did not verify for its host (curl exit ", to_string(value: x), "; the chain or a missing IP SAN, not a different certificate); the request was refused in the handshake and no byte of it was sent"], "") }
-                }
-              }
-              // THE FRONT'S TYPED 503/502/429 THAT REACHED HERE ARE UNREADABLE RESPONSES NO CLASSIFIER CAN
-              // VOUCH FOR: the pending reading needs the response itself, and a typed fault on a body no one
-              // can re-read is not evidence of an unserved request. It stops visibly, as every other
-              // unreadable response does -- a request that cannot be read is not a request that was delivered.
-              Present { value: OperatorNoCapacity } => {
-                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
-                match harness_write_events(config: config, events: failed) {
-                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the front typed a busy status (503, no TLS card serving) on a response no one can re-read: ", c], "") }
-                }
-              }
-              Present { value: OperatorCardUnanswered } => {
-                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
-                match harness_write_events(config: config, events: failed) {
-                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the front typed a busy status (502, the card did not answer) on a response no one can re-read: ", c], "") }
-                }
-              }
-              Present { value: OperatorUpstreamsBusy } => {
-                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
-                match harness_write_events(config: config, events: failed) {
-                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the front typed a busy status (429, every compatible upstream busy) on a response no one can re-read: ", c], "") }
+                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the router's certificate did not verify for its host (curl exit ", to_string(value: x), "; the chain or a missing IP SAN, not a different certificate); the request was refused in the handshake and no byte of it was sent"], "") }
                 }
               }
               Absent =>

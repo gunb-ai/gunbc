@@ -190,7 +190,7 @@ import extdeps.google.issue_tracker {
 }
 import gunbc.roadmap.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node_for_instance_over,
   BeltLineageRetireOutcome, BeltLineageRetired, BeltLineageRetireRefused, belt_lineage_retire_for_instance, belt_lineage_retire_panel_for_instance,

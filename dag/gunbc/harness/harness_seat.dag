@@ -1617,27 +1617,25 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
     RunOnOperatorEndpoint =>
       match turn {
         Present { value: _ } => HarnessSeatRefused { detail: "the turn is durable but its placement is the operator endpoint, which takes no seat, so there is no grant a completion could be fenced against; no work was offered" }
-        none => harness_bind_operator(class: class, shape: shape, attempt: attempt)
+        none => harness_bind_operator(class: class, shape: shape)
       }
   }
 }
 
 // THE OPERATOR ENDPOINT TAKES NO SEAT: the class floor is applied, the Bearer header file is materialized from
-// the credential file with the x-pool-session line (the ATTEMPT id, which every rebind of one attempt shares, so
-// an S3 resume keeps its conversation on the card holding its cache), and the binding carries the
-// chat-completions URL. Only the OpenAI chat shape is spoken
+// the credential file, and the binding carries the chat-completions URL. Only the OpenAI chat shape is spoken
 // by ninfer-serve, so any other shape refuses by name.
-fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape, attempt: NonEmptyStr) -> HarnessSeatBinding {
+fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) -> HarnessSeatBinding {
   match shape {
     AnthropicMessagesShape => HarnessSeatRefused { detail: "the operator endpoint speaks the OpenAI chat-completions shape only" }
     OpenAiChatCompletionsShape =>
       match operator_class_admission(route: harness_operator_route, class: class) {
         OperatorClassRefused { detail: d } => HarnessSeatRefused { detail: d }
         OperatorClassAdmitted =>
-          match operator_chat_completions_url() {
+          match operator_chat_completions_url(route: harness_operator_route) {
             Absent => HarnessSeatRefused { detail: "the operator endpoint URL could not be composed" }
             Present { value: u } =>
-              match operator_open_header(route: harness_operator_route, session: attempt) {
+              match operator_open_header(route: harness_operator_route) {
                 OperatorHeaderRefused { detail: d } => HarnessSeatRefused { detail: d }
                 OperatorHeaderOpened { header_dir: dir, header_file: hf } =>
                   HarnessOperatorBound { url: u as String, model: harness_unit_model_id(unit: harness_operator_route.unit), unit: harness_operator_route.unit, header_dir: dir, header_file: hf }

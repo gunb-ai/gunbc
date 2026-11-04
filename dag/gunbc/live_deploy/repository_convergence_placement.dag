@@ -94,6 +94,9 @@ import extdeps.git.partial_clone {
   observe_object_source_serve,
 }
 import std.optional { Present, Absent }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown,
+}
 
 // THE DEFECT THIS MODULE CLOSES IS A PLACEMENT DEFECT, NOT AN ADJUDICATION ONE.
 //
@@ -191,7 +194,24 @@ type ConvergencePlacementOperands {
 // (extdeps.git.worktree_enumeration declares the primary/linked split for it). The field went with
 // the argument rather than outliving it: kept, it would have been derived here, witnessed here, and
 // read by nobody.
-data convergence_base_ref: String = "refs/remotes/origin/main"
+// THE BASE REF IS PER-INSTANCE, RESOLVED FROM THE INSTANCE'S OWN ADMITTED-REVISION AUTHORITY (R3).
+// This module used to declare `data convergence_base_ref: String = "refs/remotes/origin/main"` and
+// advance it on every converge. That ref is SHARED: every clone git ever makes of the public remote
+// carries it, and the recurring row denominator_moved_between_measurement_and_comparison documents
+// deploys destabilizing when a measurement and its comparison crossed a rewrite of it. Worse, the
+// srv1 LAB instance READS that ref as its admitted revision (source_anchor_ref), so one name held
+// two meanings across two checkouts -- the admitted revision the instance serves, and a deployment
+// scratch target (§3). A deployment's transition target is a fact about the INSTANCE, and every
+// declared instance already states one: admitted_revision (remote+ref), the same authority the belt
+// and the lab readback trust. So the writer now writes where the instance says its admitted revision
+// lives, and an instance_id with no admitted-revision row in the declared roster REFUSES --
+// converging at a default would reintroduce exactly the shared-ref drift this deletion removes.
+fn placement_convergence_base_ref(instance_id: String) -> Optional<String> {
+  match dashboard_instance_for_id(instance_id: instance_id) {
+    DashboardInstanceForId { instance } => Present { value: instance.admitted_revision.ref_name as String }
+    DashboardInstanceIdUnknown { instance_id: _ } => Absent
+  }
+}
 
 type ConvergenceOperandAdmission
   = ConvergenceOperandsAdmitted { operands: ConvergencePlacementOperands }
@@ -270,12 +290,21 @@ fn convergence_operands_for(
           ], ""),
         }
       } else {
-        ConvergenceOperandsAdmitted { operands: ConvergencePlacementOperands {
-          repo: repo,
-          remote: object_source,
-          base_ref: convergence_base_ref,
-          candidate: git_object_id_wire_hex(oid: oid) as String,
-        } }
+        match placement_convergence_base_ref(instance_id: spec.instance_id as String) {
+          Absent => ConvergenceOperandsRefused {
+            reason: join([
+              "instance `", spec.instance_id as String,
+              "` has no admitted-revision authority in the declared roster; convergence refuses",
+              " rather than advancing a shared default ref",
+            ], ""),
+          }
+          Present { value: base } => ConvergenceOperandsAdmitted { operands: ConvergencePlacementOperands {
+            repo: repo,
+            remote: object_source,
+            base_ref: base,
+            candidate: git_object_id_wire_hex(oid: oid) as String,
+          } }
+        }
       }
         }
       }
