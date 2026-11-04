@@ -809,7 +809,7 @@ type MegaRacUiAssetAttempt {
 
 type MegaRacUiRunOutcome {
   lines: List<NonEmptyStr>
-  found_excerpt: Bool
+  attempts: List<MegaRacUiAssetAttempt>
   session_closed: Bool
 }
 
@@ -831,7 +831,7 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
     ExcerptFound {
       asset_path: _, served_release: served, read_release: _, asset_sha256: asset_sha256,
       excerpt_sha256: excerpt_sha256, excerpt_byte_offset: offset, excerpt_byte_length: length,
-      excerpt_text: _, label_text: label, feeding_site_offset: feeding_site, zero_key_offset: zero_key,
+      excerpt_text: window_text, label_text: label, feeding_site_offset: feeding_site, zero_key_offset: zero_key,
     } => join([
       "EXCERPT release=", served as String,
       " asset_sha256=", megarac_ui_digest_text(asset_sha256),
@@ -841,6 +841,7 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
       " label=", label as String,
       " feeding_site=", megarac_ui_count_text(byte_size_count(feeding_site)),
       " zero_key=", megarac_ui_count_text(byte_size_count(zero_key)),
+      " window_hex=", ui_octets_to_hex(octets: ui_octets_of(window_text)),
     ], "")
     ExcerptRefused { cause: cause } => join(["refused: ", megarac_ui_refusal_text(cause)], "")
   }
@@ -1047,28 +1048,123 @@ fn ui_attempt_assets(
   }
 }
 
-fn ui_excerpt_found(excerpt: MegaRacUiStatusExcerpt) -> Bool {
-  // The coproduct IS the answer to "did we get an excerpt". There is no stored bool beside it: a
-  // second field for the same fact can only drift, and nothing here needs it precomputed.
-  match excerpt {
-    ExcerptRefused { cause: _ } => false
-    ExcerptFound {
-      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
-      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
-      label_text: _, feeding_site_offset: _, zero_key_offset: _,
-    } => true
+fn ui_excerpt_window_count(attempts: List<MegaRacUiAssetAttempt>, at: Int) -> Int {
+  // Counted from the coproduct at the site that reports it, never stored beside it: a stored bool for
+  // the same fact can only drift from the arm it summarises, and a receipt that overstates an excerpt
+  // is exactly the failure this module exists to avoid.
+  if at >= count(attempts) {
+    0
+  } else {
+    match attempts |> get(at) {
+      null => 0
+      attempt => match attempt.excerpt {
+        ExcerptRefused { cause: _ } => ui_excerpt_window_count(attempts: attempts, at: at + 1)
+        ExcerptFound {
+          asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+          excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+          label_text: _, feeding_site_offset: _, zero_key_offset: _,
+        } => 1 + ui_excerpt_window_count(attempts: attempts, at: at + 1)
+      }
+    }
   }
 }
 
-fn ui_any_found(attempts: List<MegaRacUiAssetAttempt>, at: Int) -> Bool {
-  if at >= count(attempts) {
-    false
+// THE WINDOW, PRINTED BYTE-FAITHFULLY. The receipt's excerpt is vendor JavaScript, and the corpus has
+// to recover EXACTLY the octets that were fetched: a text rendering would be ambiguous across a quote,
+// a newline or a non-ASCII byte, so the window goes out as lower-case hex pairs. Hex needs no escaping
+// rule of its own -- every octet has exactly one two-digit spelling -- so the round trip is checkable
+// by execution rather than by a promise about escaping. Digit values are plain Int with -1 for "not a
+// hex digit" rather than an optional, because a non-digit must stop the reader loudly, not silently.
+fn ui_hex_digit_text(value: Int) -> String {
+  match value {
+    0 => "0"
+    1 => "1"
+    2 => "2"
+    3 => "3"
+    4 => "4"
+    5 => "5"
+    6 => "6"
+    7 => "7"
+    8 => "8"
+    9 => "9"
+    10 => "a"
+    11 => "b"
+    12 => "c"
+    13 => "d"
+    14 => "e"
+    15 => "f"
+    value => "!"
+  }
+}
+
+fn ui_byte_hex_text(byte: Int) -> String {
+  // Both digits are 0..15 by construction for any octet a fetch can produce, so "!" is unreachable for
+  // a real window; it stays loud rather than plausible because "!" is not a hex digit and the reader
+  // below stops at it instead of inventing a byte.
+  join([ui_hex_digit_text(value: byte / 16), ui_hex_digit_text(value: byte % 16)], "")
+}
+
+fn ui_octet_hex_list(octets: List<Int>, at: Int, acc: List<String>) -> List<String> {
+  if at >= count(octets) {
+    acc
   } else {
-    match attempts |> get(at) {
-      null => false
-      attempt => if ui_excerpt_found(excerpt: attempt.excerpt) { true } else { ui_any_found(attempts: attempts, at: at + 1) }
+    match octets |> get(at) {
+      null => acc
+      byte => ui_octet_hex_list(octets: octets, at: at + 1, acc: list_push(acc, ui_byte_hex_text(byte: byte)))
     }
   }
+}
+
+fn ui_octets_to_hex(octets: List<Int>) -> String {
+  join(ui_octet_hex_list(octets: octets, at: 0, acc: []), "")
+}
+
+fn ui_hex_digit_value(octet: Int) -> Int {
+  match octet {
+    48 => 0
+    49 => 1
+    50 => 2
+    51 => 3
+    52 => 4
+    53 => 5
+    54 => 6
+    55 => 7
+    56 => 8
+    57 => 9
+    97 => 10
+    98 => 11
+    99 => 12
+    100 => 13
+    101 => 14
+    102 => 15
+    octet => -1
+  }
+}
+
+fn ui_hex_scan(hex_octets: List<Int>, at: Int, acc: List<Int>) -> List<Int> {
+  if at + 1 >= count(hex_octets) {
+    acc
+  } else {
+    match hex_octets |> get(at) {
+      null => acc
+      hi_octet => match hex_octets |> get(at + 1) {
+        null => acc
+        lo_octet => {
+          let hi = ui_hex_digit_value(octet: hi_octet)
+          let lo = ui_hex_digit_value(octet: lo_octet)
+          if hi < 0 || lo < 0 {
+            acc
+          } else {
+            ui_hex_scan(hex_octets: hex_octets, at: at + 2, acc: list_push(acc, hi * 16 + lo))
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ui_hex_to_octets(hex_text: String) -> List<Int> {
+  ui_hex_scan(hex_octets: ui_octets_of(hex_text), at: 0, acc: [])
 }
 
 // ONE SESSION, OWED ON EVERY EXIT. The arms differ because what was allocated differs: a failed
@@ -1099,7 +1195,7 @@ fn megarac_ui_asset_observation_run(
         "session refused; no asset read; no session to close" as NonEmptyStr,
         join(["session response octets: ", megarac_ui_count_text(count(ui_octets_of(opened.body)))], "") as NonEmptyStr,
       ],
-      found_excerpt: false,
+      attempts: [],
       session_closed: false,
     }
   } else {
@@ -1116,7 +1212,7 @@ fn megarac_ui_asset_observation_run(
             "the session opened but its CSRF token was unreadable; closed with a sentinel token" as NonEmptyStr,
             join(["sentinel close transport success=", to_string(value: if sentinel_close.success { 1 } else { 0 })], "") as NonEmptyStr,
           ],
-          found_excerpt: false,
+          attempts: [],
           session_closed: sentinel_close.success,
         }
       }
@@ -1141,7 +1237,7 @@ fn megarac_ui_asset_observation_run(
               lines: ui_pages_lines(pages: pages, at: 0, acc: []) |> list_push(
                 "no page answered 200 while naming a script; the controller's own statuses are above, and no asset was fetched" as NonEmptyStr
               ),
-              found_excerpt: false,
+              attempts: [],
               session_closed: closed.success,
             }
           }
@@ -1174,7 +1270,7 @@ fn megarac_ui_asset_observation_run(
             ]
             MegaRacUiRunOutcome {
               lines: concat(concat(head, body), tail),
-              found_excerpt: ui_any_found(attempts: attempts, at: 0),
+              attempts: attempts,
               session_closed: closed.success,
             }
           }
@@ -1247,7 +1343,7 @@ fn ui_receipt_text(outcome: MegaRacUiRunOutcome, credential_env: NonEmptyStr) ->
         outcome.lines,
         [
           join(["credential: read from the file named by ", credential_env as String, "; its contents never reach this file"], "") as NonEmptyStr,
-          join(["excerpt committed=", to_string(value: if outcome.found_excerpt { 1 } else { 0 }),
+          join(["excerpt windows=", to_string(value: ui_excerpt_window_count(attempts: outcome.attempts, at: 0)),
                 " session_closed=", to_string(value: if outcome.session_closed { 1 } else { 0 })], "") as NonEmptyStr,
         ],
       ),
@@ -1286,7 +1382,7 @@ fn mtcollins1_ui_status_asset_observation_wet() -> ProcessExit {
               )
               if !written.success {
                 exit_failure(reason: concat("mtcollins1 UI asset observation: receipt could not be written: ", written.error))
-              } else if !outcome.found_excerpt {
+              } else if ui_excerpt_window_count(attempts: outcome.attempts, at: 0) == 0 {
                 exit_failure(reason: "mtcollins1 UI asset observation: the receipt is written; no status-0 branch was found in the served JavaScript, so nothing may be cited")
               } else if !outcome.session_closed {
                 exit_failure(reason: "mtcollins1 UI asset observation: an excerpt was found but the session was not confirmed closed; the excerpt must not be cited until that is resolved")

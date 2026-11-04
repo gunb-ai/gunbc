@@ -53,6 +53,9 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_first_page_reading,
   ui_http_of,
   ui_octets_of,
+  ui_asset_line,
+  MegaRacUiAssetAttempt,
+  ui_hex_to_octets,
   ui_octets_slice,
   mtcollins1_ui_page_web_root,
   ui_page_line,
@@ -699,4 +702,131 @@ test fn w_a_page_body_carrying_a_cookie_and_token_leaves_nothing_of_them_in_the_
     !string_contains(s: receipt, pattern: "/js/redirection_status.js") &&
     string_contains(s: receipt, pattern: "mtcollins1_fan_password_file") &&
     string_contains(s: receipt, pattern: "refs=1")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE WINDOW IS PRINTED BYTE-FAITHFULLY (hex), so the corpus can recover exactly what was fetched.
+// A text rendering of vendor JavaScript would be ambiguous across a quote, a newline or a non-ASCII
+// byte, and a receipt that cannot be decoded back to the fetched octets cannot be the evidence PR-E
+// cites. These three claims are the discriminating set: the round trip holds for a window containing
+// an embedded quote and newline, the decoded octets re-hash to the digest the SAME line prints, and a
+// REFUSED excerpt prints no window at all.
+// ---------------------------------------------------------------------------------------------
+
+test fn w_the_printed_window_decodes_back_to_the_fetched_octets() -> Bool {
+  // 34 is a double quote and 10 a newline: both survive as themselves in the source text and both
+  // wreck any "just print the window" claim, which is why the fixture carries them.
+  let window = "redirection_status[0]=\"Stopped\",\n16:" as NonEmptyStr
+  match sha256_hex_digest(hex: sha256_hex_of_text(text: window)) {
+    Absent => false
+    Present { value: window_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: "asset")) {
+      Absent => false
+      Present { value: asset_digest } => {
+        let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+          path: "/ui/source.min.js",
+          path_refusal: none,
+          http_status: 200,
+          excerpt: ExcerptFound {
+            asset_path: witness_asset_path(),
+            served_release: witness_release(),
+            read_release: witness_release(),
+            asset_sha256: asset_digest,
+            excerpt_sha256: window_digest,
+            excerpt_byte_offset: byte_size(count: 34),
+            excerpt_byte_length: byte_size(count: 36),
+            excerpt_text: window,
+            label_text: "Stopped" as NonEmptyStr,
+            feeding_site_offset: byte_size(count: 17),
+            zero_key_offset: byte_size(count: 33),
+          },
+        })
+        let marker = ui_octets_of("window_hex=")
+        match ui_octets_index_of(hay: ui_octets_of(line), needle: marker) {
+          Absent => false
+          Present { value: at } => {
+            let start = at + count(marker)
+            let tail = count(ui_octets_of(line)) - start
+            let decoded = ui_hex_to_octets(hex_text: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail))))
+            decoded == ui_octets_of(window)
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn w_the_decoded_window_rehashes_to_the_digest_on_the_same_line() -> Bool {
+  let window = "redirection_status[0]=\"Stopped\",\n16:" as NonEmptyStr
+  match sha256_hex_digest(hex: sha256_hex_of_text(text: window)) {
+    Absent => false
+    Present { value: window_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: "asset")) {
+      Absent => false
+      Present { value: asset_digest } => {
+        let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+          path: "/ui/source.min.js",
+          path_refusal: none,
+          http_status: 200,
+          excerpt: ExcerptFound {
+            asset_path: witness_asset_path(),
+            served_release: witness_release(),
+            read_release: witness_release(),
+            asset_sha256: asset_digest,
+            excerpt_sha256: window_digest,
+            excerpt_byte_offset: byte_size(count: 34),
+            excerpt_byte_length: byte_size(count: 36),
+            excerpt_text: window,
+            label_text: "Stopped" as NonEmptyStr,
+            feeding_site_offset: byte_size(count: 17),
+            zero_key_offset: byte_size(count: 33),
+          },
+        })
+        let marker = ui_octets_of("window_hex=")
+        match ui_octets_index_of(hay: ui_octets_of(line), needle: marker) {
+          Absent => false
+          Present { value: at } => {
+            let start = at + count(marker)
+            let tail = count(ui_octets_of(line)) - start
+            let decoded = ui_hex_to_octets(hex_text: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail))))
+            let rehashed = sha256_hex_of_text(text: utf8_decode_bytes(payload: octets_bytes(o: decoded)))
+            // The digest the run printed for the excerpt must be the digest of the octets the printed
+            // window decodes to. This is what lets a reader trust the committed bytes later.
+            match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of(concat("excerpt_sha256=", rehashed))) {
+              Absent => false
+              Present { value: _ } => true
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn w_a_refused_excerpt_prints_no_window_bytes() -> Bool {
+  match megarach_ui_status_excerpt_of_asset(
+    asset_text: witness_asset(head: "", gap: 0),
+    asset_path: witness_asset_path(),
+    served_release: "0.32" as NonEmptyStr,
+    read_release: witness_release(),
+    http_status: 200,
+  ) {
+    ExcerptRefused { cause: cause } => {
+      match ui_octets_index_of(
+        hay: ui_octets_of(ui_asset_line(attempt: MegaRacUiAssetAttempt {
+          path: "/ui/source.min.js",
+          path_refusal: none,
+          http_status: 200,
+          excerpt: ExcerptRefused { cause: cause },
+        })),
+        needle: ui_octets_of("window_hex="),
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
 }
