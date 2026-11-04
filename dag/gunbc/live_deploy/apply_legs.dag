@@ -201,6 +201,7 @@ type HelperSnapshotAction
   // 127 for hours because the question "does /opt/gunbc/attempt-system-unit-helpers/<instance>/<rev>/
   // exist, with its members" was asked by NO link of the chain. The drain plan now asks it, at apply
   // time, BEFORE the enable/restart legs, and refuses by path.
+  | HelperSnapshotRetireSuperseded
   | HelperSnapshotVerify
 
 type DeployApplyPlan
@@ -761,9 +762,9 @@ fn deploy_apply_attempt_launcher_plan(spec: DeploymentSpec, revision: ReleaseRev
 // turns the lab's 127-falling-five-hours drain -- a drain unit enabled while nothing had installed
 // its snapshot -- into one refused apply step that names the missing path.
 
-data AttemptHelperClosure {
-  instance: HostDashboardInstance
-  verify: DeployApplyLeg
+type AttemptHelperClosure {
+  instance: HostDashboardInstance,
+  verify: DeployApplyLeg,
 }
 
 fn attempt_helper_snapshot_closure(intent: DeploymentIntent) -> Optional<AttemptHelperClosure> {
