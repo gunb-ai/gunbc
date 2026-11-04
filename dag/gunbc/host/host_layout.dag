@@ -327,7 +327,7 @@ fn instance_receipts_dir(instance_root: String) -> String {
 // subdirectory inside the watched directory would keep it non-empty forever. `inbox` holds exits
 // not yet handed to an obligation; `queued` holds exits whose obligation has been started and has
 // not yet written its receipt; `done` holds exits whose capture receipt exists; `refused` holds exits
-// the drain could not hand off (attempt_exit_refused_dir). Moving an entry out
+// the drain could not hand off (gunbc.spool_queue RoleRefused of SpoolAttemptExit). Moving an entry out
 // of `inbox` when its obligation STARTS is what lets the path unit go quiet while that obligation
 // runs, rather than re-firing until systemd's trigger limit fails the unit.
 //
