@@ -926,6 +926,7 @@ test fn resume_never_re_runs_a_passed_or_failed_verdict() -> Bool {
       BeltVerificationDefer { reason: _ } => true
       _ => false
     })
+}
 
 fn wakes_wakes_at(n: Int) -> Bool {
   refused_retry_wakes(standing: refused_retry_standing(class: RefusalCauseInfrastructure, retries_recorded: n))
