@@ -72,7 +72,11 @@ data gunbc_typed_module_cache_max_entries_env_name: String = "GUNBC_TYPED_MODULE
 // ONE PROBE RESULT: a (dir, file) pair and what the file said. Unreadable carries the transport's own
 // words -- "absent" and "not readable to this process" are different operators' problems and the
 // receipt must not blur them.
-data BudgetProbe { cgroup_dir: String, file_name: String, value: BudgetProbeValue }
+type BudgetProbe {
+  cgroup_dir: String,
+  file_name: String,
+  value: BudgetProbeValue,
+}
 
 type BudgetProbeValue
   = ProbeLimited { bytes: ByteSize }
@@ -85,7 +89,7 @@ type HostBudgetPreflightVerdict
   | PreflightMembershipAbsent { detail: String }
   | PreflightNoBoundingBudget { probes: List<String> }
 
-fn host_budget_probe_source(p: BudgetProbe) -> HostBudgetSource? {
+fn host_budget_probe_source(p: BudgetProbe) -> Optional<HostBudgetSource> {
   if p.file_name == cgroup_memory_max_file_name {
     Present { value: BudgetSourceCgroupMemoryMax { cgroup_dir: p.cgroup_dir as NonEmptyStr } }
   } else if p.file_name == cgroup_memory_high_file_name {
