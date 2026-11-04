@@ -3899,6 +3899,10 @@ fn fleet_converge_service_slot_start_step() -> Step {
   }
 }
 
+// if-no-files-found is error: gunbc.runner.runner_service_slot_start service_slot_start_wet writes the receipt on
+// every path that reaches a slot, and the only path that writes none (an unset subject or GITHUB_SHA) already fails its
+// own step. So error loses nothing on a failing run, and on a run whose step passed without a receipt it is the only
+// thing that stops a silent pass (DESIGN 5).
 fn fleet_converge_service_slot_start_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload the service-slot start receipt" },
@@ -3907,7 +3911,7 @@ fn fleet_converge_service_slot_start_receipt_upload_step() -> Step {
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "service-slot-start-receipts")),
       kv(key: "path", value: yaml_string(s: service_slot_start_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
     env: none,
