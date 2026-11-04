@@ -2513,7 +2513,7 @@ fn observe_deploy_slot_host_reading(route: DeploySlotReadRoute, names: List<NonE
                 match first(unassigned) {
                   Present { value: bad } => DeploySlotHostUnread { unit: unit, cause: join(["slot ", bad.unit as String, " can run and its Environment assigns no ", runner_job_user_env_name], "") }
                   Absent => {
-                    let others = fold(runnable, init: [], f: (acc, rd) => match slot_environment_value(environment: trim(s: rd.environment), name: runner_job_user_env_name) {
+                    let others: List<NonEmptyStr> = fold(runnable, init: [], f: (acc, rd) => match slot_environment_value(environment: trim(s: rd.environment), name: runner_job_user_env_name) {
                       Absent => acc
                       Present { value: v } => if any(acc, a => (a as String) == v) { acc } else { concat(acc, [v as NonEmptyStr]) }
                     })
@@ -3530,7 +3530,8 @@ fn list_head_or(xs: List<String>, fallback: String) -> String {
 // another directory, which replaces the written file outright.
 fn dropins_that_could_override(written: List<NonEmptyStr>, loaded: List<String>, exempt: List<NonEmptyStr>) -> List<NonEmptyStr> {
   let candidates = filter(loaded, p => trim(s: p) != "" && !any(written, w => (w as String) == p) && !any(exempt, e => (e as String) == p) && any(written, w => !systemd_drop_in_applies_after(later_file_name: path_basename(path: w as String), earlier_file_name: path_basename(path: p))))
-  map(fold(candidates, init: [], f: (acc, p) => if any(acc, a => a == p) { acc } else { concat(acc, [p]) }), p => p as NonEmptyStr)
+  let unique: List<String> = fold(candidates, init: [], f: (acc, p) => if any(acc, a => a == p) { acc } else { concat(acc, [p]) })
+  map(unique, p => p as NonEmptyStr)
 }
 
 // `systemctl show --property=DropInPaths` over N units prints one `DropInPaths=` line per unit (empty
