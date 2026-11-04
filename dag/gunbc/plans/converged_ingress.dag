@@ -11,7 +11,7 @@ fn section_0_claim() -> List<MarkdownBlock> {
     h2(text: "0. The claim"),
     p(text: "A gunbc program does not encode the passage of time or its deployment lifetime. An entry denotes one bounded answer to one explicit demand. Serving is not a verb and not a kind of program: it is a deployment binding of an ordinary entry to an ingress, at a locus and revision, under declared bounds. Convergence keeps a runtime realization of that binding present for as long as the intent is present; the runtime turns each arriving event into one independent demand. Therefore `gunbc serve`, `std.compiler_entry` `NativeServeDriver` as a kind of entry, and `while (true)` as a service model all disappear."),
     p(text: "Operator direction, 2026-11-04 (session lively-stag-54): serving is a deployment decision; convergence makes actual match intent for a run of an ordinary entry; program code has no time dependence; the for-each over arriving requests is derived by the binding, not authored; keep it simple and compatible with the rest of the corpus. Lab cutover (the live srv1 lab units) is the lab's own work and is not sequenced here."),
-    p(text: "Status at main 38b6ca3d3e6: nothing built. The model homes, consumers and migration targets below come from `git grep` and source inspection at that revision (section 6 names the searches). They are a candidate set, not a census."),
+    p(text: "Status: the model homes, consumers and migration targets below come from `git grep` and source inspection at main 38b6ca3d3e6 (section 6 names the searches); they are a candidate set, not a census. M1 is built (operator decision 2026-11-04, escalation answered `binding`: the fact that an entry is served lives in a deployment binding that names it, never on the entry). The binding is `gunbc.http_ingress` `HttpIngressBinding`, the value a deployment's binding constructor answers (`gunbc.roadmap.roadmap_ingress`, `gunbc.fabric.fabric_storage_ingress`, `gunbc.auth.approval_broker_ingress`); `gunbc run` realizes an answer of that type, and the serve verb, `handle_serve` and `RetainedCommands::Serve` are deleted. M2 is not built."),
   ]
 }
 
@@ -89,8 +89,8 @@ fn section_4_targets() -> List<MarkdownBlock> {
     ]),
     h3(text: "4.E Seed-growth rows, retriggered or retired (M1)"),
     ul(items: [
-      li(text: "`gunbc.serve_declared_binding_seed_growth`, `gunbc.serve_cookie_header_seed_growth`, `gunbc.fabric_door_socket_seed_growth`: each trigger waits for `serve` to be a verb of the v2-native CLI door (`v2.cli.compile_cli`). That verb will not exist. New trigger: the binding runtime reads requests as a modeled host effect (an extdeps socket interface carrying typed request headers and the attested peer)."),
-      li(text: "`gunbc.serve_liveness_seed_growth`: its trigger (answer a route without entering the evaluator) is unaffected; its prose cites the serve seam and is re-pointed."),
+      li(text: "`gunbc.serve_declared_binding_seed_growth`, `gunbc.serve_cookie_header_seed_growth`, `gunbc.fabric_door_socket_seed_growth`: their declarations are deleted with the verb, so the rows are deleted, and the hand Rust that replaces them (the ingress host's socket operations) is rostered once in `gunbc.http_ingress_host_seed_growth`, whose trigger is M2."),
+      li(text: "`gunbc.serve_liveness_seed_growth`: retired on its own trigger. The pre-evaluation route table is a compiled value the graph produces once at startup (`gunbc.http_ingress` `http_ingress_pre_evaluation_routes`), and the host answers /livez from its rendered bytes without entering the evaluator."),
     ]),
     h3(text: "4.F Plans, ledgers and lens rows, re-pointed"),
     ul(items: [
@@ -115,7 +115,7 @@ fn section_5_refused() -> List<MarkdownBlock> {
       li(text: "A serve flag or mode on `gunbc run` read from argv literals: policy in argv. `run` reads the binding."),
       li(text: "A large declared iteration bound, or a lifecycle construct in the language, as the service model (section 1)."),
       li(text: "A v2 `Loop` over a domain of arriving demands: the map is the host's, one evaluation per demand (section 3, frontiers)."),
-      li(text: "A second binding type beside `DeploymentServiceConfig`: M1 consolidates it, it does not sit beside it."),
+      li(text: "A second AUTHORED binding beside `DeploymentServiceConfig`. As built, the spec stays the authority for listener, handler and budgets; the converger renders them as typed arguments of the binding constructor, and `HttpIngressBinding` is the value the run constructs from them, not a second place the facts are written."),
       li(text: "A per-transport fork of the handler: one handler; TCP and attested unix socket are ingress adapters of one binding."),
     ]),
   ]

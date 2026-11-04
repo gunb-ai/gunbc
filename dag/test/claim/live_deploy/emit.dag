@@ -400,15 +400,16 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
     now_epoch: claim_oidc_now(),
   )
   let expected = join([
-    "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2",
-    " --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle",
-    " --host 127.0.0.1 --port 8080",
-    " --release-revision ", deploy_witness_release_revision as String,
-    " --eval-budget-cpu-ms 30000",
-    " --eval-budget-wall-ms 120000",
+    "ExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_ingress.dag --function roadmap_ingress",
+    " --arg handler=roadmap_serve_handle",
+    " --arg listener=tcp:127.0.0.1:8080",
+    " --arg release_revision=", deploy_witness_release_revision as String,
+    " --arg cpu_limit_ms=30000",
+    " --arg wall_limit_ms=120000",
   ], "")
   string_contains(s: unit, pattern: expected)
-    && !string_contains(s: unit, pattern: concat(expected, " --release-revision"))
+    && !string_contains(s: unit, pattern: concat(expected, " --arg release_revision"))
     && !string_contains(s: unit, pattern: deploy_witness_other_release_revision as String)
     && !string_contains(s: unit, pattern: "$")
 }
@@ -419,9 +420,9 @@ test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Boo
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     now_epoch: claim_oidc_now(),
   )
-  !string_contains(s: unit, pattern: "--port 8080\nRestart=")
-    && !string_contains(s: unit, pattern: "--release-revision \n")
-    && string_contains(s: unit, pattern: concat("--release-revision ", deploy_witness_release_revision as String))
+  !string_contains(s: unit, pattern: "listener=tcp:127.0.0.1:8080\nRestart=")
+    && !string_contains(s: unit, pattern: "--arg release_revision= ")
+    && string_contains(s: unit, pattern: concat("--arg release_revision=", deploy_witness_release_revision as String))
 }
 
 test fn witness_execstart_at_another_candidate_differs() -> Bool {
@@ -442,7 +443,7 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
 
 test fn witness_systemd_unit_emitted() -> Bool {
   let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now())
-  string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 127.0.0.1 --port 8080")
+  string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_ingress.dag --function roadmap_ingress --arg handler=roadmap_serve_handle --arg listener=tcp:127.0.0.1:8080")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "Group=briansrls")
     && string_contains(s: unit, pattern: "WorkingDirectory=/opt/gunbc/gunbc")
@@ -929,7 +930,7 @@ test fn both_install_paths_bind_the_brokers_one_port() -> Bool {
   )
   service_has_execstart_containing(
     file: unit,
-    fragment: join([" --port ", to_string(approval_broker_listen_port)], ""),
+    fragment: join([":", to_string(approval_broker_listen_port), " --arg release_revision="], ""),
   )
 }
 
@@ -967,11 +968,11 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
-  string_contains(s: unit, pattern: join(["--host ", approval_broker_listen_host as String, " --port "], ""))
+  string_contains(s: unit, pattern: join(["--arg listener=tcp:", approval_broker_listen_host as String, ":"], ""))
     && !string_contains(s: unit, pattern: "0.0.0.0")
     && string_contains(s: unit, pattern: join(["WorkingDirectory=", release_dir], ""))
     && !string_contains(s: unit, pattern: join(["WorkingDirectory=", srv1_gunbc_repo_root as String, "\n"], ""))
-    && string_contains(s: unit, pattern: join(["ExecStart=", release_dir, "/gunbc serve"], ""))
+    && string_contains(s: unit, pattern: join(["ExecStart=", release_dir, "/gunbc run"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
 }
 
@@ -1018,10 +1019,9 @@ test fn the_fixed_only_renderers_emit_no_unbound_marker_off_the_apply_route() ->
 test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_it() -> Bool {
   let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance())))
   let route = deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance()))
-  unit.contains("--function fabric_storage_serve_handle")
-    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket(instance: srv1_live_dashboard_instance()) as String], ""))
-    && !unit.contains("--host")
-    && !unit.contains("--port")
+  unit.contains("--entry dag/gunbc/fabric/fabric_storage_ingress.dag --function fabric_storage_ingress --arg handler=fabric_storage_serve_handle")
+    && unit.contains(join(["--arg listener=unix:", fabric_storage_door_socket(instance: srv1_live_dashboard_instance()) as String], ""))
+    && !unit.contains("listener=tcp:")
     && route.https_port == fabric_storage_https_port
     && (route.backend as String) == join(["unix:", fabric_storage_door_socket(instance: srv1_live_dashboard_instance()) as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })

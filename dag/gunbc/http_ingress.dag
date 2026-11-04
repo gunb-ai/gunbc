@@ -1,0 +1,395 @@
+module gunbc.http_ingress
+
+import std.types { Int, List, String, Bool, NonEmptyStr, CommitSha }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration }
+import std.measure { ByteSize, byte_size_count, Millisecond, millisecond, millisecond_count }
+import std.algebra { Cons, Empty, list_push }
+import extdeps.http.server { ServeWireResponse, ServeRequestHeader }
+import gunbc.running_release_identity { release_revision_text_valid }
+import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
+import gunbc.native_serve {
+  native_serve_head_limit, native_serve_body_limit, native_serve_read_timeout,
+  native_serve_frame_within, NativeServeFrame, NativeServeFramed, NativeServeFrameRefused,
+  NativeServeRequestHead, NativeServeHeaderField,
+  native_serve_read_refused, native_serve_effect_failed, native_serve_outgoing, NativeServeOutgoing,
+  native_serve_text_plain, native_serve_application_json,
+}
+
+// AN HTTP INGRESS BINDING: SERVING AS A DEPLOYMENT FACT ABOUT AN ORDINARY ENTRY.
+//
+// gunbc.plans.converged_ingress (operator decision 2026-11-04: the fact "this entry is served" lives
+// in a deployment binding that names the entry, not on the entry). A handler is an ordinary `.dag`
+// function from request facts to a ServeWireResponse; its declared parameter names are its handler
+// contract. A binding names that handler and the listener, release and per-request bounds it is
+// served under. `gunbc run` evaluates a binding constructor once; when the answer is an
+// HttpIngressBound it realizes the binding: bind, accept, and one independent handler evaluation
+// per admitted request. There is no serve verb and no serving vocabulary in argv.
+//
+// EVERY DECISION BETWEEN THE HOST'S READS AND WRITES IS A FOLD HERE OR IN gunbc.native_serve. The
+// host (the seed's ingress realization in v1) performs only what no fold can: bind and accept the
+// listener, read the kernel-attested peer of a unix connection, read bytes within the limits the
+// binding hands it, arm the per-request budget around the handler, and write the bytes the response
+// fold returns. Which request facts a handler may receive, whether a head is admissible, how many
+// body bytes follow, whether /livez answers before the handler, what a failure means, and the
+// response's exact bytes are decided below.
+
+// ── THE LISTENER ─────────────────────────────────────────────────────────────────────────────
+// TCP, or a unix socket whose every peer the kernel attests (SO_PEERCRED). A unix socket file is
+// opened to every class (mode 0666) so that its containing directory's traverse bits are the whole
+// filesystem wall: who may connect is the directory's decision, never the process umask's.
+type HttpIngressListener
+  = HttpIngressTcp { host: String, port: Int }
+  | HttpIngressUnixSocket { path: NonEmptyStr, mode: Int }
+
+data http_ingress_unix_socket_mode: Int = 438
+
+fn http_ingress_listener_attests_peer(listener: HttpIngressListener) -> Bool {
+  match listener {
+    HttpIngressTcp { host: _, port: _ } => false
+    HttpIngressUnixSocket { path: _, mode: _ } => true
+  }
+}
+
+// THE LISTENER'S ONE TEXT ENCODING, because a binding constructor's per-host values arrive as
+// `gunbc run --arg` text: `tcp:<host>:<port>` or `unix:<path>`. The deployment renders it with
+// http_ingress_listener_text and the binding reads it back with http_ingress_listener_of, so the
+// encoding has one authority and a malformed value refuses rather than defaulting.
+fn http_ingress_listener_text(listener: HttpIngressListener) -> String {
+  match listener {
+    HttpIngressTcp { host: h, port: p } => concat("tcp:", concat(h, concat(":", to_string(value: p))))
+    HttpIngressUnixSocket { path: s, mode: _ } => concat("unix:", s as String)
+  }
+}
+
+type HttpIngressListenerReading
+  = HttpIngressListenerRead { listener: HttpIngressListener }
+  | HttpIngressListenerRefused { reason: String }
+
+fn http_ingress_tcp_of(rest: String) -> HttpIngressListenerReading {
+  let parts = split(s: rest, delimiter: ":")
+  let n = parts |> count
+  if n < 2 {
+    HttpIngressListenerRefused { reason: concat("listener tcp:", concat(rest, " names no port")) }
+  } else {
+    let port_text = match parts |> last { Present { value: v } => v  Absent => "" }
+    let host = join(parts |> take(n: n - 1), ":")
+    match parse_int(s: port_text) {
+      Absent => HttpIngressListenerRefused { reason: concat("listener port is not an integer: ", port_text) }
+      Present { value: p } =>
+        if p < 0 || p > 65535 {
+          HttpIngressListenerRefused { reason: concat("listener port out of range: ", port_text) }
+        } else if host == "" {
+          HttpIngressListenerRefused { reason: "listener tcp: names no host" }
+        } else {
+          HttpIngressListenerRead { listener: HttpIngressTcp { host: host, port: p } }
+        }
+    }
+  }
+}
+
+fn http_ingress_listener_of(text: String) -> HttpIngressListenerReading {
+  if starts_with(s: text, prefix: "tcp:") {
+    http_ingress_tcp_of(rest: substring(s: text, start: 4, end: string_length(s: text)))
+  } else if starts_with(s: text, prefix: "unix:") {
+    let path = substring(s: text, start: 5, end: string_length(s: text))
+    if path == "" {
+      HttpIngressListenerRefused { reason: "listener unix: names no socket path" }
+    } else {
+      HttpIngressListenerRead { listener: HttpIngressUnixSocket { path: path as NonEmptyStr, mode: http_ingress_unix_socket_mode } }
+    }
+  } else {
+    HttpIngressListenerRefused { reason: concat("listener must be tcp:<host>:<port> or unix:<path>, got ", text) }
+  }
+}
+
+// ── THE BINDING ──────────────────────────────────────────────────────────────────────────────
+// The byte limits and read timeout are protocol values of gunbc.native_serve's contract; the
+// per-request CPU and wall budgets are deployment policy (gunbc.live_deploy.spec
+// DeploymentServiceConfig serve_cpu_limit, serve_wall_limit) and arrive with the binding.
+type HttpIngressBinding {
+  handler: DeclarationRef
+  listener: HttpIngressListener
+  release_revision: CommitSha
+  head_limit: ByteSize
+  body_limit: ByteSize
+  read_timeout: Millisecond
+  cpu_limit: Millisecond
+  wall_limit: Millisecond
+}
+
+// What a binding constructor answers. A refused binding binds nothing: the host prints the reason
+// and exits nonzero before any listener exists, so a process that cannot say which release it is
+// never becomes reachable.
+type HttpIngressAdmission
+  = HttpIngressBound { binding: HttpIngressBinding }
+  | HttpIngressRefused { reason: String }
+
+fn http_ingress_limit_of(ms: Int) -> Millisecond? {
+  if ms > 0 { Present { value: millisecond(count: ms) } } else { none }
+}
+
+// THE ONE BINDING CONSTRUCTOR. A deployment's binding module calls it with the handler it serves
+// (an import of the handler's module is what puts the handler in the run's closure) and the per-host
+// values the converger renders.
+fn http_ingress_binding(
+  handler_module: String, handler: String, listener: String, release_revision: String,
+  cpu_limit_ms: Int, wall_limit_ms: Int,
+) -> HttpIngressAdmission {
+  if !release_revision_text_valid(text: release_revision) {
+    HttpIngressRefused { reason: concat("release_revision must be exactly 40 lowercase hex digits (a git object name); got [", concat(release_revision, "]")) }
+  } else if handler_module == "" || handler == "" {
+    HttpIngressRefused { reason: "the binding names no handler" }
+  } else {
+    match http_ingress_listener_of(text: listener) {
+      HttpIngressListenerRefused { reason: r } => HttpIngressRefused { reason: r }
+      HttpIngressListenerRead { listener: l } =>
+        match http_ingress_limit_of(ms: cpu_limit_ms) {
+          Absent => HttpIngressRefused { reason: concat("cpu_limit_ms must be a positive integer, got ", to_string(value: cpu_limit_ms)) }
+          Present { value: cpu } =>
+            match http_ingress_limit_of(ms: wall_limit_ms) {
+              Absent => HttpIngressRefused { reason: concat("wall_limit_ms must be a positive integer, got ", to_string(value: wall_limit_ms)) }
+              Present { value: wall } => HttpIngressBound { binding: HttpIngressBinding {
+                handler: DeclarationRef { module_path: handler_module as NonEmptyStr, decl_name: handler as NonEmptyStr, field: WholeDeclaration },
+                listener: l,
+                release_revision: release_revision as CommitSha,
+                head_limit: native_serve_head_limit,
+                body_limit: native_serve_body_limit,
+                read_timeout: native_serve_read_timeout,
+                cpu_limit: cpu,
+                wall_limit: wall,
+              } }
+            }
+        }
+    }
+  }
+}
+
+fn http_ingress_head_limit_bytes(b: HttpIngressBinding) -> Int { byte_size_count(b: b.head_limit) }
+fn http_ingress_body_limit_bytes(b: HttpIngressBinding) -> Int { byte_size_count(b: b.body_limit) }
+fn http_ingress_read_timeout_ms(b: HttpIngressBinding) -> Int { millisecond_count(m: b.read_timeout) }
+fn http_ingress_cpu_limit_ms(b: HttpIngressBinding) -> Int { millisecond_count(m: b.cpu_limit) }
+fn http_ingress_wall_limit_ms(b: HttpIngressBinding) -> Int { millisecond_count(m: b.wall_limit) }
+fn http_ingress_handler_name(b: HttpIngressBinding) -> String { b.handler.decl_name as String }
+fn http_ingress_handler_module(b: HttpIngressBinding) -> String { b.handler.module_path as String }
+
+// The line the host prints once it has bound, naming the address ACTUALLY bound (a port-0 caller
+// reads the chosen port from here) and every limit the process will enforce. Unset is not a state
+// a binding can hold: both budgets are positive by construction.
+fn http_ingress_announcement(b: HttpIngressBinding, bound_host: String, bound_port: Int) -> String {
+  join([
+    "http-ingress listening on ", bound_host, ":", to_string(value: bound_port),
+    " -> ", http_ingress_handler_module(b: b), ".", http_ingress_handler_name(b: b), "()",
+    " release_revision=", b.release_revision as String,
+    " head_limit_bytes=", to_string(value: http_ingress_head_limit_bytes(b: b)),
+    " body_limit_bytes=", to_string(value: http_ingress_body_limit_bytes(b: b)),
+    " read_timeout_ms=", to_string(value: http_ingress_read_timeout_ms(b: b)),
+    " eval_budget_cpu_ms=", to_string(value: http_ingress_cpu_limit_ms(b: b)),
+    " eval_budget_wall_ms=", to_string(value: http_ingress_wall_limit_ms(b: b)),
+  ], "")
+}
+
+// ── THE HANDLER CONTRACT: REQUEST FACTS BY DECLARED PARAMETER NAME ─────────────────────────────
+// A handler receives exactly the facts it declares, by name, from this closed vocabulary. A
+// host-side list of names pushed unconditionally would be a second authority for the handler's
+// signature and refuse every handler it disagreed with (gunbc.recurring_failure_mode
+// a_serve_contract_widened_for_one_handler_refuses_every_other). The plan is derived ONCE at
+// startup, before the listener serves, so a parameter naming no fact refuses there rather than as a
+// per-request 500.
+type HttpIngressRequestFact
+  = IngressFactMethod
+  | IngressFactPath
+  | IngressFactBody
+  | IngressFactTailscaleIdentity
+  | IngressFactReleaseRevision
+  | IngressFactPeerUser
+  | IngressFactRequestHeaders
+
+data http_ingress_request_facts: List<HttpIngressRequestFact> = [
+  IngressFactMethod, IngressFactPath, IngressFactBody, IngressFactTailscaleIdentity,
+  IngressFactReleaseRevision, IngressFactPeerUser, IngressFactRequestHeaders,
+]
+
+fn http_ingress_fact_name(f: HttpIngressRequestFact) -> String {
+  match f {
+    IngressFactMethod => "method"
+    IngressFactPath => "path"
+    IngressFactBody => "body"
+    IngressFactTailscaleIdentity => "tailscale_identity"
+    IngressFactReleaseRevision => "release_revision"
+    IngressFactPeerUser => "peer_user"
+    IngressFactRequestHeaders => "request_headers"
+  }
+}
+
+type HttpIngressFactPlan
+  = HttpIngressFactsPlanned { facts: List<HttpIngressRequestFact> }
+  | HttpIngressFactsRefused { reason: String }
+
+fn http_ingress_offered_names() -> String {
+  join(http_ingress_request_facts |> map(f => http_ingress_fact_name(f: f)), ", ")
+}
+
+fn http_ingress_fact_named(name: String) -> HttpIngressRequestFact? {
+  http_ingress_request_facts |> filter(f => http_ingress_fact_name(f: f) == name) |> first
+}
+
+fn http_ingress_plan_from(b: HttpIngressBinding, declared: List<String>, acc: List<HttpIngressRequestFact>) -> HttpIngressFactPlan {
+  match declared {
+    Empty => HttpIngressFactsPlanned { facts: acc }
+    Cons { head: name, tail: rest } =>
+      match http_ingress_fact_named(name: name) {
+        Absent => HttpIngressFactsRefused { reason: concat("handler declares parameter `", concat(name, concat("`, which names no request fact (offered: ", concat(http_ingress_offered_names(), ")")))) }
+        Present { value: f } =>
+          match f {
+            IngressFactPeerUser =>
+              if http_ingress_listener_attests_peer(listener: b.listener) {
+                http_ingress_plan_from(b: b, declared: rest, acc: acc |> list_push(f))
+              } else {
+                HttpIngressFactsRefused { reason: "handler declares `peer_user`, but only a unix-socket listener attests a peer" }
+              }
+            _ => http_ingress_plan_from(b: b, declared: rest, acc: acc |> list_push(f))
+          }
+      }
+  }
+}
+
+// The host reads the handler's declared parameter names from the loaded program (it holds the
+// program; nothing else can) and asks this fold what they mean.
+fn http_ingress_fact_plan(b: HttpIngressBinding, declared: List<String>) -> HttpIngressFactPlan {
+  http_ingress_plan_from(b: b, declared: declared, acc: [])
+}
+
+// ── FRAMING: THE HEAD THE HOST READ, JUDGED HERE ─────────────────────────────────────────────
+// The host hands over the request line and header lines exactly as read (terminators stripped),
+// having enforced only the byte limit it was given. gunbc.native_serve native_serve_frame_within
+// decides everything those lines mean; this module reads its answer.
+fn http_ingress_frame(b: HttpIngressBinding, request_line: String, header_lines: List<String>) -> NativeServeFrame {
+  native_serve_frame_within(body_limit: http_ingress_body_limit_bytes(b: b), request_line: request_line, header_lines: header_lines)
+}
+
+// ── THE PRE-EVALUATION ROUTE TABLE ──────────────────────────────────────────────────────────
+// GET /livez must be answered WITHOUT ENTERING THE EVALUATOR, for the reason gunbc.serve_liveness
+// states: the conditions that make a served process unhealthy are the conditions under which an
+// evaluation fails, so a health answer that needs one answers "healthy" or nothing (boot 15,
+// side-chat ruling 2026-09-19). Every value the document carries is fixed once the listener has
+// bound, so the graph produces the whole table ONCE, at startup, as a compiled value: the host
+// renders each response's bytes then, and per request compares the request line's method and target
+// against the table before it evaluates anything. This is the capability
+// gunbc.serve_liveness_seed_growth named as its trigger, so that row retires here.
+type HttpIngressPreEvaluationRoute {
+  method: String
+  target: String
+  response: ServeWireResponse
+}
+
+fn http_ingress_pre_evaluation_routes(b: HttpIngressBinding, bound_host: String, bound_port: Int) -> List<HttpIngressPreEvaluationRoute> {
+  [
+    HttpIngressPreEvaluationRoute {
+      method: "GET",
+      target: serve_liveness_path as String,
+      response: ServeWireResponse {
+        status: 200,
+        content_type_label: native_serve_application_json,
+        body: serve_liveness_document(revision: b.release_revision, entry_function: http_ingress_handler_name(b: b), bound_host: bound_host, bound_port: bound_port),
+        headers: [],
+      },
+    },
+  ]
+}
+
+// ── THE HANDLER'S ARGUMENTS ─────────────────────────────────────────────────────────────────
+// One argument per planned fact, in the handler's declared order. Two shapes, because a fact is
+// text or the header list; the host unwraps each arm into a named argument and decides nothing.
+type HttpIngressArgument
+  = HttpIngressTextArgument { name: String, value: String }
+  | HttpIngressHeadersArgument { name: String, value: List<ServeRequestHeader> }
+
+data http_ingress_upper_ascii: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+data http_ingress_lower_ascii: String = "abcdefghijklmnopqrstuvwxyz"
+
+fn http_ingress_lower_char(c: String) -> String {
+  let cp = code_point(c)
+  if cp >= 65 && cp <= 90 { substring(s: http_ingress_lower_ascii, start: cp - 65, end: cp - 64) } else { c }
+}
+
+fn http_ingress_ascii_lower_from(s: String, i: Int, acc: List<String>) -> String {
+  if i >= string_length(s: s) {
+    join(acc, "")
+  } else {
+    http_ingress_ascii_lower_from(s: s, i: i + 1, acc: acc |> list_push(http_ingress_lower_char(c: substring(s: s, start: i, end: i + 1))))
+  }
+}
+
+// RFC 9110 section 5.1: field names are case-insensitive, so the seam hands one spelling
+// (extdeps.http.server ServeRequestHeader).
+fn http_ingress_ascii_lower(s: String) -> String {
+  http_ingress_ascii_lower_from(s: s, i: 0, acc: [])
+}
+
+fn http_ingress_request_headers(head: NativeServeRequestHead) -> List<ServeRequestHeader> {
+  head.headers |> map(f => ServeRequestHeader { name: http_ingress_ascii_lower(s: f.name), value: f.value })
+}
+
+fn http_ingress_argument(f: HttpIngressRequestFact, b: HttpIngressBinding, head: NativeServeRequestHead, body: String, peer_user: String) -> HttpIngressArgument {
+  let name = http_ingress_fact_name(f: f)
+  match f {
+    IngressFactMethod => HttpIngressTextArgument { name: name, value: head.method }
+    IngressFactPath => HttpIngressTextArgument { name: name, value: head.target }
+    IngressFactBody => HttpIngressTextArgument { name: name, value: body }
+    IngressFactTailscaleIdentity => HttpIngressTextArgument { name: name, value: head.tailscale_identity }
+    IngressFactReleaseRevision => HttpIngressTextArgument { name: name, value: b.release_revision as String }
+    IngressFactPeerUser => HttpIngressTextArgument { name: name, value: peer_user }
+    IngressFactRequestHeaders => HttpIngressHeadersArgument { name: name, value: http_ingress_request_headers(head: head) }
+  }
+}
+
+fn http_ingress_arguments(b: HttpIngressBinding, facts: List<HttpIngressRequestFact>, head: NativeServeRequestHead, body: String, peer_user: String) -> List<HttpIngressArgument> {
+  facts |> map(f => http_ingress_argument(f: f, b: b, head: head, body: body, peer_user: peer_user))
+}
+
+// ── FAILURES THE HOST OBSERVES, AND WHAT THEY MEAN ───────────────────────────────────────────
+// The host observes these (it is the one counting bytes and running the handler); these folds say
+// what they mean. Read failures are the client's (400); a handler error is the server's (500).
+fn http_ingress_read_refused(reason: String) -> ServeWireResponse { native_serve_read_refused(reason: reason) }
+
+fn http_ingress_handler_error(reason: String) -> ServeWireResponse { native_serve_effect_failed(reason: reason) }
+
+// A BUDGET REFUSAL. The host renders the sealed consequence's machine body (the evaluation that
+// would have rendered it is the one just aborted; seed `serve_budget_refusal`), and this says what it
+// means: 500, not 503, because the request is deterministic against a fixed policy and will cross
+// again on retry, so a status meaning "temporary capacity" would assert something the model does not
+// know (std.evaluation_budget evaluation_budget_retry_semantics_note).
+fn http_ingress_budget_refused(machine_body: String) -> ServeWireResponse {
+  ServeWireResponse { status: 500, content_type_label: native_serve_application_json, body: machine_body, headers: [] }
+}
+
+// The handler returned a value that is not a ServeWireResponse. The host cannot read it as one,
+// so it hands over the value's rendering and this says what that means.
+fn http_ingress_not_a_response(rendered: String) -> ServeWireResponse {
+  ServeWireResponse {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    body: concat("handler returned `", concat(rendered, "`, not a ServeWireResponse\n")),
+    headers: [],
+  }
+}
+
+// ── WHAT LEAVES THE PROCESS ─────────────────────────────────────────────────────────────────
+// Every response passes gunbc.native_serve native_serve_outgoing (status range, CR/LF/NUL). The
+// head's bytes are rendered here, so the host frames nothing: it measures the body's octets (a
+// reading, not a decision) and writes this head followed by the body. The reason phrase is empty,
+// which RFC 9112 section 4 admits and the native door already writes.
+fn http_ingress_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {
+  native_serve_outgoing(r: r)
+}
+
+fn http_ingress_wire_head(o: NativeServeOutgoing, body_octets: Int) -> String {
+  join([
+    "HTTP/1.1 ", to_string(value: o.status), " \r\n",
+    "Content-Type: ", o.content_type_label, "\r\n",
+    "Content-Length: ", to_string(value: body_octets), "\r\n",
+    "Connection: close\r\n",
+    join(o.header_lines |> map(l => concat(l, "\r\n")), ""),
+    "\r\n",
+  ], "")
+}

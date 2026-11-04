@@ -1,0 +1,851 @@
+//! THE SEED'S REALIZATION OF AN HTTP INGRESS BINDING (`gunbc.http_ingress`).
+//!
+//! `gunbc run` evaluates an entry function once. When its answer is a `gunbc.http_ingress`
+//! `HttpIngressAdmission`, this module realizes it: a refused admission exits nonzero before any
+//! listener exists, and a bound one is served -- bind, accept, and one independent evaluation of
+//! the binding's handler per admitted request (`gunbc.plans.converged_ingress`). There is no serve
+//! verb: serving is a deployment fact about an ordinary entry, carried by the binding.
+//!
+//! THIS MODULE DECIDES NOTHING ABOUT A REQUEST. It performs only what no fold can: bind and accept
+//! the listener, read the kernel-attested peer of a unix connection, read bytes within the limits
+//! the binding hands it, arm the per-request evaluation budget around the handler call, and write
+//! the bytes the response folds return. Every decision between those reads and writes is a fold in
+//! `gunbc.http_ingress` or `gunbc.native_serve` that this module evaluates in the loaded program:
+//! the handler's argument plan (`http_ingress_fact_plan`), whether a head is admissible and how many
+//! body bytes follow (`http_ingress_frame`), which routes answer before anything is evaluated and
+//! with what bytes (`http_ingress_pre_evaluation_routes`, evaluated once at startup, so `/livez`
+//! never enters the evaluator), the handler's arguments (`http_ingress_arguments`), what a read failure
+//! or handler error means (`http_ingress_read_refused`, `http_ingress_handler_error`,
+//! `http_ingress_not_a_response`), and the response head's exact bytes (`http_ingress_outgoing`,
+//! `http_ingress_wire_head`). The one consequence rendered here is a budget refusal, because the
+//! evaluation that would have rendered it is the one that was aborted (`serve_budget_refusal`).
+
+use super::serve_budget_refusal;
+use crate::v1_interpreter::{self, InterpContext, Value};
+use std::io::{BufRead, Read, Write};
+
+/// What an entry's answer says about ingress: not a binding at all, a refused binding, or a bound
+/// one to realize.
+pub enum IngressAnswer {
+    NotABinding,
+    Refused(String),
+    Bound(Value),
+}
+
+/// Classify an entry's answer. The type is read from the value, never from the entry's name.
+pub fn ingress_answer(value: &Value, ctx: &InterpContext) -> IngressAnswer {
+    let Value::Variant {
+        type_name,
+        variant_name,
+        fields,
+    } = value
+    else {
+        return IngressAnswer::NotABinding;
+    };
+    if !ctx.sym_eq(*type_name, "HttpIngressAdmission") {
+        return IngressAnswer::NotABinding;
+    }
+    if ctx.sym_eq(*variant_name, "HttpIngressBound") {
+        match ctx.field(fields, "binding") {
+            Some(binding) => IngressAnswer::Bound(binding.clone()),
+            None => IngressAnswer::Refused("HttpIngressBound carries no binding".to_string()),
+        }
+    } else {
+        match ctx.field(fields, "reason") {
+            Some(Value::Str(s)) => IngressAnswer::Refused(s.to_string()),
+            _ => IngressAnswer::Refused(format!(
+                "HttpIngressAdmission::{} is not a binding",
+                ctx.resolve(*variant_name)
+            )),
+        }
+    }
+}
+
+/// Evaluate one fold of the loaded program with named arguments.
+fn fold(ctx: &InterpContext, name: &str, args: Vec<(&str, Value)>) -> Result<Value, String> {
+    let named: Vec<(Option<String>, Value)> = args
+        .into_iter()
+        .map(|(n, v)| (Some(n.to_string()), v))
+        .collect();
+    v1_interpreter::run_in_context_with_args(ctx, name, &named, true)
+        .map_err(|e| format!("{name}: {e}"))
+}
+
+fn fold_int(ctx: &InterpContext, name: &str, binding: &Value) -> Result<i64, String> {
+    match &fold(ctx, name, vec![("b", binding.clone())])? {
+        Value::Int(n) => Ok(*n),
+        other => Err(format!(
+            "{name} answered {}, not an Int",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn fold_text(ctx: &InterpContext, name: &str, args: Vec<(&str, Value)>) -> Result<String, String> {
+    match &fold(ctx, name, args)? {
+        Value::Str(s) => Ok(s.to_string()),
+        other => Err(format!(
+            "{name} answered {}, not a String",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn str_list(items: &[String]) -> Value {
+    v1_interpreter::list_value(
+        items
+            .iter()
+            .map(v1_interpreter::str_value)
+            .collect::<Vec<_>>(),
+    )
+}
+
+// ONE CONNECTION SHAPE FOR BOTH LISTENERS. The request read and the response write are the same
+// bytes over TCP and over a unix socket; only binding, accepting and the peer differ.
+trait IngressConnection: Read + Write {
+    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()>;
+}
+
+impl IngressConnection for std::net::TcpStream {
+    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()> {
+        self.set_read_timeout(Some(d))
+    }
+}
+
+impl IngressConnection for std::os::unix::net::UnixStream {
+    fn set_read_timeout_for_request(&self, d: std::time::Duration) -> std::io::Result<()> {
+        self.set_read_timeout(Some(d))
+    }
+}
+
+enum IngressListener {
+    Tcp(std::net::TcpListener),
+    Unix(std::os::unix::net::UnixListener, String),
+}
+
+/// Bind the binding's listener. A unix socket path that already exists is removed only when it IS
+/// a socket (a previous process's); any other file at that path refuses, so a mistyped path never
+/// deletes data. The socket file's mode is the binding's (`http_ingress_unix_socket_mode`).
+fn bind_listener(ctx: &InterpContext, listener: &Value) -> Result<IngressListener, String> {
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = listener
+    else {
+        return Err(format!(
+            "listener {} is not a variant",
+            ctx.format_value(listener)
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "HttpIngressTcp") {
+        let host = match ctx.field(fields, "host") {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => return Err("HttpIngressTcp carries no host".to_string()),
+        };
+        let port = match ctx.field(fields, "port") {
+            Some(Value::Int(n)) => {
+                u16::try_from(*n).map_err(|_| format!("port {n} out of range"))?
+            }
+            _ => return Err("HttpIngressTcp carries no port".to_string()),
+        };
+        return bind_tcp(&host, port);
+    }
+    let path = match ctx.field(fields, "path") {
+        Some(Value::Str(s)) => s.to_string(),
+        _ => return Err("HttpIngressUnixSocket carries no path".to_string()),
+    };
+    let mode = match ctx.field(fields, "mode") {
+        Some(Value::Int(n)) => {
+            u32::try_from(*n).map_err(|_| format!("socket mode {n} out of range"))?
+        }
+        _ => return Err("HttpIngressUnixSocket carries no mode".to_string()),
+    };
+    bind_unix(&path, mode)
+}
+
+fn bind_tcp(host: &str, port: u16) -> Result<IngressListener, String> {
+    std::net::TcpListener::bind((host, port))
+        .map(IngressListener::Tcp)
+        .map_err(|e| format!("failed to bind {host}:{port}: {e}"))
+}
+
+fn bind_unix(path: &str, mode: u32) -> Result<IngressListener, String> {
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+    if let Ok(meta) = std::fs::symlink_metadata(path) {
+        if !meta.file_type().is_socket() {
+            return Err(format!(
+                "unix socket {path} exists and is not a socket; refusing to replace it"
+            ));
+        }
+        std::fs::remove_file(path)
+            .map_err(|e| format!("could not remove the stale socket {path}: {e}"))?;
+    }
+    let listener = std::os::unix::net::UnixListener::bind(path)
+        .map_err(|e| format!("failed to bind unix socket {path}: {e}"))?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+        .map_err(|e| format!("could not set the socket {path} to mode {mode:o}: {e}"))?;
+    Ok(IngressListener::Unix(listener, path.to_string()))
+}
+
+impl IngressListener {
+    fn bound_address(&self) -> std::io::Result<(String, i64)> {
+        match self {
+            IngressListener::Tcp(l) => l
+                .local_addr()
+                .map(|a| (a.ip().to_string(), i64::from(a.port()))),
+            IngressListener::Unix(_, path) => Ok((format!("unix:{path}"), 0)),
+        }
+    }
+
+    // THE PEER IS READ FROM THE KERNEL, NEVER FROM THE REQUEST. A unix connection whose peer
+    // credentials cannot be read or resolved to an account is dropped here, before any request is
+    // read: an unattested peer on the socket that exists to attest peers is a refusal.
+    fn accept(&self) -> std::io::Result<(Box<dyn IngressConnection>, String)> {
+        match self {
+            IngressListener::Tcp(l) => l
+                .accept()
+                .map(|(s, _)| (Box::new(s) as Box<dyn IngressConnection>, String::new())),
+            IngressListener::Unix(l, _) => {
+                let (s, _) = l.accept()?;
+                let user = peer_user(&s)?;
+                Ok((Box::new(s) as Box<dyn IngressConnection>, user))
+            }
+        }
+    }
+}
+
+// The kernel-attested peer uid of a unix-socket connection. Linux answers through SO_PEERCRED; macOS
+// has no SO_PEERCRED and answers the same fact through getpeereid. Any other target refuses.
+#[cfg(target_os = "linux")]
+fn peer_uid(s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
+    use std::os::unix::io::AsRawFd;
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let rc = unsafe {
+        libc::getsockopt(
+            s.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            &mut cred as *mut libc::ucred as *mut libc::c_void,
+            &mut len,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(cred.uid)
+}
+
+#[cfg(target_os = "macos")]
+fn peer_uid(s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
+    use std::os::unix::io::AsRawFd;
+    let mut uid: libc::uid_t = 0;
+    let mut gid: libc::gid_t = 0;
+    if unsafe { libc::getpeereid(s.as_raw_fd(), &mut uid, &mut gid) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(uid)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn peer_uid(_s: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "unix-socket peer credentials are not modeled for this target",
+    ))
+}
+
+fn peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
+    let uid = peer_uid(s)?;
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buf = vec![0 as libc::c_char; 4096];
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+    if rc != 0 || result.is_null() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("peer uid {uid} resolves to no account"),
+        ));
+    }
+    let name = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) };
+    Ok(name.to_string_lossy().into_owned())
+}
+
+/// One line of the request head, terminators stripped, charged against the head budget. `Ok(None)`
+/// is a clean close or an idle timeout before any byte: nothing was asked.
+fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {
+    let mut bytes = Vec::new();
+    match reader.read_until(b'\n', &mut bytes) {
+        Ok(0) => return Ok(None),
+        Ok(n) if n > *budget => {
+            return Err("the request head exceeds the serve head limit".to_string())
+        }
+        Ok(n) => *budget -= n,
+        Err(e)
+            if bytes.is_empty()
+                && matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+        {
+            return Ok(None)
+        }
+        Err(e) => return Err(format!("read: {e}")),
+    }
+    if bytes.ends_with(b"\n") {
+        bytes.pop();
+    }
+    if bytes.ends_with(b"\r") {
+        bytes.pop();
+    }
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| "the request head is not utf-8".to_string())
+}
+
+/// What one connection asks for, read within the binding's limits and judged by the folds.
+enum Exchange {
+    Idle,
+    /// A pre-evaluation route matched: these bytes were rendered at startup and nothing is evaluated.
+    PreRendered(usize),
+    Answer(Value),
+    Handle {
+        head: Value,
+        body: String,
+    },
+}
+
+/// One row of the graph's pre-evaluation route table (`http_ingress_pre_evaluation_routes`), its
+/// response already rendered to bytes at startup.
+struct PreEvaluationRoute {
+    method: String,
+    target: String,
+    bytes: Vec<u8>,
+}
+
+struct Limits {
+    head: usize,
+    body: usize,
+    read_timeout: std::time::Duration,
+}
+
+fn exchange(
+    ctx: &InterpContext,
+    binding: &Value,
+    limits: &Limits,
+    routes: &[PreEvaluationRoute],
+    stream: &mut dyn IngressConnection,
+) -> Result<Exchange, String> {
+    let refused = |reason: String| -> Result<Exchange, String> {
+        fold(
+            ctx,
+            "http_ingress_read_refused",
+            vec![("reason", v1_interpreter::str_value(reason))],
+        )
+        .map(Exchange::Answer)
+    };
+    if let Err(e) = stream.set_read_timeout_for_request(limits.read_timeout) {
+        return refused(format!("set_read_timeout: {e}"));
+    }
+    let mut reader =
+        std::io::BufReader::new((&mut *stream).take((limits.head + limits.body) as u64));
+    let mut budget = limits.head;
+    let request_line = match read_line(&mut reader, &mut budget) {
+        Ok(Some(line)) => line,
+        Ok(None) => return Ok(Exchange::Idle),
+        Err(reason) => return refused(reason),
+    };
+    // THE PRE-EVALUATION TABLE IS CONSULTED BEFORE ANYTHING IS EVALUATED. The comparison is the
+    // request line's method and target against the graph's rows, exactly; the host chooses no route.
+    let mut tokens = request_line.split_whitespace();
+    if let (Some(method), Some(target)) = (tokens.next(), tokens.next()) {
+        if let Some(i) = routes
+            .iter()
+            .position(|r| r.method == method && r.target == target)
+        {
+            return Ok(Exchange::PreRendered(i));
+        }
+    }
+    let mut header_lines = Vec::new();
+    loop {
+        match read_line(&mut reader, &mut budget) {
+            Ok(Some(line)) if line.is_empty() => break,
+            Ok(Some(line)) => header_lines.push(line),
+            Ok(None) => return refused("connection closed before end of headers".to_string()),
+            Err(reason) => return refused(reason),
+        }
+    }
+    let frame = fold(
+        ctx,
+        "http_ingress_frame",
+        vec![
+            ("b", binding.clone()),
+            ("request_line", v1_interpreter::str_value(&request_line)),
+            ("header_lines", str_list(&header_lines)),
+        ],
+    )?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &frame
+    else {
+        return Err(format!(
+            "http_ingress_frame answered {}",
+            ctx.format_value(&frame)
+        ));
+    };
+    if !ctx.sym_eq(*variant_name, "NativeServeFramed") {
+        return match ctx.field(fields, "response") {
+            Some(response) => Ok(Exchange::Answer(response.clone())),
+            None => Err(format!(
+                "http_ingress_frame answered {}",
+                ctx.format_value(&frame)
+            )),
+        };
+    }
+    let head = ctx
+        .field(fields, "head")
+        .cloned()
+        .ok_or_else(|| "NativeServeFramed carries no head".to_string())?;
+    let body_length = match ctx.field(fields, "body_length") {
+        Some(Value::Int(n)) => usize::try_from(*n).map_err(|_| format!("body_length {n}"))?,
+        _ => return Err("NativeServeFramed carries no body_length".to_string()),
+    };
+    let mut body_bytes = vec![0u8; body_length];
+    if let Err(e) = reader.read_exact(&mut body_bytes) {
+        return refused(format!("read body: {e}"));
+    }
+    let body = match String::from_utf8(body_bytes) {
+        Ok(text) => text,
+        Err(_) => return refused("the body is not utf-8".to_string()),
+    };
+    Ok(Exchange::Handle { head, body })
+}
+
+/// The handler's named arguments, as the arguments fold planned them. Each arm unwraps to its value;
+/// the host chooses no name and no value.
+fn handler_args(
+    ctx: &InterpContext,
+    arguments: &Value,
+) -> Result<Vec<(Option<String>, Value)>, String> {
+    let Value::List(items) = arguments else {
+        return Err(format!(
+            "http_ingress_arguments answered {}",
+            ctx.format_value(arguments)
+        ));
+    };
+    items
+        .iter()
+        .map(|item| match item {
+            Value::Variant { fields, .. } => {
+                let name = match ctx.field(fields, "name") {
+                    Some(Value::Str(s)) => s.to_string(),
+                    _ => return Err("an ingress argument carries no name".to_string()),
+                };
+                let value = ctx
+                    .field(fields, "value")
+                    .cloned()
+                    .ok_or_else(|| format!("ingress argument {name} carries no value"))?;
+                Ok((Some(name), value))
+            }
+            other => Err(format!(
+                "ingress argument {} is not a variant",
+                ctx.format_value(other)
+            )),
+        })
+        .collect()
+}
+
+/// Render a response's bytes: the outgoing fold judges it, the head fold renders the head, and the
+/// host appends the body's octets.
+fn render_response(ctx: &InterpContext, response: Value) -> Result<Vec<u8>, String> {
+    fold(ctx, "http_ingress_outgoing", vec![("r", response)]).and_then(|outgoing| {
+        let body = match &outgoing {
+            Value::Record { fields, .. } => match ctx.field(fields, "body") {
+                Some(Value::Str(s)) => s.to_string(),
+                _ => return Err("NativeServeOutgoing carries no body".to_string()),
+            },
+            other => {
+                return Err(format!(
+                    "http_ingress_outgoing answered {}",
+                    ctx.format_value(other)
+                ))
+            }
+        };
+        let head = fold_text(
+            ctx,
+            "http_ingress_wire_head",
+            vec![
+                ("o", outgoing),
+                ("body_octets", Value::Int(body.len() as i64)),
+            ],
+        )?;
+        let mut bytes = head.into_bytes();
+        bytes.extend_from_slice(body.as_bytes());
+        Ok(bytes)
+    })
+}
+
+fn write_bytes(stream: &mut dyn IngressConnection, bytes: &[u8]) {
+    if let Err(e) = stream.write_all(bytes) {
+        eprintln!("http-ingress: write error: {e}");
+    }
+}
+
+fn write_response(ctx: &InterpContext, stream: &mut dyn IngressConnection, response: Value) {
+    match render_response(ctx, response) {
+        Ok(bytes) => write_bytes(stream, &bytes),
+        // A response fold that cannot answer is a defect of the loaded program, not of the request.
+        // The connection is closed unanswered and the defect is printed, never papered over with a
+        // host-authored body.
+        Err(e) => {
+            eprintln!("http-ingress: response folds failed, connection closed unanswered: {e}")
+        }
+    }
+}
+
+/// Realize a bound `HttpIngressBinding`. Returns only on a startup refusal (exit status 1 or 2 and
+/// the reason); once the listener serves, it never returns.
+pub fn realize(ctx: &InterpContext, binding: Value) -> (i32, String) {
+    v1_interpreter::with_active_context(ctx, || realize_in(ctx, binding))
+}
+
+fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
+    let startup = || -> Result<_, String> {
+        let handler = fold_text(
+            ctx,
+            "http_ingress_handler_name",
+            vec![("b", binding.clone())],
+        )?;
+        let limits = Limits {
+            head: usize::try_from(fold_int(ctx, "http_ingress_head_limit_bytes", &binding)?)
+                .map_err(|e| e.to_string())?,
+            body: usize::try_from(fold_int(ctx, "http_ingress_body_limit_bytes", &binding)?)
+                .map_err(|e| e.to_string())?,
+            read_timeout: std::time::Duration::from_millis(
+                u64::try_from(fold_int(ctx, "http_ingress_read_timeout_ms", &binding)?)
+                    .map_err(|e| e.to_string())?,
+            ),
+        };
+        let cpu = u64::try_from(fold_int(ctx, "http_ingress_cpu_limit_ms", &binding)?)
+            .map_err(|e| e.to_string())?;
+        let wall = u64::try_from(fold_int(ctx, "http_ingress_wall_limit_ms", &binding)?)
+            .map_err(|e| e.to_string())?;
+        // THE ARGUMENT PLAN IS DERIVED ONCE, before the listener binds, from the handler's declared
+        // parameters. A handler absent from the closure, or a parameter naming no fact, refuses here.
+        let declared = v1_interpreter::declared_parameter_names(ctx, &handler)
+            .ok_or_else(|| format!("no function `{handler}` in the run's closure (the binding module must import the handler's module)"))?;
+        let plan = fold(
+            ctx,
+            "http_ingress_fact_plan",
+            vec![("b", binding.clone()), ("declared", str_list(&declared))],
+        )?;
+        let facts = match &plan {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "HttpIngressFactsPlanned") => ctx
+                .field(fields, "facts")
+                .cloned()
+                .ok_or_else(|| "HttpIngressFactsPlanned carries no facts".to_string())?,
+            Value::Variant { fields, .. } => {
+                return Err(match ctx.field(fields, "reason") {
+                    Some(Value::Str(s)) => s.to_string(),
+                    _ => ctx.format_value(&plan),
+                })
+            }
+            other => {
+                return Err(format!(
+                    "http_ingress_fact_plan answered {}",
+                    ctx.format_value(other)
+                ))
+            }
+        };
+        let listener_value = match &binding {
+            Value::Record { fields, .. } => ctx
+                .field(fields, "listener")
+                .cloned()
+                .ok_or_else(|| "the binding carries no listener".to_string())?,
+            other => {
+                return Err(format!(
+                    "the binding {} is not a record",
+                    ctx.format_value(other)
+                ))
+            }
+        };
+        let listener = bind_listener(ctx, &listener_value)?;
+        let (bound_host, bound_port) = listener
+            .bound_address()
+            .map_err(|e| format!("bound, but could not read the bound address: {e}"))?;
+        let announcement = fold_text(
+            ctx,
+            "http_ingress_announcement",
+            vec![
+                ("b", binding.clone()),
+                ("bound_host", v1_interpreter::str_value(&bound_host)),
+                ("bound_port", Value::Int(bound_port)),
+            ],
+        )?;
+        let table = fold(
+            ctx,
+            "http_ingress_pre_evaluation_routes",
+            vec![
+                ("b", binding.clone()),
+                ("bound_host", v1_interpreter::str_value(&bound_host)),
+                ("bound_port", Value::Int(bound_port)),
+            ],
+        )?;
+        let Value::List(rows) = &table else {
+            return Err(format!(
+                "http_ingress_pre_evaluation_routes answered {}",
+                ctx.format_value(&table)
+            ));
+        };
+        let mut routes = Vec::with_capacity(rows.len());
+        for row in rows.iter() {
+            let Value::Record { fields, .. } = row else {
+                return Err(format!(
+                    "pre-evaluation route {} is not a record",
+                    ctx.format_value(row)
+                ));
+            };
+            let text = |name: &str| match ctx.field(fields, name) {
+                Some(Value::Str(s)) => Ok(s.to_string()),
+                _ => Err(format!("a pre-evaluation route carries no {name}")),
+            };
+            let response = ctx
+                .field(fields, "response")
+                .cloned()
+                .ok_or_else(|| "a pre-evaluation route carries no response".to_string())?;
+            routes.push(PreEvaluationRoute {
+                method: text("method")?,
+                target: text("target")?,
+                bytes: render_response(ctx, response)?,
+            });
+        }
+        Ok((
+            handler,
+            limits,
+            cpu,
+            wall,
+            facts,
+            listener,
+            routes,
+            announcement,
+        ))
+    };
+    let (handler, limits, cpu, wall, facts, listener, routes, announcement) = match startup() {
+        Ok(parts) => parts,
+        Err(reason) => return (1, format!("REFUSED: ingress binding: {reason}")),
+    };
+    eprintln!("{announcement}");
+    let armed = serve_budget_refusal::serve_armed_contract(handler.clone(), Some(cpu), Some(wall));
+    loop {
+        let (mut conn, peer) = match listener.accept() {
+            Ok(accepted) => accepted,
+            Err(e) => {
+                eprintln!("http-ingress: accept error: {e}");
+                continue;
+            }
+        };
+        let stream: &mut dyn IngressConnection = &mut *conn;
+        let response = match exchange(ctx, &binding, &limits, &routes, stream) {
+            Ok(Exchange::Idle) => continue,
+            Ok(Exchange::PreRendered(i)) => {
+                write_bytes(stream, &routes[i].bytes);
+                continue;
+            }
+            Ok(Exchange::Answer(response)) => Ok(response),
+            Ok(Exchange::Handle { head, body }) => {
+                answer_with_handler(ctx, &binding, &facts, &armed, head, body, &peer)
+            }
+            Err(e) => Err(e),
+        };
+        match response {
+            Ok(response) => write_response(ctx, stream, response),
+            Err(e) => {
+                eprintln!("http-ingress: request folds failed, connection closed unanswered: {e}")
+            }
+        }
+    }
+}
+
+fn answer_with_handler(
+    ctx: &InterpContext,
+    binding: &Value,
+    facts: &Value,
+    armed: &serve_budget_refusal::ServeArmedContract,
+    head: Value,
+    body: String,
+    peer: &str,
+) -> Result<Value, String> {
+    let arguments = fold(
+        ctx,
+        "http_ingress_arguments",
+        vec![
+            ("b", binding.clone()),
+            ("facts", facts.clone()),
+            ("head", head),
+            ("body", v1_interpreter::str_value(&body)),
+            ("peer_user", v1_interpreter::str_value(peer)),
+        ],
+    )?;
+    let args = handler_args(ctx, &arguments)?;
+    let entry = serve_budget_refusal::serve_contract_entry(armed);
+    // THE BUDGET IS ARMED AROUND THIS CALL AND RESTORED WHEN IT ENDS: `ctx` outlives every request,
+    // so a leaked deadline would refuse every later one.
+    let result = {
+        let _budget = ctx.enter_evaluation_budget(
+            entry,
+            serve_budget_refusal::serve_contract_cpu_limit_ms(armed),
+            serve_budget_refusal::serve_contract_wall_limit_ms(armed),
+        );
+        v1_interpreter::run_in_context_with_args(ctx, entry, &args, true)
+    };
+    match result {
+        Ok(value) => match &value {
+            Value::Record { type_name, .. } if ctx.sym_eq(*type_name, "ServeWireResponse") => {
+                Ok(value)
+            }
+            other => fold(
+                ctx,
+                "http_ingress_not_a_response",
+                vec![(
+                    "rendered",
+                    v1_interpreter::str_value(ctx.format_value(other)),
+                )],
+            ),
+        },
+        Err(e) => match serve_budget_refusal::serve_budget_refusal_from_exceeded(&e) {
+            Some(refusal)
+                if serve_budget_refusal::serve_refusal_names_contract(&refusal, armed) =>
+            {
+                eprintln!(
+                    "{}",
+                    serve_budget_refusal::serve_budget_refusal_diagnostic_line(&refusal)
+                );
+                fold(
+                    ctx,
+                    "http_ingress_budget_refused",
+                    vec![(
+                        "machine_body",
+                        v1_interpreter::str_value(
+                            serve_budget_refusal::serve_budget_refusal_machine_body(&refusal),
+                        ),
+                    )],
+                )
+            }
+            // The single armed contract makes this unreachable; it refuses rather than rendering a
+            // refusal that names the wrong function.
+            Some(_) => fold(
+                ctx,
+                "http_ingress_handler_error",
+                vec![(
+                    "reason",
+                    v1_interpreter::str_value(
+                        "a budget refusal named an entry other than the armed handler",
+                    ),
+                )],
+            ),
+            None => fold(
+                ctx,
+                "http_ingress_handler_error",
+                vec![("reason", v1_interpreter::str_value(e.to_string()))],
+            ),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_socket_path(tag: &str) -> String {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-ingress-door-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("door.sock").to_string_lossy().into_owned()
+    }
+
+    // The kernel names the connecting account, and it is THIS process's account -- the value the
+    // handler receives as peer_user, never anything the request carried.
+    #[test]
+    fn a_unix_listener_attests_the_connecting_account() {
+        let path = temp_socket_path("peer");
+        let listener = bind_unix(&path, 0o666).expect("bind");
+        let client = std::thread::spawn({
+            let path = path.clone();
+            move || std::os::unix::net::UnixStream::connect(&path).expect("connect")
+        });
+        let (_conn, peer) = listener.accept().expect("accept");
+        let _ = client.join();
+        let uid = unsafe { libc::geteuid() };
+        let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut buf = vec![0 as libc::c_char; 4096];
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+        assert!(!result.is_null(), "this process's own uid resolves");
+        let me = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(peer, me);
+        assert_eq!(listener.bound_address().unwrap().0, format!("unix:{path}"));
+    }
+
+    // A stale socket from a previous process is replaced; any other file at the path refuses and
+    // survives, so a mistyped listener never deletes data. The socket takes the binding's mode.
+    #[test]
+    fn a_unix_listener_replaces_only_a_socket_and_takes_the_binding_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = temp_socket_path("replace");
+        drop(bind_unix(&path, 0o666).expect("first bind"));
+        assert!(
+            bind_unix(&path, 0o666).is_ok(),
+            "a stale socket is replaced"
+        );
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, b"data").unwrap();
+        assert!(bind_unix(&path, 0o666).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"data");
+    }
+
+    // A TCP listener attests nothing: its peer is empty, and gunbc.http_ingress
+    // http_ingress_fact_plan refuses a handler declaring peer_user behind one before it binds.
+    #[test]
+    fn a_tcp_listener_attests_no_peer() {
+        let listener = bind_tcp("127.0.0.1", 0).expect("bind");
+        let port = u16::try_from(listener.bound_address().unwrap().1).unwrap();
+        let client = std::thread::spawn(move || {
+            std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect")
+        });
+        let (_conn, peer) = listener.accept().expect("accept");
+        let _ = client.join();
+        assert_eq!(peer, "");
+    }
+
+    // An idle connection is not a request: no bytes before the timeout reads as nothing asked.
+    #[test]
+    fn a_line_read_distinguishes_nothing_asked_from_a_head_over_its_limit() {
+        let mut idle = std::io::BufReader::new(&b""[..]);
+        let mut budget = 10;
+        assert_eq!(read_line(&mut idle, &mut budget), Ok(None));
+        let mut long = std::io::BufReader::new(&b"GET /aaaaaaaaaaaaaaaa HTTP/1.1\r\n"[..]);
+        let mut small = 8;
+        assert!(read_line(&mut long, &mut small).is_err());
+        let mut ok = std::io::BufReader::new(&b"GET / HTTP/1.1\r\n"[..]);
+        let mut room = 64;
+        assert_eq!(
+            read_line(&mut ok, &mut room),
+            Ok(Some("GET / HTTP/1.1".to_string()))
+        );
+        assert_eq!(room, 64 - 16);
+    }
+}
