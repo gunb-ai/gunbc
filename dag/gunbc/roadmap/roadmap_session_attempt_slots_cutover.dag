@@ -19,7 +19,7 @@ import gunbc.durable_cas_file_store {
   listed_slot_store, SlotStoreListed, SlotStoreRefused,
 }
 import gunbc.compute.attempt_lifecycle {
-  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
+  AttemptSlotKeysAbsent, AttemptSlotKeysAbsent, attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
   attempt_slot_read, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
   attempt_record_state, AttemptState,
 }
@@ -451,6 +451,7 @@ fn attempt_slots_census(target: SessionAttemptSlotsStore, moved: ReplacedAttempt
         Absent => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: "the old root's directory could not be listed; there is no store there to census" }
         Present { value: source } =>
           match attempt_slot_keys(store: source) {
+            AttemptSlotKeysAbsent { store: _ } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: "the replaced root PROVES it holds no attempt-slot directory; absence is reported as absence, never as an empty census, and no entry is carried or released on it" }
             AttemptSlotKeysRefused { detail: d } => AttemptSlotsCensusRefused { old_root: moved.old_slots_root, detail: d }
             AttemptSlotKeysListed { keys: keys } => {
               let entries = map(keys, k => attempt_slots_census_entry(source: source, target: target.slots, reference: k))
@@ -564,6 +565,7 @@ fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptS
         Absent => AttemptSlotsCarrySourceUnlistable { old_root: moved.old_slots_root }
         Present { value: source } =>
           match attempt_slot_keys(store: source) {
+            AttemptSlotKeysAbsent { store: _ } => AttemptSlotsCarryKeysRefused { old_root: moved.old_slots_root, detail: "the replaced root PROVES it holds no attempt-slot directory; absence is not an empty key set, and no outcome is claimed for it" }
             AttemptSlotKeysRefused { detail: d } => AttemptSlotsCarryKeysRefused { old_root: moved.old_slots_root, detail: d }
             AttemptSlotKeysListed { keys: keys } =>
               AttemptSlotsCarryReported {
