@@ -1,5 +1,6 @@
 module gunbc.host.host_memory_observation
 
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import std.measure {
   ByteSize, byte_size, measure_scale_fraction_floor, kibibyte_to_byte_size, kibibyte_count,
 }
@@ -62,10 +63,6 @@ import gunbc.machine_intake.host_resource_observation {
 // stale. Where a successor lands is those rows' question. A bind target is not a citation and a
 // regex aimed at citations should never have reached it.
 
-type HostFixedOverhead
-  = HostFixedOverheadMeasured { bytes: ByteSize, provenance: NonEmptyStr }
-  | HostFixedOverheadAllowance { bytes: ByteSize, reason: NonEmptyStr }
-  | HostFixedOverheadUnmeasured { reason: NonEmptyStr }
 
 // THREE ARMS BECAUSE THERE ARE THREE FACTS, and the row that stood here fused two of them under the
 // name of the third. gunbc_ci_host_fixed_overhead was a single fleet-wide HostFixedOverheadMeasured
@@ -216,10 +213,6 @@ data gunbc_ci_legacy_host_fixed_overhead_disposition: Disposition = Scaffold {
   }
 }
 
-type HostUsableRam
-  = HostUsableRamMeasured { bytes: ByteSize, provenance: NonEmptyStr }
-  | HostUsableRamConservativeLowerBound { bytes: ByteSize, basis: NonEmptyStr }
-  | HostUsableRamUnmeasured { reason: NonEmptyStr }
 
 data gunbc_ci_host_usable_ram_kind_note: String = "OS-USABLE RAM IS A PER-HOST FACT AND WAS STORED AS A FLEET CONSTANT, which is the same grain defect gunbc_ci_host_fixed_overhead_kind_note repaired for overhead -- so this carrier is deliberately that carrier's shape rather than a new invention.\n\nTHE DIMM-REPLACEMENT CLAIM HAS NOW BEEN WRONG IN BOTH DIRECTIONS AND IS SETTLED BY MEASUREMENT. An earlier revision said a 2026-08-11 replacement had raised memory on part of the fleet; that was written from an in-flight operator report before any observation existed, and it was wrong (the attempt failed, operator 2026-08-12). This revision records the opposite and does so from a read rather than a report: srv3 and srv4 were each observed at 512 GiB over BMC Redfish on 2026-08-22 -- 8 x Samsung M393A8G40D40-CRB at 64 GiB, one per channel, all Enabled/OK -- while srv1 was upgraded to the same 8 x Samsung population on operator report and srv2's identical attempt FAILED memory training and was reverted to 8 x 16 GiB Hynix. The hosts no longer share one nominal population.\n\nTWO ARMS HAVE NOW MOVED AND TWO HAVE NOT, WHICH IS THE GRAIN DOING ITS JOB. srv3 and srv4 carry HostUsableRamMeasured from /proc/meminfo reads taken over SSH on 2026-08-22 (about 502.25 GiB each); srv1 and srv2 still carry HostUsableRamConservativeLowerBound at 125 GiB, because no MemTotal read has been taken on either. What promoted the two was a KERNEL read, never the Redfish 512 GiB figure -- that is NOMINAL DIMM capacity, which this carrier does not hold and must never be fed. A lower bound does not become false when the machine gets bigger; it becomes LOOSE, and srv1's is now loose by roughly 4x while remaining sound. The remedy is unchanged and is now half-applied: one ordinary read per host, taken any time, promoting that host's row and leaving the others untouched.\n\nTHREE ARMS BECAUSE THERE ARE THREE FACTS. MEASURED means a read of THIS host produced the number and the row names the read. CONSERVATIVE LOWER BOUND means no such read exists and the carried figure is known not to exceed the host's real usable RAM, with basis stating why. UNMEASURED is the fail-closed floor for a host nobody classified.\n\nTHE MIDDLE ARM IS A BOUND AND NOT A SUBSTITUTION, and the heterogeneity above is exactly why that distinction was worth paying for in advance. While the fleet was uniform an equivalence argument was also available, and naming the arm for equivalence would have licensed the move the wall cannot survive: carrying a reading from a host with MORE memory onto one with less. That move is now AUTHORABLE for the first time -- srv3 and srv4 are the hosts with more -- and the bound's name is what forbids it. The safety property is monotonicity, and it did not have to be re-argued when the fleet's uniformity ended.\n\nWHY srv1 AND srv2 ARE STILL BOUNDS: no MemTotal read has been taken on either. A NEARBY RECEIPT IS NOT ONE, and it is named because it looks like one: gunbc_ci_srv3_memavailable_high_water, whose host_total is MemTotal-shaped but was captured as an arm-time line from a memory governor rather than a read taken to answer this question, only on srv3, and -- now load-bearing -- against srv3's PREVIOUS 128 GiB population, so it is a receipt about hardware that is no longer in that chassis.\n\nDissolving these is CHEAPER THAN THE FIXED-OVERHEAD ROW BESIDE THEM and must not be confused with it. That row needs a QUIESCENT read because it estimates non-reclaimable residency from MemAvailable, which moves with load. MemTotal does not: the kernel reports total usable RAM after firmware and kernel reservations, so an ordinary read while the host serves work is a complete answer. One read per host, taken any time, promotes that host's row to MEASURED and leaves the others untouched -- which is the entire point of the grain."
 

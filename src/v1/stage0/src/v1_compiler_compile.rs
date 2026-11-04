@@ -53,7 +53,7 @@ pub use crate::v1_compiler_infer::reconcile;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
 pub use crate::v1_compiler_normalize::{normalize_graph, NormalizeResult};
-use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
+use crate::v1_compiler_ownership::OwnershipDecision::*;
 pub use crate::v1_compiler_ownership::{analyze_ownership, OwnershipDecision, OwnershipProof};
 pub use crate::v1_compiler_parse::{
     census_heads_body_stand_in, parse_with_table, parse_with_table_in_occurrence_scope, ParseResult,
@@ -74,7 +74,7 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{
-    InternalError, OccurrenceTransportViolation, OwnershipViolation, TestCodeReferenced,
+    InternalError, OccurrenceTransportViolation, TestCodeReferenced,
 };
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
 use crate::v1_std_core::DeclarationMarker::{TestMarked, Unmarked};
@@ -320,46 +320,6 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
         .cloned()
         {
             __result.extend((*module_ownership_proofs(m.clone())).iter().cloned());
-        }
-        __result
-    })
-}
-
-pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for proof in proofs.iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for decision in proof.decisions.clone().iter().cloned() {
-                        __result.extend(
-                            (*match (*decision.clone()).clone() {
-                                OwnershipDecision::SharedError {
-                                    binding,
-                                    consumer_count: count,
-                                    sites,
-                                    ..
-                                } => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                    Rc::new(CompilerDiagnostic::OwnershipViolation {
-                                        binding: binding.clone(),
-                                        fn_name: proof.func_name.clone(),
-                                        consumers: count.clone(),
-                                        span: crate::v1_std_core::no_span(),
-                                    }),
-                                    proof.func_name.clone(),
-                                )]),
-                                _ => Rc::new(vec![]),
-                            })
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
         }
         __result
     })
@@ -3581,7 +3541,6 @@ pub fn compile_to_resolved_with_options(
                 };
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let ownership = extract_ownership_proofs(typed.clone());
-                let ownership_diags = ownership_diagnostics(ownership.clone());
                 let test_reference_diags =
                     test_reference_diagnostics(typed.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
@@ -3589,11 +3548,8 @@ pub fn compile_to_resolved_with_options(
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
-                                all_diags.clone(),
-                            ),
-                            ownership_diags.clone(),
+                            v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
+                            all_diags.clone(),
                         ),
                         test_reference_diags.clone(),
                     ),

@@ -5,14 +5,14 @@ import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Kibibyte, HardwareThreadCount, hardware_thread_count }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import extdeps.toolchain.types { Architecture, Aarch64, architecture_diagnostic_name }
 import extdeps.exec.command { shell_command_render }
 import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mkdir_parents_command, cat_command, nproc_command, ls_one_per_line_command }
 import extdeps.linux.procfs { ProcMeminfo, procfs_path_literal }
 import extdeps.systemd.udevd { udev_disk_by_label_dir }
 import extdeps.systemd { systemd_booted_runtime_dir }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.posix.test_utility { test_executable_command, test_directory_command }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
 import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
@@ -35,7 +35,9 @@ import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.provisioning.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
 import gunbc.host.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal, bmc_boot_image_export }
-import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_machine }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_machine, boot_subject_host }
+import gunbc.host.running_os { RunningOsReading, RunningOsObserved, RunningOsUnobserved, RunningDeliveredArtifact }
+import gunbc.host.host_boot_id { host_boot_id_of_capture_run }
 import gunbc.machine_intake.host_capture_envelope {
   HostCaptureStage, HostCaptureRunIdentity, BoundHostCaptureEnvelope,
   HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
@@ -136,7 +138,7 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCapt
     HostCaptureStage { name: runner_host_section_tarball_digest, command: shell_command_render(command: sha256sum_file_command(path: runner_host_medium_tarball_on_medium(artifact: artifact))) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_clear, command: shell_command_render(command: rm_recursive_force_command(path: actions_runner_base_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_dir, command: shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)) as NonEmptyStr },
-    HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
@@ -415,6 +417,22 @@ fn runner_host_up_readback(capture: String, subject: AdmittedBootSubject) -> Run
       runner_host_up_readback_of(capture: capture, machine: boot_subject_machine(subject: subject), label: label)
     BootMediumVolumeLabel { label: _ } => RunnerHostUpRefused { refusals: [RunnerHostMediumTerminalNotRunnerHostUp { image: subject.medium.image_name }] }
     BootMediumNoTerminal { reason: _ } => RunnerHostUpRefused { refusals: [RunnerHostMediumTerminalNotRunnerHostUp { image: subject.medium.image_name }] }
+  }
+}
+
+// THE EPHEMERAL ROW'S RUNNING-OS FACT (gunbc.host.running_os): the runner medium runs its delivered artifact in
+// memory, so a runner-host-up readback of the admitted subject proves that subject's medium digest is what runs, on
+// the boot the capture names. It reads the same subject the readback is taken over, so the digest and the readback
+// cannot come from two subjects. A capture keyed by a historical attempt ordinal names no boot and is unobserved.
+fn runner_host_running_os(capture: String, subject: AdmittedBootSubject) -> RunningOsReading {
+  match runner_host_up_readback(capture: capture, subject: subject) {
+    RunnerHostUpPending { reason: r } => RunningOsUnobserved { cause: concat("the runner-host-up capture is not closed: ", r) }
+    RunnerHostUpRefused { refusals: rs } => RunningOsUnobserved { cause: concat("the capture does not establish runner-host-up: ", join(map(rs, x => runner_host_up_refusal_text(refusal: x)), "; ")) }
+    RunnerHostUpObserved { up: up } =>
+      match host_boot_id_of_capture_run(run: up.run) {
+        Present { value: boot } => RunningOsObserved { running: RunningDeliveredArtifact { digest: subject.medium.digest }, observed_host: boot_subject_host(subject: subject), observed_on: boot }
+        Absent => RunningOsUnobserved { cause: "the capture names a historical attempt ordinal, not a kernel boot id" }
+      }
   }
 }
 

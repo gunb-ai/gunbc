@@ -41,6 +41,9 @@ pub use crate::std_algebra::{
     carrier_container_equality_rows, kernel_carrier_admits_numeral, AlgebraTypeTemplate,
     CollectionSizeEffect, FreeMonoid, FreeSemigroup,
 };
+use crate::std_coercion::ArithmeticCarrierSelection::{
+    ArithmeticCarrierAmbiguous, ArithmeticCarrierUndecided, ArithmeticNoCarrier,
+};
 use crate::std_coercion::ConversionPlanJudgment::{
     ConversionPlanAbsent, ConversionPlanAdmitted, ConversionPlanAmbiguous,
     ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText,
@@ -48,7 +51,6 @@ use crate::std_coercion::ConversionPlanJudgment::{
 use crate::std_coercion::CrossingPlanSelection::{
     CrossingPlanJudged, CrossingPlanNone, CrossingPlanSeveral,
 };
-use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 use crate::std_coercion::TextRepresentation::{
     CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
 };
@@ -57,8 +59,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
 };
 pub use crate::std_coercion::{
     dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, select_text_crossing_plan,
-    unicode_scalar_unfold, ConversionPlanJudgment, CrossingPlanSelection, SubtractionRefinement,
-    TextRepresentation, TypeDeclarationProvenance,
+    unicode_scalar_unfold, ArithmeticCarrierSelection, ConversionPlanJudgment,
+    CrossingPlanSelection, TextRepresentation, TypeDeclarationProvenance,
 };
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -169,8 +171,9 @@ pub use crate::std_termination::{
 };
 pub use crate::std_types::container_expected_arity;
 pub use crate::std_types::{
-    container_param_name, container_template_algebra, container_template_alias_algebra,
-    is_container_type, is_kernel_type, kernel_type_set, NonEmptyStr, SourceSpan,
+    container_param_name, container_spelling_is_algebra, container_template_algebra,
+    container_template_alias_algebra, is_container_algebra_carrier, is_container_type,
+    is_kernel_type, kernel_type_set, NonEmptyStr, SourceSpan,
 };
 pub use crate::v1_compiler_coercion::provenance_realizes_natively;
 pub use crate::v1_compiler_infer_access::{
@@ -206,18 +209,19 @@ pub use crate::v1_compiler_infer_env::{
     build_unit_variant_index, carried_declaration_ref, census_declaration_type_env,
     declaration_named_by_type_name, declaration_node_of_ref, declaration_provenance_of_ref,
     declaration_ref_of_declaration_node, declaration_ref_of_type_node,
-    declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
-    empty_type_env_cache, env_with_type_variable_bindings, generic_actual_position_type,
-    global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
-    host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, is_unsolved_type_variable, kernel_settled_name,
+    declaration_substitution_basis, declared_module_owner, effective_visible_binding,
+    empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
+    generic_actual_position_type, global_bare_declarer_in_scope, global_bare_is_ambiguous,
+    global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
+    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    is_recursive_type_by_name, is_unsolved_type_variable, kernel_settled_name,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
     lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
     merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
     node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
     put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
-    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_type,
-    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_head_of_declaration,
+    settled_type, settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
@@ -260,8 +264,8 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
 pub use crate::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, builtin_host_display_deferred_param_names,
     builtin_host_text_param_names, builtin_kernel_seed_diagnostics, builtin_param_names,
-    builtin_receiver_self_host_text_param_names, infer_builtin_call_type, is_empty_map_constructor,
-    is_empty_set_constructor, resolve_builtin_call_type,
+    builtin_receiver_self_host_text_param_names, builtin_signature, infer_builtin_call_type,
+    is_empty_map_constructor, is_empty_set_constructor, resolve_builtin_call_type,
     template_renders_receiver_elements_as_host_text, NonDeclarationBinding,
 };
 use crate::v1_compiler_infer_patterns::ConstructorRoster::{ConstructorsClosed, ConstructorsOpen};
@@ -275,9 +279,9 @@ pub use crate::v1_compiler_infer_patterns::{
 };
 pub use crate::v1_compiler_infer_resolve::{
     expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
-    is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
-    resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
-    ItemResolveResult, NodeResolveResult,
+    is_user_generic_use_site, node_with_declaration, preserve_nominal_brand_on_resolve,
+    reference_with_declaration, resolve_generic_use_decl, resolve_item_types, resolve_node,
+    resolve_node_bounded, ItemResolveResult, NodeResolveResult,
 };
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
@@ -307,6 +311,7 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
 };
 pub use crate::v1_compiler_infer_sigs::{
+    call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding,
     callable_candidate_labels, callable_identity_label, flatten_parent_envs,
     func_sig_for_derivation, resolve_func_sigs, CallTargetOutcome, CallableCandidate,
     CallableIdentity, DerivedCalleeSig, FuncSigLookup, NoDerivableSigReason, ResolveFuncSigsResult,
@@ -315,18 +320,25 @@ pub use crate::v1_compiler_infer_sigs::{
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedInVariantFieldSummary;
 pub use crate::v1_compiler_infer_types::{
-    alias_identity_in_judgment, alias_names_identity_in_judgment, bare_map_node, bare_set_node,
-    callable_inferred, callable_return_type, child_type_node, collection_carrier_node,
-    emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
-    is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
-    method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
-    template_return_is_receiver_self, KernelTypeBuild, TextJudgment, TextNotAskedReason,
+    alias_identity_in_judgment, alias_names_identity_in_judgment, apply_type_substitution,
+    arithmetic_carrier_selection, arithmetic_requirement, bare_map_node, bare_set_node,
+    build_type_substitution, callable_inferred, callable_return_type, canonical_template_name,
+    child_type_node, collection_carrier_node, declaration_carried_through_resolution,
+    declaration_is_std_optional, emit_map_has, extract_optional_inner_node,
+    for_each_element_type_node, infer_arithmetic_binop_type_node, infer_binop_type_node,
+    infer_literal_node, infer_neg_type_node, is_declared_container_alias_spelling,
+    is_fully_resolved, is_product_type, is_type_expr_annotation, is_unit_like, join_element_type,
+    kernel_profile_lookup, make_callable_type, make_container_type, method_receiver_element_node,
+    node_declaration_file, node_declaration_identity, node_is_collection,
+    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
+    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
+    normalize_access_type_node, operand_carrier_ref, prefer_specific_type,
+    resolve_type_variables_from_template, resolved_type, std_optional_declaration_ref,
+    structural_carrier_template_name, template_return_has_variables,
+    template_return_is_receiver_self, type_node_is_callable, unary_arithmetic_requirement,
+    ArithmeticRequirement, KernelTypeBuild, TextJudgment, TextNotAskedReason,
 };
+pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
@@ -351,7 +363,8 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
+    AlgebraApplicationEvidenceUnavailable, AmbiguousReference, ArithmeticAmbiguousCarrier,
+    ArithmeticUndecidedCarrier, ArithmeticWithoutCarrier, BareNoneNotAdmittedByFieldType,
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
     CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
     EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOnInadmissibleType,
@@ -397,36 +410,38 @@ pub use crate::v1_std_core::{
     arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
     build_newline_index, call_semantics_target, callable_identity, cast_expr, cast_target,
     decl_ref_coords_label, declaration_provenance_of, default_ident_span,
-    diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table, error_type,
-    expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_is_any_literal,
-    expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
-    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
-    field_node_type_expr, find_child_named, find_property_string, float_type, fn_admit_callers,
-    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named,
-    has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
-    is_child_accessor_in_model, is_compiler_error, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, is_property_contraction, is_shell_transport,
-    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
-    let_value, make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
-    make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
-    make_param_node, make_text_part_node, make_transport_node, map_children, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, module_imports, module_items, module_node,
-    no_span, node_name_span, none_type, param_node_default_value, param_node_name_at,
-    param_node_type_expr, preserve_outer_optional_cardinality, qualified_last_segment,
-    record_lit_expr_optional, record_lit_named_field_value_optional, record_lit_type_name_at,
-    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
-    string_type, symbol_type, type_name_compatible, type_reference_provenance,
-    type_variable_binder_name, unaryop_operand, undeclared_transport_node, unit_type,
-    variant_node_fields, with_optional_cardinality, with_required_cardinality, AdmitCallersEntry,
-    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
-    DeclarationMarker, DeclaredCallableIdentity, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode,
-    ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape,
-    FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, ParsedModuleItemKind, ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart,
-    UnaryOpKind, VarBindingKind,
+    diagnostic_frontier_occurrence_key, diagnostic_to_span, divergent_type, empty_intern_table,
+    error_type, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_is_any_literal, expr_literal_int_optional, expr_literal_string_optional,
+    expr_literal_symbol_optional, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
+    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
+    find_child_named, find_property_string, float_type, fn_admit_callers, foreach_body,
+    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
+    is_compiler_error, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    is_property_contraction, is_shell_transport, is_tree_size_reducing, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
+    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, module_node,
+    module_path_segments, no_span, node_name_span, none_type, param_node_default_value,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
+    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
+    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
+    slice_end, slice_start, string_type, symbol_type, type_name_compatible,
+    type_reference_provenance, type_variable_binder_name, unaryop_operand,
+    undeclared_transport_node, unit_type, variant_node_fields, with_optional_cardinality,
+    with_required_cardinality, AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality,
+    CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity,
+    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
+    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1045,6 +1060,7 @@ pub fn nominal_ref_node(
 ) -> Rc<Node> {
     {
         let declared_leaf = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: span.clone(),
@@ -1066,9 +1082,9 @@ pub fn nominal_ref_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: span.clone(),
@@ -1092,7 +1108,6 @@ pub fn nominal_ref_node(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1788,7 +1803,11 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
                     if local_is_service_root_binding(scope.clone(), name.clone(), binding.clone()) {
                         Rc::new(VarBindingKind::ServiceValueBinding)
                     } else {
-                        Rc::new(VarBindingKind::LocalValueBinding)
+                        if v1_rt::map_has(&scope.body_locals.clone(), name.clone()) {
+                            Rc::new(VarBindingKind::LocalValueBinding)
+                        } else {
+                            Rc::new(VarBindingKind::FunctionValueBinding)
+                        }
                     }
                 }
             }
@@ -1837,6 +1856,33 @@ pub fn relocated_algebra_evidence_diags(
         }
         __result
     })
+}
+
+pub fn arithmetic_operand_label(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let t = crate::v1_compiler_infer_types::resolved_type(n);
+        let shape = crate::v1_compiler_infer_types::node_type_shape(
+            t.clone(),
+            scope.type_env.source_indices.clone(),
+        );
+        match crate::v1_compiler_infer_types::operand_carrier_ref(
+            t.clone(),
+            scope.type_env.source_indices.clone(),
+            scope.type_env.clone(),
+        ) {
+            Some(d) => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(shape.clone(), " @ ".to_string()),
+                        d.module_path.clone(),
+                    ),
+                    ".".to_string(),
+                ),
+                d.decl_name.clone(),
+            ),
+            std::option::Option::None => v1_rt::concat(shape.clone(), " @ no carrier".to_string()),
+        }
+    }
 }
 
 pub fn inference_error(
@@ -2267,38 +2313,11 @@ pub fn conformance_ground_kernel_scalar(
     }
 }
 
-pub fn conformance_ground_element_collection(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let shaped_container = (((n.connective.clone() == Connective::NoConnective)
-            && crate::v1_compiler_infer_types::node_is_element_collection(
-                n.clone(),
-                source_indices.clone(),
-            ))
-            && (crate::v1_compiler_infer_types::node_is_keyed_collection(
-                n.clone(),
-                source_indices.clone(),
-            ) == false));
-        let required = (n.return_cardinality.clone() == Cardinality::Required);
-        let element_ground = match n.children.clone().first().cloned() {
-            Some(el) => conformance_ground_kernel_scalar(
-                crate::v1_compiler_infer_types::child_type_node(el.clone()),
-                source_indices.clone(),
-            ),
-            std::option::Option::None => false,
-        };
-        ((shaped_container.clone() && required.clone()) && element_ground.clone())
-    }
-}
-
 pub fn conformance_ground_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (conformance_ground_kernel_scalar(n.clone(), source_indices.clone())
-        || conformance_ground_element_collection(n.clone(), source_indices.clone()))
+    conformance_ground_kernel_scalar(n, source_indices)
 }
 
 pub fn declared_type_kernel_inhabitance_mismatch(
@@ -2337,110 +2356,6 @@ pub fn declared_type_kernel_inhabitance_mismatch(
             )
         }
     }
-}
-
-pub fn declared_type_kernel_inhabitance_mismatch_at_element(
-    declared: Rc<Node>,
-    produced: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    {
-        let si = scope.type_env.source_indices.clone();
-        let both_element_collections =
-            (((crate::v1_compiler_infer_types::node_is_element_collection(
-                declared.clone(),
-                si.clone(),
-            ) && crate::v1_compiler_infer_types::node_is_element_collection(
-                produced.clone(),
-                si.clone(),
-            )) && (crate::v1_compiler_infer_types::node_is_keyed_collection(
-                declared.clone(),
-                si.clone(),
-            ) == false))
-                && (crate::v1_compiler_infer_types::node_is_keyed_collection(
-                    produced.clone(),
-                    si.clone(),
-                ) == false));
-        if (both_element_collections.clone() == false) {
-            false
-        } else {
-            match declared.children.clone().first().cloned() {
-                std::option::Option::None => false,
-                Some(dl) => match produced.children.clone().first().cloned() {
-                    std::option::Option::None => false,
-                    Some(pr) => declared_type_kernel_inhabitance_mismatch(
-                        crate::v1_compiler_infer_types::child_type_node(dl.clone()),
-                        crate::v1_compiler_infer_types::child_type_node(pr.clone()),
-                        scope.clone(),
-                    ),
-                },
-            }
-        }
-    }
-}
-
-pub fn callable_element_signature_mismatch(
-    declared: Rc<Node>,
-    produced: Rc<Node>,
-    env: Rc<TypeEnv>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let both_element_collections =
-            (((((crate::v1_compiler_infer_types::node_is_element_collection(
-                declared.clone(),
-                source_indices.clone(),
-            ) && crate::v1_compiler_infer_types::node_is_element_collection(
-                produced.clone(),
-                source_indices.clone(),
-            )) && (crate::v1_compiler_infer_types::node_is_keyed_collection(
-                declared.clone(),
-                source_indices.clone(),
-            ) == false))
-                && (crate::v1_compiler_infer_types::node_is_keyed_collection(
-                    produced.clone(),
-                    source_indices.clone(),
-                ) == false))
-                && (declared.return_cardinality.clone() == Cardinality::Required))
-                && (produced.return_cardinality.clone() == Cardinality::Required));
-        if (both_element_collections.clone() == false) {
-            false
-        } else {
-            match declared.children.clone().first().cloned() {
-                std::option::Option::None => false,
-                Some(dl) => match produced.children.clone().first().cloned() {
-                    std::option::Option::None => false,
-                    Some(pr) => {
-                        let declared_element =
-                            crate::v1_compiler_infer_types::child_type_node(dl.clone());
-                        let produced_element =
-                            crate::v1_compiler_infer_types::child_type_node(pr.clone());
-                        ((type_node_is_arrow(declared_element.clone())
-                            && type_node_is_arrow(produced_element.clone()))
-                            && callable_signature_mismatch(
-                                declared_element.clone(),
-                                produced_element.clone(),
-                                env,
-                                source_indices.clone(),
-                            ))
-                    }
-                },
-            }
-        }
-    }
-}
-
-pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
-    declared: Rc<Node>,
-    produced: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    (declared_type_kernel_inhabitance_mismatch(declared.clone(), produced.clone(), scope.clone())
-        || declared_type_kernel_inhabitance_mismatch_at_element(
-            declared.clone(),
-            produced.clone(),
-            scope.clone(),
-        ))
 }
 
 pub fn declared_type_conformance_diags(
@@ -2514,7 +2429,7 @@ pub fn declared_type_conformance_diags_core(
                     scope.module_name.clone(),
                 )])
             } else {
-                if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+                if declared_type_kernel_inhabitance_mismatch(
                     declared.clone(),
                     produced.clone(),
                     scope.clone(),
@@ -2662,13 +2577,21 @@ pub fn declared_type_conformance_diags_core(
                                                     scope.module_name.clone(),
                                                 )])
                                             } else {
-                                                if callable_element_signature_mismatch(
+                                                if application_pair(
                                                     declared.clone(),
                                                     produced.clone(),
-                                                    scope.type_env.clone(),
                                                     si.clone(),
                                                 ) {
-                                                    Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()), crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()), span.clone(), scope.module_name.clone())])
+                                                    declared_type_obligation_diags(
+                                                        Rc::new(DeclaredTypeObligation {
+                                                            position: position.clone(),
+                                                            subject: subject.clone(),
+                                                            declared: declared.clone(),
+                                                            produced: produced.clone(),
+                                                            span: span.clone(),
+                                                        }),
+                                                        scope.clone(),
+                                                    )
                                                 } else {
                                                     if !both_ground.clone() {
                                                         Rc::new(vec![])
@@ -3166,6 +3089,7 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
                                                     let mut __result = Vec::new();
                                                     for sf in template_fields.iter().cloned() {
                                                         __result.push(Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: sf.name.clone(),
     span: sf.span.clone(),
@@ -3189,7 +3113,6 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     declaration_marker: sf.declaration_marker.clone(),
     declaration: sf.declaration.clone(),
     expr_data: sf.expr_data.clone(),
-    ident: None,
 }));
                                                     }
                                                     __result
@@ -6435,6 +6358,7 @@ pub enum InhabitanceVerdict {
     InhabitanceUndecidable {
         reason: InhabitanceUndecidableReason,
     },
+    InhabitanceUnmodeled,
 }
 
 pub fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
@@ -6680,6 +6604,213 @@ pub fn produced_is_kernel_grounded_carrier_or_its_alias(
     }
 }
 
+pub fn application_pair(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((((crate::v1_compiler_infer_types::node_is_collection(
+        declared.clone(),
+        source_indices.clone(),
+    ) && crate::v1_compiler_infer_types::node_is_collection(
+        produced.clone(),
+        source_indices.clone(),
+    )) && (declared.return_cardinality.clone() == produced.return_cardinality.clone()))
+        && (crate::v1_compiler_infer_types::canonical_template_name(
+            declared.clone(),
+            source_indices.clone(),
+        ) == crate::v1_compiler_infer_types::canonical_template_name(
+            produced.clone(),
+            source_indices.clone(),
+        )))
+        && ((declared.children.clone().len() as i64) == (produced.children.clone().len() as i64)))
+}
+
+pub fn application_argument_is_opaque(n: Rc<Node>) -> bool {
+    match n.inferred.clone() {
+        Some(v) => {
+            (is_type_variable(v.clone()) || crate::v1_std_core::is_compiler_error(v.clone()))
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn application_argument_inhabitance(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<InhabitanceVerdict> {
+    {
+        let si = scope.type_env.source_indices.clone();
+        if (application_argument_is_opaque(declared.clone())
+            || crate::v1_compiler_infer_types::is_unit_like(declared.clone()))
+        {
+            Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+                reason: InhabitanceUndecidableReason::UndecidableGenericFormal,
+            })
+        } else {
+            if (application_argument_is_opaque(produced.clone())
+                || crate::v1_compiler_infer_types::is_unit_like(produced.clone()))
+            {
+                Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+                    reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
+                })
+            } else {
+                if (conformance_ground_type(declared.clone(), si.clone())
+                    && conformance_ground_type(produced.clone(), si.clone()))
+                {
+                    if crate::v1_compiler_infer_types::node_type_compatible(
+                        declared.clone(),
+                        produced.clone(),
+                        si.clone(),
+                        Rc::new(TextJudgment::TextJudgedIn {
+                            env: scope.type_env.clone(),
+                        }),
+                    ) {
+                        Rc::new(InhabitanceVerdict::Inhabits)
+                    } else {
+                        Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                            reason: InhabitanceRefusalReason::RefusedDistinctAppliedTypeArgument,
+                        })
+                    }
+                } else {
+                    declared_type_inhabitance(
+                        Rc::new(DeclaredTypeObligation {
+                            position: DeclaredTypePosition::PositionGenericTypeArgument,
+                            subject: "".to_string(),
+                            declared: declared.clone(),
+                            produced: produced.clone(),
+                            span: produced.span.clone(),
+                        }),
+                        scope.clone(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+pub fn application_arguments_inhabitance(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<InhabitanceVerdict> {
+    application_argument_pairs_inhabitance(
+        declared.children.clone(),
+        produced.children.clone(),
+        Rc::new(InhabitanceVerdict::Inhabits),
+        scope,
+    )
+}
+
+pub fn application_argument_pairs_inhabitance(
+    mut __tco_loop_declared: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_produced: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_acc: Rc<InhabitanceVerdict>,
+    mut __tco_loop_scope: Rc<InferScope>,
+) -> Rc<InhabitanceVerdict> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut declared = __tco_loop_declared;
+            #[allow(unused_mut)]
+            let mut produced = __tco_loop_produced;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            match declared.clone().first().cloned() {
+                std::option::Option::None => {
+                    break acc.clone();
+                }
+                Some(d) => match produced.clone().first().cloned() {
+                    std::option::Option::None => {
+                        break acc.clone();
+                    }
+                    Some(p) => {
+                        match (*application_argument_inhabitance(
+                            crate::v1_compiler_infer_env::generic_actual_position_type(
+                                crate::v1_compiler_infer_types::join_element_type(d.clone()),
+                            ),
+                            crate::v1_compiler_infer_env::generic_actual_position_type(
+                                crate::v1_compiler_infer_types::join_element_type(p.clone()),
+                            ),
+                            scope.clone(),
+                        ))
+                        .clone()
+                        {
+                            InhabitanceVerdict::InhabitanceRefused { reason: r, .. } => {
+                                break Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                    reason: r.clone(),
+                                });
+                            }
+                            InhabitanceVerdict::InhabitanceUndecidable { reason: r, .. } => {
+                                let __tco_0 = Rc::new(v1_rt::list_skip(&declared, 1));
+                                let __tco_1 = Rc::new(v1_rt::list_skip(&produced, 1));
+                                let __tco_2 = match (*acc).clone() {
+                                    InhabitanceVerdict::Inhabits => {
+                                        Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+                                            reason: r.clone(),
+                                        })
+                                    }
+                                    InhabitanceVerdict::InhabitanceRefused {
+                                        reason: _, ..
+                                    } => acc,
+                                    InhabitanceVerdict::InhabitanceUndecidable {
+                                        reason: _,
+                                        ..
+                                    } => acc,
+                                    InhabitanceVerdict::InhabitanceUnmodeled => acc,
+                                };
+                                let __tco_3 = scope;
+                                __tco_loop_declared = __tco_0;
+                                __tco_loop_produced = __tco_1;
+                                __tco_loop_acc = __tco_2;
+                                __tco_loop_scope = __tco_3;
+                                continue;
+                            }
+                            InhabitanceVerdict::InhabitanceUnmodeled => {
+                                let __tco_0 = Rc::new(v1_rt::list_skip(&declared, 1));
+                                let __tco_1 = Rc::new(v1_rt::list_skip(&produced, 1));
+                                let __tco_2 = match (*acc).clone() {
+                                    InhabitanceVerdict::Inhabits => {
+                                        Rc::new(InhabitanceVerdict::InhabitanceUnmodeled)
+                                    }
+                                    InhabitanceVerdict::InhabitanceRefused {
+                                        reason: _, ..
+                                    } => acc,
+                                    InhabitanceVerdict::InhabitanceUndecidable {
+                                        reason: _,
+                                        ..
+                                    } => acc,
+                                    InhabitanceVerdict::InhabitanceUnmodeled => acc,
+                                };
+                                let __tco_3 = scope;
+                                __tco_loop_declared = __tco_0;
+                                __tco_loop_produced = __tco_1;
+                                __tco_loop_acc = __tco_2;
+                                __tco_loop_scope = __tco_3;
+                                continue;
+                            }
+                            InhabitanceVerdict::Inhabits => {
+                                let __tco_0 = Rc::new(v1_rt::list_skip(&declared, 1));
+                                let __tco_1 = Rc::new(v1_rt::list_skip(&produced, 1));
+                                let __tco_2 = acc;
+                                let __tco_3 = scope;
+                                __tco_loop_declared = __tco_0;
+                                __tco_loop_produced = __tco_1;
+                                __tco_loop_acc = __tco_2;
+                                __tco_loop_scope = __tco_3;
+                                continue;
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
 pub fn declared_type_inhabitance(
     obligation: Rc<DeclaredTypeObligation>,
     scope: Rc<InferScope>,
@@ -6767,62 +6898,52 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
 })
                                 } else {
-                                    if crate::v1_compiler_infer_types::alias_identity_in_judgment(
+                                    if application_pair(
                                         declared.clone(),
                                         produced.clone(),
                                         source_indices.clone(),
-                                        Rc::new(TextJudgment::TextJudgedIn {
-                                            env: scope.type_env.clone(),
-                                        }),
                                     ) {
-                                        Rc::new(InhabitanceVerdict::Inhabits)
+                                        application_arguments_inhabitance(
+                                            declared.clone(),
+                                            produced.clone(),
+                                            scope.clone(),
+                                        )
                                     } else {
-                                        if (carrier_verdict.clone() == Some(true)) {
+                                        if crate::v1_compiler_infer_types::alias_identity_in_judgment(declared.clone(), produced.clone(), source_indices.clone(), Rc::new(TextJudgment::TextJudgedIn {
+    env: scope.type_env.clone(),
+})) {
                                             Rc::new(InhabitanceVerdict::Inhabits)
                                         } else {
-                                            if produced_is_kernel_grounded_carrier_or_its_alias(
-                                                declared_name.clone(),
-                                                produced_name.clone(),
-                                                scope.type_env.clone(),
-                                            ) {
+                                            if (carrier_verdict.clone() == Some(true)) {
                                                 Rc::new(InhabitanceVerdict::Inhabits)
                                             } else {
-                                                if (carrier_verdict.clone() == Some(false)) {
-                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                if produced_is_kernel_grounded_carrier_or_its_alias(declared_name.clone(), produced_name.clone(), scope.type_env.clone()) {
+                                                    Rc::new(InhabitanceVerdict::Inhabits)
+                                                } else {
+                                                    if (carrier_verdict.clone() == Some(false)) {
+                                                        Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedDistinctProductConstructor,
 })
-                                                } else {
-                                                    if declared_realizes_as_kernel_numeric(
-                                                        declared.clone(),
-                                                        produced.clone(),
-                                                        source_indices.clone(),
-                                                    ) {
-                                                        Rc::new(InhabitanceVerdict::Inhabits)
                                                     } else {
-                                                        if collection_versus_established_identity(
-                                                            declared.clone(),
-                                                            produced.clone(),
-                                                            scope.clone(),
-                                                        ) {
-                                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                        if declared_realizes_as_kernel_numeric(declared.clone(), produced.clone(), source_indices.clone()) {
+                                                            Rc::new(InhabitanceVerdict::Inhabits)
+                                                        } else {
+                                                            if collection_versus_established_identity(declared.clone(), produced.clone(), scope.clone()) {
+                                                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedCollectionAtEstablishedIdentity,
 })
-                                                        } else {
-                                                            if product_at_scalar_declared_type(
-                                                                declared.clone(),
-                                                                produced.clone(),
-                                                                scope.clone(),
-                                                            ) {
-                                                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                            } else {
+                                                                if product_at_scalar_declared_type(declared.clone(), produced.clone(), scope.clone()) {
+                                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedProductAtScalar,
 })
-                                                            } else {
-                                                                if product_versus_coproduct_head_mismatch(declared.clone(), produced.clone(), scope.clone()) {
-                                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                                } else {
+                                                                    if product_versus_coproduct_head_mismatch(declared.clone(), produced.clone(), scope.clone()) {
+                                                                        Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedProductCoproductHeadMismatch,
 })
-                                                                } else {
-                                                                    match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
+                                                                    } else {
+                                                                        match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
     Some(RefinementInhabitance::RefinementWidensToDeclaredBase) => Rc::new(InhabitanceVerdict::Inhabits),
     Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
     reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
@@ -6831,24 +6952,25 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceUndecidableReason::UndecidableRefinementPeerChains,
 }),
     std::option::Option::None => if kernel_value_declared_type_mismatch(declared.clone(), produced.clone(), scope.type_env.clone(), source_indices.clone()) {
-                                                                        Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
 })
-                                                                    } else {
-                                                                        if coproduct_payload_where_parent_required(declared.clone(), produced.clone(), scope.clone()) {
-                                                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                                        } else {
+                                                                            if coproduct_payload_where_parent_required(declared.clone(), produced.clone(), scope.clone()) {
+                                                                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
 })
-                                                                        } else {
-                                                                            match nominal_product_inhabitance_refusal(declared.clone(), produced.clone(), scope.clone()) {
+                                                                            } else {
+                                                                                match nominal_product_inhabitance_refusal(declared.clone(), produced.clone(), scope.clone()) {
     Some(r) => Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: r.clone(),
 }),
-    std::option::Option::None => Rc::new(InhabitanceVerdict::Inhabits),
+    std::option::Option::None => Rc::new(InhabitanceVerdict::InhabitanceUnmodeled),
 }
-                                                                        }
-                                                                    },
+                                                                            }
+                                                                        },
 }
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -7873,6 +7995,18 @@ pub fn declared_type_obligation_diags(
                 scope.module_name.clone(),
             )])
         }
+        InhabitanceVerdict::InhabitanceUnmodeled => {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled {
+                    position: declared_type_position_label(
+                        obligation.position.clone(),
+                        obligation.subject.clone(),
+                    ),
+                    span: obligation.span.clone(),
+                }),
+                scope.module_name.clone(),
+            )])
+        }
         InhabitanceVerdict::InhabitanceRefused { reason: r, .. } => {
             Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
@@ -8110,29 +8244,77 @@ pub fn structured_kernel_container_identity_verdict(
     )
 }
 
+pub fn kernel_container_carrier_declaration(
+    formal: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    match structured_formal_carrier_declaration(formal.clone(), scope.clone()) {
+        Some(carrier) => {
+            if kernel_container_roster_carrier(carrier.clone()) {
+                Some(carrier.clone())
+            } else {
+                kernel_container_carrier_under_alias(formal.clone(), scope.clone())
+            }
+        }
+        std::option::Option::None => {
+            kernel_container_carrier_under_alias(formal.clone(), scope.clone())
+        }
+    }
+}
+
+pub fn kernel_container_roster_carrier(decl: Rc<DeclarationRef>) -> bool {
+    ((decl.module_path.clone() == kernel_container_carrier_module())
+        && crate::std_types::is_container_algebra_carrier(decl.decl_name.clone()))
+}
+
+pub fn kernel_container_carrier_under_alias(
+    formal: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let name =
+            crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), formal);
+        if ((name.clone() == "".to_string()) || crate::std_types::is_container_type(name.clone())) {
+            return std::option::Option::None;
+        }
+        match crate::v1_compiler_infer_env::declaration_named_by_type_name(
+            name.clone(),
+            scope.type_env.clone(),
+        ) {
+            Some(d) => match crate::v1_compiler_infer_env::settled_head_of_declaration(
+                d.clone(),
+                scope.type_env.source_indices.clone(),
+                scope.type_env.clone(),
+                16,
+            ) {
+                Some(head) => {
+                    if kernel_container_roster_carrier(head.clone()) {
+                        Some(head.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
 pub fn kernel_container_carrier_verdict(
     formal: Rc<Node>,
     owner: Option<Rc<DeclarationRef>>,
     scope: Rc<InferScope>,
 ) -> Option<bool> {
-    {
-        let name = crate::v1_std_core::authored_name_at(
-            scope.type_env.source_indices.clone(),
-            formal.clone(),
-        );
-        if !crate::std_types::is_container_type(name) {
-            return std::option::Option::None;
-        }
-        match structured_formal_carrier_declaration(formal.clone(), scope.clone()) {
-            Some(carrier) => match owner.clone() {
-                Some(o) => Some(crate::std_decl_ref::declaration_ref_eq(
-                    carrier.clone(),
-                    o.clone(),
-                )),
-                std::option::Option::None => std::option::Option::None,
-            },
+    match kernel_container_carrier_declaration(formal, scope) {
+        Some(carrier) => match owner.clone() {
+            Some(o) => Some(crate::std_decl_ref::declaration_ref_eq(
+                carrier.clone(),
+                o.clone(),
+            )),
             std::option::Option::None => std::option::Option::None,
-        }
+        },
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -9571,6 +9753,7 @@ pub fn lambda_arrow_param(lambda_param: Rc<Node>) -> Rc<Node> {
     {
         let param_type = crate::v1_compiler_infer_types::resolved_type(lambda_param.clone());
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: lambda_param.span.clone(),
@@ -9594,7 +9777,6 @@ pub fn lambda_arrow_param(lambda_param: Rc<Node>) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -10688,6 +10870,163 @@ match value.inferred.clone().as_deref().cloned() {
             }
         }
     }
+}
+
+pub fn builtin_call_application_plan(
+    func_name: String,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ResolvedCallFormal>>> {
+    match crate::v1_compiler_infer_method::builtin_signature(func_name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(sig) => {
+            let source_indices = scope.type_env.source_indices.clone();
+            let templates = Rc::new({
+                let mut __result = Vec::new();
+                for p in sig.params.clone().iter().cloned() {
+                    __result.push(p.ty.clone());
+                }
+                __result
+            });
+            let first_is_self = match templates.clone().first().cloned() {
+                Some(t) => match (*t.clone()).clone() {
+                    AlgebraTypeTemplate::ReceiverSelf => true,
+                    _ => false,
+                },
+                std::option::Option::None => false,
+            };
+            let receiver = match typed_args.clone().first().cloned() {
+                Some(ta) => expression_value_type(crate::v1_std_core::arg_value(ta.clone())),
+                std::option::Option::None => error_type(),
+            };
+            let operand_args = if first_is_self.clone() {
+                Rc::new(v1_rt::list_skip(&typed_args.clone(), 1))
+            } else {
+                typed_args.clone()
+            };
+            let subst = crate::v1_compiler_infer_types::build_type_substitution(
+                templates.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for ta in operand_args.iter().cloned() {
+                        __result.push(expression_value_type(crate::v1_std_core::arg_value(
+                            ta.clone(),
+                        )));
+                    }
+                    __result
+                }),
+                receiver.clone(),
+                v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                source_indices.clone(),
+            );
+            Rc::new({
+                let mut __result = Vec::new();
+                for pair in Rc::new(
+                    sig.params
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.extend(
+                        (*{
+                            let param = pair.1.clone();
+                            let matched = Rc::new({
+                                let mut __result = Vec::new();
+                                for ap in Rc::new({
+                                    let mut __result = Vec::new();
+                                    for ap in Rc::new(
+                                        typed_args
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .enumerate()
+                                            .map(|(i, v)| (i as i64, v))
+                                            .collect::<Vec<_>>(),
+                                    )
+                                    .iter()
+                                    .cloned()
+                                    {
+                                        if (builtin_argument_bound_name(
+                                            func_name.clone(),
+                                            ap.1.clone(),
+                                            ap.0.clone(),
+                                            scope.clone(),
+                                        ) == param.name.clone())
+                                        {
+                                            __result.push(ap);
+                                        }
+                                    }
+                                    __result
+                                })
+                                .iter()
+                                .cloned()
+                                {
+                                    __result.push(ap.0.clone());
+                                }
+                                __result
+                            })
+                            .first()
+                            .cloned();
+                            match (*param.ty.clone()).clone() {
+                                AlgebraTypeTemplate::ReceiverSelf => Rc::new(vec![]),
+                                _ => {
+                                    let declared =
+                                        crate::v1_compiler_infer_types::apply_type_substitution(
+                                            param.ty.clone(),
+                                            subst.clone(),
+                                            receiver.clone(),
+                                            source_indices.clone(),
+                                        )
+                                        .ty
+                                        .clone();
+                                    Rc::new(vec![Rc::new(ResolvedCallFormal {
+                                        formal_index: pair.0.clone(),
+                                        formal: Rc::new(ResolvedFormal {
+                                            parameter_identity: v1_rt::concat(
+                                                "'".to_string(),
+                                                v1_rt::concat(
+                                                    param.name.clone(),
+                                                    v1_rt::concat(
+                                                        "' of ".to_string(),
+                                                        func_name.clone(),
+                                                    ),
+                                                ),
+                                            ),
+                                            declared_type: declared.clone(),
+                                            declaration_bound_conformance: declared.clone(),
+                                            substitution_basis: declared.clone(),
+                                        }),
+                                        matched_argument_index: matched.clone(),
+                                    })])
+                                }
+                            }
+                        })
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            })
+        }
+    }
+}
+
+pub fn builtin_argument_inhabitance_diags(
+    func_name: String,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    direct_call_argument_inhabitance_diags(
+        builtin_call_application_plan(func_name, typed_args.clone(), scope.clone()),
+        typed_args.clone(),
+        scope.clone(),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -12243,6 +12582,7 @@ pub fn optional_cast_diags(
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
@@ -12264,7 +12604,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -12595,6 +12934,7 @@ pub fn rest_operation_result_type(
             if resolution.rest_operation.clone() {
                 {
                     let carrier = Rc::new(Node {
+                        ident: std::option::Option::None,
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: "RestResult".to_string(),
                         span: kernel_span("RestResult".to_string()),
@@ -12616,7 +12956,6 @@ pub fn rest_operation_result_type(
                         declaration_marker: DeclarationMarker::Unmarked,
                         declaration: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                     });
                     let decl = crate::v1_compiler_infer_resolve::resolve_generic_use_decl(
                         scope.type_env.clone(),
@@ -13264,6 +13603,7 @@ if ((is_fold.clone() && (fold_info.clone() != std::option::Option::None)) && is_
     Some(fold_acc) => {
                         let fold_params = Rc::new(vec![crate::v1_std_core::make_param_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "acc".to_string(), fold_acc.clone(), std::option::Option::None, crate::v1_std_core::no_span(), crate::v1_std_core::no_span()), crate::v1_std_core::make_param_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "elem".to_string(), element_type.clone(), std::option::Option::None, crate::v1_std_core::no_span(), crate::v1_std_core::no_span())]);
 let fold_callable = Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: "".to_string(),
     span: crate::v1_std_core::no_span(),
@@ -13287,7 +13627,6 @@ let fold_callable = Rc::new(Node {
     declaration_marker: DeclarationMarker::Unmarked,
     declaration: std::option::Option::None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
 });
 let lam_value = crate::v1_std_core::arg_value(a.clone());
 let prov_map = match (*elem_provenance.clone()).clone() {
@@ -14305,6 +14644,7 @@ pub fn elaborated_expr_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: name.clone(),
         span: span.clone(),
@@ -14328,7 +14668,6 @@ pub fn elaborated_expr_node(
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -14582,6 +14921,18 @@ pub fn expected_type_is_open_variable(exp: Rc<Node>) -> bool {
     }
 }
 
+pub fn spelling_is_collection_carrier(name: String) -> bool {
+    ((crate::std_types::container_spelling_is_algebra(name.clone(), "FreeMonoid".to_string())
+        || crate::std_types::container_spelling_is_algebra(
+            name.clone(),
+            "FinitePowerSet".to_string(),
+        ))
+        || crate::std_types::container_spelling_is_algebra(
+            name.clone(),
+            "FinitelySupportedFunction".to_string(),
+        ))
+}
+
 pub fn expected_collection_surface(
     mut __tco_loop_exp: Rc<Node>,
     mut __tco_loop_scope: Rc<InferScope>,
@@ -14602,9 +14953,7 @@ pub fn expected_collection_surface(
                     exp.clone(),
                     scope.clone(),
                 ));
-                if (((last.clone() == "Map".to_string()) || (last.clone() == "Set".to_string()))
-                    || (last.clone() == "List".to_string()))
-                {
+                if spelling_is_collection_carrier(last.clone()) {
                     break exp.clone();
                 } else {
                     match exp.inferred.clone().as_deref().cloned() {
@@ -14612,9 +14961,7 @@ pub fn expected_collection_surface(
                             let rt_last = crate::v1_std_core::qualified_last_segment(
                                 expected_type_spelling(rt.clone(), scope.clone()),
                             );
-                            if (((((rt_last.clone() == "Map".to_string())
-                                || (rt_last.clone() == "Set".to_string()))
-                                || (rt_last.clone() == "List".to_string()))
+                            if ((spelling_is_collection_carrier(rt_last.clone())
                                 || (rt_last.clone() == "Outcome".to_string()))
                                 || (rt_last.clone() == "Optional".to_string()))
                             {
@@ -14837,16 +15184,19 @@ pub fn expected_type_is_keyed_collection(exp: Rc<Node>, scope: Rc<InferScope>) -
         } else {
             {
                 let si = scope.type_env.source_indices.clone();
-                let last = crate::v1_std_core::qualified_last_segment(expected_type_spelling(
-                    core.clone(),
-                    scope.clone(),
-                ));
+                let resolved_core = crate::v1_std_core::qualified_last_segment(core.name.clone());
+                let core_arity_ok =
+                    match crate::std_types::container_expected_arity(resolved_core.clone()) {
+                        Some(ar) => ((core.children.clone().len() as i64) == ar.clone()),
+                        std::option::Option::None => false,
+                    };
                 if crate::v1_compiler_infer_types::node_is_keyed_collection(core.clone(), si) {
                     true
                 } else {
-                    ((last.clone() == "Map".to_string())
-                        || (((core.children.clone().len() as i64) == 2)
-                            && (core.name.clone() == "Map".to_string())))
+                    (crate::std_types::container_spelling_is_algebra(
+                        resolved_core.clone(),
+                        "FinitelySupportedFunction".to_string(),
+                    ) && core_arity_ok.clone())
                 }
             }
         }
@@ -14861,16 +15211,19 @@ pub fn expected_type_is_set_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> 
         } else {
             {
                 let si = scope.type_env.source_indices.clone();
-                let last = crate::v1_std_core::qualified_last_segment(expected_type_spelling(
-                    core.clone(),
-                    scope.clone(),
-                ));
+                let resolved_core = crate::v1_std_core::qualified_last_segment(core.name.clone());
+                let core_arity_ok =
+                    match crate::std_types::container_expected_arity(resolved_core.clone()) {
+                        Some(ar) => ((core.children.clone().len() as i64) == ar.clone()),
+                        std::option::Option::None => false,
+                    };
                 if crate::v1_compiler_infer_types::node_is_set_collection(core.clone(), si) {
                     true
                 } else {
-                    ((last.clone() == "Set".to_string())
-                        || (((core.children.clone().len() as i64) == 1)
-                            && (core.name.clone() == "Set".to_string())))
+                    (crate::std_types::container_spelling_is_algebra(
+                        resolved_core.clone(),
+                        "FinitePowerSet".to_string(),
+                    ) && core_arity_ok.clone())
                 }
             }
         }
@@ -15967,6 +16320,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                 scope.type_env.source_indices.clone(),
                                             )) {
                                             Rc::new(Node {
+                                                ident: std::option::Option::None,
                                                 occurrence_identity: Rc::new(
                                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                                 ),
@@ -16000,7 +16354,6 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     .clone(),
                                                 declaration: receiver.declaration.clone(),
                                                 expr_data: receiver.expr_data.clone(),
-                                                ident: None,
                                             })
                                         } else {
                                             receiver.clone()
@@ -16289,7 +16642,7 @@ Rc::new(InferResult {
     call_semantics: call_semantics.clone(),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), call_inferred, span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()))))),
+    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), v1_rt::concat(builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()), builtin_argument_inhabitance_diags(func_name.clone(), typed_args.clone(), scope.clone())))))),
 })
 }
                                 } else {
@@ -17580,6 +17933,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let binop_info = crate::v1_compiler_infer_types::infer_binop_type_node(
                 op.clone(),
                 crate::v1_compiler_infer_types::resolved_type(left_typed.clone()),
+                Some(crate::v1_compiler_infer_types::resolved_type(
+                    right_typed.clone(),
+                )),
                 scope.type_env.source_indices.clone(),
                 scope.type_env.clone(),
             );
@@ -17590,13 +17946,71 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.clone(),
                 span.clone(),
             );
-            let refinement_diags = match op.clone() {
-    BinOp::Sub => match (*crate::v1_compiler_infer_types::subtraction_refinement_of(crate::v1_compiler_infer_types::resolved_type(left_typed.clone()), scope.type_env.source_indices.clone(), scope.type_env.clone())).clone() {
-    SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: fts, .. } => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("subtraction refinement is ambiguous: std.coercion refinement_cast_rules has ".to_string(), ((fts.clone().len() as i64)).to_string()), " rows for this operand's declaration (source types ".to_string()), fts.clone().join(&", ".to_string())), "); the difference's type would depend on row order".to_string()), span.clone(), scope.module_name.clone())]),
-    _ => Rc::new(vec![]),
-},
-    _ => Rc::new(vec![]),
-};
+            let refinement_diags =
+                match crate::v1_compiler_infer_types::arithmetic_requirement(op.clone()) {
+                    std::option::Option::None => Rc::new(vec![]),
+                    Some(req) => {
+                        match crate::v1_compiler_infer_types::arithmetic_carrier_selection(
+                            req.clone(),
+                            crate::v1_compiler_infer_types::resolved_type(left_typed.clone()),
+                            Some(crate::v1_compiler_infer_types::resolved_type(
+                                right_typed.clone(),
+                            )),
+                            scope.type_env.source_indices.clone(),
+                            scope.type_env.clone(),
+                        )
+                        .as_deref()
+                        .cloned()
+                        {
+                            Some(ArithmeticCarrierSelection::ArithmeticCarrierAmbiguous {
+                                candidates: cs,
+                                ..
+                            }) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::ArithmeticAmbiguousCarrier {
+                                    operation: req.field.clone(),
+                                    candidates: Rc::new({
+                                        let mut __result = Vec::new();
+                                        for c in cs.iter().cloned() {
+                                            __result.push(c.decl_name.clone());
+                                        }
+                                        __result
+                                    }),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )]),
+                            Some(ArithmeticCarrierSelection::ArithmeticCarrierUndecided) => {
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::ArithmeticUndecidedCarrier {
+                                        operation: req.field.clone(),
+                                        span: span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )])
+                            }
+                            Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => {
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::ArithmeticWithoutCarrier {
+                                        operation: req.field.clone(),
+                                        operands: Rc::new(vec![
+                                            arithmetic_operand_label(
+                                                left_typed.clone(),
+                                                scope.clone(),
+                                            ),
+                                            arithmetic_operand_label(
+                                                right_typed.clone(),
+                                                scope.clone(),
+                                            ),
+                                        ]),
+                                        span: span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )])
+                            }
+                            _ => Rc::new(vec![]),
+                        }
+                    }
+                };
             let bo_texpr = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprBinOp {
@@ -17634,8 +18048,73 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let operand_emissions = operand_result.emissions.clone();
             let result_type = match op.clone() {
                 UnaryOpKind::Not => bool_type(),
+                UnaryOpKind::Neg => crate::v1_compiler_infer_types::infer_neg_type_node(
+                    crate::v1_compiler_infer_types::resolved_type(operand_typed.clone()),
+                    scope.type_env.source_indices.clone(),
+                    scope.type_env.clone(),
+                ),
+            };
+            let neg_diags = match op.clone() {
+                UnaryOpKind::Not => Rc::new(vec![]),
                 UnaryOpKind::Neg => {
-                    crate::v1_compiler_infer_types::resolved_type(operand_typed.clone())
+                    match crate::v1_compiler_infer_types::unary_arithmetic_requirement(op.clone()) {
+                        std::option::Option::None => Rc::new(vec![]),
+                        Some(requirement) => {
+                            match crate::v1_compiler_infer_types::arithmetic_carrier_selection(
+                                requirement.clone(),
+                                crate::v1_compiler_infer_types::resolved_type(
+                                    operand_typed.clone(),
+                                ),
+                                std::option::Option::None,
+                                scope.type_env.source_indices.clone(),
+                                scope.type_env.clone(),
+                            )
+                            .as_deref()
+                            .cloned()
+                            {
+                                Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => {
+                                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                                        Rc::new(CompilerDiagnostic::ArithmeticWithoutCarrier {
+                                            operation: requirement.field.clone(),
+                                            operands: Rc::new(vec![arithmetic_operand_label(
+                                                operand_typed.clone(),
+                                                scope.clone(),
+                                            )]),
+                                            span: span.clone(),
+                                        }),
+                                        scope.module_name.clone(),
+                                    )])
+                                }
+                                Some(ArithmeticCarrierSelection::ArithmeticCarrierAmbiguous {
+                                    candidates: cs,
+                                    ..
+                                }) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::ArithmeticAmbiguousCarrier {
+                                        operation: requirement.field.clone(),
+                                        candidates: Rc::new({
+                                            let mut __result = Vec::new();
+                                            for c in cs.iter().cloned() {
+                                                __result.push(c.decl_name.clone());
+                                            }
+                                            __result
+                                        }),
+                                        span: span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )]),
+                                Some(ArithmeticCarrierSelection::ArithmeticCarrierUndecided) => {
+                                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                                        Rc::new(CompilerDiagnostic::ArithmeticUndecidedCarrier {
+                                            operation: requirement.field.clone(),
+                                            span: span.clone(),
+                                        }),
+                                        scope.module_name.clone(),
+                                    )])
+                                }
+                                _ => Rc::new(vec![]),
+                            }
+                        }
+                    }
                 }
             };
             let uo_texpr = crate::v1_std_core::make_expr_node(
@@ -17649,7 +18128,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             );
             Rc::new(InferResult {
                 typed: uo_texpr.clone(),
-                emissions: operand_emissions.clone(),
+                emissions: infer_emissions_concat(
+                    operand_emissions,
+                    infer_emissions_of_diagnostics(neg_diags),
+                ),
             })
         }
         ExprData::ExprLambda => {
@@ -19241,11 +19723,36 @@ pub fn sole_constructor_construction_diags(
     span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    if type_has_sole_constructor(type_name.clone(), scope.clone()) {
-        match crate::v1_compiler_infer_env::lookup_type_by_name(
-            scope.type_env.clone(),
-            type_name.clone(),
-        ) {
+    {
+        let sealed_decl = match variant_owner_node(scope.clone(), type_name.clone()) {
+            Some(owner) => {
+                if {
+                    let mut __found = false;
+                    for p in owner.properties.clone().iter().cloned() {
+                        if (p.name.clone() == "sole_constructor".to_string()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    Some(owner.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            std::option::Option::None => {
+                if type_has_sole_constructor(type_name.clone(), scope.clone()) {
+                    crate::v1_compiler_infer_env::lookup_type_by_name(
+                        scope.type_env.clone(),
+                        type_name.clone(),
+                    )
+                } else {
+                    std::option::Option::None
+                }
+            }
+        };
+        match sealed_decl.clone() {
             Some(decl) => {
                 if (decl.span.file.clone() == span.file.clone()) {
                     Rc::new(vec![])
@@ -19261,8 +19768,6 @@ pub fn sole_constructor_construction_diags(
             }
             std::option::Option::None => Rc::new(vec![]),
         }
-    } else {
-        Rc::new(vec![])
     }
 }
 
@@ -20083,6 +20588,80 @@ pub fn present_value_expected_from_optional(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AnonymousRecordExpectation {
+    pub declared: Rc<Node>,
+    pub label: String,
+    pub roster: Rc<Vec<Rc<Node>>>,
+}
+
+pub fn anonymous_record_literal_expectation(
+    type_name: Option<String>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<AnonymousRecordExpectation>> {
+    match type_name.clone() {
+        Some(_) => std::option::Option::None,
+        std::option::Option::None => match expected.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(exp) => {
+                let expected_declaration = if (exp.connective.clone() == Connective::NoConnective) {
+                    crate::v1_compiler_infer_env::lookup_type_for(
+                        scope.type_env.clone(),
+                        exp.clone(),
+                    )
+                } else {
+                    if (exp.connective.clone() == Connective::Conj) {
+                        Some(exp.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                };
+                if ((exp.return_cardinality.clone() == Cardinality::CardOptional)
+                    || node_is_std_optional(exp.clone(), scope.clone()))
+                {
+                    std::option::Option::None
+                } else {
+                    match expected_declaration.clone() {
+                        std::option::Option::None => std::option::Option::None,
+                        Some(decl) => {
+                            if ((decl.connective.clone() != Connective::Conj)
+                                || ((decl.children.clone().len() as i64) == 0))
+                            {
+                                std::option::Option::None
+                            } else {
+                                {
+                                    let label = crate::v1_std_core::authored_name_at(
+                                        scope.type_env.source_indices.clone(),
+                                        exp.clone(),
+                                    );
+                                    let roster = if ((decl.params.clone().len() as i64) == 0) {
+                                        Some(decl.children.clone())
+                                    } else {
+                                        record_lit_instantiated_fields(
+                                            Some(label.clone()),
+                                            expected.clone(),
+                                            scope.clone(),
+                                        )
+                                    };
+                                    match roster.clone() {
+                                        Some(fields) => Some(Rc::new(AnonymousRecordExpectation {
+                                            declared: exp.clone(),
+                                            label: label.clone(),
+                                            roster: fields.clone(),
+                                        })),
+                                        std::option::Option::None => std::option::Option::None,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+}
+
 pub fn infer_record_lit_structural(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     type_name: Option<String>,
@@ -20095,11 +20674,23 @@ pub fn infer_record_lit_structural(
     {
         let instantiated_struct_fields =
             record_lit_instantiated_fields(type_name.clone(), expected.clone(), scope.clone());
+        let anonymous_expectation = anonymous_record_literal_expectation(
+            type_name.clone(),
+            expected.clone(),
+            scope.clone(),
+        );
         let expected_struct_fields =
-            if (instantiated_struct_fields.clone() == std::option::Option::None) {
-                record_lit_fields_from_expected(type_name.clone(), expected.clone(), scope.clone())
-            } else {
+            if (instantiated_struct_fields.clone() != std::option::Option::None) {
                 std::option::Option::None
+            } else {
+                match anonymous_expectation.clone() {
+                    Some(ae) => Some(ae.roster.clone()),
+                    std::option::Option::None => record_lit_fields_from_expected(
+                        type_name.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    ),
+                }
             };
         let expected_variant_node = if ((instantiated_struct_fields.clone()
             == std::option::Option::None)
@@ -20177,8 +20768,19 @@ pub fn infer_record_lit_structural(
         };
         let si_presence = scope.type_env.source_indices.clone();
         let presence_variant_owner = variant_owner_node(scope.clone(), tn_str.clone());
+        let roster_label = if (tn_str.clone() != "".to_string()) {
+            tn_str.clone()
+        } else {
+            match anonymous_expectation.clone() {
+                Some(ae) => ae.label.clone(),
+                std::option::Option::None => "".to_string(),
+            }
+        };
         let presence_fields = if (tn_str.clone() == "".to_string()) {
-            Rc::new(vec![])
+            match anonymous_expectation.clone() {
+                Some(ae) => ae.roster.clone(),
+                std::option::Option::None => Rc::new(vec![]),
+            }
         } else {
             match presence_variant_owner.clone() {
                 Some(variant_owner) => match Rc::new({
@@ -20263,7 +20865,7 @@ pub fn infer_record_lit_structural(
             Rc::new(vec![])
         };
         let construction_field_names =
-            if ((tn_str.clone() == "".to_string()) || presence_name_is_ambiguous.clone()) {
+            if ((roster_label.clone() == "".to_string()) || presence_name_is_ambiguous.clone()) {
                 std::option::Option::None
             } else {
                 if ((presence_fields.clone().len() as i64) > 0) {
@@ -20327,7 +20929,7 @@ pub fn infer_record_lit_structural(
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
-        let missing_field_diags = if (((tn_str.clone() == "".to_string())
+        let missing_field_diags = if (((roster_label.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || presence_name_is_ambiguous.clone())
         {
@@ -20370,7 +20972,7 @@ pub fn infer_record_lit_structural(
                                 si_presence.clone(),
                                 sf.clone(),
                             ),
-                            type_name: tn_str.clone(),
+                            type_name: roster_label.clone(),
                             span: name_span.clone(),
                         }),
                         scope.module_name.clone(),
@@ -20424,7 +21026,7 @@ let unknown_field_diags = match construction_field_names.clone() {
             } else {
                 Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
     field: fi_name.clone(),
-    type_name: tn_str.clone(),
+    type_name: roster_label.clone(),
     span: fi.span.clone(),
 }), scope.module_name.clone())])
             },
@@ -20499,50 +21101,60 @@ if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) 
                         if (either_side_is_arrow(expected_node.clone(), got_value.clone()) && callable_inhabitance_mismatch(expected_node.clone(), expected_node.clone(), got_value.clone(), scope.type_env.clone(), scope.type_env.source_indices.clone())) {
                             Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(expected_node.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(got_value.clone(), scope.type_env.source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                         } else {
-                            if crate::v1_compiler_infer_types::node_type_compatible(expected_node.clone(), got_node.clone(), scope.type_env.source_indices.clone(), Rc::new(TextJudgment::TextJudgedIn {
+                            if application_pair(expected_node.clone(), got_node.clone(), scope.type_env.source_indices.clone()) {
+                                declared_type_obligation_diags(Rc::new(DeclaredTypeObligation {
+    position: DeclaredTypePosition::PositionRecordLiteralField,
+    subject: fi_name.clone(),
+    declared: expected_node.clone(),
+    produced: got_node.clone(),
+    span: ar_typed.span.clone(),
+}), scope.clone())
+                            } else {
+                                if crate::v1_compiler_infer_types::node_type_compatible(expected_node.clone(), got_node.clone(), scope.type_env.source_indices.clone(), Rc::new(TextJudgment::TextJudgedIn {
     env: scope.type_env.clone(),
 })) {
-                                Rc::new(vec![])
-                            } else {
-                                if rejects_string_for_optional_coproduct_field(expected_node.clone(), got_node.clone(), scope.type_env.source_indices.clone(), scope.type_env.clone()) {
-                                    {
-                                        let expected_for_shape = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), crate::v1_std_core::with_required_cardinality(expected_node.clone())) {
+                                    Rc::new(vec![])
+                                } else {
+                                    if rejects_string_for_optional_coproduct_field(expected_node.clone(), got_node.clone(), scope.type_env.source_indices.clone(), scope.type_env.clone()) {
+                                        {
+                                            let expected_for_shape = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), crate::v1_std_core::with_required_cardinality(expected_node.clone())) {
     Some(resolved) => resolved.clone(),
     std::option::Option::None => expected_node.clone(),
 };
 Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(expected_for_shape.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(got_node.clone(), scope.type_env.source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
 }
-                                } else {
-                                    {
-                                        let expected_required = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), crate::v1_std_core::with_required_cardinality(expected_node.clone())) {
+                                    } else {
+                                        {
+                                            let expected_required = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), crate::v1_std_core::with_required_cardinality(expected_node.clone())) {
     Some(resolved) => resolved.clone(),
     std::option::Option::None => crate::v1_std_core::with_required_cardinality(expected_node.clone()),
 };
 let formal_peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(expected_required.clone(), scope.type_env.clone(), scope.module_name.clone());
 let actual_peeled = crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs(got_node.clone(), scope.type_env.clone(), scope.module_name.clone());
 if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clone(), scope.type_env.clone(), scope.type_env.source_indices.clone()) {
-                                            Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
-                                        } else {
-                                            if structured_application_site_type_mismatch(expected_node.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), scope.clone()) {
                                                 Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                                             } else {
-                                                if (nominal_product_inhabitance_refusal(crate::v1_std_core::with_required_cardinality(expected_node.clone()), got_node.clone(), scope.clone()) != std::option::Option::None) {
-                                                    Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
+                                                if structured_application_site_type_mismatch(expected_node.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), scope.clone()) {
+                                                    Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+                                                } else {
+                                                    if (nominal_product_inhabitance_refusal(crate::v1_std_core::with_required_cardinality(expected_node.clone()), got_node.clone(), scope.clone()) != std::option::Option::None) {
+                                                        Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
     position: declared_type_position_label(DeclaredTypePosition::PositionRecordLiteralField, fi_name.clone()),
     expected: obligation_type_shape(expected_node.clone(), scope.type_env.source_indices.clone()),
     got: obligation_type_shape(got_node.clone(), scope.type_env.source_indices.clone()),
     span: ar_typed.span.clone(),
 }), scope.module_name.clone())])
-                                                } else {
-                                                    if ((expected_node.return_cardinality.clone() != Cardinality::CardOptional) && coproduct_payload_where_parent_required(formal_peeled.clone(), actual_peeled.clone(), scope.clone())) {
-                                                        Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                                                     } else {
-                                                        Rc::new(vec![])
+                                                        if ((expected_node.return_cardinality.clone() != Cardinality::CardOptional) && coproduct_payload_where_parent_required(formal_peeled.clone(), actual_peeled.clone(), scope.clone())) {
+                                                            Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+                                                        } else {
+                                                            Rc::new(vec![])
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
 }
+                                    }
                                 }
                             }
                         }
@@ -20620,6 +21232,7 @@ Rc::new(FieldInferResult {
                     let mut __result = Vec::new();
                     for fir in fi_infer_results.iter().cloned() {
                         __result.push(Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -20646,12 +21259,12 @@ Rc::new(FieldInferResult {
                             declaration_marker: DeclarationMarker::Unmarked,
                             declaration: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         }));
                     }
                     __result
                 });
                 let anon_node = Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "".to_string(),
                     span: crate::v1_std_core::no_span(),
@@ -20673,9 +21286,12 @@ Rc::new(FieldInferResult {
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 });
                 let typed_field_nodes = typed_fields.clone();
+                let literal_type = match anonymous_expectation.clone() {
+                    Some(ae) => ae.declared.clone(),
+                    std::option::Option::None => anon_node.clone(),
+                };
                 let texpr = crate::v1_std_core::make_expr_node(
                     occurrence_identity.clone(),
                     Rc::new(ExprData::ExprRecordLit {
@@ -20683,7 +21299,7 @@ Rc::new(FieldInferResult {
                     }),
                     typed_field_nodes,
                     Some(Rc::new(InferredNode::Resolved {
-                        node: anon_node.clone(),
+                        node: literal_type.clone(),
                     })),
                     span.clone(),
                 );
@@ -20691,7 +21307,10 @@ Rc::new(FieldInferResult {
                     typed: texpr.clone(),
                     emissions: infer_emissions_concat(
                         fi_emissions.clone(),
-                        infer_emissions_of_diagnostics(alias_struct_diags.clone()),
+                        infer_emissions_of_diagnostics(v1_rt::concat(
+                            alias_struct_diags.clone(),
+                            missing_field_diags.clone(),
+                        )),
                     ),
                 })
             }
@@ -23174,6 +23793,7 @@ crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_s
                     __result
                 });
                 Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -23198,7 +23818,6 @@ crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_s
                         call_semantics: cs.clone(),
                         descent_evidence: Some(evidence.clone()),
                     }),
-                    ident: None,
                 })
             }
             ExprData::ExprMatch => {
@@ -23486,6 +24105,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     __result
                 });
                 Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -23510,7 +24130,6 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: body.expr_data.clone(),
-                    ident: None,
                 })
             }
             ExprData::ExprLet => {
@@ -23619,6 +24238,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     std::option::Option::None => Rc::new(vec![annotated_value.clone()]),
                 };
                 Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -23640,7 +24260,6 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: body.expr_data.clone(),
-                    ident: None,
                 })
             }
             ExprData::ExprBlock => {
@@ -23715,6 +24334,7 @@ Rc::new(BlockAnnotateAcc {
 })
 });
                 Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -23736,7 +24356,6 @@ Rc::new(BlockAnnotateAcc {
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: body.expr_data.clone(),
-                    ident: None,
                 })
             }
             ExprData::ExprMethodCall {
@@ -23984,6 +24603,7 @@ Rc::new(BlockAnnotateAcc {
                             __result
                         });
                         Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -24010,7 +24630,6 @@ Rc::new(BlockAnnotateAcc {
                             declaration_marker: body.declaration_marker.clone(),
                             declaration: body.declaration.clone(),
                             expr_data: body.expr_data.clone(),
-                            ident: None,
                         })
                     }
                 } else {
@@ -24086,6 +24705,7 @@ Rc::new(BlockAnnotateAcc {
                 let annotated_coll = annotate_descent(coll.clone(), ctx.clone());
                 let annotated_body = annotate_descent(fe_body, inner_ctx.clone());
                 Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -24107,7 +24727,6 @@ Rc::new(BlockAnnotateAcc {
                     declaration_marker: body.declaration_marker.clone(),
                     declaration: body.declaration.clone(),
                     expr_data: body.expr_data.clone(),
-                    ident: None,
                 })
             }
             _ => crate::v1_std_core::map_children(body.clone(), |child| {
@@ -25909,6 +26528,7 @@ pub fn infer_property_values(
                         infer_expr(val.clone(), scope.clone(), std::option::Option::None);
                     Rc::new(PropertyInferenceResult {
                         prop: Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -25932,7 +26552,6 @@ pub fn infer_property_values(
                             declaration_marker: p.declaration_marker.clone(),
                             declaration: p.declaration.clone(),
                             expr_data: p.expr_data.clone(),
-                            ident: None,
                         }),
                         emissions: val_result.emissions.clone(),
                     })
@@ -26024,6 +26643,7 @@ match (*service_config_field_judgment(field.clone())).clone() {
 let val_result = infer_expr(val.clone(), scope.clone(), std::option::Option::None);
 Rc::new(PropertyInferenceResult {
     prop: Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: p.name.clone(),
     span: p.span.clone(),
@@ -26045,7 +26665,6 @@ Rc::new(PropertyInferenceResult {
     declaration_marker: p.declaration_marker.clone(),
     declaration: p.declaration.clone(),
     expr_data: p.expr_data.clone(),
-    ident: None,
 }),
     emissions: val_result.emissions.clone(),
 })
@@ -26126,6 +26745,7 @@ pub fn infer_transport_node(
             };
             Rc::new(InferTransportResult {
                 transport: Some(Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: t.name.clone(),
                     span: t.span.clone(),
@@ -26147,7 +26767,6 @@ pub fn infer_transport_node(
                     declaration_marker: t.declaration_marker.clone(),
                     declaration: t.declaration.clone(),
                     expr_data: t.expr_data.clone(),
-                    ident: None,
                 })),
                 emissions: infer_emissions_concat(
                     prop_result.emissions.clone(),
@@ -26162,6 +26781,54 @@ pub fn infer_transport_node(
             })
         }
     }
+}
+
+pub fn parameter_default_emissions(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferEmissions> {
+    infer_emissions_concat_all(Rc::new({
+        let mut __result = Vec::new();
+        for p in item.params.clone().iter().cloned() {
+            __result.push(
+                match crate::v1_std_core::param_node_default_value(p.clone()) {
+                    std::option::Option::None => infer_emissions_empty(),
+                    Some(default_expr) => {
+                        if (param_is_generic_decl(p.clone(), scope.type_env.source_indices.clone())
+                            || direct_call_formal_has_unbound_type_variable(
+                                crate::v1_std_core::param_node_type_expr(p.clone()),
+                            ))
+                        {
+                            infer_emissions_empty()
+                        } else {
+                            {
+                                let declared = crate::v1_std_core::param_node_type_expr(p.clone());
+                                let r = infer_expr(
+                                    default_expr.clone(),
+                                    scope.clone(),
+                                    Some(declared.clone()),
+                                );
+                                infer_emissions_concat(
+                                    r.emissions.clone(),
+                                    infer_emissions_of_diagnostics(
+                                        declared_type_conformance_diags(
+                                            DeclaredTypePosition::PositionParameterDefault,
+                                            crate::v1_std_core::authored_name_at(
+                                                scope.type_env.source_indices.clone(),
+                                                p.clone(),
+                                            ),
+                                            declared.clone(),
+                                            expression_value_type(r.typed.clone()),
+                                            r.typed.span.clone(),
+                                            scope.clone(),
+                                        ),
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                },
+            );
+        }
+        __result
+    }))
 }
 
 pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
@@ -26183,6 +26850,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
         {
             Rc::new(TypedItemResult {
                 item: Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: item.occurrence_identity.clone(),
                     name: item.name.clone(),
                     span: item.span.clone(),
@@ -26210,7 +26878,6 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     declaration_marker: item.declaration_marker.clone(),
                     declaration: item.declaration.clone(),
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 emissions: infer_emissions_concat(
                     transport_emissions.clone(),
@@ -26323,6 +26990,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     };
                     Rc::new(TypedItemResult {
                         item: Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: item.occurrence_identity.clone(),
                             name: item.name.clone(),
                             span: item.span.clone(),
@@ -26359,13 +27027,13 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             declaration_marker: item.declaration_marker.clone(),
                             declaration: item.declaration.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         }),
                         emissions: infer_emissions_concat_all(Rc::new(vec![
                             transport_emissions.clone(),
                             props_emissions.clone(),
                             body_emissions.clone(),
                             infer_emissions_of_diagnostics(return_conformance_diags),
+                            parameter_default_emissions(item.clone(), scope.clone()),
                         ])),
                     })
                 }
@@ -26413,6 +27081,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             };
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: item.occurrence_identity.clone(),
                                 name: item.name.clone(),
                                 span: item.span.clone(),
@@ -26434,7 +27103,6 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 declaration_marker: item.declaration_marker.clone(),
                                 declaration: item.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             }),
                             emissions: infer_emissions_concat_all(Rc::new(vec![
                                 transport_emissions.clone(),
@@ -26449,6 +27117,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     {
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: item.occurrence_identity.clone(),
                                 name: item.name.clone(),
                                 span: item.span.clone(),
@@ -26482,16 +27151,17 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 declaration_marker: item.declaration_marker.clone(),
                                 declaration: item.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             }),
-                            emissions: infer_emissions_concat(
+                            emissions: infer_emissions_concat_all(Rc::new(vec![
                                 transport_emissions.clone(),
                                 props_emissions.clone(),
-                            ),
+                                parameter_default_emissions(item.clone(), scope.clone()),
+                            ])),
                         })
                     } else {
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: item.occurrence_identity.clone(),
                                 name: item.name.clone(),
                                 span: item.span.clone(),
@@ -26525,7 +27195,6 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 declaration_marker: item.declaration_marker.clone(),
                                 declaration: item.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             }),
                             emissions: infer_emissions_concat(
                                 transport_emissions.clone(),
@@ -27324,6 +27993,7 @@ pub fn substitute_generics_apply(
                             n.clone()
                         } else {
                             Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: Rc::new(
                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                 ),
@@ -27347,7 +28017,6 @@ pub fn substitute_generics_apply(
                                 declaration_marker: n.declaration_marker.clone(),
                                 declaration: n.declaration.clone(),
                                 expr_data: n.expr_data.clone(),
-                                ident: None,
                             })
                         }
                     }
@@ -28021,6 +28690,7 @@ pub fn build_module_interface(
 
 pub fn local_binding_for_item(
     item: Rc<Node>,
+    module_path: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TypeBinding>> {
     if is_namespace_alias_item(item.clone(), source_indices.clone()) {
@@ -28030,12 +28700,44 @@ pub fn local_binding_for_item(
             let has_structure = (item.connective.clone() != Connective::NoConnective);
             if has_structure.clone() {
                 {
+                    let declared_members = match item.connective.clone() {
+                        Connective::Conj => true,
+                        Connective::Disj => true,
+                        _ => false,
+                    };
+                    let children = if declared_members.clone() {
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for member in item.children.clone().iter().cloned() {
+                                __result.push(
+                                    crate::v1_compiler_infer_resolve::node_with_declaration(
+                                        member.clone(),
+                                        crate::std_decl_ref::decl_field_ref(
+                                            module_path.clone(),
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                item.clone(),
+                                            ),
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                member.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                );
+                            }
+                            __result
+                        })
+                    } else {
+                        item.children.clone()
+                    };
                     let type_node = Rc::new(Node {
+                        ident: std::option::Option::None,
                         occurrence_identity: item.occurrence_identity.clone(),
                         name: item.name.clone(),
                         span: item.span.clone(),
                         ident_span: item.ident_span.clone(),
-                        children: item.children.clone(),
+                        children: children.clone(),
                         connective: item.connective.clone(),
                         params: item.params.clone(),
                         inferred: std::option::Option::None,
@@ -28052,7 +28754,6 @@ pub fn local_binding_for_item(
                         declaration_marker: item.declaration_marker.clone(),
                         declaration: item.declaration.clone(),
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                     });
                     Some(Rc::new(TypeBinding {
                         name: crate::v1_std_core::authored_name_at(
@@ -28070,6 +28771,7 @@ pub fn local_binding_for_item(
                 {
                     {
                         let fn_node = Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: item.occurrence_identity.clone(),
                             name: item.name.clone(),
                             span: item.span.clone(),
@@ -28091,7 +28793,6 @@ pub fn local_binding_for_item(
                             declaration_marker: item.declaration_marker.clone(),
                             declaration: item.declaration.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         });
                         Some(Rc::new(TypeBinding {
                             name: crate::v1_std_core::authored_name_at(
@@ -28110,6 +28811,7 @@ pub fn local_binding_for_item(
                     {
                         {
                             let alias_node = Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: item.occurrence_identity.clone(),
                                 name: item.name.clone(),
                                 span: item.span.clone(),
@@ -28131,7 +28833,6 @@ pub fn local_binding_for_item(
                                 declaration_marker: item.declaration_marker.clone(),
                                 declaration: item.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             });
                             Some(Rc::new(TypeBinding {
                                 name: crate::v1_std_core::authored_name_at(
@@ -28175,6 +28876,7 @@ pub fn local_binding_for_item(
                             {
                                 {
                                     let bare_node = Rc::new(Node {
+                                        ident: std::option::Option::None,
                                         occurrence_identity: item.occurrence_identity.clone(),
                                         name: item.name.clone(),
                                         span: item.span.clone(),
@@ -28196,7 +28898,6 @@ pub fn local_binding_for_item(
                                         declaration_marker: item.declaration_marker.clone(),
                                         declaration: item.declaration.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
-                                        ident: None,
                                     });
                                     Some(Rc::new(TypeBinding {
                                         name: crate::v1_std_core::authored_name_at(
@@ -28233,6 +28934,7 @@ pub fn local_binding_for_item(
                                     {
                                         {
                                             let type_node = Rc::new(Node {
+                                                ident: std::option::Option::None,
                                                 occurrence_identity: item
                                                     .occurrence_identity
                                                     .clone(),
@@ -28256,7 +28958,6 @@ pub fn local_binding_for_item(
                                                 declaration_marker: item.declaration_marker.clone(),
                                                 declaration: item.declaration.clone(),
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                ident: None,
                                             });
                                             Some(Rc::new(TypeBinding {
                                                 name: crate::v1_std_core::authored_name_at(
@@ -28310,7 +29011,8 @@ pub fn symbol_index_insert_item(
                 },
             }
         } else {
-            match local_binding_for_item(item.clone(), source_indices.clone()) {
+            match local_binding_for_item(item.clone(), module_path.clone(), source_indices.clone())
+            {
                 std::option::Option::None => index.clone(),
                 Some(binding) => crate::v1_compiler_infer_env::symbol_index_insert_decl(
                     index.clone(),
@@ -30164,6 +30866,7 @@ pub struct AncestryPrecedence {
 pub fn kernel_bool_type_node() -> Rc<Node> {
     {
         let kernel_true_variant = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "True".to_string(),
             span: kernel_span("True".to_string()),
@@ -30185,9 +30888,9 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let kernel_false_variant = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "False".to_string(),
             span: kernel_span("False".to_string()),
@@ -30209,9 +30912,9 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Bool".to_string(),
             span: kernel_span("Bool".to_string()),
@@ -30236,7 +30939,6 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -30268,6 +30970,7 @@ pub fn build_ancestry_precedence(
 pub fn kernel_optional_type_node() -> Rc<Node> {
     {
         let present_value_field = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
@@ -30291,9 +30994,9 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let present_variant = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Present".to_string(),
             span: kernel_span("Present".to_string()),
@@ -30315,9 +31018,9 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let absent_variant = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Absent".to_string(),
             span: kernel_span("Absent".to_string()),
@@ -30339,9 +31042,9 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let kernel_optional = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Optional".to_string(),
             span: kernel_span("Optional".to_string()),
@@ -30363,7 +31066,6 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         kernel_optional
     }
@@ -30444,6 +31146,7 @@ pub fn build_type_env(
                         Rc::new(TypeBinding {
                             name: name.clone(),
                             resolved: Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: Rc::new(
                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                 ),
@@ -30467,7 +31170,6 @@ pub fn build_type_env(
                                 declaration_marker: DeclarationMarker::Unmarked,
                                 declaration: std::option::Option::None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                             alias_rhs: std::option::Option::None,
@@ -30484,6 +31186,7 @@ pub fn build_type_env(
             Rc::new(TypeBinding {
                 name: "Unit".to_string(),
                 resolved: Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
@@ -30505,7 +31208,6 @@ pub fn build_type_env(
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
                 alias_rhs: std::option::Option::None,
@@ -30697,7 +31399,11 @@ pub fn build_type_env(
                             }
                         }
                     } else {
-                        match local_binding_for_item(item.clone(), source_indices.clone()) {
+                        match local_binding_for_item(
+                            item.clone(),
+                            module_name_str.clone(),
+                            source_indices.clone(),
+                        ) {
                             Some(binding) => v1_rt::rc_map_insert(
                                 acc.clone(),
                                 crate::v1_std_core::intern(
@@ -31108,6 +31814,7 @@ pub fn build_type_env_unresolved(
                         Rc::new(TypeBinding {
                             name: name.clone(),
                             resolved: Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: Rc::new(
                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                 ),
@@ -31131,7 +31838,6 @@ pub fn build_type_env_unresolved(
                                 declaration_marker: DeclarationMarker::Unmarked,
                                 declaration: std::option::Option::None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                             alias_rhs: std::option::Option::None,
@@ -31217,6 +31923,7 @@ let has_structure = (item.connective.clone() != Connective::NoConnective);
 if has_structure.clone() {
                     {
                         let type_node = Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: item.occurrence_identity.clone(),
     name: item.name.clone(),
     span: item.span.clone(),
@@ -31238,7 +31945,6 @@ if has_structure.clone() {
     declaration_marker: item.declaration_marker.clone(),
     declaration: item.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
 });
 v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
@@ -31251,6 +31957,7 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
                     if (((item.inferred.clone() != std::option::Option::None) && ((item.params.clone().len() as i64) == 0)) && (item.body.clone() == std::option::Option::None)) {
                         {
                             let alias_node = Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: item.occurrence_identity.clone(),
     name: item.name.clone(),
     span: item.span.clone(),
@@ -31272,7 +31979,6 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     declaration_marker: item.declaration_marker.clone(),
     declaration: item.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
 });
 v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
@@ -31299,6 +32005,7 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
                                 if ((((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration) && (item.connective.clone() == Connective::NoConnective)) && (item.body.clone() == std::option::Option::None)) && ((item.params.clone().len() as i64) == 0)) && ((item.children.clone().len() as i64) == 0)) && (item.transport.clone() == std::option::Option::None)) {
                                     {
                                         let type_node = Rc::new(Node {
+    ident: std::option::Option::None,
     occurrence_identity: item.occurrence_identity.clone(),
     name: item.name.clone(),
     span: item.span.clone(),
@@ -31320,7 +32027,6 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     declaration_marker: item.declaration_marker.clone(),
     declaration: item.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
 });
 v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
@@ -31915,24 +32621,61 @@ pub fn build_local_variants(
 pub fn merge_global_bare_variant_locals(
     state: Rc<VariantFoldState>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    env: Rc<TypeEnv>,
 ) -> Rc<VariantFoldState> {
     {
-        let __rb_0_0 = v1_rt::rc_map_merge(global_variant_base.clone(), state.locals.clone());
-        let __rb_1_0 = state.collision_errors.clone();
-        let mut __rb_h = state;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.locals = __rb_0_0;
-                __rb_r.collision_errors = __rb_1_0;
+        let in_scope = Rc::new(v1_rt::map_keys(&global_variant_base))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+                    &env.symbol_index.global_bare.clone(),
+                    name.clone(),
+                )
+                .as_deref()
+                .cloned()
+                {
+                    Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                        module_path: declarer,
+                        ..
+                    }) => {
+                        if crate::v1_compiler_infer_env::global_bare_declarer_in_scope(
+                            env.clone(),
+                            name.clone(),
+                            declarer.clone(),
+                        ) {
+                            match v1_rt::map_get(&global_variant_base, name.clone()) {
+                                Some(b) => {
+                                    v1_rt::rc_map_insert(acc.clone(), name.clone(), b.clone())
+                                }
+                                std::option::Option::None => acc.clone(),
+                            }
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                    _ => acc.clone(),
+                },
+            );
+        {
+            let __rb_0_0 = v1_rt::rc_map_merge(in_scope.clone(), state.locals.clone());
+            let __rb_1_0 = state.collision_errors.clone();
+            let mut __rb_h = state;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.locals = __rb_0_0;
+                    __rb_r.collision_errors = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(VariantFoldState {
+                        locals: __rb_0_0,
+                        collision_errors: __rb_1_0,
+                    });
+                }
             }
-            None => {
-                __rb_h = Rc::new(VariantFoldState {
-                    locals: __rb_0_0,
-                    collision_errors: __rb_1_0,
-                });
-            }
+            __rb_h
         }
-        __rb_h
     }
 }
 
@@ -32466,6 +33209,7 @@ pub fn build_module_context(
                 local_variant_fold,
             ),
             global_variant_base,
+            env.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
@@ -33250,11 +33994,10 @@ pub fn grounded_binop(
     ctx: Rc<GroundCtx>,
 ) -> Rc<Node> {
     {
-        let info = crate::v1_compiler_infer_types::infer_binop_type_node(
+        let info = crate::v1_compiler_infer_types::infer_arithmetic_binop_type_node(
             op.clone(),
             crate::v1_compiler_infer_types::resolved_type(left.clone()),
             ctx.env.source_indices.clone(),
-            ctx.env.clone(),
         );
         let rt = match result_type.clone() {
             Some(t) => t.clone(),
@@ -33292,11 +34035,10 @@ pub fn grounded_reflect(
     ctx: Rc<GroundCtx>,
 ) -> Rc<Node> {
     {
-        let info = crate::v1_compiler_infer_types::infer_binop_type_node(
+        let info = crate::v1_compiler_infer_types::infer_arithmetic_binop_type_node(
             BinOp::Sub,
             carrier_type,
             ctx.env.source_indices.clone(),
-            ctx.env.clone(),
         );
         crate::v1_std_core::make_expr_node(
             occurrence_identity,
@@ -35280,6 +36022,7 @@ pub fn typecheck_module(
                         && (item.body.clone() != std::option::Option::None))
                     {
                         Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: item.occurrence_identity.clone(),
                             name: item.name.clone(),
                             span: item.span.clone(),
@@ -35311,7 +36054,6 @@ pub fn typecheck_module(
                             declaration_marker: item.declaration_marker.clone(),
                             declaration: item.declaration.clone(),
                             expr_data: item.expr_data.clone(),
-                            ident: None,
                         })
                     } else {
                         item.clone()
@@ -36648,6 +37390,7 @@ pub fn compiler_kernel_type_env(
                         Rc::new(TypeBinding {
                             name: name.clone(),
                             resolved: Rc::new(Node {
+                                ident: std::option::Option::None,
                                 occurrence_identity: Rc::new(
                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                 ),
@@ -36671,7 +37414,6 @@ pub fn compiler_kernel_type_env(
                                 declaration_marker: DeclarationMarker::Unmarked,
                                 declaration: std::option::Option::None,
                                 expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                             alias_rhs: std::option::Option::None,
@@ -36688,6 +37430,7 @@ pub fn compiler_kernel_type_env(
             Rc::new(TypeBinding {
                 name: "Unit".to_string(),
                 resolved: Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
@@ -36709,7 +37452,6 @@ pub fn compiler_kernel_type_env(
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
                 alias_rhs: std::option::Option::None,

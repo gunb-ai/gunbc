@@ -14,6 +14,7 @@ import v2.extdeps.languages.dag {
   dag_lex_token_symbol,
   dag_named_arg_value_optional
 }
+import v2.std.compilers.sugar { sugar_unwrap_surface_shell }
 import v2.compiler.body_lowering_fold {
   OperandRefAbsent,
   OperandRefLowered,
@@ -22,8 +23,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_postfix_projection_call_suffix_capture,
   body_lower_postfix_projection_has_call_suffix,
   body_lower_postfix_projection_step_name,
-  body_lower_postfix_repeat_head_optional,
-  body_lower_unwrap_surface_shell
+  body_lower_postfix_repeat_head_optional
 }
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
@@ -420,7 +420,7 @@ fn resolved_port_readings(call_capture: Node, bindings: List<v2.lens.complexity_
 }
 
 fn projection_sequence_cap_optional(cap: Node) -> Optional<Node> {
-  let stripped = body_lower_unwrap_surface_shell(node: cap)
+  let stripped = sugar_unwrap_surface_shell(node: cap)
   match v2.std.compilers.sugar.sugar_sequence_pair_optional(node: stripped) {
     Present { value: _ } => Present { value: stripped }
     Absent => Absent

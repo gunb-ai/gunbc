@@ -39,9 +39,10 @@ module gunbc.auth.approval_broker_state_directories
 //     keyring_mkdir_argv provisions it ROOT-owned (root:ci_runner, DirectoryOwnerAllGroupTraverse) from
 //     the fleet converge workflow's approval_keyring_converge step. A fold row with the broker's
 //     operator-owned shape would chown a root-owned secret directory — fighting the lane that owns it.
-//   * /etc/gunbc-ntfy (approval_publisher_token_path's parent, gunbc.auth.approval_request_submission)
-//     is provisioned root:gunbc-ntfy 0750 by gunbc.fleet.host_credential_custody_converge
-//     (ApprovalNtfyPublisherToken); same argument, different owner, still not the broker's to assert.
+//   * /etc/gunbc-ntfy was provisioned root:gunbc-ntfy 0750 by the custody row for the ntfy publisher
+//     token, and while it existed the same argument held: a different owner, still not the broker's
+//     to assert. The retirement of 2026-10-30 removes the directory outright, with the custody row
+//     and the publisher token along with it (gunbc.fleet.approval_ntfy_retirement).
 //
 //   NOT SERVE-PATH (deliberately NOT rows): authorization_claim_store_root
 //   (gunbc.durable_cas_file_store) is the CI claim slot, written by the claim-issuing runner and

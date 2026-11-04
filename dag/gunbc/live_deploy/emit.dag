@@ -159,7 +159,6 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_file,
   microvm_slot_unit_timeout_stop_sec,
   microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
-  microvm_slot_controller_receipt_dir,
   microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }
@@ -225,7 +224,8 @@ import gunbc.live_deploy.spec {
   ComposeOwnedArtifactKind,
   UpsertArtifactKind,
   ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
+  deployment_agent_door_socket_of, deployment_agent_door_function_suffix,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -279,23 +279,6 @@ import gunbc.host.host_layout {
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
-import gunbc.host.host_converge {
-  slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
-  SliceControlUnit,
-}
-import gunbc.host.host_axis_caps {
-  CapAuthorizationRefused, CapAuthorizationWithheld,
-  CapAuthorizedForThisHost,
-  CapConvergeDecision,
-  CapConvergeWithheld,
-  CapMember,
-  cap_authorization_for_host,
-  deploy_memory_cap_apply_script_from_authorization,
-  deploy_memory_cap_script_author_precedes_shadow_revert,
-  host_axis_caps_author_before_revert_enforced,
-  slice_control_converge_stmts,
-  deploy_slice_control_converge_script,
-}
 import gunbc.ownership { Ownership }
 import std.algebra { FreeSemigroup, list_tail }
 import gunbc.membership_reconcile {
@@ -568,6 +551,30 @@ fn live_deploy_tailnet_door_unit_file(
             spec: spec, revision: revision, oidc_env: directives,
             description: "gunbc roadmap tailnet door (gunbc serve)" as NonEmptyStr,
             function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
+            listener: concat(" --unix-socket ", socket as String),
+          )
+        }
+      }
+  }
+}
+
+// THE LAB AGENT'S DOOR UNIT: the same server on the agent-door entry, bound to the socket the
+// spec's agent-door directory demand names. Emitted only for a spec that carries that demand; the
+// emission type is the tailnet door's, because the three outcomes are the same.
+fn live_deploy_agent_door_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
+) -> LiveDeployTailnetDoorUnitEmission {
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
+    LiveDeployOidcEnvRefused { cause } =>
+      LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: cause }
+    LiveDeployOidcEnvAdmitted { directives } =>
+      match deployment_agent_door_socket_of(spec: spec) {
+        Absent => LiveDeployTailnetDoorUnitNotDeployed
+        Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
+          file: live_deploy_serve_unit_file_over_listener(
+            spec: spec, revision: revision, oidc_env: directives,
+            description: "gunbc roadmap lab agent door (gunbc serve)" as NonEmptyStr,
+            function: concat(spec.service.serve_function as String, deployment_agent_door_function_suffix) as NonEmptyStr,
             listener: concat(" --unix-socket ", socket as String),
           )
         }
@@ -1202,6 +1209,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         FabricStorageServeUnit => none
         FabricStorageServeMapping => none
         TailnetDoorServeUnit => none
+        AgentDoorServeUnit => none
       }
     }
     Dependency { step: _ } => none

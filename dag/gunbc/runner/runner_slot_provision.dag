@@ -202,7 +202,7 @@ fn membership_removed_unit_names(
 // Membership only admits a removal when provenance says the incarnation is already dead
 // (unregistered/ephemeral, inactive, disabled). The 21-to-12 retirees can still be serving when the
 // obligation exists, so they never become `MemberRemoved` and the inhibitor never reached the apply
-// script -- which is why `cap_converge_decision` stayed withheld after 22-50 completed. Required
+// script -- which is why `cap_converge_decision` (deleted 2026-10-30) stayed withheld after 22-50 completed. Required
 // retirees that `slot_removal_realization` says need actuation are therefore masked from the
 // transition set itself. Tree deletion stays on the membership path and still requires
 // `RetirementComplete`.

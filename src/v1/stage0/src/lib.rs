@@ -258,6 +258,7 @@ pub mod gunbc_stage0_stage0_executable_assembly_generated;
     clippy::all
 )]
 pub mod gunbc_stage0_stage0_partition_package_graph;
+pub mod instrument_registry_generated;
 #[allow(
     unused_imports,
     unused_variables,
@@ -935,7 +936,7 @@ impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {
 }
 
 impl<T: Clone> NonEmptyVec<T> {
-    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
+    pub fn new(items: Vec<T>) -> std::result::Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyVec requires at least one element")
         } else {
@@ -952,7 +953,7 @@ impl<T: Clone> NonEmptyVec<T> {
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
+    pub fn new(items: std::collections::BTreeSet<T>) -> std::result::Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyBTreeSet requires at least one element")
         } else {

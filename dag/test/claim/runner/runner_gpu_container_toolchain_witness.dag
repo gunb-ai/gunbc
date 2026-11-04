@@ -28,6 +28,7 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 // like a Docker bug. The plan fold must REFUSE, not install a broken daemon, so the refusal is pinned
 // against the exact range pair srv3 shipped with (two accounts both at 100000+65536).
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.logic { Bool }
 import std.types { NonEmptyStr, List, Int, String }
 import std.algebra { trim, string_contains }
@@ -782,7 +783,7 @@ test fn the_two_range_verifications_are_distinct_and_both_required() -> Bool {
 // names the browser capability as a branch — it names it as a row it chose to observe.
 
 fn gpu_labels_for_witnesses(host: HostIdentity, witnesses: List<HostCapabilityWitness>) -> List<String> {
-  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses) {
+  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses, receipt: ReceiptAbsent) {
     RegistrationLabelsResolved { labels: ls } => ls
     RegistrationLabelsRefused { host: _, cause: _ } => []
   }

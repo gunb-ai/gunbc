@@ -1,0 +1,614 @@
+module test.claim.ci.mirror_lane_4c_execution_local_wet
+
+// WHAT THIS FILE RUNS, AND WHY IT IS NOT A STRING CHECK.
+//
+// The mirror's 4c lane step and the heal publisher's phases run shell that gunbc EMITS, in a tree gunbc
+// never sees: the annotation compile happens in the mirror's composed root under the public seed's compiler,
+// and the publisher's phases run over a candidate downloaded into a workspace that exists only on a runner.
+// Every other check on these paths compares emitted TEXT, and a text comparison cannot see the class of
+// defect that landed here three times in review: a statement that renders as valid YAML and fails at run
+// time. `$?` spelled as a command substitution, a candidate directory resolving against the wrong working
+// directory, and a compiler exit status that never reaches the check reading it are each invisible to
+// `.contains()` and each silent-green on a runner.
+//
+// SO THESE CLAIMS EXECUTE THE EMITTED STATEMENTS. Each takes the same builder the workflow emitter calls -
+// `annotation_compile_statements` for the lane body, `read_refusals_or_refuse` for the reader - renders it
+// with `bash_emit_stmts` exactly as the emitter does, and runs it under `sh` in a temporary tree (never in a
+// session worktree, per the local-runs rule the profile row records). The only thing this file supplies is
+// the compiler whose path the body computes: the real one belongs to the public seed, which this repository
+// may not build here. Its behaviours are the four the lane's contract names - clean, rendered refusal,
+// refusal without its terminal count, and an exit that is neither.
+//
+// WHY IT IS A WET CLAIM: `run_shell_command_observe` reaches the process runner and composes a temporary
+// tree, so this file is enrolled as a local-repo wet row in gunbc.ci.ci_layer_roots.witness_exclusion_rows
+// with its dissolution, and it is not part of the hermetic lane.
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.optional { Present, Absent }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
+import std.algebra { list_map }
+import std.dissolution { unbound_dissolution }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.exec.command { LocalExec }
+import extdeps.languages.bash.invocation { bash_program_command }
+import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell
+import v2.std.node { Node }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign, bash_build_assign_lit, bash_build_command_with_words, bash_build_word_concat_from_nodes,
+  bash_build_word_lit, bash_build_word_var, bash_build_with_redir_to_file,
+}
+import gunbc.ci.repository_compose_overlay { command_words }
+import gunbc.witness.repository_witness_workflow {
+  annotation_compile_statements, read_refusals_or_refuse
+}
+import gunbc.ci.repository_ci_profile { AnnotationStep, DagInvocation, RepositoryCiProfile }
+import gunbc.heal_publisher_workflow { heal_publisher_candidate_directory }
+import test.claim.repository_ci_profile_witness {
+  fixture_seed, mirror_profile_with_annotation, wet_seed, wet_seed_pin, wet_seed_pin_parent,
+}
+import gunbc.action_use_admission { seed_pin_verifier_output_name }
+import gunbc.ci.repository_seed_steps { seed_pin_verification_statements }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE LANE'S HANDSHAKE WITH ITS COMPILER, spelled once. The annotation row's refusal prefix is the only text
+// the emitted reader looks for, and a line carrying the terminal error count is the only proof that a
+// nonzero exit was a rendered refusal rather than a crash. Both are supplied here in the shapes the seed's
+// compiler produces; the prefix is this fixture's own, declared on the row built below, and is deliberately
+// NOT the public lane's prefix, which belongs to the private row's authority.
+data lane_refusal_prefix: String = "REFUSE-4C-ANNOTATION"
+data lane_refusal_line: String = "REFUSE-4C-ANNOTATION: the credential escapes the image through the annotation wall"
+data lane_terminal_count_line: String = "1 error(s)"
+data lane_clean_line: String = "compiled cleanly"
+
+// A RENDERING THAT FAILS IS REPORTED, not folded into a run. A claim that ran a stand-in script for a
+// statement list the fold rejected would be green by construction on its negative half, which is the shape
+// of defect this file exists to catch, so `rendered` is a conjunct of every scenario below.
+type LaneRun {
+  rendered: Bool
+  status: Int
+  out: String
+}
+
+// THE RENDER, THEN THE RUN: the same function the emitter calls to build the body, the same fold it calls to
+// render it, then the script runs under a shell. A fold failure is REPORTED with the fold's own reasons -- a
+// body that no longer renders must read red, not "the compiler printed nothing".
+//
+// THE SHELL IS BASH, AND THE HONEST GAP. The CI step this body belongs to runs under the runner's default
+// `bash -e {0}`; the builder this repository exposes for a script string without an admit wall is `bash -c`,
+// which leaves errexit off. The two agree on every verdict asserted here, because each failing command in
+// this body either sits in an `if` condition, where errexit does not apply, or is followed by an explicit
+// `exit` whose status is what the scenario reads. A scenario that ever needs an errexit-only verdict has to
+// write `set -e` into the script itself rather than rely on the shell's.
+fn render_and_run(stmts: List<Node>, dir: String) -> LaneRun {
+  render_and_run_bound(statements: stmts, dir: dir, inherited_runner_temp: Absent)
+}
+
+// THE HARNESS BINDS RUNNER_TEMP ITSELF. `gunbc.ci.repository_compose_overlay.runner_tmp_root_stmts` -- the
+// production statements the lane body is built from, unchanged here -- prefers a nonempty RUNNER_TEMP over the
+// row's `compose_root_env_default`. Every Actions runner exports RUNNER_TEMP, so a claim run that inherits one
+// from its parent would send `$RUNNER_TMP_ROOT`, `$COMPOSE`, `$OUT` and every file the body writes into a tree
+// this fixture does not own: outside the directory that is deleted afterwards, so the run leaves its evidence
+// (and its junk) on the host, and the scenario ends up asserting against a different tree from the one it set
+// up. Each scenario therefore runs with RUNNER_TEMP pinned to its own allocated directory. The pin is a
+// script-level assignment rather than an exported step `env:` -- nothing the lane body spawns reads the
+// variable, and the body's own first act is to test it, which is exactly the moment the pin governs.
+//
+// `inherited_runner_temp` SIMULATES THE INHERITANCE for the one control that must show the pin beats it: an
+// assignment placed before every statement of the script, the way an inherited variable precedes them all.
+// Production precedence is untouched -- with no pin an inherited value still wins, as it must.
+fn render_and_run_bound(
+  statements: List<Node>,
+  dir: String,
+  inherited_runner_temp: Optional<String>
+) -> LaneRun {
+  let inherited = match inherited_runner_temp {
+    Absent => [] as List<Node>
+    Present { value: value } => [bash_build_assign_lit(name: "RUNNER_TEMP", text: value)]
+  }
+  let pinned = [bash_build_assign_lit(name: "RUNNER_TEMP", text: dir)]
+  match bash_emit_stmts(statements: concat(inherited, concat(pinned, statements)), set_e: false) {
+    Accepted { value: script, diagnostics: _ } => {
+      let observed = run_shell_command_observe(command: bash_program_command(script: script), transport: LocalExec)
+      LaneRun {
+        rendered: true,
+        status: observed.exit_code,
+        out: concat(concat(observed.stdout, "\n"), observed.stderr)
+      }
+    }
+    Rejected { diagnostics: d } => LaneRun {
+      rendered: false,
+      status: -1,
+      out: concat("the statement list did not render: ", diagnostics_reason_lexemes(diagnostics: d))
+    }
+  }
+}
+
+// THE TEMPORARY TREE, with the disposal the other shell witnesses use: mktemp, run the scenario, delete
+// recursively. The fixture row binds `compose_root_env_default` to this directory (see
+// mirror_profile_with_annotation in test.claim.repository_ci_profile_witness), so the composed root and the
+// annotation output are created inside it and no fixed name under /tmp is shared with a concurrent run.
+fn with_lane_dir(scenario: fn(String) -> Bool) -> Bool {
+  let made = shell.Mktemp.Dir()
+  if made.success == false {
+    false
+  } else {
+    let dir = made.path as String
+    let observed = scenario(dir)
+    let cleaned = shell.Remove.RecursiveForce(path: made.path)
+    observed && cleaned.success
+  }
+}
+
+fn under(dir: String, tail: String) -> String {
+  join([dir, "/", tail], "")
+}
+
+fn seed_relative_compiler() -> String {
+  let seed = fixture_seed()
+  concat(seed.checkout_path as String, concat("/", seed.seed_binary_relative_path as String))
+}
+
+// THE STAND-IN FOR THE SEED'S COMPILER, placed at the path `seed_gunbc_checkout_assign_stmt` computes from
+// the row ($PWD/<checkout_path>/<seed_binary_relative_path>), which is why every scenario runs the body with
+// the temporary directory as its working directory. The script is two lines built from space-free words -
+// `cat <the diagnostics file>` and `exit <status>` - so nothing here depends on quote round-tripping through
+// the shell emitter, and its diagnostics go to stdout, where the emitted body redirects them into
+// `$OUT.log`. An empty diagnostics list is not admissible: `cat` of an absent file would exit nonzero and a
+// scenario would read that as the compiler's own verdict, so every caller supplies at least one line.
+fn fake_compiler_stmts(dir: String, diagnostics: List<String>, code: String) -> List<Node> {
+  let seed = fixture_seed()
+  let diag = under(dir, "compiler-diagnostics")
+  let compiler = under(dir, seed_relative_compiler())
+  [
+    command_words(rest: ["mkdir", "-p", under(dir, "compose/overlay/dag")]),
+    command_words(rest: ["mkdir", "-p", under(dir, concat(seed.checkout_path as String, "/target/release"))]),
+    bash_build_with_redir_to_file(
+      inner: bash_build_command_with_words(
+        words: concat(
+          [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s\\n")],
+          list_map(xs: diagnostics, f: line => bash_build_word_lit(text: line))
+        )
+      ),
+      path: bash_build_word_lit(text: diag)
+    ),
+    bash_build_with_redir_to_file(
+      inner: bash_build_command_with_words(
+        words: [
+          bash_build_word_lit(text: "printf"),
+          bash_build_word_lit(text: "%s %s\\n%s %s\\n"),
+          bash_build_word_lit(text: "cat"),
+          bash_build_word_lit(text: diag),
+          bash_build_word_lit(text: "exit"),
+          bash_build_word_lit(text: code)
+        ]
+      ),
+      path: bash_build_word_lit(text: compiler)
+    ),
+    command_words(rest: ["chmod", "+x", compiler]),
+    command_words(rest: ["cd", dir])
+  ]
+}
+
+// THE EMITTED BODY ITSELF. `annotation_compile_statements` is the function the workflow emitter calls to
+// fill the 4c step and `bash_emit_stmts` is the same fold it uses to render it; nothing in the body a
+// scenario runs is written by this file.
+fn lane_body_stmts(dir: String) -> List<Node> {
+  let profile = mirror_profile_with_annotation(lane_root: dir)
+  annotation_compile_statements(
+    profile: profile,
+    seed: fixture_seed(),
+    annotation: lane_annotation(profile: profile)
+  )
+}
+
+fn lane_annotation(profile: RepositoryCiProfile) -> AnnotationStep {
+  match profile.roster.annotation {
+    Present { value: annotation } => annotation
+    Absent { } => lane_annotation_placeholder()
+  }
+}
+
+// Totality placeholder, not a fallback that pretends the arm is optional: mirror_profile_with_annotation
+// attaches the annotation, and if that ever stopped being true the emitted body would be empty, none of the
+// expected texts would appear, and every scenario below would go red through here.
+fn lane_annotation_placeholder() -> AnnotationStep {
+  AnnotationStep {
+    step_name: "unreachable" as NonEmptyStr,
+    invocation: DagInvocation { entry: "unreachable" as NonEmptyStr, function: "unreachable" as NonEmptyStr },
+    refusal_prefix: "UNREACHABLE" as NonEmptyStr,
+    output_dir_suffix: "unreachable" as NonEmptyStr,
+    subject_banner: "unreachable" as NonEmptyStr,
+    closure_narrowing_dissolves_when: unbound_dissolution(description: "unreachable")
+  }
+}
+
+// ONE SCENARIO = THE SETUP + THE REAL BODY, rendered by the same fold the emitter uses.
+fn lane_scenario(dir: String, diagnostics: List<String>, code: String) -> LaneRun {
+  render_and_run(
+    stmts: concat(fake_compiler_stmts(dir: dir, diagnostics: diagnostics, code: code), lane_body_stmts(dir: dir)),
+    dir: dir
+  )
+}
+
+// ── THE FOUR EXITS THE LANE'S CONTRACT NAMES ───────────────────────────────────────────────────
+//
+// A CLEAN COMPILE PASSES, and only a clean compile passes. This is the positive control: if the harness
+// itself were broken - wrong path, compiler not executable, composed root absent - the three refusal
+// scenarios could still look right while nothing had run.
+
+test fn the_executed_lane_body_passes_a_clean_compile() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let run = lane_scenario(dir: dir, diagnostics: [lane_clean_line], code: "0")
+    run.rendered && run.status == 0 && string_contains(s: run.out, pattern: "PASS  section 4c")
+  })
+}
+
+// AN EXIT THAT IS NEITHER CLEAN NOR A RENDERED REFUSAL IS REFUSED BY ITS NUMBER. This is the control the
+// `$?` defect needs: the emitted body captures the status with the exit-status variable node, and the text
+// that comes back has to carry the number the compiler exited with. Spelled as a command substitution -
+// which is what this path emitted - the capture line is a shell error, the status never becomes data, and
+// the scenario reports neither the number nor the refusal it should have.
+test fn the_executed_lane_body_refuses_an_unexpected_exit_by_its_number() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let run = lane_scenario(dir: dir, diagnostics: ["the compiler died without a refusal"], code: "9")
+    run.rendered
+      && run.status == 1
+      && string_contains(s: run.out, pattern: "exited 9, which is neither a clean compile nor a rendered refusal")
+      && !string_contains(s: run.out, pattern: "PASS  section 4c")
+  })
+}
+
+// A RENDERED REFUSAL FAILS THE STEP - by design, since the wall exists so that a refusal in the closure is
+// a failure. The reader has to FIND the prefixed line the compiler wrote, which is the other half of the
+// exit-status seam: the grep's status becomes data, and 0 / 1 / other mean found / found nothing / could
+// not read.
+test fn the_executed_lane_body_fails_on_a_rendered_refusal_the_reader_found() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let run = lane_scenario(dir: dir, diagnostics: [lane_terminal_count_line, lane_refusal_line], code: "1")
+    run.rendered
+      && run.status == 1
+      && string_contains(s: run.out, pattern: "FAIL section 4c")
+      && string_contains(s: run.out, pattern: lane_refusal_prefix)
+  })
+}
+
+// A NONZERO EXIT WITHOUT ITS TERMINAL COUNT LINE IS NOT A REFUSAL but a compile that died pretending to
+// refuse - and the status again has to reach the check that compares it.
+test fn the_executed_lane_body_refuses_a_nonzero_exit_without_its_terminal_count() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let run = lane_scenario(dir: dir, diagnostics: ["a diagnostic with no terminal count"], code: "1")
+    run.rendered && run.status == 1 && string_contains(s: run.out, pattern: "exited 1 without its terminal error-count line")
+  })
+}
+
+// THE READER REFUSES A LOG IT COULD NOT READ, BY ITS READ STATUS. `$OUT.log` is made a directory here, so
+// grep exits 2 - neither "found" nor "found nothing" - and the emitted reader must refuse naming 2 instead
+// of treating an unreadable log as an absence of refusals. An absence of refusals is this step's PASS, so a
+// swallowed read failure is exactly how the wall comes down quietly.
+test fn the_executed_reader_refuses_a_log_it_cannot_read() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let profile = mirror_profile_with_annotation(lane_root: dir)
+    let out = under(dir, "annotation")
+    let run = render_and_run(
+      stmts: concat(
+        [
+          command_words(rest: ["mkdir", "-p", under(dir, "compose/overlay/dag")]),
+          command_words(rest: ["mkdir", "-p", concat(out, ".log")]),
+          bash_build_assign_lit(name: "OUT", text: out)
+        ],
+        [read_refusals_or_refuse(annotation: lane_annotation(profile: profile))]
+      ),
+      dir: dir
+    )
+    run.rendered && run.status == 1 && string_contains(s: run.out, pattern: "the diagnostic reader exited 2")
+  })
+}
+
+// ── THE ENVIRONMENT THE BODY INHERITS ──────────────────────────────────────────────────────────
+//
+// THE LANE'S WHOLE WORKING TREE HANGS OFF ONE VARIABLE. `runner_tmp_root_stmts` takes `$RUNNER_TEMP` when it
+// is nonempty and only falls back to the row's `compose_root_env_default` otherwise -- production precedence,
+// untouched by this file. A runner exports RUNNER_TEMP (that is where it puts step temporaries), so a claim
+// run that inherits one would compose, compile and log into a directory this fixture never created and never
+// deletes: the scenario would assert against the wrong tree, and the host would keep the debris. The harness
+// therefore pins RUNNER_TEMP to the allocated directory for every scenario.
+//
+// This control is what keeps the pin honest. The inherited value is simulated the way the environment
+// delivers it -- an assignment that precedes every statement of the script -- and it points at a real
+// directory of its own. Two things must hold: the body still finds its composed root and exits clean (that
+// root exists only under the fixture, so an inherited value that won would have refused at the composition
+// check), and the outside directory is LEFT EMPTY -- nothing created there, no evidence and no debris.
+test fn an_inherited_runner_temp_leaves_the_outside_tree_untouched() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let outside = shell.Mktemp.Dir()
+    if outside.success == false {
+      false
+    } else {
+      let outside_dir = outside.path as String
+      let run = render_and_run_bound(
+        statements: concat(
+          fake_compiler_stmts(dir: dir, diagnostics: [] as List<String>, code: "0"),
+          lane_body_stmts(dir: dir)
+        ),
+        dir: dir,
+        inherited_runner_temp: Present { value: outside_dir }
+      )
+      let listing = run_shell_command_observe(
+        command: bash_program_command(script: concat("ls -A ", outside_dir)),
+        transport: LocalExec
+      )
+      let cleanup = shell.Remove.RecursiveForce(path: outside_dir)
+      run.rendered &&
+        run.status == 0 &&
+        listing.exit_code == 0 &&
+        listing.stdout == "" &&
+        cleanup.success
+    }
+  })
+}
+
+// ── THE CANDIDATE DIRECTORY, RUN WHERE ITS CONSUMER STANDS ─────────────────────────────────────
+//
+// A COMPOSED PUBLISHER'S PHASES `cd` into the composed root before they read `HEAL_CANDIDATE_DIRECTORY`,
+// while the download step and the `hashFiles` gate stay at the job workspace. One name, two renderings, and
+// the wrong one is silent: from inside the composed root the workspace-relative spelling names a directory
+// that has never existed, and the phases report "no candidates" for a candidate sitting in the workspace -
+// green, with nothing published. The three scenarios run one probe - `test -f "$HEAL_CAND/heal-1/candidate"`
+// - from the directory each consumer actually stands in, with the spelling that consumer's route renders.
+//
+// The anchored value is rendered with the temporary directory standing in for `${{ github.workspace }}`,
+// which is what the runner substitutes before the shell sees the line; the assertion that the EMITTED bytes
+// carry that expression, and carry it only on the composed route, is
+// test.claim.repository_ci_profile_witness.the_candidate_directory_is_anchored_only_where_a_phase_leaves_the_workspace.
+
+fn candidate_blob_dir(dir: String) -> String {
+  under(dir, join([heal_publisher_candidate_directory, "/heal-1"], ""))
+}
+
+fn candidate_probe(dir: String, candidate_value: String, stands_in: String) -> LaneRun {
+  render_and_run(
+    stmts: [
+        command_words(rest: ["mkdir", "-p", under(dir, "compose")]),
+        command_words(rest: ["mkdir", "-p", candidate_blob_dir(dir: dir)]),
+        command_words(rest: ["touch", join([candidate_blob_dir(dir: dir), "/candidate"], "")]),
+        bash_build_assign_lit(name: "HEAL_CAND", text: candidate_value),
+        command_words(rest: ["cd", stands_in]),
+        // THE PROBE READS THE VARIABLE. A `$HEAL_CAND` typed into a literal word is single-quoted by the
+        // fold and looks for a file literally named `$HEAL_CAND/heal-1/candidate`, so every scenario would
+        // report "no candidate" -- including the one that exists to find it.
+        bash_build_command_with_words(
+          words: [
+            bash_build_word_lit(text: "test"),
+            bash_build_word_lit(text: "-f"),
+            bash_build_word_concat_from_nodes(
+              parts: [bash_build_word_var(name: "HEAL_CAND"), bash_build_word_lit(text: "/heal-1/candidate")]
+            )
+          ]
+        )
+      ],
+    dir: dir
+  )
+}
+
+// THE ANCHORED SPELLING RESOLVES FROM INSIDE THE COMPOSED ROOT, where a composed publisher's phases run.
+test fn the_anchored_candidate_directory_resolves_from_the_composed_root() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let run = candidate_probe(
+      dir: dir,
+      candidate_value: under(dir, heal_publisher_candidate_directory),
+      stands_in: under(dir, "compose")
+    )
+    run.rendered && run.status == 0
+  })
+}
+
+// THE WORKSPACE-RELATIVE SPELLING FINDS NOTHING from that same directory, while a candidate is on disk: the
+// quiet-green the anchor exists to prevent, asserted as behaviour rather than as a comment.
+test fn the_relative_candidate_directory_finds_nothing_from_the_composed_root() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let run = candidate_probe(
+      dir: dir,
+      candidate_value: heal_publisher_candidate_directory,
+      stands_in: under(dir, "compose")
+    )
+    run.rendered && run.status == 1
+  })
+}
+
+// AND THE RELATIVE SPELLING IS STILL CORRECT WHERE IT IS USED - at the workspace, where the download step
+// writes and where `hashFiles` must keep matching. This is the half that stops a "fix" from anchoring the
+// download path as well and quietly retiring the gate.
+test fn the_relative_candidate_directory_resolves_at_the_workspace() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let run = candidate_probe(
+      dir: dir,
+      candidate_value: heal_publisher_candidate_directory,
+      stands_in: dir
+    )
+    run.rendered && run.status == 0
+  })
+}
+
+// ONE PROCESS, EVERY SCENARIO. The `&&` chain alone would stop at the first failure and report only that
+// one, so a lane with three broken behaviours would be read as one; each verdict is bound first and the
+// reason names every scenario that did not hold. It returns a ProcessExit because the host maps a run's
+// verdict to an exit code. It reaches the process runner, so it must be run OUTSIDE --claim-run (the wet
+// way), which is also why the file is enrolled as a wet row rather than left to hermetic discovery.
+// ── THE SEED-PIN VERIFIER, RUN ─────────────────────────────────────────────────────────────────
+//
+// A PROOF IS ONLY AS REAL AS A FAILURE YOU CAN PRODUCE. The verifier's second proof asks what the fetch
+// actually brought (`rev-parse --verify FETCH_HEAD` after one `git fetch` into a store created empty
+// seconds earlier). The model can state that question but cannot answer it -- only git can -- and a check
+// whose forbidden state cannot be produced is a decoration that later gets cited as coverage (DESIGN 4b).
+// The first version of this proof was exactly that: it ran `git rev-parse <pin>`, which prints the sha it
+// was handed whether or not anything was fetched, and every control stayed green. So the scenarios below
+// run the EMITTED statement list -- `seed_pin_verification_statements`, the same function the verifier
+// step's script is rendered from -- against the real public repository, and then against the same run with
+// a second fetch appended behind it that moves FETCH_HEAD to the pin's parent.
+//
+// The harness adds only what a runner would have supplied anyway: RUNNER_TEMP is already pinned by
+// `render_and_run`, plus `GITHUB_OUTPUT` and, for the poisoned scenario, a `PATH` entry holding a stand-in
+// `git` that forwards everything to the real one and appends the second fetch after a real one succeeds.
+// No statement of the script under test is written here.
+
+fn seed_verifier_body() -> List<Node> {
+  seed_pin_verification_statements(seed: wet_seed(), pin: wet_seed_pin)
+}
+
+fn seed_verifier_harness(dir: String) -> List<Node> {
+  [
+    bash_build_assign_lit(name: "GITHUB_OUTPUT", text: under(dir, "github_output")),
+    bash_build_assign_lit(name: "POISON_SHA", text: wet_seed_pin_parent),
+  ]
+}
+
+// THE STAND-IN GIT. Eight lines, each a word the emitter quotes: forward everything, and after a real
+// `fetch` succeed, fetch one more object into the same store so FETCH_HEAD names something other than the
+// pin. Positional arguments are the verifier's own fetch form (`git -C <store> fetch --quiet --no-tags
+// --depth 1 <url> <pin>`), so `$2` is the store and `$8` the remote it was told to trust.
+fn seed_verifier_poison_stmts(dir: String) -> List<Node> {
+  let shim = under(dir, "bin/git")
+  let lines = [
+    "#!/bin/sh",
+    "if [ $3 = fetch ]",
+    "then",
+    "/usr/bin/git $*",
+    "/usr/bin/git -C $2 fetch --quiet --no-tags --depth 1 $8 $POISON_SHA",
+    "exit 0",
+    "fi",
+    "exec /usr/bin/git $*",
+  ]
+  [
+    command_words(rest: ["mkdir", "-p", under(dir, "bin")]),
+    bash_build_with_redir_to_file(
+      inner: bash_build_command_with_words(
+        words: concat(
+          [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n")],
+          list_map(xs: lines, f: line => bash_build_word_lit(text: line))
+        )
+      ),
+      path: bash_build_word_lit(text: shim)
+    ),
+    command_words(rest: ["chmod", "+x", shim]),
+    bash_build_assign(name: "PATH", value: bash_build_word_lit(text: concat([dir, "/bin:$PATH"], ""))),
+  ]
+}
+
+fn seed_verifier_run(dir: String, poisoned: Bool) -> LaneRun {
+  render_and_run(
+    stmts: concat(
+      if poisoned { seed_verifier_poison_stmts(dir: dir) } else { [] },
+      concat(seed_verifier_harness(dir: dir), seed_verifier_body())
+    ),
+    dir: dir
+  )
+}
+
+fn github_output_file(dir: String) -> String {
+  under(dir, "github_output")
+}
+
+// A COMMIT THE LANE CAN FETCH IS ADMITTED, and admitted WITH the pin: the honest scenario is what stops
+// the two refusal scenarios below from passing because the harness never worked. The step's whole contract
+// is one line in $GITHUB_OUTPUT, and the control reads that line back from the file the run wrote.
+test fn the_emitted_seed_verifier_admits_the_pinned_commit() -> Bool {
+  with_lane_dir(dir => {
+    let run = seed_verifier_run(dir: dir, poisoned: false)
+    let written = render_and_run(
+      stmts: [command_words(rest: ["cat", github_output_file(dir: dir)])],
+      dir: dir
+    )
+    run.rendered
+      && run.status == 0
+      && written.rendered
+      && string_contains(
+           s: written.out,
+           pattern: join([seed_pin_verifier_output_name(), "=", wet_seed_pin], "")
+         )
+  })
+}
+
+// THE FETCH THAT BROUGHT SOMETHING ELSE IS REFUSED, AND WRITES NOTHING. The pin IS in the store -- the
+// first fetch put it there, so the type proof passes -- and only the identity of what the fetch delivered
+// differs. This is the forbidden state the second proof exists for; had the proof stayed at `rev-parse
+// <pin>`, this scenario would have admitted the poisoned store and printed the pin as its output.
+test fn the_emitted_seed_verifier_refuses_a_fetch_that_brought_another_commit() -> Bool {
+  with_lane_dir(dir => {
+    let run = seed_verifier_run(dir: dir, poisoned: true)
+    let silent = render_and_run(
+      stmts: [command_words(rest: ["test", "!", "-s", github_output_file(dir: dir)])],
+      dir: dir
+    )
+    run.rendered
+      && run.status != 0
+      && string_contains(s: run.out, pattern: "SeedPinFetchedObjectIsNotThePin")
+      && silent.rendered
+      && silent.status == 0
+  })
+}
+
+// A PIN NOTHING CAN FETCH NEVER REACHES THE OUTPUT EITHER. Where it dies is the fetch itself: the step is
+// rendered with `set -e`, so the store stays empty and the step ends nonzero on git's own diagnostic
+// rather than on my refusal token. That is the honest shape of the refusal -- the lane refuses before any
+// proof is consulted -- and the assertion is the one that matters: no output, nonzero exit.
+test fn the_emitted_seed_verifier_refuses_a_pin_it_cannot_fetch() -> Bool {
+  with_lane_dir(dir => {
+    let run = render_and_run(
+      stmts: concat(
+        seed_verifier_harness(dir: dir),
+        seed_pin_verification_statements(seed: wet_seed(), pin: "0000000000000000000000000000000000000000")
+      ),
+      dir: dir
+    )
+    let silent = render_and_run(
+      stmts: [command_words(rest: ["test", "!", "-s", github_output_file(dir: dir)])],
+      dir: dir
+    )
+    run.rendered && run.status != 0 && silent.rendered && silent.status == 0
+  })
+}
+
+fn run_executed_scenarios() -> ProcessExit {
+  let clean = the_executed_lane_body_passes_a_clean_compile()
+  let odd = the_executed_lane_body_refuses_an_unexpected_exit_by_its_number()
+  let refusal = the_executed_lane_body_fails_on_a_rendered_refusal_the_reader_found()
+  let no_count = the_executed_lane_body_refuses_a_nonzero_exit_without_its_terminal_count()
+  let unreadable = the_executed_reader_refuses_a_log_it_cannot_read()
+  let anchored = the_anchored_candidate_directory_resolves_from_the_composed_root()
+  let missed = the_relative_candidate_directory_finds_nothing_from_the_composed_root()
+  let workspace = the_relative_candidate_directory_resolves_at_the_workspace()
+  let inherited = an_inherited_runner_temp_leaves_the_outside_tree_untouched()
+  let admitted = the_emitted_seed_verifier_admits_the_pinned_commit()
+  let poisoned = the_emitted_seed_verifier_refuses_a_fetch_that_brought_another_commit()
+  let unreachable = the_emitted_seed_verifier_refuses_a_pin_it_cannot_fetch()
+  let all_held = clean && odd && refusal && no_count && unreadable && anchored && missed && workspace && inherited && admitted && poisoned && unreachable
+  if all_held {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: join(
+        [
+          "executed 4c annotation scenarios that did not hold:",
+          if clean { "" } else { " a clean compile passes;" },
+          if odd { "" } else { " an exit that is neither a pass nor a named refusal is refused by its number;" },
+          if refusal { "" } else { " a rendered refusal the reader found fails the job;" },
+          if no_count { "" } else { " a nonzero exit without its terminal count is refused;" },
+          if unreadable { "" } else { " a diagnostic log the reader cannot read is refused;" },
+          if anchored { "" } else { " the anchored candidate directory resolves from the composed root;" },
+          if missed { "" } else { " a relative candidate directory finds nothing from the composed root;" },
+          if workspace { "" } else { " a relative candidate directory resolves at the workspace;" },
+          if inherited { "" } else { " an inherited RUNNER_TEMP drew a phase body outside the allocated fixture;" },
+          if admitted { "" } else { " the emitted seed verifier admitted the pinned commit and wrote its output;" },
+          if poisoned { "" } else { " the emitted seed verifier admitted a fetch that delivered another commit;" },
+          if unreachable { "" } else { " the emitted seed verifier wrote an output for a pin it could not fetch;" }
+        ],
+        ""
+      )
+    }
+  }
+}

@@ -25,7 +25,7 @@ import gunbc.runner.runner_usage_receipt {
 }
 import gunbc.runner.runner_teardown_receipt {
   RunnerResourceClass,
-  RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
+  RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable, RunnerMachineBoot,
   TeardownObserverInsideEnvironment, TeardownInstrumentChanged,
   RunnerEnvironmentInventory, MicroVmEnvironmentInventory, MicroVmInventory, HostUnitEnvironmentInventory,
   HostUnitInventory, RunnerTransientUnit, RunnerResourceReading, RunnerResourcePresent,
@@ -39,7 +39,6 @@ import gunbc.runner.runner_teardown_receipt {
 }
 
 import std.roster_frontier { FrontierSubject, DeclSubject, frontier_subject_eq, frontier_rows_well_formed }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 
 test fn evidence_frontier_is_well_formed() -> Bool {
@@ -48,11 +47,9 @@ test fn evidence_frontier_is_well_formed() -> Bool {
     DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_usage_receipt", decl_name: "produce_runner_usage_receipt") },
     DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_teardown_receipt", decl_name: "produce_runner_teardown_receipt") },
   ]
-  let census = census_closure_frontier_rows()
   frontier_rows_well_formed(rows: runner_canary_executed_evidence_frontier) &&
     expected |> all(want =>
-      (runner_canary_executed_evidence_frontier |> filter(row => frontier_subject_eq(a: row.subject, b: want)) |> count) == 1 &&
-      (census |> filter(row => frontier_subject_eq(a: row.subject, b: want)) |> count) == 1) &&
+      (runner_canary_executed_evidence_frontier |> filter(row => frontier_subject_eq(a: row.subject, b: want)) |> count) == 1) &&
     runner_canary_executed_evidence_frontier |> all(row =>
       expected |> any(want => frontier_subject_eq(a: row.subject, b: want)))
 }
@@ -242,7 +239,7 @@ fn fixture_inventory(tap: NonEmptyStr) -> RunnerEnvironmentInventory {
 fn fixture_readback(value: RunnerResourceReading) -> RunnerEnvironmentReadback {
   RunnerEnvironmentReadback {
     vmm: value, unit: value, cgroup: value, jail: value, jail_mount: value,
-    jit_drive: value, workspace: value, tap: value, firewall_table: value,
+    jit_drive: value, workspace: value, tap: value, firewall_table: value, machine_boot: value,
   }
 }
 
@@ -364,6 +361,7 @@ fn fixture_single_residue(resource: RunnerResourceClass, value: RunnerResourceRe
     workspace: if resource == RunnerWorkspace { value } else { RunnerResourceAbsent },
     tap: if resource == RunnerTap { value } else { RunnerResourceAbsent },
     firewall_table: if resource == RunnerFirewallTable { value } else { RunnerResourceAbsent },
+    machine_boot: if resource == RunnerMachineBoot { value } else { RunnerResourceAbsent },
   }
 }
 
@@ -400,7 +398,7 @@ fn fixture_host_unit_inventory(unit: NonEmptyStr) -> RunnerEnvironmentInventory 
 fn fixture_host_unit_readback(unit: RunnerResourceReading, cgroup: RunnerResourceReading, workspace: RunnerResourceReading) -> RunnerEnvironmentReadback {
   RunnerEnvironmentReadback {
     vmm: RunnerResourceAbsent, unit: unit, cgroup: cgroup, jail: RunnerResourceAbsent, jail_mount: RunnerResourceAbsent,
-    jit_drive: RunnerResourceAbsent, workspace: workspace, tap: RunnerResourceAbsent, firewall_table: RunnerResourceAbsent,
+    jit_drive: RunnerResourceAbsent, workspace: workspace, tap: RunnerResourceAbsent, firewall_table: RunnerResourceAbsent, machine_boot: RunnerResourceAbsent,
   }
 }
 

@@ -5,7 +5,6 @@ import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import extdeps.git.partial_clone { ObjectSourceCanServe, ObjectSourceServeAdmission }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
-import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
 import v2.std.orchestration {
@@ -53,9 +52,9 @@ import std.optional { Present, Absent }
 //
 // WHAT IS NOT CARRIED is the Decide half of the frame (shell options, generated-by comments).
 // Compose-mutate does carry Mutate frame, preamble, owned-directory, withheld-cap report, helper
-// grant and receipt, because those ride the same drop as spec-step mutates. Access and cap are
-// the CI apply constants (`ci_deploy_srv1_access`, `CapConvergeWithheld`) so the projection does
-// not invent a second authorization.
+// grant and receipt, because those ride the same drop as spec-step mutates. Access is the CI apply
+// constant (`ci_deploy_srv1_access`) so the projection does not invent a second authorization; the
+// cap authorization left with the instance apply's cap family (2026-10-30).
 fn apply_empty_host_effects(spec: DeploymentSpec) -> List<MemberEffect<DeploymentStep>> {
   map(spec.steps, st => EffectAdd { to: st })
 }

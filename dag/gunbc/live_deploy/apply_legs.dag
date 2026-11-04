@@ -41,15 +41,9 @@ import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv, mktemp_directory_command, install_file_mode_command, rm_force_command, rmdir_command }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
 import extdeps.systemd.unit_file { systemd_system_credstore_directory }
-import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal, ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal, ReleaseRevisionBinding, RevisionBoundAtEmission, release_revision_execstart_text }
 import gunbc.live_deploy.emit { install_file_shared_mode }
-import gunbc.host.host_axis_caps {
-  CapConvergeDecision, CapAuthorizationWithheld, CapAuthorizationRefused, CapAuthorizedForThisHost, CapMember,
-  cap_authorization_for_host, slice_control_converge_argvs_for_unit,
-}
-import gunbc.host.host_converge { SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
-import extdeps.systemd.systemctl { systemctl_daemon_reload_argv, systemctl_revert_memory_caps_argv }
-import std.algebra { non_empty_to_list }
+import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
 import extdeps.crypto.hash { Digest }
 import std.layout { doc_text, render }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -72,7 +66,21 @@ import gunbc.live_deploy.spec {
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
 import gunbc.live_deploy.release_locus { HelperLocus }
-import gunbc.live_deploy.retract_legs { retract_remove_files }
+import gunbc.live_deploy.retract_legs { retract_remove_files, RetractDisableIfLoaded }
+import product.host_identity { host_identity_eq }
+import gunbc.live_deploy.srv1_serving_engine_unit {
+  srv1_serving_engine_unit_name, srv1_serving_engine_unit_path, srv1_serving_engine_unit_file,
+  srv1_serving_engine_wrapper_dir, srv1_serving_engine_wrapper_path, srv1_serving_engine_wrapper_text,
+  srv1_serving_engine_hosted_on, srv1_serving_engine_retired_hand_units,
+}
+import gunbc.live_deploy.board_function_converge_unit {
+  board_function_converge_unit_name, board_function_converge_unit_path, board_function_converge_locus,
+  board_function_converge_helpers_root, board_function_converge_unit_file,
+  BoardFunctionConvergeUnitReady, BoardFunctionConvergeUnitRefused, retired_hand_installed_removals_on,
+  board_function_converge_gated_workloads, board_function_converge_gate_drop_in,
+}
+import extdeps.systemd.unit_file { serialize_systemd_drop_in }
+import extdeps.systemd.systemctl { systemctl_reload_or_restart_argv }
 import extdeps.sudo.visudo { visudo_check_command }
 import std.measure { Second }
 import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
@@ -117,7 +125,7 @@ import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency, ComposeOwned, UpsertOwned,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, AttemptUnitDrainPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping,
-  ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ApprovalBrokerFrontDoor, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
 }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
 import gunbc.live_deploy.retract_legs { DeployRetractLeg, retract_leftover_timer_legs }
@@ -148,11 +156,11 @@ import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tail
 import extdeps.systemd.unit_file { SystemdUnitFile }
 import gunbc.live_deploy.emit {
   spec_has_artifact_kind, live_deploy_fabric_storage_unit_file,
-  live_deploy_tailnet_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
+  live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.live_deploy.spec {
   deployment_fabric_storage_door_socket, deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path,
-  deployment_fabric_storage_serve_endpoint, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path,
+  deployment_fabric_storage_serve_endpoint, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_agent_door_unit_name, deployment_agent_door_unit_path,
 }
 import gunbc.live_deploy.spec { UpsertArtifactKind }
 
@@ -203,9 +211,9 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
     ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
     ApplyLegBrokerStateDirectories { revision: _ } => "broker-state-directories"
-    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: a } => match a {
-      HelperSnapshotInstall => "attempt-unit-helper-snapshot"
-      HelperSnapshotRetireSuperseded => "attempt-unit-helper-snapshot-retire"
+    ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: a } => match a {
+      HelperSnapshotInstall => join([l.step_stem as String, "-helper-snapshot"], "")
+      HelperSnapshotRetireSuperseded => join([l.step_stem as String, "-helper-snapshot-retire"], "")
     }
     ApplyLegBrokerTree { revision: _ } => "approval-broker-tree"
     ApplyLegRetract { step: st, leg: _ } => st
@@ -450,62 +458,6 @@ fn deploy_apply_git_worker_subtree_group(spec: DeploymentSpec, plan: ReleaseEffe
           right: posture_group,
         ),
       }
-  }
-}
-
-// ── MEMORY CAPS AND SLICE CONTROL ────────────────────────────────────────────────────────────────
-//
-// The cap authorization decides the family. Withheld is a REPORT leg (existing caps left exactly as
-// observed, nothing dispatched); refused refuses the plan; authorized is every drop-in install, then ONE
-// daemon reload, then each unit's shadow revert. That order is CONSTRUCTED here (installs, reload,
-// reverts), so the script-era ordering guard has no counterpart: a reverted-before-installed program has
-// no constructor.
-fn deploy_apply_cap_install_leg(m: CapMember) -> DeployApplyLeg {
-  ApplyLegInstallFile {
-    step: "memory-cap-install",
-    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-      mode: install_file_shared_mode,
-      owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
-      source: "/dev/stdin", dest: m.dropin_path as String)),
-    payload: m.content,
-  }
-}
-
-fn deploy_apply_memory_cap_plan(spec: DeploymentSpec, authorization: CapConvergeDecision) -> DeployApplyPlan {
-  let host = spec.target.host.identity
-  match cap_authorization_for_host(d: authorization, host: host) {
-    CapAuthorizationWithheld { cause: why } =>
-      ApplyPlanReady { legs: [ApplyLegReport {
-        step: "memory-cap",
-        line: join(["__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ", why, "; existing caps left exactly as observed host=", host as String], ""),
-      }] }
-    CapAuthorizationRefused { cause: why } =>
-      ApplyPlanRefused { step: "memory-cap", reason: join(["memory-cap apply not authorized for this host: ", why, " host=", host as String], "") }
-    CapAuthorizedForThisHost { desired: members, authorized_retiring: _, target_units: units } =>
-      if list_length(items: units) > 0 && list_length(items: members) > 0 {
-        ApplyPlanReady { legs: concat(
-          concat(
-            list_map(xs: members, f: m => deploy_apply_cap_install_leg(m: m)),
-            [ApplyLegCommand { step: "memory-cap-reload", command: sudo_elevate_command(command: systemctl_daemon_reload_argv()) }],
-          ),
-          list_map(xs: units, f: u => ApplyLegCommand { step: "memory-cap-revert", command: sudo_elevate_command(command: systemctl_revert_memory_caps_argv(unit: u)) }),
-        ) }
-      } else {
-        ApplyPlanRefused { step: "memory-cap", reason: join(["memory-cap apply authorized with no members or no units; nothing to converge host=", host as String], "") }
-      }
-  }
-}
-
-fn deploy_apply_slice_control_plan(spec: DeploymentSpec) -> DeployApplyPlan {
-  let host = spec.target.host.identity
-  match slice_control_plan_for(host: host) {
-    SliceControlPlanNotOwed => ApplyPlanReady { legs: [] }
-    SliceControlPlanDerived { units } =>
-      ApplyPlanReady { legs: flat_map(non_empty_to_list(xs: units), u =>
-        list_map(xs: slice_control_converge_argvs_for_unit(u: u), f: argv =>
-          ApplyLegCommand { step: "slice-control", command: sudo_elevate_command(command: argv) })) }
-    SliceControlPlanRefused { cause } =>
-      ApplyPlanRefused { step: "slice-control", reason: join(["slice-control cannot be derived: ", cause, " host=", host as String], "") }
   }
 }
 
@@ -884,6 +836,76 @@ fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
   )
 }
 
+// THE BOARD-FUNCTION CONVERGE UNIT (gunbc.live_deploy.board_function_converge_unit), a host singleton
+// installed only by the deployment that holds the host's role singletons, on EVERY apply rather than only
+// when the serve unit is rewritten: its own state -- unit, gate drop-ins, snapshot, the converge's result --
+// is not the serve unit's, so a drifted or missing converge is repaired by the next apply whatever the
+// serve unit's standing. The order: the root-owned snapshot the unit runs from; the unit; the gate drop-ins
+// on the workload units (gunbc.live_deploy.board_function_converge_unit board_function_converge_gated_workloads);
+// the retirement of any hand-installed removal it replaces (disable if loaded, then remove its files, both
+// idempotent); a reload; enable; then reload-or-restart, which runs the converge now -- a start on first
+// install, ExecReload after -- so a removal that does not read back stops the apply here, and the workloads
+// that require it are not restarted (a restart would propagate to them). Only then is the superseded snapshot
+// retired, once the unit that names the new one stands.
+fn deploy_apply_board_function_converge_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  if !deployment_owns_the_host_approval_broker(spec: spec) { ApplyPlanReady { legs: [] } } else {
+    match board_function_converge_unit_file(host: spec.target.host.identity, revision: revision) {
+      BoardFunctionConvergeUnitRefused { cause: _ } =>
+        ApplyPlanRefused { step: "board-function-converge-unit", reason: "live-deploy apply refused: the board-function converge host argument was not admitted, so no unit naming a false argv is installed" }
+      BoardFunctionConvergeUnitReady { file: unit } => {
+        let locus = board_function_converge_locus()
+        let gate = serialize_systemd_drop_in(drop_in: board_function_converge_gate_drop_in())
+        let gates = flat_map(board_function_converge_gated_workloads(), w => [
+          apply_root_leg(step: "board-function-converge-gate-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: w.drop_in_path as String))),
+          apply_staged_leg(step: "board-function-converge-gate", dest: w.drop_in_path as String, payload: apply_unit_text(file_text: gate)),
+        ])
+        let retire = flat_map(retired_hand_installed_removals_on(host: spec.target.host.identity), r => match r.paths {
+          Empty => [ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } }]
+          Cons { head: h, tail: rest } => [
+            ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } },
+            ApplyLegRetract { step: "board-function-hand-unit-remove", leg: retract_remove_files(head: h, rest: rest) },
+          ]
+        })
+        ApplyPlanReady { legs: concat(concat(concat(concat([
+          ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotInstall },
+          apply_staged_leg(step: "board-function-converge-unit", dest: board_function_converge_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: unit))),
+        ], gates), retire), [
+          apply_root_leg(step: "board-function-converge-reload", argv: systemctl_daemon_reload_argv()),
+          apply_root_leg(step: "board-function-converge-enable", argv: systemctl_enable_argv(unit: board_function_converge_unit_name)),
+          apply_root_leg(step: "board-function-converge-run", argv: systemctl_reload_or_restart_argv(unit: board_function_converge_unit_name)),
+        ]), [
+          ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotRetireSuperseded },
+        ]) }
+      }
+    }
+  }
+}
+
+// SRV1'S SERVING ENGINE AT BOOT (gunbc.live_deploy.srv1_serving_engine_unit), installed by the deployment that
+// holds srv1's role singletons, on every apply. The order: the wrapper from the model; the unit; the retirement
+// of the hand-installed unit it replaces; a reload; enable. NO LEG STOPS, STARTS OR RESTARTS ANYTHING: the
+// wrapper's first act is `docker rm -f` on the running engine, so the apply converges what happens at the
+// NEXT boot and never touches the engine now. The hand unit is retired by removing its unit file and its
+// WantedBy link -- removing the link is what a plain disable does -- and never by RetractDisableIfLoaded,
+// whose `disable --now` is a stop: a stop runs the unit's effective stop hooks and kills what remains in its
+// cgroup, and nothing here reads either (side-chat review of #15684).
+fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPlan {
+  if !deployment_owns_the_host_approval_broker(spec: spec) || !srv1_serving_engine_hosted_on(host: spec.target.host.identity) { ApplyPlanReady { legs: [] } } else {
+    let retire = flat_map(filter(srv1_serving_engine_retired_hand_units, r => host_identity_eq(a: r.host, b: spec.target.host.identity)), r => match r.paths {
+      Empty => []
+      Cons { head: h, tail: rest } => [ApplyLegRetract { step: "serving-engine-hand-unit-remove", leg: retract_remove_files(head: h, rest: rest) }]
+    })
+    ApplyPlanReady { legs: concat(concat([
+      apply_root_leg(step: "serving-engine-wrapper-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: srv1_serving_engine_wrapper_dir as String)),
+      apply_staged_leg(step: "serving-engine-wrapper", dest: srv1_serving_engine_wrapper_path as String, payload: apply_unit_text(file_text: srv1_serving_engine_wrapper_text())),
+      apply_staged_leg(step: "serving-engine-unit", dest: srv1_serving_engine_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: srv1_serving_engine_unit_file()))),
+    ], retire), [
+      apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
+      apply_root_leg(step: "serving-engine-enable", argv: systemctl_enable_argv(unit: srv1_serving_engine_unit_name)),
+    ]) }
+  }
+}
+
 fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> DeployApplyPlan {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
@@ -900,7 +922,13 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
             ) },
           )
         },
-        rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },
+        rest: deploy_apply_chain(
+          first: deploy_apply_board_function_converge_plan(spec: spec, revision: revision),
+          rest: deploy_apply_chain(
+            first: deploy_apply_srv1_serving_engine_plan(spec: spec),
+            rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },
+          ),
+        ),
       )
   }
 }
@@ -1137,6 +1165,20 @@ fn deploy_apply_tailnet_door_plan(spec: DeploymentSpec, revision: ReleaseRevisio
   }
 }
 
+fn deploy_apply_agent_door_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> DeployApplyPlan {
+  match live_deploy_agent_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
+    LiveDeployTailnetDoorUnitNotDeployed => ApplyPlanReady { legs: [] }
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: c } =>
+      ApplyPlanRefused { step: "agent-door", reason: join(["live-deploy apply refused: the agent door unit's OIDC readback was refused (", c as String, ") (DESIGN 5: refuse, never widen)"], "") }
+    LiveDeployTailnetDoorUnitEmitted { file: f } =>
+      ApplyPlanReady { legs: deploy_apply_unit_lifecycle_legs(
+        step: "agent-door",
+        unit: deployment_agent_door_unit_name(names: spec.names),
+        dest: deployment_agent_door_unit_path(names: spec.names),
+        file: f) }
+  }
+}
+
 fn deploy_apply_step_effects_plan(step: DeploymentStep, effects: List<MemberEffect<DeploymentStep>>, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
   deploy_apply_effects_plan(
     effects: filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
@@ -1161,6 +1203,7 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
                 deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
               }
             TailnetDoorServeUnit => deploy_apply_tailnet_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
+            AgentDoorServeUnit => deploy_apply_agent_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
             FleetConvergeTimerUnit =>
               ApplyPlanRefused { step: "fleet-converge-timer", reason: "live-deploy apply refused: FleetConvergeTimerUnit is retired from deployment membership; timer cadence is on-demand via fleet-converge plan/apply, not live_deploy apply" }
           }
@@ -1190,26 +1233,20 @@ fn deploy_apply_steps_plan(steps: List<DeploymentStep>, effects: List<MemberEffe
   }
 }
 
-fn deploy_apply_family_plans(spec: DeploymentSpec, effects: List<MemberEffect<DeploymentStep>>, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
+fn deploy_apply_family_plans(spec: DeploymentSpec, effects: List<MemberEffect<DeploymentStep>>, plan: ReleaseEffectPlan, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
   deploy_apply_chain(
     first: deploy_apply_object_source_plan(),
     rest: deploy_apply_chain(
     first: deploy_apply_directories_plan(spec: spec, plan: plan),
     rest: deploy_apply_chain(
-      first: deploy_apply_memory_cap_plan(spec: spec, authorization: authorization),
-      rest: deploy_apply_chain(
-        first: deploy_apply_slice_control_plan(spec: spec),
-        rest: deploy_apply_chain(
-          first: deploy_apply_broker_state_directories_plan(spec: spec, plan: plan),
-          rest: deploy_apply_steps_plan(steps: spec.steps, effects: effects, spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now),
-        ),
-      ),
+      first: deploy_apply_broker_state_directories_plan(spec: spec, plan: plan),
+      rest: deploy_apply_steps_plan(steps: spec.steps, effects: effects, spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now),
     ),
     ),
   )
 }
 
-fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
+fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } =>
       ApplyPlanRefused {
@@ -1223,19 +1260,19 @@ fn deploy_apply_plan_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan, authori
             step: "tailscale-client",
             reason: join(["live-deploy apply refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)"], ""),
           }
-        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization, source_root: source_root, oidc_now: oidc_now)
-        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, authorization: authorization, source_root: source_root, oidc_now: oidc_now)
+        ScopedRemovalUnsupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now)
+        ScopedRemovalSupported { observed: _ } => deploy_apply_membership_plan(spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now)
       }
   }
 }
 
-fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, authorization: CapConvergeDecision, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
+fn deploy_apply_membership_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String, oidc_now: Second?) -> DeployApplyPlan {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     ApplyRefused { refusals: rs } =>
       ApplyPlanRefused {
         step: "wholesale",
         reason: join(["live-deploy apply refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
       }
-    EffectsReady { effects: es } => deploy_apply_family_plans(spec: spec, effects: es, plan: plan, authorization: authorization, source_root: source_root, oidc_now: oidc_now)
+    EffectsReady { effects: es } => deploy_apply_family_plans(spec: spec, effects: es, plan: plan, source_root: source_root, oidc_now: oidc_now)
   }
 }

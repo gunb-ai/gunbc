@@ -116,9 +116,13 @@ import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted }
-import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target, observe_deploy_slot_host_reading_on_the_slot }
+import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted, srv1_deploy_slot }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_selected_workflow, DeploySlotReading, deploy_slot_host_reading_line }
+import gunbc.fleet.org_actions_inspection { read_org_runner_groups, org_actions_organization }
+import gunbc.runner.runner_group_restriction_observation {
+  observe_runner_group_restriction, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused, runner_group_restriction_refusal_text,
+}
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_inherited_grant, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
   microvm_controller_install_root_scopes,
@@ -202,6 +206,8 @@ import gunbc.live_deploy.apply_receipt {
   LiveDeployRoleSingletonDisposition, RoleSingletonsNoop, RoleSingletonsInPlace, RoleSingletonsInstalled, RoleSingletonsRefusedBeforeApply,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
   live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir_for, live_deploy_apply_receipt_artifact_path_for,
+  LiveDeployTransactionRefusalReceipt, live_deploy_transaction_refusal_schema,
+  live_deploy_transaction_refusal_json, live_deploy_transaction_refusal_path_for,
 }
 import gunbc.roadmap.roadmap_site_surface_types { HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused }
 import gunbc.running_release_identity {
@@ -1081,16 +1087,23 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // ITS ROOT WRITES ARE NOT THE JOB USER'S (operator rulings 2026-10-25 and 2026-10-26; plan
 // gunbc.plans.srv1_deploy_principal_split D1, D5). Run 39284886844 and run 40704727549 died at the first
 // `sudo -n dd` because no job-user grant names it, and granting it would make the job user
-// root-equivalent. So the install is admitted three ways before any leg runs, and every elevated leg
-// runs as the fleet administrator over its SSH edge (HostEffectElevationRoute):
-//   1. TENANCY: srv1's deploy route may switch (gunbc.runner.runner_slot_job_role
-//      srv1_deploy_route_switch_admitted) -- the job runs on the deploy slot, whose uid no pull request
-//      job shares, so the administrator's key in this job's agent is reachable by no other job -- and
-//      the job reads back that it runs as that slot's user;
+// root-equivalent. So the install is admitted three ways, and every elevated leg runs as the fleet
+// administrator over its SSH edge (HostEffectElevationRoute):
+//   1. TENANCY, in its own step before the job loads any key (microvm_controller_install_admission_wet):
+//      the job runs as the deploy slot's user, and srv1's deploy route may switch
+//      (gunbc.runner.runner_slot_job_role srv1_deploy_route_switch_admitted) over a reading taken then
+//      -- the deploy group as the org lists it admits only fleet-converge at main, and, read on the slot
+//      itself, no other slot runs as the deploy slot's user and no other slot's user reaches its tree.
+//      Only then does the next step load the administrator's key, into an agent no other job reaches.
+//      The reading is taken without the key because it is what decides whether the key may be loaded:
+//      read over the edge, it would rest on the credential whose exposure it rules out;
 //   2. AUTHORITY: the job's own srv1 root-mutation approval, re-read and authorized here, covers every
 //      scope the install exercises (gunbc.fleet.srv1_root_mutation_approval_run
 //      srv1_root_mutation_inherited_grant over microvm_controller_install_root_scopes);
 //   3. PRINCIPAL: the administrator edge's context is prepared from the run, or nothing runs.
+// The job is routed onto the deploy slot (gunbc.fleet.fleet_converge_workflow
+// fleet_converge_administrator_edge_runner_spec), but routing is not admission: the reading is, and
+// the job's step order (admission, then the key, then this install) is what makes it precede the key.
 // There is no fallback to the job user's sudo: a refusal at any of the three is the job's verdict.
 //
 // THE READBACK IS THE POINT, AS FOR THE BROKER: a converged mutation says the plan ran; what this asks
@@ -1103,22 +1116,35 @@ data microvm_controller_install_attempt_raw: String = "microvm-controller-instal
 fn microvm_controller_install_wet() -> ProcessExit
   uses net: std.resources.Network
 {
-  if !srv1_deploy_route_switch_admitted() {
-    return exit_failure(reason: "microvm_controller_install: srv1's deploy route is not admitted (gunbc.ci.deploy_route_requirement deploy_route_requirement_frontier_rows): no deploy slot whose uid no pull request job shares has been read back, so the administrator edge is not opened from this job; nothing ran")
+  match srv1_root_mutation_inherited_grant(required: microvm_controller_install_root_scopes) {
+    Srv1InheritedGrantRefused { reason: r } => exit_failure(reason: concat("microvm_controller_install: not authorized; nothing ran: ", r))
+    Srv1InheritedGrantAdmitted { grant: _ } =>
+      match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
+        DesiredApplyRefused { reason } => exit_failure(reason: reason)
+        DesiredApplySelected { deployment } => microvm_controller_install_over_edge(spec: selected_deployment_spec(row: deployment))
+      }
   }
+}
+
+// THE TENANCY ADMISSION, its own step, run before the step that loads the fleet key. It holds no key
+// and writes nothing: it reads the job's own user, the deploy group as the org lists it (the roster
+// reader's read-only token, minted by this step's prelude), and the deploy slot's host half on the
+// slot. It succeeds only on the deploy slot's sole tenancy; any other reading fails the step, so no
+// later step of the job runs and the key is never loaded.
+fn microvm_controller_install_admission_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
   match microvm_controller_install_job_user() {
-    Absent => exit_failure(reason: "microvm_controller_install: the job's effective user could not be read, so the deploy slot's tenancy is not confirmed; nothing ran")
+    Absent => exit_failure(reason: "microvm_controller_install admission: the job's effective user could not be read, so the deploy slot's tenancy is not confirmed; no key was loaded")
     Present { value: u } =>
       if (u as String) != (deploy_slot_job_user as String) {
-        exit_failure(reason: join(["microvm_controller_install: the job runs as ", u as String, ", not the deploy slot's ", deploy_slot_job_user as String, "; the administrator edge is opened only from the deploy slot; nothing ran"], ""))
+        exit_failure(reason: join(["microvm_controller_install admission: the job runs as ", u as String, ", not the deploy slot's ", deploy_slot_job_user as String, "; the administrator's key is loaded only on the deploy slot; no key was loaded"], ""))
       } else {
-        match srv1_root_mutation_inherited_grant(required: microvm_controller_install_root_scopes) {
-          Srv1InheritedGrantRefused { reason: r } => exit_failure(reason: concat("microvm_controller_install: not authorized; nothing ran: ", r))
-          Srv1InheritedGrantAdmitted { grant: _ } =>
-            match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
-              DesiredApplyRefused { reason } => exit_failure(reason: reason)
-              DesiredApplySelected { deployment } => microvm_controller_install_over_edge(spec: selected_deployment_spec(row: deployment))
-            }
+        let reading = microvm_controller_install_deploy_slot_reading()
+        if srv1_deploy_route_switch_admitted(reading: reading) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: concat("microvm_controller_install admission: srv1's deploy route is not admitted (gunbc.ci.deploy_route_requirement srv1_deploy_route_requirement): the reading is not the deploy slot's sole tenancy, so the administrator's key is not loaded and nothing runs: ", microvm_controller_install_reading_text(reading: reading)))
         }
       }
   }
@@ -1137,6 +1163,32 @@ fn microvm_controller_install_job_user() -> NonEmptyStr? {
     Converged { evidence: _, applied: _ } => none
     NotConverged { reason: _, applied: _ } => none
   }
+}
+
+// THE TENANCY, READ WITHOUT THE KEY: the deploy group as the org lists it, and the deploy slot's host
+// half read on the slot by this job (gunbc.runner.runner_host_file_converge
+// observe_deploy_slot_host_reading_on_the_slot). Both are reads; neither needs the administrator edge.
+fn microvm_controller_install_deploy_slot_reading() -> DeploySlotReading
+  uses net: std.resources.Network
+{
+  DeploySlotReading {
+    group: observe_runner_group_restriction(
+      name: deploy_slot_runner_group_name,
+      selected_workflow: deploy_slot_selected_workflow(),
+      listed: read_org_runner_groups(organization: org_actions_organization),
+    ),
+    host: observe_deploy_slot_host_reading_on_the_slot(slot: srv1_deploy_slot()),
+  }
+}
+
+fn microvm_controller_install_reading_text(reading: DeploySlotReading) -> String {
+  join([
+    "group=", match reading.group {
+      RunnerGroupRestrictedToWorkflow { restriction: r } => join(["restricted id=", to_string(r.group.value), " workflow=", r.selected_workflow as String], "")
+      RunnerGroupRestrictionRefused { name: _, cause: c } => runner_group_restriction_refusal_text(cause: c)
+    },
+    " ", deploy_slot_host_reading_line(r: reading.host),
+  ], "")
 }
 
 fn microvm_controller_install_over_edge(spec: DeploymentSpec) -> ProcessExit {
@@ -1463,6 +1515,55 @@ fn live_deploy_write_apply_receipt(spec: DeploymentSpec, receipt: LiveDeployAppl
   }
 }
 
+// THE TRANSACTION'S OWN NAME, recorded on every refusal receipt. The run-bound admission arms make
+// the fleet-converge workflow the only place this chain can run to completion, so the CI entry name
+// IS the transaction's name at every arm; naming it at the arm instead would let one arm lie.
+data live_deploy_transaction_name: String = "live_deploy_apply_prod_role_transaction_wet"
+
+// THE TRANSACTION'S REFUSAL ARMS ROUTE THROUGH HERE. Every arm of the CI transaction that ends in
+// exit_failure BEFORE an apply receipt can exist calls this first: the receipt reaches disk even
+// when the run is about to exit 1, so a refused deploy leaves a named artifact in the receipt
+// directory instead of an empty one (the upload then ships it, and the exactly-one-receipt step has
+// something to count). If the refusal receipt itself cannot be written, the exit reason says BOTH
+// facts -- the refusal and the missing artifact that should have named it -- rather than only one.
+fn live_deploy_transaction_refused(
+  deployment: DesiredDeployment,
+  arm: String,
+  detail: String,
+  exit: ProcessExit,
+) -> ProcessExit {
+  let spec = selected_deployment_spec(row: deployment)
+  let receipt = LiveDeployTransactionRefusalReceipt {
+    schema: live_deploy_transaction_refusal_schema,
+    transaction: live_deploy_transaction_name,
+    target: deployment_plan_host_identity(spec: spec),
+    instance_id: spec.instance_id as String,
+    arm: arm,
+    detail: detail,
+    completed_at: clock_now_probed_at_or_unknown() as String,
+    receipt_identity: "",
+  }
+  let dir = live_deploy_apply_receipt_dir_for(instance_id: spec.instance_id as String)
+  let path = live_deploy_transaction_refusal_path_for(instance_id: spec.instance_id as String)
+  match run_shell_commands(commands: [mkdir_parents_command(path: dir)], transport: LocalExec) {
+    ExitFailure { code: _, reason: why } =>
+      exit_failure(reason: join(["live_deploy transaction: ", arm, " (", detail, "); refusal-receipt dir refused: ", why], ""))
+    ExitSuccess => {
+      let wrote = Filesystem.Write(
+        path: path,
+        content: serialize_json(v: live_deploy_transaction_refusal_json(r: receipt)),
+      )
+      if !wrote.success {
+        exit_failure(
+          reason: join(["live_deploy transaction: ", arm, " (", detail, "); refusal-receipt write refused at ", path, ": ", wrote.error], ""),
+        )
+      } else {
+        exit
+      }
+    }
+  }
+}
+
 fn live_deploy_apply_receipt_for(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
@@ -1549,8 +1650,15 @@ fn live_deploy_receipted_with_candidate(
   provenance: LiveDeployApplyProvenance,
 ) -> ProcessExit {
   match observe_candidate_root_tree_oid(repo: ".") {
-    CandidateTreeOidUnobservable { detail: d } =>
-      exit_failure(reason: join(["live_deploy apply: CandidateTreeUnobservable — ", d], ""))
+    CandidateTreeOidUnobservable { detail: d } => {
+      let why = join(["live_deploy apply: CandidateTreeUnobservable — ", d], "")
+      live_deploy_transaction_refused(
+        deployment: deployment,
+        arm: "CandidateTreeUnobservable",
+        detail: why,
+        exit: exit_failure(reason: why),
+      )
+    }
     CandidateTreeOidObserved { oid_hex: candidate_tree } =>
       live_deploy_receipted_decided(
         deployment: deployment,
@@ -1565,13 +1673,29 @@ fn live_deploy_receipted_with_candidate(
 fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: DeployAccess, run: ActionsRunBinding, expected: String, provenance: LiveDeployFleetProvenance) -> ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
-      exit_failure(reason: candidate_unobservable_detail(cause: why))
+      live_deploy_transaction_refused(
+        deployment: deployment,
+        arm: "CandidateUnobservable",
+        detail: candidate_unobservable_detail(cause: why),
+        exit: exit_failure(reason: candidate_unobservable_detail(cause: why)),
+      )
     CandidateObserved { candidate: candidate } =>
       if (candidate.revision as String) != expected {
-        exit_failure(reason: join(["live_deploy transaction: CandidateNotExpected — the checkout is ", candidate.revision as String, " but R is ", expected], ""))
+        live_deploy_transaction_refused(
+          deployment: deployment,
+          arm: "CandidateNotExpected",
+          detail: join(["live_deploy transaction: CandidateNotExpected — the checkout is ", candidate.revision as String, " but R is ", expected], ""),
+          exit: exit_failure(reason: join(["live_deploy transaction: CandidateNotExpected — the checkout is ", candidate.revision as String, " but R is ", expected], "")),
+        )
       } else {
         match live_deploy_pre_swap_for_deployment(deployment: deployment) {
-          PreSwapRefused { reason } => exit_failure(reason: reason)
+          PreSwapRefused { reason } =>
+            live_deploy_transaction_refused(
+              deployment: deployment,
+              arm: "PreSwapRefused",
+              detail: reason,
+              exit: exit_failure(reason: reason),
+            )
           PreSwapAdmitted =>
             live_deploy_receipted_with_candidate(
               deployment: deployment,
@@ -1586,24 +1710,34 @@ fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: Deplo
 
 fn live_deploy_transaction_admitted_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
   match observe_actions_run_binding_at_checkout() {
-    ActionsRunUnbound { variable: v, detail: d } =>
-      exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
+    ActionsRunUnbound { variable: v, detail: d } => {
+      let why = join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], "")
+      live_deploy_transaction_refused(deployment: deployment, arm: "RunUnbound", detail: why, exit: exit_failure(reason: why))
+    }
     ActionsRunBound { binding: run } =>
       match admit_optional_expected_revision(binding: run) {
-            RunRevisionRefused { expected: e, observed: o } =>
-              exit_failure(reason: join(["live_deploy transaction: RunRevisionNotExpected — this run executes ", o, " but R is ", e], ""))
+            RunRevisionRefused { expected: e, observed: o } => {
+              let why = join(["live_deploy transaction: RunRevisionNotExpected — this run executes ", o, " but R is ", e], "")
+              live_deploy_transaction_refused(deployment: deployment, arm: "RunRevisionNotExpected", detail: why, exit: exit_failure(reason: why))
+            }
             RunRevisionAdmitted { revision: admitted } =>
               match read_live_deploy_fleet_provenance() {
-                FleetProvenanceAbsent { variable: v, detail: d } =>
-                  exit_failure(reason: join(["live_deploy transaction: FleetProvenanceAbsent — ", v, " ", d], ""))
+                FleetProvenanceAbsent { variable: v, detail: d } => {
+                  let why = join(["live_deploy transaction: FleetProvenanceAbsent — ", v, " ", d], "")
+                  live_deploy_transaction_refused(deployment: deployment, arm: "FleetProvenanceAbsent", detail: why, exit: exit_failure(reason: why))
+                }
                 FleetProvenancePresent { inputs: inputs } =>
                   match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
-                    FleetConvergePlanReceiptUnreadable { reason: why } =>
-                      exit_failure(reason: join(["live_deploy transaction: PlanReceiptUnreadable — ", why, "; the dashboard transaction refuses to run without the predecessor receipts it must cite"], ""))
+                    FleetConvergePlanReceiptUnreadable { reason: why } => {
+                      let detail = join(["live_deploy transaction: PlanReceiptUnreadable — ", why, "; the dashboard transaction refuses to run without the predecessor receipts it must cite"], "")
+                      live_deploy_transaction_refused(deployment: deployment, arm: "PlanReceiptUnreadable", detail: detail, exit: exit_failure(reason: detail))
+                    }
                     FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
                   match read_fleet_converge_apply_receipt_at(path: fleet_converge_apply_receipt_path) {
-                    FleetConvergeApplyReceiptUnreadable { reason: why } =>
-                      exit_failure(reason: join(["live_deploy transaction: FleetApplyReceiptUnreadable — ", why], ""))
+                    FleetConvergeApplyReceiptUnreadable { reason: why } => {
+                      let detail = join(["live_deploy transaction: FleetApplyReceiptUnreadable — ", why], "")
+                      live_deploy_transaction_refused(deployment: deployment, arm: "FleetApplyReceiptUnreadable", detail: detail, exit: exit_failure(reason: detail))
+                    }
                     FleetConvergeApplyReceiptDecoded { receipt: fleet_apply_receipt } => {
                   let provenance = LiveDeployFleetProvenance {
                     plan_run_id: inputs.plan_run_id,
@@ -1630,7 +1764,13 @@ fn live_deploy_transaction_wet_with_access_for_realization(
   realization: RepositoryTransitionRealization,
 ) -> ProcessExit {
   match repository_transition_admission(realization: realization) {
-    LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
+    LegacyGitFileSyncNotAdmitted { reason: why } =>
+      live_deploy_transaction_refused(
+        deployment: deployment,
+        arm: "LegacyGitFileSyncNotAdmitted",
+        detail: why,
+        exit: exit_failure(reason: why),
+      )
     RepositoryTransitionAdmitted => live_deploy_transaction_admitted_wet_with_access(deployment: deployment, access: access)
   }
 }

@@ -8,7 +8,6 @@ import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generati
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
 import gunbc.compute.work_provider_local { compute_layout_in, compute_unit_properties, NoPathVirtualization }
 import std.materialization_store_grant { WitnessScratchRoot }
@@ -97,7 +96,6 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
     partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
     amount: kibibyte(count: 8388608),
     class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
     slot: slot,
     slot_generation: cas_generation_first(),
   }

@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_dogfood_route_wet_witness
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
+
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptLaunchIdentity, AttemptRequestBindingFile, attempt_state_directory_text, attempt_state_text }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, String, NonEmptyStr, FilePath }
@@ -13,8 +14,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, dashboard_instance_dispatch_attempt_state_root,
   DashboardActuating, DashboardLocalProvision,
 }
+import gunbc.roadmap.roadmap_dogfood_start_store_root { dogfood_start_store_root }
 import gunbc.roadmap.roadmap_dogfood_route {
-  dogfood_start_record_for_instance, dogfood_start_store_root, dogfood_start_receipt_key,
+  dogfood_start_record_for_instance, dogfood_start_receipt_key,
   dogfood_route_acceptance_holds_on,
   DogfoodStartRecord, DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
 }
@@ -26,11 +28,11 @@ import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
 import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
+
 import gunbc.roadmap.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator, launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, attempt_request_binding_path_for_instance, RequestClaimBound }
+import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, RequestClaimBound }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventId, LegacyEmailPrincipal, ResultPublished }
 import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
 import product.capacity.event_chain { PartitionId }
@@ -71,15 +73,15 @@ fn request_wire() -> String {
 }
 
 fn plant_launch(instance: HostDashboardInstance) -> Bool {
-  let path = dispatch_attempt_launch_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1")
-  let _dir = shell.Mkdir.Parents(path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1") as FilePath)
+  let path = attempt_state_text(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1", member: AttemptLaunchIdentity)
+  let _dir = shell.Mkdir.Parents(path: attempt_state_directory_text(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1", directory: AttemptDirectoryRoot) as FilePath)
   let id = LaunchIdentity { node_id: "n1" as NonEmptyStr as RoadmapNodeId, cause: Operator, mode: ManualReady, instance_id: instance.instance_id, revision: launch_identity_null_revision() }
   Filesystem.Write(path: path, content: serialize_json(v: attempt_launch_record_json(id: id, attempt_key: "k1" as NonEmptyStr))).success
-    && Filesystem.Write(path: attempt_request_binding_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1"), content: request_wire()).success
+    && Filesystem.Write(path: attempt_state_text(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1", member: AttemptRequestBindingFile), content: request_wire()).success
 }
 
 fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
-  let _made = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
+  let _made = shell.Mkdir.Parents(path: dogfood_start_store_root(instance: instance) as String as FilePath)
   instance
 }
 
@@ -244,3 +246,15 @@ test fn a_receipt_pinning_another_instances_evidence_is_not_a_start_here() -> Bo
     && !dogfood_route_acceptance_holds_on(instance: instance)
 }
 
+
+// THE STORE STAYS UNREADY WHILE A LEGACY FLAT RECEIPT REMAINS: a flat dogfood-start-receipt.<gen> in the shared
+// parent root (the layout move has not run) refuses the recorder and the acceptance read, though the member
+// exists and is empty -- never a dual read of both layouts.
+test fn a_legacy_flat_receipt_keeps_the_store_unready_and_acceptance_false() -> Bool {
+  let instance = converge_root(instance: fresh_instance(tag: "legacy"))
+  let flat = Filesystem.Write(path: join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/dogfood-start-receipt.1"], ""), content: wire(pr: "4242")).success
+  let r = dogfood_start_record_for_instance(instance: instance)
+  flat && is_refused(r: r)
+    && (match r { DogfoodStartRefused { reason } => string_contains(s: reason, pattern: "legacy flat dogfood start receipt")  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartAlreadyRecorded => false  DogfoodStartNoCompleteAttempt => false })
+    && !dogfood_route_acceptance_holds_on(instance: instance)
+}

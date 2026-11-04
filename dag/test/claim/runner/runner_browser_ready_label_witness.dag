@@ -1,12 +1,13 @@
 module test.claim.runner.runner_browser_ready_label_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.runner.runner_registration_labels {
-  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_evidence_gated_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
   runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
   gunbc_browser_ready_label,
 }
@@ -102,7 +103,7 @@ fn grant_reload_is_posture_skipped(p: BrowserReadyLabelsPlan) -> Bool {
 // Discriminating: a sudo word under the unprivileged posture, or a reload command where the
 // posture says skip, reds.
 test fn unprivileged_posture_runs_bare_and_skips_the_reload() -> Bool {
-  let grant = browser_ready_labels_grant_plan(host: operator_host_srv3, target: browser_ready_labels_unprivileged_target())
+  let grant = browser_ready_labels_grant_plan(host: operator_host_srv3, target: browser_ready_labels_unprivileged_target(), receipt: ReceiptAbsent)
   let revoke = browser_ready_labels_revoke_plan(target: browser_ready_labels_unprivileged_target())
   words_carry_no_sudo(words: concat_lists(a: plan_write_words(p: grant), b: plan_remove_words(p: revoke)))
     && grant_reload_is_posture_skipped(p: grant)
@@ -122,7 +123,7 @@ fn plan_remove_words(p: BrowserReadyLabelsPlan) -> List<String> {
 // Discriminating: a grant without the label, a revoke whose removal misses the path, or a revoke
 // that carries a write leg, reds.
 test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
-  let grant = browser_ready_labels_grant_plan(host: operator_host_srv3, target: browser_ready_labels_production_target)
+  let grant = browser_ready_labels_grant_plan(host: operator_host_srv3, target: browser_ready_labels_production_target, receipt: ReceiptAbsent)
   let revoke = browser_ready_labels_revoke_plan(target: browser_ready_labels_production_target)
   let write = join(plan_write_words(p: grant), " ")
   let payload = plan_payload(p: grant)
@@ -155,7 +156,7 @@ fn srv3_slot(index: Nat) -> RunnerSlotIdentity {
 }
 
 fn conforms(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
-  match runner_slot_labels_conform(slot: slot, observed: observed) {
+  match runner_slot_labels_conform(receipt: ReceiptAbsent, slot: slot, observed: observed) {
     RegistrationLabelsConform => true
     RegistrationLabelsDiverge => false
     RegistrationLabelsUnjudged { host: _, cause: _ } => false
@@ -163,7 +164,7 @@ fn conforms(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
 }
 
 fn host_set(host: HostIdentity) -> List<String> {
-  match runner_registration_labels(host: host) {
+  match runner_evidence_gated_registration_labels(host: host, receipt: ReceiptAbsent) {
     RegistrationLabelsResolved { labels: ls } => ls
     RegistrationLabelsRefused { host: _, cause: _ } => []
   }

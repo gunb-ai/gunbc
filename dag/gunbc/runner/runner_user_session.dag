@@ -20,7 +20,7 @@ import gunbc.runner.runner_user_session_receipt {
   UserSessionLingerEnable, UserSessionLingerEnableOk, UserSessionLingerEnableFailed,
   user_session_answer_of, user_session_answer_text,
   runner_user_session_receipt_header_line, runner_user_session_receipt_enable_linger_line,
-  runner_user_session_receipt_linger_line,
+  runner_user_session_receipt_linger_line, runner_user_session_converge_receipt_path,
 }
 import gunbc.runner.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -109,8 +109,6 @@ fn uid_of(outcome: RunArgvTransportOutcome) -> Int? {
 }
 
 data runner_user_session_converge_attempt_raw: String = "runner-user-session-converge-ci"
-
-data runner_user_session_converge_receipt_path: String = "target/runner-user-session-converge-receipt.txt"
 
 fn user_session_admin_target(host: NonEmptyStr) -> SshTargetResolution {
   fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)

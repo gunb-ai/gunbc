@@ -1,0 +1,236 @@
+module test.claim.card_group_cooling_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.measure { micrometer, micrometer_count, watt, millilitre_per_second, celsius_delta }
+import product.printed_chassis.card_end_interface {
+  CardEndInterface, EndFaceFeature, FaceConnector, FinFreeBands, BandTaper, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved, a16_card_end, a2_card_end,
+}
+import product.printed_chassis.gpu_duct { screwed_end_cap_of, ScrewedEndCap, ScrewedEndCapMissing }
+import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, a2_duct_card, a16_duct_card }
+import product.printed_chassis.group_duct {
+  GroupDuctPlan, GroupFitPlateAdmission, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
+  GroupMembersNotSideBySide, GroupMemberFaceUnfit,
+}
+import product.printed_chassis.printable_assembly { CardGroupRoot, GroupFitPlate, PrintableAssemblyReady, PrintableAssemblyRefused }
+import product.printed_chassis.printable_assembly_selection { group_fit_plate_selection }
+import product.printed_chassis.card_installation {
+  CardInstallation, InstalledCard, CardInstance, InBoardSlot, CardGroup, Partition, Partitioned, PartitionRefused,
+  PartitionMemberMissing, PartitionMemberRepeated, PartitionMemberUnknown, PartitionGroupEmpty, PartitionSizesDoNotCover,
+  PartitionInstallationRefused, SlotShared,
+  partition_installation, partition_by_sizes, group_ids, card_separation, installation_refusals, SlotCoveredByNeighbour,
+  a2_altra_installation, a16_installation, altra_slot,
+}
+import product.printed_chassis.group_cooling_plan {
+  MemberDemand, MemberDemandEstimated, MemberFlowObservation, FailureResponseDeclared, FailureResponseUndeclared,
+  GroupQualified, GroupNotQualified, group_qualification, GroupFabricableByExistingDucts, GroupFabricationBlocked, group_fabrication,
+}
+
+// SUPPLIED VALUES AT EACH INTERFACE (DESIGN section 3): the partition, separation and qualification rules
+// are judged over installations and demands built here; the claims marked REAL run the same functions over
+// the committed installations, so each supplied boundary is paired with a reading of the real path.
+
+fn a2_at(id: NonEmptyStr, designator: NonEmptyStr) -> InstalledCard {
+  InstalledCard { instance: CardInstance { id: id, card: a2_duct_card }, slot: altra_slot(designator: designator) }
+}
+
+fn installation(cards: List<InstalledCard>) -> CardInstallation { CardInstallation { name: "supplied", cards: cards } }
+
+fn ids_of(p: Partition) -> List<List<String>> {
+  match p { Partitioned { groups: gs } => map(gs, g => map(group_ids(g: g), i => i as String)) PartitionRefused { causes: _ } => [] }
+}
+
+fn refused(p: Partition) -> Bool { match p { PartitionRefused { causes: _ } => true Partitioned { groups: _ } => false } }
+
+// PLACEMENT COMES FROM THE INSTALLATION: one card model, three placements, three separations. A slot-count
+// "pitch" would give the same answer for all three.
+fn separation_um(from: InstalledCard, to: InstalledCard) -> Int {
+  match card_separation(from: from, to: to) { Present { value: s } => micrometer_count(m: s.across) as Int Absent => 0 - 1 }
+}
+
+test fn the_same_card_in_different_slots_is_separated_by_its_slots() -> Bool {
+  let a = a2_at(id: "first", designator: "PCIE4")
+  separation_um(from: a, to: a2_at(id: "next", designator: "PCIE5")) == 20320
+    && separation_um(from: a, to: a2_at(id: "skip", designator: "PCIE6")) == 40640
+    && separation_um(from: a, to: a2_at(id: "last", designator: "PCIE7")) == 60960
+}
+
+// ORDINARY GROUP SHAPES ARE DATA: every shorthand over the real four-card installation partitions it into
+// the instances in order, through one code path. (REAL)
+test fn every_shorthand_partitions_the_real_a2_row() -> Bool {
+  ids_of(p: partition_by_sizes(inst: a2_altra_installation, sizes: [4])) == [["a2@PCIE4", "a2@PCIE5", "a2@PCIE6", "a2@PCIE7"]]
+    && ids_of(p: partition_by_sizes(inst: a2_altra_installation, sizes: [2, 2])) == [["a2@PCIE4", "a2@PCIE5"], ["a2@PCIE6", "a2@PCIE7"]]
+    && ids_of(p: partition_by_sizes(inst: a2_altra_installation, sizes: [1, 3])) == [["a2@PCIE4"], ["a2@PCIE5", "a2@PCIE6", "a2@PCIE7"]]
+    && ids_of(p: partition_by_sizes(inst: a2_altra_installation, sizes: [3, 1])) == [["a2@PCIE4", "a2@PCIE5", "a2@PCIE6"], ["a2@PCIE7"]]
+    && ids_of(p: partition_by_sizes(inst: a2_altra_installation, sizes: [1, 1, 1, 1])) == [["a2@PCIE4"], ["a2@PCIE5"], ["a2@PCIE6"], ["a2@PCIE7"]]
+}
+
+// THE PARTITION IS CHECKED, NOT TRUSTED FOR ITS NOTATION: missing, repeated, unknown, empty and
+// non-covering inputs each refuse with their own cause.
+test fn an_invalid_partition_refuses_with_its_cause() -> Bool {
+  let inst = a2_altra_installation
+  let missing = match partition_installation(inst: inst, groups: [["a2@PCIE4", "a2@PCIE5", "a2@PCIE6"]]) { PartitionRefused { causes: cs } => any(cs, c => match c { PartitionMemberMissing { instance: i } => i == "a2@PCIE7" _ => false }) Partitioned { groups: _ } => false }
+  let repeated = match partition_installation(inst: inst, groups: [["a2@PCIE4", "a2@PCIE5"], ["a2@PCIE5", "a2@PCIE6", "a2@PCIE7"]]) { PartitionRefused { causes: cs } => any(cs, c => match c { PartitionMemberRepeated { instance: i } => i == "a2@PCIE5" _ => false }) Partitioned { groups: _ } => false }
+  let unknown = match partition_installation(inst: inst, groups: [["a2@PCIE4", "a2@PCIE5", "a2@PCIE6", "a2@PCIE7", "a2@PCIE8"]]) { PartitionRefused { causes: cs } => any(cs, c => match c { PartitionMemberUnknown { instance: i } => i == "a2@PCIE8" _ => false }) Partitioned { groups: _ } => false }
+  let empty = match partition_installation(inst: inst, groups: [["a2@PCIE4", "a2@PCIE5", "a2@PCIE6", "a2@PCIE7"], []]) { PartitionRefused { causes: cs } => any(cs, c => match c { PartitionGroupEmpty { index: n } => n == 1 _ => false }) Partitioned { groups: _ } => false }
+  let short = match partition_by_sizes(inst: inst, sizes: [2, 3]) { PartitionRefused { causes: cs } => any(cs, c => match c { PartitionSizesDoNotCover { requested: r, installed: n } => r == 5 && n == 4 _ => false }) Partitioned { groups: _ } => false }
+  missing && repeated && unknown && empty && short && refused(p: partition_by_sizes(inst: inst, sizes: [0, 4]))
+}
+
+// A CARD THAT COVERS THE NEXT SLOT REFUSES THE INSTALLATION: the A16 takes two slots, so a card in the next
+// position cannot also be installed.
+test fn a_double_width_card_covers_the_next_slot() -> Bool {
+  let wide = InstalledCard { instance: CardInstance { id: "a16", card: a16_duct_card }, slot: altra_slot(designator: "PCIE4") }
+  any(installation_refusals(inst: installation(cards: [wide, a2_at(id: "beside", designator: "PCIE5")])), r => match r { SlotCoveredByNeighbour { instance: i, covered_by: c } => i == "beside" && c == "a16" _ => false })
+    && count(installation_refusals(inst: installation(cards: [wide, a2_at(id: "beside", designator: "PCIE6")]))) == 0
+}
+
+// THE A16 AS A GROUP OF ONE keeps its inserts and header and stays fabricable by the existing ducts. (REAL)
+test fn the_a16_is_a_group_of_one_with_its_features_intact() -> Bool {
+  let fastened = match screwed_end_cap_of(i: a16_card_end) { ScrewedEndCap { face: f } => micrometer_count(m: f.insert_spacing) as Int == 27620 && micrometer_count(m: f.connector_from_top) as Int == 2560 ScrewedEndCapMissing { features: _ } => false }
+  let fabricable = match partition_by_sizes(inst: a16_installation, sizes: [1]) {
+    Partitioned { groups: gs } => all(gs, g => match group_fabrication(inst: a16_installation, g: g) { GroupFabricableByExistingDucts => true GroupFabricationBlocked { reasons: _ } => false })
+    PartitionRefused { causes: _ } => false
+  }
+  fastened && fabricable
+}
+
+// A CARD WITHOUT THE A16'S FEATURES NEEDS NO SENTINELS: an end face with no inserts and no header is a
+// complete reading, and the screwed view refuses it naming the features as ABSENT; a face whose inserts were
+// not looked for refuses naming them as NOT OBSERVED. The two are different answers.
+fn face_with(inserts_absent: Bool) -> CardEndInterface {
+  CardEndInterface {
+    source: "supplied: an intake end with no fastening features",
+    face_length: micrometer(count: 55600), face_thickness: micrometer(count: 18620),
+    window_length: micrometer(count: 52370), window_depth: micrometer(count: 14200),
+    window_from_top: micrometer(count: 1600), window_from_back: micrometer(count: 16400),
+    fin_setback: micrometer(count: 1000),
+    fin_free_bands: FeatureNotObserved { read_obligation: "supplied" },
+    inserts: if inserts_absent { FeatureAbsentObserved } else { FeatureNotObserved { read_obligation: "supplied: not looked for" } },
+    connector: FeatureAbsentObserved,
+  }
+}
+
+test fn a_card_without_inserts_is_refused_by_name_not_given_placeholders() -> Bool {
+  let absent = match screwed_end_cap_of(i: face_with(inserts_absent: true)) { ScrewedEndCapMissing { features: fs } => any(fs, x => string_contains(s: x, pattern: "end-cap inserts: the card has none (observed)")) ScrewedEndCap { face: _ } => false }
+  let unobserved = match screwed_end_cap_of(i: face_with(inserts_absent: false)) { ScrewedEndCapMissing { features: fs } => any(fs, x => string_contains(s: x, pattern: "end-cap inserts: not observed")) ScrewedEndCap { face: _ } => false }
+  absent && unobserved
+}
+
+// A MULTI-CARD GROUP IS NOT FABRICABLE BY THE SINGLE-CARD DUCTS, however it is grouped. (REAL)
+test fn a_four_card_group_is_blocked_from_fabrication_with_reasons() -> Bool {
+  match partition_by_sizes(inst: a2_altra_installation, sizes: [4]) {
+    Partitioned { groups: gs } => all(gs, g => match group_fabrication(inst: a2_altra_installation, g: g) { GroupFabricationBlocked { reasons: rs } => any(rs, r => string_contains(s: r, pattern: "no shared multi-card realization")) GroupFabricableByExistingDucts => false })
+    PartitionRefused { causes: _ } => false
+  }
+}
+
+// QUALIFICATION IS PER CARD. Supplied demands of 3306 mL/s each: roughly 13 + 7 + 7 + 1 CFM of observed
+// air covers the group's total and still fails the card that got 1; every card at its demand with a
+// declared stopped-fan response qualifies (the positive control); the same observations with the response
+// undeclared do not; and with no observations at all, a screen pass leaves the group unqualified.
+fn demand(id: NonEmptyStr) -> MemberDemand { MemberDemandEstimated { instance: id, heat: watt(count: 60), through_flow: millilitre_per_second(count: 3306) } }
+fn seen(id: NonEmptyStr, q: Int) -> MemberFlowObservation { MemberFlowObservation { instance: id, through_flow: millilitre_per_second(count: q), source: "supplied" } }
+
+test fn a_group_total_does_not_qualify_a_starved_card() -> Bool {
+  let ds = [demand(id: "a"), demand(id: "b"), demand(id: "c"), demand(id: "d")]
+  let lopsided = [seen(id: "a", q: 6140), seen(id: "b", q: 3306), seen(id: "c", q: 3306), seen(id: "d", q: 472)]
+  let even = [seen(id: "a", q: 3306), seen(id: "b", q: 3306), seen(id: "c", q: 3306), seen(id: "d", q: 3306)]
+  let response = FailureResponseDeclared { response: "supplied" }
+  let starved = match group_qualification(demands: ds, observed: lopsided, failure: response) { GroupNotQualified { obligations: os } => count(os) == 1 && any(os, o => string_contains(s: o, pattern: "d: observed 472")) GroupQualified => false }
+  let positive = match group_qualification(demands: ds, observed: even, failure: response) { GroupQualified => true GroupNotQualified { obligations: _ } => false }
+  let no_response = match group_qualification(demands: ds, observed: even, failure: FailureResponseUndeclared) { GroupQualified => false GroupNotQualified { obligations: _ } => true }
+  let unobserved = match group_qualification(demands: ds, observed: [], failure: response) { GroupQualified => false GroupNotQualified { obligations: os } => count(os) == 4 }
+  starved && positive && no_response && unobserved
+}
+
+// ═══ THE GROUP FIT PLATE CONSUMES THE SHARED MODEL'S REFUSALS ═══
+// Supplied plans at the fabrication boundary (group_duct admit_group_fit_plate, and the selection that
+// quotes it). The REAL route is printable_assembly_selection_witness
+// w_the_a2_row_fit_plate_selects_through_the_same_function.
+
+fn supplied_plan(cards: List<InstalledCard>) -> GroupDuctPlan {
+  GroupDuctPlan { id: "supplied", installation: installation(cards: cards), sizes: [length(list: cards)], group: 0, fit_record: "supplied" }
+}
+
+fn selects(p: GroupDuctPlan) -> Bool {
+  match group_fit_plate_selection(root: CardGroupRoot { plan: "supplied", kind: GroupFitPlate }, plan: p) { PrintableAssemblyReady { assembly: _ } => true PrintableAssemblyRefused { reason: _ } => false }
+}
+
+fn refusal_says(p: GroupDuctPlan, pattern: String) -> Bool {
+  match group_fit_plate_selection(root: CardGroupRoot { plan: "supplied", kind: GroupFitPlate }, plan: p) { PrintableAssemblyReady { assembly: _ } => false PrintableAssemblyRefused { reason: r } => string_contains(s: r, pattern: pattern) }
+}
+
+// TWO CARDS IN ONE SLOT get no plate: distinct ids, consecutive in the installation, zero separation; the
+// partition refuses the installation and the fabrication boundary carries that refusal. The same two cards
+// in adjacent slots select (the positive control).
+test fn a_fit_plate_is_refused_for_two_cards_in_one_slot() -> Bool {
+  let shared = supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_at(id: "b", designator: "PCIE4")])
+  let typed = match admit_group_fit_plate(p: shared) {
+    GroupPartitionRefused { causes: cs } => any(cs, c => match c { PartitionInstallationRefused { refusals: rs } => any(rs, r => match r { SlotShared { instance: i, with: w } => i == "b" && w == "a" _ => false }) _ => false })
+    _ => false
+  }
+  typed && refusal_says(p: shared, pattern: "b is in the same slot as a")
+    && selects(p: supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_at(id: "b", designator: "PCIE5")]))
+}
+
+// THE PLATE COVERS THE WHOLE FACE, so a header must be observed ABSENT: the A2's own reading selects; the
+// same face with a header present, or with the header not looked for, refuses by name.
+fn a2_with_connector(id: NonEmptyStr, designator: NonEmptyStr, connector: EndFaceFeature<FaceConnector>) -> InstalledCard {
+  let f = a2_card_end
+  let face = CardEndInterface {
+    source: f.source, face_length: f.face_length, face_thickness: f.face_thickness,
+    window_length: f.window_length, window_depth: f.window_depth, window_from_top: f.window_from_top, window_from_back: f.window_from_back,
+    fin_setback: f.fin_setback, fin_free_bands: f.fin_free_bands, inserts: f.inserts, connector: connector,
+  }
+  InstalledCard { instance: CardInstance { id: id, card: DuctCard { row: a2_duct_card.row, end_face: EndFaceRead { face: face } } }, slot: altra_slot(designator: designator) }
+}
+
+fn connector_plan(c: EndFaceFeature<FaceConnector>) -> GroupDuctPlan {
+  supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_with_connector(id: "b", designator: "PCIE5", connector: c)])
+}
+
+test fn a_fit_plate_needs_each_header_observed_absent() -> Bool {
+  let present = connector_plan(c: FeaturePresent { value: FaceConnector { from_top: micrometer(count: 2560) } })
+  let unread = connector_plan(c: FeatureNotObserved { read_obligation: "supplied: not looked for" })
+  let named = match admit_group_fit_plate(p: present) { GroupMemberConnectorNotClear { instance: i, reason: _ } => i == "b" _ => false }
+  selects(p: connector_plan(c: FeatureAbsentObserved))
+    && named && refusal_says(p: present, pattern: "b: the end face carries a power header")
+    && refusal_says(p: unread, pattern: "b: whether the end face carries a power header was not observed")
+}
+
+// SIDE BY SIDE MEANS NO EMPTY SLOT BETWEEN: A2s in PCIE4 and PCIE6 are a valid installation and a valid
+// group of two, but the next card does not start where the first ends (PCIE4 plus one slot), so no plate
+// is drawn; PCIE4 and PCIE5 select (the positive control).
+test fn a_fit_plate_is_refused_across_an_empty_slot() -> Bool {
+  let gapped = supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_at(id: "b", designator: "PCIE6")])
+  let typed = match admit_group_fit_plate(p: gapped) { GroupMembersNotSideBySide { reason: r } => string_contains(s: r, pattern: "b does not start in the slot where a ends") _ => false }
+  count(installation_refusals(inst: gapped.installation)) == 0
+    && typed && refusal_says(p: gapped, pattern: "an empty slot lies between them")
+    && selects(p: supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_at(id: "b", designator: "PCIE5")]))
+}
+
+// A TAB IS NEVER DRAWN PAST THE READ SLOPE: the tabs follow the slope for a fixed grip depth, so a taper read
+// with no depth, or shallower than the grip, refuses by name before any geometry; the A2's own taper selects.
+fn a2_with_slope(id: NonEmptyStr, designator: NonEmptyStr, slope_um: Int) -> InstalledCard {
+  let f = a2_card_end
+  let bands = FinFreeBands { top: micrometer(count: 4900), bottom: micrometer(count: 4900), taper: FeaturePresent { value: BandTaper { lip_depth: micrometer(count: 1000), slope_depth: micrometer(count: slope_um), fin_gap: micrometer(count: 1000) } } }
+  let face = CardEndInterface {
+    source: f.source, face_length: f.face_length, face_thickness: f.face_thickness,
+    window_length: f.window_length, window_depth: f.window_depth, window_from_top: f.window_from_top, window_from_back: f.window_from_back,
+    fin_setback: f.fin_setback, fin_free_bands: FeaturePresent { value: bands }, inserts: f.inserts, connector: f.connector,
+  }
+  InstalledCard { instance: CardInstance { id: id, card: DuctCard { row: a2_duct_card.row, end_face: EndFaceRead { face: face } } }, slot: altra_slot(designator: designator) }
+}
+
+fn slope_plan(slope_um: Int) -> GroupDuctPlan {
+  supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_with_slope(id: "b", designator: "PCIE5", slope_um: slope_um)])
+}
+
+test fn a_band_tab_is_refused_on_a_taper_too_shallow_for_its_grip() -> Bool {
+  let flat = match admit_group_fit_plate(p: slope_plan(slope_um: 0)) { GroupMemberFaceUnfit { instance: i, reason: r } => i == "b" && string_contains(s: r, pattern: "read as 0 um deep") _ => false }
+  flat && refusal_says(p: slope_plan(slope_um: 1000), pattern: "b: the band taper's slope is read as 1000 um deep, and the tabs follow it for 1500 um")
+    && selects(p: slope_plan(slope_um: 4000))
+}
+

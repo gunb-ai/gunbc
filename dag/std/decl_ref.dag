@@ -1,7 +1,8 @@
 module std.decl_ref
 
 import std.types { NonEmptyStr, List }
-import std.algebra { collection_concat_shape }
+import std.algebra { collection_concat_shape, Ordering, int_compare_canonical, string_compare_canonical }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by
@@ -88,33 +89,61 @@ fn decl_type_parameter_ref(module_path: String, decl_name: String, parameter: St
   }
 }
 
+// The DeclField total order is the SINGLE source for both ordering and equality of a DeclField: the
+// variant tag first (WholeDeclaration < NamedField < TypeParameter), then the payload. decl_field_eq is
+// defined from it, so ordering and equality can never drift apart (DESIGN 3: one fact, one place).
+fn decl_field_rank(f: DeclField) -> Int {
+  match f {
+    WholeDeclaration => 0
+    NamedField { field_name: _ } => 1
+    TypeParameter { name: _ } => 2
+  }
+}
+
+fn decl_field_compare(a: DeclField, b: DeclField) -> Ordering {
+  let rank = int_compare_canonical(a: decl_field_rank(a), b: decl_field_rank(b))
+  match rank {
+    Equal => match a {
+      WholeDeclaration => Equal
+      NamedField { field_name: fa } => match b {
+        NamedField { field_name: fb } => string_compare_canonical(a: fa as String, b: fb as String)
+        _ => Equal
+      }
+      TypeParameter { name: ta } => match b {
+        TypeParameter { name: tb } => string_compare_canonical(a: ta as String, b: tb as String)
+        _ => Equal
+      }
+    }
+    other => other
+  }
+}
+
 fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
-  match a {
-    WholeDeclaration =>
-      match b {
-        WholeDeclaration => true
-        NamedField { field_name: _ } => false
-        TypeParameter { name: _ } => false
+  match decl_field_compare(a: a, b: b) { Equal => true _ => false }
+}
+
+// The DeclarationRef total order is the SINGLE source for both ordering and equality of a ref:
+// lexicographic over module_path, then decl_name, then the DeclField order. It is deliberately NOT the
+// display key: distinct refs can share a display key (decl_name "n::x" with WholeDeclaration renders
+// "m::n::x", the same string as decl_name "n" with NamedField "x"), so ordering by the display key could
+// collapse distinct refs into Equal. This compares the variant tag and payload structurally.
+// declaration_ref_eq is defined from the order, so order-equality and equality are one fact (DESIGN 3).
+fn declaration_ref_compare(a: DeclarationRef, b: DeclarationRef) -> Ordering {
+  let m = string_compare_canonical(a: a.module_path as String, b: b.module_path as String)
+  match m {
+    Equal => {
+      let n = string_compare_canonical(a: a.decl_name as String, b: b.decl_name as String)
+      match n {
+        Equal => decl_field_compare(a: a.field, b: b.field)
+        other => other
       }
-    NamedField { field_name: fa } =>
-      match b {
-        WholeDeclaration => false
-        NamedField { field_name: fb } => fa == fb
-        TypeParameter { name: _ } => false
-      }
-    TypeParameter { name: pa } =>
-      match b {
-        WholeDeclaration => false
-        NamedField { field_name: _ } => false
-        TypeParameter { name: pb } => pa == pb
-      }
+    }
+    other => other
   }
 }
 
 fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
-  a.module_path == b.module_path
-    && a.decl_name == b.decl_name
-    && decl_field_eq(a: a.field, b: b.field)
+  match declaration_ref_compare(a: a, b: b) { Equal => true _ => false }
 }
 
 fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {
@@ -136,4 +165,22 @@ fn declaration_ref_display_key(ref: DeclarationRef) -> String {
         concat("::", concat(ref.decl_name as String, concat("::<", concat(t as String, ">")))),
       )
   }
+}
+
+// THE STRUCTURAL IDENTITY OF A DeclarationRef, beside the type, its equality and its order: module path,
+// declaration name and the field coordinate, each tagged so that no two coordinates share a preimage. A
+// consumer that keys on a declaration reference (gunbc.serving.serving_layout's grant identity) asks the
+// type's own home instead of a census module.
+fn declaration_ref_identity(reference: DeclarationRef) -> Fnv1a64Structural {
+  let module_part = content_hash_tagged_structural(tag: "declaration-module", payload: content_hash_atom(value: reference.module_path))
+  let name_part = content_hash_tagged_structural(tag: "declaration-name", payload: content_hash_atom(value: reference.decl_name))
+  let field_part = match reference.field {
+    WholeDeclaration =>
+      content_hash_tagged_structural(tag: "declaration-field-whole", payload: content_hash_atom(value: "whole"))
+    NamedField { field_name: named } =>
+      content_hash_tagged_structural(tag: "declaration-field-named", payload: content_hash_atom(value: named))
+    TypeParameter { name: parameter } =>
+      content_hash_tagged_structural(tag: "declaration-field-type-parameter", payload: content_hash_atom(value: parameter))
+  }
+  content_hash_combine_structural(left: module_part, right: content_hash_combine_structural(left: name_part, right: field_part))
 }
