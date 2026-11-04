@@ -712,7 +712,8 @@ test fn claim_2_a_non_lab_deployment_refuses_the_same_agent_evidence() -> Bool {
     && !retire_admitted_under(policy: tracker_write_authorization_policy, security: agent_security())
 }
 
-// CLAIM 2 (neighbour): the agent is admitted for retire only; any other action stays a human act.
+// CLAIM 2 (neighbour): approval stays a human act for the agent (it is admitted only for retire and, since
+// lab hotfix 3, assign).
 test fn claim_2_the_agent_is_admitted_for_retire_alone() -> Bool {
   human_write_admission(
     route_path: "/approve/abc" as NonEmptyStr,
@@ -761,6 +762,29 @@ test fn claim_4_absent_and_unenrolled_identities_are_refused_on_both() -> Bool {
       Present { value: _ } => false
       Absent => true
     }
+}
+
+fn assign_admitted_under(policy: ServeWriteAuthorizationPolicy, security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> Bool {
+  human_write_admission(
+    route_path: "/issue/n/assign" as NonEmptyStr,
+    action: ServeActionAssignIssue,
+    security: security,
+    authorization_policy: policy,
+    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+    csrf_presented: "",
+    observed_at: "2026-11-04T14:30:00Z",
+  ) == Permit
+}
+
+// CLAIM 5 (RED before lab hotfix 3): the lab deployment admits the authenticated agent to assign.
+test fn claim_5_the_lab_deployment_admits_the_authenticated_agent_to_assign() -> Bool {
+  assign_admitted_under(policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: agent_security())
+}
+
+// CLAIM 6: the same agent evidence is refused assign under every other deployment's policy.
+test fn claim_6_a_non_lab_deployment_refuses_agent_assign() -> Bool {
+  !assign_admitted_under(policy: write_authorization_policy_for(deployment: srv1_daily_workspace_deployment), security: agent_security())
+    && !assign_admitted_under(policy: tracker_write_authorization_policy, security: agent_security())
 }
 
 // THE PRODUCTION ROSTER NEVER GAINS AN AGENT: the policy every non-lab deployment selects has no agent.

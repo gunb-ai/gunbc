@@ -447,9 +447,14 @@ fn deployment_admits_agent_peer(deployment: DeploymentId) -> Bool {
 
 // The actions an agent peer may take when its deployment rosters it. Everything else (approval, the
 // browser-only composers, allocations) stays a human act.
+// ASSIGN IS AN AGENT ACT ON THE LAB (operator 2026-11-04, lab hotfix 3: "can i make it so you can also
+// assign/dispatch so i don't need to click the button?"). Only the lab deployment rosters the agent
+// (write_authorization_policy_for), so every other deployment still refuses it; the event's author is
+// the agent principal, never the operator. Dispatch verbs (Continue / Start fresh) join this list when
+// they land.
 fn serve_route_action_agent_admissible(action: ServeRouteAction) -> Bool {
   match action {
-    ServeActionAssignIssue => false
+    ServeActionAssignIssue => true
     ServeActionCreateIssue => false
     ServeActionCommentIssue => false
     ServeActionSaveOwnView => false

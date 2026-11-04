@@ -17,7 +17,7 @@ import gunbc.harness.srv4_strata_wire_qualification { srv4_strata_observed_activ
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list }
 import extdeps.pool.pool_front {
   PoolFrontCertificate, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
-  pool_front_authorization_header_line, pool_front_session_header_line, pool_front_model_id,
+  pool_front_authorization_header_line, pool_front_session_header_line, pool_front_model_id, pool_front_any_card_model_id,
   pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text, pool_front_status_meaning,
   PoolFrontNoTlsCardServing, PoolFrontCardUnanswered, PoolFrontUpstreamsBusy, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
 }
@@ -177,9 +177,59 @@ data harness_srv4_strata_operator_route: HarnessOperatorRoute = HarnessOperatorR
   },
 }
 
-// THE ROUTE THE LAB'S HARNESS TAKES: the srv4 strata engine (operator direction 2026-10-28). The pool front row
-// stays declared beside it; switching back is this one binding.
-data harness_operator_route: HarnessOperatorRoute = harness_srv4_strata_operator_route
+// LAB HOTFIX 2 (operator direction 2026-11-04: "get the harness off of srv4 / onto the openresty router",
+// "i would do something more hacky to get us onto openresty, the fabric can come later"). THE SRV1 OPENRESTY
+// ROUTER ROW, in this branch's route model. It is a STOPGAP with a deletion condition: dissolve-on the
+// integration branch carrying gunb-ai/gunbc#15789 (the main authority for this route: PinnedServerCertificate,
+// Qwen38FlashNextOnFabricRouter, origin from gunbc.serving.router_dev_policy router_dev_srv1_site) being deployed
+// to this lab, at which point this row, the srv4 and pool-front rows are deleted in that merge.
+// Known shortcuts, stated rather than hidden: the unit reuses Qwen38FlashNextOnPoolFront because the router's
+// alias is the pool front's model id "flash-next" with the same OpenAI wire (#15789 declares its own unit); the
+// origin and paths are spelled here, not derived from router_dev_srv1_site; upstream choice is the router's own
+// Lua policy (gunbc.serving.router_dev_scaffold, declared debt), not fabric placement.
+data operator_router_origin: NonEmptyStr = "https://192.168.1.203:18443" as NonEmptyStr
+data operator_router_models_path: NonEmptyStr = "/v1/models" as NonEmptyStr
+data operator_router_chat_completions_path: NonEmptyStr = "/v1/chat/completions" as NonEmptyStr
+
+// The router's self-signed listener certificate (srv1 ~/router/tls/cert.pem), the file staged as the
+// credential gunbc-router-server-pem for this instance.
+data operator_router_certificate: PoolFrontCertificate = PoolFrontCertificate {
+  sha256_fingerprint: "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52" as NonEmptyStr,
+  not_after: "2029-01-27" as NonEmptyStr,
+}
+
+data router_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
+  value: 8,
+  reason: "the router fronts 18 owned slots (srv1 vLLM 4, srv3 Strata 4, h11 lanes 5 x 2) plus ctrl overflow; the lab bounds its own fan-out at 8 (the same figure #15789 states) until a live occupancy reading exists" as NonEmptyStr,
+}
+
+// LAB HOTFIX 4: the unit is the one whose model id the router serves on ONE engine kind. Qwen38FlashNextOnPoolFront
+// asks pool_front_any_card_model_id ("slop"), which the router does not advertise, so dispatch selection refused
+// model-not-admitted (first live run, 2026-11-04 ~16:00Z). Qwen38FlashNextIq3sOnSrv4Strata asks
+// "qwen3.8-flash-next-iq3_s", which the router serves on its Strata lanes only (srv3, srv4, the h11 lanes), so the
+// tool-call parser and reasoning wire match every upstream that can answer. The unit's name says srv4; its
+// model id and wire are the router's Strata lanes'. A stated shortcut, dissolving with this row (see above).
+data harness_router_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
+  unit: Qwen38FlashNextIq3sOnSrv4Strata,
+  origin: operator_router_origin,
+  models_path: operator_router_models_path,
+  chat_completions_path: operator_router_chat_completions_path,
+  pinned_certificate: operator_router_certificate,
+  group_wire: "operator:fabric-router" as NonEmptyStr,
+  credential_relative_path: ".config/gunbc-router/client.key" as NonEmptyStr,
+  certificate_relative_path: ".config/gunbc-router/server.pem" as NonEmptyStr,
+  credential_identifier: "gunbc-router-client-key" as NonEmptyStr,
+  certificate_identifier: "gunbc-router-server-pem" as NonEmptyStr,
+  concurrency_ceiling: router_concurrency_budget_policy.value,
+  quality_floor: OperatorQualityFloor {
+    admitted_class: BatchQualityTolerant,
+    consequence: "the operator route serves Qwen3.8-Flash-Next at IQ3_S through the srv1 OpenResty router, answered by one of its Strata lanes (srv3, srv4, the h11 lanes), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
+  },
+}
+
+// THE ROUTE THE LAB'S HARNESS TAKES: the srv1 OpenResty router (lab hotfix 2, 2026-11-04). The srv4 strata and
+// pool-front rows stay declared, unbound, until the #15789 integration merge deletes them.
+data harness_operator_route: HarnessOperatorRoute = harness_router_operator_route
 
 type OperatorClassAdmission
   = OperatorClassAdmitted
@@ -520,9 +570,14 @@ fn operator_route_standing(route: HarnessOperatorRoute, reading: OperatorModelsR
             NinferModelsUnreadable { cause: c } => OperatorRouteUnreadable { cause: c as String }
             NinferModelsAdvertised { ids: ids } => {
               let wanted = harness_unit_model_id(unit: route.unit)
-              // The request names the any-card alias, so the alias must be listed AND every other listed id must be
-              // the card model whose wire facts the unit carries: a second family behind the alias refuses here.
-              let one_family = fold(ids, init: true, f: (ok, i) => ok && (i == (wanted as String) || i == (pool_front_model_id as String)))
+              // The ONE-FAMILY guard belongs to a request that names the any-card ALIAS: an alias may be answered
+              // by any id behind it, so every other listed id must be the card model whose wire facts the unit
+              // carries, and a second family behind the alias refuses here. A request that names a CONCRETE id
+              // is routed only to that id's upstreams (lab hotfix 5: the srv1 router lists flash-next,
+              // Qwen3.8-Flash-Next and qwen3.8-flash-next-iq3_s, and the route asks the last), so for it the id
+              // need only be listed; other listed ids cannot answer it.
+              let asks_alias = (wanted as String) == (pool_front_any_card_model_id as String)
+              let one_family = if asks_alias { fold(ids, init: true, f: (ok, i) => ok && (i == (wanted as String) || i == (pool_front_model_id as String))) } else { true }
               if list_member(xs: ids, x: wanted as String, eq: (a, b) => a == b) && one_family {
                 OperatorRouteServing { model: wanted }
               } else {
