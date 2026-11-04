@@ -358,6 +358,23 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
 
+    // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT: the checkpoint subject's closure roots are
+    // fixed (`cli_run::regen_source_roots`, src/v1 and dag), so this mode takes no --source-root, and
+    // the generic guard below refused its only invocation. Measured: the first heal round to spawn
+    // it (run 41913019422) exited 2 with `provide at least one --source-root`.
+    if regen_checkpoint_subject_mode {
+        return match v1_compiler::cli_run::run_checkpoint_subject(&regen_receipt_path) {
+            Ok(answer) => {
+                eprintln!("regen-checkpoint-subject: {answer:?}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("regen-checkpoint-subject: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
     if source_roots.is_empty() {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
@@ -614,19 +631,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     // remove, so paying it on every push would spend more than the repair saves. The instrument is
     // outside `//:required` by construction there -- `gunbc.discovery_census` derives that
     // aggregate from discovered witness sites, and no fold feeds the instrument population into it.
-
-    if regen_checkpoint_subject_mode {
-        return match v1_compiler::cli_run::run_checkpoint_subject(&regen_receipt_path) {
-            Ok(answer) => {
-                eprintln!("regen-checkpoint-subject: {answer:?}");
-                Ok(ExitCode::SUCCESS)
-            }
-            Err(e) => {
-                eprintln!("regen-checkpoint-subject: refused: {e}");
-                Err(ExitCode::from(1))
-            }
-        };
-    }
 
     if regen_partition_move_explanation_mode {
         return match v1_compiler::cli_run::run_partition_move_explanation(
