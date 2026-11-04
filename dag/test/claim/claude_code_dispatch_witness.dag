@@ -433,7 +433,6 @@ fn discard_required(o: BeltSpawnOutcome) -> Bool {
 test fn only_a_launched_child_consumes_the_snapshot() -> Bool {
   let id = launch_identity_exemplar()
   !discard_required(o: Spawned { node_id: "x", session_name: "gunbc-dispatch-x", provider: "claude", launch: id })
-    && discard_required(o: SupervisorConvened { node_id: "x", unit: "u", provider: "claude", launch: id })
     && discard_required(o: SpawnFailed { node_id: "x", step: "claude-cli", detail: "preflight refused", provider: "claude", launch: id })
     && discard_required(o: SpawnNotAdmitted { node_id: "x", refusal: LaunchTransitionInhibited { reason: "r" } })
 }

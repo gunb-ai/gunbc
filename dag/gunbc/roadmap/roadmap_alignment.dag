@@ -604,13 +604,11 @@ fn alignment_project_lines(projects: List<AlignmentChainLink>) -> String {
   numbered.out
 }
 
-// THE CHAIN'S OWN FRAME, authored once here because the render is their one consumer. L0 stays a
+// THE CHAIN'S L0 FRAME, authored once here because the render is its one consumer. L0 stays a
 // POINTER: the load phase carries the principles' text; the render names their home and no more.
-// The ask is bounded (at most three sentences, riding in the submission's explanation) and names
-// the drift route: a drift the worker names is input to the alignment check, not a failure.
+// The render is read by the alignment check and the supervisor a check convenes, never by the
+// worker (gunbc.plans.harness_session_lifecycle, slice S1), so it carries no ask addressed to one.
 data alignment_l0_pointer: String = "L0 root principles: the root principles in DESIGN.md govern; in particular single authority, fail-closed, displaced cost."
-
-data alignment_drift_ask: String = "Ask: in at most three sentences of your submission's explanation, state how the current work serves the task contract and the project intent, and NAME any drift you can see. A drift named here is input to the alignment check; it is not a failure."
 
 fn alignment_chain_render(chain: AlignmentResolvedChain) -> String {
   join([
@@ -621,7 +619,7 @@ fn alignment_chain_render(chain: AlignmentResolvedChain) -> String {
       prefix: join(["L", to_string(value: count(chain.projects) + 1), " task contract: "], ""),
       link: chain.task,
     ),
-    "\n", alignment_drift_ask, "\n\n",
+    "\n",
   ], "")
 }
 

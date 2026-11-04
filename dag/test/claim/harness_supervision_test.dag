@@ -13,7 +13,11 @@ import gunbc.harness.harness_turn {
   harness_supervision_verdict_decode, harness_supervision_counts_down, harness_messages_with_steer,
   harness_tool_result_messages_json, harness_outcome_label, harness_outcome_detail,
   harness_event_supervision_verdict, harness_supervision_verdict_name,
+  harness_supervisor_receipt_decode, HarnessSupervisorRead, SupervisorReadDecoded, SupervisorReadUnreadable,
+  harness_nested_usage_lines, harness_supervision_observation_text, harness_supervision_message_bound,
 }
+import gunbc.roadmap.roadmap_supervisor { SupervisorVerdictReceipt, VerdictSteer, VerdictStuck, supervisor_verdict_text }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
 import gunbc.harness.harness_cli { harness_turn_exit, harness_worker_supervision, harness_worker_step_budget }
 
 fn decodes_to_kind(text: String, kind: String) -> Bool {
@@ -103,11 +107,65 @@ test fn a_worker_is_supervised_exactly_when_it_carries_a_chain() -> Bool {
 }
 
 // THE VERDICT IS RECORDED IN THE WORKER'S EVENT STREAM, keyed by the turn it followed, and each
-// boundary's check writes a distinct verdict file so a later boundary never reads an earlier verdict.
+// boundary's check and supervisor write distinct verdict files, so a later boundary never reads an
+// earlier verdict and the check never reads the supervisor's.
 test fn each_boundary_records_its_own_verdict() -> Bool {
   let event = harness_event_supervision_verdict(steps_taken: 40, verdict: Misaligned { direction: "add the regression test first" })
   event.contains("supervision.verdict")
     && event.contains("40")
     && event.contains("add the regression test first")
-    && harness_supervision_verdict_name(steps_taken: 40) != harness_supervision_verdict_name(steps_taken: 80)
+    && harness_supervision_verdict_name(kind: "check", steps_taken: 40) != harness_supervision_verdict_name(kind: "check", steps_taken: 80)
+    && harness_supervision_verdict_name(kind: "check", steps_taken: 40) != harness_supervision_verdict_name(kind: "supervisor", steps_taken: 40)
+}
+
+// THE SUPERVISOR'S RECEIPT DECIDES ONLY THE TURN IT ADJUDICATED: a receipt for another turn is
+// refused, never applied, so a stale or copied file cannot steer or stop this boundary.
+test fn the_supervisor_receipt_binds_this_boundary_turn() -> Bool {
+  let steer = supervisor_verdict_text(receipt: SupervisorVerdictReceipt { adjudicated_turn: 80, verdict: VerdictSteer { direction: "emit the crontab line only" } })
+  let stale = supervisor_verdict_text(receipt: SupervisorVerdictReceipt { adjudicated_turn: 40, verdict: VerdictStuck { cause: "c" } })
+  (match harness_supervisor_receipt_decode(text: steer, steps_taken: 80) {
+    SupervisorReadDecoded { verdict } => match verdict { VerdictSteer { direction } => direction == "emit the crontab line only"  _ => false }
+    SupervisorReadUnreadable { cause: _ } => false
+  })
+    && (match harness_supervisor_receipt_decode(text: stale, steps_taken: 80) {
+      SupervisorReadDecoded { verdict: _ } => false
+      SupervisorReadUnreadable { cause } => cause.contains("turn 40") && cause.contains("turn 80")
+    })
+}
+
+// THE PAUSE'S TOKENS ARE THE ATTEMPT'S: from a nested turn's stream, usage rows are carried --
+// including a usage-unavailable row and a line that is not JSON, so a gap refuses where usage is
+// read -- and every other event stays behind.
+test fn a_nested_turn_carries_its_usage_and_nothing_else() -> Bool {
+  let body = join([
+    "\{\"type\": \"turn.started\"}",
+    "\{\"type\": \"round.usage\", \"step\": 1, \"input_tokens\": 900, \"output_tokens\": 40, \"epoch_ms\": 5}",
+    "\{\"type\": \"item.completed\", \"item\": \{\"type\": \"command_execution\"}}",
+    "\{\"type\": \"round.usage_unavailable\", \"step\": 2, \"cause\": \"no usage member\"}",
+    "not json",
+    "",
+  ], "\n")
+  let carried = harness_nested_usage_lines(body: body)
+  list_length(items: carried) == 3
+    && any(carried, l => l.contains("\"round.usage\""))
+    && any(carried, l => l.contains("round.usage_unavailable"))
+    && any(carried, l => l == "not json")
+    && !any(carried, l => l.contains("turn.started") || l.contains("item.completed"))
+}
+
+fn message(text: String) -> JsonValue {
+  json_object([json_kv(key: "role", value: json_string(s: "user")), json_kv(key: "content", value: json_string(s: text))])
+}
+
+// THE OBSERVATION IS THE ROUND, BOUNDED: the brief is never re-sent, only the latest round's
+// messages are, and each is cut at its bound with the cut marked.
+test fn the_observation_is_the_latest_round_bounded() -> Bool {
+  let big = join(["the start ", join(["0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789"], ""), "", ""], "")
+  let huge = join([big, big, big, big, big, big, big, big, big, big], "")
+  let msgs = [message(text: "THE BRIEF"), message(text: "older"), message(text: "recent"), message(text: huge)]
+  let observed = harness_supervision_observation_text(messages: msgs, round_steps: 1)
+  !observed.contains("THE BRIEF")
+    && observed.contains("recent")
+    && observed.contains("...[cut]")
+    && string_length(s: observed) < string_length(s: huge)
 }
