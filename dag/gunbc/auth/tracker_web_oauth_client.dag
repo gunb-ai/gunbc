@@ -54,11 +54,11 @@ data tracker_web_test_oauth_client_id: NonEmptyStr = "433089409875-2c1u5obhaeafe
 
 data tracker_web_stage_oauth_client_id: NonEmptyStr = "433089409875-q072i67ddv7fghlpf978cbi8bv6r5pql.apps.googleusercontent.com" as NonEmptyStr
 
-data tracker_web_test_oauth_console_project: NonEmptyStr = "433089409875" as NonEmptyStr
+data tracker_web_oauth_console_project: NonEmptyStr = "433089409875" as NonEmptyStr
 
 data tracker_web_stage_oauth_desired_revision: NonEmptyStr = "tracker-web-stage-2026-11-04" as NonEmptyStr
 
-data tracker_web_test_oauth_workspace_customer: NonEmptyStr = "gunb.ai" as NonEmptyStr
+data tracker_web_oauth_workspace_customer: NonEmptyStr = "gunb.ai" as NonEmptyStr
 
 data tracker_web_test_oauth_desired_revision: NonEmptyStr = "tracker-web-test-2026-10-11" as NonEmptyStr
 
@@ -90,7 +90,7 @@ data approve_ios_oauth_client: NativeOauthClientRegistration = NativeOauthClient
   display_name: "approvals" as NonEmptyStr,
   client_id: approve_ios_oauth_client_id,
   project_id: gunbc_tracker_oauth_console_project_id,
-  project_number: tracker_web_test_oauth_console_project,
+  project_number: tracker_web_oauth_console_project,
   registration: RegisteredIosClient { bundle_id: approve_ios_bundle_id },
 }
 
@@ -242,8 +242,8 @@ fn tracker_web_instance_environment(instance_id: NonEmptyStr) -> GoogleLoginEnvi
 fn tracker_web_workspace_identity_binding(client: TrackerWebEnvironmentClient) -> WorkspaceIdentityBinding {
   let b = tracker_web_environment_client_binding(client: client)
   WorkspaceIdentityBinding {
-    customer: tracker_web_test_oauth_workspace_customer,
-    project: tracker_web_test_oauth_console_project,
+    customer: tracker_web_oauth_workspace_customer,
+    project: tracker_web_oauth_console_project,
     client: b.client_id,
     top_org_unit: "/" as NonEmptyStr,
     redirect_uris: b.redirect_uris,
@@ -314,7 +314,7 @@ fn tracker_web_registered_web_client_console_readback(client: TrackerWebEnvironm
             Absent => none
             Present { value: until } => Present { value: WorkspaceAdminReadback {
               subject: AuthPlatformClient {
-                project: tracker_web_test_oauth_console_project,
+                project: tracker_web_oauth_console_project,
                 client: client.client_id,
               },
               observed: RegisteredWebClient { redirect_uris: rb.observed_redirect_uris },
