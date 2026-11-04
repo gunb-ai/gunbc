@@ -418,7 +418,7 @@ fn operator_round_fault_text(fault: OperatorRoundFault) -> String {
 // one is a third: none of them is "no model serving".
 type OperatorModelsReading
   = OperatorFrontUnanswered { url: String }
-  | OperatorFrontCertificateRefused { url: String, detail: String }
+  | OperatorFrontCertificateRefused { url: String, fault: OperatorRoundFault }
   | OperatorProbeNotSent { url: String, detail: String }
   | OperatorModelsRefused { url: String, status: String }
   | OperatorModelsAnswered { body: String }
@@ -432,7 +432,7 @@ type OperatorRouteStanding
 fn operator_route_standing(route: HarnessOperatorRoute, reading: OperatorModelsReading) -> OperatorRouteStanding {
   match reading {
     OperatorFrontUnanswered { url: u } => OperatorRouteUnreachable { url: u }
-    OperatorFrontCertificateRefused { url: u, detail: d } => OperatorRouteUnreadable { cause: join(["the certificate ", u, " presented is not the pinned router certificate (", d, "); nothing was sent"], "") }
+    OperatorFrontCertificateRefused { url: u, fault: f } => OperatorRouteUnreadable { cause: join([u, ": ", operator_round_fault_text(fault: f), "nothing was sent"], "") }
     OperatorProbeNotSent { url: u, detail: d } => OperatorRouteUnreadable { cause: join(["the probe of ", u, " was not sent: ", d], "") }
     OperatorModelsRefused { url: u, status: st } => OperatorRouteUnreadable { cause: join(["the router answered ", u, " with HTTP status ", st, " (401 is the client key being rejected)"], "") }
     OperatorModelsAnswered { body: b } =>

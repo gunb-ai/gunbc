@@ -87,8 +87,13 @@ test fn a_front_that_rejects_the_key_reads_unreadable_not_unreachable() -> Bool 
 // A certificate that is not the pinned one, and a probe that was never sent, are each a refusal and never
 // "none serving" or "unreachable": no fallback route is implied.
 test fn a_refused_certificate_and_an_unsent_probe_read_unreadable_and_name_it() -> Bool {
-  (match operator_route_standing(route: harness_operator_route, reading: OperatorFrontCertificateRefused { url: "https://192.168.1.203:18443/v1/models", detail: "curl exit 90" }) {
-    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "not the pinned") && string_contains(s: c, pattern: "nothing was sent")
+  (match operator_route_standing(route: harness_operator_route, reading: OperatorFrontCertificateRefused { url: "https://192.168.1.203:18443/v1/models", fault: OperatorCertificateNotPinned { curl_exit: 90 } }) {
+    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "not the pinned one") && string_contains(s: c, pattern: "nothing was sent") && !string_contains(s: c, pattern: "trusted anchor")
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  }) && (match operator_route_standing(route: harness_operator_route, reading: OperatorFrontCertificateRefused { url: "https://192.168.1.203:18443/v1/models", fault: OperatorCertificateNotVerifiedForHost { curl_exit: 60 } }) {
+    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "trusted anchor") && !string_contains(s: c, pattern: "not the pinned one")
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
     OperatorRouteUnreachable { url: _ } => false
