@@ -201,6 +201,8 @@ import gunbc.live_deploy.apply_receipt {
   LiveDeployRoleSingletonDisposition, RoleSingletonsNoop, RoleSingletonsInPlace, RoleSingletonsInstalled, RoleSingletonsRefusedBeforeApply,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
   live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir_for, live_deploy_apply_receipt_artifact_path_for,
+  LiveDeployTransactionRefusalReceipt, live_deploy_transaction_refusal_schema,
+  live_deploy_transaction_refusal_json, live_deploy_transaction_refusal_path_for,
 }
 import gunbc.roadmap.roadmap_site_surface_types { HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused }
 import gunbc.running_release_identity {
@@ -1508,6 +1510,55 @@ fn live_deploy_write_apply_receipt(spec: DeploymentSpec, receipt: LiveDeployAppl
   }
 }
 
+// THE TRANSACTION'S OWN NAME, recorded on every refusal receipt. The run-bound admission arms make
+// the fleet-converge workflow the only place this chain can run to completion, so the CI entry name
+// IS the transaction's name at every arm; naming it at the arm instead would let one arm lie.
+data live_deploy_transaction_name: String = "live_deploy_apply_prod_role_transaction_wet"
+
+// THE TRANSACTION'S REFUSAL ARMS ROUTE THROUGH HERE. Every arm of the CI transaction that ends in
+// exit_failure BEFORE an apply receipt can exist calls this first: the receipt reaches disk even
+// when the run is about to exit 1, so a refused deploy leaves a named artifact in the receipt
+// directory instead of an empty one (the upload then ships it, and the exactly-one-receipt step has
+// something to count). If the refusal receipt itself cannot be written, the exit reason says BOTH
+// facts -- the refusal and the missing artifact that should have named it -- rather than only one.
+fn live_deploy_transaction_refused(
+  deployment: DesiredDeployment,
+  arm: String,
+  detail: String,
+  exit: ProcessExit,
+) -> ProcessExit {
+  let spec = selected_deployment_spec(row: deployment)
+  let receipt = LiveDeployTransactionRefusalReceipt {
+    schema: live_deploy_transaction_refusal_schema,
+    transaction: live_deploy_transaction_name,
+    target: deployment_plan_host_identity(spec: spec),
+    instance_id: spec.instance_id as String,
+    arm: arm,
+    detail: detail,
+    completed_at: clock_now_probed_at_or_unknown() as String,
+    receipt_identity: "",
+  }
+  let dir = live_deploy_apply_receipt_dir_for(instance_id: spec.instance_id as String)
+  let path = live_deploy_transaction_refusal_path_for(instance_id: spec.instance_id as String)
+  match run_shell_commands(commands: [mkdir_parents_command(path: dir)], transport: LocalExec) {
+    ExitFailure { code: _, reason: why } =>
+      exit_failure(reason: join(["live_deploy transaction: ", arm, " (", detail, "); refusal-receipt dir refused: ", why], ""))
+    ExitSuccess => {
+      let wrote = Filesystem.Write(
+        path: path,
+        content: serialize_json(v: live_deploy_transaction_refusal_json(r: receipt)),
+      )
+      if !wrote.success {
+        exit_failure(
+          reason: join(["live_deploy transaction: ", arm, " (", detail, "); refusal-receipt write refused at ", path, ": ", wrote.error], ""),
+        )
+      } else {
+        exit
+      }
+    }
+  }
+}
+
 fn live_deploy_apply_receipt_for(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
@@ -1594,8 +1645,15 @@ fn live_deploy_receipted_with_candidate(
   provenance: LiveDeployApplyProvenance,
 ) -> ProcessExit {
   match observe_candidate_root_tree_oid(repo: ".") {
-    CandidateTreeOidUnobservable { detail: d } =>
-      exit_failure(reason: join(["live_deploy apply: CandidateTreeUnobservable — ", d], ""))
+    CandidateTreeOidUnobservable { detail: d } => {
+      let why = join(["live_deploy apply: CandidateTreeUnobservable — ", d], "")
+      live_deploy_transaction_refused(
+        deployment: deployment,
+        arm: "CandidateTreeUnobservable",
+        detail: why,
+        exit: exit_failure(reason: why),
+      )
+    }
     CandidateTreeOidObserved { oid_hex: candidate_tree } =>
       live_deploy_receipted_decided(
         deployment: deployment,
@@ -1610,13 +1668,29 @@ fn live_deploy_receipted_with_candidate(
 fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: DeployAccess, run: ActionsRunBinding, expected: String, provenance: LiveDeployFleetProvenance) -> ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
-      exit_failure(reason: candidate_unobservable_detail(cause: why))
+      live_deploy_transaction_refused(
+        deployment: deployment,
+        arm: "CandidateUnobservable",
+        detail: candidate_unobservable_detail(cause: why),
+        exit: exit_failure(reason: candidate_unobservable_detail(cause: why)),
+      )
     CandidateObserved { candidate: candidate } =>
       if (candidate.revision as String) != expected {
-        exit_failure(reason: join(["live_deploy transaction: CandidateNotExpected — the checkout is ", candidate.revision as String, " but R is ", expected], ""))
+        live_deploy_transaction_refused(
+          deployment: deployment,
+          arm: "CandidateNotExpected",
+          detail: join(["live_deploy transaction: CandidateNotExpected — the checkout is ", candidate.revision as String, " but R is ", expected], ""),
+          exit: exit_failure(reason: join(["live_deploy transaction: CandidateNotExpected — the checkout is ", candidate.revision as String, " but R is ", expected], "")),
+        )
       } else {
         match live_deploy_pre_swap_for_deployment(deployment: deployment) {
-          PreSwapRefused { reason } => exit_failure(reason: reason)
+          PreSwapRefused { reason } =>
+            live_deploy_transaction_refused(
+              deployment: deployment,
+              arm: "PreSwapRefused",
+              detail: reason,
+              exit: exit_failure(reason: reason),
+            )
           PreSwapAdmitted =>
             live_deploy_receipted_with_candidate(
               deployment: deployment,
@@ -1631,24 +1705,34 @@ fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: Deplo
 
 fn live_deploy_transaction_admitted_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
   match observe_actions_run_binding_at_checkout() {
-    ActionsRunUnbound { variable: v, detail: d } =>
-      exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
+    ActionsRunUnbound { variable: v, detail: d } => {
+      let why = join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], "")
+      live_deploy_transaction_refused(deployment: deployment, arm: "RunUnbound", detail: why, exit: exit_failure(reason: why))
+    }
     ActionsRunBound { binding: run } =>
       match admit_optional_expected_revision(binding: run) {
-            RunRevisionRefused { expected: e, observed: o } =>
-              exit_failure(reason: join(["live_deploy transaction: RunRevisionNotExpected — this run executes ", o, " but R is ", e], ""))
+            RunRevisionRefused { expected: e, observed: o } => {
+              let why = join(["live_deploy transaction: RunRevisionNotExpected — this run executes ", o, " but R is ", e], "")
+              live_deploy_transaction_refused(deployment: deployment, arm: "RunRevisionNotExpected", detail: why, exit: exit_failure(reason: why))
+            }
             RunRevisionAdmitted { revision: admitted } =>
               match read_live_deploy_fleet_provenance() {
-                FleetProvenanceAbsent { variable: v, detail: d } =>
-                  exit_failure(reason: join(["live_deploy transaction: FleetProvenanceAbsent — ", v, " ", d], ""))
+                FleetProvenanceAbsent { variable: v, detail: d } => {
+                  let why = join(["live_deploy transaction: FleetProvenanceAbsent — ", v, " ", d], "")
+                  live_deploy_transaction_refused(deployment: deployment, arm: "FleetProvenanceAbsent", detail: why, exit: exit_failure(reason: why))
+                }
                 FleetProvenancePresent { inputs: inputs } =>
                   match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
-                    FleetConvergePlanReceiptUnreadable { reason: why } =>
-                      exit_failure(reason: join(["live_deploy transaction: PlanReceiptUnreadable — ", why, "; the dashboard transaction refuses to run without the predecessor receipts it must cite"], ""))
+                    FleetConvergePlanReceiptUnreadable { reason: why } => {
+                      let detail = join(["live_deploy transaction: PlanReceiptUnreadable — ", why, "; the dashboard transaction refuses to run without the predecessor receipts it must cite"], "")
+                      live_deploy_transaction_refused(deployment: deployment, arm: "PlanReceiptUnreadable", detail: detail, exit: exit_failure(reason: detail))
+                    }
                     FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
                   match read_fleet_converge_apply_receipt_at(path: fleet_converge_apply_receipt_path) {
-                    FleetConvergeApplyReceiptUnreadable { reason: why } =>
-                      exit_failure(reason: join(["live_deploy transaction: FleetApplyReceiptUnreadable — ", why], ""))
+                    FleetConvergeApplyReceiptUnreadable { reason: why } => {
+                      let detail = join(["live_deploy transaction: FleetApplyReceiptUnreadable — ", why], "")
+                      live_deploy_transaction_refused(deployment: deployment, arm: "FleetApplyReceiptUnreadable", detail: detail, exit: exit_failure(reason: detail))
+                    }
                     FleetConvergeApplyReceiptDecoded { receipt: fleet_apply_receipt } => {
                   let provenance = LiveDeployFleetProvenance {
                     plan_run_id: inputs.plan_run_id,
@@ -1675,7 +1759,13 @@ fn live_deploy_transaction_wet_with_access_for_realization(
   realization: RepositoryTransitionRealization,
 ) -> ProcessExit {
   match repository_transition_admission(realization: realization) {
-    LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
+    LegacyGitFileSyncNotAdmitted { reason: why } =>
+      live_deploy_transaction_refused(
+        deployment: deployment,
+        arm: "LegacyGitFileSyncNotAdmitted",
+        detail: why,
+        exit: exit_failure(reason: why),
+      )
     RepositoryTransitionAdmitted => live_deploy_transaction_admitted_wet_with_access(deployment: deployment, access: access)
   }
 }

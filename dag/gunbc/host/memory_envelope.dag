@@ -113,6 +113,12 @@ fn memory_envelope_decision(
   }
 }
 
+// WHAT THIS VERDICT CANNOT SEE: a run that never exits. Its two refusals are the TERMINAL endings a
+// swapless slot can produce -- an OOM kill and charged swap -- and a run held under memory.high
+// below memory.max produces neither. Liveness under the envelope is a separate authority observed
+// during the run, gunbc.host.memory_stall_refusal supervised_subject_verdict
+// (gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal).
+//
 // THE VERDICT OVER TWO READINGS OF THE BOUNDING CGROUP, before the producer and at exit. The
 // counters are DIFFERENCES because a slot's cgroup outlives the step: an OOM kill an earlier job
 // suffered is not this step's. Swap is judged three ways. memory.swap.current is a gauge -- swap

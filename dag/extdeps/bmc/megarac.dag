@@ -317,30 +317,22 @@ fn megarac_redirection_status_of_wire(
 // "0.45"; the marker is not claimed for any other release.
 data megarac_no_redirection_session_index: Int = 255
 
-// WHAT CODE 16 MEANS, AND ONLY AS FAR AS IT WAS READ. On the release the controller reports ("0.45"), a
-// row that reads redirection_status 16 AND carries the no-session marker is the vendor's STOPPED - DEVICE
-// EJECTED state: the row is there, and it is NOT presenting. The reads that ground the triple, and the one
-// vendor-side label that corroborates it, are retained as receipts in the observing layer at
-// gunbc.machine_intake.megarac_media_row_reading:
-//   boot_run_40258937016_end_media_row -- boot run 40258937016, read back at 1792983408184: media_type 1,
-//     media_index 0, session_index 255, image_name the runner medium, redirection_status 16
-//     (artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt line 2055). That read
-//     also carries cd_error_code 16; WHAT THAT ERROR CODE MEANS IS NOT ESTABLISHED, is not claimed here,
-//     and no row reading is re-read through it.
-//   boot_run_40264233543_end_media_row -- the next attempt met the identical triple and REFUSED at media
-//     attach on it (artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-diagnostics.txt lines
-//     117 and 2055).
-//   mtcollins1_cd_row_ui_attestation -- THE VENDOR'S OWN WORDS, as an operator read the controller's web
-//     UI on 2026-10-26: "CD/DVD 0, gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso,
-//     Stopped - Device Ejected, N/A". Typed as a dated attestation, not a machine read, and kept in the
-//     observing layer: a person reading a vendor page is an observation this repository makes, not a fact
-//     of the upstream product (DESIGN.md §3). It corroborates the state; it does not supply the code.
-// WHAT IS NOT CLAIMED, and the SHAPE of this fold is what keeps the claim inside its evidence: 16 beside
-// an ACTIVE session index is not this state -- the only started session read at this build carried index 0
-// (boot_run_40258937016_started_session_marker) with status started -- so it stays an uncatalogued wire;
-// 16 on any other release stays uncatalogued (0.32 never returned 16); and a row whose reading did not
-// carry a session index is not promoted either. test.claim.machine_intake.megarac_media_0_45_3_witness
-// pins each of those separations.
+// WHAT A CODE MEANS FOR A ROW, AND ONLY AS FAR AS THE VENDOR ATTESTS IT. This fold has one arm per read
+// TRIPLE it holds VENDOR evidence for, and the arm's guards are the shape of that evidence: release, wire and
+// session marker. An arm fires only on the combination that was read; everything else falls to the wire table
+// above, which is the only other place a code becomes a state.
+// WHAT IS NOT CLAIMED, and the SHAPE of this fold is what keeps the claim inside its evidence: 16 beside an
+// ACTIVE session index is not this state -- the only started session read at this build carried index 0
+// (boot_run_40258937016_started_session_marker) with status started -- so it stays an uncatalogued wire; 16
+// on any other release stays uncatalogued (0.32 never returned 16); and a row whose reading did not carry a
+// session index is not promoted either. test.claim.machine_intake.megarac_media_0_45_3_witness pins each of
+// those separations.
+// CODE 0 ON THIS RELEASE IS NOT HERE, AND THAT IS THE VENDOR'S SILENCE RATHER THAN OURS: no 0.45 reading of a
+// media row returned 0 to the vendor's own catalogue, and no operator reading of the controller's UI covers
+// it. What this repository made of the one row it DID read at 0 -- a leftover CD row, no session, no name --
+// is an observation of ours and lives with the observations, at
+// gunbc.machine_intake.megarac_media_attach megarac_status_zero_row_inference; it is not a fact of this
+// upstream (DESIGN.md §3, §3b) and the attach lane treats it as the bet it is.
 fn megarac_redirection_status_of_row(
   firmware: BmcFirmwareReleaseIdentity,
   wire: Int,
@@ -350,10 +342,13 @@ fn megarac_redirection_status_of_row(
     Present { value: i } => i == megarac_no_redirection_session_index
     Absent => false
   }
+  // EVERYTHING THIS FOLD HOLDS NO READING FOR IS ANSWERED BY THE WIRE TABLE, and the wire table is the only
+  // other place a code becomes a state.
+  let by_wire_table = megarac_redirection_status_of_wire(firmware: firmware, wire: wire)
   if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) && wire == 16 && no_session {
     RedirectionStatusKnown { firmware: firmware, status: RedirectionStopped }
   } else {
-    megarac_redirection_status_of_wire(firmware: firmware, wire: wire)
+    by_wire_table
   }
 }
 
