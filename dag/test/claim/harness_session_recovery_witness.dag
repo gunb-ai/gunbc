@@ -15,7 +15,7 @@ import gunbc.harness.harness_session_recovery {
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationHoldUntil, ContinuationRefused, continuation_decision,
+  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationNextAttempt, ContinuationHold, ContinuationHoldUntil, ContinuationRefused, continuation_decision,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
@@ -114,7 +114,7 @@ test fn s3_claim_3_an_interrupted_effect_is_recovery_needed_and_not_resumable() 
 // still ends the lineage; so does a refusal on a hosted-quota route, and one that explained itself.
 test fn s3_claim_4_nothing_handed_in_and_no_refusal_still_ends_the_lineage() -> Bool {
   (match continuation_decision(prior: Present { value: prior_with(recovery: SessionRecoveryNone) }) {
-    ContinuationEnded { reason: _ } => true
+    ContinuationNextAttempt { reason: _, from_branch: _ } => true
     _ => false
   })
     && (match refusal_of(request: validated_request(), route_qualifies: false, body: "") { Absent => true Present { value: _ } => false })
@@ -128,7 +128,7 @@ test fn s3_claim_5_past_the_resume_bound_the_lineage_ends_with_every_cause() -> 
   let lines = concat(concat(concat(needed, resumed), concat(concat(needed, resumed), concat(needed, resumed))), needed)
   session_resume_bound == 3
     && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
-      ContinuationEnded { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
+      ContinuationNextAttempt { reason, from_branch: _ } => reason.contains("every recorded cause") && reason.contains("bound of 3")
       _ => false
     })
     && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: concat(concat(needed, resumed), concat(needed, resumed)) |> concat(needed))) }) {
@@ -342,7 +342,7 @@ test fn patient_claim_pending_rounds_never_move_the_s3_bound() -> Bool {
   let waited = concat(pending_lines(request: validated_request(), round: 40, cause: PendingNoCardServing, since: 1), [session_event_request_redelivered(ordinal: 1, round: 40, at: 2)])
   let lines = concat(concat(concat(needed, resumed), waited), concat(concat(concat(needed, resumed), waited), concat(concat(needed, resumed), concat(waited, needed))))
   match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
-    ContinuationEnded { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
+    ContinuationNextAttempt { reason, from_branch: _ } => reason.contains("every recorded cause") && reason.contains("bound of 3")
     _ => false
   }
 }

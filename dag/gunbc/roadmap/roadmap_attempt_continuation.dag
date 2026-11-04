@@ -69,7 +69,10 @@ type ContinuationDecision
   // one re-delivery wake at it. Untimed holds stay plain ContinuationHold: they name no clock and arm no wake.
   | ContinuationHoldUntil { reason: String, attempt_key: String, redeliver_at: EpochSecs }
   | ContinuationComplete { reason: String }
-  | ContinuationEnded { reason: String }
+  // CONTINUE over a lineage that stopped short of an approved candidate: a NEW physical attempt in the same logical
+  // execution, its worktree started from the prior attempt's branch head (operator ruling 2026-11-04, design_ruling
+  // dispatch_is_continue_or_start_fresh). It replaces the Ended terminal, which spawned nothing and needed a retire record.
+  | ContinuationNextAttempt { reason: String, from_branch: String }
   | ContinuationResume { reason: String, attempt_key: String, ordinal: Int, causes: List<String> }
 
 fn continuation_decision(prior: PriorAttemptFacts?) -> ContinuationDecision {
@@ -213,11 +216,12 @@ fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: RequestPen
 }
 
 fn continuation_ended(prior: PriorAttemptFacts, why: String) -> ContinuationDecision {
-  ContinuationEnded {
+  ContinuationNextAttempt {
     reason: join([
       "the lineage ending at attempt ", prior.attempt_key, " (branch ", prior.branch, ") stopped short of an approved candidate: ", why,
-      " -- its work stays on that branch, and no attempt is started over it",
+      " -- CONTINUE starts the next attempt of the same execution from that branch's head; its work is kept",
     ], ""),
+    from_branch: prior.branch,
   }
 }
 

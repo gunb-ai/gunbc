@@ -215,7 +215,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  ContinuationSpawnFresh, ContinuationHold, ContinuationRefused, ContinuationComplete, ContinuationEnded, ContinuationResume,
+  ContinuationSpawnFresh, ContinuationHold, ContinuationRefused, ContinuationComplete, ContinuationNextAttempt, ContinuationResume,
 }
 import gunbc.roadmap.roadmap_belt_tick_cli {
   belt_verify_one_result_json, belt_integrate_one_result_json,
@@ -266,7 +266,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_addressing }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, DispatchWorkerFirst, DispatchSpawnReady, DispatchSpawnRefused }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, DispatchWorkerFirst, DispatchWorkerContinuedFrom, dispatch_worker_run_start_ref, DispatchSpawnReady, DispatchSpawnRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
@@ -2737,18 +2737,18 @@ test fn the_per_item_receipts_render_their_own_statuses() -> Bool {
 // ------------------------------------------------------------------------------------------------
 
 // THE SPAWN ROUTE OF EVERY NON-SPAWN DECISION IS NONE. Hold (worker running, verification owed),
-// Complete (fully approved), Ended (stopped short of an approved candidate) and Refused carry no
-// spawn, so the spawn fold has no spawn command to reach for; only SpawnFresh reaches a worker.
+// Complete (fully approved) and Refused carry no spawn, so the spawn fold has no spawn command to reach for;
+// only SpawnFresh, NextAttempt (CONTINUE over a lineage that stopped short) and Resume reach a worker.
 test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
   let hold = belt_spawn_route_for_decision(decision: ContinuationHold { reason: "the prior attempt's worker has not ended" })
   let complete = belt_spawn_route_for_decision(decision: ContinuationComplete { reason: "the lineage is complete" })
   let refused = belt_spawn_route_for_decision(decision: ContinuationRefused { reason: "x" })
-  let ended = belt_spawn_route_for_decision(decision: ContinuationEnded { reason: "review requested changes" })
+  let ended = belt_spawn_route_for_decision(decision: ContinuationNextAttempt { reason: "review requested changes", from_branch: "roadmap/n1/a1" })
   let fresh = belt_spawn_route_for_decision(decision: ContinuationSpawnFresh { reason: "no prior" })
   (match hold { SpawnRouteNone { step, detail: _ } => step == "continuation-hold"  _ => false })
     && (match complete { SpawnRouteNone { step, detail: _ } => step == "continuation-complete"  _ => false })
     && (match refused { SpawnRouteNone { step, detail: _ } => step == "continuation"  _ => false })
-    && (match ended { SpawnRouteNone { step, detail } => step == "lineage-ended" && detail == "review requested changes"  _ => false })
+    && (match ended { SpawnRouteNextAttempt { from_branch } => from_branch == "roadmap/n1/a1"  _ => false })
     && (match fresh { SpawnRouteWorker => true  _ => false })
     && (match belt_spawn_route_for_decision(decision: ContinuationResume { reason: "r", attempt_key: "a1", ordinal: 2, causes: ["c"] }) {
       SpawnRouteResume { attempt_key, ordinal } => attempt_key == "a1" && ordinal == 2
@@ -3051,3 +3051,16 @@ test fn a_refused_metering_write_fails_the_metering_pass() -> Bool {
     })
 }
 
+
+// CONTINUE OVER AN ENDED LINEAGE STARTS THE NEXT ATTEMPT FROM THE PRIOR BRANCH HEAD (design_ruling
+// dispatch_is_continue_or_start_fresh). RED control: on the retire-record model an Ended lineage was
+// SpawnRouteNone, so the route assertion below fails there; a worker run for the route cuts its branch from the prior branch
+// and not from base, which the second claim reads off the pure start-ref function.
+test fn continue_over_an_ended_lineage_cuts_the_next_attempt_from_the_prior_branch() -> Bool {
+  (match belt_spawn_route_for_decision(decision: ContinuationNextAttempt { reason: "r", from_branch: "roadmap/n1/a1" }) {
+    SpawnRouteNextAttempt { from_branch } => from_branch == "roadmap/n1/a1"
+    _ => false
+  })
+    && dispatch_worker_run_start_ref(run: DispatchWorkerContinuedFrom { branch: "roadmap/n1/a1" }, base_ref: "origin/main") == "roadmap/n1/a1"
+    && dispatch_worker_run_start_ref(run: DispatchWorkerFirst, base_ref: "origin/main") == "origin/main"
+}

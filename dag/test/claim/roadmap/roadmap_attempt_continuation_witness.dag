@@ -4,7 +4,7 @@ import std.types { Bool, String, Int }
 import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationNextAttempt,
   continuation_decision,
 }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
@@ -70,7 +70,7 @@ fn segment(kind: WorkflowSegmentKind, state: WorkflowSegmentState, detail: Strin
 
 fn ended_with(decision: ContinuationDecision, pattern: String) -> Bool {
   match decision {
-    ContinuationEnded { reason } => reason.contains(pattern) && reason.contains("roadmap/n1/a1") && reason.contains("no attempt is started over it")
+    ContinuationNextAttempt { reason, from_branch } => reason.contains(pattern) && reason.contains("roadmap/n1/a1") && from_branch == "roadmap/n1/a1" && reason.contains("starts the next attempt of the same execution")
     _ => false
   }
 }
@@ -136,7 +136,7 @@ test fn a_long_explanation_is_cut_and_marked() -> Bool {
     verification: none, review: none, goal_audit: none,
   )
   match continuation_decision(prior: Present { value: blocked }) {
-    ContinuationEnded { reason } => reason.contains(" ...") && string_length(s: reason) < string_length(s: long) + 300
+    ContinuationNextAttempt { reason, from_branch: _ } => reason.contains(" ...") && string_length(s: reason) < string_length(s: long) + 300
     _ => false
   }
 }

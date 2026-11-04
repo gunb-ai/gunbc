@@ -74,7 +74,7 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt_executor_origin,
   DispatchExecutorOrigin,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerResumed, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerContinuedFrom, DispatchWorkerResumed, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv }
 import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
@@ -600,7 +600,7 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt_executor_origin,
   DispatchExecutorOrigin,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerResumed, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerContinuedFrom, DispatchWorkerResumed, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv }
 import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
@@ -1092,7 +1092,7 @@ import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitt
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationHoldUntil, ContinuationComplete, ContinuationEnded, ContinuationResume,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationHoldUntil, ContinuationComplete, ContinuationNextAttempt, ContinuationResume,
   continuation_decision,
 }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
@@ -2905,7 +2905,7 @@ fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, pr
     ContinuationHold { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationEnded { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    ContinuationNextAttempt { reason: _, from_branch: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
   }
 }
 
@@ -3062,6 +3062,7 @@ fn belt_actuate_spawn_exec_for_instance(
 type BeltSpawnRoute
   = SpawnRouteWorker
   | SpawnRouteResume { attempt_key: String, ordinal: Int }
+  | SpawnRouteNextAttempt { from_branch: String }
   | SpawnRouteNone { step: String, detail: String }
 
 fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRoute {
@@ -3072,7 +3073,7 @@ fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRou
     ContinuationHold { reason } => SpawnRouteNone { step: "continuation-hold", detail: reason }
     ContinuationHoldUntil { reason, attempt_key: _, redeliver_at: _ } => SpawnRouteNone { step: "continuation-hold-until", detail: reason }
     ContinuationComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
-    ContinuationEnded { reason } => SpawnRouteNone { step: "lineage-ended", detail: reason }
+    ContinuationNextAttempt { reason: _, from_branch } => SpawnRouteNextAttempt { from_branch: from_branch }
   }
 }
 
@@ -3132,6 +3133,14 @@ fn belt_actuate_spawn_exec_modeled(
         prepared: prepared,
         request: request,
         run: DispatchWorkerFirst,
+      )
+    SpawnRouteNextAttempt { from_branch } =>
+      belt_actuate_spawn_with_origin(
+        workdir: workdir, admission_receipt: admission_receipt,
+        provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+        prepared: prepared,
+        request: request,
+        run: DispatchWorkerContinuedFrom { branch: from_branch },
       )
     SpawnRouteResume { attempt_key, ordinal } =>
       if attempt_key != addressing.attempt_key {
@@ -3509,6 +3518,30 @@ fn belt_spawn_stage(
           Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the worktree at ", path, " could not be observed before resuming: ", cause], ""), provider: provider_wire_label, launch: launch } }
       }
     DispatchWorkerFirst =>
+      belt_spawn_stage_new_worktree(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, request: request, process_fingerprint: process_fingerprint)
+    DispatchWorkerContinuedFrom { branch: _ } =>
+      belt_spawn_stage_new_worktree(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, request: request, process_fingerprint: process_fingerprint)
+
+  }
+}
+
+// A WORKTREE ESTABLISHED FOR A NEW ATTEMPT -- First (from the instance base ref) or ContinuedFrom (from the prior attempt's
+// branch head; the start ref is chosen in the spawn commands' worktree-add, not here) share this staging.
+fn belt_spawn_stage_new_worktree(
+  prepared: PreparedAttemptLaunch,
+  workdir: String,
+  admission_receipt: String,
+  provider_wire_label: String,
+  launch: LaunchIdentity,
+  cmds: DispatchSpawnCommands,
+  binding: AlignmentBinding,
+  request: AttemptLaunchRequest,
+  process_fingerprint: NonEmptyStr,
+) -> BeltSpawnOutcome? {
+  let addressing = belt_spawn_addressing(prepared: prepared)
+  let instance = addressing.instance
+  let node = addressing.node
+  let attempt_key = addressing.attempt_key
       match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
         WorktreeClaimNotRecorded { detail } => Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-claim", detail: detail, provider: provider_wire_label, launch: launch } }
         WorktreeClaimRecorded =>
@@ -3565,8 +3598,8 @@ fn belt_spawn_stage(
               }
           }
       }
-  }
 }
+
 
 // ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider
 // from one live selection, and belt_resolved_spawn_plan then read the roster AGAIN beneath it -- and
