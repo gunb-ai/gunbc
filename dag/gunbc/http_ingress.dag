@@ -486,7 +486,7 @@ fn http_ingress_native_argv_from(argv: List<String>, declared: List<String>, acc
             match http_ingress_native_pair(word: word) {
               Absent => HttpIngressNativeArgvRefused { reason: concat("--arg expects name=value, got ", word) }
               Present { value: a } =>
-                if !contains(declared, a.name) {
+                if (declared |> filter(n => n == a.name) |> count) == 0 {
                   HttpIngressNativeArgvRefused { reason: concat("the binding constructor declares no argument ", concat(a.name, concat("; ", http_ingress_native_usage(declared: declared)))) }
                 } else if (http_ingress_native_named(arguments: acc, name: a.name) |> count) > 0 {
                   HttpIngressNativeArgvRefused { reason: concat("binding argument given twice: ", a.name) }

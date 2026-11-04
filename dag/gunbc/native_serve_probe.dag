@@ -45,6 +45,11 @@ fn native_serve_probe_release_revision() -> String {
 // door must refuse BEFORE it binds: a branch name where a revision belongs, and a binding that names a
 // handler of the same module other than the one this binary realizes (the twin-handler control: the
 // binding the exact constructor returns is compared with the program descriptor structurally).
+// A branch name where a 40-hex revision belongs: the binding constructor refuses it before any bind.
+fn native_serve_probe_refused_revision() -> String {
+  "main"
+}
+
 data native_serve_probe_handler: String = "native_serve_fixture_handle"
 data native_serve_probe_twin_handler: String = "native_serve_fixture_twin_handle"
 data native_serve_probe_deadline_ms: Int = 500
