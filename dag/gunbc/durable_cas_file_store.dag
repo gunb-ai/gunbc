@@ -1246,7 +1246,7 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasSlotKeysSubjectRefused { root: root, cause: c }
     FilesystemDirectoryListingRefused { directory: _, error: e } => match filesystem_listing_absence(directory: root as String, error: e, error_kind: listing.error_kind) {
-      FilesystemDirectoryListingAbsent { directory: _ } => CasSlotKeysAbsent { root: root }
+      FilesystemDirectoryListingAbsent { directory: _ } => CasSlotKeysListingRefused { root: root, detail: "MUTANT (collapse-ENOENT-in-cas_slot_keys): not_found answered unreadable" }
       FilesystemDirectoryListingUnreadable { directory: _, error: err, error_kind: kind } => CasSlotKeysListingRefused { root: root, detail: join(["the directory is there but could not be read (error_kind ", kind, "): ", err], "") }
     }
     FilesystemDirectoryListed(listed) => {
