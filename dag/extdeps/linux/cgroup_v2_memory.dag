@@ -294,6 +294,11 @@ fn parse_cgroup_memory_stat(body: String) -> CgroupMemoryStatReading {
 // The five are the same in both events files. WHICH file a count was read from is the interface-file
 // question above, not a field of the record, and it is the question that decides whether an oom_kill
 // is this level's or a descendant's.
+//
+// NO READER OF AN EVENTS BODY EXISTS IN THE CORPUS YET, and this record does not pretend otherwise:
+// it carries no parse and no refusal shape, because a typed refusal with nothing producing it reads as
+// a modeled parse that was never built. The record exists because the endpoint observation already
+// declares the field; a parse joins the authority when a consumer actually reads a body.
 type CgroupMemoryEventCounters {
   low: Nat
   high: Nat
@@ -301,10 +306,6 @@ type CgroupMemoryEventCounters {
   oom: Nat
   oom_kill: Nat
 }
-
-type CgroupMemoryEventCountersReading
-  = CgroupMemoryEventsRead { counters: CgroupMemoryEventCounters }
-  | CgroupMemoryEventCountersIncomplete { missing: List<String> }
 
 // ── THE memory.stat KEYS, BY THEIR KERNEL NAMES, EACH WITH ITS KIND ────────────────────────────
 //
