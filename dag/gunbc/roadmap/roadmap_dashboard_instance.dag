@@ -563,22 +563,6 @@ fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> Fil
   }
 }
 
-fn dashboard_instance_serve_argv(
-  instance: HostDashboardInstance,
-  release_revision: String,
-) -> List<String> {
-  [
-    "serve",
-    "--source-root", "dag",
-    "--source-root", "src/v2",
-    "--entry", "dag/gunbc/roadmap/roadmap_serve.dag",
-    "--function", instance.serve_function as String,
-    "--host", instance.listen_host as String,
-    "--port", to_string(instance.listen_port),
-    "--release-revision", release_revision,
-  ]
-}
-
 fn dashboard_actuation_posture_label(posture: DashboardActuationPosture) -> String {
   match posture {
     DashboardObserveOnly => "observe-only"
