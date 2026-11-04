@@ -528,15 +528,34 @@ fn live_deploy_serve_unit_emission_at(
 // One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
 // manager environment and evaluation caps are the same value, and the two differ only in the
 // entry function they launch and the listener they bind.
+// ONE PRODUCER FOR THE PRINCIPAL SERVE UNIT'S INGRESS CHOICE. The unit
+// live_deploy_serve_unit_file_over installs and the plan serve-entry verdict's argument digest
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) both read the handler,
+// listener and binding function from here -- choosing another listener kind or moving the handler
+// moves the unit and the digest together (DESIGN §3: one fact, one place).
+type ServeUnitIngressArgs {
+  binding_function: NonEmptyStr,
+  handler: NonEmptyStr,
+  listener: HttpIngressListener,
+}
+
+fn live_deploy_serve_unit_ingress_args(service: DeploymentServiceConfig<AdmittedFixedServeBinary>) -> ServeUnitIngressArgs {
+  ServeUnitIngressArgs {
+    binding_function: roadmap_ingress_function,
+    handler: service.serve_function,
+    listener: HttpIngressTcp { host: service.listen.host, port: service.listen.port as Int },
+  }
+}
+
 fn live_deploy_serve_unit_file_over(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>,
 ) -> SystemdUnitFile {
-  let svc = spec.service
+  let args = live_deploy_serve_unit_ingress_args(service: spec.service)
   live_deploy_serve_unit_file_over_listener(
     spec: spec, revision: revision, oidc_env: oidc_env,
     description: "gunbc roadmap HTTP server (gunbc run, ingress binding)" as NonEmptyStr,
-    function: svc.serve_function,
-    listener: HttpIngressTcp { host: svc.listen.host, port: svc.listen.port as Int },
+    function: args.handler,
+    listener: args.listener,
   )
 }
 

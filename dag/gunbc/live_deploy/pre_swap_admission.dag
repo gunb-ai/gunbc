@@ -17,12 +17,12 @@ import gunbc.live_deploy.desired {
   ProdRoleDeploymentRosterRefused,
   ProdRoleDeploymentHolderRowMismatch,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots, roadmap_ingress_function }
+import gunbc.live_deploy.spec { DeploymentSpec }
 import gunbc.live_deploy.emit {
   live_deploy_ingress_argv_segments,
   live_deploy_ingress_limit_argv_segments,
+  live_deploy_serve_unit_ingress_args,
 }
-import gunbc.http_ingress { HttpIngressTcp }
 import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.actions_run_binding {
@@ -457,19 +457,21 @@ type ServeEntryVerdictDecode
   = ServeEntryVerdictDecoded { record: ServeEntryVerdictRecord }
   | ServeEntryVerdictUndecoded { detail: String }
 
-// THE VERDICT'S ARGUMENT DIGEST TEXT: derived from the SAME segments the serve unit's ExecStart
-// weaves around the binary and --release-revision (gunbc.live_deploy.emit
-// live_deploy_serve_argv_segments / live_deploy_serve_budget_argv_segments). The identity binding
-// therefore cannot drift from the text the unit actually binds: renaming, adding or reordering a
-// serve flag moves the digest and the unit together, in one place (DESIGN §3).
+// THE VERDICT'S ARGUMENT DIGEST TEXT. The handler, listener and binding function come from the
+// unit's own producer (gunbc.live_deploy.emit live_deploy_serve_unit_ingress_args) and the argv
+// text from the segments the ExecStart weaves around the binary and --release-revision
+// (live_deploy_ingress_argv_segments / live_deploy_ingress_limit_argv_segments). Neither the
+// choice of listener nor the flag text is worked out twice, so the identity binding cannot drift
+// from the text the unit actually binds (DESIGN §3).
 fn serve_entry_argv_identity_text(spec: DeploymentSpec) -> String {
   let svc = spec.service
+  let args = live_deploy_serve_unit_ingress_args(service: svc)
   join(concat(
     live_deploy_ingress_argv_segments(
       entry: svc.serve_entry,
-      binding_function: roadmap_ingress_function,
-      handler: svc.serve_function,
-      listener: HttpIngressTcp { host: svc.listen.host, port: svc.listen.port as Int },
+      binding_function: args.binding_function,
+      handler: args.handler,
+      listener: args.listener,
     ),
     live_deploy_ingress_limit_argv_segments(cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit),
   ), "")
