@@ -1,6 +1,6 @@
 module test.claim.printable_assembly_selection_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, list_length }
 import extdeps.languages.json.emit { serialize_json }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
 import product.printed_chassis.cassette { rear_socket_bolt_clearances }

@@ -11,8 +11,9 @@ import product.printed_chassis.gpu_duct { screwed_end_cap_of, ScrewedEndCap, Scr
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, a2_duct_card, a16_duct_card }
 import product.printed_chassis.group_duct {
   GroupDuctPlan, GroupFitPlateAdmission, a2_altra_row_plan, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
-  GroupMembersNotSideBySide,
+  GroupMembersNotSideBySide, admit_group_duct, GroupDuctAdmitted,
 }
+import product.printed_chassis.assembly_geometry { Printed, M5FanScrewIntoBlowerLug }
 import product.printed_chassis.printable_assembly { CardGroupRoot, GroupFitPlate, PrintableAssemblyReady, PrintableAssemblyRefused }
 import product.printed_chassis.printable_assembly_selection { group_fit_plate_selection }
 import product.printed_chassis.card_installation {
@@ -216,6 +217,19 @@ test fn a_fit_plate_is_refused_across_an_empty_slot() -> Bool {
 test fn the_a2_row_fit_plate_is_the_plate_and_its_sleeve_alone() -> Bool {
   match admit_group_fit_plate(p: a2_altra_row_plan) {
     GroupFitPlateAdmitted { parts: ps, interfaces: _ } => any(ps, x => x.id == "FIT-PLATE" && length(list: x.adds) == 5 && length(list: x.cuts) == 4)
+    _ => false
+  }
+}
+
+// THE REAL A2 ROW DUCT is one printed part -- the plate, its sleeve and a blower socket per pair -- with one
+// Delta blower and one lug screw for each of the two pairs, each screw a joint of its own.
+test fn the_a2_row_duct_carries_one_blower_and_screw_per_pair() -> Bool {
+  match admit_group_duct(p: a2_altra_row_plan) {
+    GroupDuctAdmitted { parts: ps, interfaces: js } =>
+      length(list: filter(ps, x => match x.kind { Printed => true _ => false })) == 1
+        && any(ps, x => x.id == "DUCT") && any(ps, x => x.id == "FAN-1") && any(ps, x => x.id == "FAN-2") && any(ps, x => x.id == "FAN-3") == false
+        && any(ps, x => x.id == "SCREW-1") && any(ps, x => x.id == "SCREW-2")
+        && length(list: filter(js, j => match j.fastener { M5FanScrewIntoBlowerLug => true _ => false })) == 2
     _ => false
   }
 }
