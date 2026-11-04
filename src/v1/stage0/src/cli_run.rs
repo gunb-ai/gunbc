@@ -7506,7 +7506,19 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // compiling N entries reconciled the shared prefix N times over closures that overlap almost
     // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
     // rather than a budget fact, and for what is NOT changed by the routing.
-    let index: Rc<MultiEntryIndex> = if residency == IndexResidency::OwnedByThisCompile {
+    // AN ENTRY COMPILE RESOLVES OVER THE ENTRY'S DEMAND-ACQUIRED CLOSURE, as `gunbc run` does
+    // (`demand_acquire`), not over a whole-tree index: one workflow under every subcommand
+    // (operator, 2026-11-04), and a tree-scale pool is memory the closure never reads (receipt:
+    // gunbc PR "compile --entry resolves over the demand-acquired closure"). A whole-root subject
+    // still indexes its root: that subject IS the tree.
+    let index: Rc<MultiEntryIndex> = if let CompileSubject::Entry(path) = &request.subject {
+        match demand_acquire::demand_acquired_index_for_entry(source_roots, path) {
+            Ok(index) => index,
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "demand-acquire", cause)
+            }
+        }
+    } else if residency == IndexResidency::OwnedByThisCompile {
         let built = if primary_precedence {
             try_build_module_index_primary_precedence(source_roots)
         } else {

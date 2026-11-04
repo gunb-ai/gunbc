@@ -95,6 +95,24 @@ pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
     }
 }
 
+/// THE DEMAND-ACQUIRED INDEX FOR AN ENTRY COMPILE: the same layout closure `gunbc run` resolves over,
+/// handed to the compile transaction in place of the whole-tree index (operator, 2026-11-04: the gunbc
+/// subcommands are sugar on one workflow). No provider seeds: the compile's own closure fixpoint runs
+/// over this index, and a provider it would need outside the acquired set is the compile's refusal.
+pub(crate) fn demand_acquired_index_for_entry(
+    source_roots: &[String],
+    entry_file: &str,
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let custom = custom_root_module_census(source_roots)?;
+    let index = build_demand_acquired_index(source_roots, entry_file, &custom, &[])?;
+    let roots = source_roots.to_vec();
+    let census = Rc::new(custom);
+    *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
+        layout_provider_answer(&roots, &census, module)
+    }));
+    Ok(index)
+}
+
 fn build_demand_acquired_index(
     source_roots: &[String],
     entry_file: &str,
