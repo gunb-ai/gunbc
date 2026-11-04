@@ -443,6 +443,8 @@ fn attempt_slots_census(target: SessionAttemptSlotsStore, moved: ReplacedAttempt
     Present { value: refusal } => AttemptSlotsCensusRowRefused { refusal: refusal }
     Absent =>
       match attempt_slots_source_store(moved: moved) {
+        // A census answer is never a release trigger. A source PROVEN ABSENT and a source that could not
+        // be READ are different facts and are reported as different facts; neither licenses a carry.
         SlotStoreAbsent { member: _, root: _ } => AttemptSlotsCensusSourceProvenAbsent { old_root: moved.old_slots_root }
         SlotStoreRefused { detail: d } => AttemptSlotsCensusSourceUnreadable { old_root: moved.old_slots_root, detail: d }
         SlotStoreListed { root: listed_root } =>
@@ -547,7 +549,9 @@ fn attempt_slots_carry_refused_detail(cause: CasStoreFailure) -> String {
 // nothing of its own; the census and the carry answer the distinction as their own outcomes
 // (AttemptSlotsCensusSourceProvenAbsent / SourceUnreadable, AttemptSlotsCarrySourceProvenAbsent /
 // SourceUnreadable), which is the mint attempt_slots_source_absent_frontier_ref used to carry as a
-// frontier. That row is retired by this change.
+// frontier row: that row is retired by this change, and the two rows of
+// attempt_slots_cutover_frontier_rows go with it.
+fn attempt_slots_source_store(moved: ReplacedAttemptSlotsRoot) -> SlotStoreAdmission {
   listed_slot_store(member: session_attempt_slots.member as String, root: moved.old_slots_root)
 }
 
@@ -568,6 +572,9 @@ fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptS
     Present { value: refusal } => AttemptSlotsCarryRowRefused { refusal: refusal }
     Absent =>
       match attempt_slots_source_store(moved: moved) {
+        // Proven-absent and unreadable are answered as themselves here too: the coproduct now has both
+        // constructors, so "there is nothing under that root" and "I could not look" no longer share an
+        // outcome. Nothing in either arm infers a release.
         SlotStoreAbsent { member: _, root: _ } => AttemptSlotsCarrySourceProvenAbsent { old_root: moved.old_slots_root }
         SlotStoreRefused { detail: d } => AttemptSlotsCarrySourceUnreadable { old_root: moved.old_slots_root, detail: d }
         SlotStoreListed { root: listed_root } =>

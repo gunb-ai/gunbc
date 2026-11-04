@@ -55,6 +55,15 @@ type TvsSpecification {
   breakdown_maximum: Millivolt
 }
 
+/// A rectifier diode. One rating is carried, the one a consumer reads: the peak repetitive
+/// reverse voltage V_RRM, the figure a rectifier is chosen by. It is a different quantity
+/// from a TVS reverse standoff -- a TVS clamps and a rectifier blocks -- so it is a
+/// different arm, and voltage_withstand labels it RectifierRepetitivePeak rather than
+/// borrowing the TVS name.
+type RectifierSpecification {
+  reverse_repetitive_peak: Volt
+}
+
 type CapacitorSpecification {
   capacitance_microfarads: Nat
   rated_voltage: Volt
@@ -464,6 +473,7 @@ type ComponentSpecification
   | BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification }
   | UsbHubSpec { hub: UsbHubSpecification }
   | ClockFanoutSpec { clock: ClockFanoutSpecification }
+  | RectifierSpec { rectifier: RectifierSpecification }
 
 /// A switch or multiplexer on a shared bus: `channels` independent buses, each reachable from
 /// `inputs_per_channel` candidates, powered by `supplies` (a translating switch lists one range per
@@ -542,6 +552,7 @@ type VoltageWithstandKind
   | CapacitorRatedVoltage
   | DrainSourceMaximum
   | FuseInterruptRating
+  | RectifierRepetitivePeak
 
 type VoltageWithstand {
   kind: VoltageWithstandKind
@@ -551,6 +562,7 @@ type VoltageWithstand {
 fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
   match spec {
     TvsDiodeSpec { tvs } => Present { value: VoltageWithstand { kind: TvsReverseStandoff, maximum: tvs.reverse_standoff } }
+    RectifierSpec { rectifier } => Present { value: VoltageWithstand { kind: RectifierRepetitivePeak, maximum: rectifier.reverse_repetitive_peak } }
     CapacitorSpec { capacitor } => Present { value: VoltageWithstand { kind: CapacitorRatedVoltage, maximum: capacitor.rated_voltage } }
     MosfetSpec { mosfet } => Present { value: VoltageWithstand { kind: DrainSourceMaximum, maximum: mosfet.drain_source_maximum } }
     TemperatureSensorSpec { sensor: _ } => Absent
