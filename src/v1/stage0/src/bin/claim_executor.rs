@@ -119,6 +119,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut regen_round_cost_mode = false;
     let mut base_mirror_mode = false;
     let mut regen_affected_set_mode = false;
+    let mut regen_partition_move_explanation_mode = false;
     let mut required_admitted_set_mode = false;
     // `--query-module <identity>`: the typed admission answer for ONE identity, printed by
     // --required-ci. Absence is never reported as silence -- see ModuleAdmission.
@@ -171,6 +172,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen" => {
                 required_regen_mode = true;
+            }
+            // THE PARTITION-MOVE EXPLANATION, AS ITS OWN PROCESS: the heal round's orchestrator
+            // spawns this so the whole-corpus closure index the decision demands lives and dies here,
+            // never in the orchestrator (gunbc.regen_receipt RegenPartitionMoveExplanation).
+            "--regen-partition-move-explanation" => {
+                regen_partition_move_explanation_mode = true;
             }
             // THE SANCTIONED PRODUCER for the derived partition's boundary files. Named by the
             // phase's own refusal, because a stop whose only remedy does not exist is what
@@ -600,6 +607,22 @@ fn run() -> Result<ExitCode, ExitCode> {
     // remove, so paying it on every push would spend more than the repair saves. The instrument is
     // outside `//:required` by construction there -- `gunbc.discovery_census` derives that
     // aggregate from discovered witness sites, and no fold feeds the instrument population into it.
+
+    if regen_partition_move_explanation_mode {
+        return match v1_compiler::cli_run::run_partition_move_explanation(
+            &regen_receipt_path,
+            &source_roots,
+        ) {
+            Ok(answer) => {
+                eprintln!("regen-partition-move-explanation: {answer:?}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("regen-partition-move-explanation: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
 
     if regen_affected_set_mode {
         return match v1_compiler::cli_run::run_regen_affected_set(&source_roots) {

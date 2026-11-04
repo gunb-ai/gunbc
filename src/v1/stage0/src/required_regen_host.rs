@@ -2593,7 +2593,7 @@ mod tests {
             },
             &temp,
             GenerationSupervision::SlotStallVerdict {
-                ordinal: 1,
+                subject: "generation 1".to_string(),
                 model: &liveness,
             },
         )
@@ -5595,10 +5595,14 @@ fn partition_rebuild_actuation(
 /// The converse equality (the built seed's own compiled-in rows project to these same bytes) is
 /// checked after each build by `built_seed_boundary_drift`, whose answer is another loop population. Anything else keeps the
 /// typed `WholeCompilerRebuildRequired` refusal.
-fn admit_derived_partition_move(
+/// THE DECISION ITSELF, in whichever process runs it: whether this change's edits explain the moved
+/// partition mirror. It is the one step of a partition move that demands the whole-corpus closure
+/// edge index, so the orchestrator never calls it -- `partition_move_explanation_child` runs it in a
+/// child (`claim_executor --regen-partition-move-explanation`) and reads the answer back.
+fn partition_move_explained_by_this_change(
     source_roots: &[String],
     workspace: &Path,
-) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+) -> Result<bool, String> {
     let (changed, _departed) = super::required_floor_runner::floor_git_diff_name_status_range()
         .map_err(|e| {
             format!(
@@ -5622,7 +5626,7 @@ fn admit_derived_partition_move(
     let (edges, modules) = regen_module_edges(workspace).map_err(unexplainable)?;
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
         .map_err(unexplainable)?;
-    let explained = match rebuild_scope_decision_with(
+    match rebuild_scope_decision_with(
         source_roots,
         "stage0_partition_move_explained_by_affected_inputs",
         |ctx| {
@@ -5640,20 +5644,31 @@ fn admit_derived_partition_move(
             Ok(args)
         },
     )? {
-        ModelValue::Bool(value) => value,
-        other => {
-            return Err(format!(
-                "refusal: stage0_partition_move_explained_by_affected_inputs returned {} instead of Bool",
-                other.type_label_public()
-            ))
-        }
-    };
-    if !explained {
-        return Err(
+        ModelValue::Bool(value) => Ok(value),
+        other => Err(format!(
+            "refusal: stage0_partition_move_explained_by_affected_inputs returned {} instead of Bool",
+            other.type_label_public()
+        )),
+    }
+}
+
+/// A partition move is ADMITTED only when it is DERIVED, never asserted (no flag, no input, no
+/// allow-list): this change's edits explain the moved mirror (`partition_move_explained_by_this_change`,
+/// answered by a child process), and the boundary files the move needs are rendered from the
+/// candidate tree's rows. Anything else keeps the typed `WholeCompilerRebuildRequired` refusal.
+fn admit_derived_partition_move(
+    workspace: &Path,
+    source_roots: &[String],
+    liveness: &SupervisedSubjectModel,
+) -> Result<crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome, String> {
+    match partition_move_explanation_child(workspace, source_roots, liveness)? {
+        PartitionMoveExplanationReceipt::Explained { .. } => {}
+        PartitionMoveExplanationReceipt::Unexplained { .. } => return Err(
             "PartitionMoveUnexplained: WholeCompilerRebuildRequired stands; the partition mirror \
-             moved but no changed input of it (gunbc.regen_affected_set) explains it"
+                 moved but no changed input of it (gunbc.regen_affected_set) explains it"
                 .to_string(),
-        );
+        ),
+        PartitionMoveExplanationReceipt::Refused { reason, .. } => return Err(reason),
     }
     let packages = emitted_tree_packages(workspace)?;
     let outcome = crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(
@@ -5661,6 +5676,124 @@ fn admit_derived_partition_move(
         crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
     );
     Ok((*outcome).clone())
+}
+
+/// `gunbc.regen_receipt` `RegenPartitionMoveExplanation`: the one answer the explanation child hands
+/// back. Three arms, none conflated -- a refusal carries its cause and is neither answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(tag = "answer", deny_unknown_fields)]
+pub enum PartitionMoveExplanationReceipt {
+    #[serde(rename = "explained")]
+    Explained { schema: String },
+    #[serde(rename = "unexplained")]
+    Unexplained { schema: String },
+    #[serde(rename = "refused")]
+    Refused { schema: String, reason: String },
+}
+
+const PARTITION_MOVE_EXPLANATION_SCHEMA: &str = "gunbc.regen_partition_move_explanation.v1";
+const PARTITION_MOVE_EXPLANATION_RECEIPT_REL: &str = "target/stage0-regen-partition-move.json";
+
+/// The child's entry (`claim_executor --regen-partition-move-explanation`): take the decision with
+/// the whole-corpus index resident in THIS process, write the answer, and exit -- process exit
+/// frees the index. Every outcome, the refusal included, is written, so the orchestrator always
+/// reads an answer rather than inferring one from an exit code.
+pub fn run_partition_move_explanation(
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<PartitionMoveExplanationReceipt, String> {
+    let workspace = workspace_root();
+    let schema = PARTITION_MOVE_EXPLANATION_SCHEMA.to_string();
+    let receipt = match partition_move_explained_by_this_change(source_roots, &workspace) {
+        Ok(true) => PartitionMoveExplanationReceipt::Explained { schema },
+        Ok(false) => PartitionMoveExplanationReceipt::Unexplained { schema },
+        Err(reason) => PartitionMoveExplanationReceipt::Refused { schema, reason },
+    };
+    let path = workspace.join(receipt_rel);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(
+        &path,
+        serde_json::to_vec(&receipt).map_err(|e| format!("encode {}: {e}", path.display()))?,
+    )
+    .map_err(|e| format!("write {}: {e}", path.display()))?;
+    Ok(receipt)
+}
+
+/// The orchestrator's side: run the decision as a child of THIS image (`/proc/self/exe`, so it is
+/// exactly the orchestrator's own code even after a stage build replaced the executable on disk),
+/// under the same liveness supervisor as a generation, and read its answer. A missing, stale or
+/// unparseable receipt refuses.
+fn partition_move_explanation_child(
+    workspace: &Path,
+    source_roots: &[String],
+    liveness: &SupervisedSubjectModel,
+) -> Result<PartitionMoveExplanationReceipt, String> {
+    let receipt_path = workspace.join(PARTITION_MOVE_EXPLANATION_RECEIPT_REL);
+    if receipt_path.exists() {
+        fs::remove_file(&receipt_path).map_err(|e| {
+            format!(
+                "refusal: cannot retire a prior partition-move explanation {}: {e}",
+                receipt_path.display()
+            )
+        })?;
+    }
+    let mut argv = vec![
+        "--regen-partition-move-explanation".to_string(),
+        "--regen-receipt".to_string(),
+        PARTITION_MOVE_EXPLANATION_RECEIPT_REL.to_string(),
+    ];
+    for root in source_roots {
+        argv.push("--source-root".to_string());
+        argv.push(root.clone());
+    }
+    report_cgroup_memory_diagnostic("parent.begin partition-move-explanation");
+    let run = spawn_rebuilt_seed_regen_child(
+        Path::new("/proc/self/exe"),
+        &argv,
+        rebuilt_seed_regen_child_output_policy(),
+        workspace,
+        GenerationSupervision::SlotStallVerdict {
+            subject: "partition-move explanation".to_string(),
+            model: liveness,
+        },
+    );
+    report_cgroup_memory_diagnostic("parent.end partition-move-explanation");
+    let run = run?;
+    read_partition_move_explanation(&receipt_path).map_err(|reason| {
+        format!(
+            "{reason}; status={} stderr_tail={}{}",
+            run.status,
+            run.stderr_tail,
+            rebuilt_seed_regen_truncation_note(run.stderr_truncated)
+        )
+    })
+}
+
+/// Read the child's answer back: an absent, unparseable or other-schema receipt refuses, so the
+/// orchestrator never infers an answer from an exit code or a stale file.
+fn read_partition_move_explanation(path: &Path) -> Result<PartitionMoveExplanationReceipt, String> {
+    let bytes = fs::read(path).map_err(|e| {
+        format!(
+            "refusal: the partition-move explanation child wrote no answer at {}: {e}",
+            path.display()
+        )
+    })?;
+    let receipt: PartitionMoveExplanationReceipt = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("refusal: parse {}: {e}", path.display()))?;
+    let schema = match &receipt {
+        PartitionMoveExplanationReceipt::Explained { schema }
+        | PartitionMoveExplanationReceipt::Unexplained { schema }
+        | PartitionMoveExplanationReceipt::Refused { schema, .. } => schema,
+    };
+    if schema != PARTITION_MOVE_EXPLANATION_SCHEMA {
+        return Err(format!(
+            "refusal: the partition-move explanation answered in {schema}, not \
+             {PARTITION_MOVE_EXPLANATION_SCHEMA}"
+        ));
+    }
+    Ok(receipt)
 }
 
 /// The whole-compiler rebuild the partition-generation class requires: the closure is NOT shown
@@ -5948,7 +6081,7 @@ fn run_built_seed_regen(
         rebuilt_seed_regen_child_output_policy(),
         workspace,
         GenerationSupervision::SlotStallVerdict {
-            ordinal,
+            subject: format!("generation {ordinal}"),
             model: liveness,
         },
     )?;
@@ -6155,7 +6288,9 @@ fn spawn_rebuilt_seed_regen_child(
 pub(crate) enum GenerationSupervision<'a> {
     /// Production: read the slot counters from this process's own cgroup (the child inherits it).
     SlotStallVerdict {
-        ordinal: usize,
+        /// What is watched, as the heartbeat and the refusal name it: `generation N`, or the
+        /// partition-move explanation child.
+        subject: String,
         model: &'a SupervisedSubjectModel,
     },
     /// Test seam: refuse after a fixed wall, so the teardown route is executed for real without a
@@ -6240,7 +6375,7 @@ impl std::io::Write for ProgressMarkScanner {
 /// The supervisor's decision per sample, pure over (time, mark count, slot reading) so the arms are
 /// driven by a test without a process or a slot.
 struct GenerationSupervisor {
-    ordinal: usize,
+    subject: String,
     begun: Instant,
     marks_seen: u64,
     /// The slot reading the current window is measured from: taken when the last progress mark was
@@ -6256,9 +6391,9 @@ enum SupervisorStep {
 }
 
 impl GenerationSupervisor {
-    fn new(ordinal: usize, now: Instant) -> Self {
+    fn new(subject: String, now: Instant) -> Self {
         GenerationSupervisor {
-            ordinal,
+            subject,
             begun: now,
             marks_seen: 0,
             baseline: None,
@@ -6288,9 +6423,9 @@ impl GenerationSupervisor {
                     heartbeat: heartbeat_due.then(|| {
                         self.last_heartbeat = now;
                         format!(
-                            "required-regen: generation {} supervisor elapsed_s={elapsed_s} \
+                            "required-regen: {} supervisor elapsed_s={elapsed_s} \
                              progress_marks={marks} supervision=unavailable cause={cause}",
-                            self.ordinal
+                            self.subject
                         )
                     }),
                 };
@@ -6310,10 +6445,7 @@ impl GenerationSupervisor {
             Ok(judged) => judged,
             Err(failure) => {
                 return SupervisorStep::Refuse {
-                    refusal: format!(
-                        "{failure} [rebuilt-seed generation {} after {elapsed_s} s]",
-                        self.ordinal
-                    ),
+                    refusal: format!("{failure} [{} after {elapsed_s} s]", self.subject),
                 }
             }
         };
@@ -6322,8 +6454,8 @@ impl GenerationSupervisor {
         if let Some(refusal) = refusal {
             return SupervisorStep::Refuse {
                 refusal: format!(
-                    "{refusal} [rebuilt-seed generation {} after {elapsed_s} s; {receipt}]",
-                    self.ordinal
+                    "{refusal} [{} after {elapsed_s} s; {receipt}]",
+                    self.subject
                 ),
             };
         }
@@ -6331,8 +6463,8 @@ impl GenerationSupervisor {
             heartbeat: heartbeat_due.then(|| {
                 self.last_heartbeat = now;
                 format!(
-                    "required-regen: generation {} supervisor elapsed_s={elapsed_s} {receipt}",
-                    self.ordinal
+                    "required-regen: {} supervisor elapsed_s={elapsed_s} {receipt}",
+                    self.subject
                 )
             }),
         }
@@ -6361,8 +6493,8 @@ fn supervise_generation(
     let begun = Instant::now();
     let slot_dir = crate::memory_governor::leaf_cgroup_dir();
     let mut supervisor = match &supervision {
-        GenerationSupervision::SlotStallVerdict { ordinal, .. } => {
-            Some(GenerationSupervisor::new(*ordinal, begun))
+        GenerationSupervision::SlotStallVerdict { subject, .. } => {
+            Some(GenerationSupervisor::new(subject.clone(), begun))
         }
         #[cfg(test)]
         GenerationSupervision::RefuseAfter { .. } => None,
@@ -7200,6 +7332,7 @@ fn install_convergence_stage(
     candidate_tree_digest: &str,
     dependency_closure_id: &str,
     whole_compiler: bool,
+    liveness: &SupervisedSubjectModel,
 ) -> Result<(RegenConvergenceStageReceipt, bool), String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
     // The generated shell declares the emitted modules not owned by a partition.
@@ -7216,7 +7349,11 @@ fn install_convergence_stage(
     let actuation =
         partition_rebuild_actuation(source_roots, &changed_mirrors, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
-        Some(admit_derived_partition_move(source_roots, workspace)?)
+        Some(admit_derived_partition_move(
+            workspace,
+            source_roots,
+            liveness,
+        )?)
     } else {
         None
     };
@@ -8373,6 +8510,7 @@ pub fn run_regen_round_cost(
             &candidate_digest,
             &dependency_closure_id,
             stage_whole_compiler,
+            &liveness_model,
         );
         v1_rt::trace_mark("round.install.done".to_string());
         let mut stage = match stage_result {
@@ -11573,7 +11711,7 @@ mod generation_supervisor_tests {
     fn a_silent_generation_under_the_envelope_throttle_is_refused_after_the_window() {
         let t0 = Instant::now();
         let model = liveness_model();
-        let mut supervisor = GenerationSupervisor::new(1, t0);
+        let mut supervisor = GenerationSupervisor::new("generation 1".to_string(), t0);
         // A mark arrives at 60 s: the window is measured from here.
         assert!(matches!(
             supervisor.observe(&model, t0, 0, counters(0, 0, 0, Some(0))),
@@ -11610,7 +11748,7 @@ mod generation_supervisor_tests {
                     refusal.starts_with("MemoryStallRefusedEnvelopeThrottle"),
                     "{refusal}"
                 );
-                assert!(refusal.contains("rebuilt-seed generation 1"), "{refusal}");
+                assert!(refusal.contains("[generation 1 after"), "{refusal}");
                 assert!(refusal.contains("psi_full_share_bp=8000"), "{refusal}");
                 assert!(
                     refusal.contains("envelope_events_in_window=412"),
@@ -11627,7 +11765,7 @@ mod generation_supervisor_tests {
     fn a_generation_that_keeps_marking_is_never_judged_on_its_counters() {
         let t0 = Instant::now();
         let model = liveness_model();
-        let mut supervisor = GenerationSupervisor::new(2, t0);
+        let mut supervisor = GenerationSupervisor::new("generation 2".to_string(), t0);
         let _ = supervisor.observe(&model, t0, 0, counters(0, 0, 0, Some(0)));
         for minute in 1..=40u64 {
             let at = t0 + Duration::from_secs(minute * 60);
@@ -11650,7 +11788,7 @@ mod generation_supervisor_tests {
     fn an_unreadable_slot_is_reported_unsupervised_not_admitted_as_healthy() {
         let t0 = Instant::now();
         let model = liveness_model();
-        let mut supervisor = GenerationSupervisor::new(1, t0);
+        let mut supervisor = GenerationSupervisor::new("generation 1".to_string(), t0);
         let unreadable = || SlotStallReading::Unreadable {
             cause: "read /sys/fs/cgroup/x/memory.stat: No such file or directory".to_string(),
         };
@@ -11917,5 +12055,87 @@ mod surface_roles_receipt_tests {
             names, modules,
             "the edge-free module set differs from the edge path's"
         );
+    }
+}
+
+/// THE PARTITION-MOVE EXPLANATION CROSSES A PROCESS BOUNDARY AS ONE TYPED ANSWER
+/// (`gunbc.regen_receipt` `RegenPartitionMoveExplanation`). The spawn itself needs the real
+/// `claim_executor` binary and is exercised by the heal round; these pin the carrier, the readback's
+/// refusals, and the child entry's write.
+#[cfg(test)]
+mod partition_move_explanation_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-partition-move-{name}-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir.join("answer.json")
+    }
+
+    #[test]
+    fn the_three_answers_round_trip_and_stay_distinct() {
+        let schema = PARTITION_MOVE_EXPLANATION_SCHEMA.to_string();
+        for answer in [
+            PartitionMoveExplanationReceipt::Explained {
+                schema: schema.clone(),
+            },
+            PartitionMoveExplanationReceipt::Unexplained {
+                schema: schema.clone(),
+            },
+            PartitionMoveExplanationReceipt::Refused {
+                schema: schema.clone(),
+                reason: "diff range unreadable".to_string(),
+            },
+        ] {
+            let path = scratch("roundtrip");
+            fs::write(&path, serde_json::to_vec(&answer).unwrap()).unwrap();
+            assert_eq!(read_partition_move_explanation(&path).unwrap(), answer);
+        }
+    }
+
+    /// RED: no answer, an unparseable answer, and an answer in another schema all refuse.
+    #[test]
+    fn an_absent_garbled_or_foreign_answer_refuses() {
+        let path = scratch("refusals");
+        let _ = fs::remove_file(&path);
+        assert!(read_partition_move_explanation(&path)
+            .unwrap_err()
+            .contains("wrote no answer"));
+        fs::write(&path, b"{\"answer\":\"maybe\"}").unwrap();
+        assert!(read_partition_move_explanation(&path)
+            .unwrap_err()
+            .contains("refusal: parse"));
+        fs::write(
+            &path,
+            serde_json::to_vec(&PartitionMoveExplanationReceipt::Explained {
+                schema: "gunbc.regen_partition_move_explanation.v0".to_string(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(read_partition_move_explanation(&path)
+            .unwrap_err()
+            .contains("not gunbc.regen_partition_move_explanation.v1"));
+    }
+
+    /// The child's real entry writes whatever it answered -- here, with no diff range bound in a test
+    /// process, a typed refusal -- and the readback returns exactly that.
+    #[test]
+    fn the_child_entry_writes_the_answer_it_returns() {
+        let rel = format!(
+            "target/test-partition-move-explanation-{}.json",
+            std::process::id()
+        );
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect();
+        let answered = run_partition_move_explanation(&rel, &roots).unwrap();
+        let path = workspace_root().join(&rel);
+        assert_eq!(read_partition_move_explanation(&path).unwrap(), answered);
+        let _ = fs::remove_file(&path);
     }
 }
