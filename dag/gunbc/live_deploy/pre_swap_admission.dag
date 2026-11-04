@@ -5,7 +5,7 @@ import std.algebra { trim, join }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { content_hash_tagged_structural }
+import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
