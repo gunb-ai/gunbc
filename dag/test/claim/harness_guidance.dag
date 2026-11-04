@@ -1,6 +1,6 @@
 module test.claim.harness_guidance
 
-import std.types { Bool, String, Int, List }
+import std.types { Bool, String, Int, List, list_length }
 import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, TestProcessIs, CompileProcessIs, IterateNarrowThenAccept, CapabilityWithheld, BuildOrTestOutsideTheProcess,
   IterationSelectsByPattern, RunRebuildsOnTreeChange, AcceptanceIsTheContractValidation,
   HarnessGroundedPremise, HarnessPremise, HarnessConclusion,
