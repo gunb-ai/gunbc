@@ -2315,6 +2315,15 @@ data e1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: e1_y50, designator: "Y50", evidence: e1_u500_photo },
   DesignatorReading { specimen: e1_u43, designator: "U43", evidence: e1_u43_photo },
   DesignatorReading { specimen: e1_j3, designator: "J3", evidence: e1_module_site_photo },
+  // J3's label, read off three frames the atlas pass never claimed to have read (it never read 16 of
+  // the top photos: 05-08, 14-18, _22, _23 and 26-29, which is why it recorded J3 as 'overview only').
+  // The operator read these three on 2026-11-04 and gave the boxes. e1_position_receipts carries the
+  // same three citations in the FromStoredFrames authority that admits the position, and the atlas-pass
+  // witness requires the two to name the SAME bytes -- which is what makes this a label read once and
+  // recorded twice, rather than a name asserted in two places.
+  DesignatorReading { specimen: e1_j3, designator: "J3", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "471155264d4b3337a59c6eeaa55d14ce440a5d36b5b8d6e0d912d9eaec8e54db" as Sha256DigestHex }, left: 675, top: 1612, width: 50, height: 60) } },
+  DesignatorReading { specimen: e1_j3, designator: "J3", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "b8cbb2a88309ca084efe1c0bfe12b3c5c16f9ec094a882554878ffcdbf563c3c" as Sha256DigestHex }, left: 1595, top: 1515, width: 45, height: 57) } },
+  DesignatorReading { specimen: e1_j3, designator: "J3", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "aa05ff842fec52c580952a342027443375587bef5fc64e20c2e40e2a12e020fe" as Sha256DigestHex }, left: 1740, top: 663, width: 37, height: 39) } },
   DesignatorReading { specimen: e1_j4, designator: "J4", evidence: e1_module_site_photo },
   DesignatorReading { specimen: e1_u3, designator: "U3", evidence: e1_u3_photo },
   DesignatorReading { specimen: e1_u4, designator: "U4", evidence: e1_u4_photo },
@@ -2960,7 +2969,10 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     designator: Present { value: "J3" },
     marking: Absent { },
     obligation: "the designator read stands as 'final-pass critic', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell B2 C2 settles it -- the position itself stands on the 2026-10-20 bench read of J3, whose bytes were never supplied",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "J3", located: "the atlas names no frame for this row") },
+    evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(
+      designator: "J3",
+      located: "the atlas pass names no frame in its photos column ('overview only'), because it never read 16 of the top photos (05-08, 14-18, _22, _23, 26-29); the operator has since read the label in three stored frames, cited as J3's designator readings above and in the FromStoredFrames authority that admits the position",
+      closing: "the label is read and cited; what remains is the atlas pass over the 16 photos it skipped, which should join these rows through the same receipts, and a box on any frame still cited without one") },
   }
   UnresolvedPart {
     designator: Present { value: "J141" },

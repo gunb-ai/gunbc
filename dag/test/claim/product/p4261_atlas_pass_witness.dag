@@ -60,8 +60,11 @@ import extdeps.external_authority { TranscribedUncited }
 import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
 import extdeps.electronic_component.types { designator_eq, designator_of, designator_text }
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
+
 import product.p4261.e1_position_receipts {
+  DesignatorAuthority,
   HeldReceipt,
+  LabelSighting,
   ReceiptBasis,
   e1_held_receipts,
   e1_position_receipts,
@@ -72,6 +75,10 @@ import product.p4261.e1_photographs { e1_photographs }
 import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store }
 import product.electrical.continuity { OperatorPhotograph }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
+
+// The candidate's own receipt row, quoted from the module rather than retyped per assertion: if the
+// generator changes how it names a row, the test that pins the candidate fails rather than drifting.
+data C3_F1_SOURCE_KEY: NonEmptyStr = "merged inventory, top side, placed cell A1, photos 't4_07'"
 
 fn is_position(d: NonEmptyStr) -> Bool {
   match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
@@ -665,52 +672,86 @@ test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool 
          Absent => false
        })
 }
-
-// The photograph-carried authority is the one an atlas receipt cannot supply, so it is the arm a hurried
-// author -- or a generator bug -- would reach for to mint a name nothing ever read. It claims the spelling
-// came off a photograph the operator took on a stated day, and only the board can corroborate that: the
-// position must have a designator reading whose evidence is a photograph citation dated the same day. If
-// the board stops saying it, the position loses its authority. That is what the arm is for -- the receipts
-// do not get to certify a name on their own, which is how C3_F1 came to be a position in the first place.
-test fn a_photograph_carried_name_is_read_on_the_board() -> Bool {
-  e1_position_receipts.all(r =>
-    match r.rests_on {
+// The authority carried by frames rather than by a receipt is the one place a designator could be minted
+// with no pass behind it, so the frames have to do the work a receipt would have done. Every frame it
+// names must be in the store, resolved by CONTENT -- so a digest typed from memory fails, not only a
+// name typed wrong. A read that calls itself clear must say where in at least one of them the label
+// sits, because a clear read knows its own coordinates. And the board must state its own reading of that
+// same designator citing one of the very same bytes: rows agreeing on a NAME are worthless, rows agreeing
+// on which pixels the name was read from are a read that happened. `read_by` and `read_on` are provenance
+// for a reader; the store's capture days are free text ("2026-11-02, the atlas pass day ..."), so they
+// carry no decidable order and this test does not pretend to compare them.
+test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
+  let frame_is_held = fn(s: LabelSighting) -> Bool {
+    match photograph_in_store(store: e1_photographs, content: s.digest) {
+      Present { value: _ } => true
+      Absent { } => false
+    }
+  }
+  let board_reads_those_frames = fn(name: NonEmptyStr, frames: List<LabelSighting>) -> Bool {
+    any(xs: p4261_e1_layout.designator_readings, predicate: d =>
+      string_eq(a: d.designator as String, b: name as String)
+      && any(xs: frames, predicate: s =>
+        match d.evidence {
+          OperatorPhotograph { citation: InStore { content: c, region: _ } } =>
+            string_eq(a: c.hex as String, b: s.digest.hex as String)
+          OperatorPhotograph { citation: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } =>
+            false
+          SellerListingPhotograph { listing: _, read_on: _ } => false
+          // A spoken "it says J3" is the shape this arm exists to refuse: a name with no image behind it
+          // is exactly what the receipts must not be able to lean on.
+          OperatorStatement { stated_on: _, verbatim: _ } => false
+        }))
+  }
+  let authority_is_checkable = fn(name: NonEmptyStr, authority: DesignatorAuthority) -> Bool {
+    match authority {
+      // A receipt read the label. The receipts module holds that read to its own columns, and a frame
+      // cannot disagree with a receipt that never carried it; nothing here can settle it further.
+      FromReceipt { legibility: _, legibility_basis: _ } => true
+      FromStoredFrames { read_by: _, read_on: _, legibility: leg, frames: frames } =>
+        // nothing is read off frames nobody has named
+        count(frames) > 0
+        // every frame named is one the store holds, by content
+        && all(xs: frames, predicate: frame_is_held)
+        // a read claimed clear states where on the image it happened
+        && (match leg {
+             Clear { } => any(xs: frames, predicate: s => match s.box {
+               Present { value: _ } => true
+               Absent => false
+             })
+             Partial { } => true
+             Unreadable { } => true
+             NotVisible { } => true
+           })
+        // and the board's own reading of this designator points at the same pixels
+        && board_reads_those_frames(name: name, frames: frames)
+    }
+  }
+  let no_authority_unexamined = all(xs: e1_position_receipts, predicate: rec =>
+    match rec.rests_on {
       RuleRead { } => true
-      NamedException { why: _, authority: a } => match a {
-        // The atlas read this label on its own frame; the rule that every exception reaches the board
-        // covers it, and the legibility inside is the one that receipt stated.
-        FromReceipt { legibility: _, legibility_basis: _ } => true
-        // The atlas never read it, so the board must have, from that day's photograph. The date is the
-        // whole check: the authority may not point at one frame while the board's reading rests on
-        // another. Both citation shapes are accepted, because refusing the stored one would mean J3 lost
-        // its corroboration on the very day the operator re-supplied the upload and the gap closed.
-        FromBoardPhotograph { taken_on: day, why: _ } =>
-          any(xs: p4261_e1_layout.designator_readings, predicate: d =>
-            designator_eq(a: designator_of(verbatim: d.designator), b: r.designator)
-            && match d.evidence {
-              // The bytes never reached the store, so the day the bench recorded is all there is to match.
-              OperatorPhotograph { citation: BytesNotInStore { taken_on: t, locator: _, obligation: _ } } =>
-                string_eq(a: t as String, b: day as String)
-              // Stored bytes are dated by the store's own row, resolved by content: a row that cannot be
-              // found, or that says its capture day was never recorded, does not corroborate a date.
-              OperatorPhotograph { citation: InStore { content: c, region: _ } } =>
-                match photograph_in_store(store: e1_photographs, content: c) {
-                  Absent { } => false
-                  Present { value: p } => match p.origin {
-                    CapturedFrame { surface: _, capture: _, taken_on: CapturedOn { on: stored_day } } =>
-                      string_eq(a: stored_day as String, b: day as String)
-                    CapturedFrame {
-                      surface: _, capture: _, taken_on: CaptureDateUnrecorded { obligation: _ }
-                    } => false
-                    // A frame somebody drew is not a photograph the operator took, whatever its date says.
-                    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
-                  }
-                }
-              SellerListingPhotograph { listing: _, read_on: _ } => false
-              // A spoken "it says J3" is the shape this arm exists to refuse: it is a name with no image
-              // behind it, which is precisely what the receipts must not be able to lean on.
-              OperatorStatement { stated_on: _, verbatim: _ } => false
-            })
-      }
+      NamedException { why: _, authority: a } =>
+        authority_is_checkable(name: rec.designator.verbatim, authority: a)
     })
+  // C3_F1: no receipt transcribed it, and the operator reads the label as partly legible in a stored
+  // frame. Both halves have to be in the row. 'No receipt read it' is not 'no frame shows it', and a row
+  // that says only one of the two leaves a reader guessing which gap they are looking at -- which is how
+  // this row came to be described as a label nobody had ever seen.
+  let candidate_cites_what_it_sees = any(xs: e1_position_receipts, predicate: rec =>
+    match rec.rests_on {
+      RuleRead { } => false
+      NamedException { why: _, authority: _ } => false
+      Held { held: UntranscribedCandidate {
+        source_key: k, proposed_name: n, standing: _, partly_legible_in: frames, obligation: o, why: _
+      } } =>
+        string_eq(a: k as String, b: C3_F1_SOURCE_KEY)
+        && string_eq(a: n as String, b: "C3_F1")
+        && count(frames) > 0
+        && all(xs: frames, predicate: frame_is_held)
+        && count(o as String) > 0
+      Held { held: HeldDesignatorRead {
+        legibility: _, legibility_basis: _, transcription: _, marking: _, reading_standing: _, source: _
+      } } => false
+    })
+  no_authority_unexamined && candidate_cites_what_it_sees
 }
