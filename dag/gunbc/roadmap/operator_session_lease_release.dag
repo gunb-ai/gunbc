@@ -1,0 +1,83 @@
+module gunbc.roadmap.operator_session_lease_release
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_session_placement {
+  SessionPlacementStores, session_placement_stores, SessionStoresResolved, SessionStoresUnresolved,
+  session_attempt_name_of, session_settle_release, session_settlement_wire,
+  session_ledger_fold_ceiling, session_release_outcome_wire,
+}
+import gunbc.compute.attempt_lifecycle {
+  attempt_slot_read, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
+  attempt_terminate, AttemptRecovered, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+}
+import gunbc.compute.host_capacity { compute_release_on }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// AN OPERATOR-DIRECTED RELEASE OF ONE srv1 SESSION-MEMORY LEASE, through the settle pass's own fence and
+// release, for a holder the settle pass cannot reach. Operator direction 2026-11-04 ~11:20Z (relayed by
+// loyal-deer-449; supported by silent-bee-845, references and evidence from snappy-carp-24). It is not the
+// settle pass's verdict: the caller supplies the reason, which carries the death evidence it read.
+//
+// THE FENCE IS THE SETTLE PASS'S (gunbc.roadmap.roadmap_session_placement session_settle_one): a slot held in
+// the instance's CURRENT store is terminated at the generation just read (attempt_terminate, a CAS), and only
+// an advanced slot is released (session_settle_release, which also writes the release record). A slot that
+// moved refuses and releases nothing. A slot ABSENT from the current store (the 2026-10-14 lease, whose slot
+// sits under the pre-re-root root that no pass enumerates) has no fence here, so the ledger is released by
+// reference alone: compute_release_on is idempotent (a second release answers ComputeNothingToRelease), and
+// the orphan slot is closed later by the carry into the current store, whose settle pass then terminates it
+// and whose release answers NothingToRelease. An unreadable slot refuses.
+//
+// dissolve-on: the cutover carry of pre-re-root slots (snappy-carp-24, B') lands, after which every held slot
+// is in a store some settle pass enumerates and an operator release has no case the pass does not cover.
+// SUFFICIENT FOR deleting this module; nothing imports it.
+fn operator_session_lease_release(stores: SessionPlacementStores, host: String, reference: NonEmptyStr, reason: NonEmptyStr) -> String {
+  let slot = attempt_slot_read(store: stores.slots.slots, reference: reference)
+  match slot {
+    AttemptSlotUnreadable { detail } => join(["REFUSED: the slot for ", reference as String, " is unreadable, so nothing is released: ", detail], "")
+    AttemptSlotAbsent => operator_ledger_only_release(stores: stores, reference: reference, reason: reason)
+    AttemptSlotHeld { record, generation } =>
+      match session_attempt_name_of(identity: record.identity) {
+        Absent => join(["REFUSED: the slot for ", reference as String, " names identity ", record.identity, ", which is not node:attempt, so nothing is released"], "")
+        Present { value: attempt } =>
+          match attempt_terminate(store: stores.slots.slots, reference: reference, expected: generation, verdict: AttemptRecovered, detail: join(["operator release: ", reason as String], "")) {
+            AttemptLostRace { expected, observed } => join(["REFUSED: the slot moved while the release was deciding (expected ", expected, ", found ", observed, "); nothing is released"], "")
+            AttemptTransitionRefused { detail } => join(["REFUSED: the slot would not take the terminal generation: ", detail], "")
+            AttemptAdvanced { state: _, generation: _ } =>
+              join(["slot terminated at its read generation; ", session_settlement_wire(s: session_settle_release(stores: stores, host: host, unit: reference, attempt: attempt, reason: reason as String))], "")
+          }
+      }
+  }
+}
+
+fn operator_ledger_only_release(stores: SessionPlacementStores, reference: NonEmptyStr, reason: NonEmptyStr) -> String {
+  let why = join(["operator release, slot absent from the current store: ", reason as String], "") as NonEmptyStr
+  let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: session_ledger_fold_ceiling, reference: reference, reason: why)
+  join([reference as String, ": ", session_release_outcome_wire(r: freed), " (ledger-only; no slot in the current store)"], "")
+}
+
+// The srv1 lab instance's stores, the same resolution the settle pass uses. The outcome line is written to
+// the receipt path because the operator who ordered it reads it from another process.
+fn operator_session_lease_release_srv1_lab(reference: String, reason: String, receipt: String) -> ProcessExit {
+  if trim(s: reference) == "" || trim(s: reason) == "" || trim(s: receipt) == "" {
+    exit_failure(reason: "--arg reference=<unit name> --arg reason=<evidence> --arg receipt=<path> are all required")
+  } else {
+    let instance = srv1_lab_dashboard_instance()
+    match session_placement_stores(instance: instance) {
+      SessionStoresUnresolved { detail } => exit_failure(reason: join(["the srv1 lab's session stores are unresolved: ", detail], ""))
+      SessionStoresResolved { stores } => {
+        let line = operator_session_lease_release(stores: stores, host: instance.host_identity as String, reference: reference as NonEmptyStr, reason: reason as NonEmptyStr)
+        let w = Filesystem.Write(path: receipt, content: join([line, "\n"], ""))
+        if !w.success {
+          exit_failure(reason: join(["release outcome not written at ", receipt, ": ", w.error, "; outcome: ", line], ""))
+        } else if starts_with(s: line, prefix: "REFUSED") {
+          exit_failure(reason: line)
+        } else {
+          ExitSuccess
+        }
+      }
+    }
+  }
+}
