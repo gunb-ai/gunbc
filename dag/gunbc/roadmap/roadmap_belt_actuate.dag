@@ -9890,7 +9890,7 @@ fn belt_verify_attempt_in_mode(
                           mode: mode,
                           instance: instance,
                           progress: progress,
-                          receipt_basename: address.receipt_basename,
+                          receipt_basename: exact_verification_receipt_basename(head_sha: head_sha, window_identity_hex: identity_hex),
                           expected: subject,
                           source: exact_source,
                         ) {
