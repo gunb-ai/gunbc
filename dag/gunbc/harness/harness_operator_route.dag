@@ -203,8 +203,14 @@ data router_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
   reason: "the router fronts 18 owned slots (srv1 vLLM 4, srv3 Strata 4, h11 lanes 5 x 2) plus ctrl overflow; the lab bounds its own fan-out at 8 (the same figure #15789 states) until a live occupancy reading exists" as NonEmptyStr,
 }
 
+// LAB HOTFIX 4: the unit is the one whose model id the router serves on ONE engine kind. Qwen38FlashNextOnPoolFront
+// asks pool_front_any_card_model_id ("slop"), which the router does not advertise, so dispatch selection refused
+// model-not-admitted (first live run, 2026-11-04 ~16:00Z). Qwen38FlashNextIq3sOnSrv4Strata asks
+// "qwen3.8-flash-next-iq3_s", which the router serves on its Strata lanes only (srv3, srv4, the h11 lanes), so the
+// tool-call parser and reasoning wire match every upstream that can answer. The unit's name says srv4; its
+// model id and wire are the router's Strata lanes'. A stated shortcut, dissolving with this row (see above).
 data harness_router_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
-  unit: Qwen38FlashNextOnPoolFront,
+  unit: Qwen38FlashNextIq3sOnSrv4Strata,
   origin: operator_router_origin,
   models_path: operator_router_models_path,
   chat_completions_path: operator_router_chat_completions_path,
@@ -217,7 +223,7 @@ data harness_router_operator_route: HarnessOperatorRoute = HarnessOperatorRoute 
   concurrency_ceiling: router_concurrency_budget_policy.value,
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
-    consequence: "the operator route serves Qwen3.8-Flash-Next through the srv1 OpenResty router, answered by any upstream behind it at that upstream's quantization (nvfp4 on srv1 vLLM, iq3_s on the srv3 and h11 Strata lanes, undisclosed on ctrl overflow), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
+    consequence: "the operator route serves Qwen3.8-Flash-Next at IQ3_S through the srv1 OpenResty router, answered by one of its Strata lanes (srv3, srv4, the h11 lanes), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
   },
 }
 
