@@ -12,7 +12,7 @@ command -v python3 >/dev/null && command -v systemd-run >/dev/null || { echo "RE
 systemctl is-active --quiet systemd-oomd || { echo "NOTE: systemd-oomd not active -> oomd shapes will show stall, that itself is the finding"; }
 echo "host=$(hostname) systemd=$(systemctl --version | head -1) kernel=$(uname -r) swap_total_kB=$(awk '/SwapTotal/{print $2}' /proc/meminfo)"
 W=$(mktemp -d /var/tmp/slotctl.XXXXXX)
-trap 'rm -rf "$W" /run/systemd/system/slotctlE*.slice.d; systemctl daemon-reload; systemctl list-units "slotctl-*" --no-legend --plain | awk "{print \$1}" | xargs -r systemctl stop 2>/dev/null' EXIT
+trap 'rm -rf "$W" /run/systemd/system.control/slotctlE*.slice.d; systemctl list-units "slotctl-*" "slotctlE-hold-*" --no-legend --plain | awk "{print \$1}" | xargs -r systemctl stop 2>/dev/null' EXIT
 dd if=/dev/urandom of="$W/hot.bin" bs=1M count=1024 status=none
 sync "$W/hot.bin"
 cat > "$W/fixture.py" <<'PY'
@@ -45,9 +45,11 @@ run_case() { # name highcfg oomd(0|unit|slice) fixture [cpuquota]
   [ "$oomd" = unit ] && props+=(-p ManagedOOMMemoryPressure=kill -p ManagedOOMMemoryPressureLimit=40%)
   local cgbase=/sys/fs/cgroup/system.slice
   if [ "$oomd" = slice ]; then  # the monitored cgroup is a PARENT slice; the fixture is a unit inside it
-    slice="slotctlE$fx.slice"; mkdir -p "/run/systemd/system/$slice.d"
-    printf '[Slice]\nMemoryAccounting=yes\nMemoryMax=2G\nManagedOOMMemoryPressure=kill\nManagedOOMMemoryPressureLimit=40%%\n' > "/run/systemd/system/$slice.d/50-slotctl.conf"
-    systemctl daemon-reload; props+=(--slice="$slice"); cgbase=/sys/fs/cgroup/$slice
+    slice="slotctlE$fx.slice"  # reload-free: transient slice via a holder unit, then set-property --runtime on that one slice
+    systemd-run -q --unit="slotctlE-hold-$fx" --slice="$slice" sleep 200 >/dev/null 2>&1 \
+      && systemctl set-property --runtime "$slice" MemoryMax=2G ManagedOOMMemoryPressure=kill ManagedOOMMemoryPressureLimit=40% \
+      || echo "WARN shape E: slice setup failed for $fx"
+    props+=(--slice="$slice"); cgbase=/sys/fs/cgroup/$slice
   fi
   python3 -c "import os,sys;fd=os.open(sys.argv[1],os.O_RDONLY);os.fsync(fd) if False else None;os.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)" "$W/hot.bin"
   local cg=$cgbase/$unit.service t0=$(date +%s.%N)
@@ -64,6 +66,7 @@ run_case() { # name highcfg oomd(0|unit|slice) fixture [cpuquota]
   echo "MEMSTAT_LAST $unit $(tr '\n' ' ' < "$W/st.$unit" 2>/dev/null)"
   printf 'RESULT shape=%-12s fixture=%-7s rc=%s result=%-10s secs=%-3s kernel_oom_kill=%s high_events=%s oomd_log_lines=%s\n' "$shape" "$fx" "$rc" "${res:-?}" "$dt" "${oomk:-?}" "${hi:-?}" "$oomd_k"
   [ "$oomd" != 0 ] && journalctl -u systemd-oomd --since "-$((dt+5))s" --no-pager -q 2>/dev/null | grep -e "$unit" -e "${slice:-NOSLICE}" | sed 's/^/OOMD_JOURNAL /'
+  [ -n "$slice" ] && systemctl stop "slotctlE-hold-$fx" 2>/dev/null
   systemctl reset-failed "$unit.service" 2>/dev/null
 }
 for fx in under grow thrash; do
