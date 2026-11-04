@@ -1214,10 +1214,10 @@ test fn the_lab_apply_installs_exactly_the_credstore_file_the_worker_start_loads
 // than 0600, or a removal that is recursive (rmdir is the check that the stage ended empty).
 test fn the_credstore_copy_stages_copies_as_the_user_installs_as_root_and_removes_the_stage() -> Bool {
   let stage = "/tmp/gunbc-credstore.abc123" as NonEmptyStr
-  let source = "/home/svc/.config/gunbc-router-client/api-key" as NonEmptyStr
-  let dest = "/etc/credstore/gunbc-router-client-api-key-lab" as NonEmptyStr
-  let cmds = credstore_copy_commands(stage: stage, source: source, dest: dest, file_name: "gunbc-router-client-api-key" as NonEmptyStr)
-  let staged = join([stage as String, "/gunbc-router-client-api-key"], "")
+  let source = "/home/svc/.config/gunbc-router/client.key" as NonEmptyStr
+  let dest = "/etc/credstore/gunbc-router-client-key-lab" as NonEmptyStr
+  let cmds = credstore_copy_commands(stage: stage, source: source, dest: dest, file_name: "gunbc-router-client-key" as NonEmptyStr)
+  let staged = join([stage as String, "/gunbc-router-client-key"], "")
   let mk = argv_words(command: credstore_copy_stage_command())
   let user = argv_words(command: cmds.user_copy)
   let root = argv_words(command: cmds.root_install)
