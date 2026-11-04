@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.a_cast_admitted_from_a_carrier_refused_from_its_refined_alias
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
+
+// FILED 2026-11-04 by clever-carp-493 on stern-bat-401's ruling, while implementing the declared
+// Secret route std.types.secret_of_text. The specimens below are read off CI's own whole-`dag`
+// compile (census run 41768647568), which prints each refusal with its file:line.
+
+data a_cast_admitted_from_a_carrier_refused_from_its_refined_alias: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_cast_admitted_from_a_carrier_refused_from_its_refined_alias" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
+
+  receipts: [
+    "**THE INVALID STATE: one crossing, judged by how many refinements stand in the way.** `Secret` is `nominal_opaque` over `String`, so `x as Secret` asks whether `x`'s type reaches the `String` carrier. When `x` is a plain `String` the cast is ADMITTED (about sixty-eight sites compile on it today, among them `env_credential_token` at dag/extdeps/shell/credentials.dag:30). When `x` is a value refined ONCE from String, its elimination is admitted too -- `signing_input as String` in extdeps.auth.jws, where `signing_input: NonEmptyStr`, compiles. When `x` is refined TWICE, the same crossing is REFUSED: `jwt as Secret` with `jwt: JwtCompactSerialization` (= `NonEmptyStr where brand("JwtCompactSerialization")`, and `NonEmptyStr` = `String where string_non_empty`) is rejected with 'no declared conversion route from NonEmptyStr to String' at five sites -- dag/gunbc/github_effect_perform.dag:239:26, :658:65, :688:63 and dag/gunbc/auth/github_app_control_plane_observe.dag:168:120, :180:119. Nothing about the carrier relation changes with the second `where`; only the depth of aliasing does, and depth is not a fact about what a value is made of.",
+
+    "**WHY THIS IS CLASSIFIED BY CONTRACT, NOT BY SPELLING.** The rule a cast to a nominal type should follow is the carrier relation: does the source's type reach the target's carrier, by a route the coercion table declares (`std.coercion`'s `dag_cast_rules` / `refinement_cast_rules`)? The specimens show the answer depending instead on the number of refinement layers written between a name and its carrier. A reader cannot see that from either type alone -- `JwtCompactSerialization` and `NonEmptyStr` are both 'text, with a condition' -- so a refusal at one site and an admission at another reads as an intentional distinction when it is an artifact of how the alias was stacked. That is the silent-pass shape: the code compiles either way, and which way it went is not stated anywhere.",
+
+    "**THE REMEDY ALREADY IN FORCE FOR THE TARGET HALF.** Entering a `Secret` is a change of interpretation -- the value becomes sensitive -- so under DESIGN section 4 it was never an implicit-safe coercion and should have been a NAMED route regardless of this defect. `std.types.secret_of_text(text: String) -> Secret` is that route, at `Secret`'s own home, and the five refused sites now call it on the text they hold. It checks nothing and says so: a `Secret`'s guarantee is confinement, not validation.",
+
+    "**THE DECLARED INTERIM, AND ITS REMOVAL TRIGGER.** To call that route the five sites needed the text, and a stacked refined alias cannot be eliminated to its carrier -- which is the half of this row that is not about `Secret` at all. So `extdeps.auth.jws`'s `JwsSerialized` carries `text: String` beside `jwt: JwtCompactSerialization`, and `gunbc.github_effect_perform`'s `AppJwtSigned` follows: ONE VALUE IN TWO REPRESENTATIONS, section 3's shape, both produced from one expression at the producer so they cannot drift. That is accepted as an interim, not as a design. TRIGGER FOR REMOVING IT: when `JwtCompactSerialization` and `NonEmptyStr` retire to checked constructors that expose a text accessor (ruling `where_refinements_retire_for_checked_constructors` -- section 4 retires where-refinements in favour of checked constructors returning Optional, and `type NonEmptyStr = String where string_non_empty` is the oldest un-migrated instance), the `text` fields are deleted and consumers read the accessor. The ~sixty-eight `as Secret` sites that compile today migrate to `secret_of_text` as a separate change; until then they remain the admitted half of this inconsistency.",
+
+    "**WHAT THIS ROW DOES NOT CLAIM.** It does not say the refusals were wrong -- refusing to invent an elimination for a retired form is the ruling being obeyed -- and it does not claim a rung: no counter, no scan of how many stacked-refinement casts exist corpus-wide, has been measured. The ceiling and the trigger are stated; the rung is unread, which is why the rung field is `RungUnread` with a stated ceiling rather than a position inferred from five specimens.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.types", decl_name: "secret_of_text" },
+    DeclarationRef { module_path: "extdeps.auth.jws", decl_name: "JwsSerializationOutcome" },
+    DeclarationRef { module_path: "gunbc.github_effect_perform", decl_name: "JitMintAppJwt" },
+    DeclarationRef { module_path: "std.coercion", decl_name: "refinement_cast_rules" },
+  ],
+}

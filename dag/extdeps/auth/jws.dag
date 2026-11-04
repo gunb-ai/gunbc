@@ -159,17 +159,32 @@ type JwsSignOutcome
 // test.claim.github_effect_perform_witness drives it. JwsSignatureNotOctets names which member
 // was observed, and gunbc.github_effect_perform maps it onto the AppJwtUnsigned arm it already
 // carries rather than minting a second cause.
+// `text` IS A DECLARED INTERIM, NOT A SECOND AUTHORITY. The value it carries is the same text
+// `jwt` carries, one representation away: it is here only because JwtCompactSerialization is a
+// where-refinement over NonEmptyStr, which is itself a where-refinement over String, and a refined
+// alias cannot be eliminated to its carrier (ruling where_refinements_retire_for_checked_constructors
+// retires that form instead of building an elimination beside it). So a consumer that needs the text
+// -- to hand it to a Secret-carrying field -- had no route to it and was refused at the cast.
+//
+// REMOVAL TRIGGER: when JwtCompactSerialization and NonEmptyStr retire to checked constructors that
+// expose a text accessor, delete this field and read the accessor; the row
+// gunbc.recurring_failure_mode.a_cast_admitted_from_a_carrier_refused_from_its_refined_alias carries
+// the trigger with it. Nothing new may read `text` for a purpose `jwt` could serve: the brand stays
+// the authority on what the value IS, and this field exists only for what it is MADE OF.
 type JwsSerializationOutcome
-  = JwsSerialized { jwt: JwtCompactSerialization }
+  = JwsSerialized { jwt: JwtCompactSerialization, text: String }
   | JwsSignatureNotOctets { observed: Int }
 
 fn jws_compact_serialization(signing_input: NonEmptyStr, signature: List<Int>) -> JwsSerializationOutcome {
   match uint8_octets_of_ints(values: signature) {
     QualifiedOctetsRefused { observed: o } => JwsSignatureNotOctets { observed: o }
-    QualifiedOctetsReady { value: sealed } =>
-      JwsSerialized {
-        jwt: join([signing_input as String, ".", jws_base64url_octets(octets: sealed)], "") as JwtCompactSerialization
-      }
+    QualifiedOctetsReady { value: sealed } => {
+      // ONE EXPRESSION, TWO LABELS: the join below is the compact serialization, and `jwt` is that
+      // text branded. It is spelled once so the two cannot drift, which is what makes the duplicated
+      // representation survivable as an interim (see the note on the arm).
+      let text = join([signing_input as String, ".", jws_base64url_octets(octets: sealed)], "")
+      JwsSerialized { jwt: text as JwtCompactSerialization, text: text }
+    }
   }
 }
 

@@ -48,7 +48,7 @@ test fn witness_jws_signing_input_leads_with_the_rs256_header_unpadded() -> Bool
 test fn witness_jws_signature_segment_is_base64url_without_padding() -> Bool {
   match jws_compact_serialization(signing_input: "h.p", signature: [251, 255]) {
     JwsSignatureNotOctets { observed: _ } => false
-    JwsSerialized { jwt: jwt } => (jwt as String) == "h.p.-_8"
+    JwsSerialized { jwt: _, text: text } => text == "h.p.-_8"
   }
 }
 
@@ -61,7 +61,7 @@ test fn witness_jws_signature_segment_is_base64url_without_padding() -> Bool {
 // only.
 test fn witness_a_non_octet_signature_member_refuses_and_names_what_was_observed() -> Bool {
   match jws_compact_serialization(signing_input: "h.p", signature: [251, 256]) {
-    JwsSerialized { jwt: _ } => false
+    JwsSerialized { jwt: _, text: _ } => false
     JwsSignatureNotOctets { observed: o } => o == 256
   }
 }

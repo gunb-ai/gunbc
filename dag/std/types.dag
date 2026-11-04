@@ -293,6 +293,24 @@ type GistId       = String
 type Secret       nominal_opaque = String
 type SecretValue  = Secret where string_non_empty
 
+// ENTERING A SECRET IS A CHANGE OF INTERPRETATION, NOT A COERCION. The value becomes sensitive,
+// so the crossing is not total-and-exact in the sense section 4 requires of an implicit route, and
+// it must be named at the call site. This is that name. It checks nothing and claims nothing: the
+// carrier is String, and what a Secret buys is confinement (the value is not read back into text),
+// not validation -- so a caller holding text it has decided is sensitive says so here, in one
+// place, instead of relying on `as` having let this one crossing through.
+//
+// WHY IT EXISTS AS A ROUTE AND NOT AS A CAST: the corpus today admits `text as Secret` while it
+// refuses a branded text to Secret (the five JWT sites, census run 41768647568), which is the same
+// crossing judged two ways by how many where-refinements stand in between. That unevenness is
+// filed as gunbc.recurring_failure_mode.a_cast_admitted_from_a_carrier_refused_from_its_refined_alias;
+// the migration of those `as Secret` sites to this function is that row's stated trigger. Do not
+// add a second route beside this one: a checked constructor belongs here only if Secret ever gains
+// a property to check, and then this stays as the total route for callers that have already checked.
+fn secret_of_text(text: String) -> Secret {
+  text as Secret
+}
+
 type SemVer       = String
 type NonEmptyStr     = String where string_non_empty
 

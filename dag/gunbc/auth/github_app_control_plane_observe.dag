@@ -1,6 +1,6 @@
 module gunbc.auth.github_app_control_plane_observe
 
-import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs }
+import std.types { String, NonEmptyStr, Int, List, EpochSecs, secret_of_text }
 import std.resources { Network }
 import extdeps.clock {
   clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
@@ -164,8 +164,8 @@ fn observe_github_app_control_plane(
       match app_jwt_for(dispatch_app_id: app.app_id.value, key: key, now_epoch_secs: now) {
         AppJwtUnsigned { detail: d } =>
           control_plane_unreached(app: app, detail: concat("App JWT unsigned: ", d), required: required, reason: reason)
-        AppJwtSigned { jwt: jwt } => {
-          let read: RestResult<GitHubAppPublicRecord> = match github.AuthenticatedApp.GetAuthenticatedApp(app_jwt: jwt as Secret) {
+        AppJwtSigned { jwt: _, text: text } => {
+          let read: RestResult<GitHubAppPublicRecord> = match github.AuthenticatedApp.GetAuthenticatedApp(app_jwt: secret_of_text(text)) {
             RestAnswered { answer } => RestAnswered { answer: answer.result }
             RestRefused { refusal } => RestRefused { refusal: refusal }
           }
@@ -177,7 +177,7 @@ fn observe_github_app_control_plane(
                 app: app,
                 custody: custody,
                 registration: registration,
-                observed: installation_of_read(outcome: match github.AuthenticatedApp.GetAppInstallation(app_jwt: jwt as Secret, installation_id: installation.value) {
+                observed: installation_of_read(outcome: match github.AuthenticatedApp.GetAppInstallation(app_jwt: secret_of_text(text), installation_id: installation.value) {
                   RestAnswered { answer } => RestAnswered { answer: answer.result }
                   RestRefused { refusal } => RestRefused { refusal: refusal }
                 }),
