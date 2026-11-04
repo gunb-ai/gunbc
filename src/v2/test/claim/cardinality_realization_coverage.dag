@@ -153,25 +153,6 @@ data native_closure_causes: List<Symbol> = [
   ^infer_grounding_not_derived
 ]
 
-// SPECIMEN 10 ONLY, and it is a record of today's WRONG answer, not a contract. At step 1 of the char_at
-// egress the native route refuses the call at arrow-body inhabitance: the checker binds the call to
-// std.host_text's declaration (pos: Nat, result Optional<HostText>), while the VALUE of a free call is
-// still picked by SPELLING, so the ambient builtin answers it and the body's type is the builtin's, not
-// the declared Optional<HostText> (the runtime half of
-// gunbc.recurring_failure_mode host_seam_realization_is_keyed_by_primitive_spelling, the same defect the
-// executed probe in v2.test.claim.cardinality_realization_specimens pins from the other side). STEP 2 of
-// the egress -- resolved-target dispatch, the call target chosen by the resolved declaration instead of
-// by spelling -- is the event that REMOVES this cause, and step 2's PR deletes this entry along with the
-// interpreter arm and the rt bridge. It is declared here because an undeclared refusal cause is exactly
-// the unstamped state this row set exists to prevent; the label refuses any pair whose observed refusal
-// is not the one its row declares.
-data specimen_10_native_causes: List<Symbol> = [
-  ^body_lowering_reason_field_refinement_unmodeled,
-  ^normalized_tree_reason_wrapper_retention_not_normalized,
-  ^infer_grounding_not_derived,
-  ^arrow_body_does_not_inhabit_declared_return
-]
-
 fn refuses(target: DeclarationRef, specimen: DeclarationRef, causes: List<Symbol>) -> RealizationSupportRow {
   RealizationSupportRow { target: target, specimen: specimen, expectation: RefusesWith { causes: causes } }
 }
@@ -225,8 +206,7 @@ data realization_support_rows: List<RealizationSupportRow> = [
   refuses(target: native_v2_target, specimen: specimen_7_foreign_missing, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_8_foreign_null, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_9_foreign_invalid, causes: native_closure_causes),
-  // specimen 10 declares the step-1 cause above; every other specimen keeps the closure's own causes.
-  refuses(target: native_v2_target, specimen: specimen_10_char_at_position, causes: specimen_10_native_causes)
+  refuses(target: native_v2_target, specimen: specimen_10_char_at_position, causes: native_closure_causes)
 ]
 
 fn row_matches(row: RealizationSupportRow, target: DeclarationRef, specimen: DeclarationRef) -> Bool {
