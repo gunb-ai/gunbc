@@ -2148,9 +2148,7 @@ fn roster_arg_is_named(arg: Node) -> Bool {
 // one at that position already binds there. For every row, not one call: fold(xs, init: a, f: b) under positional
 // [xs, empty, cons] and renames init->empty, f->cons is placed, and the label pass writes empty:/cons:. A label no rename
 // maps to the declared one still refuses, and arity is unchanged: an unlabelled extra slot still refuses as arity.
-// THE ROW'S LABEL RENAMES ARE A FUNCTION OF `from` (DESIGN 5): they are read through std.keyed_roster keyed_roster_build, so
-// two renames of one `from` refuse, located by row key and label, instead of a lookup silently picking one. The ceiling is
-// the keyed-roster construction wall (std.keyed_roster), after which the row field is that carrier and this arm dissolves.
+// Rung, ceiling and dissolution: gunbc.recurring_failure_mode a_row_label_rename_names_one_from_twice.
 fn roster_row_label_renames_built(row: RosterHeadRow) -> KeyedRosterBuild<String, String> {
   keyed_roster_build(incomings: list_map(xs: row.labels, f: fn(r) { KeyedRow { row_key: r.from, value: r.to } }), key_eq: fn(a, b) { a == b })
 }

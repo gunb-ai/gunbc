@@ -5,9 +5,6 @@ import std.algebra { list_append }
 import std.optional { Present, Absent }
 import std.measure { ByteSize, byte_size_count }
 import std.content_hash { Sha256Digest }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.exec.program { ProgramIdentity }
 import extdeps.crypto.hash { sha256sum_program }
@@ -321,27 +318,3 @@ fn serving_sequence_endangers(commands: List<ArgvCommand>, protected: ServingPro
   any(xs: commands, predicate: fn(c) { serving_command_endangers(command: c, protected: protected) })
 }
 
-// DECLARED FRONTIER (DESIGN 3c): the rows below are consumed by the startup program's wet driver, which is not
-// in this change.
-data serving_startup_placement_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_artifact_placement", decl_name: "serving_fetch_leg"),
-    reason: "the wet end-to-end run is gated on rotation of the keys the card holds plus a mint entry for cloudflare-r2-models-read-token; until then every R2 fetch leg refuses typed",
-    dissolution: unbound_dissolution(description: "feature:rented-models-read-mint — the operator rotates the card's keys and a mint entry for the models read token exists; then a typed signed-fetch binding replaces the refusing arms"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_artifact_placement", decl_name: "serving_artifact_sequence"),
-    reason: "stale partials left by a crashed attempt are residue this program never removes; they are counted here, not silent",
-    dissolution: unbound_dissolution(description: "feature:rented-release-s5 — S5 release owns deleting stale partials and any verified digest path; the population is every <root>/partial entry no live attempt owns"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_artifact_placement", decl_name: "serving_engine_verdict"),
-    reason: "the engine tarball digest is unpinned, so installed-file verification dissolves RentedTarballUnobserved's consumer obligation only partially",
-    dissolution: unbound_dissolution(description: "feature:rented-tarball-digest-read — an operator reads the tarball's sha256 and size from the store that holds it and pins it"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_artifact_placement", decl_name: "serving_sequence_endangers"),
-    reason: "an on-card onstart script (delivery B) is not modeled; the program runs from the lab over the anchored FleetSsh transport",
-    dissolution: unbound_dissolution(description: "trigger:a Vast restart observed to drop the launch — only then is an on-card onstart script modeled"),
-  ),
-]
