@@ -1,0 +1,702 @@
+module test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness
+
+// WITNESSES FOR THE STATUS-0 EXCERPT. Everything here is a pure fold: no host is contacted, no
+// session is opened, no artifact is written. What is under test is the part that decides whether a
+// label may be cited at all -- so the discriminating inputs matter more than the happy path. The same
+// fixture with the mapping moved past the window, the offset moved by one octet, or a path nobody
+// read must change the answer, and each of those is a test of its own below.
+//
+// THE FIXTURE IS SYNTHETIC AND SAYS SO. It is not a capture of AMI's bundle; it is the smallest text
+// that has the shape the extractor claims to recognise. That is enough to show the fold discriminates
+// and NOT enough to claim the real asset carries this shape -- that claim comes from the run's
+// committed excerpt plus the re-check against the asset's own bytes. Which is why the refusals are as
+// well exercised here as the success path: an extractor that only ever says "found" is worse than one
+// that says nothing.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { collection_count_shape, collection_join_shape, string_contains }
+import std.bytes { octets_bytes }
+import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
+import std.encoding { utf8_decode_bytes }
+import std.measure { byte_size, byte_size_count }
+import std.optional { Absent, Present }
+import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
+  AdmittedUiAssetPath,
+  AssetHttpNotOkay,
+  AssetNotFetchedPathRefused,
+  AssetPathCarriesParentTraversal,
+  AssetPathCarriesQueryOrFragment,
+  AssetPathCarriesSchemeOrAuthority,
+  AssetPathDoesNotStartAtWebRoot,
+  AssetPathIsNotJavaScript,
+  AssetPathNotFromTheCommittedPage,
+  CdRowMarkerAbsent,
+  ExcerptCarriesNonAsciiOctet,
+  ExcerptFound,
+  ExcerptRefused,
+  MegaRacUiHttpGet,
+  MegaRacUiPageReading,
+  MegaRacUiStatusExcerpt,
+  RefusedUiAssetPath,
+  StatusBranchNotForMediaRows,
+  StatusLabelTableNamesNoZero,
+  StatusZeroValueIsNotALabel,
+  megarac_ui_excerpt_checkable_against_asset,
+  megarac_ui_refusal_text,
+  megarac_ui_status_branch_window_octets,
+  megarac_ui_status_excerpt_of_asset,
+  ui_asset_path_admission,
+  ui_asset_refs_of_page,
+  ui_refusal_receipt_text,
+  ui_octets_index_of,
+  ui_string_ends_with,
+  ui_first_page_reading,
+  ui_http_of,
+  ui_octets_of,
+  ui_octets_slice,
+  mtcollins1_ui_page_web_root,
+  ui_page_line,
+  ui_page_reading_of,
+  ui_receipt_text,
+  MegaRacUiRunOutcome,
+}
+
+// ---------------------------------------------------------------------------------------------
+// FIXTURES
+// ---------------------------------------------------------------------------------------------
+
+type WitnessExcerptRecord sole_constructor {
+  label: String
+  offset: Int
+  length: Int
+  excerpt_sha256: Sha256Digest
+  asset_hex: String
+}
+
+fn witness_fill(n: Int, acc: String) -> String {
+  if n <= 0 {
+    acc
+  } else {
+    witness_fill(n - 1, concat(acc, " "))
+  }
+}
+
+fn witness_release() -> NonEmptyStr {
+  "0.45" as NonEmptyStr
+}
+
+fn witness_asset_path() -> NonEmptyStr {
+  "/ui/source.min.js" as NonEmptyStr
+}
+
+// The status read, the media-row marker and the 0-keyed label in one span -- the shape a renderer of
+// the virtual-media table has. `gap` pads between the status read and the mapping, `head` shifts
+// everything so the offsets under test cannot be zero by accident.
+fn witness_asset(head: String, gap: Int) -> String {
+  join([
+    head,
+    "function r(e)\{return e",
+    ".redirection_status",
+    witness_fill(gap, ""),
+    "===0&&e.media_type===1",
+    witness_fill(gap, ""),
+    "?0:",
+    "\"Ejected\"",
+    ":1:\"Inserted\"\}",
+  ], "")
+}
+
+fn witness_extract(asset: String) -> MegaRacUiStatusExcerpt {
+  megarac_ui_status_excerpt_of_asset(
+    asset_text: asset,
+    asset_path: witness_asset_path(),
+    served_release: witness_release(),
+    read_release: witness_release(),
+    http_status: 200,
+  )
+}
+
+fn witness_found(head: String, gap: Int) -> MegaRacUiStatusExcerpt {
+  witness_extract(witness_asset(head: head, gap: gap))
+}
+
+fn witness_fields(finding: MegaRacUiStatusExcerpt) -> WitnessExcerptRecord? {
+  match finding {
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: asset_sha256,
+      excerpt_sha256: excerpt_sha256, excerpt_byte_offset: offset, excerpt_byte_length: length,
+      excerpt_text: _, label_text: label, feeding_site_offset: _, zero_key_offset: _,
+    } => Present {
+      value: WitnessExcerptRecord {
+        label: label as String,
+        offset: byte_size_count(offset),
+        length: byte_size_count(length),
+        excerpt_sha256: excerpt_sha256,
+        asset_hex: asset_sha256.hex as String,
+      },
+    }
+    ExcerptRefused { cause: cause } => none
+  }
+}
+
+fn witness_digest(text: String) -> Sha256Digest? {
+  sha256_hex_digest(hex: sha256_hex_of_text(text: text))
+}
+
+fn witness_excerpt_text(asset: String, offset: Int, length: Int) -> String {
+  // Rebuilt from octets through the module's own slice, so the witnesses exercise the very slice the
+  // checkable fold compares rather than a second, hand-rolled notion of "the bytes at an offset".
+  utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(asset), at: offset, n: length)))
+}
+
+fn witness_checkable(asset: String, offset: Int, length: Int, excerpt_sha256: Sha256Digest, asset_digest: Sha256Digest) -> Bool {
+  megarac_ui_excerpt_checkable_against_asset(
+    excerpt_text: witness_excerpt_text(asset: asset, offset: offset, length: length),
+    excerpt_byte_offset: byte_size(count: offset),
+    excerpt_byte_length: byte_size(count: length),
+    excerpt_sha256: excerpt_sha256,
+    asset_text: asset,
+    asset_sha256: asset_digest,
+  )
+}
+
+fn witness_non_ascii() -> String {
+  utf8_decode_bytes(payload: octets_bytes(o: [195, 169]))
+}
+
+fn witness_ref_at(refs: List<NonEmptyStr>, at: Int) -> String {
+  match refs |> get(at) {
+    null => ""
+    reference => reference as String
+  }
+}
+
+fn witness_page(path: NonEmptyStr, status: Int, body: String) -> MegaRacUiPageReading {
+  MegaRacUiPageReading {
+    path: path,
+    http_status: status,
+    why: "witness fixture page" as NonEmptyStr,
+    asset_refs: ui_asset_refs_of_page(page_text: body),
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SUCCESS PATH, AND THE FOUR WAYS ITS FIXTURE MUST FAIL IF THE FOLD IS LOOSENED
+// ---------------------------------------------------------------------------------------------
+
+test fn w_the_status_read_and_the_zero_label_in_one_span_produce_an_excerpt() -> Bool {
+  match witness_found(head: "/*", gap: 0) {
+    ExcerptFound {
+      asset_path: path, served_release: served, read_release: read,
+      asset_sha256: _, excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _,
+      excerpt_text: text, label_text: label, feeding_site_offset: _, zero_key_offset: _,
+    } => label == "Ejected" && path == witness_asset_path() && served == witness_release() && read == witness_release() && string_contains(s: text, pattern: ".redirection_status") && string_contains(s: text, pattern: "media_type")
+    ExcerptRefused { cause: cause } => false
+  }
+}
+
+// The mapping is present but lives past the window: the SAME two substrings, too far apart to be one
+// branch. If the window were decorative this would go green like the test above.
+test fn w_the_same_mapping_past_the_window_is_not_a_branch() -> Bool {
+  match witness_found(head: "/*", gap: byte_size_count(b: megarac_ui_status_branch_window_octets) + 64) {
+    ExcerptRefused { cause: cause } => match cause {
+      StatusLabelTableNamesNoZero { feeding_site_offset: offset } => byte_size_count(b: offset) > 0
+      another_cause => false
+    }
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// No status read at all: a bundle that contains the mapping but never reads a media row's status has
+// nothing to quote, however confident the mapping looks.
+test fn w_an_asset_that_never_reads_the_rows_status_has_nothing_to_quote() -> Bool {
+  match witness_extract("function r(e)\{return e.media_type===1?0:\"Ejected\":1:\"Inserted\"\}") {
+    ExcerptRefused { cause: cause } => match cause {
+      StatusBranchNotForMediaRows { property_name_present: present } => !present
+      another_cause => false
+    }
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// The media-row marker sits BEFORE the status read, so it falls outside the window. This is the
+// discriminating pair to the success path: they differ only in where the marker sits.
+test fn w_a_marker_outside_the_window_is_not_the_row_renderer() -> Bool {
+  match witness_extract("e.media_type===1&&function(r)\{return r.redirection_status===0?0:\"Ejected\":1:\"Inserted\"\}") {
+    ExcerptRefused { cause: cause } => match cause {
+      CdRowMarkerAbsent { window_start: start, window_length: length } => byte_size_count(b: length) > 0
+      another_cause => false
+    }
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// 0: bound to something that is not a quoted label. A digit followed by a colon is not a mapping.
+test fn w_a_zero_entry_without_a_quoted_label_refuses() -> Bool {
+  match witness_extract("function r(e)\{return e.redirection_status===0&&e.media_type===1?0:status_label[1]:1:\"Inserted\"\}") {
+    ExcerptRefused { cause: cause } => match cause {
+      StatusZeroValueIsNotALabel { zero_key_offset: offset } => byte_size_count(b: offset) > 0
+      another_cause => false
+    }
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE OFFSETS ARE LOAD-BEARING, NOT DECORATION BESIDE A DIGEST
+// ---------------------------------------------------------------------------------------------
+
+// THE ZERO KEY MUST STAND ALONE. "0:" is two octets, so a table that lists 10: (or 20:, 100:) before
+// the genuine 0: contains an earlier "0:" INSIDE that other key. Binding there would hand the fold
+// another code's label as the vendor's word for status 0 -- and every digest would still be true of
+// the bytes it points at, so the checkability fold could not see it. These three are that mistake,
+// in the two shapes that make it (a key whose last digit is 0, and an identifier ending in 0).
+
+test fn w_a_key_ten_written_first_does_not_become_the_words_for_zero() -> Bool {
+  match witness_extract("function r(e)\{return e.redirection_status===0&&e.media_type===1?10:\"Stopped - Device Ejected\":0:\"Not Mounted\":1:\"Inserted\"\}") {
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: label, feeding_site_offset: _, zero_key_offset: _,
+    } => label == "Not Mounted"
+    ExcerptRefused { cause: cause } => false
+  }
+}
+
+// The same table with no genuine 0: at all. A search that stops at the first substring would bind
+// key 10's label here and call it a mapping; the extractor must say the table names no zero.
+// THE RENDERER MUST BE THE MEDIA ONE. The excerpt is the authority for the CD row's status-0 label,
+// so a label table belonging to some other device must not be able to license it. These two are the
+// same table at the same offsets, differing only in whether the window names the media row marker:
+// the first must refuse, the second must admit. An earlier pass inverted this gate and no test
+// noticed, which is the reason the pair exists.
+test fn w_a_status_table_that_never_names_a_media_row_is_refused() -> Bool {
+  match witness_extract(
+    "function r(e)\{return e.redirection_status===0&&e.vusb_cd===1?0:\"Stopped - Device Ejected\":1:\"Inserted\"\}"
+  ) {
+    ExcerptRefused { cause: CdRowMarkerAbsent { window_start: start, window_length: length } } =>
+      byte_size_count(b: start) >= 0 && byte_size_count(b: length) > 0
+    ExcerptRefused { cause: another_cause } => false
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// The same table WITH the media row marker admits -- so the refusal above is the marker and not
+// some other gate, which is what makes the pair discriminating rather than merely two tests.
+test fn w_the_same_status_table_on_media_rows_admits() -> Bool {
+  match witness_extract(
+    "function r(e)\{return e.redirection_status===0&&e.media_type===1?0:\"Stopped - Device Ejected\":1:\"Inserted\"\}"
+  ) {
+    ExcerptRefused { cause: cause } => false
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: label, feeding_site_offset: _, zero_key_offset: _,
+    } => label == "Stopped - Device Ejected"
+  }
+}
+
+test fn w_a_table_whose_only_zero_shaped_key_is_ten_names_no_zero() -> Bool {
+  match witness_extract("function r(e)\{return e.redirection_status===0&&e.media_type===1?10:\"Stopped - Device Ejected\":20:\"Inserted\"\}") {
+    ExcerptRefused { cause: StatusLabelTableNamesNoZero { feeding_site_offset: offset } } => byte_size_count(b: offset) > 0
+    ExcerptRefused { cause: another_cause } => false
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// An identifier that happens to end in 0 is not a key either: the octet before the match is a
+// letter, which no table punctuation explains.
+test fn w_an_identifier_ending_in_zero_is_not_the_zero_key() -> Bool {
+  match witness_extract("function r(e)\{return e.redirection_status===0&&e.media_type===1?status0:\"Stopped - Device Ejected\":1:\"Inserted\"\}") {
+    ExcerptRefused { cause: StatusLabelTableNamesNoZero { feeding_site_offset: offset } } => byte_size_count(b: offset) > 0
+    ExcerptRefused { cause: another_cause } => false
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+test fn w_the_excerpt_is_checkable_against_the_asset_it_came_from() -> Bool {
+  let asset = witness_asset(head: "/*!AMI*/", gap: 3)
+  match witness_fields(witness_extract(asset)) {
+    Absent => false
+    Present { value: record } => match witness_digest(text: asset) {
+      Absent => false
+      Present { value: asset_digest } => witness_checkable(
+        asset: asset,
+        offset: record.offset,
+        length: record.length,
+        excerpt_sha256: record.excerpt_sha256,
+        asset_digest: asset_digest,
+      ) && record.label == "Ejected" && record.offset > 0
+    }
+  }
+}
+
+// One octet to the right: the slice is no longer the excerpt, even though every digest in the record
+// is still a real digest of something.
+test fn w_the_excerpt_is_not_checkable_when_the_offset_moves_by_one() -> Bool {
+  let asset = witness_asset(head: "/*!AMI*/", gap: 3)
+  match witness_fields(witness_extract(asset)) {
+    Absent => false
+    Present { value: record } => match witness_digest(text: asset) {
+      Absent => false
+      Present { value: asset_digest } => !witness_checkable(
+        asset: asset,
+        offset: record.offset + 1,
+        length: record.length,
+        excerpt_sha256: record.excerpt_sha256,
+        asset_digest: asset_digest,
+      )
+    }
+  }
+}
+
+// One octet short: the same argument from the other end.
+test fn w_the_excerpt_is_not_checkable_when_the_length_is_short_by_one() -> Bool {
+  let asset = witness_asset(head: "/*!AMI*/", gap: 3)
+  match witness_fields(witness_extract(asset)) {
+    Absent => false
+    Present { value: record } => match witness_digest(text: asset) {
+      Absent => false
+      Present { value: asset_digest } => record.length > 1 && !witness_checkable(
+        asset: asset,
+        offset: record.offset,
+        length: record.length - 1,
+        excerpt_sha256: record.excerpt_sha256,
+        asset_digest: asset_digest,
+      )
+    }
+  }
+}
+
+// A real digest of a DIFFERENT asset never validates, whatever the offsets say.
+test fn w_an_excerpt_from_one_asset_is_not_checkable_against_another() -> Bool {
+  let asset = witness_asset(head: "/*!AMI*/", gap: 3)
+  let other = witness_asset(head: "/*!OTHER*/", gap: 3)
+  match witness_fields(witness_extract(asset)) {
+    Absent => false
+    Present { value: record } => match witness_digest(text: other) {
+      Absent => false
+      Present { value: other_digest } => record.asset_hex != other_digest.hex as String && !witness_checkable(
+        asset: asset,
+        offset: record.offset,
+        length: record.length,
+        excerpt_sha256: record.excerpt_sha256,
+        asset_digest: other_digest,
+      )
+    }
+  }
+}
+
+// The offsets are OCTET positions, checked against an independent count of the octets rather than
+// against the fold that produced them. The head carries two 2-octet characters, so a character index
+// and an octet index differ here.
+test fn w_the_offsets_are_octet_positions_and_not_character_indices() -> Bool {
+  let asset = witness_asset(head: "/*éé*/", gap: 2)
+  match witness_fields(witness_extract(asset)) {
+    Absent => false
+    Present { value: record } => count(ui_octets_of(witness_excerpt_text(asset: asset, offset: record.offset, length: record.length))) == record.length && record.offset >= count(ui_octets_of("/*éé*/"))
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REFUSALS THAT HOLD BEFORE ANY LABEL IS READ
+// ---------------------------------------------------------------------------------------------
+
+test fn w_a_label_from_another_release_is_not_this_rows_label() -> Bool {
+  match megarac_ui_status_excerpt_of_asset(
+    asset_text: witness_asset(head: "", gap: 0),
+    asset_path: witness_asset_path(),
+    served_release: "0.32" as NonEmptyStr,
+    read_release: witness_release(),
+    http_status: 200,
+  ) {
+    ExcerptRefused { cause: cause } => true
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+test fn w_a_non_200_asset_refuses_before_any_label_is_read() -> Bool {
+  match megarac_ui_status_excerpt_of_asset(
+    asset_text: witness_asset(head: "", gap: 0),
+    asset_path: witness_asset_path(),
+    served_release: witness_release(),
+    read_release: witness_release(),
+    http_status: 401,
+  ) {
+    ExcerptRefused { cause: cause } => match cause {
+      AssetHttpNotOkay { http_status: status } => status == 401
+      another_cause => false
+    }
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// One byte above ASCII in the window is enough: the check is on octets, and a byte offset into text
+// that is not ASCII is not re-checkable by anyone.
+// The control's asset with a single non-ASCII octet inside the LABEL, so it lands inside the window
+// the ASCII gate reads. The accent is built with the file's own idiom -- utf8_decode_bytes over two
+// octets -- rather than a literal, so it does not depend on how this parser spells escapes.
+// Everything before the ASCII gate is known-good on this exact shape: the checkability control
+// admits it. So the accent is the only thing that can fire here, which is what makes this a witness
+// rather than a hope.
+fn witness_asset_with_non_ascii_label() -> String {
+  join([
+    "function r(e)\{return e",
+    ".redirection_status",
+    "===0&&e.media_type===1",
+    "?0:\"Eject",
+    witness_non_ascii(),
+    "d\":1:\"Inserted\"\}",
+  ], "")
+}
+
+test fn w_a_non_ascii_octet_in_the_window_refuses_the_excerpt() -> Bool {
+  match witness_extract(witness_asset_with_non_ascii_label()) {
+    ExcerptRefused { cause: cause } => match cause {
+      ExcerptCarriesNonAsciiOctet { window_start: start } => byte_size_count(b: start) >= 0
+      another_cause => false
+    }
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// PATHS: THE PAGE DERIVES THEM, THE MODEL ENFORCES IT
+// ---------------------------------------------------------------------------------------------
+
+test fn w_the_page_names_its_scripts_and_only_its_scripts() -> Bool {
+  let page = "<html><head><script src=\"/ui/source.min.js\"></script><link href=\"/ui/style.css\"><div data-src=\"/ui/planted.js\"></div>"
+  let refs = ui_asset_refs_of_page(page_text: page)
+  count(refs) == 2 && witness_ref_at(refs: refs, at: 0) == "/ui/source.min.js" && witness_ref_at(refs: refs, at: 1) == "/ui/style.css"
+}
+
+// The reviewer's case: an ordinary-looking path that no page named. It is refused for NOT BEING READ,
+// a different cause from every shape refusal below -- which is why the cause is asserted, not just the
+// refusal.
+test fn w_an_invented_path_is_refused_although_it_looks_ordinary() -> Bool {
+  match ui_asset_path_admission(path: "/ui/source.min.js", derived: ["/ui/other.js" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: path, cause: cause } => match cause {
+      AssetPathNotFromTheCommittedPage { path: named } => named == "/ui/source.min.js" && path == named
+      another_cause => false
+    }
+    AdmittedUiAssetPath { path: path } => false
+  }
+}
+
+test fn w_a_path_the_page_did_name_is_admitted() -> Bool {
+  match ui_asset_path_admission(path: "/ui/source.min.js", derived: ["/ui/source.min.js" as NonEmptyStr]) {
+    AdmittedUiAssetPath { path: path } => path == witness_asset_path()
+    RefusedUiAssetPath { path: path, cause: cause } => false
+  }
+}
+
+test fn w_a_path_that_walks_out_of_the_web_root_is_refused_before_it_is_fetched() -> Bool {
+  match ui_asset_path_admission(path: "/ui/../../etc/shadow.js", derived: ["/ui/../../etc/shadow.js" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: path, cause: cause } => match cause {
+      AssetPathCarriesParentTraversal { path: named } => named == path
+      another_cause => false
+    }
+    AdmittedUiAssetPath { path: path } => false
+  }
+}
+
+test fn w_a_path_naming_another_origin_is_refused() -> Bool {
+  match ui_asset_path_admission(path: "//attacker.example/x.js", derived: ["//attacker.example/x.js" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: path, cause: cause } => match cause {
+      AssetPathCarriesSchemeOrAuthority { path: named } => named == path
+      another_cause => false
+    }
+    AdmittedUiAssetPath { path: path } => false
+  }
+}
+
+test fn w_a_path_with_a_query_is_refused() -> Bool {
+  match ui_asset_path_admission(path: "/ui/source.min.js?v=2", derived: ["/ui/source.min.js?v=2" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: path, cause: cause } => match cause {
+      AssetPathCarriesQueryOrFragment { path: named } => named == path
+      another_cause => false
+    }
+    AdmittedUiAssetPath { path: path } => false
+  }
+}
+
+// Membership is not enough on its own: even a path the page named must be the served JavaScript.
+test fn w_a_stylesheet_the_page_named_is_still_not_fetched() -> Bool {
+  match ui_asset_path_admission(path: "/ui/style.css", derived: ["/ui/style.css" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: path, cause: cause } => match cause {
+      AssetPathIsNotJavaScript { path: named } => named == path
+      another_cause => false
+    }
+    AdmittedUiAssetPath { path: path } => false
+  }
+}
+
+test fn w_a_path_that_is_not_under_the_web_root_is_refused() -> Bool {
+  match ui_asset_path_admission(path: "ui/source.min.js", derived: ["ui/source.min.js" as NonEmptyStr]) {
+    RefusedUiAssetPath { path: path, cause: cause } => match cause {
+      AssetPathDoesNotStartAtWebRoot { path: named } => named == path
+      another_cause => false
+    }
+    AdmittedUiAssetPath { path: path } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE LADDER KEEPS WHAT THE CONTROLLER ANSWERED
+// ---------------------------------------------------------------------------------------------
+
+test fn w_a_200_that_names_no_script_is_not_the_table_page() -> Bool {
+  let readings = [
+    witness_page(path: "/" as NonEmptyStr, status: 200, body: "<html><head><title>SP-X</title></head></html>"),
+    witness_page(path: "/index.html" as NonEmptyStr, status: 200, body: "<script src=\"/ui/source.min.js\"></script>"),
+  ]
+  match ui_first_page_reading(readings: readings, at: 0) {
+    Present { value: page } => page.path == "/index.html" as NonEmptyStr
+    Absent => false
+  }
+}
+
+test fn w_a_404_candidate_is_kept_as_a_404_and_the_ladder_moves_on() -> Bool {
+  let readings = [
+    witness_page(path: "/" as NonEmptyStr, status: 404, body: "not found"),
+    witness_page(path: "/index.html" as NonEmptyStr, status: 200, body: "<script src=\"/ui/source.min.js\"></script>"),
+  ]
+  match readings |> get(0) {
+    null => false
+    first => count(readings) == 2 && first.http_status == 404 && match ui_first_page_reading(readings: readings, at: 0) {
+      Present { value: page } => page.path == "/index.html" as NonEmptyStr
+      Absent => false
+    }
+  }
+}
+
+test fn w_no_response_at_all_is_recorded_as_no_response() -> Bool {
+  let http = ui_http_of(get_body: "curl: (7) failed to connect\n000", get_succeeded: false)
+  http.http_status == 0 && !http.transport_ok
+}
+
+test fn w_the_status_is_read_from_the_last_line_and_not_the_last_three_characters() -> Bool {
+  // A body that happens to END in digits would fool a trailing-three-characters reader.
+  let http = ui_http_of(get_body: "var t=\"0004\";\n404", get_succeeded: false)
+  http.http_status == 404 && http.body == "var t=\"0004\";"
+}
+
+// THE NAME APPEARING IS NOT THE PROPERTY BEING READ. This bundle mentions the property only inside a
+// string; the same refusal fires and the field says why - the difference between a probe that refuses
+// and a probe that tells you what to change next.
+test fn w_a_bare_mention_of_the_property_is_not_an_access() -> Bool {
+  match witness_extract("function r(e)\{var t=\"redirection_status\";return e.media_type===1?0:\"Ejected\":1\}") {
+    ExcerptRefused { cause: cause } => match cause {
+      StatusBranchNotForMediaRows { property_name_present: present } => present
+      another_cause => false
+    }
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+  }
+}
+
+// A REFUSED PATH CLAIMS NOTHING ABOUT AN ASSET IT NEVER FETCHED: the excerpt cause is the not-fetched
+// cause, whose text says so, rather than a claim about the file's contents.
+test fn w_a_refused_path_claims_nothing_about_the_asset_it_never_fetched() -> Bool {
+  match megarac_ui_refusal_text(cause: AssetNotFetchedPathRefused) {
+    text => ui_string_ends_with(text, "about its contents; no excerpt committed")
+  }
+}
+
+// A GATE REFUSAL STILL PRODUCES AN ARTIFACT, AND SAYS WHICH GATE. The step's upload fails when the
+// receipt file is missing, so a refusal that only logged its reason would take a fan observation - a
+// lane that did its own job - down with it. These two check the fold that file is built from.
+test fn w_a_gate_refusal_still_names_its_gate_and_its_reason() -> Bool {
+  let text = ui_refusal_receipt_text(stage: "credential" as NonEmptyStr, reason: "no credential materialized")
+  let hay = ui_octets_of(text as NonEmptyStr)
+  (match ui_octets_index_of(hay, ui_octets_of("refused_at=credential" as NonEmptyStr)) { Present { value: _ } => true Absent => false }) &&
+    (match ui_octets_index_of(hay, ui_octets_of("reason=no credential materialized" as NonEmptyStr)) { Present { value: _ } => true Absent => false }) &&
+    ui_string_ends_with(text, "cited as the controller's mapping")
+}
+
+test fn w_a_refusal_for_one_gate_does_not_borrow_another_gate_s_stage() -> Bool {
+  let hay = ui_octets_of(ui_refusal_receipt_text(stage: "release" as NonEmptyStr, reason: "no committed release") as NonEmptyStr)
+  (match ui_octets_index_of(hay, ui_octets_of("refused_at=credential" as NonEmptyStr)) { Present { value: _ } => false Absent => true })
+}
+
+// NOTHING SECRET RIDES THE RECEIPT. The page body is the one place a session cookie or a CSRF token
+// can arrive (it is the only field of the response that carries upstream bytes), so this is where a
+// careless reprint would put a credential into a PUBLIC artifact. The reading is built from that body
+// and the receipt is built from that reading, so the sentinels below are placed where they actually
+// could leak: they must reach the reading's asset refs as a path and nothing of them may reach the
+// receipt. This is merry-fox-82's condition ("commit no credential, cookie or CSRF token in any
+// artifact") as an executing claim rather than a comment. Be exact about what it covers, because the
+// comment is read as a claim: it pins that UPSTREAM PAGE BYTES do not ride into the artifact, which
+// is the only input to this fold that could carry a cookie or a token. It cannot cover the credential
+// VALUE or the session CSRF token, and does not pretend to - the receipt builders never receive those
+// values at all (ui_receipt_text takes an env NAME, not a file contents; the CSRF token is extracted
+// from the opened session and passed to the close, never to a printer), so they are unreachable by
+// construction, which a test here cannot express. What CAN go red: widen MegaRacUiPageReading or
+// ui_page_line to echo the body or a header, or copy one into `why`, and both sentinels surface.
+// One assertion here is formatting-coupled on purpose - "refs=1" is the only check that the page
+// lines were carried into the receipt at all; rewording the printer breaks it deliberately.
+test fn w_a_page_body_carrying_a_cookie_and_token_leaves_nothing_of_them_in_the_receipt() -> Bool {
+  let get_body = concat(
+    "<html><head><script src=\"/js/redirection_status.js\"></script></head>",
+    "<body data-cookie=\"SESSIONJARSENTINELdd8f\" data-xsrf=\"XSRFTOKENSENTINEL71ab\">ready</body></html>\n200")
+  let http = ui_http_of(get_body: get_body, get_succeeded: true)
+  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http)
+  let outcome = MegaRacUiRunOutcome {
+    lines: [ui_page_line(reading)],
+    found_excerpt: false,
+    session_closed: true,
+  }
+  let receipt = ui_receipt_text(outcome: outcome, credential_env: "mtcollins1_fan_password_file" as NonEmptyStr)
+  http.http_status == 200 &&
+    count(reading.asset_refs) == 1 &&
+    !string_contains(s: receipt, pattern: "SESSIONJARSENTINEL") &&
+    !string_contains(s: receipt, pattern: "XSRFTOKENSENTINEL") &&
+    !string_contains(s: receipt, pattern: "data-cookie") &&
+    !string_contains(s: receipt, pattern: "data-xsrf") &&
+    !string_contains(s: receipt, pattern: "/js/redirection_status.js") &&
+    string_contains(s: receipt, pattern: "mtcollins1_fan_password_file") &&
+    string_contains(s: receipt, pattern: "refs=1")
+}
