@@ -3471,6 +3471,28 @@ struct RegenConvergenceModel {
     indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
 }
 
+/// THE ORCHESTRATOR'S ONE WAY TO LOAD AN INTERPRETED MODEL: the entry's own import closure, acquired
+/// through the source layout (`resolve_entry_graph_demand_acquired`, the route `gunbc run` takes), never
+/// the process-wide whole-tree index. Measured on main c0a1ba43, release, in the order the re-exec'd
+/// orchestrator runs: `RegenConvergenceModel::load` through `process_shared_index_or_refuse` took
+/// 169 s and left 10.13 GB resident to resolve a 26-module closure that the demand-acquired route
+/// resolves in 2.9 s at 150 MB -- the orchestrator's whole pre-generation footprint (heal runs read
+/// 10.69-10.70 GB at generation 0). A whole-tree index serving a handful of small entries is the
+/// duplication DESIGN section 2 orders removed before any cache is considered; every orchestrator-side
+/// model load goes through here so none of them rebuilds it later, between generations.
+fn resolve_orchestrator_model(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<
+    (
+        Rc<crate::v1_compiler_compile::ResolvedGraph>,
+        Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+    ),
+    String,
+> {
+    super::resolve_entry_graph_demand_acquired(source_roots, entry)
+}
+
 impl RegenConvergenceModel {
     fn load(source_roots: &[String]) -> Result<Self, String> {
         let entry = source_roots
@@ -3480,9 +3502,10 @@ impl RegenConvergenceModel {
             .ok_or_else(|| {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
-        let index = super::process_shared_index_or_refuse(source_roots);
-        let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
-            .map_err(|e| format!("refusal: convergence transaction model did not resolve: {e}"))?;
+        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
+            .map_err(|e| {
+            format!("refusal: convergence transaction model did not resolve: {e}")
+        })?;
         Ok(Self { graph, indices })
     }
 
@@ -3516,11 +3539,10 @@ impl SupervisedSubjectModel {
                  is outside source roots"
                     .to_string()
             })?;
-        let index = super::process_shared_index_or_refuse(source_roots);
-        let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+        let (graph, indices) = resolve_orchestrator_model(source_roots, &entry.to_string_lossy())
             .map_err(|e| {
-                format!("refusal: the supervised-subject liveness model did not resolve: {e}")
-            })?;
+            format!("refusal: the supervised-subject liveness model did not resolve: {e}")
+        })?;
         Ok(Self { graph, indices })
     }
 
@@ -4068,8 +4090,7 @@ fn rebuild_scope_decision_with(
 ) -> Result<ModelValue, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index_or_refuse(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so {function} has no decider: {e}")
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -5280,8 +5301,7 @@ fn render_round_cost_receipt(
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index_or_refuse(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -5507,8 +5527,7 @@ fn partition_rebuild_actuation(
 ) -> Result<PartitionRebuildActuation, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
-    let index = super::process_shared_index_or_refuse(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+    let (graph, indices) = resolve_orchestrator_model(source_roots, &entry).map_err(|e| {
         format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
     })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
@@ -11916,6 +11935,329 @@ mod surface_roles_receipt_tests {
         assert_eq!(
             names, modules,
             "the edge-free module set differs from the edge path's"
+        );
+    }
+}
+
+/// THE ORCHESTRATOR LOADS ITS MODELS FROM THEIR OWN CLOSURES, never through the whole-tree shared
+/// index. The discriminator is the thread's shared-index memo (`PROCESS_RESOLVE_INDEX` is
+/// thread-local and each test runs on its own thread): replaying the re-exec'd orchestrator's loads
+/// in PRODUCTION ORDER -- the liveness model, the convergence model, the round-cost decider -- must
+/// leave it empty, and a shared-index build over even a tiny root must not.
+#[cfg(test)]
+mod orchestrator_model_load_tests {
+    use super::*;
+
+    fn roots() -> Vec<String> {
+        ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Replace every `OccurrenceId { value: N }` by its order of first appearance in `text`.
+    fn canonical_occurrences(text: &str) -> String {
+        const MARK: &str = "OccurrenceId { value: ";
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(at) = rest.find(MARK) {
+            out.push_str(&rest[..at + MARK.len()]);
+            rest = &rest[at + MARK.len()..];
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            let next = seen.len();
+            let canonical = *seen.entry(digits.clone()).or_insert(next);
+            out.push_str(&format!("#{canonical}"));
+            rest = &rest[digits.len()..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    fn first_divergence(a: &str, b: &str) -> String {
+        let at = a
+            .bytes()
+            .zip(b.bytes())
+            .position(|(x, y)| x != y)
+            .unwrap_or(a.len().min(b.len()));
+        let window = |s: &str| s[at.saturating_sub(80)..(at + 120).min(s.len())].to_string();
+        format!("byte {at}: {:?} vs {:?}", window(a), window(b))
+    }
+
+    /// The renumbering is a bijection test, not a blur: two texts that differ in which occurrences
+    /// are the SAME still compare unequal.
+    #[test]
+    fn occurrence_canonicalization_keeps_sharing_and_forgets_only_numbering() {
+        let a = "x OccurrenceId { value: 6877 } y OccurrenceId { value: 6877 } z OccurrenceId { value: 9 }";
+        let renumbered = "x OccurrenceId { value: 1276332 } y OccurrenceId { value: 1276332 } z OccurrenceId { value: 5 }";
+        let unshared =
+            "x OccurrenceId { value: 1 } y OccurrenceId { value: 2 } z OccurrenceId { value: 3 }";
+        assert_eq!(canonical_occurrences(a), canonical_occurrences(renumbered));
+        assert_ne!(canonical_occurrences(a), canonical_occurrences(unshared));
+    }
+
+    #[test]
+    fn the_orchestrators_model_loads_build_no_shared_index() {
+        let roots = roots();
+        let _liveness = SupervisedSubjectModel::load(&roots).expect("liveness model");
+        let convergence = RegenConvergenceModel::load(&roots).expect("convergence model");
+        let entry = round_cost_entry(&roots).unwrap();
+        let _decider = resolve_orchestrator_model(&roots, &entry).expect("round-cost decider");
+        // The loaded model evaluates through the same bridge production uses.
+        assert_eq!(
+            admit_generation_begin_readings(&convergence, 1, 900_000_000, 900_000_000),
+            Ok(())
+        );
+        assert_eq!(
+            super::super::entry_resolve::shared_index_residency_control(),
+            Ok(0),
+            "an orchestrator model load built the whole-tree shared index"
+        );
+    }
+
+    /// RED for the discriminator: a shared-index build, here over a one-module fixture root, is seen.
+    #[test]
+    fn a_shared_index_build_is_seen_by_the_residency_read() {
+        // Under the workspace: a shared-index root must be one, or key normalization refuses it.
+        let root = workspace_root().join(format!(
+            "target/gunbc-shared-index-red-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("probe")).unwrap();
+        fs::write(
+            root.join("probe/fixture.dag"),
+            "module probe.fixture\n\nimport std.types { Int }\n\ndata fixture_value: Int = 1\n",
+        )
+        .unwrap();
+        let fixture_roots = vec![root.to_string_lossy().into_owned()];
+        let _ = super::super::entry_resolve::try_process_shared_index(&fixture_roots);
+        let resident = super::super::entry_resolve::shared_index_residency_control();
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            matches!(resident, Ok(n) if n >= 1),
+            "the residency read did not see a shared-index build: {resident:?}"
+        );
+    }
+
+    /// EQUIVALENCE, PER SITE: the demand-acquired route and the shared-index route resolve each
+    /// orchestrator entry to the SAME graph -- the same modules, the same item registry with every
+    /// item's resolved content, the same diagnostics -- and the model functions the five sites call
+    /// answer identically on fixed inputs. Two resolutions that could diverge silently would be two
+    /// authorities for one model (DESIGN section 3). The shared-index side costs about 169 s and
+    /// 10 GB, so this runs on demand: --ignored --test-threads=1 on a release build.
+    #[test]
+    #[ignore]
+    fn both_routes_resolve_every_orchestrator_entry_identically() {
+        use crate::v1_interpreter::{self, ExecutionMode, Value};
+        let roots = roots();
+        let entries = [
+            Path::new(&roots[1]).join("workflow/regen_convergence_transaction.dag"),
+            Path::new(&roots[0]).join("gunbc/host/memory_stall_refusal.dag"),
+            PathBuf::from(round_cost_entry(&roots).unwrap()),
+        ];
+        let shared = super::super::process_shared_index_or_refuse(&roots);
+        for entry in &entries {
+            let entry = entry.to_string_lossy().into_owned();
+            let (demand, demand_si) = resolve_orchestrator_model(&roots, &entry).unwrap();
+            let (whole, whole_si) =
+                super::super::resolve_entry_with_index(&shared, &entry).unwrap();
+            // EQUAL UP TO OCCURRENCE NUMBERING. Occurrence identities are minted from a per-process
+            // counter (std.occurrence_identity), so the route that resolved a whole tree first numbers
+            // the same occurrences from a different base (measured: 6877 against 1276332 for one
+            // binder). Both graphs are therefore compared after one consistent renumbering -- each
+            // distinct id replaced by its order of first appearance across the WHOLE rendering -- which
+            // holds exactly when a single bijection maps one graph's occurrences onto the other's.
+            let registry = |g: &crate::v1_compiler_compile::ResolvedGraph| {
+                let mut keys: Vec<&String> = g.item_registry.keys().collect();
+                keys.sort();
+                canonical_occurrences(
+                    &keys
+                        .iter()
+                        .map(|k| format!("{k} => {:?}", g.item_registry[*k]))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                )
+            };
+            let (demand_items, whole_items) = (registry(&demand), registry(&whole));
+            assert!(
+                demand_items == whole_items,
+                "{entry}: the two routes registered different items (first divergence: {})",
+                first_divergence(&demand_items, &whole_items)
+            );
+            let modules = |g: &crate::v1_compiler_compile::ResolvedGraph| {
+                let mut rendered: Vec<String> = g
+                    .modules
+                    .iter()
+                    .map(|m| canonical_occurrences(&format!("{m:?}")))
+                    .collect();
+                rendered.sort();
+                rendered
+            };
+            assert!(
+                modules(&demand) == modules(&whole),
+                "{entry}: the two routes resolved different modules"
+            );
+            let diags = |g: &crate::v1_compiler_compile::ResolvedGraph| {
+                let mut d: Vec<String> = g
+                    .diagnostics
+                    .iter()
+                    .map(|x| canonical_occurrences(&format!("{x:?}")))
+                    .collect();
+                d.sort();
+                d
+            };
+            assert!(
+                diags(&demand) == diags(&whole),
+                "{entry}: diagnostics differ"
+            );
+            // Behaviour on fixed inputs: the functions the sites call, both contexts.
+            let answer =
+                |g: &crate::v1_compiler_compile::ResolvedGraph,
+                 si: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+                 function: &str,
+                 args: &dyn Fn(&v1_interpreter::InterpContext) -> Vec<(Option<String>, Value)>|
+                 -> String {
+                    let ctx = super::super::make_eval_context(g, si, ExecutionMode::Hermetic);
+                    let args = args(&ctx);
+                    format!(
+                        "{:?}",
+                        v1_interpreter::with_active_context(&ctx, || {
+                            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+                        })
+                    )
+                };
+            let measure = |ctx: &v1_interpreter::InterpContext, n: i64| Value::Record {
+                type_name: ctx.sym("Measure"),
+                fields: Rc::new(vec![(ctx.sym("count"), Value::Int(n))]),
+            };
+            let probes: Vec<(
+                &str,
+                Box<dyn Fn(&v1_interpreter::InterpContext) -> Vec<(Option<String>, Value)>>,
+            )> = if entry.ends_with("regen_convergence_transaction.dag") {
+                vec![
+                    (
+                        "regen_admit_generation_begin",
+                        Box::new(move |ctx| {
+                            vec![
+                                (Some("ordinal".to_string()), Value::Int(2)),
+                                (
+                                    Some("resident_at_first".to_string()),
+                                    measure(ctx, 900_000_000),
+                                ),
+                                (
+                                    Some("resident_now".to_string()),
+                                    measure(ctx, 15_636_525_056),
+                                ),
+                            ]
+                        }),
+                    ),
+                    (
+                        "regen_admit_generation_begin",
+                        Box::new(move |ctx| {
+                            vec![
+                                (Some("ordinal".to_string()), Value::Int(1)),
+                                (
+                                    Some("resident_at_first".to_string()),
+                                    measure(ctx, 10_692_333_568),
+                                ),
+                                (
+                                    Some("resident_now".to_string()),
+                                    measure(ctx, 12_602_740_736),
+                                ),
+                            ]
+                        }),
+                    ),
+                ]
+            } else if entry.ends_with("memory_stall_refusal.dag") {
+                let reading = move |ctx: &v1_interpreter::InterpContext,
+                                    faults: i64,
+                                    cpu: i64,
+                                    events: i64,
+                                    full: i64| {
+                    Value::Record {
+                        type_name: ctx.sym("SupervisedSlotReading"),
+                        fields: Rc::new(vec![
+                            (ctx.sym("major_faults"), Value::Int(faults)),
+                            (ctx.sym("user_cpu"), measure(ctx, cpu)),
+                            (ctx.sym("envelope_events"), Value::Int(events)),
+                            (ctx.sym("pressure_body"), v1_interpreter::str_value(format!(
+                                "some avg10=0.00 avg60=0.00 avg300=0.00 total={}\nfull avg10=0.00 avg60=0.00 avg300=0.00 total={full}\n",
+                                full + 5
+                            ))),
+                        ]),
+                    }
+                };
+                vec![(
+                    "supervised_subject_window_between",
+                    Box::new(move |ctx| {
+                        vec![
+                            (
+                                Some("base".to_string()),
+                                reading(ctx, 100, 2000, 7, 1_000_000),
+                            ),
+                            (
+                                Some("now".to_string()),
+                                reading(ctx, 160, 2500, 419, 1_000_000 + 900_001 * 800),
+                            ),
+                            (Some("wall".to_string()), measure(ctx, 900_001)),
+                        ]
+                    }),
+                )]
+            } else {
+                vec![]
+            };
+            // RAW equality here, deliberately NOT renumbered: these are the values the five sites hand
+            // on (labels, verdict and refusal texts, decisions) and some reach persisted receipts, so
+            // an occurrence identity leaking into one would change those bytes between routes and
+            // must fail this claim rather than be renumbered away.
+            for (function, args) in &probes {
+                let (on_demand, on_whole) = (
+                    answer(&demand, demand_si.clone(), function, args.as_ref()),
+                    answer(&whole, whole_si.clone(), function, args.as_ref()),
+                );
+                assert!(
+                    !on_demand.contains("OccurrenceId"),
+                    "{entry}: {function} hands on an occurrence identity: {on_demand}"
+                );
+                assert_eq!(
+                    on_demand, on_whole,
+                    "{entry}: {function} answered differently on the two routes"
+                );
+            }
+            eprintln!(
+                "EQUIVALENT (up to occurrence numbering) {entry}: {} modules, {} items, {} diagnostics, {} behavioural probes",
+                demand.modules.len(),
+                demand.item_registry.len(),
+                demand.diagnostics.len(),
+                probes.len()
+            );
+        }
+    }
+
+    /// The footprint, in production order, on a release build in a fresh process: run alone with
+    /// --ignored --nocapture --test-threads=1. Prints the readings the RFM row cites.
+    #[test]
+    #[ignore]
+    fn measure_the_orchestrators_model_loads_in_production_order() {
+        let rss = || {
+            fs::read_to_string("/proc/self/status")
+                .unwrap()
+                .lines()
+                .find(|l| l.starts_with("VmRSS"))
+                .unwrap()
+                .to_string()
+        };
+        let roots = roots();
+        eprintln!("MEASURE start {}", rss());
+        let t = Instant::now();
+        let _liveness = SupervisedSubjectModel::load(&roots).unwrap();
+        let _convergence = RegenConvergenceModel::load(&roots).unwrap();
+        let entry = round_cost_entry(&roots).unwrap();
+        let _decider = resolve_orchestrator_model(&roots, &entry).unwrap();
+        eprintln!(
+            "MEASURE after the three orchestrator loads {:?} {}",
+            t.elapsed(),
+            rss()
         );
     }
 }
