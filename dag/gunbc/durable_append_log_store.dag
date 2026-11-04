@@ -127,10 +127,11 @@ fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: 
 }
 
 // ── THE DISPOSITION CENSUS, at identity grain ─────────────────────────────────────────────────────
-// Identity is (inventory row_id, member name). Twelve rows: eight from Seeadecb2 (the per-attempt dispatch
-// state: the directory wire member, the four `*RequestScratch` members, the three verdict members) and four from
-// S88241eea (gcp_iam_bootstrap intent/elected/closed/retired). It held twenty until #15576: the eight attempt
-// log members' rows were deleted together with the census-key join they fed, because their slots now come from
+// Identity is (inventory row_id, member name). The rows below come from three sources, named rather than
+// counted (the list is the count): Seeadecb2 (the per-attempt dispatch state: the directory wire member, the
+// `*RequestScratch` members, the verdict members), S88241eea (gcp_iam_bootstrap intent/elected/closed/retired)
+// and approval_decision_store (the decision store and its receipt, StaysSharedByAgreement). #15576 deleted the
+// attempt log members' rows together with the census-key join they fed, because their slots now come from
 // the total `AttemptLogMember -> AppendLogSlot` function in the module that declares the members. What is left
 // here is exactly the set that has NO declaring-module slot function. The census read the
 // merged disposition tables of #15417, #15412, #15068, #15104, #15081, #15396 and #15414; the other
