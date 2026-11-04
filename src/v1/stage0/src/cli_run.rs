@@ -32625,28 +32625,6 @@ pub(crate) fn floor_discovery_source_inventory(
     try_build_module_index(source_roots).map(|index| floor_source_inventory(&index))
 }
 
-/// THE PROCESS CACHES THAT HOLD THE CORPUS, TAKEN OUT OF THEIR THREAD-LOCALS IN ONE PLACE. The one
-/// list both releases read: at exit the taken value is forgotten (below), and a process that has
-/// more to do after its last compile -- the v2-native lane's `cargo build` of the emitted crate --
-/// drops it instead, so the memory is FREED before the build rather than living under it.
-/// Measured on gunbc#15848's v2-bootstrap (srv3-15): with the emission's index owned and dropped,
-/// rss_kb_after was still 6630664 -- these caches. A cache added to the process later belongs here,
-/// or both releases leave it resident.
-pub(crate) fn take_process_caches() -> impl Sized {
-    use std::mem::take;
-    (
-        entry_resolve::PROCESS_RESOLVE_INDEX.with(|s| take(&mut *s.borrow_mut())),
-        entry_resolve::PROCESS_RESOLVE_STORE.with(|s| take(&mut *s.borrow_mut())),
-        SCOPE_FRAGMENT_CACHES.with(|c| take(&mut *c.borrow_mut())),
-        REFERENCE_CLOSURE_INDEXES.with(|c| take(&mut *c.borrow_mut())),
-        SCOPE_ORDER_INDEXES.with(|c| take(&mut *c.borrow_mut())),
-        MODULE_PATH_INDEX_CACHE.with(|c| take(&mut *c.borrow_mut())),
-        MODULE_GRAPH_FACTS_CACHE.with(|c| take(&mut *c.borrow_mut())),
-        REFERENCE_EDGE_CACHE.with(|c| take(&mut *c.borrow_mut())),
-        COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| take(&mut *m.borrow_mut())),
-    )
-}
-
 /// THE PROCESS CACHES ARE RELEASED TO THE OPERATING SYSTEM AT EXIT, NOT FREED NODE BY NODE.
 ///
 /// WHY THIS EXISTS. `claim_executor`'s `main` returns an `ExitCode`, so after the verdict every
@@ -32669,8 +32647,17 @@ pub(crate) fn take_process_caches() -> impl Sized {
 /// to everything outside this process. Other thread-locals still drop after `main` returns; that
 /// residue is unmeasured here and is not claimed to be zero.
 pub fn release_process_caches_at_exit() {
+    use std::mem::{forget, take};
     let whole = std::time::Instant::now();
-    std::mem::forget(take_process_caches());
+    entry_resolve::PROCESS_RESOLVE_INDEX.with(|s| forget(take(&mut *s.borrow_mut())));
+    entry_resolve::PROCESS_RESOLVE_STORE.with(|s| forget(take(&mut *s.borrow_mut())));
+    SCOPE_FRAGMENT_CACHES.with(|c| forget(take(&mut *c.borrow_mut())));
+    REFERENCE_CLOSURE_INDEXES.with(|c| forget(take(&mut *c.borrow_mut())));
+    SCOPE_ORDER_INDEXES.with(|c| forget(take(&mut *c.borrow_mut())));
+    MODULE_PATH_INDEX_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(
         "[floor-teardown] released process caches without freeing them in {} ms (the residue after \
          this line is whatever main's return still drops)",
