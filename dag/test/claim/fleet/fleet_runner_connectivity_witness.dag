@@ -11,6 +11,7 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdent
 import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess }
 import gunbc.runner.runner_incarnation { parse_jit_registration_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.organization_runner_roster_read { decode_roster_page_json, RosterPageDecoded, RosterPageDecodeRefused }
 import gunbc.fleet.runner_connectivity_observe_wet { runner_connectivity_observation_lines }
 import gunbc.fleet.fleet_runner_connectivity {
   incident_2026_08_06_roster_fixture,
@@ -534,4 +535,17 @@ test fn a_partial_or_unavailable_roster_never_observes_a_zero() -> Bool {
 test fn the_wet_entrys_lines_for_an_unavailable_roster_are_unobserved_per_slot() -> Bool {
   runner_connectivity_observation_lines(roster: RosterReadUnavailable { reason: "no token" })
     == map(local_runner_slot_incarnations(), inc => slot_registration_observation_wire(o: SlotRegistrationsUnobserved { slot: inc.slot, reason: "roster unavailable: no token" }))
+}
+
+// INHABITANCE CLAIM (DESIGN section 3 pairing): the supplied rows above are what the REAL decode emits. A GitHub
+// org-runners JSON body carrying a live and a dead JIT registration of srv4-01 goes through
+// decode_roster_page_json, and the decoded rows feed the same observation the wet entry records; deleting the
+// decode from the route, or the JIT grammar from decode_registration_slot, turns this red.
+test fn the_real_roster_page_decode_feeds_the_registration_observation() -> Bool {
+  let body = "{\"total_count\":2,\"runners\":[{\"id\":9001,\"name\":\"srv4-01-1793701320-333\",\"status\":\"online\",\"busy\":false,\"os\":\"linux\",\"labels\":[{\"name\":\"self-hosted\"}],\"ephemeral\":true},{\"id\":9002,\"name\":\"srv4-01-1793600000-111\",\"status\":\"offline\",\"busy\":false,\"os\":\"linux\",\"labels\":[{\"name\":\"self-hosted\"}],\"ephemeral\":true}]}"
+  match decode_roster_page_json(body: body) {
+    RosterPageDecodeRefused { reason: _ } => false
+    RosterPageDecoded { registrations: regs, total_count: _ } =>
+      srv4_01_registrations_are(roster: jit_complete_roster(rows: regs), live: 1, dead: 1)
+  }
 }
