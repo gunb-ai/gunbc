@@ -56,11 +56,6 @@ fn rented_reclaim_same_replica(a: RentedReplicaIdentity, b: RentedReplicaIdentit
   a.node == b.node && a.device_index == b.device_index && a.served_name == b.served_name
 }
 
-// THE OBLIGATION A RECLAIM LEAVES BEHIND, stated once and identically for every orphaned seat: the seat must
-// ask placement again, and the endpoint incarnation it had is not reusable -- the next attempt is a new
-// incarnation of the replica, not a re-attachment to a card that no longer exists.
-data rented_reclaim_replacement_obligation: NonEmptyStr = "the rented card this seat was bound to has been reclaimed; the seat must ask placement again, on a new endpoint incarnation -- the reclaimed endpoint's incarnation is not reusable"
-
 // WHICH SEATS THE RECLAIM ORPHANS: those standing on the replica this reclaim took away. Everything else is
 // left untouched, including seats on other cards of the same cohort -- sweeping the cohort is how a single
 // destroyed card becomes an outage across cards that are still paid for and still running.
@@ -72,14 +67,24 @@ fn rented_reclaim_orphaned_seats(loss: RentedReclaimLoss, held: List<RentedRecla
   }
 }
 
-// THE HAND-OFF, in the shape the front door consumes: the seat, the replica it lost, and the obligation. There
-// is no destination field to fill in. That is the whole claim of this module, and it is a type-level claim
-// rather than a comment: a caller cannot pass a chosen card through a structure that has no place for one.
-type RentedReclaimHandoff { seat: HarnessSeatReference, replica: RentedReplicaIdentity, obligation: NonEmptyStr }
+// THE HAND-OFF, in the shape the front door consumes: the seat, and the replica it lost. There is no
+// destination field to fill in, and there is no obligation STRING either -- the obligation IS this type. A
+// handoff exists only when a seat lost the endpoint it stood on, which is precisely the condition under which
+// the front door must ask placement again on a NEW endpoint incarnation; the replica it names is named as
+// LOST, never as a candidate. Both halves are the typed identities, so the claim is type-level rather than a
+// comment: a caller cannot pass a chosen card through a structure that has no place for one.
+//
+// Why no `obligation: NonEmptyStr` field here, when the corpus carries that field 365 times on main: those
+// carry an obligation that DIFFERS per case -- a refusal's obligation, a trial term's, a rotation's -- and the
+// one this module would copy is a constant, the same sentence in every handoff, varying over nothing. That is
+// one fact stated N times (DESIGN section 3) and prose no accepted program can act on (DESIGN section 4c).
+// The upstream arm this module mirrors (rented_allocation's RentedAllocationNotEnrollable) keeps its
+// obligation field for exactly the opposite reason: there the sentence differs per refusal.
+type RentedReclaimHandoff { seat: HarnessSeatReference, replica: RentedReplicaIdentity }
 
 fn rented_reclaim_handoffs(loss: RentedReclaimLoss, held: List<RentedReclaimSeat>) -> List<RentedReclaimHandoff> {
   map(rented_reclaim_orphaned_seats(loss: loss, held: held),
-      s => RentedReclaimHandoff { seat: s.seat, replica: s.replica, obligation: rented_reclaim_replacement_obligation })
+      s => RentedReclaimHandoff { seat: s.seat, replica: s.replica })
 }
 
 // DECLARED FRONTIER (DESIGN 3c). The triggers here are descriptions rather than declaration references,
@@ -89,7 +94,7 @@ fn rented_reclaim_handoffs(loss: RentedReclaimLoss, held: List<RentedReclaimSeat
 data rented_reclaim_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_reclaim", decl_name: "rented_reclaim_handoffs"),
-    reason: "Nothing hands an orphaned seat to the front door in production: the reclaim legs run (product.fabric.flex_vast_loop runs gunbc.serving.rented_release's decisions) and the obligation this module states has no consumer, so a reclaimed card silently strands the sessions that were standing on it. The callout that would consume this -- turning a refusal or a lost seat into a SubmitDemand at the single demand home (product.fabric.demand) -- belongs to the serving router's front-door work (calm-moth-166), not to this pass.",
+    reason: "Nothing hands an orphaned seat to the front door in production: the reclaim legs run (product.fabric.flex_vast_loop runs gunbc.serving.rented_release's decisions) and RentedReclaimHandoff has no consumer, so a reclaimed card silently strands the sessions that were standing on it. What the handoff owes is carried by the type rather than by a sentence copied into every row: it names the seat and the replica it LOST, and the duty on seeing one is to ask placement again on a NEW endpoint incarnation -- never to re-attach to the reclaimed replica's incarnation, which is why the replica is named as lost and not as a candidate. The callout that would act on that -- turning a refusal or a lost seat into a SubmitDemand at the single demand home (product.fabric.demand) -- belongs to the serving router's front-door work (calm-moth-166), not to this pass.",
     dissolution: unbound_dissolution(description: "trigger: the front door's refusal-to-demand callout (product.fabric.demand SubmitDemand, the same callout the ceiling refusal needs) is fed by a reclaim pass over these handoffs -- sufficient for a reclaimed card to put its sessions back into placement with no hand-written re-placement arm in the flex pass and no failover decision anywhere in the router")
   ),
   frontier_row_decl(
