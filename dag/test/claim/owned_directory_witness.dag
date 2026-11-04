@@ -10,7 +10,8 @@ import gunbc.owned_directory {
   owned_directory_decide, owned_directory_reading_of_stat_line, owned_directory_observe,
   ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverFailure, ObserverNotSpawned, ObserverExited, ObserverTransportRefused,
   owned_directory_ensure, OwnedDirectoryEnsured, OwnedDirectoryEnsureRefused,
-  owned_directory_act_time_handover,
+  owned_directory_act_time_handover, HandoverOwnerChanged, HandoverAppeared,
+  SameUserRegroupToDeclaredGroup,
 }
 
 // THE PROVIDER'S DECISION TABLE, over supplied observations (DESIGN 3: one interface, supplied values).
@@ -137,47 +138,108 @@ test fn a_mode_drift_on_the_owners_directory_applies() -> Bool {
 // ── THE ACT-TIME OWNERSHIP EFFECT (roadmap node "Realize live_deploy's install-owned leaves as typed
 // fs writes with an ownership effect"). A directory that changed hands between the plan-time
 // observation and the act is refused BEFORE the install runs, so the readback can never report
-// convergence over a stolen directory. The handover decision is pure, so each arm below is flipped by
-// exactly ONE input; the last claim shows the provider's act path stays silent over a foreign owner.
+// convergence over a stolen directory. The check compares the TWO OBSERVATIONS against each other --
+// never the declared owner (review 90625: closing the gap toward the declaration is what Apply does;
+// SameUserRegroupToDeclaredGroup exists for exactly that). Each claim flips exactly one input.
 
-test fn handover_is_a_foreign_owner_at_act_time() -> Bool {
-  match owned_directory_act_time_handover(target: target(), at_act: observed(line: "directory|root|root|700")) {
-    Present { value: o } => (o.user as String) == "root" && (o.group as String) == "root"
-    Absent => false
+test fn a_changed_owner_between_plan_and_act_is_a_handover() -> Bool {
+  match owned_directory_act_time_handover(
+    before: observed(line: "directory|svc|svc|700"),
+    at_act: observed(line: "directory|root|root|700"),
+  ) {
+    Present { value: HandoverOwnerChanged { plan_time: _, act_time } } =>
+      (act_time.user as String) == "root" && (act_time.group as String) == "root"
+    _ => false
   }
 }
 
-test fn no_handover_when_the_act_time_owner_is_the_declared_one() -> Bool {
-  match owned_directory_act_time_handover(target: target(), at_act: observed(line: "directory|svc|svc|700")) {
+// THE REVIEW 90625 DISCRIMINATOR: an UNCHANGED foreign-owned directory is not a handover -- the
+// regroup Apply must still act. The pre-fix check compared against the declared owner and refused
+// exactly this case.
+test fn an_unchanged_foreign_owner_is_no_handover_the_regroup_may_act() -> Bool {
+  match owned_directory_act_time_handover(
+    before: observed(line: "directory|root|webdev|700"),
+    at_act: observed(line: "directory|root|webdev|700"),
+  ) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn handover_when_the_path_is_no_longer_a_directory() -> Bool {
-  match owned_directory_act_time_handover(target: target(), at_act: observed(line: "regular file|svc|svc|700")) {
+test fn a_path_replaced_by_a_file_between_the_readings_is_a_handover() -> Bool {
+  match owned_directory_act_time_handover(
+    before: observed(line: "directory|svc|svc|700"),
+    at_act: observed(line: "regular file|svc|svc|700"),
+  ) {
     Present { value: _ } => true
-    Absent => false
+    _ => false
   }
 }
 
-test fn an_unreadable_act_time_reading_is_not_a_fabricated_handover() -> Bool {
-  match owned_directory_act_time_handover(target: target(), at_act: EnsureAbsent { reason: "absent" }) {
+test fn a_path_that_appeared_between_the_readings_is_a_handover() -> Bool {
+  match owned_directory_act_time_handover(
+    before: EnsureAbsent { reason: "no such directory" },
+    at_act: observed(line: "directory|root|root|700"),
+  ) {
+    Present { value: HandoverAppeared { act_time } } => (act_time.user as String) == "root"
+    _ => false
+  }
+}
+
+test fn an_unreadable_act_time_reading_never_fabricates_a_handover() -> Bool {
+  match owned_directory_act_time_handover(
+    before: observed(line: "directory|svc|svc|700"),
+    at_act: EnsureAbsent { reason: "gone" },
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+    && match owned_directory_act_time_handover(
+      before: observed(line: "directory|svc|svc|700"),
+      at_act: EnsureInaccessible { reason: "stat failed" },
+    ) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+test fn an_unreadable_plan_time_reading_never_fabricates_a_handover() -> Bool {
+  match owned_directory_act_time_handover(
+    before: EnsureInaccessible { reason: "stat failed" },
+    at_act: observed(line: "directory|root|root|700"),
+  ) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn an_inaccessible_act_time_reading_is_not_a_fabricated_handover() -> Bool {
-  match owned_directory_act_time_handover(target: target(), at_act: EnsureInaccessible { reason: "stat failed" }) {
-    Present { value: _ } => false
-    Absent => true
+// PROVIDER-LEVEL REGRESS GUARD (review 90625): a SameUserRegroupToDeclaredGroup target whose group
+// differs is a legitimate Apply; with nothing changing between the readings the install must be
+// ATTEMPTED -- so the refusal (the after-reading still differs in the fake) is the generic
+// not-converged reason, never the handover text. Pre-fix, this claim is red: the act check refused
+// the regroup and the reason said "changed hands".
+test fn a_stable_regroup_target_is_acted_on_not_refused_as_a_handover() -> Bool {
+  match owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: OwnedDirectoryDeclared {
+      member: "auth-sessions" as NonEmptyStr,
+      path: "/srv/instance/auth-sessions" as FilePath,
+      owner: PosixOwnerNames { user: "svc" as NonEmptyStr, group: "svc" as NonEmptyStr },
+      mode: DirectoryOwnerOnly,
+      group_adoption: SameUserRegroupToDeclaredGroup,
+    },
+    observe: p => observed(line: "directory|svc|webdev|700"),
+    run: plan => true,
+  ) {
+    OwnedDirectoryEnsured { target: _, converged: _ } => true
+    OwnedDirectoryEnsureRefused { target: _, reason } =>
+      !string_contains(s: reason, pattern: "changed hands") && !string_contains(s: reason, pattern: "never adopted")
   }
 }
 
-// The provider refuses over a directory that is foreign-owned at act time, and the refusal is the
-// plan-time foreign-owner refusal -- never a silent install: a converged receipt here would mean the
-// install ran and the readback blessed it.
+// The provider refuses over a directory that is foreign-owned at plan time, and the refusal is the
+// plan-time foreign-owner refusal -- never a converged receipt: that would mean the install ran and
+// the readback blessed it.
 test fn the_provider_installs_nothing_over_a_foreign_owner_at_act_time() -> Bool {
   match owned_directory_ensure(
     policy: EnsureMayApply,

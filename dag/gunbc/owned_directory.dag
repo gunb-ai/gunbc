@@ -509,12 +509,16 @@ fn owned_directory_ensure(
   // writes with an ownership effect"). Plan-time observation and the install are separated in time: a
   // directory that CHANGED HANDS between the decide and the act must not be silently re-owned -- the
   // post-apply readback would report convergence over a directory someone else came to own. The effect
-  // re-reads the path at act time and refuses before any install runs when the observed owner is not
-  // the declared owner. It lives in the ONE provider so every route (dashboard apply, live_deploy
-  // legs, board-function converge) carries it, and it is typed: the refusal is an outcome, never a
-  // line of emitted shell.
+  // re-reads the path at act time and refuses BEFORE any install runs when the act-time reading
+  // differs from the PLAN-TIME reading (owner or file-ness changed, or the path appeared where none
+  // was). It compares OBSERVATION AGAINST OBSERVATION -- never against the declared owner: closing a
+  // gap toward the declaration is exactly what Apply exists to do (the SameUserRegroupToDeclaredGroup
+  // posture relies on that; review 90625), and the foreign-vs-declared rule has its single home in
+  // owned_directory_present_owner_is_foreign at decide time. It lives in the ONE provider so every
+  // route (dashboard apply, live_deploy legs, board-function converge) carries it, and it is typed:
+  // the refusal is an outcome, never a line of emitted shell.
   let at_act = observe(owned_directory_path(t: target))
-  let handover = owned_directory_act_time_handover(target: target, at_act: at_act)
+  let handover = owned_directory_act_time_handover(before: before, at_act: at_act)
   let application = match decision {
     Apply { plan } => match handover {
       Absent => if run(plan) { Applied } else { NotApplied }
@@ -536,15 +540,20 @@ fn owned_directory_ensure(
       target: target,
       reason: match decision {
         Apply { plan: _ } => match handover {
-          Present { value: act_owner } =>
-            let declared = owned_directory_owner(t: target)
-            join([
-              "ownership changed hands between the plan-time observation and the act: the path is owned by ",
-              act_owner.user as String, ":", act_owner.group as String,
-              " at act time while the target declares ",
-              declared.user as String, ":", declared.group as String,
-              "; the install was refused before running (fail closed, no silent re-own)",
+          Present { value: change } => match change {
+            HandoverOwnerChanged { plan_time, act_time } => join([
+              "ownership changed hands between the plan-time observation and the act: was ",
+              plan_time.user as String, ":", plan_time.group as String,
+              " at plan time, ", act_time.user as String, ":", act_time.group as String,
+              " at act time; the install was refused before running (fail closed, no silent re-own)",
             ], "")
+            HandoverAppeared { act_time } => join([
+              "the path did not exist at plan time but is owned by ",
+              act_time.user as String, ":", act_time.group as String,
+              " at act time; the install was refused before running (fail closed -- install -d",
+              " never re-chowns an existing directory, and the readback would have blessed it)",
+            ], "")
+          }
           Absent => reason
         }
         Noop => reason
@@ -554,25 +563,40 @@ fn owned_directory_ensure(
   }
 }
 
-// The act-time ownership check as a PURE decision: an observed act-time reading whose owner is not the
-// declared owner (or whose path is no longer a directory) is a handover, carried as the observed
-// owner; a reading that matches -- or a path that was not readable at act time -- is no handover.
-// Unreadable is deliberately NOT a handover: the reconcile over the after-observation still refuses a
-// failed apply on its own evidence; inventing a handover from an absent reading would be a fabricated
-// observation (§5).
+// The act-time ownership check as a PURE decision over the TWO OBSERVATIONS: what changed hands
+// between plan time and act time is a difference between the readings themselves -- owner identity
+// or file-ness shifting, or a path appearing where none was. It never consults the DECLARED owner:
+// an unchanged-but-foreign directory is the legitimate object of Apply (SameUserRegroupToDeclaredGroup
+// exists for exactly that; review 90625), and the declared-vs-observed rule lives only in
+// owned_directory_present_owner_is_foreign at decide time (§3, one authority). An unreadable reading
+// on either side is NOT a handover: the reconcile over the after-observation still refuses a failed
+// apply on its own evidence, and inventing a handover from an absent reading would be a fabricated
+// observation (§5). A path that vanished between the readings is likewise not a handover here -- the
+// install recreates it and the after-readback holds the verdict.
+type OwnedDirectoryHandover
+  = HandoverOwnerChanged { plan_time: PosixOwnerNames, act_time: PosixOwnerNames }
+  | HandoverAppeared { act_time: PosixOwnerNames }
+
 fn owned_directory_act_time_handover(
-  target: OwnedDirectoryTarget,
+  before: EnsureObservation<OwnedDirectoryReading>,
   at_act: EnsureObservation<OwnedDirectoryReading>,
-) -> Optional<PosixOwnerNames> {
-  match at_act {
-    EnsureObserved { evidence } =>
-      let declared = owned_directory_owner(t: target)
-      if evidence.is_directory && evidence.owner.user == declared.user && evidence.owner.group == declared.group {
-        Absent
-      } else {
-        Present { value: evidence.owner }
-      }
-    EnsureAbsent { reason: _ } => Absent
+) -> Optional<OwnedDirectoryHandover> {
+  match before {
+    EnsureObserved { evidence: plan_reading } => match at_act {
+      EnsureObserved { evidence: act_reading } =>
+        if act_reading.owner.user == plan_reading.owner.user && act_reading.owner.group == plan_reading.owner.group && act_reading.is_directory == plan_reading.is_directory {
+          Absent
+        } else {
+          Present { value: HandoverOwnerChanged { plan_time: plan_reading.owner, act_time: act_reading.owner } }
+        }
+      EnsureAbsent { reason: _ } => Absent
+      EnsureInaccessible { reason: _ } => Absent
+    }
+    EnsureAbsent { reason: _ } => match at_act {
+      EnsureObserved { evidence: act_reading } => Present { value: HandoverAppeared { act_time: act_reading.owner } }
+      EnsureAbsent { reason: _ } => Absent
+      EnsureInaccessible { reason: _ } => Absent
+    }
     EnsureInaccessible { reason: _ } => Absent
   }
 }
