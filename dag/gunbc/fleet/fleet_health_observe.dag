@@ -93,13 +93,12 @@ import extdeps.bmc.capability { BmcFirmwareVersion, BmcFirmwareVersionParsed, Bm
 import extdeps.bmc.endpoint { OpenBmc }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
 import gunbc.scm.json_member { MemberString, read_string_member }
-import gunbc.auth.netrc_binding {
-  NetrcBinding,
-  NetrcBindingPlaced,
-  NetrcBindingRefused,
-  NetrcBindingRefusedResidueRemains,
-  place_netrc_binding_privately,
-  shred_netrc_binding,
+import gunbc.auth.netrc_binding { netrc_binding_path, with_private_netrc_binding }
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
 
 // THE FLEET HEALTH COLLECTOR: OUT OF BAND, READ ONLY, GOAL BLIND.
@@ -441,20 +440,22 @@ fn observe_with_netrc(telemetry: BmcTelemetryProfile, netrc: NonEmptyStr, sample
   )
 }
 
-// The reader credential goes into a private per-run netrc that is shredded on every path out; a
-// shred that fails refuses the host's observation, because leaving the credential on disk is a
-// standing exposure this run created.
+// The reader credential goes into a private per-run netrc (gunbc.auth.netrc_binding
+// with_private_netrc_binding) that is removed, with its directory, on every path out; a removal that
+// fails refuses the host's observation, because leaving the credential on disk is a standing
+// exposure this run created.
 fn observe_host_health(telemetry: BmcTelemetryProfile, reader_login: NonEmptyStr, reader_password: Secret, samples: Nat) -> ObservationAttempt<HostHealthObserved, NonEmptyStr>
 {
-  match place_netrc_binding_privately(machine: telemetry.bmc_host, login: reader_login, password: reader_password) {
-    NetrcBindingRefused { cause } => return ObservationRefused { cause: cause }
-    NetrcBindingRefusedResidueRemains { cause } => return ObservationRefused { cause: concat("credential material may remain on disk: ", cause as String) as NonEmptyStr }
-    NetrcBindingPlaced { binding } => {
-      let observed = observe_with_netrc(telemetry: telemetry, netrc: binding.path as NonEmptyStr, samples: samples)
-      if shred_netrc_binding(binding: binding) == false {
-        return ObservationRefused { cause: "the per-run reader netrc could not be removed after the observation" }
-      }
-      return ObservationEstablished { observed: observed }
-    }
+  match with_private_netrc_binding(
+    machine: telemetry.bmc_host,
+    login: reader_login,
+    password: reader_password,
+    use: fn(binding) { observe_with_netrc(telemetry: telemetry, netrc: netrc_binding_path(binding: binding) as NonEmptyStr, samples: samples) },
+  ) {
+    PrivateSecretFileNotEntered { cause } => return ObservationRefused { cause: cause }
+    PrivateSecretFileNotEnteredResidueRemains { cause } => return ObservationRefused { cause: concat("credential material may remain on disk: ", cause as String) as NonEmptyStr }
+    PrivateSecretFileCompletedResidueRemains { value: _ } =>
+      return ObservationRefused { cause: "the per-run reader netrc could not be removed after the observation" }
+    PrivateSecretFileCompleted { value: observed } => return ObservationEstablished { observed: observed }
   }
 }

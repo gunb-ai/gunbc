@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Authored, Node, Symbol, TypeNode, Atom, Conj }
+import v2.std.node { Edge, Authored, Node, Symbol, TypeNode, Atom, Conj, NotADeclaration }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -35,8 +35,8 @@ fn idempotency_contract(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^idempotency_position_field }, target: atom_node(s: ^idempotent_position_symbol) },
-      Edge { label: Authored { name: ^idempotency_body_field }, target: body },
+      Edge { label: Authored { name: ^idempotency_position_field }, target: atom_node(s: ^idempotent_position_symbol), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^idempotency_body_field }, target: body, declaration: NotADeclaration },
     ],
     occurrence_id: OccurrenceSynthetic
 }

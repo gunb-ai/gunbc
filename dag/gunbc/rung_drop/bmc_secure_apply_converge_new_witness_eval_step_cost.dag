@@ -24,9 +24,7 @@ data bmc_secure_apply_converge_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   declared: "2026-10-07",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -34,5 +32,5 @@ data bmc_secure_apply_converge_new_witness_eval_step_cost: RungDrop = RungDrop {
     },
     population: population_from_list(xs: bmc_secure_apply_converge_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY: converge_arrival_through_bmc_secure (AccessDiscover through BmcSecure Apply, including the fold's Apply-discharge mint) executing as natively emitted code in a claim frame. WHAT THAT MUST BE SUFFICIENT FOR: test.claim.machine_intake.machine_intake_arrival_converge_witness.w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world, still calling that entry with Apply+grant and still asserting the Applied route, measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Deleting the identity, hard-coding discharges: [] in the entry, or relocating the claim off the required gate satisfies none of it.",
-  }
+  } }
 }

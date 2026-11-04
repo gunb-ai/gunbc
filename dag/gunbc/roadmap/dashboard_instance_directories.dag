@@ -1,19 +1,22 @@
 module gunbc.roadmap.dashboard_instance_directories
 
 import std.types { List }
+import gunbc.roadmap.roadmap_attempt_identity_store_root { attempt_identity_directory }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_own_directory_demands, ProdRoleRealization }
-import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory, session_reviewer_slots_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget }
-import gunbc.auth.session_store { session_store_directory }
-import gunbc.auth.login_transaction_store { login_transaction_store_directory }
+import gunbc.auth.session_store_root { session_store_directory }
+import gunbc.auth.login_transaction_store_root { login_transaction_store_directory }
 import gunbc.auth.oidc_id_token_verification { jwks_cache_directory }
-import gunbc.auth.profile_projection { profile_store_directory }
+import gunbc.auth.profile_store_root { profile_store_directory }
 import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_directory }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
-import gunbc.compute.host_capacity { compute_root_directory }
+import gunbc.compute.host_capacity { compute_root_directory, compute_capacity_directories }
 import gunbc.compute.compute_store_owned_directories { compute_store_owned_directories }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
+import gunbc.roadmap.roadmap_belt_receipt_store_root { belt_projects_directory }
+import gunbc.roadmap.roadmap_dogfood_start_store_root { dogfood_start_receipt_owned_directory }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory, cursor_attempt_runtime_directory }
 
 // THE ONLY LIST OF AN INSTANCE'S DIRECTORIES. Every row is the demand its consumer declares -- the
@@ -26,7 +29,7 @@ import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_dire
 //
 // THIS IS STILL A CONSUMER LIST, AND THAT IS ITS DECLARED LIMIT. A consumer that writes a directory
 // and is not listed here gets no creator; the composition cannot see it. D14 step 4
-// (docs/plans/ensure-closure-design.md section 12) is what derives the demand from the code that
+// (`gunbc.plans.ensure_closure_design` section 12) is what derives the demand from the code that
 // writes, at which point this list stops being authored. Until then, adding a directory writer means
 // declaring its demand in its own module and adding one row here.
 //
@@ -37,6 +40,11 @@ import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_dire
 //
 // It lives above the consumers rather than in gunbc.roadmap.roadmap_dashboard_instance because every consumer
 // imports the instance type from there; composing them there would close a cycle.
+//
+// THE MATERIALIZATION STORE AND ITS STAGING SIBLING are demanded by the route that writes them
+// (gunbc.compute.compute_store_owned_directories compute_store_owned_directories) and are empty unless
+// the instance declares a PersistentInstanceWorkspace store: compute_store_open refuses a missing
+// root, and a missing root is created by nothing else.
 fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
   concat(dashboard_instance_own_directory_demands(instance: instance), concat([
     session_store_directory(instance: instance),
@@ -49,12 +57,9 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     credential_acquisition_slots_directory(instance: instance),
     cursor_attempt_runtime_directory(instance: instance),
     worktree_claim_slots_directory(instance: instance),
+    attempt_identity_directory(instance: instance),
+    belt_projects_directory(instance: instance),
+    dogfood_start_receipt_owned_directory(instance: instance),
     session_attempt_slots_directory(instance: instance),
-    session_reviewer_slots_directory(instance: instance),
-  // THE MATERIALIZATION STORE AND ITS STAGING SIBLING, demanded by the route that writes them
-  // (gunbc.compute.compute_store_owned_directories compute_store_owned_directories) and empty unless
-  // the instance declares a PersistentInstanceWorkspace store. Without this row the srv1 lab's
-  // verification could reach admission but not the store: compute_store_open initializes a store
-  // idempotently and refuses a root that is missing, and a missing root is created by nothing else.
-  ], concat(fabric_storage_directory_demands(realization: realization, instance: instance), compute_store_owned_directories(instance: instance))))
+  ], concat(compute_capacity_directories(instance: instance), concat(fabric_storage_directory_demands(realization: realization, instance: instance), compute_store_owned_directories(instance: instance)))))
 }

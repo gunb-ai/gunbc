@@ -1,7 +1,7 @@
 module gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { population_from_list, RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // The executable-position wall of shell_materialize_operation_argv judged a string-literal argv[0].
@@ -16,13 +16,11 @@ data operation_argv_closed_unevaluated_executable_unjudged: RungDrop = RungDrop 
 
   declared: "2026-10-20",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "gunbc#14174 moved executables from string literals to the ProgramIdentity catalog (cataloged_program); the wall still judges only literals" },
-    population: [
+    population: population_from_list(xs: [
       "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.RunCommand",
       "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ReadFile",
       "dag/extdeps/bmc/openbmc_password_ssh_transport.dag openbmc.PasswordSshTransport.ResolvePath",
@@ -69,7 +67,8 @@ data operation_argv_closed_unevaluated_executable_unjudged: RungDrop = RungDrop 
       "dag/extdeps/tools/curl.dag curl.HttpSignature.SignedPostJson",
       "dag/extdeps/tools/openssl.dag openssl.Dgst.SignSha256Hex",
       "dag/extdeps/tools/openssl.dag openssl.Enc.Aes256CtrPassphrase",
-    ],
+      "dag/gunbc/auth/approval_apns_publish.dag apns.Http2.Send",
+    ]),
     restoration_trigger: "argv materialization evaluates closed argv elements over the declaring module's closure, in the native v2 materializer, not the seed. Observed at retirement: the population rows materialize or are refused by the wall on the evaluated value, and operation_argv_closed_unevaluated_executable_operations is empty."
-  }
+  } }
 }

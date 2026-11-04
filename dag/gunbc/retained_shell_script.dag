@@ -52,19 +52,6 @@ data retained_srvn_takeover_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-// Default dissolve-on for host-effect script bodies (srv3/live_deploy/host converge/hostname-set):
-// the srvN-takeover lane's typed effects (gunbc.plans.fleet_subsumption_manual_gaps — this wall is
-// item 1 of its needs-list; these scripts are its work-list). retained_srvn is the 2-arg
-// convenience over RetainedShellScript for that shared dissolve target.
-
-fn retained_srvn(body: String, reason: NonEmptyStr) -> RetainedShellScript {
-  RetainedShellScript {
-    body: body,
-    reason: reason,
-    dissolves_to: retained_srvn_takeover_ref,
-  }
-}
-
 // retained_foreign and its emit ref are GONE: their one caller (the node-http serve smoke in
 // gunbc.instruments.emit_host_transport) routes through typed process-lifecycle ops
 // (extdeps.posix.process StartDetached/Reap, http.Client.Probe, posix.Signal.TerminateProcess)
@@ -75,7 +62,7 @@ fn retained_srvn(body: String, reason: NonEmptyStr) -> RetainedShellScript {
 // Counted bridge for runtime-present direct shell.Exec.Run sites (host converge, host identity,
 // srv3 install/diagnostic) whose dissolve-on is the same srvN-takeover typed effects as the
 // host_effect_realize.run_shell_transport edge. Returns TransportScript for the direct
-// shell.Exec.Run position; retained realization bodies use retained_srvn instead.
+// shell.Exec.Run position.
 
 fn retained_runtime(body: String, reason: NonEmptyStr) -> TransportScript {
   retained_transport(body: body, reason: reason, dissolves_to: retained_srvn_takeover_ref)

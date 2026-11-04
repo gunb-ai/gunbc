@@ -1,0 +1,6 @@
+HTTP/1.1 200 OK
+Server: AMI MegaRAC Redfish Service
+Content-Type: application/json; charset=UTF-8
+Content-Length: 21
+Date: Tue, 27 Oct 2026 04:00:09 GMT
+

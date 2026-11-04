@@ -2,7 +2,7 @@ module test.claim.machine_intake.mtjade1_recorded_manager_capture_witness
 
 import std.types { Bool }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten }
 import gunbc.machine_intake.bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
 import gunbc.machine_intake.mtjade1_access_observation {
   RecordedManagerDecoded,
@@ -34,7 +34,7 @@ test fn w_the_committed_capture_decodes_bound_to_mtjade1_as_megarac() -> Bool {
   }
   fields
     && match recorded_manager_family_standing(decoded: receipt.decoded) {
-      FamilyObserved { family: f } => match f { AmiMegaRac => true  OpenBmc => false }
+      FamilyObserved { family: f } => match f { AmiMegaRac => true  OpenBmc => false  SupermicroAten => false }
       FamilyUnobserved { discriminator: _ } => false
     }
 }

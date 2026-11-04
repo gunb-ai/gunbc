@@ -4,10 +4,11 @@
 // The HTTP spelling of these records (JSON bodies, headers, paths) is Wire.swift.
 // GENERATED from gunbc.approve_ios_swift_protocol from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.
 import Foundation
+import CryptoKit
 
 enum Protocol {
-    /// gunbc.auth.approval_device_wire approval_enrolment_protocol.
-    static let enrolmentProtocol = "gunbc.approval-enrolment.v1"
+    /// gunbc.auth.approval_google_enrolment approval_google_enrolment_protocol.
+    static let googleEnrolmentProtocol = "gunbc.approval-google-enrolment.v1"
     /// gunbc.auth.approval_device_wire approval_redemption_protocol.
     static let redemptionProtocol = "gunbc.approval-redemption.v1"
     /// gunbc.auth.approval_device_wire approval_device_read_protocol.
@@ -40,9 +41,9 @@ enum ProposedDecision: String {
     case approve, deny
 }
 
-/// gunbc.auth.approval_device_wire EnrolmentRefusalWire, spelled by enrolment_refusal_wire_label.
-enum EnrolmentRefusalKind: String, CaseIterable {
-    case code_not_issued, code_already_used, code_expired, store_unreadable, attestation_refused, attestation_for_other_bytes, android_unrealized
+/// gunbc.auth.approval_device_wire GoogleEnrolmentRefusalWire, spelled by google_enrolment_refusal_wire_label: every label the enrol route may refuse with. The app acts on none of them (any refusal leaves the phone signed out); the list is the admitted set the refusal decoder checks.
+enum GoogleEnrolmentRefusal {
+    static let labels = ["token_refused", "audience_not_exact", "authorized_party_not_admitted", "email_absent", "not_an_approver", "subject_mismatch", "attestation_refused", "attestation_for_other_bytes", "attest_key_mismatch", "android_unrealized", "revoked_key", "store_unreadable", "stored_mismatch:enrollment_id", "stored_mismatch:google_subject", "stored_mismatch:google_email", "stored_mismatch:decision_key", "stored_mismatch:platform", "stored_mismatch:attest_key_id"]
 }
 
 /// extdeps.crypto.signature VerifyingKey. The suite and encoding travel explicitly
@@ -63,16 +64,22 @@ struct SignatureBytes: Equatable {
     var b64url: String
 }
 
-/// enrolment_transcript = framed([protocol, code, platform_wire, point_b64url]). The one-time code
-/// the operator types IS the challenge identifier; the login is NOT here — the server derives it.
-func enrolmentTranscript(code: String, decisionKey: VerifyingKey, platform: MobilePlatform) -> Data {
-    Protocol.framed([Protocol.enrolmentProtocol, code, platform.rawValue, decisionKey.point_b64url])
+/// gunbc.auth.approval_google_enrolment google_enrolment_transcript = framed([protocol, platform_wire,
+/// point_b64url, attest_key_id]). Both device keys exist before it is built; the Google nonce and the
+/// App Attest clientDataHash are both derived from these bytes.
+func googleEnrolmentTranscript(decisionKey: VerifyingKey, platform: MobilePlatform, attestKeyId: String) -> Data {
+    Protocol.framed([Protocol.googleEnrolmentProtocol, platform.rawValue, decisionKey.point_b64url, attestKeyId])
 }
 
-/// gunbc.auth.approval_device_wire enrollment_id_for_code: the enrolment an accepted code produces is
-/// named by the code, so a lost enrolment answer costs nothing the app cannot re-derive.
-func enrollmentIdForCode(_ code: String) -> String {
-    "enr-" + code
+/// gunbc.auth.approval_google_enrolment google_enrolment_nonce = base64url(sha256(transcript)): the nonce
+/// Google signs into the ID token, so the token is bound to the keys the transcript names.
+func googleEnrolmentNonce(_ transcript: Data) -> String {
+    Base64Url.encode(Data(SHA256.hash(data: transcript)))
+}
+
+/// gunbc.auth.tracker_web_oauth_client approve_ios_oauth_client: the iOS client the ID token's audience is. No server client id is configured, so aud is this client alone.
+enum GoogleClient {
+    static let clientID = "433089409875-p2dbfd5ug7f0svkm2dpec1uh9pk09bq6.apps.googleusercontent.com"
 }
 
 /// gunbc.auth.approval_device_wire RedemptionChallenge: stateless. nonce_hex is the server's
@@ -149,6 +156,6 @@ struct ApprovalPushHint: Equatable {
 
 enum Base64Url {
     static func encode(_ d: Data) -> String {
-        d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
     }
 }

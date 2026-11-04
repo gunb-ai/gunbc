@@ -1,0 +1,138 @@
+module test.claim.gpu_market_listing_witness
+
+// A LISTING IS JOINED TO THE HARDWARE IT IS OF, AT THE FORM IT WAS SOLD IN, OR REFUSED WITH THE REASON; AND
+// PRICE RANGES ARE TAKEN OVER DATED SOLD LISTINGS ONLY. The observations are supplied: no sold listing has
+// a producer this repository runs yet (gunbc.gpu_market.listing_observation gpu_listing_sold_data_frontier).
+// The one real producer, the eBay Browse mapping, is exercised on a Browse item of the shape
+// extdeps.ebay.browse models.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.currency.currency { Usd }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.ebay.ebay { EbayUs }
+import extdeps.ebay.browse { BrowseItemSummary, BrowseConvertedAmount, BrowseShippingOption, BrowseItemLocation }
+import extdeps.gpu.nvidia_p100 { nvidia_tesla_p100_pcie_16gb_board_catalog }
+import extdeps.gpu.nvidia_t4 { nvidia_t4_board_catalog }
+import extdeps.gpu.nvidia_rtx_pro_laptop { nvidia_rtx_5000_ada_laptop_board_catalog }
+import gunbc.gpu_market.availability { CloudOnly, DataCenterCompute }
+import gunbc.gpu_market.listing_observation {
+  GpuListingObservation, ListingKind, SoldListing, ActiveListing, ListingAcquisitionForm,
+  BarePcieBoard, CompleteLaptop, ListingUsed, ListedCatalogBoard, ListedMarketProduct, ListingUnidentified,
+  ListingHardware, GpuListingJoined, GpuListingRefused, ListingHardwareUnidentified, ListingFormContradictsBoard,
+  ListingAgainstAvailabilityReading, BrowseListingObserved, BrowseListingUnread, GpuListingWindow,
+  listing_decimal_micros, gpu_listing_from_browse, gpu_listing_join, gpu_listing_price_ranges,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn usd(dollars: Nat, cents: Nat) -> MoneyAmountMicro { money_amount_micro(count: dollars * 1000000 + cents * 10000) }
+fn day(d: Int) -> Iso8601CivilDate { Iso8601CivilDate { year: 2026, month: 10, day: d } }
+
+fn micros_of(t: String) -> Nat {
+  match listing_decimal_micros(text: t) { Present { value: m } => money_amount_micro_count(m: m)  Absent => 0 }
+}
+
+fn unread(t: String) -> Bool {
+  match listing_decimal_micros(text: t) { Present { value: _ } => false  Absent => true }
+}
+
+test fn w_a_listing_price_reads_as_exact_micros() -> Bool {
+  micros_of(t: "127.63") == 127630000 && micros_of(t: "12.12") == 12120000 && micros_of(t: "5") == 5000000
+    && unread(t: "1.2.3") && unread(t: "abc") && unread(t: "0.1234567") && unread(t: "") && unread(t: "-3.00")
+}
+
+fn observation(kind: ListingKind, id: NonEmptyStr, hardware: ListingHardware, form: ListingAcquisitionForm, price: MoneyAmountMicro, shipping: MoneyAmountMicro?) -> GpuListingObservation {
+  GpuListingObservation {
+    observed_on: day(d: 28), kind: kind, marketplace: EbayUs, listing_id: id, title_as_stated: "",
+    hardware: hardware, acquisition: form, condition: ListingUsed, quantity: 1,
+    price: price, shipping: shipping, currency: Usd, location: Present { value: "US" },
+  }
+}
+
+fn p100() -> ListingHardware { ListedCatalogBoard { board: nvidia_tesla_p100_pcie_16gb_board_catalog } }
+
+// AN eBay BROWSE HIT IS AN ACTIVE LISTING: price and a single fixed shipping read exactly, the condition id
+// read as eBay names it. An item with no price is unread, not priced at zero.
+test fn w_a_browse_item_maps_to_an_active_listing() -> Bool {
+  let item = BrowseItemSummary {
+    itemId: "v1|000000000000|0", legacyItemId: none, title: Present { value: "NVIDIA Tesla P100 16GB PCIe" }, itemWebUrl: none,
+    price: Present { value: BrowseConvertedAmount { value: "127.63", currency: Usd, convertedFromValue: none, convertedFromCurrency: none } },
+    condition: Present { value: "Used" }, conditionId: Present { value: "3000" }, buyingOptions: none, seller: none,
+    shippingOptions: Present { value: [BrowseShippingOption {
+      shippingCost: Present { value: BrowseConvertedAmount { value: "0.00", currency: Usd, convertedFromValue: none, convertedFromCurrency: none } },
+      shippingCostType: Present { value: "FIXED" }, additionalShippingCostPerUnit: none, quantityUsedForEstimate: none,
+      minEstimatedDeliveryDate: none, maxEstimatedDeliveryDate: none, guaranteedDelivery: none,
+    }] },
+    itemLocation: Present { value: BrowseItemLocation { country: Present { value: "US" }, stateOrProvince: none, postalCode: none } },
+    image: none,
+  }
+  let unpriced = BrowseItemSummary {
+    itemId: item.itemId, legacyItemId: none, title: item.title, itemWebUrl: none, price: none, condition: item.condition,
+    conditionId: item.conditionId, buyingOptions: none, seller: none, shippingOptions: none, itemLocation: none, image: none,
+  }
+  (match gpu_listing_from_browse(item: item, observed_on: day(d: 28), marketplace: EbayUs, hardware: p100(), acquisition: BarePcieBoard) {
+    BrowseListingObserved { observation: o } => money_amount_micro_count(m: o.price) == 127630000
+      && (match o.shipping { Present { value: s } => money_amount_micro_count(m: s) == 0  Absent => false })
+      && (match o.kind { ActiveListing => true  _ => false })
+      && (match gpu_listing_join(o: o) { GpuListingJoined { observation: _, identity_name: n, unit_landed: Present { value: u }, role: _, notes: ns } =>
+            (n as String) == "Tesla P100-PCIE-16GB" && money_amount_micro_count(m: u) == 127630000 && count(ns) == 0
+          _ => false })
+    BrowseListingUnread { field: _ } => false
+  })
+    && (match gpu_listing_from_browse(item: unpriced, observed_on: day(d: 28), marketplace: EbayUs, hardware: p100(), acquisition: BarePcieBoard) {
+      BrowseListingUnread { field: f } => (f as String) == "price"
+      _ => false
+    })
+}
+
+// THE FORM MUST BE ONE THE BOARD CAN BE SOLD IN: a PCIe T4 is not a laptop; a soldered laptop GPU is not a
+// bare PCIe board but is sold inside a laptop; an unidentified listing is never joined.
+test fn w_a_listing_joins_only_at_a_form_its_hardware_is_sold_in() -> Bool {
+  (match gpu_listing_join(o: observation(kind: ActiveListing, id: "t4-laptop", hardware: ListedCatalogBoard { board: nvidia_t4_board_catalog }, form: CompleteLaptop, price: usd(dollars: 900, cents: 0), shipping: Absent)) {
+    GpuListingRefused { observation: _, refusal: ListingFormContradictsBoard { acquisition: _ } } => true
+    _ => false
+  })
+    && (match gpu_listing_join(o: observation(kind: ActiveListing, id: "ada-bare", hardware: ListedCatalogBoard { board: nvidia_rtx_5000_ada_laptop_board_catalog }, form: BarePcieBoard, price: usd(dollars: 900, cents: 0), shipping: Absent)) {
+      GpuListingRefused { observation: _, refusal: ListingFormContradictsBoard { acquisition: _ } } => true
+      _ => false
+    })
+    && (match gpu_listing_join(o: observation(kind: ActiveListing, id: "ada-laptop", hardware: ListedCatalogBoard { board: nvidia_rtx_5000_ada_laptop_board_catalog }, form: CompleteLaptop, price: usd(dollars: 1900, cents: 0), shipping: Absent)) {
+      GpuListingJoined { observation: _, identity_name: _, unit_landed: _, role: _, notes: _ } => true
+      _ => false
+    })
+    && (match gpu_listing_join(o: observation(kind: ActiveListing, id: "mystery", hardware: ListingUnidentified, form: BarePcieBoard, price: usd(dollars: 50, cents: 0), shipping: Absent)) {
+      GpuListingRefused { observation: _, refusal: ListingHardwareUnidentified } => true
+      _ => false
+    })
+}
+
+// A BARE BOARD OF A PRODUCT READ AS CLOUD-ONLY JOINS, AND CARRIES THE CONTRADICTION: it is the evidence that
+// would retire the reading, so it is neither refused nor priced without the note.
+test fn w_a_bare_board_of_a_cloud_only_product_carries_the_contradiction() -> Bool {
+  match gpu_listing_join(o: observation(kind: SoldListing { sold_on: day(d: 20) }, id: "a10g", hardware: ListedMarketProduct { name: "NVIDIA A10G" }, form: BarePcieBoard, price: usd(dollars: 700, cents: 0), shipping: Present { value: usd(dollars: 20, cents: 0) })) {
+    GpuListingJoined { observation: _, identity_name: _, unit_landed: _, role: Present { value: DataCenterCompute }, notes: ns } =>
+      count(ns) == 1 && ns |> all(n => match n { ListingAgainstAvailabilityReading { availability: CloudOnly { provider: _ } } => true  _ => false })
+    _ => false
+  }
+}
+
+// PRICE RANGES ARE OVER THE WINDOW'S SOLD LISTINGS WITH STATED SHIPPING, landed per unit: an active listing,
+// a sale outside the window and a sale with unstated shipping are each left out, and the range is the
+// landed minimum and maximum of what remains.
+test fn w_a_price_range_is_over_dated_sold_listings_only() -> Bool {
+  let w = GpuListingWindow { from: day(d: 1), to: day(d: 27) }
+  let obs = [
+    observation(kind: SoldListing { sold_on: day(d: 10) }, id: "s1", hardware: p100(), form: BarePcieBoard, price: usd(dollars: 120, cents: 0), shipping: Present { value: usd(dollars: 15, cents: 0) }),
+    observation(kind: SoldListing { sold_on: day(d: 12) }, id: "s2", hardware: p100(), form: BarePcieBoard, price: usd(dollars: 140, cents: 0), shipping: Present { value: usd(dollars: 0, cents: 0) }),
+    observation(kind: SoldListing { sold_on: day(d: 28) }, id: "late", hardware: p100(), form: BarePcieBoard, price: usd(dollars: 60, cents: 0), shipping: Present { value: usd(dollars: 0, cents: 0) }),
+    observation(kind: SoldListing { sold_on: day(d: 11) }, id: "noship", hardware: p100(), form: BarePcieBoard, price: usd(dollars: 50, cents: 0), shipping: Absent),
+    observation(kind: ActiveListing, id: "ask", hardware: p100(), form: BarePcieBoard, price: usd(dollars: 99, cents: 0), shipping: Present { value: usd(dollars: 0, cents: 0) }),
+  ]
+  let ranges = gpu_listing_price_ranges(observations: obs, window: w)
+  count(ranges) == 1 && ranges |> all(r => r.sold_count == 2
+    && money_amount_micro_count(m: r.minimum) == money_amount_micro_count(m: usd(dollars: 135, cents: 0))
+    && money_amount_micro_count(m: r.maximum) == money_amount_micro_count(m: usd(dollars: 140, cents: 0)))
+}

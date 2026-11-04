@@ -69,7 +69,7 @@ import std.algebra { fold_list }
 //
 // THE REMEDY WAS APPLIED, 2026-08-23, BY OPERATOR RULING. The three unconditional arms in
 // `extdeps/shell/exec.dag` are DELETED. Hermetic execution of shell.Exec.Run / RunArgv / Check
-// now returns `HermeticEffectGround.NoMockResponse` -- typed, located, counted per identity on
+// now returns `EffectRefusalGround.NoMockResponse` -- typed, located, counted per identity on
 // the route-gap roster -- instead of a success the operation never performed. The rows below
 // therefore read `NoMockArm`: for `shell.Exec` they are the record of a repair, and the shape a
 // re-added arm would have to take to reopen it.
@@ -144,7 +144,7 @@ import std.algebra { fold_list }
 // roster -- it says which operations a corpus-governed service admits hermetically -- while the
 // ANSWER is the `mock_response` property on the operation. They are separate populations that
 // overlap only in part. Most published operations carry NO arm, and those refuse with
-// `HermeticEffectGround.NoMockResponse`: fail-closed, counted, and a DIFFERENT class from this
+// `EffectRefusalGround.NoMockResponse`: fail-closed, counted, and a DIFFERENT class from this
 // one. Most arms belong to operations that are not published at all. So "the published mock
 // corpus" and "the operations that fabricate" are two different questions, and an author who
 // reads the first as an answer to the second will size this class wrongly in either direction.
@@ -250,7 +250,7 @@ fn fabricated_fact_next_trigger(f: FabricatedFact) -> String {
   match f {
     ExitStatus => "SEED CAPABILITY: eval_mock_response must evaluate the arm in an environment that BINDS the operation's declared inputs, instead of the empty environment it uses today. That capability must be SUFFICIENT FOR an arm to name an input parameter and have it resolve -- not merely for one operation to be hand-special-cased -- because until the environment binds inputs, an input-varying arm is unwritable everywhere and no author can retire this row by writing one"
     CapturedOutput => "THE SAME SEED CAPABILITY, and it is named again rather than cross-referenced because a trigger that points at another trigger is retired by neither: eval_mock_response evaluating the arm in an environment binding the operation's declared inputs, sufficient for the declared output streams to be projected from those inputs. An empty stdout is a fabricated observation exactly as a zero exit code is"
-    TransportReachability => "REFUSAL, not a better mock: hermetic execution of an operation whose subject is whether a remote endpoint answered must return HermeticEffectGround.NoMockResponse and reach the route-gap roster, because consulting the transport is forbidden here and any answer without consulting it is invented"
+    TransportReachability => "REFUSAL, not a better mock: hermetic execution of an operation whose subject is whether a remote endpoint answered must return EffectRefusalGround.NoMockResponse and reach the route-gap roster, because consulting the transport is forbidden here and any answer without consulting it is invented"
   }
 }
 

@@ -1,0 +1,646 @@
+module gunbc.serving.serving_benchmark_run_receipt
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat, nat_max, nat_min }
+import std.optional { Present, Absent }
+import std.algebra { skip }
+import std.content_hash { Sha256Digest }
+import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
+import std.measure {
+  TokenCount, token_count, token_count_value, ByteSize, Mebibyte, Milliwatt, Watt, Hertz, Celsius, Bandwidth, Millicore,
+  HardwareThreadCount, Microsecond, microsecond, microsecond_count, millisecond_count, milli_per_unit, basis_point_count,
+  MilliTokensPerSecond, milli_tokens_per_second, EventsPerHour, events_per_hour, millicore, byte_size, byte_size_count,
+}
+import product.host_identity { HostIdentity }
+import extdeps.linux.proc_cpuinfo { CpuModelReading }
+import extdeps.uri { Uri }
+import extdeps.storage.types { PcieLink }
+import extdeps.nvidia.management_library { NvmlClocksEventMask }
+import extdeps.strata.serve_flags { StrataServeFlags }
+import extdeps.gpu_bench.request_v2 { GpuBenchPhasePrime, GpuBenchPhaseWarm, GpuBenchPhaseShort, GpuBenchRequestOk, GpuBenchRequestError }
+import extdeps.gpu_bench.request_v4 { GpuBenchRequestV4 }
+import gunbc.serving.serving_benchmark { ServingBenchmarkVersion }
+
+// THE RUN-LEVEL RECEIPT OF ONE SERVING-BENCHMARK RUN: row E0 of plan gunbc.plans.serving_fleet_program
+// (#14953). A per-request row cannot carry what the tiers need (the throughput curve over active levels,
+// the power cap in force, wall power, the cell that produced it), so this receipt is one observation per
+// run, admitted against ONE gunbc.serving.serving_benchmark version and built from the gpu-bench
+// request/v4 rows it aggregates (extdeps.gpu_bench.request_v4, the kit's own schema; no second
+// per-request carrier). v4 and not v2: the v2 kit has no tool delta and a fixed 512-token warm output,
+// so no v2 run can inhabit serving-benchmark/1; and v4 rows carry the engine cgroup's CPU time and
+// memory.current at each request's start and end, so the engine telemetry of a level is folded from the
+// same rows as its quantities instead of supplied beside them.
+//
+// WHY THE CELL IS NOT A ServingVariant. gunbc.serving.flash_next_experiment_identity ServingVariant is a
+// closed enumeration of the Flash-Next vLLM paths and its ServingRunReceipt carries that stack's fields
+// (image digest, kernel backend per layer class). A Strata cell is none of those variants, so it is
+// identified here by what any serving cell has: host, CPU, RAM, GPUs as observed, the engine build and
+// its flags, the weights, and the topology. ServingRunReceipt stays the vLLM run's carrier (divergence
+// accepted by the work item's owner, 2026-10-25).
+//
+// INCOMPLETENESS IS UNWRITABLE WHERE THE TYPE CAN SAY IT, AND REFUSED WHERE IT CANNOT. Every identity
+// field below is required, so a cell with no CPU model or no power cap has no constructor; what a type
+// cannot state (the GPU list is non-empty, topology covers it, pool workers are pinned, every level the
+// version names was run, every request completed with its timestamps, telemetry covers every level) is
+// a located ServingBenchmarkGap at admission, and a run with any gap is not a receipt.
+
+// ── THE SERVING CELL ────────────────────────────────────────────────────────────────────────────
+
+type ServingEnginePatch {
+  location: NonEmptyStr
+  digest: Sha256Digest
+}
+
+type ServingEngineBuild {
+  upstream: Uri
+  base_commit: NonEmptyStr
+  patches: List<ServingEnginePatch>
+  binary: Sha256Digest
+}
+
+// The engine and the flags it was started with. KV format, KV residency and pool workers are facts of
+// the flags and are read from them, never restated beside them.
+type ServingEngineCell
+  = StrataEngineCell { build: ServingEngineBuild, flags: StrataServeFlags }
+
+// The weights as files: a GGUF artifact may be split into shards, and each shard is identified by its own
+// digest, so one digest per artifact could not say which bytes the engine served.
+type ServingArtifactFile {
+  name: NonEmptyStr
+  digest: Sha256Digest
+}
+
+type ServingArtifact {
+  name: NonEmptyStr
+  quantization: NonEmptyStr
+  files: List<ServingArtifactFile>
+}
+
+// What the host says its CPU is, as /proc/cpuinfo says it (extdeps.linux.proc_cpuinfo CpuModelReading):
+// a model name on x86, the MIDR fields on arm64.
+// The logical CPUs the kernel lists (/proc/cpuinfo processor entries). Cores and sockets are not read:
+// arm64 /proc/cpuinfo carries neither, and a field no producer can fill would be a fabricated default.
+type ObservedCpu {
+  model: CpuModelReading
+  logical_cpus: HardwareThreadCount
+}
+
+// One GPU as the driver reports it at the start of the run. power_limit is the cap in force for the
+// run; link_max is the link the device and slot can train to, the link observed under load is
+// telemetry.
+type ObservedGpu {
+  name: NonEmptyStr
+  uuid: NonEmptyStr
+  vbios: NonEmptyStr
+  driver: NonEmptyStr
+  memory: Mebibyte
+  power_limit: Milliwatt
+  link_max: PcieLink
+}
+
+type ServingTopology {
+  engines: Nat
+  gpus_per_engine: Nat
+}
+
+type ServingCellIdentity {
+  host: HostIdentity
+  cpu: ObservedCpu
+  memory: ByteSize
+  gpus: List<ObservedGpu>
+  engine: ServingEngineCell
+  artifact: ServingArtifact
+  topology: ServingTopology
+}
+
+// ── TELEMETRY, ONE ENTRY PER ACTIVE LEVEL ───────────────────────────────────────────────────────
+
+type GpuLevelTelemetry {
+  uuid: NonEmptyStr
+  power_mean: Milliwatt
+  power_peak: Milliwatt
+  sm_clock_mean: Hertz
+  memory_clock_mean: Hertz
+  temperature_peak: Celsius
+  clocks_events: NvmlClocksEventMask
+  link_observed: PcieLink
+  pcie_rx_mean: Bandwidth
+  pcie_tx_mean: Bandwidth
+}
+
+type WallPowerReading
+  = WallPowerMetered { mean: Watt }
+  | WallPowerUnmetered
+
+type LevelTelemetry {
+  active: Nat
+  gpus: List<GpuLevelTelemetry>
+  wall_power: WallPowerReading
+}
+
+// ── THE OBSERVATION, THE GAPS, THE RECEIPT ──────────────────────────────────────────────────────
+
+type ServingBenchmarkRunObservation {
+  cell: ServingCellIdentity
+  requests: List<GpuBenchRequestV4>
+  telemetry: List<LevelTelemetry>
+}
+
+type ServingBenchmarkGap
+  = GapNoGpu
+  | GapTopologyDoesNotCoverGpus { engines: Nat, gpus_per_engine: Nat, gpus: Nat }
+  | GapPoolWorkersUnpinned
+  | GapSessionTextsNotDistinct
+  | GapRunMixesKitRuns
+  | GapShortPhaseInRun
+  | GapRequestFailed { round: Nat, session: Nat }
+  | GapTokensUnread { round: Nat, session: Nat }
+  | GapFirstTokenUnread { round: Nat, session: Nat }
+  | GapTimestampsUnordered { round: Nat, session: Nat }
+  | GapRetainedSessions { observed: Nat }
+  | GapPrimeCount { observed: Nat }
+  | GapPrimeContextOutsideBand { session: Nat, prompt: TokenCount }
+  | GapMaxTokens { round: Nat, observed: TokenCount }
+  | GapToolDelta { round: Nat, session: Nat }
+  | GapLevelNotInVersion { active: Nat }
+  | GapLevelRounds { active: Nat, observed: Nat }
+  | GapRoundSize { round: Nat, active: Nat, observed: Nat }
+  | GapSubmissionSpread { round: Nat, spread: Microsecond }
+  | GapEmptyWindow { round: Nat }
+  | GapTelemetryMissing { active: Nat }
+  | GapTelemetryGpus { active: Nat }
+  | GapEngineCountersUnread { round: Nat, session: Nat }
+  | GapEngineCountersCoverOneEngine { engines: Nat }
+
+// The three quantities of a level, each in its own field (gunbc.serving.serving_benchmark
+// ServingBenchmarkQuantity).
+type ServingLevelResult {
+  active: Nat
+  rounds: Nat
+  generated: TokenCount
+  completed_turns: Nat
+  window: Microsecond
+  aggregate_end_to_end: MilliTokensPerSecond
+  decode_median: MilliTokensPerSecond
+  completed_turns_per_hour: EventsPerHour
+  engine_cpu_busy: Millicore
+  engine_memory_current_max: ByteSize
+}
+
+// THE ENGINE OF A LEVEL, from the rows. CPU busy threads are the engine cgroup's CPU time over the level's
+// rounds / the level's windows, a round's CPU time running from its earliest request's start counter to
+// its latest request's end counter. memory.current max is the largest reading at any request boundary of
+// the level, not a continuous peak: the kit samples at t_start and t_end. memory.current is the cgroup's
+// charge, page cache included; summed process RSS double-counts the mmap-shared experts and is not read.
+
+type ServingBenchmarkRunReceipt {
+  version: ServingBenchmarkVersion
+  cell: ServingCellIdentity
+  requests: List<GpuBenchRequestV4>
+  telemetry: List<LevelTelemetry>
+}
+
+type ServingBenchmarkRunAdmission
+  = ServingBenchmarkRunAdmitted { receipt: ServingBenchmarkRunReceipt, levels: List<ServingLevelResult> }
+  | ServingBenchmarkRunRefused { gaps: List<ServingBenchmarkGap> }
+
+// ── TIME: ONE ORIGIN PER RUN ────────────────────────────────────────────────────────────────────
+//
+// request/v4 timestamps are wall-clock epoch seconds from one client process, so they are differenced
+// against the run's earliest t_start and carried as std.measure Microsecond (floor). Only those differences
+// are read.
+
+fn micro_scale(fraction_digits: Nat) -> Nat {
+  if fraction_digits == 0 { 1 } else { 10 * micro_scale(fraction_digits: fraction_digits - 1) }
+}
+
+fn micros_of_seconds(d: ExactDecimal) -> Microsecond? {
+  if d.units < 0 {
+    none
+  } else if d.fraction_digits <= 6 {
+    Present { value: microsecond(count: d.units * micro_scale(fraction_digits: 6 - d.fraction_digits)) }
+  } else {
+    Present { value: microsecond(count: d.units / micro_scale(fraction_digits: d.fraction_digits - 6)) }
+  }
+}
+
+fn micros_since(origin: ExactDecimal, t: ExactDecimal) -> Microsecond? {
+  match exact_decimal_sub(a: t, b: origin) {
+    ExactDifference { value: d } => micros_of_seconds(d: d)
+    ExactDifferenceUnrepresentable { cause: _ } => none
+    ExactDifferenceOperandScaleRefused { observed_fraction_digits: _ } => none
+  }
+}
+
+fn earliest_start(requests: List<GpuBenchRequestV4>) -> ExactDecimal? {
+  match get(xs: requests, index: 0) {
+    Absent => none
+    Present { value: first } => Present {
+      value: fold(requests, init: first.t_start, f: (best, r) => match micros_since(origin: r.t_start, t: best) {
+        Present { value: _ } => r.t_start
+        Absent => best
+      })
+    }
+  }
+}
+
+// A completed request on the run's clock. prime is true for the cold priming request of a session.
+type TimedRequest {
+  round: Nat
+  n_active: Nat
+  session: Nat
+  prime: Bool
+  max_tokens: TokenCount
+  prompt: Nat
+  completion: Nat
+  started: Microsecond
+  first_token: Microsecond
+  completed: Microsecond
+  engine_cpu_start: Microsecond
+  engine_cpu_end: Microsecond
+  engine_memory_start: ByteSize
+  engine_memory_end: ByteSize
+}
+
+type EngineCounters {
+  cpu_start: Microsecond
+  cpu_end: Microsecond
+  memory_start: ByteSize
+  memory_end: ByteSize
+}
+
+// All four counters or none: a row the kit could not sample has no engine reading, and a level is never
+// folded from part of its rows.
+fn engine_counters(r: GpuBenchRequestV4) -> EngineCounters? {
+  match r.engine.cpu_usage_start {
+    Absent => none
+    Present { value: cs } => match r.engine.cpu_usage_end {
+      Absent => none
+      Present { value: ce } => match r.engine.memory_current_start {
+        Absent => none
+        Present { value: ms } => match r.engine.memory_current_end {
+          Absent => none
+          Present { value: me } => Present { value: EngineCounters { cpu_start: cs, cpu_end: ce, memory_start: ms, memory_end: me } }
+        }
+      }
+    }
+  }
+}
+
+type TimedRead
+  = TimedRead { request: TimedRequest }
+  | TimedRefused { gap: ServingBenchmarkGap }
+
+fn is_prime(r: GpuBenchRequestV4) -> Bool {
+  match r.phase {
+    GpuBenchPhasePrime => true
+    GpuBenchPhaseWarm => false
+    GpuBenchPhaseShort => false
+  }
+}
+
+fn timed_request(origin: ExactDecimal, r: GpuBenchRequestV4) -> TimedRead {
+  match r.status {
+    GpuBenchRequestError { detail: _ } => TimedRefused { gap: GapRequestFailed { round: r.round, session: r.session } }
+    GpuBenchRequestOk =>
+      match r.prompt_tokens {
+        Absent => TimedRefused { gap: GapTokensUnread { round: r.round, session: r.session } }
+        Present { value: p } => match r.completion_tokens {
+          Absent => TimedRefused { gap: GapTokensUnread { round: r.round, session: r.session } }
+          Present { value: c } => match r.t_first {
+            Absent => TimedRefused { gap: GapFirstTokenUnread { round: r.round, session: r.session } }
+            Present { value: tf } =>
+              match micros_since(origin: origin, t: r.t_start) {
+                Absent => TimedRefused { gap: GapTimestampsUnordered { round: r.round, session: r.session } }
+                Present { value: s } => match micros_since(origin: r.t_start, t: tf) {
+                  Absent => TimedRefused { gap: GapTimestampsUnordered { round: r.round, session: r.session } }
+                  Present { value: to_first } => match micros_since(origin: tf, t: r.t_end) {
+                    Absent => TimedRefused { gap: GapTimestampsUnordered { round: r.round, session: r.session } }
+                    Present { value: to_end } => match engine_counters(r: r) {
+                    Absent => TimedRefused { gap: GapEngineCountersUnread { round: r.round, session: r.session } }
+                    Present { value: eng } => TimedRead {
+                      request: TimedRequest {
+                        round: r.round,
+                        n_active: r.n_active,
+                        session: r.session,
+                        prime: is_prime(r: r),
+                        max_tokens: r.max_tokens,
+                        prompt: token_count_value(t: p),
+                        completion: token_count_value(t: c),
+                        started: s,
+                        first_token: microsecond(count: microsecond_count(m: s) + microsecond_count(m: to_first)),
+                        completed: microsecond(count: microsecond_count(m: s) + microsecond_count(m: to_first) + microsecond_count(m: to_end)),
+                        engine_cpu_start: eng.cpu_start,
+                        engine_cpu_end: eng.cpu_end,
+                        engine_memory_start: eng.memory_start,
+                        engine_memory_end: eng.memory_end,
+                      }
+                    }
+                    }
+                  }
+                }
+              }
+          }
+        }
+      }
+  }
+}
+
+type TimedFold {
+  requests: List<TimedRequest>
+  gaps: List<ServingBenchmarkGap>
+}
+
+fn timed_requests(requests: List<GpuBenchRequestV4>) -> TimedFold {
+  match earliest_start(requests: requests) {
+    Absent => TimedFold { requests: [], gaps: [] }
+    Present { value: origin } =>
+      {
+        let reads = map(requests, r => timed_request(origin: origin, r: r))
+        TimedFold {
+          requests: flat_map(reads, t => match t { TimedRead { request: q } => [q], TimedRefused { gap: _ } => [] as List<TimedRequest> }),
+          gaps: flat_map(reads, t => match t { TimedRead { request: _ } => [] as List<ServingBenchmarkGap>, TimedRefused { gap: g } => [g] }),
+        }
+      }
+  }
+}
+
+// ── THE THREE QUANTITIES ────────────────────────────────────────────────────────────────────────
+
+type DistinctScan {
+  values: List<Nat>
+  last: Nat
+  seen: Bool
+}
+
+// The distinct values of a list, ascending: one sort and one pass that pushes a value when it differs
+// from the one before it.
+fn distinct_ascending(xs: List<Nat>) -> List<Nat> {
+  fold(sort_by(xs, x => x), init: DistinctScan { values: [], last: 0, seen: false }, f: (acc, x) =>
+    if acc.seen && acc.last == x { acc } else { DistinctScan { values: acc.values |> list_push(x), last: x, seen: true } }).values
+}
+
+// The rounds a level's quantities are read from: its rounds in order, less the first `warmup`, which ran
+// and are checked like every round but measure a cache still filling.
+fn measured_round_numbers(requests: List<TimedRequest>, active: Nat, warmup: Nat) -> List<Nat> {
+  round_numbers(requests: requests, active: active) |> skip(n: warmup)
+}
+
+fn round_numbers(requests: List<TimedRequest>, active: Nat) -> List<Nat> {
+  distinct_ascending(xs: map(requests |> filter(r => !r.prime && r.n_active == active), r => r.round))
+}
+
+fn round_requests(requests: List<TimedRequest>, round: Nat) -> List<TimedRequest> {
+  requests |> filter(r => !r.prime && r.round == round)
+}
+
+fn us(t: Microsecond) -> Nat {
+  microsecond_count(m: t)
+}
+
+fn round_last_start(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: fold(rs, init: 0, f: (acc, r) => nat_max(a: acc, b: us(t: r.started))))
+}
+
+fn round_last_completion(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: fold(rs, init: 0, f: (acc, r) => nat_max(a: acc, b: us(t: r.completed))))
+}
+
+// The round's common submission: the earliest t_start of its requests.
+fn round_submission(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: fold(rs, init: us(t: round_last_start(rs: rs)), f: (acc, r) => nat_min(a: acc, b: us(t: r.started))))
+}
+
+// The window of one round, from its common submission (the earliest t_start of the round) to its last
+// completion.
+fn round_window(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: us(t: round_last_completion(rs: rs)) - us(t: round_submission(rs: rs)))
+}
+
+fn round_spread(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: us(t: round_last_start(rs: rs)) - us(t: round_submission(rs: rs)))
+}
+
+// The engine CPU time of one round: from the earliest start counter to the latest end counter of its
+// requests. The counter is the cgroup's cumulative usage_usec, so it only grows.
+fn round_engine_cpu(rs: List<TimedRequest>) -> Microsecond {
+  let last = fold(rs, init: 0, f: (acc, r) => nat_max(a: acc, b: us(t: r.engine_cpu_end)))
+  let first = fold(rs, init: last, f: (acc, r) => nat_min(a: acc, b: us(t: r.engine_cpu_start)))
+  microsecond(count: last - first)
+}
+
+fn request_decode_milli_tps(r: TimedRequest) -> Nat? {
+  let span = us(t: r.completed) - us(t: r.first_token)
+  if r.completion < 2 || span == 0 {
+    none
+  } else {
+    Present { value: ((r.completion - 1) * 1000000000) / span }
+  }
+}
+
+type NthScan {
+  index: Nat
+  value: Nat
+}
+
+fn nth_or_zero(xs: List<Nat>, i: Nat) -> Nat {
+  fold(xs, init: NthScan { index: 0, value: 0 }, f: (acc, x) => NthScan { index: acc.index + 1, value: if acc.index == i { x } else { acc.value } }).value
+}
+
+// The median of the request decode rates: the middle value, or the floor of the mean of the two middle
+// values when the count is even (zero for no values, which admission never reaches: a level with no
+// completed request refuses first).
+fn median_of(values: List<Nat>) -> Nat {
+  let sorted = sort_by(values, v => v)
+  let n = count(sorted)
+  (nth_or_zero(xs: sorted, i: (n - 1) / 2) + nth_or_zero(xs: sorted, i: n / 2)) / 2
+}
+
+type LevelRead
+  = LevelRead { result: ServingLevelResult }
+  | LevelRefused { gaps: List<ServingBenchmarkGap> }
+
+// One level's quantities over the rows supplied. It reads no version: a level is computed from what
+// the rows say, and whether the rows inhabit a version is admission's question.
+fn serving_level_result(requests: List<TimedRequest>, active: Nat, warmup: Nat) -> LevelRead {
+  let rounds = measured_round_numbers(requests: requests, active: active, warmup: warmup)
+  let size_gaps = flat_map(rounds, n =>
+    if count(round_requests(requests: requests, round: n)) == active { [] as List<ServingBenchmarkGap> } else { [GapRoundSize { round: n, active: active, observed: count(round_requests(requests: requests, round: n)) }] })
+  let window_gaps = flat_map(rounds, n =>
+    if us(t: round_window(rs: round_requests(requests: requests, round: n))) == 0 { [GapEmptyWindow { round: n }] } else { [] as List<ServingBenchmarkGap> })
+  let gaps = concat(size_gaps, window_gaps)
+  if count(rounds) == 0 {
+    LevelRefused { gaps: [GapLevelRounds { active: active, observed: 0 }] }
+  } else if count(gaps) > 0 {
+    LevelRefused { gaps: gaps }
+  } else {
+    let warm = requests |> filter(r => !r.prime && r.n_active == active && any(rounds, k => k == r.round))
+    let generated = fold(warm, init: 0, f: (acc, r) => acc + r.completion)
+    let window = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_window(rs: round_requests(requests: requests, round: n))))
+    let cpu = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_engine_cpu(rs: round_requests(requests: requests, round: n))))
+    let decodes = flat_map(warm, r => match request_decode_milli_tps(r: r) {
+      Present { value: v } => [v]
+      Absent => [] as List<Nat>
+    })
+    LevelRead {
+      result: ServingLevelResult {
+        active: active,
+        rounds: count(rounds),
+        generated: token_count(count: generated),
+        completed_turns: count(warm),
+        window: microsecond(count: window),
+        aggregate_end_to_end: milli_tokens_per_second(count: (generated * 1000000000) / window),
+        decode_median: milli_tokens_per_second(count: median_of(values: decodes)),
+        completed_turns_per_hour: events_per_hour(count: (count(warm) * 3600000000) / window),
+        engine_cpu_busy: millicore(count: (cpu * milli_per_unit()) / window),
+        engine_memory_current_max: byte_size(count: fold(warm, init: 0, f: (acc, r) => nat_max(a: acc, b: nat_max(a: byte_size_count(b: r.engine_memory_start), b: byte_size_count(b: r.engine_memory_end))))),
+      }
+    }
+  }
+}
+
+fn observed_levels(requests: List<TimedRequest>) -> List<Nat> {
+  distinct_ascending(xs: map(requests |> filter(r => !r.prime), r => r.n_active))
+}
+
+// ── ADMISSION AGAINST A VERSION ─────────────────────────────────────────────────────────────────
+
+fn identity_gaps(cell: ServingCellIdentity) -> List<ServingBenchmarkGap> {
+  let gpus = count(cell.gpus)
+  let no_gpu = if gpus == 0 { [GapNoGpu] } else { [] }
+  let topology = if cell.topology.engines * cell.topology.gpus_per_engine == gpus && gpus > 0 { [] } else {
+    [GapTopologyDoesNotCoverGpus { engines: cell.topology.engines, gpus_per_engine: cell.topology.gpus_per_engine, gpus: gpus }]
+  }
+  let pool = match cell.engine {
+    StrataEngineCell { build: _, flags: f } => match f.pool_workers {
+      Present { value: _ } => []
+      Absent => [GapPoolWorkersUnpinned]
+    }
+  }
+  let one_engine = if cell.topology.engines == 1 { [] } else { [GapEngineCountersCoverOneEngine { engines: cell.topology.engines }] }
+  concat(concat(concat(no_gpu, topology), pool), one_engine)
+}
+
+fn digest_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
+  (a.hex as String) == (b.hex as String)
+}
+
+// DISTINCT SESSION TEXTS are read from the prime rows: each carries the sha256 of every message it
+// sent, so two primes with one digest sent one text. request/v4 makes this a reading, not an inference
+// from prompt lengths.
+fn session_text_gaps(requests: List<GpuBenchRequestV4>) -> List<ServingBenchmarkGap> {
+  let primes = requests |> filter(r => is_prime(r: r))
+  if any(primes, p => count(primes |> filter(q => digest_eq(a: p.messages_sha256, b: q.messages_sha256))) > 1) { [GapSessionTextsNotDistinct] } else { [] }
+}
+
+fn run_shape_gaps(requests: List<GpuBenchRequestV4>) -> List<ServingBenchmarkGap> {
+  let mixed = match get(xs: requests, index: 0) {
+    Absent => false
+    Present { value: first } => any(requests, r => r.run != first.run)
+  }
+  let short = any(requests, r => match r.phase {
+    GpuBenchPhaseShort => true
+    GpuBenchPhasePrime => false
+    GpuBenchPhaseWarm => false
+  })
+  concat(if mixed { [GapRunMixesKitRuns] } else { [] }, if short { [GapShortPhaseInRun] } else { [] })
+}
+
+fn within_band(observed: Nat, target: Nat, band_bp: Nat) -> Bool {
+  let slack = (target * band_bp) / 10000
+  observed + slack >= target && observed <= target + slack
+}
+
+fn workload_gaps(version: ServingBenchmarkVersion, requests: List<GpuBenchRequestV4>, timed: List<TimedRequest>) -> List<ServingBenchmarkGap> {
+  let w = version.workload
+  let retained = map(distinct_ascending(xs: map(requests, r => r.retained)) |> filter(n => n != w.retained_sessions), n => GapRetainedSessions { observed: n })
+  let primes = timed |> filter(r => r.prime)
+  let prime_count = if count(requests |> filter(r => is_prime(r: r))) == w.retained_sessions { [] } else { [GapPrimeCount { observed: count(requests |> filter(r => is_prime(r: r))) }] }
+  let band = map(primes |> filter(r => !within_band(observed: r.prompt, target: token_count_value(t: w.retained_context), band_bp: basis_point_count(bp: w.retained_context_band))),
+    r => GapPrimeContextOutsideBand { session: r.session, prompt: token_count(count: r.prompt) })
+  let max_tokens = map(timed |> filter(r => !r.prime && token_count_value(t: r.max_tokens) != token_count_value(t: w.max_output)),
+    r => GapMaxTokens { round: r.round, observed: r.max_tokens })
+  let levels = map(observed_levels(requests: timed) |> filter(n => !any(w.active_levels, l => l == n)), n => GapLevelNotInVersion { active: n })
+  let rounds = flat_map(w.active_levels, n =>
+    if count(round_numbers(requests: timed, active: n)) == w.warmup_rounds_per_level + w.rounds_per_level { [] as List<ServingBenchmarkGap> } else { [GapLevelRounds { active: n, observed: count(round_numbers(requests: timed, active: n)) }] })
+  let spread_bound = millisecond_count(m: w.submission_spread_bound) * milli_per_unit()
+  let spread = flat_map(w.active_levels, n => flat_map(round_numbers(requests: timed, active: n), k =>
+    if us(t: round_spread(rs: round_requests(requests: timed, round: k))) <= spread_bound { [] as List<ServingBenchmarkGap> } else { [GapSubmissionSpread { round: k, spread: round_spread(rs: round_requests(requests: timed, round: k)) }] }))
+  concat(concat(concat(concat(concat(concat(concat(retained, prime_count), band), max_tokens), levels), rounds), spread), tool_delta_gaps(version: version, timed: timed))
+}
+
+// THE TOOL DELTA IS READ FROM THE ROWS, NOT TRUSTED FROM THE CLIENT'S SETTING. A warm request's prompt
+// is its session's previous prompt plus the previous reply as re-sent plus one tool output plus a short
+// question and the template's tokens. The kit re-sends only the reply's content, which tokenizes shorter
+// than completion_tokens when the reply reasoned, so the reply is bounded above by completion_tokens and
+// below by nothing: growth over the previous prompt must lie in
+// [tool_delta, tool_delta + previous completion + tool_delta_template_allowance]. request/v4's
+// delta_tokens is the kit's setting in its own unit and is not read here.
+fn previous_in_session(timed: List<TimedRequest>, r: TimedRequest) -> TimedRequest? {
+  let warm_before = timed |> filter(e => e.session == r.session && !e.prime && e.round < r.round)
+  match get(xs: reverse(sort_by(warm_before, e => e.round)), index: 0) {
+    Present { value: e } => Present { value: e }
+    Absent => get(xs: timed |> filter(e => e.session == r.session && e.prime), index: 0)
+  }
+}
+
+fn tool_delta_gaps(version: ServingBenchmarkVersion, timed: List<TimedRequest>) -> List<ServingBenchmarkGap> {
+  let delta = token_count_value(t: version.workload.tool_delta)
+  let allowance = token_count_value(t: version.workload.tool_delta_template_allowance)
+  flat_map(timed |> filter(r => !r.prime), r => match previous_in_session(timed: timed, r: r) {
+    Absent => [GapToolDelta { round: r.round, session: r.session }]
+    Present { value: p } =>
+      if r.prompt >= p.prompt + delta && r.prompt <= p.prompt + delta + p.completion + allowance { [] as List<ServingBenchmarkGap> } else { [GapToolDelta { round: r.round, session: r.session }] }
+  })
+}
+
+fn telemetry_gaps(version: ServingBenchmarkVersion, cell: ServingCellIdentity, telemetry: List<LevelTelemetry>) -> List<ServingBenchmarkGap> {
+  flat_map(version.workload.active_levels, n => match get(xs: telemetry |> filter(t => t.active == n), index: 0) {
+    Absent => [GapTelemetryMissing { active: n }]
+    Present { value: t } =>
+      if count(t.gpus) == count(cell.gpus) && all_gpus_covered(cell: cell, t: t) { [] as List<ServingBenchmarkGap> } else { [GapTelemetryGpus { active: n }] }
+  })
+}
+
+fn all_gpus_covered(cell: ServingCellIdentity, t: LevelTelemetry) -> Bool {
+  count(cell.gpus |> filter(g => any(t.gpus, s => (s.uuid as String) == (g.uuid as String)))) == count(cell.gpus)
+}
+
+fn level_results(version: ServingBenchmarkVersion, timed: List<TimedRequest>) -> LevelFold {
+  let reads = map(version.workload.active_levels, n => serving_level_result(requests: timed, active: n, warmup: version.workload.warmup_rounds_per_level))
+  LevelFold {
+    results: flat_map(reads, l => match l { LevelRead { result: r } => [r], LevelRefused { gaps: _ } => [] as List<ServingLevelResult> }),
+    gaps: flat_map(reads, l => match l { LevelRead { result: _ } => [] as List<ServingBenchmarkGap>, LevelRefused { gaps: g } => g }),
+  }
+}
+
+type LevelFold {
+  results: List<ServingLevelResult>
+  gaps: List<ServingBenchmarkGap>
+}
+
+fn admit_serving_benchmark_run(version: ServingBenchmarkVersion, observation: ServingBenchmarkRunObservation) -> ServingBenchmarkRunAdmission {
+  let timed = timed_requests(requests: observation.requests)
+  let levels = level_results(version: version, timed: timed.requests)
+  let gaps = concat(concat(concat(concat(concat(concat(
+    identity_gaps(cell: observation.cell),
+    session_text_gaps(requests: observation.requests)),
+    run_shape_gaps(requests: observation.requests)),
+    timed.gaps),
+    workload_gaps(version: version, requests: observation.requests, timed: timed.requests)),
+    levels.gaps),
+    telemetry_gaps(version: version, cell: observation.cell, telemetry: observation.telemetry))
+  if count(gaps) == 0 {
+    ServingBenchmarkRunAdmitted {
+      receipt: ServingBenchmarkRunReceipt {
+        version: version,
+        cell: observation.cell,
+        requests: observation.requests,
+        telemetry: observation.telemetry,
+      },
+      levels: levels.results,
+    }
+  } else {
+    ServingBenchmarkRunRefused { gaps: gaps }
+  }
+}

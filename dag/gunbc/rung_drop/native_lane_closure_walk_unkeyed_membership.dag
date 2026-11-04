@@ -2,7 +2,7 @@ module gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership
 
 import std.types { List, NonEmptyStr, String }
 import std.algebra { FreeSemigroup }
-import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, Enumerated, ReplacementStaged, RetiredTypedDeclaration }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-12 (review 64571). The route grows its import closure by folding the fact list
@@ -40,13 +40,13 @@ data native_lane_closure_walk_unkeyed_membership: RungDrop = RungDrop {
   subject: "constructed membership for the route's import-closure walk",
   declared: "2026-09-12",
   standing: Retired {
-    trigger_fired: "gunbc#11121 landed as dfac90c3b0 (v2.std.collection primitive-backed map_insert/map_lookup delegates), and THE REPAIR IS IN THE SAME COMMIT AS THIS RETIREMENT: native_lane_module_reachable now looks up imports through an index built once by native_lane_facts_index and answers membership against a carried seen_set, so the walk no longer folds the fact list per round. RETIRING ON THE CAPABILITY ALONE WOULD HAVE BEEN THE 4b(3) INFLATION -- a row marked discharged with the quadratic walk still standing -- which is why the discharge is the repair and not the landing." as NonEmptyStr
-  },
-  declaration: TypedDeclaration {
+    trigger_fired: "gunbc#11121 landed as dfac90c3b0 (v2.std.collection primitive-backed map_insert/map_lookup delegates), and THE REPAIR IS IN THE SAME COMMIT AS THIS RETIREMENT: native_lane_module_reachable now looks up imports through an index built once by native_lane_facts_index and answers membership against a carried seen_set, so the walk no longer folds the fact list per round. RETIRING ON THE CAPABILITY ALONE WOULD HAVE BEEN THE 4b(3) INFLATION -- a row marked discharged with the quadratic walk still standing -- which is why the discharge is the repair and not the landing." as NonEmptyStr,
+    declaration: RetiredTypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "a keyed membership set backed by a primitive map_insert / map_lookup realization" },
-    population: Enumerated { members: native_lane_closure_walk_unkeyed_membership_population },
+    population_at_retirement: Enumerated { members: native_lane_closure_walk_unkeyed_membership_population },
     restoration_trigger: "A realization DELEGATES to std.primitives map_insert_contract so a keyed membership set is writable in v2, and the frontier walk answers membership by key lookup rather than by folding the fact list. That capability is gunbc#11121; the change that lands it is this row's toucher and retires it. The existence of v2.std.collection map_insert_host_binding does NOT satisfy this trigger -- the binding is already present and nothing delegates to it, so a trigger keyed on the binding would fire while the walk stayed quadratic."
+  }
   }
 }

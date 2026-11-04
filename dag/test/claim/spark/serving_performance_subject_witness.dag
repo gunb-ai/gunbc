@@ -20,7 +20,7 @@ import gunbc.spark.serving_performance_subject {
   serving_subject_axis_reading, ServingSubjectAxisReading, AxisNotApplicable, AxisUnread, AxisRead,
 }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_server_catalog }
-import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.types { GpuDeviceCatalogRow }
 import extdeps.storage.types { PcieLink, Gen4, Gen5 }
 import extdeps.ninfer.ninfer_serve { NinferKvFp8, NinferKvInt8, NinferKvNvfp4, NinferMtp, NinferKvDtype }
 
@@ -128,7 +128,7 @@ fn fx_ninfer_kv_unread_concurrency(kv: NinferKvDtype) -> ServingPerformanceSubje
   )
 }
 
-fn fx_cited(sku: GpuModelCatalogRow, watts: Nat, lanes: Int) -> ServingPerformanceSubject {
+fn fx_cited(sku: GpuDeviceCatalogRow, watts: Nat, lanes: Int) -> ServingPerformanceSubject {
   fx_vllm(accel: AcceleratorCited { realization: serving_accelerator_realization(
     sku: sku,
     count: 1,

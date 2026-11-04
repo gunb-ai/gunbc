@@ -11,11 +11,17 @@ test fn srv3_user_data_is_cloud_config_autoinstall() -> Bool {
     && string_contains(s: ud, pattern: "  interactive-sections: []")
 }
 
-test fn srv3_user_data_hostname_projects_fleet_identity() -> Bool {
+// THE KEY-ONLY POSTURE, IN THE RENDERED BYTES (dashboard node adhoc-dfa3a487). srv3's install document
+// carries NO identity section — the section that used to name the hostname AND carry the committed
+// password hash is gone, its account replaced by one locked cloud-init user with the fleet's keys.
+// Patterns avoid leading indentation so they assert the document's MEANING, not the layout module's
+// choice of indent unit.
+test fn srv3_user_data_is_key_only_no_identity_block() -> Bool {
   let ud = srv3_rendered_user_data()
-  string_contains(s: ud, pattern: concat("    hostname: ", operator_host_srv3))
-    && !string_contains(s: ud, pattern: concat("hostname: ", operator_host_srv1))
-    && !string_contains(s: ud, pattern: concat("hostname: ", operator_host_srv2))
+  !string_contains(s: ud, pattern: "identity:")
+    && !string_contains(s: ud, pattern: "password")
+    && string_contains(s: ud, pattern: "name: ubuntu")
+    && string_contains(s: ud, pattern: "lock_passwd: true")
 }
 
 test fn srv3_user_data_enables_remote_access_and_locale() -> Bool {
@@ -24,15 +30,26 @@ test fn srv3_user_data_enables_remote_access_and_locale() -> Bool {
     && string_contains(s: ud, pattern: "    install-server: true")
     && string_contains(s: ud, pattern: "  locale: en_US.UTF-8")
     && string_contains(s: ud, pattern: "    layout: us")
-    && string_contains(s: ud, pattern: "    username: ubuntu")
+    && string_contains(s: ud, pattern: "name: ubuntu")
 }
 
+// THE FLEET'S KEYS, CANONICAL, WITH PASSWORD SSH OFF. The key-only route writes the canonical public
+// key line — keytype and blob, no comment — because the document it produces is the one the
+// public-seed contract admits and a comment there makes the very same bytes inadmissible at the edge
+// (gunbc.os_install_emit.autoinstall_authorized_key_line). The comment spellings are asserted ABSENT.
 test fn srv3_user_data_bakes_fleet_keys_and_disables_password_ssh() -> Bool {
   let ud = srv3_rendered_user_data()
-  string_contains(s: ud, pattern: "    authorized-keys:")
-    && string_contains(s: ud, pattern: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF macbook-m4")
-    && string_contains(s: ud, pattern: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc")
-    && string_contains(s: ud, pattern: "    allow-pw: false")
+  string_contains(s: ud, pattern: "authorized-keys:")
+    && string_contains(s: ud, pattern: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF")
+    && string_contains(s: ud, pattern: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN")
+    && !string_contains(s: ud, pattern: "macbook-m4")
+    && !string_contains(s: ud, pattern: "fleet-automation@gunbc")
+    && string_contains(s: ud, pattern: "allow-pw: false")
+    && string_contains(s: ud, pattern: "shell: /bin/bash")
+    // The account has no password, so its sudo rule must not ask for one. Matched on its marker word so
+    // the claim holds whichever way the YAML renderer chooses to quote the scalar; the contract's closed
+    // list admits only this one rule (gunbc.provisioning.public_nocloud_seed).
+    && string_contains(s: ud, pattern: "NOPASSWD")
 }
 
 // The rendered user-data, or "" when the writer refuses: every claim above asserts content the

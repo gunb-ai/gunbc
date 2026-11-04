@@ -1,0 +1,28 @@
+module gunbc.guarantee_stall.swift_source_to_text_door_walk_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// A STANDING DEFICIT, NOT A DROP: no instrument has ever walked a `.dag` source to Swift text through
+// the closure-emit door, so no mechanically-preventable rung was held there and none is claimed to
+// have fallen. The v2-native-cli door walk lives in seed Rust (src/v1/stage0/src/cli_run/native_lane_runner.rs)
+// and walks only the Rust probe `gunbc.native_cli_door_probe`. The Swift route is established by two
+// supplied-input claims that meet at one shared node (v2.test.claim.coproduct_fixture: the lowering
+// claim asserts it as OUTPUT, the Swift emit claim takes it as INPUT) and a by-hand door receipt on
+// the PR. Growing the seed's walk to Swift was refused because DESIGN 7 has the seed shrinking.
+// THE GROUNDING IS UNDECLARED, AND THAT IS THE TRUTHFUL ARM: no substrate-owned door instrument is
+// declared anywhere -- the door walk lives in seed Rust (src/v1/stage0/src/cli_run/native_lane_runner.rs),
+// which is exactly what this row's awaiting authority says must NOT be the case (the walk declared as
+// rows in .dag rather than in seed Rust, walking a source fixture per emit target). With no
+// declaration there is no DeclarationRef to carry, and none is invented.
+data swift_source_to_text_door_walk_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the source -> Swift text route of the closure-emit door (v2.cli.compile_cli emit --target swift): no instrument walks it end to end",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  population: BoundedPopulation { members: [
+      "the swift emit target of the closure-emit door at declaration; gunbc.native_cli_door_probe is the only walked subject and is Rust only. Other non-Rust targets are not enumerated here and not claimed."
+    ] },
+  next_rung_trigger: climbs_when(capability: "the v2-native-cli door walk is a substrate-owned instrument that emits a fixture source through --target swift and compares the printed declaration order and text with the golden. SUFFICIENT FOR: a 5-arm coproduct and an Int-field record fixture printed as Swift by the built door binary under a test label, with a control in which the lowering is reverted and the order assertion goes red. Covers Swift only; each further target needs its own row.")
+}

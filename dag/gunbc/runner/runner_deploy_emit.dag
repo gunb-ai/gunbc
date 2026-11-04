@@ -32,7 +32,7 @@ import gunbc.session_reservation_policy {
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
   session_reservation_bytes,
 }
-import gunbc.ci.ci_fleet { fleet_intent_offers }
+import gunbc.ci.ci_fleet { fleet_converge_applied_offers }
 import gunbc.oomd_install { gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_policy, pressure_is_kill }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime, DirectiveReset }
@@ -231,7 +231,7 @@ fn session_slice_doc() -> Doc {
     Absent =>
       doc_line_of(text: "session-slice UNSOUND: no per-session oomd eviction ceiling is established in gunbc.session_admission_policy")
     Present { value: ceiling } =>
-      doc_concat(parts: map(fleet_intent_offers, o => session_slice_line(host: o.supply.physical.identity, ceiling: ceiling)))
+      doc_concat(parts: map(fleet_converge_applied_offers, o => session_slice_line(host: o.supply.physical.identity, ceiling: ceiling)))
   }
 }
 

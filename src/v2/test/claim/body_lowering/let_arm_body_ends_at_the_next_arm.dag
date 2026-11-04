@@ -1,0 +1,77 @@
+module v2.test.claim.body_lowering.let_arm_body_ends_at_the_next_arm
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.text { String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: where an unbraced match-arm body that is a statement sequence ends. In v2 the arm body is
+// the grammar's match_arm_stmt_body (v2.extdeps.languages.dag), whose statements are each guarded by
+// an arm-head predicate, so the body stops at the next `pattern =>`; v2.compiler.body_lowering_fold
+// body_lower_match_arm_body_capture_optional reads it from that position. BOUNDARY: source text in,
+// resolved and inferred program out, through the real front end.
+//
+// THE SEED'S CORRECTION THIS CROSS-CHECKS. The seed decided the same boundary with a hand-written
+// predicate over the first tokens (v1.compiler.parse looks_like_arm_start). It missed every pattern
+// form it did not spell -- a lowercase binder, a literal, a guarded arm -- so after a body holding a
+// `let`, the next arm was read as one more statement. With a nested match as the last statement, the
+// outer arm was re-parented into the inner match (sunny-bee-153's repro: the outer match refused
+// non-exhaustive). The seed now asks its own pattern and guard parsers. The program below is that
+// shape with a keyword-literal arm (`false =>`), so it needs no binder, and it is the one the seed
+// receipts on the repair compile too: both compilers must now accept it.
+//
+// WHY ACCEPTANCE DISCRIMINATES: had the body swallowed `false => q`, the outer match would lack
+// `false` and refuse infer_match_non_exhaustive, and the inner match over T would hold a Bool literal
+// arm. Either refuses, so a reading that keeps the arm with the wrong match cannot infer.
+
+data lab_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^let_arm_body_artifact,
+  file_path: "src/v2/pilot/let_arm_body_pilot.dag"
+}
+
+fn lab_infers(src: String) -> Bool {
+  match assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: lab_artifact,
+        compilation_unit: ^let_arm_body_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+data lab_with_let: String = "module p\n\ntype T = A { n: Int } | B | C\n\nfn g(x: Int) -> T {\n  A { n: x }\n}\n\nfn f(p: Bool, q: T) -> T {\n  match p {\n    true => let m = 1\n      match g(x: m) {\n        A { n: _ } => A { n: m }\n        B => B\n        C => C\n      }\n    false => q\n  }\n}\n"
+
+data lab_without_let: String = "module p\n\ntype T = A { n: Int } | B | C\n\nfn g(x: Int) -> T {\n  A { n: x }\n}\n\nfn f(p: Bool, q: T) -> T {\n  match p {\n    true =>\n      match g(x: 1) {\n        A { n: _ } => A { n: 1 }\n        B => B\n        C => C\n      }\n    false => q\n  }\n}\n"
+
+test fn lab_a_let_body_ends_at_the_next_arm() -> Bool {
+  lab_infers(src: lab_with_let)
+}
+
+test fn lab_the_same_arms_without_a_let_infer() -> Bool {
+  lab_infers(src: lab_without_let)
+}

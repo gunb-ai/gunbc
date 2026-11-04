@@ -5,22 +5,32 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_
 import gunbc.workspace_commissioning { WorkspaceObligationCensus, WorkspaceNoPriorObligations, WorkspacePriorObligationsRemain, WorkspaceObligationHistoryUnreadable }
 import gunbc.runner.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, record_cell }
 import gunbc.runner.runner_microvm_cell_readiness_store { read_cell_readiness_store }
-import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotHeld, HoldSlotFree }
 
 // Observe both existing authorities. Only an explicitly commissioned new lineage may use the
 // empty census; this observation never authorizes creation or treats missing roots as empty.
-fn workspace_observe_commissioning_obligations(root: NonEmptyStr, slot: RunnerSlotIdentity) -> WorkspaceObligationCensus {
+fn workspace_observe_commissioning_obligations(cells: FabricAllocationStore, slot: RunnerSlotIdentity) -> WorkspaceObligationCensus {
   match read_cell_readiness_store() {
     StoreRead { ownership: StoreRootOwned, records: records } => if count(filter(records, r => (record_cell(record: r) as String) == (runner_slot_instance_name(slot: slot) as String))) != 0 {
       WorkspacePriorObligationsRemain { reason: "slot has readiness or in-flight history; initial commissioning cannot overwrite it" }
-    } else { match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: slot)) {
+    } else { match fabric_allocation_observe_hold(store: cells, key: fabric_cell_allocation_key(slot: slot)) {
       HoldSlotAbsent => WorkspaceNoPriorObligations { settled_generation: 0 }
       HoldSlotHeld { generation: _, owner: _ } => WorkspacePriorObligationsRemain { reason: "slot has an outstanding durable reservation" }
       HoldSlotFree { generation: _, released_by: _ } => WorkspaceObligationHistoryUnreadable { reason: "hold history exists without readiness history; recover it instead of creating initial generation zero" }
       other => WorkspaceObligationHistoryUnreadable { reason: "reservation history is unreadable; a missing allocation root is not an empty store" }
     } }
     other => WorkspaceObligationHistoryUnreadable { reason: "readiness authority is missing, unreadable or not root-owned; provision or recover through approved convergence" }
+  }
+}
+
+// THE ENTRY THE ADMISSIONS CALL: the allocation store minted from its declaration (no argument), and a store
+// whose directory does not list read as unreadable history -- never as an empty store.
+fn workspace_observe_allocation_obligations(slot: RunnerSlotIdentity) -> WorkspaceObligationCensus {
+  match fabric_allocation_store(tree: host_state_tree()) {
+    FabricAllocationStoreUnready { detail } => WorkspaceObligationHistoryUnreadable { reason: join(["reservation history is unreadable; ", detail as String], "") }
+    FabricAllocationStoreReady { store } => workspace_observe_commissioning_obligations(cells: store, slot: slot)
   }
 }

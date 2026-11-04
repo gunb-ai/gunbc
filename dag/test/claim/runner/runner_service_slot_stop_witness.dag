@@ -1,0 +1,146 @@
+module test.claim.runner.runner_service_slot_stop_witness
+
+// THE STOP, EXECUTED OVER STAND-INS (gunbc.plans.mtcollins1_ci_service_legs F3). service_slot_stop_over is the one fold
+// a unit's ExecStop runs: it builds the slot's own binding from the admission, observes the control plane, and hands
+// the deregistration the stopping exit. The deregistration stand-in derives the subject from the binding it was handed
+// (binding_stopping_subject, the production derivation) and echoes it as a refused deregistration, so the VALUE the stop
+// returns shows the subject and exit the deregistration saw. The carriers come from the real admit folds over the real
+// host row. Pairing frontier: a JitRunnerDeregistered receipt is sealed behind the readback, so the Deregistered arm
+// is witnessed only by the live stop of F5.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import std.algebra { string_contains }
+import std.process { ExitSuccess, ExitFailure }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jws { JwsSigningKeyRef }
+import extdeps.exec.command { argv_words }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import test.claim.github_app_registry { observed_grant, runner_grant }
+import gunbc.host.managed_host { managed_hosts }
+import gunbc.fleet.host_credential_custody_converge { CustodyPathAsDeclared }
+import gunbc.runner.runner_host_unit_slot {
+  host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ListenerOwnLifetime, ListenerPartOf,
+}
+import gunbc.runner.runner_jit_deregistration {
+  JitSlotExit, SlotUnitStopping, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation,
+  JitDeregistrationSubject, StoppingServiceUnitRegistration, deregistration_name,
+}
+import gunbc.runner.runner_jit_mint_binding {
+  JitMintBinding, JitBindingDeregistrationRan, JitBindingStopDeregistration, JitBindingStopRan, JitBindingStopSubjectUnproven,
+  binding_stopping_subject, BindingStoppingSubject, BindingStoppingSubjectUnproven,
+}
+import gunbc.runner.runner_service_slot_controller {
+  ServiceSlotStop, ServiceSlotStopDeregistered, ServiceSlotStopRegistrationRemains, ServiceSlotStopSubjectUnproven,
+  ServiceSlotMintAdmission, ServiceSlotKeyHeld, ServiceSlotAdmissionRefused, ServiceSlotAdmitted, ServiceSlotKeyNotHeld, ServiceSlotKeyHeldStanding,
+  service_slot_stop_over, service_slot_stop_exit, service_slot_controller_execstart, service_slot_controller_execstop,
+}
+import test.claim.runner.runner_service_slot_admission_witness { unit_name, admission_over, key_over, boot_a }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn observe_stub(signer: JwsSigningKeyRef, reason: NonEmptyStr) -> GitHubAppControlPlaneState {
+  observed_grant(perms: runner_grant)
+}
+
+// THE DEREGISTRATION STAND-IN DERIVES ITS SUBJECT THE WAY PRODUCTION DOES and echoes what it was handed.
+fn dereg_echo(binding: JitMintBinding, state: GitHubAppControlPlaneState, exit: JitSlotExit) -> JitBindingStopDeregistration {
+  match binding_stopping_subject(binding: binding) {
+    BindingStoppingSubjectUnproven { cause: c } => JitBindingStopSubjectUnproven { cause: c }
+    BindingStoppingSubject { subject: sub } =>
+      JitBindingStopRan { deregistration: JitBindingDeregistrationRan { deregistration: JitDeregistrationRefused { subject: sub, exit: exit, refusal: DeregistrationAuthorityForAnotherInstallation } } }
+  }
+}
+
+fn dereg_unproven(binding: JitMintBinding, state: GitHubAppControlPlaneState, exit: JitSlotExit) -> JitBindingStopDeregistration {
+  JitBindingStopSubjectUnproven { cause: "stand-in: no subject" as NonEmptyStr }
+}
+
+fn stop_with_stand_ins(admission: ServiceSlotMintAdmission, key: ServiceSlotKeyHeld, unit: String, deregister: fn(JitMintBinding, GitHubAppControlPlaneState, JitSlotExit) -> JitBindingStopDeregistration) -> ServiceSlotStop admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_stop_witness", decl_name: "fixture_stop"),
+] {
+  service_slot_stop_over(admission: admission, key: key, unit: unit, observe: observe_stub, deregister: deregister)
+}
+
+fn expected_unit() -> String {
+  match managed_hosts() |> first() {
+    Absent => ""
+    Present { value: m } => unit_name(m: m, id: boot_a, index: 0)
+  }
+}
+
+fn fixture_stop(deregister: fn(JitMintBinding, GitHubAppControlPlaneState, JitSlotExit) -> JitBindingStopDeregistration) -> ServiceSlotStop? admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_stop_witness", decl_name: "the_stop_hands_the_deregistration_its_own_registration_and_the_stopping_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_stop_witness", decl_name: "a_stop_that_did_not_read_back_absence_fails_the_exec_stop"),
+] {
+  match managed_hosts() |> first() {
+    Absent => none
+    Present { value: m } =>
+      match admission_over(m: m, population_id: boot_a, current_id: boot_a, unit_id: boot_a, index: 0) {
+        ServiceSlotAdmissionRefused { cause: _ } => none
+        ServiceSlotAdmitted { admission: a } =>
+          match key_over(file: CustodyPathAsDeclared, dir: CustodyPathAsDeclared) {
+            ServiceSlotKeyNotHeld { causes: _ } => none
+            ServiceSlotKeyHeldStanding { held: k } => Present { value: stop_with_stand_ins(admission: a, key: k, unit: expected_unit(), deregister: deregister) }
+          }
+      }
+  }
+}
+
+fn is_stopping_arm(sub: JitDeregistrationSubject) -> Bool {
+  match sub {
+    StoppingServiceUnitRegistration { stopping: _ } => true
+    _ => false
+  }
+}
+
+// THE STOP DELETES EXACTLY ITS OWN REGISTRATION: the subject the deregistration saw is the stopping-unit arm, named
+// for this slot's unit -- the name its mint registers -- and the exit it was handed is SlotUnitStopping for that unit.
+test fn the_stop_hands_the_deregistration_its_own_registration_and_the_stopping_exit() -> Bool {
+  let u = expected_unit()
+  u != "" && (match fixture_stop(deregister: dereg_echo) {
+    Present { value: ServiceSlotStopRegistrationRemains { unit: unit, exit: e, detail: _, acknowledged: Present { value: sub } } } =>
+      unit == u && is_stopping_arm(sub: sub) && (deregistration_name(subject: sub).value as String) == u
+        && (match e { SlotUnitStopping { unit: x } => (x as String) == u _ => false })
+    _ => false
+  })
+}
+
+// RED: A STOP THAT DID NOT READ BACK ABSENCE FAILS ITS ExecStop, naming why; only Deregistered exits clean.
+fn stop_failed(stop: ServiceSlotStop?) -> Bool {
+  match stop {
+    Present { value: v } => match service_slot_stop_exit(stop: v) { ExitFailure { code: _, reason: _ } => true ExitSuccess => false }
+    Absent => false
+  }
+}
+
+test fn a_stop_that_did_not_read_back_absence_fails_the_exec_stop() -> Bool {
+  stop_failed(stop: fixture_stop(deregister: dereg_echo)) && stop_failed(stop: fixture_stop(deregister: dereg_unproven))
+    && (match service_slot_stop_exit(stop: ServiceSlotStopDeregistered { unit: "u.service" }) { ExitSuccess => true _ => false })
+}
+
+// THE LISTENER ENDS BEFORE ITS CONTROLLER: a service slot's listener unit is PartOf= and After= the controller unit, so
+// the controller's stop (or the host's shutdown) stops the listener first and ExecStop runs after it; the attempt
+// slot's listener has no owning unit and carries neither.
+test fn the_service_listener_stops_before_its_controller_and_the_attempt_listener_has_no_owner() -> Bool {
+  let owned = match host_unit_listener_wait(listener_unit: "listener-u.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/u" as NonEmptyStr, lifetime: ListenerPartOf { unit: "u.service" as NonEmptyStr }) {
+    HostUnitListenerReady { wait: w } => argv_words(command: w.command)
+    HostUnitListenerUnbuilt { cause: _ } => []
+  }
+  let own = match host_unit_listener_wait(listener_unit: "listener-u.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/u" as NonEmptyStr, lifetime: ListenerOwnLifetime) {
+    HostUnitListenerReady { wait: w } => argv_words(command: w.command)
+    HostUnitListenerUnbuilt { cause: _ } => []
+  }
+  (owned |> any(w => w == "--property=PartOf=u.service")) && (owned |> any(w => w == "--property=After=u.service"))
+    && count(own) > 0 && !(own |> any(w => string_contains(s: w, pattern: "PartOf=") || string_contains(s: w, pattern: "After=")))
+}
+
+// THE ExecStop IS THE STOP ENTRY, OVER THE SAME LOCUS AND ENTRY FILE AS THE ExecStart.
+test fn the_exec_stop_runs_the_stop_entry_from_the_same_release() -> Bool {
+  let start = service_slot_controller_execstart(release_dir: "/opt/gunbc/release") as String
+  let stop = service_slot_controller_execstop(release_dir: "/opt/gunbc/release") as String
+  string_contains(s: start, pattern: "service_slot_controller_main") && string_contains(s: stop, pattern: "service_slot_stop_main")
+    && !string_contains(s: stop, pattern: "service_slot_controller_main")
+    && string_contains(s: stop, pattern: "dag/gunbc/runner/runner_service_slot_controller.dag")
+}

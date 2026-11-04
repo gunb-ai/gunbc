@@ -4,60 +4,35 @@ import std.dissolution { unbound_dissolution }
 import std.types { String, List }
 import std.markdown { MarkdownBlock }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+import gunbc.plans.md_helpers { p }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn hccr_intro() -> List<MarkdownBlock> {
   [
-    p(text: "Host-convergence circuit brief (steps 0-3). This is the AcceptedWithResidue receipt for the session that landed P0 + the P1 loop-close LOGIC. It records what is proven, and the counted debts that remain — including one named §5 hazard the next session must NOT trip on."),
-    quote(blocks: [p(text: "P1's four receipts were the non-negotiable bar. Their HERMETIC floor is delivered and GREEN. The LIVE-on-srv1 arms are operator one-liners gated on the P1a/P1b live wiring below.")]),
+    p(text: "Close host convergence through the membership_reconcile circuit. This dated AcceptedWithResidue receipt proves P0 and the P1 hermetic logic; live srv1 evidence and P1b/P2/P3 remain. Failure refuses; it never widens to empty observation, assumed ownership or automatic disable."),
   ]
 }
 
 fn hccr_done() -> List<MarkdownBlock> {
   [
-    h2(text: "Landed"),
-    h3(text: "P0 — paper transport deleted, wall tightened (GREEN)"),
-    ul(items: [
-      li(text: "Deleted dag/gunbc/fleet_converge_emit.dag (bash-emission: expected_fleet_converge_sh, project_fleet_converge_to_doc, fresh_standup_bootstrap_* — the last had NO executing consumer) + .github/fleet-converge.sh + FleetConvergeArtifact registration + the fleet_converge_emit_test + its commit_workflow enrollment. The typed path (converge_apply) already lived in fleet_converge_apply."),
-      li(text: "THE WALL: removed dag/gunbc/fleet_converge_emit from realization_vocabulary_containment realization_edge_path_prefixes. Nothing under dag/gunbc/fleet_converge* may now emit ShellProgram vocabulary; a stray import reds the containment lens. EmitArtifactThenThinRun transport STAYS (general infra: srv3-install/ci_deploy/nbd_proxy)."),
-      li(text: "Green: fleet_converge_apply, generated_artifact_drift, host_standup_spine, commit_workflow, realization_vocabulary_containment."),
-    ]),
-    h3(text: "P1 core — PerSlotMemoryCap axis on the membership_reconcile spine (4 receipts, GREEN)"),
-    ul(items: [
-      li(text: "dag/gunbc/host/host_axis_caps.dag: the first NON-DEGENERATE membership_reconcile in the repo (desired vs a real observed set, not observed=[]). One spine instantiation with a (key_of, key_eq, value_eq, ownership_of) bundle; ownership DERIVED from the drop-in path (managed -> Owned, foreign -> Ensured), never stored."),
-      li(text: "Interference domain = the drop-in directory, realized through the SAME spine: a foreign occupant is Removed + not-owned -> MemberRemovalRefused (R5, no effect arm, never deleted) -> ApplyRefused wholesale."),
-      li(text: "Four hermetic receipts, each with a RED control, all GREEN, auto-discovered as a CI corpus consumer (not inert): idempotence (zero effects), perturb-and-heal (exactly the drifted row Upsert), foreign occupant (ApplyRefused + zero teardowns; RED = an owned removed file DOES teardown), derived content ([Service]/property/bytes derived, no hand strings)."),
-    ]),
-    h3(text: "P1a — interpreter closed + realize executes for real (loop closed at the live entry)"),
-    ul(items: [
-      li(text: "WITHDRAWN 2026-08-21: gunbc.host_converge_realize is DELETED, module and all. It interpreted PerSlotMemoryCap into a KnobEffect carrying the derived cap_upsert_script while every other target stayed KnobUnimplemented. The 2026-08-13 privilege hold had already reserved drop-in authoring to the deploy principal, and the hold was enforced by two self-asserting Bool flags whose only readers were witnesses reading the literals — so the forbidden arm stayed wired. The deletion is the enforcement."),
-      li(text: "host_effect_realize.realize_converge_in_process: no longer actuates anything. It used to run the interpreted script through run_shell_transport and ground on the real exit code (itself a repair over a fabricated exit_code 0); it now returns a typed NotConverged naming converge_in_process_apply_withdrawn_reason for every host and every transport, and the retained_shell_script row that carried the interpreted knob script into shell.Exec.Run is gone with it."),
-      li(text: "The safe-by-refusal argument that used to protect the hermetic floor is RETIRED because it is no longer needed. It rested on a population fact — every real fleet host also carries GunbcPinnedTree + JobserverTokens + RunnerWidth knobs, all unimplemented, so the fold refused before realize reached the shell — which made safety a property of which knobs happened to be unmodelled. With the apply arm deleted, no host reaches a shell on this path whatever its knobs are, and the landmine below (a caps-only host, or a newly implemented axis, silently turning a hermetic witness into a live actuation) is closed by construction rather than by luck."),
-      li(text: "HONEST LIMIT — the live one-liner does NOT yet apply caps end-to-end. The full-host entry (gunbc converge --host srv1 -> converge_cli_run) refuses whole-host on those sibling knobs (correct fail-closed — do not fabricate the un-modeled knobs), and the only caps-scoped CLI route (converge_cli_verify_run) is READ-BACK ONLY. There is no caps-only APPLY entry, so the wired interpret->realize path is proven by compile + the srv3 interpret witness, not yet by a live gunbc-converge apply. The interim live caps state on srv1/srv4 is the operator-hand-applied DERIVED values (legitimate interim, not transplanted drift)."),
-    ]),
+    p(text: "P0 removed fleet_converge_emit, .github/fleet-converge.sh, FleetConvergeArtifact and their test/workflow enrollment. fleet_converge_apply owns the typed path. realization_vocabulary_containment excludes fleet_converge* from ShellProgram emission; EmitArtifactThenThinRun remains for srv3-install/ci_deploy/nbd_proxy. The recorded green consumers are fleet_converge_apply, generated_artifact_drift, host_standup_spine, commit_workflow and realization_vocabulary_containment."),
+    p(text: "P1: host.host_axis_caps instantiates membership_reconcile with real observed members and key/value/ownership functions. Drop-in paths derive Managed→Owned and foreign→Ensured. Foreign removal produces MemberRemovalRefused (R5, no effect arm) and wholesale ApplyRefused. Four CI-enrolled hermetic receipts have red controls: unchanged→zero effects; perturbation→only the drifted Upsert; foreign→zero teardowns (owned removal does tear down); [Service]/property/bytes derive from the model."),
+    p(text: "WITHDRAWN 2026-08-21: host_converge_realize and its retained_shell_script are deleted. The 2026-08-13 privilege hold reserves cap authoring to the deploy principal. host_effect_realize.realize_converge_in_process always returns NotConverged with converge_in_process_apply_withdrawn_reason. converge_cli_run refuses unmodeled sibling knobs; converge_cli_verify_run is read-back only. No caps-only apply route exists. Historical interpret witnesses and hand-applied derived srv1/srv4 values are not live converge-apply evidence."),
   ]
 }
 
 fn hccr_hazard() -> List<MarkdownBlock> {
   [
-    h2(text: "CLOSED hazard (the §5 fail-open P1a had to walk past) + the remaining landmine"),
-    p(text: "CLOSED: realize_converge_in_process used to ground a ConvergePlanApplied evidence with a HARDCODED exit_code 0 and NO execution — dead only because everything refused. P1a replaced it with a real run_shell_transport call grounded on the actual exit (fail-closed on nonzero). The fabricated success is gone."),
-    p(text: "THE LANDMINE IS CLOSED, and by deletion rather than by the mode-gate this row used to ask for. It read: the converge EXECUTE path is reached whenever the interpreter returns an interpreted host, which today only happens for a host whose knobs are ALL PerSlotMemoryCap; no real fleet host is caps-only, so the hermetic witnesses refuse before executing; the moment a host becomes caps-only, or a new all-implemented axis lands, those same witnesses would shell out live in a Wet CI pass. That was accidental-coverage-by-refusal and it is why the arm was deleted outright on 2026-08-21 instead of gated: a mode gate is a flag someone must keep setting, and the flag shape is exactly what failed here before (two suppression Bools that asserted themselves while the arm stayed wired). There is no execute path left on this route to gate."),
+    p(text: "Closed hazards: fabricated exit_code 0 was replaced by real exit evidence, then the apply arm was deleted. Safety no longer depends on every fleet host having an unimplemented sibling knob. A caps-only host or newly implemented axis therefore cannot turn a hermetic witness into live shell actuation; two self-asserting suppression Bools and a future mode gate are not substitutes for deletion."),
   ]
 }
 
 fn hccr_residue() -> List<MarkdownBlock> {
   [
-    h2(text: "Counted residue"),
-    ol(items: [
-      li(text: "WITHDRAWN, not pending: a caps-only APPLY entry for `gunbc converge`. This row asked for a CLI route that applies the caps-only HostConverge through converge_apply_for_host -> host_effect_apply -> realize. Building it is now forbidden on this principal — the 2026-08-13 privilege hold reserves per-slot cap authoring to the deploy principal, and the apply arm it would have called is deleted. What converge owes this axis is a read-back verdict, which exists: gunbc.host.host_runner_memory_cap_verify over fleet_show_effective_read per_slot_memory_cap_verdict_from_unit_read. The live srv1 receipts below are correspondingly deploy-side apply plus converge-side read-back, not converge-side apply."),
-      li(text: "P1b — fail-closed observe provider: enumerate the live drop-in directory + read each file's content -> observed CapMember set; an unreadable directory/file is a typed refusal, never an empty set (belt_observe pattern: unknown never widens to empty). runner_memory_cap_live_reads already reads the systemctl-show effective values; the directory enumeration (for the interference/foreign arm) is the missing read."),
-      li(text: "Live srv1 receipts (operator one-liners, once P1a+P1b land): converge caps on srv1 -> all Unchanged, zero effects; hand-break one slot's cap -> diff names exactly that row Modified -> apply -> readback green -> re-run all-Unchanged; drop an unowned file in the .d dir -> typed refusal naming the path, nothing deleted, siblings continue. Until then the HERMETIC witnesses stand, plus the hand-verified srv4 caps state (the 2026-07-23 OOM fix receipts)."),
-      li(text: "P2 — enrollment + the wall: srv4 as a fleet_intent data row (BMC-measured HostMemoryPopulation via Redfish, not the flat 128GiB guess; the conservation wall then CHECKS the 5-runner fit); AND the enrollment wall as CONSTRUCTION — the runner installer refuses on a host absent from fleet_intent (a generated host-roster guard emitted from fleet_intent, drift-gated). A host can no longer take fleet work by hand-action alone."),
-      li(text: "P3 (amended) — the axis framework as the pattern: HostAxisBundle enrolled in gunbc.roster_registry (a GROUP, not a nickname list); providers are cited extdeps rows grounding in the ONE shared memory model (cgroup-v2 knobs, PSI, OOM-kill verb — extend extdeps/os/systemd + extdeps/os/oomd, never re-mint per provider); interference = computed claim intersection (the effect-grants subtree relation) witnessed by execution; observe classifies occupants by identity, an unmapped occupant -> typed UnmodeledOccupant refusal (never auto-disable); TakeoverRuling is the ONLY signed path from foreign occupant to owned teardown. Land swap-device + reclaim-timer as DECLARED frontier axis rows (hand-provisioned on srv1/2/4 with receipts; dissolve_on = each axis's own follow-on PR on the proven P1 circuit)."),
-    ]),
-    p(text: "Hard rule honored throughout: a failure arm refuses, never widens. The caps axis foreign-occupant arm refuses wholesale and deletes nothing; no observe-all, no assume-owned, no auto-disable."),
+    p(text: "Caps-only converge apply is withdrawn, not pending. Deploy owns apply; converge owes host.host_runner_memory_cap_verify over fleet_show_effective_read.per_slot_memory_cap_verdict_from_unit_read. P1b must enumerate the live drop-in directory and read each file into observed CapMember; unreadable directory/file refuses, never means empty. runner_memory_cap_live_reads already reads effective systemctl values; interference-directory enumeration remains."),
+    p(text: "Live srv1 controls, after observe wiring: deploy apply plus converge read-back gives unchanged/zero effects; hand-break one cap, identify exactly that Modified row, deploy repair, verify green, then unchanged; add an unowned .d file, refuse naming its path, delete nothing, let siblings continue. Existing evidence is hermetic plus the 2026-07-23 srv4 OOM-fix readback; it does not discharge these live receipts."),
+    p(text: "P2: enroll srv4 in fleet_intent with BMC/Redfish-measured HostMemoryPopulation, not a flat 128GiB assumption; conservation checks the five-runner fit. Construction must refuse runner installation on hosts absent from fleet_intent via its drift-gated derived roster guard. Hand action cannot establish fleet membership."),
+    p(text: "P3: enroll HostAxisBundle in gunbc.roster_registry as a group. Provider extdeps rows share the memory model (cgroup-v2, PSI, OOM-kill; extend extdeps/os/systemd and extdeps/os/oomd). Execute a witness of interference as effect-grant subtree claim intersection. Observe by occupant identity; unknown identity is UnmodeledOccupant. Only signed TakeoverRuling permits foreign→owned teardown. Declare swap-device and reclaim-timer frontier rows with srv1/2/4 hand-provisioning receipts and each axis’s follow-on dissolution; declaration is not execution."),
   ]
 }
 

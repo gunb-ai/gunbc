@@ -76,9 +76,11 @@ import v2.std.diagnostic {
   outcome_rejected,
   bind_outcome
 }
+import std.bytes { bytes_octets }
 import v2.std.host_run {
   BuildLog,
   EmitHostRunReceipt,
+  emit_host_transport_compile_skipped,
   ExitOk,
   HostExit,
   HostLogicalRun,
@@ -523,10 +525,10 @@ fn run_host_process_admitted(
               target: target,
               source: source,
               exit: exit,
-              stdout_bytes: emit_host_octets_byte_string(octets: result.stdout_octets),
-              stderr_bytes: emit_host_octets_byte_string(octets: result.stderr_octets),
-              build_log: BuildLog { lines: result.build_log },
-              compile_skipped: result.compile_skipped
+              stdout_bytes: emit_host_octets_byte_string(octets: bytes_octets(b: result.stdout_bytes)),
+              stderr_bytes: emit_host_octets_byte_string(octets: bytes_octets(b: result.stderr_bytes)),
+              build_log: result.build_log,
+              compile_skipped: emit_host_transport_compile_skipped(phase: result.phase)
             ),
             diagnostics: None
           }

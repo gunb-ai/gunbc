@@ -1,5 +1,7 @@
 module v2.test.lens_cost.disj_alternative_floor
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data disj_floor_arm_a: Node = Node {
@@ -17,8 +19,8 @@ data disj_floor_arm_b: Node = Node {
 data disj_floor_input: Node = Node {
   kind: TypeNode { connective: Disj },
   children: [
-    Edge { label: Positional, target: disj_floor_arm_a },
-    Edge { label: Positional, target: disj_floor_arm_b }
+    Edge { label: Positional, target: disj_floor_arm_a, declaration: NotADeclaration },
+    Edge { label: Positional, target: disj_floor_arm_b, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

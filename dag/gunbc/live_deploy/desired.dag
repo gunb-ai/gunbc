@@ -441,7 +441,7 @@ data apply_script_only_path_discrimination_unproven_dissolution: DissolutionCond
 )
 
 data apply_script_only_path_discrimination_unproven: FrontierRow = frontier_row_path(
-  path: "gunbc.live_deploy.emit.live_deploy_apply_script_for",
-  reason: "paths that appear in the apply script but not in the serve unit are unproven at the floor; every path the unit names is already discriminated there",
+  path: "gunbc.live_deploy.apply_legs.deploy_apply_plan_legs",
+  reason: "paths that appear in the apply plan's legs but not in the serve unit are unproven at the floor; every path the unit names is already discriminated there",
   dissolution: apply_script_only_path_discrimination_unproven_dissolution,
 )

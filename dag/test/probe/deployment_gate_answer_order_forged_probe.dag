@@ -1,0 +1,116 @@
+module test.probe.deployment_gate_answer_order_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. gunbc.auth.deployment_gate_authorization "THE ORDER OF THE ANSWER IS
+// CONSTRUCTED" claims that no review request exists before the clearance, and no clearance before the
+// broker admission. A seal is worth what the compiler refuses, so a foreign module attempts the forgeries:
+//   (a) the three sealed records written as literals (refused at the RECORD), and
+//   (b) the three confined mints called with well-formed typed inputs (refused at the CALLEE).
+// Inputs are parameters of the declared types, so nothing here is malformed: what remains to refuse each
+// forgery is the seal. The claims are test.claim.deployment_gate_answer_order_forged_probe_witness.
+import std.types { NonEmptyStr }
+import std.optional { Absent }
+import extdeps.ietf.http_semantics { POST }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import extdeps.github.actions_runs { WorkflowRunRecord }
+import extdeps.github.deployment_protection_rule {
+  PendingDeploymentWait,
+  DeploymentProtectionRuleReview,
+  Approved,
+}
+import gunbc.auth.approval_capability { ApprovalCapability }
+import gunbc.auth.deployment_gate_authorization {
+  DeploymentGateBoundary,
+  GateRequestClaim,
+  EnvironmentRuleOwnership,
+  GateInstallationClaim,
+  InstallationObservation,
+  ObservedGateInstallation,
+  EnvironmentProtectionRead,
+  ObservedRuleOwnership,
+  EnvironmentProtectionObservation,
+  BrokerAdmission,
+  BrokerAdmissionOutcome,
+  ReviewClearance,
+  ReviewClearanceOutcome,
+  ReviewRequest,
+  ReviewRequestOutcome,
+  admit_broker_answer,
+  clear_review,
+  review_request_of,
+}
+import gunbc.fleet.deployment_gate_answer {
+  InstallationReadResponse,
+  RuleReadResponse,
+  ProtectionReadResponse,
+  observe_gate_installation_for_route,
+  observe_rule_ownership_for_route,
+  observe_environment_protection_for_route,
+}
+
+fn forge_an_admission(run_id: GitHubWorkflowRunId, observation: ObservedRuleOwnership) -> BrokerAdmission {
+  BrokerAdmission { run_id: run_id, ownership: observation, decision: Approved }
+}
+
+fn forge_a_clearance(
+  boundary: DeploymentGateBoundary,
+  admission: BrokerAdmission,
+  protection: EnvironmentProtectionObservation
+) -> ReviewClearance {
+  ReviewClearance { boundary: boundary, admission: admission, protection: protection }
+}
+
+fn forge_a_request(clearance: ReviewClearance, path: NonEmptyStr) -> ReviewRequest {
+  ReviewRequest {
+    method: POST,
+    path: path,
+    body: DeploymentProtectionRuleReview { environment_name: "srv1-production", state: Approved, comment: Absent },
+    clearance: clearance,
+  }
+}
+
+fn call_the_admission(
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  claim: GateRequestClaim,
+  capability: ApprovalCapability,
+  ownership: EnvironmentRuleOwnership
+) -> BrokerAdmissionOutcome {
+  admit_broker_answer(wait: wait, run: run, claim: claim, capability: capability, ownership: ownership)
+}
+
+fn call_the_clearance(
+  boundary: DeploymentGateBoundary,
+  admission: BrokerAdmission,
+  protection: EnvironmentProtectionObservation
+) -> ReviewClearanceOutcome {
+  clear_review(boundary: boundary, admission: admission, protection: protection)
+}
+
+fn call_the_request(clearance: ReviewClearance) -> ReviewRequestOutcome {
+  review_request_of(clearance: clearance)
+}
+
+// (c) the three observation wrappers, called by a foreign module with supplied responses: each wrapper
+// calls a stage-1 mint whose roster admits it, so each is confined to its one phase.
+fn call_the_installation_wrapper(
+  boundary: DeploymentGateBoundary,
+  response: InstallationReadResponse,
+  claim: GateInstallationClaim
+) -> InstallationObservation {
+  observe_gate_installation_for_route(boundary: boundary, response: response, claim: claim)
+}
+
+fn call_the_ownership_wrapper(
+  boundary: DeploymentGateBoundary,
+  response: RuleReadResponse,
+  observed: ObservedGateInstallation
+) -> EnvironmentRuleOwnership {
+  observe_rule_ownership_for_route(boundary: boundary, response: response, observed: observed)
+}
+
+fn call_the_protection_wrapper(
+  boundary: DeploymentGateBoundary,
+  response: ProtectionReadResponse
+) -> EnvironmentProtectionRead {
+  observe_environment_protection_for_route(boundary: boundary, response: response)
+}

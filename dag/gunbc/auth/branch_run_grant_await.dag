@@ -2,6 +2,7 @@ module gunbc.auth.branch_run_grant_await
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.optional { Present, Absent }
+import extdeps.github.workflow_runs { github_workflow_run_id_from_wire_text }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -85,7 +86,7 @@ fn wait_for_grant_run(key: String, since: Timestamp, remaining: Int) -> GrantRun
 // `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/auth/branch_run_grant_await.dag --function await_grant`
 fn await_grant() -> ProcessExit {
   let me = actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr)
-  match parse_int(s: me) {
+  match github_workflow_run_id_from_wire_text(text: me) {
     Absent => exit_failure(reason: "branch run grant: GITHUB_RUN_ID is unset; this entry runs only in a fleet-converge job")
     Present { value: run_id } => match parse_int(s: actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr)) {
       Absent => exit_failure(reason: "branch run grant: GITHUB_RUN_ATTEMPT is unset")

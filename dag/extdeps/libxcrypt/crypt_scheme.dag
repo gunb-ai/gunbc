@@ -5,7 +5,7 @@ module extdeps.libxcrypt.crypt_scheme
 // implementation that parses and verifies the string, and a value outside them is not a strict-but-valid digest,
 // it is a string that implementation will refuse when the board tries to authenticate with it. DESIGN §3 'External
 // upstream decomposition' gives each independently versioned product its own extdeps shelf; these figures
-// previously sat inside gunbc.provisioning.altra_autoinstall_seed, where they read as seed policy (review 81975).
+// previously sat inside gunbc.provisioning.ubuntu_autoinstall_seed, where they read as seed policy (review 81975).
 //
 // WHY THIS SHELF AND NOT extdeps/glibc. The "$6$" scheme was written by Ulrich Drepper for GNU libc — crypt(5)
 // says so — but the code that will check the string on an installed board is libxcrypt's: Ubuntu 24.04's
@@ -25,7 +25,7 @@ module extdeps.libxcrypt.crypt_scheme
 // then carries a shadow entry its own crypt(3) refuses to verify — an install that reports success and a root
 // account nobody can open, found out at the only console the machine has. So both rules are modelled, and
 // accepted means BOTH accept (see shared_restriction; the consumer that composes the two is a single function,
-// gunbc.provisioning.altra_autoinstall_seed (singular), admin_digest_refusal).
+// gunbc.provisioning.ubuntu_autoinstall_seed (singular), admin_digest_refusal).
 //
 // WHAT IS *NOT* UPSTREAM, AND SO IS NOT CLAIMED HERE. The four-segment / five-segment grammar (splitting on '$'),
 // which refusal fires first, and the refusal type itself are the consumer's parsing convenience and stay in the
@@ -242,7 +242,7 @@ fn cost_field_is_well_formed(digits: String) -> Bool {
 // WHY CONSUMERS MAY NOT SKIP IT. A candidate that satisfies the scheme row but not this one is exactly the
 // failure this cut exists to prevent: the seed admits a digest, shadow stores it, and the board's own crypt(3)
 // refuses to verify it. That surfaces as an install that reported success and a root account nobody can open, on
-// a machine whose only console is the BMC. So accepted means BOTH rules accept — the consumer that composes both is gunbc.provisioning.altra_autoinstall_seed (singular), admin_digest_refusal.
+// a machine whose only console is the BMC. So accepted means BOTH rules accept — the consumer that composes both is gunbc.provisioning.ubuntu_autoinstall_seed (singular), admin_digest_refusal.
 type CryptSharedRestriction = PrintableAsciiMinusReserved {
   // The five characters the document names, and the ONLY character list this record carries.
   //
@@ -291,7 +291,7 @@ data crypt_shared_restriction: CryptSharedRestriction = PrintableAsciiMinusReser
 // transcription of that alphabet, and an earlier shape of this record was caught carrying "*" ":" ";" in its
 // allowed half while listing those same characters as reserved. No alphabet is stored here, so there is nothing
 // to transcribe and nothing to drift; what is checked is the predicate itself, which the witness sweeps over the
-// reserved five and over the printable endpoints (test.claim.altra_autoinstall_seed_witness).
+// reserved five and over the printable endpoints (test.claim.ubuntu_autoinstall_seed_witness).
 //
 // WHY A CANDIDATE-DRIVEN SCAN MATTERS MORE THAN AN ALPHABET-DRIVEN ONE: a fold over a forbidden set asks "did the
 // candidate contain any of these five?" — which is silent about the byte nobody transcribed, including every byte
@@ -325,7 +325,7 @@ fn shared_restriction_character_is_printable(code: Int) -> Bool {
 }
 
 // THE FIVE RESERVED CHARACTERS, exposed for two named readers, both of which go RED if this list loses a member:
-// test.claim.altra_autoinstall_seed_witness's sweep drives EVERY member of this list through the scan at two
+// test.claim.ubuntu_autoinstall_seed_witness's sweep drives EVERY member of this list through the scan at two
 // positions (salt and digest) and refuses to pass on an empty list, so dropping a character here is caught by the
 // rule itself rather than by which characters someone thought to write into a fixture; and the consuming module's
 // refusal names the character it caught, which is the difference between an operator re-deriving a hash and an
@@ -366,4 +366,20 @@ fn cost_trailing_digit_characters() -> List<NonEmptyStr> {
 // string, so "no obligation" cannot be confused with "obligation nobody wrote down".
 fn sha512_crypt_figure_read_obligation() -> Optional<NonEmptyStr> {
   cited_figure_read_obligation(standing: sha512_crypt_format.figure_standing)
+}
+
+// EVERY HASHING METHOD'S PREFIX, as crypt.5 at v4.4.36 lists them under AVAILABLE HASHING METHODS (the module
+// anchor): yescrypt "$y$", gost-yescrypt "$gy$", scrypt "$7$", bcrypt "$2b$" (its format admits 2a, 2b, 2x and 2y),
+// sha512crypt "$6$", sha256crypt "$5$", sha1crypt "$sha1", SunMD5 "$md5", md5crypt "$1$" and NT "$3$"; bsdicrypt is
+// "_" followed by 19 characters of [./0-9A-Za-z]. bigcrypt and descrypt have NO prefix -- their hashes are bare runs
+// of [./0-9A-Za-z] -- so a string's shape cannot tell them from ordinary text, and they are not classified here; a
+// consumer that must refuse every hash has to refuse the FIELD that would carry one, not rely on the shape.
+data crypt_hashing_method_prefixes: List<NonEmptyStr> = ["$y$", "$gy$", "$7$", "$2a$", "$2b$", "$2x$", "$2y$", "$6$", "$5$", "$sha1", "$md5", "$1$", "$3$"]
+
+fn crypt_bsdicrypt_shaped(text: String) -> Bool {
+  length(text) == 20 && starts_with(s: text, prefix: "_") && digest_characters_are_admitted(digest: substring(s: text, start: 1, end: 20))
+}
+
+fn crypt_hash_shaped(text: String) -> Bool {
+  any(crypt_hashing_method_prefixes, p => starts_with(s: text, prefix: p as String)) || crypt_bsdicrypt_shaped(text: text)
 }

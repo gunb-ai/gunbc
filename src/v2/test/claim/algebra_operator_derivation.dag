@@ -1,15 +1,19 @@
 module v2.test.claim.algebra_operator_derivation
 
-import v2.compiler.infer { AlgebraFieldNotCarried, AlgebraFieldResultType, AlgebraFieldRowMalformed, InferAlgebraFieldResult, infer, infer_algebra_field_result_type }
-import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
+import v2.compiler.infer { AlgebraFieldNotCarried, AlgebraFieldResultType, AlgebraFieldRowMalformed, InferAlgebraFieldResult, infer, infer_algebra_field_declared_arity, infer_algebra_field_result_type }
+import v2.std.algebra_structure_signature { algebra_inhabitance_node, algebra_unary_fn_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.integer { integer_int_type_node }
+import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.types { List }
+import std.optional { Absent, Present }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool, bool_node }
-import v2.std.node { Node, Symbol }
+import v2.std.node { node_same_occurrence, Arrow, Conj, Edge, Node, Positional, Symbol, TypeNode, NotADeclaration }
+import v2.std.node_query { binder_edge }
+import std.occurrence_identity { OccurrenceSynthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -94,7 +98,7 @@ fn aod_mismatched_row(outer: Node, algebra: Node) -> List<AlgebraInhabitanceDecl
 
 fn aod_result_is_type(r: InferAlgebraFieldResult, expected: Node) -> Bool {
   match r {
-    AlgebraFieldResultType { result: t } => t == expected
+    AlgebraFieldResultType { result: t } => node_same_occurrence(a: t, b: expected)
     AlgebraFieldNotCarried => false
     AlgebraFieldRowMalformed { cause: _ } => false
   }
@@ -113,7 +117,8 @@ test fn aod_outer_inhabitant_lends_no_join() -> Bool {
   aod_result_not_carried(r: infer_algebra_field_result_type(
     rows: aod_mismatched_row(outer: integer_int_type_node(), algebra: boolean_algebra_node(inhabitant: bool_node())),
     operand_type: integer_int_type_node(),
-    field: ^lattice_field_join
+    field: ^lattice_field_join,
+    arity: 2
   ))
 }
 
@@ -122,7 +127,8 @@ test fn aod_outer_inhabitant_lends_no_add() -> Bool {
   aod_result_not_carried(r: infer_algebra_field_result_type(
     rows: aod_mismatched_row(outer: bool_node(), algebra: ordered_ring_node(inhabitant: integer_int_type_node())),
     operand_type: bool_node(),
-    field: ^ring_field_add
+    field: ^ring_field_add,
+    arity: 2
   ))
 }
 
@@ -133,8 +139,90 @@ test fn aod_embedded_carrier_selects_the_row() -> Bool {
     r: infer_algebra_field_result_type(
       rows: aod_mismatched_row(outer: integer_int_type_node(), algebra: boolean_algebra_node(inhabitant: bool_node())),
       operand_type: bool_node(),
-      field: ^lattice_field_join
+      field: ^lattice_field_join,
+      arity: 2
     ),
     expected: bool_node()
   )
+}
+
+// THE APPLICATION'S ARITY MUST MATCH THE FIELD'S (review 84428 of #14731): Bool's boolean algebra carries meet,
+// declared over two operands, so asking for it at arity one is refused with its own cause, never a codomain.
+test fn aod_a_binary_field_at_arity_one_is_refused() -> Bool {
+  match infer_algebra_field_result_type(
+    rows: dag_algebra_inhabitance_decls(),
+    operand_type: bool_node(),
+    field: ^lattice_field_meet,
+    arity: 1
+  ) {
+    AlgebraFieldRowMalformed { cause: c } => c == ^infer_operator_arity_mismatch
+    AlgebraFieldResultType { result: _ } => false
+    AlgebraFieldNotCarried => false
+  }
+}
+
+// Its positive partner: complement, declared over one operand, answers Bool at arity one.
+test fn aod_complement_at_arity_one_answers_bool() -> Bool {
+  aod_result_is_type(
+    r: infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: bool_node(), field: ^boolean_algebra_field_complement, arity: 1),
+    expected: bool_node()
+  )
+}
+
+// A field arrow with no readable formals has NO arity (review 84467): the reader answers Absent, which the caller
+// refuses as the row's own defect (^algebra_field_domain_unreadable), never a sentinel number that would be
+// reported as the use site's arity mismatch. Its partner: a declared one-operand signature reads arity 1.
+test fn aod_an_arrow_without_formals_has_no_arity() -> Bool {
+  match infer_algebra_field_declared_arity(arrow: Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: bool_node(), declaration: NotADeclaration }, Edge { label: Positional, target: bool_node(), declaration: NotADeclaration }],
+    occurrence_id: OccurrenceSynthetic
+  }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn aod_a_unary_signature_reads_arity_one() -> Bool {
+  match infer_algebra_field_declared_arity(arrow: algebra_unary_fn_node(domain: bool_node(), codomain: bool_node())) {
+    Present { value: n } => n == 1
+    Absent => false
+  }
+}
+
+// THE EXTERNALLY VISIBLE REFUSAL FOR A MALFORMED ROW (side-chat review of #14731): a supplied inhabitance row
+// whose structure declares meet with an Arrow that has no formal list reaches infer_algebra_field_result_type
+// through the real field reader and is refused as THE ROW's defect, ^algebra_field_domain_unreadable -- not as
+// the use site's ^infer_operator_arity_mismatch, which the wrong-arity control above asserts for a well-formed
+// binary field. Same field, same arity request; only the row's declared domain differs.
+fn aod_unreadable_domain_row() -> List<AlgebraInhabitanceDecl> {
+  let unreadable_meet = Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: bool_node(), declaration: NotADeclaration }, Edge { label: Positional, target: bool_node(), declaration: NotADeclaration }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  let structure = Node {
+    kind: TypeNode { connective: Conj },
+    children: [binder_edge(name: ^lattice_field_meet, type_node: unreadable_meet)],
+    occurrence_id: OccurrenceSynthetic
+  }
+  [AlgebraInhabitanceDecl { algebra: algebra_inhabitance_node(algebra: structure, inhabitant: bool_node()), inhabitant: bool_node(), witness: bool_node() }]
+}
+
+test fn aod_a_row_with_an_unreadable_domain_is_refused_as_the_row() -> Bool {
+  match infer_algebra_field_result_type(rows: aod_unreadable_domain_row(), operand_type: bool_node(), field: ^lattice_field_meet, arity: 2) {
+    AlgebraFieldRowMalformed { cause: c } => c == ^algebra_field_domain_unreadable
+    AlgebraFieldResultType { result: _ } => false
+    AlgebraFieldNotCarried => false
+  }
+}
+
+fn aod_arity_receipt() -> String {
+  concat(concat(concat(concat(
+    if aod_a_binary_field_at_arity_one_is_refused() { "binary_at_one_refused=yes" } else { "binary_at_one_refused=no" },
+    if aod_complement_at_arity_one_answers_bool() { "\ncomplement_at_one_bool=yes" } else { "\ncomplement_at_one_bool=no" }),
+    if aod_embedded_carrier_selects_the_row() { "\nbinary_join_at_two=yes" } else { "\nbinary_join_at_two=no" }),
+    concat(if aod_an_arrow_without_formals_has_no_arity() { "\nno_formals_no_arity=yes" } else { "\nno_formals_no_arity=no" },
+      if aod_a_unary_signature_reads_arity_one() { "\nunary_sig_arity_one=yes" } else { "\nunary_sig_arity_one=no" })),
+    if aod_a_row_with_an_unreadable_domain_is_refused_as_the_row() { "\nunreadable_row_refused_as_row=yes" } else { "\nunreadable_row_refused_as_row=no" })
 }

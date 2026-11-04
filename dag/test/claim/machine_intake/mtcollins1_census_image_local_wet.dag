@@ -62,6 +62,7 @@ import gunbc.provisioning.seeded_install_media_publish {
   resolve_seeded_image,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { nat_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -212,7 +213,7 @@ test fn the_committed_capture_matches_its_recorded_identity_by_real_execution() 
   )
   digest_holds
     && counted.exit_code == 0
-    && counted.stdout == (byte_size_count(b: census_historical_capture.byte_count) as String)
+    && counted.stdout == (nat_to_decimal_string(value: byte_size_count(b: census_historical_capture.byte_count)))
 }
 
 // A roster whose stages print what the census stages print, cheaply: the nproc reading, mc0's counter

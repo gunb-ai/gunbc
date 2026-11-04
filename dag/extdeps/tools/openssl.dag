@@ -3,7 +3,7 @@ module extdeps.tools.openssl
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { String, NonEmptyStr, Int, Bool, List, Unit }
-import std.integer { UInt8, qualified_octet_members }
+import std.integer { qualified_octet_members }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -29,8 +29,11 @@ data openssl_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_openssl, bin_dir: apt_bin_dir }],
 }
 
-// `openssl dgst -sha256 -sign KEY -hex` IS RSASSA-PKCS1-v1_5 OVER SHA-256 -- RS256 as RFC 7518
-// section 3.3 defines it -- and it is exactly what the fleet's live mint executes today.
+// `openssl dgst -sha256 -sign KEY -hex` SIGNS SHA-256 WITH WHATEVER KEY THE FILE HOLDS: an RSA key
+// gives RSASSA-PKCS1-v1_5 -- RS256 as RFC 7518 section 3.3 defines it, exactly what the fleet's live
+// mint executes today -- and an EC key gives ECDSA, printed as the DER ECDSA-Sig-Value (SEC 1
+// section 4.1.3 / RFC 3279 section 2.2.3), which is NOT the R || S a JWS carries; converting it is
+// the consumer's step, because the encoding a JWS wants is JWA's fact, not openssl's.
 //
 // WHY THE ARGV CARRIES A PATH AND NEVER A SECRET. The private key is read by openssl from a file
 // the argv names; the data to sign arrives on stdin; the signature leaves on stdout. Nothing another
@@ -62,7 +65,7 @@ service openssl.Dgst {
 // 1.1, "RSA-SHA2-256(stdin)= " in 3.x). The digits after the LAST "= " are the signature in both;
 // anything else -- no separator, empty digits, a non-hex character -- is a refusal, never a guess.
 type OpensslSignature
-  = OpensslSigned { octets: List<UInt8> }
+  = OpensslSigned { octets: List<Int> }
   | OpensslSignRefused { exit_code: Int, detail: String }
 
 fn openssl_last_separator_end(s: String, i: Int) -> Int {

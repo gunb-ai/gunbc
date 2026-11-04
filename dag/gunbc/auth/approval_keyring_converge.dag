@@ -3,7 +3,11 @@ module gunbc.auth.approval_keyring_converge
 import std.types { Bool, NonEmptyStr, String, List, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.auth.approval_decision_store { approval_mac_key_path, approval_decision_store_root }
+import gunbc.auth.approval_decision_store { approval_mac_key_path }
+import gunbc.auth.approval_broker_state_directories {
+  approval_decision_store_directory,
+  broker_state_directory_install_argv,
+}
 import gunbc.durable_cas_file_store { authorization_claim_store_root }
 import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_path }
 import gunbc.auth.approval_request_submission {
@@ -33,8 +37,7 @@ import gunbc.auth.approval_keyring_pins {
   approval_store_receipt_mac_key_payload_sha256_prefix,
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_usermod_binary_path }
-import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -140,13 +143,13 @@ fn keyring_mkdir_argv() -> List<String> {
   )
 }
 
+// THE DECISION STORE ROOT IS PROVISIONED BY THE BROKER STATE-DIRECTORY CENSUS ROW
+// (gunbc.auth.approval_broker_state_directories.approval_decision_store_directory): this lane PROJECTS
+// that row rather than restating owner/mode/path, so the deploy fold and this converge step install the
+// exact same argv from one declaration (DESIGN §3 — one fact, one place). The approval-keyring-
+// converge witness pins the projection against the row, so a drift in either lane fails a claim.
 fn store_root_mkdir_argv() -> List<String> {
-  coreutils_install_directory_owned_argv(
-    mode: declared_directory_mode(m: DirectoryOwnerOnly),
-    owner: fleet_posix_operator_user.name,
-    group: fleet_posix_operator_user.name,
-    path: approval_decision_store_root as String,
-  )
+  broker_state_directory_install_argv(d: approval_decision_store_directory())
 }
 
 fn claim_store_root_mkdir_argv() -> List<String> {
@@ -161,15 +164,6 @@ fn claim_store_root_mkdir_argv() -> List<String> {
 // Through extdeps.tools.chown chown_argv's name arm, so the OWNER:GROUP grammar is not spelled here.
 fn keyring_chown_argv(path: NonEmptyStr) -> List<String> {
   chown_argv(owner: ChownOwnerNames { names: PosixOwnerNames { user: fleet_posix_root_user.name, group: fleet_posix_operator_user.name } }, path: path as String)
-}
-
-fn ntfy_group_admit_argv() -> List<String> {
-  [
-    fleet_usermod_binary_path as String,
-    "-aG",
-    approval_ntfy_principal_name as String,
-    fleet_posix_operator_user.name as String,
-  ]
 }
 
 fn roadmap_unit_restart_argv() -> List<String> {
@@ -289,12 +283,8 @@ fn approval_keyring_converge_on_host(host: String) -> ProcessExit
                                               ExitSuccess =>
                                                 match keyring_install_file(target: target, context: context, dest: approval_store_receipt_mac_key_path, content: rcpt_content, step: "store-receipt-key") {
                                                   ExitSuccess =>
-                                                    match keyring_elevated_exec(target: target, context: context, command: ntfy_group_admit_argv(), step: "ntfy-group-admit") {
-                                                      ExitSuccess =>
-                                                        match keyring_elevated_exec(target: target, context: context, command: roadmap_unit_restart_argv(), step: "roadmap-unit-restart") {
-                                                          ExitSuccess => ExitSuccess
-                                                          other => other
-                                                        }
+                                                    match keyring_elevated_exec(target: target, context: context, command: roadmap_unit_restart_argv(), step: "roadmap-unit-restart") {
+                                                      ExitSuccess => ExitSuccess
                                                       other => other
                                                     }
                                                   other => other

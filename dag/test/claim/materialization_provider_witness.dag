@@ -1,5 +1,7 @@
 module test.claim.materialization_provider_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed, RefuseNewStore }
+
 import std.judgment_contract { identity_structural_component, identity_text_component, identity_digest_component, identity_upstream_object_component, IdentityComponent }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
@@ -76,6 +78,7 @@ import std.materialization_provider {
   serve_resolved_graph_stored_disk_probe,
   serve_resolved_graph_incomplete_stored_disk_probe,
   admission_is_admitted, admission_evicted_keys,
+  ProviderCapacityExhausted,
   admission_is_budget_exhausted, admission_refused_incomplete_missing,
   admission_is_refused_incomplete_write, admission_is_refused_kind_mismatch_write,
   admission_is_refused_wrong_artifact_write, admission_is_refused_wrong_content_write,
@@ -262,7 +265,7 @@ fn witness_stale_typed_digest() -> ContentHash {
 }
 
 fn witness_empty_store(budget_count: Int) -> ArtifactStore {
-  ArtifactStore { budget: byte_size(count: budget_count), next_ordinal: 1, rows: [] }
+  ArtifactStore { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, budget: byte_size(count: budget_count), next_ordinal: 1, rows: [] }
 }
 
 test fn request_kinds_ground_on_cache_identity_rows() -> Bool {
@@ -515,7 +518,36 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
     wrong_artifact_write: (k, fk) => false,
     wrong_content_write: (r, o) => false,
     incomplete_write: m => false,
-    budget_exhausted: (n, b) => false
+    budget_exhausted: (n, b) => false,
+    capacity_exhausted: (n, a) => false,
+    policy_refused: c => false
+  )
+}
+
+test fn retained_provider_reports_capacity_without_eviction() -> Bool {
+  let artifact = witness_complete_closure_artifact()
+  let store = ArtifactStore { budget: artifact_bytes(artifact: artifact), at_capacity: RefuseNewStore, next_ordinal: 1, rows: [] }
+  let req = ResolveClosureRequest { closure_digest: content_hash_atom(value: "another-closure"), compiler: witness_compiler() }
+  let next = ResolvedGraphArtifact {
+    request_key: request_key(req: req),
+    resolved_graph: witness_part(payload: "next-graph", bytes: 60),
+    source_indices: witness_part(payload: "next-indices", bytes: 25),
+    compile_clean_diagnostic_union: witness_part(payload: "next-diagnostics", bytes: 15),
+  }
+  admission_fold(
+    a: provider_admit(store: store, req: witness_closure_request(), artifact: artifact, observed_digest: artifact_content_digest(artifact: artifact)),
+    admitted: (held, evicted) => {
+      let refused = provider_admit(store: held, req: req, artifact: next, observed_digest: artifact_content_digest(artifact: next))
+      count(evicted) == 0 && refused == ProviderCapacityExhausted { needed: artifact_bytes(artifact: next), available: byte_size(count: 0) }
+        && count(admission_evicted_keys(a: refused)) == 0
+    },
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    budget_exhausted: (n, b) => false,
+    capacity_exhausted: (n, a) => false,
+    policy_refused: c => false,
   )
 }
 

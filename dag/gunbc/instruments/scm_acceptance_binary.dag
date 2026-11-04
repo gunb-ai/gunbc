@@ -82,6 +82,7 @@ import extdeps.gunbc
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.tools.sha512sum { sha512sum_observe_file, Sha512FileObserved, Sha512FileObservationRefused }
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.rust.cargo_build
 import extdeps.rust.cargo_message {
   CargoArtifactSelection,
@@ -312,7 +313,7 @@ fn acquire_scm_acceptance_binary() -> ScmAcceptanceBinaryAcquisition {
   let build = cargo.Build.BuildManifestMessages(
     workdir: root.path,
     manifest_path: concat(root.path, "/Cargo.toml"),
-    target_dir: concat(root.path, "/target"),
+    target_dir: cargo_default_target_dir(build_root: root.path),
     extra_args: scm_acceptance_build_args(),
   )
   match select_artifact_path(

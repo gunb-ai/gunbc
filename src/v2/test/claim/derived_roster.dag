@@ -1,0 +1,325 @@
+module v2.test.claim.derived_roster
+
+import std.types { Bool, List, Map }
+import std.algebra { empty_map, fold_list, length, list_find_first, list_map, map_insert, collection_concat_shape, collection_join_shape }
+import std.optional { Absent, Present }
+import v2.compiler.module_acquisition {
+  AcquiredDerivedRoster,
+  AcquiredFromFile,
+  AcquiredModule,
+  Acquisition,
+  AcquisitionComplete,
+  AcquisitionDerivedRosterRefused,
+  AcquisitionNotVerified,
+  AcquisitionRefused,
+  AcquisitionVerified,
+  BoundModulesListed,
+  BoundModulesRefused,
+  DerivedRosterDerivationRefused,
+  DerivedRosterDerived,
+  DerivedRosterAbsent,
+  DerivedRosterMisplacedRow,
+  DerivedRosterOccupied,
+  DerivedRosterSiblingMisfiled,
+  HeldSourceAbsent,
+  HeldSourcePresent,
+  HeldSourceRead,
+  HeldSourceRefused,
+  PopulationMemberRead,
+  PopulationMemberRefused,
+  SourceRootBinding,
+  acquire_closure_of,
+  acquire_verified,
+  acquisition_read_source,
+  derived_roster_derive,
+  enumerate_bound_modules,
+  population_member
+}
+import v2.compiler.source_authority {
+  DerivedRosterRowMisplaced,
+  DerivedRosterSelected,
+  DerivedRosterSibling,
+  ModuleFileRef,
+  SourceStorageLayout,
+  StorageDerivedRoster,
+  StorageNamespaceRoot,
+  derived_roster_declaration,
+  source_storage_layout,
+  derived_roster_module,
+  derived_roster_select,
+  derived_roster_text
+}
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES FOR THE DERIVED ROSTER RULE (v2.compiler.source_authority derived_roster_module and its
+// neighbours) AND ITS CONTRIBUTOR IN ACQUISITION (v2.compiler.module_acquisition, the demand route and
+// the population route). The acquisition controls run over a planted tree, fixtures/derived_roster,
+// which lies outside every governed root so its occupied and misplaced ledgers red nothing else: the v2
+// tree is bound there and the dag tree to the repository's own `dag`, because the roster imports
+// std.types. Three ledgers are planted. `v2.fx.ledger` has two rows (alpha, written with the spacing the
+// formatter may put around `:`, and beta) beside a helper module that imports the roster, as
+// gunbc.rung_drop.standing does. `v2.fx.occupied` has a file at its roster's storage path, which is what
+// an older seed wrote and .gitignore now refuses. `v2.fx.misplaced` declares a row under another name.
+//
+// The pairing obligation (DESIGN section 3) is carried by v2.test.claim.derived_roster_seed_agreement,
+// which runs the same derivation over the repository's two real ledgers and compares it with the seed's.
+
+fn fx_ledger() -> StorageDerivedRoster {
+  StorageDerivedRoster { row_namespace: "v2.fx.ledger", row_type: "FxRow" }
+}
+
+// The fixture's own namespace rows: a crossing from the fixture's v2 modules into std is admitted
+// because both namespaces have a row (v2.std.cross_tree.import_model cross_tree_import_admitted).
+fn fx_layout(rosters: List<StorageDerivedRoster>) -> SourceStorageLayout {
+  source_storage_layout(
+    namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree {}, elides_namespace: true }],
+    default_tree: DagTree {},
+    namespace_rows: ["std", "v2.fx", "v2.fx.ledger", "v2.fx.occupied", "v2.fx.misplaced"],
+    derived_rosters: rosters
+  )
+}
+
+fn fx_all_ledgers() -> List<StorageDerivedRoster> {
+  [
+    fx_ledger(),
+    StorageDerivedRoster { row_namespace: "v2.fx.occupied", row_type: "FxRow" },
+    StorageDerivedRoster { row_namespace: "v2.fx.misplaced", row_type: "FxRow" }
+  ]
+}
+
+fn fx_bindings() -> List<SourceRootBinding> {
+  [
+    SourceRootBinding { tree: V2Tree, host_directory: "fixtures/derived_roster/v2" },
+    SourceRootBinding { tree: DagTree, host_directory: "dag" }
+  ]
+}
+
+// THE ORACLE IS THE SEED'S RENDERING, transcribed from v1_compiler.cli_run.derived_row_roster
+// render_roster for this ledger by hand -- a controlled fixture, not a reading of the rule under test --
+// so a change to the bytes the rule renders reds here instead of agreeing with itself.
+fn fx_ledger_expected_text() -> String {
+  "module v2.fx.ledger.roster\n\n// DERIVED from sibling files declaring a FxRow row under their own stem. Do not\n// hand-edit. Membership is the directory filtered by declared type; order is the sorted\n// filename stem, which is the declaration name. An append is a new file in this\n// directory, never an edit here.\n\nimport std.types { List }\nimport v2.fx.ledger { FxRow }\nimport v2.fx.ledger.alpha { alpha }\nimport v2.fx.ledger.beta { beta }\n\ndata ledger_roster: List<FxRow> = [\n  alpha,\n  beta,\n]\n"
+}
+
+fn member_named(modules: List<AcquiredModule>, name: String) -> List<AcquiredModule> {
+  filter(modules, m => m.name == name)
+}
+
+fn derived_inputs_text(member: AcquiredModule) -> String {
+  match member.origin {
+    AcquiredFromFile => "from-file"
+    AcquiredDerivedRoster { inputs: inputs } => join(inputs, ",")
+  }
+}
+
+fn fx_inputs_expected() -> String {
+  "v2:fx/ledger/alpha.dag,v2:fx/ledger/beta.dag,v2:fx/ledger/helper.dag"
+}
+
+// ---- the rule ----------------------------------------------------------------------------------------
+
+test fn the_roster_module_and_declaration_are_derived_from_the_row_namespace() -> Bool {
+  let rung_drop = StorageDerivedRoster { row_namespace: "gunbc.rung_drop", row_type: "RungDrop" }
+  let failure_mode = StorageDerivedRoster { row_namespace: "gunbc.recurring_failure_mode", row_type: "RecurringFailureMode" }
+  derived_roster_module(roster: rung_drop) == "gunbc.rung_drop.roster"
+    && derived_roster_declaration(roster: rung_drop) == "rung_drop_roster"
+    && derived_roster_module(roster: failure_mode) == "gunbc.recurring_failure_mode.roster"
+    && derived_roster_declaration(roster: failure_mode) == "recurring_failure_mode_roster"
+}
+
+test fn the_roster_text_is_the_seeds_rendering() -> Bool {
+  derived_roster_text(roster: fx_ledger(), members: ["alpha", "beta"]) == fx_ledger_expected_text()
+}
+
+// Membership is the declared type under the file's own stem, and order is the sorted stem, whatever order
+// the siblings arrive in: the helper declares no row and is not a member.
+test fn membership_is_selected_by_declared_type_and_ordered_by_stem() -> Bool {
+  match derived_roster_select(
+    roster: fx_ledger(),
+    siblings: [
+      DerivedRosterSibling { stem: "beta", content: "module v2.fx.ledger.beta\n\ndata beta: FxRow = FxRow { weight: 2 }\n" },
+      DerivedRosterSibling { stem: "helper", content: "module v2.fx.ledger.helper\n\nfn ledger_rows() -> List<FxRow> {\n  ledger_roster\n}\n" },
+      DerivedRosterSibling { stem: "alpha", content: "module v2.fx.ledger.alpha\n\ndata alpha  :  FxRow = FxRow { weight: 1 }\n" }
+    ]
+  ) {
+    DerivedRosterSelected { members: members } => join(members, ",") == "alpha,beta"
+    DerivedRosterRowMisplaced { stem: _, declared: _ } => false
+  }
+}
+
+// A declaration of another type, including a list of the row type, does not select a sibling.
+test fn a_declaration_of_another_type_is_not_a_row() -> Bool {
+  match derived_roster_select(
+    roster: fx_ledger(),
+    siblings: [DerivedRosterSibling { stem: "many", content: "data many: List<FxRow> = []\ndata other: FxRowish = FxRowish {}\n" }]
+  ) {
+    DerivedRosterSelected { members: members } => length(xs: members) == 0
+    DerivedRosterRowMisplaced { stem: _, declared: _ } => false
+  }
+}
+
+// THE CORRECTION OF THE SEED'S SILENT ARM: a row declared under a name other than its stem refuses,
+// naming both, where the seed leaves it out of the list.
+test fn a_row_under_another_name_than_its_stem_refuses() -> Bool {
+  match derived_roster_select(
+    roster: fx_ledger(),
+    siblings: [DerivedRosterSibling { stem: "delta", content: "data not_delta: FxRow = FxRow { weight: 4 }\n" }]
+  ) {
+    DerivedRosterRowMisplaced { stem: stem, declared: declared } => stem == "delta" && declared == "not_delta"
+    DerivedRosterSelected { members: _ } => false
+  }
+}
+
+// ---- the demand route -------------------------------------------------------------------------------
+
+// THE RED THE CONTRIBUTOR TURNS GREEN, kept as a control: without the ledger's policy row the roster is a
+// module with no file, and a compile that imports it refuses -- the state every native consumer of
+// gunbc.rung_drop.roster was in before this rule.
+test fn without_the_policy_row_the_roster_is_an_unknown_module() -> Bool {
+  match acquire_verified(layout: fx_layout(rosters: []), bindings: fx_bindings(), entries: ["v2.fx.consumer"]) {
+    AcquisitionNotVerified { reason: _, cause: cause } => cause.contains(substring: "v2.fx.ledger.roster")
+    AcquisitionVerified { modules: _, reads: _, absent_probes: _ } => false
+  }
+}
+
+// A compile naming the roster acquires it, and the closure is EXACT (R9): the roster's inputs are read
+// once each, the helper a later import names is not read again, and the roster's own storage path is
+// never read.
+test fn a_compile_that_imports_the_roster_acquires_it_exactly() -> Bool {
+  match acquire_verified(layout: fx_layout(rosters: [fx_ledger()]), bindings: fx_bindings(), entries: ["v2.fx.consumer"]) {
+    AcquisitionNotVerified { reason: _, cause: _ } => false
+    AcquisitionVerified { modules: modules, reads: reads, absent_probes: _ } =>
+      match list_find_first(xs: modules, predicate: fn(m) { m.name == "v2.fx.ledger.roster" }) {
+        Absent => false
+        Present { value: roster } =>
+          roster.content == fx_ledger_expected_text()
+            && derived_inputs_text(member: roster) == fx_inputs_expected()
+            && length(xs: filter(reads, key => key == "v2:fx/ledger/roster.dag")) == 0
+            && length(xs: member_named(modules: modules, name: "v2.fx.ledger.alpha")) == 1
+            && length(xs: member_named(modules: modules, name: "v2.fx.ledger.helper")) == 1
+      }
+  }
+}
+
+// The helper is the entry and imports the roster: the derivation reads the helper from the member the
+// closure already holds, and the closure is still exact.
+test fn a_sibling_already_acquired_is_not_read_again() -> Bool {
+  match acquire_verified(layout: fx_layout(rosters: [fx_ledger()]), bindings: fx_bindings(), entries: ["v2.fx.ledger.helper"]) {
+    AcquisitionNotVerified { reason: _, cause: _ } => false
+    AcquisitionVerified { modules: modules, reads: reads, absent_probes: _ } =>
+      length(xs: filter(reads, key => key == "v2:fx/ledger/helper.dag")) == 1
+        && length(xs: member_named(modules: modules, name: "v2.fx.ledger.roster")) == 1
+  }
+}
+
+// ---- what the derivation may take as a sibling's bytes ------------------------------------------------
+//
+// A held sibling is a HeldSourceRead, which only acquisition_read_source constructs (sole_constructor;
+// a construction in this module would be refused, v2.compiler.infer infer_sole_constructor_diags, whose
+// own red is v2.test.claim.long.sole_constructor_native_wall_red). So the one way to hand the derivation
+// bytes that are not a sibling's is to file a REAL read of another file under the sibling's key, and
+// that refuses rather than changing the roster. The positive control is that a held read IS consumed
+// (the sibling is not read again), so the red is a refusal of the held route and not a route never taken.
+
+fn fx_ledger_file(stem: String) -> ModuleFileRef {
+  ModuleFileRef { tree: V2Tree {}, relative_path: concat("fx/ledger/", stem, ".dag") }
+}
+
+fn fx_held(sibling: String, read_of: String) -> Map<String, HeldSourceRead> {
+  match acquisition_read_source(host_directory: "fixtures/derived_roster/v2", file: fx_ledger_file(stem: read_of)) {
+    HeldSourcePresent { read: read } => map_insert(m: empty_map(), key: concat("v2:fx/ledger/", sibling, ".dag"), value: read)
+    HeldSourceAbsent { file: _ } => empty_map()
+    HeldSourceRefused { file: _, cause: _ } => empty_map()
+  }
+}
+
+fn fx_derive(held: Map<String, HeldSourceRead>) -> String {
+  match derived_roster_derive(roster: fx_ledger(), file: fx_ledger_file(stem: "roster"), host_directory: "fixtures/derived_roster/v2", held: held) {
+    DerivedRosterAbsent => "absent"
+    DerivedRosterDerivationRefused { refusal: refusal } =>
+      match refusal {
+        DerivedRosterSiblingMisfiled { file: file, held: other } => concat("misfiled:", file.relative_path, "<-", other.relative_path)
+        _ => "refused-other"
+      }
+    DerivedRosterDerived { content: content, inputs: _, members: _, siblings: siblings } =>
+      concat(
+        if content == fx_ledger_expected_text() { "derived" } else { "derived-other-text" },
+        ":fresh=",
+        join(list_map(xs: filter(siblings, s => s.fresh), f: fn(s) { s.read.file.relative_path }), ",")
+      )
+  }
+}
+
+// THE RED: the helper's real bytes filed as beta's. The helper declares no row, so if those bytes stood
+// for beta the roster would silently lose beta and be derived as [alpha]; instead it refuses, located.
+test fn a_read_filed_under_another_siblings_key_refuses_the_roster() -> Bool {
+  fx_derive(held: fx_held(sibling: "beta", read_of: "helper")) == "misfiled:fx/ledger/beta.dag<-fx/ledger/helper.dag"
+}
+
+// THE POSITIVE CONTROL: beta's read filed as beta's is taken, not read again, and the roster is the one
+// derived with nothing held.
+test fn a_read_filed_under_its_own_key_is_taken_and_the_roster_is_unchanged() -> Bool {
+  fx_derive(held: fx_held(sibling: "beta", read_of: "beta")) == "derived:fresh=fx/ledger/alpha.dag,fx/ledger/helper.dag"
+    && fx_derive(held: empty_map()) == "derived:fresh=fx/ledger/alpha.dag,fx/ledger/beta.dag,fx/ledger/helper.dag"
+}
+
+fn refusal_of(acquisition: Acquisition) -> String {
+  match acquisition {
+    AcquisitionComplete { entries: _, modules: _, reads: _, absent_probes: _ } => "complete"
+    AcquisitionRefused { refusal: refusal, reads: _ } =>
+      match refusal {
+        AcquisitionDerivedRosterRefused { module: module, refusal: derived } =>
+          match derived {
+            DerivedRosterOccupied { file: file } => concat("occupied:", module, "@", file.relative_path)
+            DerivedRosterMisplacedRow { stem: stem, declared: declared } => concat("misplaced:", module, ":", stem, "/", declared)
+            _ => "derived-other"
+          }
+        _ => "other"
+      }
+  }
+}
+
+// A FILE AT THE ROSTER'S STORAGE PATH REFUSES, located: it is neither consumed nor overridden.
+test fn a_file_at_the_rosters_storage_path_refuses() -> Bool {
+  refusal_of(acquisition: acquire_closure_of(layout: fx_layout(rosters: fx_all_ledgers()), bindings: fx_bindings(), entries: ["v2.fx.occupied.roster"]))
+    == "occupied:v2.fx.occupied.roster@fx/occupied/roster.dag"
+}
+
+test fn a_misplaced_row_refuses_the_roster_that_would_omit_it() -> Bool {
+  refusal_of(acquisition: acquire_closure_of(layout: fx_layout(rosters: fx_all_ledgers()), bindings: fx_bindings(), entries: ["v2.fx.misplaced.roster"]))
+    == "misplaced:v2.fx.misplaced.roster:delta/not_delta"
+}
+
+// ---- the population route ---------------------------------------------------------------------------
+
+fn fx_v2_only() -> List<SourceRootBinding> {
+  [SourceRootBinding { tree: V2Tree, host_directory: "fixtures/derived_roster/v2" }]
+}
+
+// The roster is a member of the population its rows are in, after the listed modules, and a population
+// job reads the same bytes a compile does.
+test fn the_population_holds_the_roster_its_rows_are_in() -> Bool {
+  match enumerate_bound_modules(layout: fx_layout(rosters: [fx_ledger()]), bindings: fx_v2_only()) {
+    BoundModulesRefused { subject: _, cause: _ } => false
+    BoundModulesListed { modules: modules } =>
+      length(xs: filter(modules, m => m == "v2.fx.ledger.roster")) == 1
+        && match population_member(layout: fx_layout(rosters: [fx_ledger()]), bindings: fx_v2_only(), name: "v2.fx.ledger.roster") {
+          PopulationMemberRefused { cause: _ } => false
+          PopulationMemberRead { member: member } =>
+            member.content == fx_ledger_expected_text() && derived_inputs_text(member: member) == fx_inputs_expected()
+        }
+  }
+}
+
+// The occupied ledger's file is listed by the walk as the roster's own name, which refuses the
+// enumeration rather than standing beside or in place of the derived module.
+test fn a_population_with_a_file_at_a_rosters_path_refuses() -> Bool {
+  match enumerate_bound_modules(layout: fx_layout(rosters: fx_all_ledgers()), bindings: fx_v2_only()) {
+    BoundModulesRefused { subject: subject, cause: _ } => subject == "v2.fx.occupied.roster"
+    BoundModulesListed { modules: _ } => false
+  }
+}

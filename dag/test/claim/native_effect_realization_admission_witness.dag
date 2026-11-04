@@ -120,7 +120,7 @@ test fn cli_entry_reaching_a_rest_service_refuses_as_outgoing_http() -> Bool {
 
 test fn claim_entry_reaching_a_clock_service_refuses_as_outside_its_declared_set() -> Bool {
   refused_naming(o: fx_run(entry_path: "nefx/claim.dag", entry_source: fx_claim_clock_source, peers: [fx_extdeps_clock()]),
-    marker: "service extdeps.clock Clock is outside the NativeClaimDriver denominator (ruling: std.compiler_entry NativeClaimDriver)")
+    marker: "service extdeps.clock Clock is outside the NativeClaimDriver denominator (ruling: gunbc.design_ruling native_claim_route_admits_the_docker_cli)")
 }
 
 // THE IDENTITY CONTROL: a service SPELLED Clock that is not extdeps.clock Clock is not excluded from

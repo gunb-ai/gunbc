@@ -27,7 +27,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // PR #7762 scheduled integration witnesses (operator msg_b51df9e7): below_cap and second_root on
-// FalsifierCadenceJob with SpanEnrolled measured envelopes (4h cadence). Per-PR mechanism controls:
+// FalsifierCadenceJob with SpanEnrolled measured envelopes (4h cadence) -- DECLARED BUT UNREALIZED: the cadence executor falsifier.yml was deleted at 611fd02770/#8283, so nothing schedules them today (gunbc.rung_drop.falsifier_rehomed_rows_unexecuted, #14615). Per-PR mechanism controls:
 // src/v2/test/claim/workflow/frontier_probe_closure_matrix.dag (9 synthetic). Per-PR wet
 // controls: src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag (read_failure
 // 3ms, hash_mismatch 2ms, elision boundary 3ms — measured claim_batch eval wall, not full-pipeline

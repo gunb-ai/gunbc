@@ -38,9 +38,8 @@ data rust_unit_tests_over_their_cap: RungDrop = RungDrop {
   standing: Superseded {
     ruling: "the owner ruling of 2026-10-06 carried by gunbc#13452: v1 tests over 100ms are deleted, not rewritten. It removed the deleted population from this subject; the trigger did NOT fire (it refuses deletion as a route). Over the remaining population the lane blocks again (LaneBlocks, gunbc#13474) with a 15-minute step cap derived from the post-#13452 maximum wall, witnesses run 37459768899 at 457s; re-derive by instrument (gh run list --workflow witnesses.yml for runs after 2026-10-06T01:02Z, then each run rust-unit-tests step times)." as NonEmptyStr,
     decision_record: "escalation msg_a8b84443 (2026-10-06), APPROVED BY DEFAULT at 13:50Z after no operator answer -- a default approval, not an explicit operator answer" as NonEmptyStr,
-    loss_holder: "v1_integration_tests_deleted_from_the_unit_lane" as NonEmptyStr
-  },
-  declaration: TypedDeclaration {
+    loss_holder: "v1_integration_tests_deleted_from_the_unit_lane" as NonEmptyStr,
+    declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -48,5 +47,6 @@ data rust_unit_tests_over_their_cap: RungDrop = RungDrop {
     },
     population: Enumerated { members: rust_unit_tests_over_their_cap_population },
     restoration_trigger: "THE CAPABILITY: the full v1-compiler --lib unit suite completes under its cap on the fleet runner on every head -- read from the rust_unit_tests step walls of the lane's own required runs, across heads, not one green run. WHAT THAT MUST BE SUFFICIENT FOR: the lane's red means a test failed, never that a clock ran out, so flipping the gunbc.witness.compiler_gate_workflow lane row back to LaneBlocks refuses only diffs that broke a test. Raising the cap literal without that measurement does not retire this row, and neither does shrinking the suite by deleting or skipping tests."
+  }
   }
 }

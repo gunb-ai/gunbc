@@ -1,0 +1,38 @@
+module test.claim.strata_session_file_witness
+
+import std.types { Bool, String }
+import std.measure { measure_count }
+import extdeps.strata.session_file {
+  SlotSave, SlotRestore, SlotRequest, SlotTransferred, SlotRefused, SlotNativeRefused,
+  SlotReplyUnreadable, SessionInvalid, SessionIo, slot_request_path, slot_request_body, slot_reply,
+}
+import gunbc.serving.strata_checkpoint_transfer { strata_slot_exchange, SlotOutcomeUnknown }
+
+// Supplied values at the API boundary. Native compatibility is established by
+// Strata's conversation_file_test, not by comparing prompt text or these counts.
+test fn slot_receipts_preserve_native_refusals_and_uncertain_publication() -> Bool {
+  let request = SlotRequest { action: SlotRestore, filename: "session.bin" }
+  let invalid = slot_reply(request: request, status: 400, body: "{\"error\":{\"code\":400,\"message\":\"another configuration\",\"kind\":\"invalid\"}}")
+  let refusal = match invalid { SlotRefused { refusal: SlotNativeRefused { error: SessionInvalid, published: false, message: _ } } => true _ => false }
+  let published = slot_reply(request: SlotRequest { action: SlotSave, filename: "session.bin" }, status: 500,
+    body: "{\"error\":{\"code\":500,\"message\":\"directory flush failed\",\"kind\":\"io\",\"published\":true}}")
+  let uncertain = match published { SlotRefused { refusal: SlotNativeRefused { error: SessionIo, published: true, message: _ } } => true _ => false }
+  let timed_out = strata_slot_exchange(request: request, exit_code: 28, stdout: "", stderr: "timed out")
+  let unknown = match timed_out { SlotOutcomeUnknown { detail: _ } => true _ => false }
+  refusal && uncertain && unknown
+}
+
+test fn slot_receipt_must_name_the_requested_file_and_operation() -> Bool {
+  let request = SlotRequest { action: SlotRestore, filename: "session.bin" }
+  let body = "{\"id_slot\":0,\"filename\":\"session.bin\",\"n_restored\":100,\"n_read\":2048}"
+  let matched = match slot_reply(request: request, status: 200, body: body) {
+    SlotTransferred { transfer: t } => measure_count(m: t.tokens) == 100 && measure_count(m: t.bytes) == 2048
+    _ => false
+  }
+  let other_file = match slot_reply(request: SlotRequest { action: SlotRestore, filename: "other.bin" }, status: 200, body: body) { SlotReplyUnreadable { detail: _ } => true _ => false }
+  let other_action = match slot_reply(request: SlotRequest { action: SlotSave, filename: "session.bin" }, status: 200, body: body) { SlotReplyUnreadable { detail: _ } => true _ => false }
+  let duplicate = match slot_reply(request: request, status: 200,
+    body: "{\"id_slot\":0,\"filename\":\"session.bin\",\"n_restored\":100,\"n_restored\":99,\"n_read\":2048}") { SlotReplyUnreadable { detail: _ } => true _ => false }
+  matched && other_file && other_action && duplicate && slot_request_path(request: request) == "/slots/0?action=restore"
+    && slot_request_body(request: request) == "{\"filename\": \"session.bin\"}"
+}

@@ -16,7 +16,7 @@ import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import gunbc.dispatch_credential_acquisition {
   CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config,
-  credential_taken_cursor_runtime_root, credential_acquisition_slots_root,
+  credential_taken_cursor_runtime_root,
 }
 import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot }
 import gunbc.cursor_harness_credential {
@@ -24,7 +24,7 @@ import gunbc.cursor_harness_credential {
   CursorKeyProbeUnreadable, cursor_worker_turn_api_key_host_path,
 }
 import gunbc.worker_turn_standing { cursor_bounded_keyed_probe_command, CursorBoundedProbeReady, CursorBoundedProbeNameRefused, CursorBoundedProbeEmitRefused, cursor_observed_standing_for_program, cursor_sandbox_unavailable_reason_prefix }
-import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken }
+import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken, fx_slots_dir }
 
 // WET, NON-ROOT, over FRESH attempt roots: every invocation binds HOME and XDG_CONFIG_HOME to a root made
 // here, so the operator's real ~/.config/cursor is neither read nor written nor asserted. Every control is
@@ -140,7 +140,7 @@ fn wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: Fil
   let scratch = wet_scratch(label: "d")
   let custody = wet_scratch(label: "dcust")
   let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
-  let _ = shell.Mkdir.Parents(path: credential_acquisition_slots_root(instance_root: scratch) as FilePath)
+  let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
   let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001", snap: join([scratch, "/P"], "")) {
     Absent => false
     Present { value: snapshot } => {
@@ -207,7 +207,7 @@ fn wet_absent_realization_reaches_no_invocation() -> Bool {
     name: "cursor-agent",
   )
   let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
-  let _ = shell.Mkdir.Parents(path: credential_acquisition_slots_root(instance_root: scratch) as FilePath)
+  let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
   let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetenotinstalled1", snap: join([scratch, "/P"], "")) {
     Absent => false
     Present { value: snapshot } => {

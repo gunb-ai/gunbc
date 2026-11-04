@@ -1,4 +1,14 @@
-//! THE DECLARED-VERSUS-ROSTERED IDENTITY JOIN, executed as a merge-blocking check.
+//! THE DECLARED-VERSUS-ROSTERED IDENTITY JOIN.
+//!
+//! IT HAS NO CALLER, AND NOTHING BELOW IS EVIDENCE THAT IT RUNS. `run_rostered_row_join` is called
+//! by no binary, phase, instrument or test; required CI is `v2-bootstrap`, which does not reach it.
+//! Paragraphs below that describe it running in a required-CI parse phase, or a green run covering
+//! a path, record what was claimed when that phase existed. Why a host caller is not the repair, and
+//! what must land first: `gunbc.recurring_failure_mode`
+//! `a_drops_rederivation_instrument_sits_in_the_population_it_measures`. So a row of an enrolled
+//! type declared outside its row directory is refused by nothing that executes today. One under a
+//! stem that is not its declaration name is refused only by the native derivation
+//! (`v2.compiler.source_authority` `DerivedRosterRowMisplaced`), which is not on the required path.
 //!
 //! WHAT IT DECIDES. A carrier whose rows live one per module and whose roster re-enumerates them
 //! by hand authors one membership fact twice, so a row that lands DECLARED and UNROSTERED is
@@ -24,7 +34,8 @@
 //! source can contribute nothing (an unclassified module binding), which was silent until here.
 //!
 //! WHAT IT DOES NOT DO. It does not remove the double authoring for carriers whose roster is still
-//! hand-appended. For `RecurringFailureMode` the list is derived from files, and the join also
+//! hand-appended. For `RecurringFailureMode`, `RungDrop` and `GuaranteeStall` the list is derived
+//! from files (`derived_row_roster`); for `RecurringFailureMode` the join also
 //! identity-joins those files to roster members (`RowFileNotRostered` / `RosterMemberNotARowFile`)
 //! so a writer that shortens the list cannot stay green. The ceiling remains declaration-value
 //! binding.
@@ -55,13 +66,10 @@
 //! execute the `findings` → `phase_failures` push that stops the line. Those are two different
 //! claims and only the first is evidenced by a green.
 //!
-//! THE INSTRUMENT THAT RE-DERIVES THE MISSING HALF, named rather than described by an old run's
-//! output (§6 — a measurement is cited by naming the producer that re-derives it). Delete any
-//! entry from a PRODUCTION roster's list literal and run
-//! `claim_executor --required-ci --source-root dag --source-root src/v2`: its parse phase reports
-//! that declaration under `rostered-row-join FAIL`, the push lands it in `phase_failures`, and the
-//! run exits nonzero. That perturbation is available to any reader on any tree, which a historical
-//! measurement is not — the state that produced one is precisely the state a landed repair removes.
+//! THE INSTRUMENT THAT WOULD RE-DERIVE THE MISSING HALF named `claim_executor --required-ci`, whose
+//! parse phase was to report an omitted declaration under `rostered-row-join FAIL`. No such call
+//! exists in `claim_executor` (see the top of this module), so that perturbation produces no
+//! finding on any tree.
 //!
 //! A LATER READER MUST NOT CITE THIS GREEN AS COVERAGE OF THE PUSH. That would be rung inflation
 //! (§4b(1)), which is worse than sitting low, because an inflated class never ranks for climbing.
@@ -101,9 +109,9 @@ pub struct EnrolledRowType {
 pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 5] = [
     EnrolledRowType {
         variant: "GuaranteeStallRows",
-        type_name: "GuaranteeStall",
-        roster_module: "gunbc.guarantee_stall.roster",
-        roster_declaration: "all_guarantee_stalls",
+        type_name: super::derived_row_roster::GUARANTEE_STALL.row_type,
+        roster_module: super::derived_row_roster::GUARANTEE_STALL.roster_module,
+        roster_declaration: super::derived_row_roster::GUARANTEE_STALL.roster_declaration,
     },
     EnrolledRowType {
         variant: "RecurringFailureModeRows",

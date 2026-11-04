@@ -87,11 +87,14 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 // a sibling line, yielding a trailing BLANK line -- the write site concatenates rather than joins,
 // which is why the bytes hold.
 //
-// The receipt: gunbc.host.host_effect_realize build_cache_ensure_daemon_body was rendered on this tree
-// and on origin/main with one compiler, for the CI instance (absent capacity) and the session
-// instance (present capacity), and the two bodies are byte-identical -- with a control confirming
-// the two trees genuinely differ, because two runs that silently measure the same tree agree for a
-// reason that has nothing to do with the code. What DOES change is the line-view projection:
+// The receipt is reproducible: `build_cache_unit_text` is the one producer of these bytes, reached from the
+// effect through `build_cache_unit_bytes` in gunbc.host.build_cache_daemon_ensure, and `render_build_cache_unit`
+// is its line view. Pinned by dag/test/claim/build_cache_ensure.dag (the CI instance with capacity absent and the
+// session instance with capacity present -- the two shapes that differ in exactly one directive) and by
+// dag/test/claim/host/host_build_cache_provision_design_witness.dag on the ensure route. The byte-identity claim
+// itself was measured against the script body this series retires; that body is in git history under
+// gunbc.host.host_effect_realize, so the comparison can be re-run by rendering this module against it rather than
+// taken on faith. What DID change is only the line-view projection:
 // render_build_cache_unit and render_compile_pool_slice now carry a trailing empty element, the
 // faithful decomposition of a file that ends in a newline. That view reaches tests and
 // gunbc.compile_pool_ensure's admission, and reaches no host.
@@ -230,6 +233,16 @@ fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
     ),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
+}
+
+// THE UNIT'S DESTINATION, kept beside the unit's BODY (build_cache_unit_text) rather than in the effect
+// realizer that installs it: where the file goes and what it says are two readings of one artifact, and
+// the enable contract in this file's render points WantedBy at a location, so a second path spelling
+// elsewhere would be a second representation of the same fact. Moved out of
+// gunbc.host.host_effect_realize, where its only consumer was the bash ensure body retired by
+// gunbc.host.build_cache_daemon_ensure.
+fn build_cache_unit_system_path(instance: BuildCacheInstance) -> String {
+  concat("/etc/systemd/system/", instance.intended_unit as String)
 }
 
 fn build_cache_unit_text(instance: BuildCacheInstance) -> String {

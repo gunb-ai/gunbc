@@ -110,57 +110,68 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
         } else {
             Rc::new(vec![])
         };
-        let compound_arity_one = (((callee_param_type_arg_names.clone().len() as i64) == 1)
-            && ((arg_type_arg_names.clone().len() as i64) == 1));
-        let compound_match = if !compound_arity_one.clone() {
+        let compound_same_arity = (((callee_param_type_arg_names.clone().len() as i64) > 0)
+            && ((callee_param_type_arg_names.clone().len() as i64)
+                == (arg_type_arg_names.clone().len() as i64)));
+        let compound_match = if !compound_same_arity.clone() {
             Rc::new(vec![])
         } else {
             Rc::new({
                 let mut __result = Vec::new();
-                for callee_arg in callee_param_type_arg_names.iter().cloned() {
+                for pair in Rc::new(
+                    callee_param_type_arg_names
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
                     __result.extend(
-                        (*Rc::new({
-                            let mut __result = Vec::new();
-                            for wrapper_arg in arg_type_arg_names.iter().cloned() {
-                                __result.extend(
-                                    (*if (({
-                                        let mut __found = false;
-                                        for g in callee_generic_param_names.iter().cloned() {
-                                            if (g.clone() == callee_arg.clone()) {
-                                                __found = true;
-                                                break;
-                                            }
+                        (*match arg_type_arg_names
+                            .clone()
+                            .get((pair.0.clone()) as usize)
+                            .cloned()
+                        {
+                            Some(wrapper_arg) => {
+                                if (({
+                                    let mut __found = false;
+                                    for g in callee_generic_param_names.iter().cloned() {
+                                        if (g.clone() == pair.1.clone()) {
+                                            __found = true;
+                                            break;
                                         }
-                                        __found
-                                    } && {
-                                        let mut __found = false;
-                                        for g in callee_bound_param_names.iter().cloned() {
-                                            if (g.clone() == callee_arg.clone()) {
-                                                __found = true;
-                                                break;
-                                            }
+                                    }
+                                    __found
+                                } && {
+                                    let mut __found = false;
+                                    for g in callee_bound_param_names.iter().cloned() {
+                                        if (g.clone() == pair.1.clone()) {
+                                            __found = true;
+                                            break;
                                         }
-                                        __found
-                                    }) && {
-                                        let mut __found = false;
-                                        for g in wrapper_generic_param_names.iter().cloned() {
-                                            if (g.clone() == wrapper_arg.clone()) {
-                                                __found = true;
-                                                break;
-                                            }
+                                    }
+                                    __found
+                                }) && {
+                                    let mut __found = false;
+                                    for g in wrapper_generic_param_names.iter().cloned() {
+                                        if (g.clone() == wrapper_arg.clone()) {
+                                            __found = true;
+                                            break;
                                         }
-                                        __found
-                                    }) {
-                                        Rc::new(vec![wrapper_arg.clone()])
-                                    } else {
-                                        Rc::new(vec![])
-                                    })
-                                    .iter()
-                                    .cloned(),
-                                );
+                                    }
+                                    __found
+                                }) {
+                                    Rc::new(vec![wrapper_arg.clone()])
+                                } else {
+                                    Rc::new(vec![])
+                                }
                             }
-                            __result
-                        }))
+                            std::option::Option::None => Rc::new(vec![]),
+                        })
                         .iter()
                         .cloned(),
                     );
@@ -168,7 +179,7 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
                 __result
             })
         };
-        v1_union_bound_param_names(bare_match.clone(), compound_match.clone())
+        v1_union_bound_param_names(bare_match, compound_match)
     }
 }
 

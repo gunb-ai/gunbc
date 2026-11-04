@@ -23,6 +23,7 @@ import v2.std.node {
   ArrowSignatureOrderEdge,
   edge_is_core,
   StructuralLabel,
+  NotADeclaration
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -55,10 +56,10 @@ fn rcp_closure() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       sig.domain,
-      Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
-      Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
+      Edge { label: Positional, target: rcp_atom(id: ^rcp_int), declaration: NotADeclaration },
+      Edge { label: Positional, target: rcp_atom(id: ^rcp_int), declaration: NotADeclaration },
       sig.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: rcp_atom(id: ^rcp_z) }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: rcp_atom(id: ^rcp_z), declaration: NotADeclaration }
     ]
   )
 }
@@ -76,7 +77,7 @@ fn rcp_canonical_domain(arrow: Node) -> Node {
         if acc.done {
           RcpDomainWalk { done: true, edges: concat(acc.edges, [e]) }
         } else {
-          RcpDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
+          RcpDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target), declaration: NotADeclaration }]) }
         }
       Authored { name: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }

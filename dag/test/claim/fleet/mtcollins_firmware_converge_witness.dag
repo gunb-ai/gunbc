@@ -3,6 +3,7 @@ module test.claim.fleet.mtcollins_firmware_converge_witness
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import std.measure { second, second_count }
 import std.optional { Present, Absent }
+import extdeps.bmc.access_profile { bmc_access_route_ipmi_cipher_suite }
 import std.upsert_decision { Apply }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.standards.picmg_hpm1 { HpmUpgradeCompleted, HpmUpgradeFailed, HpmActivateFirmware }
@@ -29,7 +30,7 @@ import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.machine_intake.mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleRead, HandoffPoweredOn, SelEventsRead, WatchdogUnobserved,
   ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
-  FirmwareSetBootReadback, RestartedRepeatedly, mtcollins1_power_on_account, firmware_set_boot_readback, span_console_readings,
+  FirmwareSetBootReadback, RestartedRepeatedly, mtcollins1_power_on_account, firmware_set_boot_readback,
 }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest }
@@ -37,19 +38,23 @@ import extdeps.bootloader.grub { grub_console_report }
 import gunbc.machine_intake.pre_os_bringup_verdict { firmware_console_report }
 import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_observation }
 import gunbc.machine_intake.ampere_checkpoint_console_observation { ampere_checkpoint_console_observation }
-import gunbc.machine_intake.mtcollins1_console_milestone_observation { mtcollins1_console_milestones }
+import gunbc.host.boot_console_observation { mtcollins1_console_milestones }
+import gunbc.host.boot_console_observation { span_console_readings }
+import gunbc.machine_intake.ampere_checkpoint_console_observation { ampere_console_span_lines }
 import gunbc.machine_intake.ampere_socket_console_observation { ampere_socket_console_observation }
 import gunbc.machine_intake.linux_boot_console_observation { linux_boot_console_observation }
 import gunbc.machine_intake.kernel_module_decompression_observation { kernel_module_decompression_observation }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake.pre_os_bringup_verdict { SelWindowEvent, BootRestart }
 import extdeps.bmc.ipmi_sel { SystemRestart }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SelSnapshotReading, SelSnapshotRead, SelSnapshotNotTaken }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  SelSnapshotNotTaken, SelSnapshotRead,
+}
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
 }
 import gunbc.machine_intake.ampere_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_intake_subject, mtcollins1_bmc_secure_standing, mtcollins1_managed_credential,
   mtcollins1_prerotation_evidence, mtcollins1_user3_route_evidence, mtcollins1_user2_retire_evidence,
@@ -61,13 +66,14 @@ import gunbc.fleet.mtcollins_firmware_baseline {
   BaselineAdmissionRefusal, BaselineMissingTarget, BaselineDuplicateTarget, BaselineBiosScpUnpaired, BaselineInteropUnmet,
   baseline_ampere_ticket_7426_delivery, select_firmware_baseline, select_mtcollins1_baseline, interop_requirement_met,
 }
+import gunbc.host.boot_attempt { HostPowerState, PowerOn, PowerOff, PowerUnread }
 import gunbc.fleet.mtcollins_firmware_converge {
   MtCollinsFirmwareWorld, InstalledVersionReading, FlashStepRecord, AcPowerCycleWitness,
   SelCapture, PreFlashReceipt, PreFlashSel, SelNotRequired, SelCaptured,
   ManagedRightsReceipt, RightReading, RightGranted, RightNotGranted, ManagedAccountRight,
   IpmiAdministratorOnLanChannel, RedfishSessionRight,
   RemoteMediaReceipt, RemoteMediaReadback, RemoteMediaImagesEnumerated, RemoteMediaNotConfigured, RemoteMediaNotRestored, KvmRight, mtcollins1_required_managed_rights, VersionReadback, UncitedReadback, hpm_check_readback, hpm_app_patch_standing, hpm_major_minor_standing,
-  HostPoweredOff, HostPoweredOn, BmcAnswering, BmcNotAnswering,
+  BmcAnswering, BmcNotAnswering,
   FirmwareCredentialReprovisionDue, FirmwareBootReadbackDue,
   BmcCredentialReestablishment, ManagedRightNotRestored, ManagedRightMissingFromReceipt, BootProgressLostAfterFirmwareSet, BootReachedUefiThenRestartedRepeatedly,
   CredentialNotReestablished, CredentialEpochNotAdvancedPastFlash,
@@ -212,7 +218,7 @@ fn world_of(subject: MachineIntakeSubject, w: WorldShape) -> MtCollinsFirmwareWo
     endpoint: w.endpoint,
     managed: at_epoch(m: mtcollins1_managed_credential, epoch: w.managed_epoch),
     opened_at: opened_at,
-    host_power: if w.power_off { HostPoweredOff } else { HostPoweredOn },
+    host_power: if w.power_off { PowerOff } else { PowerOn },
     bmc: BmcAnswering,
     installed: w.installed,
     cpus: w.cpus,
@@ -333,7 +339,7 @@ fn good_credential() -> BmcCredentialReestablishment? {
 
 // ── Step records ───────────────────────────────────────────────────────────────────────────────
 fn pre_flash(t: FirmwareTarget, off: Bool, sel: PreFlashSel) -> PreFlashReceipt {
-  PreFlashReceipt { host_power: if off { HostPoweredOff } else { HostPoweredOn }, power_observed_at: flash_start(t: t) - 10000, sel: sel }
+  PreFlashReceipt { host_power: if off { PowerOff } else { PowerOn }, power_observed_at: flash_start(t: t) - 10000, sel: sel }
 }
 
 fn bmc_sel() -> PreFlashSel { SelCaptured { capture: sel_read_capture(at: sel_read_at) } }
@@ -661,7 +667,7 @@ test fn executed_bmc_step_without_a_sel_snapshot_refuses() -> Bool {
 
 test fn step_started_before_its_predecessor_completed_refuses() -> Bool {
   let early = record(t: HostBios, r: RecordShape {
-    pre: PreFlashReceipt { host_power: HostPoweredOff, power_observed_at: opened_at + 1, sel: SelNotRequired },
+    pre: PreFlashReceipt { host_power: PowerOff, power_observed_at: opened_at + 1, sel: SelNotRequired },
     completed_at: flash_end(t: HostBios), digest: digest_of(r: mt_collins_bios_0acod014_hpm), credential: Absent, ac: good_ac_cycle(t: HostBios), readback: v(major: 0, minor: 14, patch: 0),
   })
   let bios_early = FlashStepRecord {
@@ -883,6 +889,7 @@ fn dry(w: WorldShape, records: List<FlashStepRecord>, image: NonEmptyStr) -> Lis
       render(cmds: dry_realize(
         baseline: baseline_ampere_ticket_7426_delivery, world: world_of(subject: s, w: w), records: records,
         image_path: image, bmc_host: "mtcollins1-bmc", username: "admin", password_file: "/run/bmc.pw",
+        cipher_suite: bmc_access_route_ipmi_cipher_suite(route: mtcollins1_boot_control_route.route),
       ))
   }
 }
@@ -924,7 +931,7 @@ test fn whole_set_grounded_asks_for_the_boot_readback() -> Bool {
 // ── THE POST-SET READBACK IS DERIVED FROM A POWER-ON ACCOUNT, never authored (ruling R1) ─────────
 // The accounts below run the real console readers over console text: the 2026-10-03 loop from its
 // committed capture excerpt, and the UEFI cases from the lines the firmware summary and the AMI setup
-// prompt print (gunbc.machine_intake.mtcollins1_console_milestone_observation).
+// prompt print (gunbc.host.boot_console_observation, re-homed from gunbc.machine_intake.mtcollins1_console_milestone_observation in 4d-ii).
 // branch mtcollins1-captures-2026-10-03, mtcollins1/step1-j1j17-20261003T042447Z/sol.raw
 // (sha256 6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1), lines 138-205;
 // excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
@@ -952,7 +959,7 @@ fn account_over(lines: List<String>, restarts: List<SelWindowEvent>) -> PowerOnA
       capture: digest, firmware: firmware_console_report(lines: lines), firmware_error_lines: 0,
       dram: ampere_dram_console_observation(lines: lines), checkpoints: ampere_checkpoint_console_observation(lines: lines), relations: [],
       milestones: mtcollins1_console_milestones(lines: lines), sockets: ampere_socket_console_observation(lines: lines),
-      loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines), span_readings: span_console_readings(lines: lines),
+      loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines), span_readings: span_console_readings(spans: ampere_console_span_lines(lines: lines)),
     },
     sel: SelEventsRead { events: restarts }, watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
   })

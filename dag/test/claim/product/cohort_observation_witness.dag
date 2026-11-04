@@ -6,7 +6,7 @@ import std.types { String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ObservationInstant, ClockDomain, SharedMonotonic, WallClock, nanosecond }
 import std.interval { interval_low, interval_high }
-import std.observation { OccurrenceId }
+import std.observation { AttemptOccurrenceId }
 import product.capacity.cohort_observation {
   SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, SeatUnsettled,
   CohortSeatReading, CohortReading, CohortSeal, CohortSealed, CohortRefused,
@@ -29,7 +29,7 @@ fn t(n: Nat) -> ObservationInstant { ObservationInstant { domain: host_clock(), 
 
 fn t_other(n: Nat) -> ObservationInstant { ObservationInstant { domain: other_clock(), basis: WallClock, since_origin: nanosecond(count: n) } }
 
-fn occ(id: String) -> OccurrenceId { OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr } }
+fn occ(id: String) -> AttemptOccurrenceId { AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr } }
 
 fn seat_key(s: String) -> String { s }
 

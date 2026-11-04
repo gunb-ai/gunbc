@@ -1,0 +1,39 @@
+module gunbc.guarantee_stall.accumulator_copy_roster_gate_bool_names_no_suspect_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// THE SISTER DEFICIT OF THE REFUSAL-COUNT STALL, AND ITS CAUSE IS A DIFFERENT ONE. The enrolled
+// claim v2.test.claim.complexity.accumulator_copy_roster_gate_std
+// roster_std_change_dag_zero_suspects_within_ratchet answers `Bool`, because `file_gate` answers
+// `Bool`: it collapses the typed `RosterGateDisposition` -- clean, suspects, refusal-budget, or
+// not-established -- into one bit. DESIGN section 4b(1): a Bool establishes nothing about WHICH
+// fact fired; when the claim goes red nothing in the lane says whether a suspect appeared or the
+// refusals merely drifted past a ceiling. That is not hypothetical here: triage of this claim's
+// wet FAIL (manager ruling msg_adddb844 item 2, probe 8 at head-built binary 31b9e79311f4e4c6,
+// log /tmp/kd2/probe8.log) shows the FAIL was the BUDGET arm with 14 refusals -- no suspect at
+// all -- while the Bool the claim printed could not distinguish the two. The typed disposition
+// (`file_gate_disposition`, arms `GateSuspectObserved`/`GateRefusalBudgetExceeded`) already exists
+// in the lens module; the claim route does not reach it.
+//
+// THE GROUNDING THAT CLIMBS THIS IS A REFUSAL-IDENTITY PROJECTOR IN THE LENS: a route from
+// `file_gate` to a named carrier -- each exceeding refusal's identity (file, function, reason),
+// or the typed disposition itself -- so the claim's refusal text names its own offenders. The
+// lens module already carries `Finding` identities for the suspect arm; the refusal arm's
+// identity is what no declaration supplies. Until then, a red gate is triaged by hand-built
+// probe claims -- the exact detour this row prices.
+//
+// POPULATION: the CI-enrolled Bool-carrying roster-gate claims, read off the live tree. The two
+// offline priced-out walks (lean/bash/swift) share the defect but sit under the declared drop
+// gunbc.rung_drop.accumulator_copy_priced_out_file_gate_ratchets and are not this population.
+data accumulator_copy_roster_gate_bool_names_no_suspect_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.lens.complexity_accumulator_copy.roster_gate file_gate answers Bool where the typed RosterGateDisposition already distinguishes GateSuspectObserved from GateRefusalBudgetExceeded, so the enrolled claim roster_std_change_dag_zero_suspects_within_ratchet goes red naming no offender; observed executed on dag/std/change.dag (budget arm, 14 refusals, zero suspects, head-built binary 31b9e79311f4e4c6)",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  population: BoundedPopulation { members: [
+    "v2.test.claim.complexity.accumulator_copy_roster_gate_std roster_std_change_dag_zero_suspects_within_ratchet file_gate Bool collapses four typed arms",
+  ] },
+  next_rung_trigger: climbs_when(capability: "v2.lens.complexity_accumulator_copy.roster_gate exposes a route from a refused gate to the identities of the exceeding refusals -- file, function, and reason per refusal, carried typed (a Finding-shaped carrier or the RosterGateDisposition itself) -- and the enrolled claim prints them, so one red run names its own offenders without a hand-built probe claim")
+}

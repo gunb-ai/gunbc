@@ -1,0 +1,111 @@
+module test.claim.review_sheet_federation_witness
+
+import std.types { Bool, List, String }
+import gunbc.auth.oidc_claim_pins {
+  OidcPresentedClaim, presented_from_pins, with_presented_value, without_presented_claim, claim_pins_admit,
+  fleet_converge_workflow_ref_heads_prefix,
+}
+import gunbc.auth.heal_publisher_provision { impersonation_cells }
+import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.gcp.gcp_estate_observation { role_iam_service_account_token_creator, role_iam_workload_identity_user }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.review_sheet_federation {
+  WriterTokenMinted, WriterTokenRefused,
+  review_sheet_converge_claim_pins, review_sheet_converge_attribute_condition, review_sheet_converge_principal_set,
+  review_sheet_converge_dedicated_federation, review_sheet_writer_token_creator_command, writer_token_standing,
+  review_sheet_writer_token_scopes,
+}
+
+// The token GitHub would present for each admitted event: every pin's own value, with the event named.
+fn presented_on(event: String) -> List<OidcPresentedClaim> {
+  with_presented_value(claims: presented_from_pins(pins: review_sheet_converge_claim_pins()), claim: "event_name", value: event)
+}
+
+fn admitted(claims: List<OidcPresentedClaim>) -> Bool {
+  claim_pins_admit(pins: review_sheet_converge_claim_pins(), claims: claims)
+}
+
+// POSITIVE CONTROLS: reviewed main's fleet-converge file, on each of the three events this job runs on.
+test fn the_pool_admits_dispatch_schedule_and_push_at_main() -> Bool {
+  admitted(claims: presented_on(event: "workflow_dispatch"))
+    && admitted(claims: presented_on(event: "schedule"))
+    && admitted(claims: presented_on(event: "push"))
+}
+
+// THE RED THE OPERATOR ASKED FOR: a non-main ref is refused on EVERY admitted event, the push trigger
+// included. A session branch dispatching, or a push to a session branch, presents its own ref.
+test fn a_non_main_ref_is_refused_on_every_event_including_push() -> Bool {
+  let branch = "refs/heads/session/wise-heron-757"
+  !admitted(claims: with_presented_value(claims: presented_on(event: "workflow_dispatch"), claim: "ref", value: branch))
+    && !admitted(claims: with_presented_value(claims: presented_on(event: "schedule"), claim: "ref", value: branch))
+    && !admitted(claims: with_presented_value(claims: presented_on(event: "push"), claim: "ref", value: branch))
+}
+
+// The workflow FILE is pinned at main too: the same file at a branch ref is another workflow_ref.
+test fn the_fleet_converge_file_at_a_branch_is_refused() -> Bool {
+  let at_branch = concat(fleet_converge_workflow_ref_heads_prefix(), "session/wise-heron-757")
+  !admitted(claims: with_presented_value(claims: presented_on(event: "push"), claim: "workflow_ref", value: at_branch))
+    && !admitted(claims: with_presented_value(claims: presented_on(event: "workflow_dispatch"), claim: "workflow_ref", value: at_branch))
+}
+
+// A pull request's job presents pull_request (and refs/pull/N/merge); neither is admitted alone.
+test fn a_pull_request_event_is_refused_even_at_main() -> Bool {
+  !admitted(claims: presented_on(event: "pull_request"))
+    && !admitted(claims: presented_on(event: "pull_request_target"))
+    && !admitted(claims: with_presented_value(claims: presented_on(event: "pull_request"), claim: "ref", value: "refs/pull/1/merge"))
+}
+
+// Only the job that declares the environment is admitted; another job of the same file is not.
+test fn a_job_without_the_environment_is_refused() -> Bool {
+  !admitted(claims: without_presented_claim(claims: presented_on(event: "schedule"), claim: "environment"))
+    && !admitted(claims: with_presented_value(claims: presented_on(event: "schedule"), claim: "environment", value: "namecheap-dns"))
+}
+
+// THE CONDITION GCP STORES is the same pins: ref equality at main, and the closed event list.
+test fn the_stored_condition_pins_main_and_the_closed_event_list() -> Bool {
+  let c = review_sheet_converge_attribute_condition()
+  string_contains(s: c, pattern: concat("assertion.ref == 'refs/heads/", concat(gunbc_default_branch_name, "'")))
+    && string_contains(s: c, pattern: "assertion.event_name in ['workflow_dispatch', 'schedule', 'push']")
+    && string_contains(s: c, pattern: "assertion.environment == 'review-sheet-converge'")
+}
+
+// The pool may DELEGATE through review-sheet-converge (token creator), never act as it standing.
+test fn the_federation_cell_is_token_creator_for_the_pool_only() -> Bool {
+  let cells = impersonation_cells(f: review_sheet_converge_dedicated_federation())
+  cells.length() == 1
+    && all(cells, c => c.role == role_iam_service_account_token_creator && c.member == review_sheet_converge_principal_set())
+    && !any(cells, c => c.role == role_iam_workload_identity_user)
+    && review_sheet_converge_dedicated_federation().secret_grants.length() == 0
+}
+
+// THE TYPED REFUSAL a run with no grant meets: an empty or absent token never reaches a transport,
+// and the refusal names the exact cell to write.
+test fn a_missing_writer_token_refuses_naming_the_grant_command() -> Bool {
+  let empty = writer_token_standing(read: ActionsVariableAbsent { variable: "GUNBC_REVIEW_SHEET_TOKEN", detail: "set but empty" })
+  let unset = writer_token_standing(read: ActionsVariableAbsent { variable: "GUNBC_REVIEW_SHEET_TOKEN", detail: "not set" })
+  let refused = fn(s) {
+    match s {
+      WriterTokenRefused { cause: c } =>
+        string_contains(s: c as String, pattern: "WriterDelegationRefused")
+          && string_contains(s: c as String, pattern: review_sheet_writer_token_creator_command())
+      WriterTokenMinted => false
+    }
+  }
+  refused(empty) && refused(unset)
+}
+
+test fn a_present_writer_token_is_minted() -> Bool {
+  match writer_token_standing(read: ActionsVariablePresent { value: "ya29.fixture" }) {
+    WriterTokenMinted => true
+    WriterTokenRefused { cause: _ } => false
+  }
+}
+
+// The command is the declared cell, and nothing broader.
+test fn the_grant_command_is_the_declared_cell() -> Bool {
+  review_sheet_writer_token_creator_command() == "gcloud iam service-accounts add-iam-policy-binding review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com --project=gunbai-sheets --member=serviceAccount:review-sheet-converge@gunbai-secrets.iam.gserviceaccount.com --role=roles/iam.serviceAccountTokenCreator --condition=None"
+}
+
+test fn the_writer_token_carries_exactly_sheets_and_drive() -> Bool {
+  review_sheet_writer_token_scopes == ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+}

@@ -37,6 +37,7 @@ import v2.std.node {
   node_rebuild,
   EdgeLabel,
   label_occurrences,
+  NotADeclaration
 }
 import v2.std.report { Report, report_reason_to_diagnostic_reason }
 
@@ -183,7 +184,7 @@ fn subterm_at(root: Node, path: Path) -> Outcome<Node> {
 }
 
 fn replace_edge_target(e: Edge, replacement: Node) -> Edge {
-  Edge { label: e.label, target: replacement }
+  Edge { label: e.label, target: replacement, declaration: e.declaration }
 }
 
 type PathSplit {

@@ -2,8 +2,6 @@ module gunbc.deployment_risk
 
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import std.optional { Present, Absent }
-import extdeps.ntfy.ntfy { NtfyTopic }
-import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
 
 // DEPLOYMENT-RISK CONFORMANCE -- the home of the vocabulary the operator fixed on 2026-10-03
@@ -86,8 +84,7 @@ fn deployment_risk_class(selection: ProdRoleSelection, deployment: DeploymentId)
 // set because the TestRisk one is missing -- that borrow is the absorbing fallback DESIGN 5 names.
 //
 // SCOPE AT THIS RUNG, stated so the type is not read as complete: the set carries the two
-// attachments the discriminating RED exercises -- the approval ntfy topic and the publication
-// GitHub App. The Codex account and home, admitted ref, R2/GCP/workload identity and OIDC client
+// attachment the discriminating RED exercises -- the publication GitHub App. The Codex account and home, admitted ref, R2/GCP/workload identity and OIDC client
 // join as fields in the split PRs that move each one (deployment-risk plan, deliverable 3), and
 // each of those PRs adds the TestRisk side or leaves its refusal standing.
 //
@@ -96,7 +93,6 @@ fn deployment_risk_class(selection: ProdRoleSelection, deployment: DeploymentId)
 // to catch it after the fact (DESIGN 5: unwritable, not validated). An empty slot is the only
 // refusal the resolver can return.
 type DeploymentExternalBindingSet {
-  approval_ntfy_topic: NtfyTopic
   publication_app: DeclaredGitHubApp
 }
 
@@ -111,7 +107,6 @@ type DeploymentExternalBindingTable {
 // correct state until a test resource exists -- not a gap to paper over.
 data deployment_external_binding_table: DeploymentExternalBindingTable = DeploymentExternalBindingTable {
   prod: Present { value: DeploymentExternalBindingSet {
-    approval_ntfy_topic: approval_ntfy_topic,
     publication_app: gunbai_bot_declared,
   } },
   test: Absent,

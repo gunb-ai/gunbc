@@ -29,7 +29,11 @@ import extdeps.posix.process {
 // word rather than transporting it, this module makes it SAFE to transport instead, by composing it
 // into the single command-STRING field extdeps.ssh.session ssh.Session.Exec already carries (RFC
 // 4254 section 6.5: one string-typed command field, no argv). It does not widen the allowlist and
-// it is not wired into gunbc.typed_argv_exec or ssh.Session.Exec by this module. It IS now wired
+// is not wired into ssh.Session.Exec by this module. gunbc.typed_argv_exec
+// typed_argv_exec_over_fleet_ssh_posix consumes it over the fleet SSH edge: gunbc.fleet.fleet_known_hosts_anchor
+// fleet_posix_quoted_leg mints a RemoteExecCommand here under PosixShellInterpreted only after that target's login
+// shell and OpenSSH releases are MEASURED (PosixRemoteRoute), which is per-target evidence for the interpretation the
+// declared openssh_login_shell_interpretation row asserts for every OpenSSH host. It IS also wired
 // into extdeps.exec.command command_over_transport's SshExec branch (operator directive,
 // 2026-08-19: LAND THE FIRST CONSUMER) -- that import runs extdeps.exec.command ->
 // gunbc.remote_shell_command, the opposite direction, so this module stays unaware of its consumer,

@@ -498,26 +498,25 @@ data cross_tree_import_boundary: RepresentationBoundary = RepresentationBoundary
   boundary_class: CrossTreeImport,
   authority: OneAuthority {
     home: HomeAuthority {
-      authority: decl_ref(module_path: "v2.std.cross_tree.resolution", decl_name: "cross_tree_edge_decision")
+      authority: decl_ref(module_path: "v2.std.cross_tree.import_model", decl_name: "cross_tree_import_admitted")
     }
   },
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation.dag",
-      function: "cross_tree_real_ingest_dag_to_v2_denied_holds",
-      module_path: "v2.test.claim.long.cross_tree_real_ingest_activation"
+      entry: "src/v2/test/claim/source_layout_lookup.dag",
+      function: "lookup_undeclared_importer_crossing_to_v2_is_denied_before_any_read",
+      module_path: "v2.test.claim.source_layout_lookup"
     )
   ],
-  supported_scope: "The direction of an import edge between the two trees, decided from GROUNDED source-root tags rather than guessed: tree_fundamentality_order is derived, and the QualifiedName-prefix fallback that once stood in for it is deleted. Consumed by v2.compiler.03_name_resolve admit_import_entry.",
-  preservation_obligation: "An edge the model admits resolves, an edge it denies refuses, and the decision depends on the declared source-root tags rather than on how the invocation spelled its paths.",
+  supported_scope: "Whether an import edge between the two trees is admitted, decided by whether both namespaces have a row in gunbc.source_layout_namespaces, and by the active source roots; there is no tree direction (gunbc.design_ruling cross_tree_admission_is_namespace_membership). Enforced at one site, the storage lookup (v2.compiler.source_authority storage_cross_tree_verdict), before the read; the population route asks the same membership judgment of every listed module (v2.compiler.module_acquisition bound_modules_admitted). v2.compiler.name_resolve admit_import_entry keeps only the active-root denials (v2.std.cross_tree.resolution cross_tree_edge_decision).",
+  preservation_obligation: "A crossing between two declared namespaces resolves in either direction, a crossing from a namespace with no row refuses as CrossTreeNamespaceUndeclared before anything is read, and an edge from or to an inactive root refuses.",
   crossing_evidence: EvidenceOnBothRoutes {
-    what_goes_red: "the activation arbiter feeds a host-tagged SourceRootIngest through the REAL grounding machinery and runs the REAL per-edge decision, with a discriminating pair rather than a positive alone: v2 to dag is admitted, and the SAME ingest with its tags reversed is denied. WHAT THE DERIVED STANDING ON THIS ROW ANSWERS, AND IT IS THE REASON THE STANDING IS DERIVED RATHER THAN AUTHORED: this entry sits under a long-running witness path and its module is v2.test.claim.long, so whether the arbiter is reached by an ordinary required run is decided by the live exclusion frontier and gate closure at fold time, NOT by this sentence. A discriminating red that no required run reaches is a weaker fact than it reads as, and the fold is what says which it is." as NonEmptyStr
+    what_goes_red: "the storage lookup is run over a supplied observation with a discriminating pair differing in the importer's namespace alone: a test.claim module resolving v2.std.text.String is admitted and reads v2.std.text (v2.test.claim.source_layout_lookup lookup_test_to_v2_reference_resolves), and the same lookup from a namespace with no row is refused as CrossTreeNamespaceUndeclared although the file is supplied present (lookup_undeclared_importer_crossing_to_v2_is_denied_before_any_read); the acquirer's own step repeats the pair on the production path (v2.test.claim.module_acquisition an_undeclared_namespace_dag_to_v2_acquisition_refuses_without_reading, a_test_to_v2_acquisition_advances). Whether an ordinary required run reaches these witnesses is answered by the derived standing at fold time, not by this sentence." as NonEmptyStr
   },
   next_trigger: climbs_when(capability: "none identified by this inventory for the DECISION itself, which conforms. Whether its arbiter is reached on a required route is answered by boundary_interpreted_standing rather than asserted here.")
 }
 
-// ORDER IS SOURCE ORDER AND IS LOAD-BEARING, for the reason gunbc.guarantee_stall.roster gives:
-// a consumer renders rows in roster order, so sorting this list reorders every projection derived
+// ORDER IS SOURCE ORDER AND IS LOAD-BEARING: a consumer renders rows in roster order, so sorting this list reorders every projection derived
 // from it. Append at the end.
 data representation_boundary_roster: List<RepresentationBoundary> = [
   calls_boundary,

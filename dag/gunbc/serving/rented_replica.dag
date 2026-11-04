@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count }
 import std.optional { Present, Absent }
-import product.fabric.work { identity_frame }
+import std.content_hash { identity_frame }
 import extdeps.vllm.engine_args {
   VllmPrefixCachingRequest, PrefixCachingExplicit, vllm_serve_argv, vllm_prefix_caching_argv,
   VllmPromptTokensDetailsRequest, PromptTokensDetailsReported, vllm_prompt_tokens_details_argv,
@@ -45,7 +45,7 @@ type RentedReplicaCollection
   = ReplicasCollected { replicas: List<RentedReplica>, unfit: List<RentedGpuDevice> }
   | ReplicaCollectionRefused { cause: NonEmptyStr }
 
-// EACH COMPONENT IS LENGTH-FRAMED (product.fabric.work identity_frame), because node and served_name are
+// EACH COMPONENT IS LENGTH-FRAMED (std.content_hash identity_frame), because node and served_name are
 // unrestricted strings: delimiter-joining them lets two different replicas render one wire and alias one
 // seat pool.
 fn rented_replica_wire(id: RentedReplicaIdentity) -> String {

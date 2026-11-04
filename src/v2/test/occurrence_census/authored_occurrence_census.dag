@@ -10,7 +10,7 @@ import v2.compiler.source_root_eval {
   native_lane_occurrence_census,
   native_lane_occurrence_census_lines
 }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode }
+import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, NotADeclaration }
 
 // The census walk and its reader are the interface under test, so their inputs are SUPPLIED: small
 // trees with a known answer and hand-built rows. The real route (the native lane) is the inhabitance
@@ -27,7 +27,7 @@ fn aoc_atom(name: Symbol, occ: NodeOccurrenceIdentity) -> Node {
 fn aoc_root(children: List<Node>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: list_map(xs: children, f: fn(c) { Edge { label: Positional, target: c } }),
+    children: list_map(xs: children, f: fn(c) { Edge { label: Positional, target: c, declaration: NotADeclaration } }),
     occurrence_id: OccurrenceSynthetic
   }
 }

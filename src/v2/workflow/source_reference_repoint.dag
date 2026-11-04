@@ -7,6 +7,7 @@ import v2.std.compilers.lexing { Token }
 import v2.workflow.parsed_import_statement_production { parsed_import_observation_live }
 import gunbc.source_root_read { source_root_walk, source_root_read_file, SourceRootWalkTask, SourceRootPathsRead, SourceRootPathsRefused }
 import std.host_text { chars }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 
 // A SOURCE REWRITE IS EDITS BY POSITION, PRODUCED FROM THE SEED'S OWN READING OF THE FILE. A module
 // that moves takes every reference to it along, and those references are found in the seed's token

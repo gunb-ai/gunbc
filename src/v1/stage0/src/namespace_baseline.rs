@@ -1616,6 +1616,11 @@ const ENVIRONMENT_MODULE: &str = "extdeps.languages.dag.syntax";
 const ENVIRONMENT_ITEM: &str = "dag_parse_environment";
 /// The path, relative to the repository root, of the file declaring `ENVIRONMENT_MODULE`.
 const ENVIRONMENT_MODULE_PATH: &str = "dag/extdeps/languages/dag/syntax.dag";
+
+/// The module whose `SyntaxSpec` record the operator-row authority is asked of. The environment
+/// module imports it (`dag_syntax_spec` builds `SyntaxSpec { .. }`), so it is in every closure this
+/// reader ever evaluates -- its absence is itself a refusal.
+const STD_SYNTAX_MODULE: &str = "std.syntax";
 /// Where the corpus of `.dag` declarations lives, relative to the repository root.
 const DAG_SOURCE_ROOT: &str = "dag";
 
@@ -1996,6 +2001,11 @@ pub fn materialize_revision_paths(
 }
 
 /// Decode an evaluated environment value into this binary's `ParseEnvironment`.
+///
+/// The historical-operator-row migration (see `OperatorRowAuthority`) is decided HERE, from the
+/// SAME context that produced the value: the evaluation context is built from the revision's own
+/// materialized tree, so asking that context whether the revision's own `std.syntax` declares the
+/// rows asks the revision, not the bytes.
 pub fn decode_environment_value(
     value: &crate::v1_interpreter::Value,
     ctx: &crate::v1_interpreter::InterpContext,
@@ -2007,12 +2017,157 @@ pub fn decode_environment_value(
             cause: format!("wire-encode: {e}"),
         }
     })?;
+    let authority = operator_row_authority(ctx, revision)?;
+    decode_environment_wire(&wire, revision, authority)
+}
+
+/// Whether this revision's grammar declared the operator-row fields, decided from the revision's
+/// OWN source, never from the shape of the bytes.
+///
+/// THE AUTHORITY IS THE REVISION, NOT THE WIRE. The evaluation context passed to
+/// `decode_environment_value` is built from the revision's materialized tree, so the
+/// `SyntaxSpec` record its `std.syntax` module declares is THIS revision's declaration. A decoder
+/// that guessed "historical" from a missing key would silently restore the old powers for a
+/// CURRENT revision whose encoder lost the field -- the exact silent-wrongness class this PR
+/// closes (DESIGN section 5: no escape hatch; DESIGN section 4: the richer source always exists,
+/// here it is the revision's own text, so a heuristic is not merely avoidable, it is unnecessary).
+pub enum OperatorRowAuthority {
+    /// The revision's own `std.syntax` declares BOTH rows: decode the wire exactly as it is. If a
+    /// field is then missing from the bytes, serde refuses with `ValueNotDecodable` -- a loud
+    /// disagreement between this binary and its own emitter, never a fill.
+    Declared,
+    /// The revision's own `std.syntax` declares NEITHER row: this revision predates the
+    /// declaration, and its wire legitimately lacks both fields. They are filled with the
+    /// `historical_operator_rows`, which reproduce what that revision's own parser read from
+    /// literals, so this binary's table-driven parser makes that revision's parse decisions.
+    PredatesDeclaration,
+}
+
+/// Ask the revision's own tree which side of the declaration commit it is on.
+fn operator_row_authority(
+    ctx: &crate::v1_interpreter::InterpContext,
+    revision: &str,
+) -> Result<OperatorRowAuthority, EnvironmentLoadRefusal> {
+    let refused = |cause: String| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        revision: revision.to_string(),
+        cause,
+    };
+    let module = ctx
+        .typed_module_for_authored_path(STD_SYNTAX_MODULE)
+        .ok_or_else(|| {
+            refused(format!(
+                "the environment's own closure declares no `{STD_SYNTAX_MODULE}` module; the \
+                 operator-row authority cannot be asked of the revision"
+            ))
+        })?;
+    let syntax_spec = module
+        .module
+        .children
+        .iter()
+        // A type declaration carries no body (a function or data row does); the record connective
+        // is Conj; the field names are the declaration children's names (the same node-shape facts
+        // behavioral_receipt_host's reader measured).
+        .find(|decl| {
+            decl.body.is_none()
+                && decl.name == "SyntaxSpec"
+                && matches!(decl.connective, crate::v1_std_core::Connective::Conj)
+        })
+        .ok_or_else(|| {
+            refused(format!(
+                "`{STD_SYNTAX_MODULE}` declares no record `SyntaxSpec`; the environment could not \
+                 have been built from this closure"
+            ))
+        })?;
+    let declared = |field: &str| syntax_spec.children.iter().any(|f| f.name == field);
+    match (declared("prefix_operators"), declared("postfix_operators")) {
+        (true, true) => Ok(OperatorRowAuthority::Declared),
+        (false, false) => Ok(OperatorRowAuthority::PredatesDeclaration),
+        // One row declared and the other not is not any revision this repository ever had: the
+        // declaration commit added both fields together. Reading such a tree as either side would
+        // be a guess, so refuse and name the disagreement.
+        (prefix, postfix) => Err(refused(format!(
+            "`{STD_SYNTAX_MODULE}` declares SyntaxSpec with prefix_operators={prefix} but \
+             postfix_operators={postfix}; the rows were declared together by one commit, so a \
+             tree declaring exactly one is a defect, not a revision"
+        ))),
+    }
+}
+
+/// The binding powers the seed parser used as LITERALS before the operator rows were declared.
+///
+/// Used ONLY when `operator_row_authority` has established from the revision's OWN `std.syntax`
+/// that the revision predates the declaration; that revision's parser read `min_bp: 12` for every
+/// prefix arm and the literals `21 < min_bp` (call, index), `13 < min_bp` (`as`) and `14 <= min_bp`
+/// (the record literal, whose consume-iff-scale row is therefore 13) at each postfix arm. Filling
+/// the absent fields with THOSE values preserves revision-specific semantics: the decoded
+/// environment, read by this binary's table-driven parser, makes the same consume/decline decisions
+/// that revision's own parser made. These are not this revision's powers (18 / 19 / 21 -- see
+/// extdeps.languages.dag.syntax); they are the historical ones, and they live here, in the reader
+/// of historical wire, and nowhere else.
+fn historical_operator_rows(field: &str) -> Vec<serde_json::Value> {
+    let row = |symbol: &str, binding_power: i64| serde_json::json!({ "symbol": symbol, "binding_power": binding_power });
+    match field {
+        "prefix_operators" => vec![row("-", 12), row("!", 12)],
+        "postfix_operators" => vec![row("(", 21), row("[", 21), row("as", 13), row("{", 13)],
+        other => unreachable!("historical rows requested for unknown field {other}"),
+    }
+}
+
+/// Decode already-wire-encoded environment bytes into this binary's `ParseEnvironment`.
+///
+/// The caller supplies the `OperatorRowAuthority` -- which only `decode_environment_value` (and a
+/// test that knows the revision's source) can decide, because the decision asks the revision's own
+/// tree. Production callers must not hand-pick it; `Declared` is what every current revision gets.
+pub fn decode_environment_wire(
+    wire: &serde_json::Value,
+    revision: &str,
+    authority: OperatorRowAuthority,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let mut wire = wire.clone();
+    match authority {
+        OperatorRowAuthority::Declared => {}
+        OperatorRowAuthority::PredatesDeclaration => {
+            fill_historical_operator_rows(&mut wire, revision)?
+        }
+    }
     serde_json::from_value::<crate::std_syntax::ParseEnvironment>(wire)
         .map(std::rc::Rc::new)
         .map_err(|e| EnvironmentLoadRefusal::ValueNotDecodable {
             revision: revision.to_string(),
             cause: e.to_string(),
         })
+}
+
+/// Fill the two operator-row fields at the one position they belong to: the `syntax_spec` field of
+/// the environment object. Positional, not shape-detected -- whether to fill at all was already
+/// decided from the revision's source, and a missing `syntax_spec` here is a refusal, not a walk:
+/// an environment without its grammar never decoded quietly into anything.
+fn fill_historical_operator_rows(
+    wire: &mut serde_json::Value,
+    revision: &str,
+) -> Result<(), EnvironmentLoadRefusal> {
+    let refused = |cause: String| EnvironmentLoadRefusal::ValueNotDecodable {
+        revision: revision.to_string(),
+        cause,
+    };
+    let spec = wire
+        .get_mut("syntax_spec")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| {
+            refused(
+                "a pre-declaration environment carried no `syntax_spec` object to migrate"
+                    .to_string(),
+            )
+        })?;
+    for field in ["prefix_operators", "postfix_operators"] {
+        if !spec.contains_key(field) {
+            spec.insert(
+                field.to_string(),
+                serde_json::Value::Array(historical_operator_rows(field)),
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Evaluate the parse environment out of an already-materialized corpus rooted at `root`.

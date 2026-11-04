@@ -4,9 +4,9 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.measure { byte_size, byte_size_count }
 import std.content_hash { ContentHash, Fnv1a64 }
 import std.algebra { length }
-import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
+import v2.std.dependency { dependency_view_equal, BarrierBefore, DataDependsOn, DependencyView }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Node, TypeNode, content_hash }
+import v2.std.node { node_same_occurrence, Atom, Node, TypeNode, content_hash }
 import v2.workflow.operand_flow {
   OperandFlow,
   OperandFlowFootprintMissingRow,
@@ -84,14 +84,14 @@ data operand_flow_missing_row_artifact: NodeKeyedGraphArtifact = NodeKeyedGraphA
 
 test fn witness_operand_root_resolves_data_depends_on() -> Bool {
   match operand_root(edge: operand_flow_edge_a) {
-    OperandRoot { root: root } => root == operand_flow_shared_node
+    OperandRoot { root: root } => node_same_occurrence(a: root, b: operand_flow_shared_node)
     OperandRootUnresolved { edge: _ } => false
   }
 }
 
 test fn witness_operand_root_refuses_non_data_kind() -> Bool {
   match operand_root(edge: operand_flow_edge_non_data) {
-    OperandRootUnresolved { edge: edge } => edge == operand_flow_edge_non_data
+    OperandRootUnresolved { edge: edge } => dependency_view_equal(a: edge, b: operand_flow_edge_non_data)
     OperandRoot { root: _ } => false
   }
 }

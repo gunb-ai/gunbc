@@ -13,7 +13,7 @@ import std.machine_shape {
   CatalogExecutionLanesUnstated,
   execution_shape_independent_lanes,
 }
-import extdeps.gpu.types { GpuModelCatalogRow, GpuSmCacheGeometry }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuSmCacheGeometry }
 import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -31,10 +31,10 @@ type ShapeFromCatalogInput
       register_level: LevelId
       shared_level: LevelId
       device_level: LevelId
-      row: GpuModelCatalogRow
+      row: GpuDeviceCatalogRow
     }
 
-fn memory_level_from_gpu_device_dram(level_id: LevelId, row: GpuModelCatalogRow) -> MemoryLevel {
+fn memory_level_from_gpu_device_dram(level_id: LevelId, row: GpuDeviceCatalogRow) -> MemoryLevel {
   MemoryLevel {
     id: level_id
     capacity: row.memory.capacity
@@ -68,7 +68,7 @@ fn memory_shape_from_gpu_catalog(
   register_level: LevelId,
   shared_level: LevelId,
   device_level: LevelId,
-  row: GpuModelCatalogRow
+  row: GpuDeviceCatalogRow
 ) -> MemoryShape {
   let device_dram = memory_level_from_gpu_device_dram(level_id: device_level, row: row)
   match row.sm_cache {

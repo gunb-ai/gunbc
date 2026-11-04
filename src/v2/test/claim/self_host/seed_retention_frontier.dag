@@ -9,12 +9,29 @@ import v2.compiler.self_host.seed_retention_frontier {
   retained_host_binary,
   retained_reason_undeclared,
   seed_retention_census,
+  seed_retention_frontier_crate_relative_paths,
   seed_retention_frontier_roster,
   seed_retention_frontier_top_level_src_basenames,
   seed_retention_frontier_total_holds,
   seed_retention_reason_split_holds,
   seed_retention_roster_paths_unique,
   undeclared_reason_rows
+}
+import v2.compiler.self_host.seed_retention_frontier {
+  ControlsNotPassed,
+  ControlsPassed,
+  EmittedPopulationRow,
+  EmittedUnexecuted,
+  FrontierStanding,
+  GeneratedCensusArtifact,
+  SeedRetained,
+  SelfEmitted,
+  Unclassified,
+  frontier_counts,
+  frontier_undeclared_reason_count,
+  self_host_frontier,
+  self_host_frontier_holds,
+  self_host_frontier_report_over
 }
 import std.algebra { length }
 import v2.std.text { String }
@@ -154,4 +171,355 @@ test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool 
 
 test fn witness_top_level_src_basenames_are_nonempty() -> Bool {
   length(xs: seed_retention_frontier_top_level_src_basenames()) > 0
+}
+
+data frontier_observed: List<String> = [
+  "src/alpha.rs",
+  "src/bin/gamma.rs",
+  "src/emitted_in_closure.rs",
+  "src/emitted_outside_closure.rs"
+]
+
+data frontier_emitted: List<EmittedPopulationRow> = [
+  EmittedPopulationRow { crate_relative_path: "src/emitted_in_closure.rs", source_module: "fx.in_closure" },
+  EmittedPopulationRow { crate_relative_path: "src/emitted_outside_closure.rs", source_module: "fx.outside_closure" }
+]
+
+data frontier_roster: List<SeedRetentionFrontierRow> = [
+  retained_reason_undeclared(path: "src/alpha.rs", cause: SeedRetainedIntrinsicSource),
+  retained_host_binary(path: "src/bin/gamma.rs")
+]
+
+data frontier_closure: List<String> = ["fx.in_closure"]
+
+// Positive control: one SelfEmitted (module in the executed closure, controls passed), one
+// EmittedUnexecuted (module no control reached), two SeedRetained, nothing unclassified; one of the
+// two retained rows has no reason and is COUNTED, not refused.
+test fn witness_frontier_control_classifies_every_standing() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  (frontier_counts(frontier: f).self_emitted == 1)
+    && (frontier_counts(frontier: f).emitted_unexecuted == 1)
+    && (frontier_counts(frontier: f).seed_retained == 2)
+    && (frontier_counts(frontier: f).unclassified == 0)
+    && (frontier_undeclared_reason_count(frontier: f) == 1)
+    && self_host_frontier_holds(frontier: f)
+}
+
+// RED: the retention row for src/alpha.rs deleted -> Unclassified, and the frontier refuses.
+test fn witness_frontier_deleted_retention_row_is_unclassified() -> Bool {
+  let f = self_host_frontier(
+    roster: [retained_host_binary(path: "src/bin/gamma.rs")],
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  (frontier_counts(frontier: f).unclassified == 1)
+    && !self_host_frontier_holds(frontier: f)
+}
+
+// RED: the module removed from the executed closure -> SelfEmitted moves to EmittedUnexecuted.
+test fn witness_frontier_module_outside_executed_closure_is_unexecuted() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: [],
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  (frontier_counts(frontier: f).self_emitted == 0)
+    && (frontier_counts(frontier: f).emitted_unexecuted == 2)
+    && self_host_frontier_holds(frontier: f)
+}
+
+// RED: controls not passed -> CargoGreen alone is not execution; nothing is SelfEmitted.
+test fn witness_frontier_failed_controls_emit_nothing() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsNotPassed,
+    declared_divergent_paths: []
+  )
+  frontier_counts(frontier: f).self_emitted == 0
+}
+
+// RED: a roster row whose path the tree no longer holds stays a refusal in the frontier.
+test fn witness_frontier_stale_row_still_refuses() -> Bool {
+  let f = self_host_frontier(
+    roster: probe_roster,
+    observed_crate_rust_paths: ["src/alpha.rs", "src/bin/gamma.rs"],
+    emitted: [],
+    executed_closure_modules: [],
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  !self_host_frontier_holds(frontier: f)
+}
+
+// RED: a path repeated within one input is a refusal, never narrowed to its first row -- once in the
+// emitted population and once in the roster. Positive control: the same inputs without the repeat
+// hold (witness_frontier_control_classifies_every_standing).
+test fn witness_frontier_duplicate_path_in_an_input_refuses() -> Bool {
+  let duplicated_emitted = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: concat(frontier_emitted, [EmittedPopulationRow { crate_relative_path: "src/emitted_in_closure.rs", source_module: "fx.in_closure" }]),
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  let duplicated_roster = self_host_frontier(
+    roster: concat(frontier_roster, [retained_host_binary(path: "src/bin/gamma.rs")]),
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  !self_host_frontier_holds(frontier: duplicated_emitted)
+    && !self_host_frontier_holds(frontier: duplicated_roster)
+}
+
+// RED: a retention row on a path the emitted manifest also declares is a collision, never a silent
+// SelfEmitted. The roster below is the control's roster plus one synthetic row on
+// src/emitted_in_closure.rs. Positive control: witness_frontier_control_classifies_every_standing,
+// the same inputs without that row, holds.
+test fn witness_frontier_roster_row_on_an_emitted_path_refuses() -> Bool {
+  let f = self_host_frontier(
+    roster: concat(frontier_roster, [retained_reason_undeclared(path: "src/emitted_in_closure.rs", cause: SeedRetainedIntrinsicSource)]),
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  (length(xs: f.compared_collisions) == 1)
+    && (length(xs: f.stale_rows) == 0)
+    && (length(xs: f.duplicate_paths) == 0)
+    && (frontier_counts(frontier: f).unclassified == 0)
+    && !self_host_frontier_holds(frontier: f)
+}
+
+// A DECLARED divergent emission is SeedRetained through its row and is not a collision. Same inputs
+// as the collision RED above, with src/emitted_in_closure.rs registered as divergent: it leaves the
+// compared population, so the frontier holds.
+test fn witness_frontier_declared_divergent_emission_is_retained_not_collided() -> Bool {
+  let f = self_host_frontier(
+    roster: concat(frontier_roster, [retained_reason_undeclared(path: "src/emitted_in_closure.rs", cause: SeedRetainedIntrinsicSource)]),
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: ["src/emitted_in_closure.rs"]
+  )
+  (length(xs: f.compared_collisions) == 0)
+    && (frontier_counts(frontier: f).self_emitted == 0)
+    && (frontier_counts(frontier: f).seed_retained == 3)
+    && self_host_frontier_holds(frontier: f)
+}
+
+// RED: a registered divergent emission with NO retention row is Unclassified. The registration does
+// not stand in for a row.
+test fn witness_frontier_declared_divergent_emission_without_a_row_refuses() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: ["src/emitted_in_closure.rs"]
+  )
+  (frontier_counts(frontier: f).unclassified == 1)
+    && !self_host_frontier_holds(frontier: f)
+}
+
+// The executed-closure entry each SelfEmitted standing carries, in standing order.
+fn frontier_self_emitted_observations(standings: List<FrontierStanding>) -> List<String> {
+  fold(standings, init: [], f: fn(acc, standing) {
+    match standing {
+      SelfEmitted { crate_relative_path: _, source_module: _, observation: o } => concat(acc, [o.executed_closure_module])
+      EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
+      SeedRetained { row: _ } => acc
+      GeneratedCensusArtifact { crate_relative_path: _ } => acc
+      Unclassified { crate_relative_path: _ } => acc
+    }
+  })
+}
+
+// Positive control: the SelfEmitted observation is the executed-closure entry the host supplied,
+// read from that input and not minted from constants.
+test fn witness_frontier_self_emitted_carries_the_observed_closure_entry() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  match frontier_self_emitted_observations(standings: f.standings) {
+    Cons { head: only, tail: rest } => (only == "fx.in_closure") && (length(xs: rest) == 0)
+    Empty => false
+  }
+}
+
+// RED: a closure that does not name the emitted module, even under ControlsPassed, produces no
+// SelfEmitted observation. Both emitted files read EmittedUnexecuted.
+test fn witness_frontier_mismatched_closure_produces_no_observation() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: ["fx.some_other_module"],
+    controls: ControlsPassed,
+    declared_divergent_paths: []
+  )
+  (length(xs: frontier_self_emitted_observations(standings: f.standings)) == 0)
+    && (frontier_counts(frontier: f).emitted_unexecuted == 2)
+}
+
+fn report_has(lines: List<String>, pattern: String) -> Bool {
+  any(xs: lines, predicate: fn(l) { string_contains(s: l, pattern: pattern) })
+}
+
+data report_manifest: String = "// src/emitted_in_closure.rs\n// src/emitted_outside_closure.rs\n"
+data report_observed: String = "src/alpha.rs\nsrc/bin/gamma.rs\nsrc/emitted_in_closure.rs\nsrc/emitted_outside_closure.rs\n"
+
+// Positive control through the text route the driver mode takes: one SelfEmitted, one
+// EmittedUnexecuted, two SeedRetained, exit 0.
+test fn witness_report_control_holds() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    declared_divergent_paths: [],
+    manifest_text: report_manifest,
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 0)
+    && (length(xs: r.lines) == 5)
+    && report_has(lines: r.lines, pattern: "self_emitted=1 emitted_unexecuted=1 seed_retained=2 unclassified=0")
+    && report_has(lines: r.lines, pattern: "file src/emitted_in_closure.rs standing=self-emitted source_module=emitted_in_closure cause=- reason=-")
+    && report_has(lines: r.lines, pattern: "file src/emitted_outside_closure.rs standing=emitted-unexecuted source_module=")
+    && report_has(lines: r.lines, pattern: " standing=seed-retained source_module=- cause=")
+}
+
+// RED: a nested manifest path is not emission-shaped; it is no observation (exit 2), never a
+// quiet EmittedUnexecuted keyed to a basename no verdict line can equal.
+test fn witness_report_nested_manifest_path_is_no_observation() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    declared_divergent_paths: [],
+    manifest_text: "// src/emitted_in_closure.rs\n// src/cli_run/native_lane_runner.rs\n",
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 2)
+    && report_has(lines: r.lines, pattern: "not emission-shaped src/<stem>.rs: src/cli_run/native_lane_runner.rs")
+}
+
+// The crate entry files are emitted but are not module outputs: admitted, and EmittedUnexecuted.
+test fn witness_report_crate_entry_files_are_unexecuted_not_refused() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    declared_divergent_paths: [],
+    manifest_text: "// src/emitted_in_closure.rs\n// src/main.rs\n// src/lib.rs\n",
+    verdict_text: "controls-passed\nemitted_in_closure\nmain\nlib\n",
+    observed_text: "src/alpha.rs\nsrc/bin/gamma.rs\nsrc/emitted_in_closure.rs\nsrc/main.rs\nsrc/lib.rs\n"
+  )
+  report_has(lines: r.lines, pattern: "self_emitted=1 emitted_unexecuted=2 seed_retained=2 unclassified=0")
+}
+
+// RED: the module removed from the executed closure -> SelfEmitted moves to EmittedUnexecuted.
+test fn witness_report_module_removed_from_closure_moves_to_unexecuted() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    declared_divergent_paths: [],
+    manifest_text: report_manifest,
+    verdict_text: "controls-passed\n",
+    observed_text: report_observed
+  )
+  (r.exit == 0)
+    && report_has(lines: r.lines, pattern: "self_emitted=0 emitted_unexecuted=2")
+}
+
+// RED: a deleted retention row -> Unclassified refusal, exit 1.
+test fn witness_report_deleted_row_refuses() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: [retained_host_binary(path: "src/bin/gamma.rs")],
+    declared_divergent_paths: [],
+    manifest_text: report_manifest,
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 1)
+    && report_has(lines: r.lines, pattern: "REFUSED unclassified: src/alpha.rs")
+}
+
+// RED through the text route: a retention row on a manifest-declared path is refused by name, exit 1.
+test fn witness_report_roster_row_on_an_emitted_path_refuses() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: concat(frontier_roster, [retained_reason_undeclared(path: "src/emitted_in_closure.rs", cause: SeedRetainedIntrinsicSource)]),
+    declared_divergent_paths: [],
+    manifest_text: report_manifest,
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 1)
+    && report_has(lines: r.lines, pattern: "compared_collisions=1")
+    && report_has(lines: r.lines, pattern: "REFUSED roster row for a compared path: src/emitted_in_closure.rs")
+}
+
+// RED: a deleted manifest line (the emission no longer declared) -> that file is Unclassified.
+test fn witness_report_deleted_manifest_line_refuses() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    declared_divergent_paths: [],
+    manifest_text: "// src/emitted_outside_closure.rs\n",
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 1)
+    && report_has(lines: r.lines, pattern: "REFUSED unclassified: src/emitted_in_closure.rs")
+}
+
+// No observation is exit 2, never a green or a refusal.
+test fn witness_report_missing_inputs_are_no_observation() -> Bool {
+  let empty_verdict = self_host_frontier_report_over(roster: frontier_roster, declared_divergent_paths: [], manifest_text: report_manifest, verdict_text: "", observed_text: report_observed)
+  let no_observed = self_host_frontier_report_over(roster: frontier_roster, declared_divergent_paths: [], manifest_text: report_manifest, verdict_text: "controls-passed\n", observed_text: "")
+  let bad_word = self_host_frontier_report_over(roster: frontier_roster, declared_divergent_paths: [], manifest_text: report_manifest, verdict_text: "maybe\n", observed_text: report_observed)
+  (empty_verdict.exit == 2) && (no_observed.exit == 2) && (bad_word.exit == 2)
+}
+
+data census_artifact_report_input: String = "// src/emitted_in_closure.rs\n// src/emitted_population.rs\n"
+
+test fn witness_report_census_manifest_is_its_own_standing_not_self_emitted() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: frontier_roster,
+    declared_divergent_paths: [],
+    manifest_text: census_artifact_report_input,
+    verdict_text: "controls-passed\nemitted_in_closure\nemitted_population\n",
+    observed_text: "src/alpha.rs\nsrc/bin/gamma.rs\nsrc/emitted_in_closure.rs\nsrc/emitted_population.rs\n"
+  )
+  r.exit == 0
+    && report_has(lines: r.lines, pattern: "self_emitted=1 emitted_unexecuted=0 seed_retained=2 unclassified=0")
+    && report_has(lines: r.lines, pattern: "generated_census_artifacts=1")
+}
+
+// RED guard for review 82697: hand-maintained hosts are frontier rows but never regen join
+// exemptions. The live roster carries target_invocation_host.rs; the projection must not.
+test fn witness_hand_maintained_hosts_are_rows_but_not_join_exemptions() -> Bool {
+  any(xs: seed_retention_frontier_crate_relative_paths(), predicate: fn(p) { p == "src/target_invocation_host.rs" })
+    && !any(xs: seed_retention_frontier_top_level_src_basenames(), predicate: fn(b) { b == "target_invocation_host.rs" })
+    && any(xs: seed_retention_frontier_top_level_src_basenames(), predicate: fn(b) { b == "std_logic.rs" })
 }

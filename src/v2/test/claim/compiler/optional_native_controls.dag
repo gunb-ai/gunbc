@@ -11,6 +11,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.types { Bool, String }
+import v2.std.node { Symbol }
 import v2.compiler.infer { infer }
 import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -150,6 +151,50 @@ test fn onc_let_none_is_the_unsolved_constructor_refusal() -> Bool {
 
 test fn onc_let_absent_is_the_unsolved_constructor_refusal() -> Bool {
   onc_infer_refusal_reason_is_unsolved(assembled: onc_assemble(body: "fn mk() -> Int { let x = Absent\n 1 }\n"))
+}
+
+// RFM v1_elaborates_bare_none_to_optional_unit_and_lets_unit_inhabit_bool: the native route's answer to the two seed floor breaks, on the real acceptance path. The module declares its own bodyless Unit (std.types is not natively ingestible yet), so these read the route, not the kernel Unit.
+test fn onc_unit_value_at_a_bool_annotation_refuses() -> Bool {
+  onc_none_assembles(body: "type Unit\n\nfn f(u: Unit) -> Bool {\n  let z: Bool = u\n  z\n}\n") && !onc_none_infer_accepted(body: "type Unit\n\nfn f(u: Unit) -> Bool {\n  let z: Bool = u\n  z\n}\n")
+}
+
+// Mutation control: the same source with the parameter declared Bool accepts, so the RED above is the Unit and not the shape.
+test fn onc_bool_value_at_a_bool_annotation_accepts() -> Bool {
+  onc_none_infer_accepted(body: "fn f(b: Bool) -> Bool {\n  let z: Bool = b\n  z\n}\n")
+}
+
+// Positive control: a declared Optional position closes the same none, so it is the unsolved variable that refuses and not the generic.
+test fn onc_none_through_a_generic_at_a_declared_optional_accepts() -> Bool {
+  onc_none_infer_accepted(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Int? { id(x: none) }\n")
+}
+
+test fn onc_typed_none_binder_read_as_bool_refuses() -> Bool {
+  onc_none_assembles(body: "fn f() -> Bool {\n  let c: Int? = none\n  let z: Bool = c\n  z\n}\n") && !onc_none_infer_accepted(body: "fn f() -> Bool {\n  let c: Int? = none\n  let z: Bool = c\n  z\n}\n")
+}
+
+test fn onc_unit_at_unit_accepts() -> Bool {
+  onc_none_infer_accepted(body: "type Unit\n\nfn f(u: Unit) -> Unit {\n  let z: Unit = u\n  z\n}\n")
+}
+
+fn onc_none_fatal_reason(body: String) -> Symbol {
+  match onc_none_assemble(body: body) {
+    Rejected { diagnostics: _ } => ^assemble_rejected
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => ^infer_accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+// Derived: the Bool use closes the generic's T at Bool, so the refusal is none at a non-optional position, the same reason as `fn mk() -> Int { none }`; the open variable is not what refuses.
+test fn onc_generic_none_read_as_bool_refuses_as_none_at_a_non_optional_position() -> Bool {
+  onc_none_fatal_reason(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n") == onc_none_fatal_reason(body: "fn mk() -> Int { none }\n") && onc_none_fatal_reason(body: "fn mk() -> Int { none }\n") != ^infer_accepted
+}
+
+// Not laundered: with no use to close T, the open variable survives the generic and the unannotated let is refused at its value.
+test fn onc_generic_none_in_an_unused_let_is_the_unsolved_refusal() -> Bool {
+  onc_infer_refusal_reason_is_unsolved(assembled: onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Int {\n  let c = id(x: none)\n  1\n}\n"))
 }
 
 test fn onc_none_at_a_non_optional_position_refuses() -> Bool {

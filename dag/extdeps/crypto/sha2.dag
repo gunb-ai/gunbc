@@ -9,6 +9,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.md_padding { md_append_octets, md_blocks_64, md_length_octets, md_zero_octets }
 import extdeps.numeric.base16 { base16_encode_lower }
+import std.algebra { collection_count_shape, list_push }
 
 // SHA-256 and SHA-384 per FIPS 180-4 (Secure Hash Standard), computed in the substrate.
 // extdeps.crypto.hash owns the Digest carrier and cites the same standard; this module is the

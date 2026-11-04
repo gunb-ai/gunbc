@@ -1,5 +1,6 @@
 module v2.test.claim.manual.emit_directive_bash
 
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }

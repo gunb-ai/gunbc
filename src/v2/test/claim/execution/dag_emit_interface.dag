@@ -17,7 +17,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.grammar { AfterLineBreak, GrammarExpr, Choice, GrammarProduction, GrammarRoot, Nonterminal, RefuseOnMatch, Sequence, grammar_atom, grammar_expr_terminal, grammar_expr_terminal_lexeme }
 import v2.std.parse_refusal_reason { DataValueMissingAfterEq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Conj, Authored, Edge, Node, Symbol, TypeNode, symbol_intern_lexeme }
+import v2.std.node { Conj, Authored, Edge, Node, Symbol, TypeNode, symbol_intern_lexeme, NotADeclaration }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -92,7 +92,7 @@ test fn a_literal_without_its_payload_refuses_by_name_holds() -> Bool {
 // bare key is a lexeme-stamped identifier, a quoted key the class-stamped string terminal. The same
 // text, `Node`, emits bare under one stamp and quoted under the other, because the walk selects by
 // the stamp and never by the spelling.
-fn ei_edge(name: Symbol, target: Node) -> Edge { Edge { label: Authored { name: name }, target: target } }
+fn ei_edge(name: Symbol, target: Node) -> Edge { Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration } }
 
 fn ei_conj(children: List<Edge>) -> Node { Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic } }
 
@@ -183,4 +183,36 @@ test fn a_refusal_row_is_never_selected_backward_holds() -> Bool {
     captured: grammar_atom(identity: symbol_intern_lexeme(lexeme: "x")),
     expected: "x"
   )
+}
+
+// Doubling by concat is one pass per doubling (concat is the seed's free_call.concat, a push_str over
+// the arguments), so 17 doublings of "x" reach 131072 scalars without a loop whose own depth is the
+// length — the RED must not be measuring its fixture, only the lexer.
+fn ei_text_doubled(seed: String, doublings: Int) -> String {
+  if doublings <= 0 {
+    seed
+  } else {
+    ei_text_doubled(seed: concat(seed, seed), doublings: doublings - 1)
+  }
+}
+
+// A >=100,000-scalar string literal lexed natively. THE RED: the lexeme's body must reach the decoder
+// by SLICE. The shape this replaces unfolded the lexeme to scalars and rebuilt the body one Cons at a
+// time (skip + list_init), and list_init recursed once per member — so a literal past ~10^5 scalars
+// overflowed the seed interpreter. The producer that re-derives it (§6: name the
+// instrument, never transcribe its output) is THIS claim run by the claim-batch binary,
+// src/v1/stage0/src/bin/claim_batch.rs, with --entry naming this file and --functions
+// naming this claim and --claim-run; on the replaced shape that run aborts by stack
+// overflow rather than answering false, which is what makes it the RED.
+// v2.test.claim.derived_roster_seed_agreement
+// rung_drop_standing_acquires_with_its_derived_roster hit the same depth through std.algebra list_init.
+// If framing or rebuilding ever returns to a per-scalar recursion, this claim dies by overflow, not by
+// a wrong answer — which is exactly what it is here to catch. The expected text is the doubled seed
+// unchanged: an all-"x" body carries no escape, so decode must be the identity over 131072 scalars.
+test fn dag_string_scalar_body_read_by_slice_reaches_the_decode_lane() -> Bool {
+  let body = ei_text_doubled(seed: "x", doublings: 17)
+  match dag_string_literal_decoded_text(lexeme: concat(concat("\"", body), "\""), occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: value, diagnostics: _ } => value == body
+    Rejected { diagnostics: _ } => false
+  }
 }

@@ -54,6 +54,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.text { String }
 import v2.std.node_query { binder_edge }
@@ -89,7 +90,7 @@ fn atom(identity: Symbol) -> Node {
 }
 
 fn positional_to(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn named_to(name: Symbol, target: Node) -> Edge {
@@ -257,12 +258,12 @@ fn module_container_with_surface_members() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_surface_edge(edge: ^dag_surface_module_header, target: atom(identity: ^dag_surface_module_header)),
-      Edge { label: Authored { name: ^bit }, target: identity_stamped(id: ^dag_surface_fn_decl) },
-      Edge { label: Authored { name: ^nested }, target: identity_stamped(id: ^dag_surface_module) },
-      Edge { label: Authored { name: ^probe }, target: identity_stamped(id: ^dag_surface_test_fn_decl) },
-      Edge { label: Authored { name: ^Flag }, target: identity_stamped(id: ^dag_surface_data_decl) },
-      Edge { label: Authored { name: ^Wrapper }, target: identity_stamped(id: ^dag_surface_type_decl) },
-      Edge { label: Authored { name: ^Alias }, target: identity_stamped(id: ^dag_surface_alias_decl) },
+      Edge { label: Authored { name: ^bit }, target: identity_stamped(id: ^dag_surface_fn_decl), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^nested }, target: identity_stamped(id: ^dag_surface_module), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^probe }, target: identity_stamped(id: ^dag_surface_test_fn_decl), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^Flag }, target: identity_stamped(id: ^dag_surface_data_decl), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^Wrapper }, target: identity_stamped(id: ^dag_surface_type_decl), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^Alias }, target: identity_stamped(id: ^dag_surface_alias_decl), declaration: NotADeclaration },
     ],
     occurrence_id: OccurrenceSynthetic,
   }
@@ -272,8 +273,8 @@ fn mixed_declaration_and_hand_built_field() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^Flag }, target: identity_stamped(id: ^dag_surface_data_decl) },
-      Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node) },
+      Edge { label: Authored { name: ^Flag }, target: identity_stamped(id: ^dag_surface_data_decl), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node), declaration: NotADeclaration },
     ],
     occurrence_id: OccurrenceSynthetic,
   }
@@ -284,14 +285,14 @@ fn conj_with_header_edge_and_hand_built_field() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_surface_edge(edge: ^dag_surface_module_header, target: atom(identity: ^dag_surface_module_header)),
-      Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node) },
+      Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node), declaration: NotADeclaration },
     ],
     occurrence_id: OccurrenceSynthetic,
   }
 }
 
 fn hand_built_record_field_declaration() -> Node {
-  record_of(fields: [Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node) }])
+  record_of(fields: [Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node), declaration: NotADeclaration }])
 }
 
 fn readability_is_member_not_a_binder(r: ProducerCarrierReading, expected: Symbol) -> Bool {

@@ -1,12 +1,18 @@
 module gunbc.spark.fabric_rail_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.types { String, Bool, List, NonEmptyStr, Secret, PathSegment }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
+import gunbc.auth.private_secret_file {
+  with_private_secret_file,
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
+}
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
@@ -17,6 +23,7 @@ import gunbc.spark.host_privileged_apply {
   SparkPairHostApplyPlan, SparkPairHostApplyOutcome, spark_pair_privileged_leg, spark_pair_host_apply_outcome_line, spark_pair_host_applied,
 }
 import gunbc.spark.fabric_rail_desired { FabricRailDesired, fabric_rail_desired, fabric_rail_netplan_path, fabric_rail_connection_name }
+import extdeps.netplan.netplan { NetplanDocumentRendered, NetplanDocumentRefused, netplan_document_rendering_wire }
 import gunbc.spark.fabric_reach { ReachManagementLan }
 
 // APPLY THE RAIL ADDRESSING TO EVERY HOST ON THE FABRIC, over the administrator password session,
@@ -27,11 +34,11 @@ import gunbc.spark.fabric_reach { ReachManagementLan }
 data fabric_rail_apply_receipt_path: String = "target/fabric-rail-apply-receipt.txt"
 data fabric_rail_apply_attempt_raw: String = "fabric-rail-apply"
 
-fn fabric_rail_host_script(d: FabricRailDesired) -> String {
+fn fabric_rail_host_script(d: FabricRailDesired, netplan_text: String) -> String {
   join([
     "set -e\n",
     "install -d -m 755 /etc/netplan\n",
-    "printf '%s' ", shell_quote(arg: d.netplan_text), " > ", fabric_rail_netplan_path(), "\n",
+    "printf '%s' ", shell_quote(arg: netplan_text), " > ", fabric_rail_netplan_path(), "\n",
     "chmod 600 ", fabric_rail_netplan_path(), "\n",
     "netplan generate\n",
     "netplan apply\n",
@@ -40,12 +47,26 @@ fn fabric_rail_host_script(d: FabricRailDesired) -> String {
   ], "")
 }
 
-fn fabric_rail_host_plan(d: FabricRailDesired) -> SparkPairHostApplyPlan {
-  SparkPairHostApplyPlan { host: d.host, unit_name: fabric_rail_connection_name, script: fabric_rail_host_script(d: d) }
+fn fabric_rail_host_plan(d: FabricRailDesired, netplan_text: String) -> SparkPairHostApplyPlan {
+  SparkPairHostApplyPlan { host: d.host, unit_name: fabric_rail_connection_name, script: fabric_rail_host_script(d: d, netplan_text: netplan_text) }
 }
 
-fn fabric_rail_apply_plans() -> List<SparkPairHostApplyPlan> {
-  map(fabric_rail_desired, d => fabric_rail_host_plan(d: d))
+// A HOST WHOSE DOCUMENT THE EMITTER REFUSES REFUSES THE WHOLE APPLY, before any leg runs: a rail
+// applied to some hosts and not others is a partial fabric.
+type FabricRailPlans
+  = FabricRailPlansReady { plans: List<SparkPairHostApplyPlan> }
+  | FabricRailPlansRefused { cause: String }
+
+fn fabric_rail_apply_plans() -> FabricRailPlans {
+  fold(fabric_rail_desired, init: FabricRailPlansReady { plans: [] }, f: (acc, d) =>
+    match acc {
+      FabricRailPlansRefused { cause: _ } => acc
+      FabricRailPlansReady { plans: ps } =>
+        match d.netplan {
+          NetplanDocumentRendered { text: t } => FabricRailPlansReady { plans: concat(ps, [fabric_rail_host_plan(d: d, netplan_text: t)]) }
+          NetplanDocumentRefused { path: _, reason: _ } => FabricRailPlansRefused { cause: join([d.host as String, ": ", netplan_document_rendering_wire(r: d.netplan)], "") }
+        }
+    })
 }
 
 fn fabric_rail_receipt_body(at: String, outcomes: List<SparkPairHostApplyOutcome>) -> String {
@@ -68,7 +89,14 @@ fn fabric_rail_apply_legs(trust: FleetOpenSshTrustPolicy, plans: List<SparkPairH
 fn fabric_rail_apply_wet() -> ProcessExit
 {
   let now = clock_now_probed_at()
-  let plans = fabric_rail_apply_plans()
+  match fabric_rail_apply_plans() {
+    FabricRailPlansRefused { cause: c } => exit_failure(reason: join(["fabric_rail_apply: ", c], ""))
+    FabricRailPlansReady { plans: plans } => fabric_rail_apply_planned(now: now, plans: plans)
+  }
+}
+
+fn fabric_rail_apply_planned(now: NonEmptyStr?, plans: List<SparkPairHostApplyPlan>) -> ProcessExit
+{
   if length(plans) == 0 {
     exit_failure(reason: "fabric_rail_apply: no host is observed on the fabric")
   } else {
@@ -82,13 +110,15 @@ fn fabric_rail_apply_wet() -> ProcessExit
             match fleet_openssh_trust_policy_of(outcome: materialization) {
               Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
               Present { value: trust } =>
-                match with_materialized_ssh_key_file(
-                  identity_file_name: "gunbc-fabric-rail-apply-admin-password" as NonEmptyStr,
-                  secret_bytes: administrator as Secret,
+                match with_private_secret_file(
+                  file_name: "gunbc-fabric-rail-apply-admin-password" as PathSegment,
+                  content: administrator as Secret,
                   use: fn(file) { fabric_rail_apply_legs(trust: trust, plans: plans, administrator: administrator as Secret, file: file) },
                 ) {
-                  MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                  MaterializedSshKeyFileBracketCompleted { value: outcomes } => {
+                  PrivateSecretFileNotEntered { cause: c } => exit_failure(reason: c as String)
+                  PrivateSecretFileNotEnteredResidueRemains { cause: c } => exit_failure(reason: c as String)
+                  PrivateSecretFileCompletedResidueRemains { value: _ } => exit_failure(reason: "the credential file could not be removed after the bracket body ran, so the secret may remain on disk and requires cleanup; the rail legs ran and their receipt was not written")
+                  PrivateSecretFileCompleted { value: outcomes } => {
                     let body = fabric_rail_receipt_body(at: probed_at_word(reading: now) as String, outcomes: outcomes)
                     let wr = Filesystem.Write(path: fabric_rail_apply_receipt_path, content: body)
                     if !wr.success {

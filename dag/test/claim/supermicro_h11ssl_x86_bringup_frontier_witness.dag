@@ -1,0 +1,111 @@
+module test.claim.supermicro_h11ssl_x86_bringup_frontier_witness
+
+import std.types { Bool }
+import std.decl_ref { DeclarationRef }
+import std.roster_frontier { FrontierSubject, DeclSubject, frontier_rows_well_formed, frontier_subject_eq }
+import std.dissolution { BoundDissolution, UnboundDissolution }
+import std.algebra { zip_eq }
+import gunbc.machine_intake.h11ssl_x86_bringup_frontier {
+  h11ssl_x86_bringup_frontier_rows,
+  h11ssl_x86_bringup_fill_order,
+  h11ssl_x86_bringup_fill_order_covers_every_gap,
+  h11ssl_x86_bringup_virtual_media_gap_subject,
+  h11ssl_x86_bringup_dimm_reader_gap_subject,
+  h11ssl_x86_bringup_storage_reader_gap_subject,
+  h11ssl_x86_bringup_adoption_gap_subject,
+  h11ssl_x86_bringup_primary_network_gap_subject,
+  h11ssl_x86_bringup_seed_gap_subject,
+  h11ssl_x86_bringup_pxe_edge_gap_subject,
+  h11ssl_x86_bringup_install_route_gap_subject,
+}
+
+// THE x86 BRING-UP GAP ROSTER'S CLAIMS (gunbc.machine_intake.h11ssl_x86_bringup_frontier). The
+// census fold consumes these rows; this witness holds the roster to the shape the census requires
+// and to the gaps the 2026-10-24 hand-install ruling asked to be recorded -- each with a trigger
+// that can actually retire it, each subject enrolled once (the live census witness
+// test.claim.long.dissolution_census_witness fails the fold on a duplicate subject), and the fill
+// order consistent with the roster so the proposal cannot rot into prose.
+
+// THE ROSTER IS SEVEN GAPS AS EIGHT ROWS NOW THAT G4's FAMILY HALF IS FILLED (G4 split into family +
+// virtual media, and the family row was deleted with its fill; G5 splits into DIMM +
+// storage). Six gaps (eight rows) came from the 2026-10-24 hand-install ruling; the seventh (G7,
+// primary network) was filed 2026-10-25 on quiet-fox-556's handoff for gunbc#15100, whose authority
+// is still draft -- provenance split in the module header, not rewritten. The count is pinned
+// because a row quietly dropped from the fold -- or a tenth gap filed without updating this witness
+// -- must fail somewhere, and here is the honest place.
+test fn w_the_roster_carries_the_open_gaps_as_eight_rows() -> Bool {
+  count(h11ssl_x86_bringup_frontier_rows) == 8
+}
+
+// EVERY ROW IS WELL-FORMED BY THE CENSUS'S OWN PREDICATE: non-empty reason, non-empty subject, and
+// a dissolution that is either a real trigger ref or a non-empty description. The census long witness
+// checks the whole fold; this row checks THESE rows in isolation so a red names this module.
+test fn w_every_gap_row_is_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: h11ssl_x86_bringup_frontier_rows)
+}
+
+// EVERY GAP TRIGGERS ON A CONDITION THE FILL CAN ACTUALLY SATISFY OR DISSOLVE -- here, an unbound
+// description carrying the trigger prose, and a trigger description that is EMPTY is a row that can
+// never be deleted (the well-formedness predicate already refuses it; this row says WHY the
+// dissolutions carry their prose rather than naming symbols that would be invented alongside -- the
+// roster_frontier contract deletes a row in the same change as its fill).
+test fn w_every_gap_carries_a_trigger_that_can_retire_it() -> Bool {
+  all(h11ssl_x86_bringup_frontier_rows, row => match row.dissolution {
+    UnboundDissolution { description: d } => !(d as String == "")
+    BoundDissolution { trigger: _ } => true
+  })
+}
+
+// NO SUBJECT APPEARS TWICE IN ITS OWN ROSTER -- the identity check the live census runs over the
+// whole fold, run here per-module so a duplicate introduced in THIS module fails here first.
+test fn w_no_gap_subject_is_enrolled_twice() -> Bool {
+  let rows = h11ssl_x86_bringup_frontier_rows
+  !any(rows, row => count(filter(rows, other => frontier_subject_eq(a: other.subject, b: row.subject))) != 1)
+}
+
+// THE EIGHT SUBJECTS ARE THE EIGHT OPEN GAP BOUNDARIES THE HEADER CITES -- pinned by identity, so a row
+// cannot be silently retargeted at an easier-to-dissolve symbol (which is the pressure that rots a
+// gap list: the boundary the fill must cross is the boundary the row must name). Comparison goes
+// through frontier_subject_eq, the std predicate -- no empty-string sentinel is ever built.
+test fn w_the_subjects_are_the_cited_boundaries() -> Bool {
+  let want: List<FrontierSubject> = [
+    DeclSubject { ref: h11ssl_x86_bringup_virtual_media_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_dimm_reader_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_storage_reader_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_adoption_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_primary_network_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_seed_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_pxe_edge_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_install_route_gap_subject },
+  ]
+  count(want) == count(h11ssl_x86_bringup_frontier_rows)
+    && all(want, w => any(h11ssl_x86_bringup_frontier_rows, row => frontier_subject_eq(a: row.subject, b: w)))
+}
+
+// THE FILL ORDER AND THE ROSTER AGREE, BOTH WAYS: every gap has a position and every position names
+// a gap -- the fold the module itself publishes, checked here so the proposal stays checkable.
+test fn w_the_fill_order_covers_the_roster_exactly() -> Bool {
+  h11ssl_x86_bringup_fill_order_covers_every_gap()
+    && count(h11ssl_x86_bringup_fill_order) == count(h11ssl_x86_bringup_frontier_rows)
+}
+
+// THE FILL ORDER IS THE PROPOSED DEPENDENCY ORDER, PINNED POSITION BY POSITION: the BMC family came
+// first and is filled; then the two read-only census readers, then adoption (needs
+// neither image nor boot), then the primary-network intake (its LAN record keys on the HostIdentity
+// adoption mints), then the seed, the boot path, the media attach -- and the capstone
+// (install-to-disk, which composes seed + boot path + media attach) LAST. A reorder that puts the
+// capstone before its parts is a plan that cannot execute; zip_eq makes the ORDER a checked claim,
+// not a membership check.
+test fn w_the_fill_order_is_dependency_first() -> Bool {
+  let want: List<DeclarationRef> = [
+      h11ssl_x86_bringup_dimm_reader_gap_subject,
+    h11ssl_x86_bringup_storage_reader_gap_subject,
+    h11ssl_x86_bringup_adoption_gap_subject,
+    h11ssl_x86_bringup_primary_network_gap_subject,
+    h11ssl_x86_bringup_seed_gap_subject,
+    h11ssl_x86_bringup_pxe_edge_gap_subject,
+    h11ssl_x86_bringup_virtual_media_gap_subject,
+    h11ssl_x86_bringup_install_route_gap_subject,
+  ]
+  zip_eq(a: h11ssl_x86_bringup_fill_order, b: want, eq: fn(x, y) { x == y })
+}

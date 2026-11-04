@@ -1,0 +1,340 @@
+module test.fixture.machine_intake.bmc_lockout
+
+// WHY THIS FIXTURE EXISTS. The failed-login budget of
+// gunbc.machine_intake.bmc_secure is a gate over a number the CONTROLLER serves:
+// AccountService.AccountLockoutThreshold, and the per-channel IPMI LAN Bad Password
+// Threshold. A witness that built those records inline in its own body would be
+// forging the very fact the gate reads — a test could then raise the threshold to
+// make its own plan admit, and the gate would never have been exercised. So the
+// served values are assembled here, once, through the ONLY constructors the vendor
+// modules publish (redfish_account_service_lockout_served,
+// ipmi_lan_bad_password_threshold_served in extdeps.bmc.redfish /
+// extdeps.bmc.ipmi_channel, whose records are sole_constructor), and every witness
+// that needs a lockout reading asks this module for it and says which shape it
+// wants. What a witness may still choose is WHICH shape: served with what
+// threshold, or unread — and the unread shapes carry no number at all.
+//
+// THE ONE THING THIS FIXTURE NEVER DOES: it never supplies a threshold from a
+// capture. The H11SSL "Bad Password Threshold : 3"
+// (artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/lan-print-1.txt) is a reported
+// read of one unit at one moment, and the parameter is operator-writable; a witness
+// that used it as a constant would be testing its own assumption about that box, not
+// the gate. The live read that replaces these shapes is
+// gunbc.machine_intake.bmc_secure::bmc_served_lockout_live_read_frontier.
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.content_hash { content_hash_of_value }
+import gunbc.clock_read { ObserverClockInstant }
+import gunbc.machine_intake.receipt { EvidenceRef }
+import extdeps.bmc.redfish {
+  RedfishAccountServiceLockoutServed,
+  RedfishAccountServicePropertyCount,
+  redfish_account_service_lockout_served,
+}
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelNumber,
+  IpmiLanBadPasswordCount,
+  IpmiLanLockoutSeconds,
+  IpmiLanBadPasswordThreshold,
+  ipmi_lan_bad_password_threshold_served,
+}
+import gunbc.machine_intake.bmc_secure {
+  BmcControllerLockoutReading,
+  BmcLockoutSurfaceReading,
+  BmcFailedLoginSurface,
+  BmcServedLockoutPolicy,
+  BmcServedLockoutSource,
+  BmcLockoutNotReadableCause,
+  RedfishAccountServiceLogin,
+  IpmiLanPlusLogin,
+  LockoutPolicyServed,
+  LockoutPolicyNotReadable,
+  ServedFromRedfishAccountService,
+  ServedFromIpmiLanBadPasswordThreshold,
+  ControllerServesNoLockoutParameter,
+  LockoutReadAttemptFailed,
+  bmc_lockout_surface,
+  bmc_lockout_reading,
+  bmc_lockout_reading_not_read,
+}
+
+// THE CLOCK THIS FIXTURE READS AT. Modeled, and named for this module in its
+// source, because these readings are a witness's dry pass and must never be read as
+// measured: an ObserverClockInstant is sealed exactly so that a millis value cannot
+// become one without saying which realization it came from (gunbc.clock_read).
+fn lockout_fixture_instant(millis: EpochMs) -> ObserverClockInstant {
+  observer_clock_modeled(millis: millis, realization: "test.fixture.machine_intake.bmc_lockout: the dry pass a served lockout reading is forged for" as NonEmptyStr)
+}
+
+// THE EVIDENCE A FORGED READING CARRIES. Its label says it is a fixture, so no
+// reader can mistake it for a receipt of a read: the digest is of that label, and
+// the only thing an absence-labelled evidence can produce downstream is a refusal.
+fn lockout_fixture_evidence(what: NonEmptyStr) -> EvidenceRef {
+  EvidenceRef {
+    label: join(["fixture:bmc-lockout:", what], ""),
+    digest: content_hash_of_value(value: join(["fixture:bmc-lockout:", what], "") as NonEmptyStr),
+  }
+}
+
+// A SURFACE WITH NOTHING SERVED ON IT. The cause is the caller's, because why a
+// controller would not answer is a different fact each time: no parameter at all
+// (a real state of some firmware, which licenses no number) versus the read itself
+// failing (which licenses no number either, but says something different to the
+// operator).
+fn lockout_surface_unread(surface: BmcFailedLoginSurface, detail: NonEmptyStr, serves_no_parameter: Bool, read_at: EpochMs) -> BmcLockoutSurfaceReading {
+  bmc_lockout_surface(
+    surface: surface,
+    policy: LockoutPolicyNotReadable {
+      cause: if serves_no_parameter {
+        ControllerServesNoLockoutParameter { detail: detail }
+      } else {
+        LockoutReadAttemptFailed { detail: detail }
+      },
+    },
+    evidence: lockout_fixture_evidence(what: detail),
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
+// BOTH SURFACES SERVED — the ordinary healthy controller: Redfish locks root after
+// redfish_threshold failed attempts with a counter that resets after 300 s of quiet,
+// and the addressed IPMI LAN channel locks after ipmi_threshold with its own
+// attempt-count reset of 300 s. The 300 is the shape the H11SSL unit REPORTS
+// (lan-print-1: "Attempt Count Reset Int. : 300"); it is a fixture value here, not
+// evidence about any box.
+fn lockout_both_served(
+  read_at: EpochMs,
+  redfish_threshold: Int,
+  ipmi_channel: IpmiChannelNumber,
+  ipmi_threshold: Int,
+) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [
+      bmc_lockout_surface(
+        surface: RedfishAccountServiceLogin,
+        policy: LockoutPolicyServed {
+          served: ServedFromRedfishAccountService {
+            properties: redfish_account_service_lockout_served(
+              account_lockout_threshold: redfish_threshold,
+              account_lockout_duration: Present { value: 300 },
+              account_lockout_counter_reset_after: Present { value: 300 },
+              account_lockout_counter_reset_enabled: Present { value: true },
+            ),
+          },
+        },
+        evidence: lockout_fixture_evidence(what: join(["redfish-threshold-", to_string(redfish_threshold)], "")),
+        read_at: lockout_fixture_instant(millis: read_at),
+      ),
+      bmc_lockout_surface(
+        surface: IpmiLanPlusLogin { channel: ipmi_channel },
+        policy: LockoutPolicyServed {
+          served: ServedFromIpmiLanBadPasswordThreshold {
+            parameters: ipmi_lan_bad_password_threshold_served(
+              invalid_password_disable: true,
+              bad_password_threshold: ipmi_threshold,
+              attempt_count_reset_secs: 300,
+              user_lockout_interval_secs: 300,
+            ),
+          },
+        },
+        evidence: lockout_fixture_evidence(what: join(["ipmi-threshold-", to_string(ipmi_threshold)], "")),
+        read_at: lockout_fixture_instant(millis: read_at),
+      ),
+    ],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
+// THE SAME CONTROLLER, READ ON EVERY LAN CHANNEL THE PLAN WILL CROSS. A real reader
+// takes Get LAN Configuration Parameters per channel, so a reading that covers only
+// one channel licenses logins on that channel alone — and a plan whose published
+// probes cross two channels (the ALTRAD8UD's census carries LAN members on 1 and 8)
+// has NO threshold to be measured against on the other, which the gate answers by
+// refusing. A witness that wanted to exercise the plan rather than that refusal had
+// to read both channels, which is what this is; the single-channel shape above stays
+// available so a witness can still withhold one and show the refusal.
+// CONSUMER: test.claim.machine_intake.machine_intake_bmc_secure_state_witness (the
+// shared `read_with` every plan-and-apply claim in that file builds its reading with).
+fn lockout_served_channels(
+  read_at: EpochMs,
+  redfish_threshold: Int,
+  ipmi_channels: List<IpmiChannelNumber>,
+  ipmi_threshold: Int,
+) -> BmcControllerLockoutReading {
+  let redfish_surface = bmc_lockout_surface(
+    surface: RedfishAccountServiceLogin,
+    policy: LockoutPolicyServed {
+      served: ServedFromRedfishAccountService {
+        properties: redfish_account_service_lockout_served(
+          account_lockout_threshold: redfish_threshold,
+          account_lockout_duration: Present { value: 300 },
+          account_lockout_counter_reset_after: Present { value: 300 },
+          account_lockout_counter_reset_enabled: Present { value: true },
+        ),
+      },
+    },
+    evidence: lockout_fixture_evidence(what: join(["redfish-threshold-", to_string(redfish_threshold)], "")),
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+  let lan_surfaces = map(ipmi_channels, c => bmc_lockout_surface(
+    surface: IpmiLanPlusLogin { channel: c },
+    policy: LockoutPolicyServed {
+      served: ServedFromIpmiLanBadPasswordThreshold {
+        parameters: ipmi_lan_bad_password_threshold_served(
+          invalid_password_disable: true,
+          bad_password_threshold: ipmi_threshold,
+          attempt_count_reset_secs: 300,
+          user_lockout_interval_secs: 300,
+        ),
+      },
+    },
+    evidence: lockout_fixture_evidence(what: join(["ipmi-threshold-", to_string(ipmi_threshold), "-on-channel-", to_string(c)], "")),
+    read_at: lockout_fixture_instant(millis: read_at),
+  ))
+  bmc_lockout_reading(
+    surfaces: concat([redfish_surface], lan_surfaces),
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
+// ONLY THE REDFISH SURFACE WAS READ. The plan's IPMI logins then have no threshold
+// to plan against — including the undetermined-channel surface, which is answered by
+// the tightest READ LAN channel and so finds none.
+fn lockout_redfish_only(read_at: EpochMs, redfish_threshold: Int) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [bmc_lockout_surface(
+      surface: RedfishAccountServiceLogin,
+      policy: LockoutPolicyServed {
+        served: ServedFromRedfishAccountService {
+          properties: redfish_account_service_lockout_served(
+            account_lockout_threshold: redfish_threshold,
+            account_lockout_duration: Present { value: 300 },
+            account_lockout_counter_reset_after: Present { value: 300 },
+            account_lockout_counter_reset_enabled: Present { value: true },
+          ),
+        },
+      },
+      evidence: lockout_fixture_evidence(what: join(["redfish-threshold-only-", to_string(redfish_threshold)], "")),
+      read_at: lockout_fixture_instant(millis: read_at),
+    )],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
+// THE SAME SHAPE WITH A MOVEABLE COUNTER WINDOW. AccountLockoutCounterResetAfter is
+// the served seconds since the last failed attempt over which the controller keeps
+// counting (AccountService.v1_19_0), and the budget subtracts the failures still
+// INSIDE it. A fixture that could not move the window could not tell "the reading's
+// rejected probe is still counted" from "it has been forgotten", and a gate that
+// ignored the window would be indistinguishable from one that honoured it.
+// reset_after_secs goes straight into the vendor builder; nothing here invents a
+// default window.
+fn lockout_redfish_window(read_at: EpochMs, redfish_threshold: Int, reset_after_secs: Int) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [bmc_lockout_surface(
+      surface: RedfishAccountServiceLogin,
+      policy: LockoutPolicyServed {
+        served: ServedFromRedfishAccountService {
+          properties: redfish_account_service_lockout_served(
+            account_lockout_threshold: redfish_threshold,
+            account_lockout_duration: Present { value: 300 },
+            account_lockout_counter_reset_after: Present { value: reset_after_secs },
+            account_lockout_counter_reset_enabled: Present { value: true },
+          ),
+        },
+      },
+      evidence: lockout_fixture_evidence(what: join(["redfish-threshold-", to_string(redfish_threshold), "-window-", to_string(reset_after_secs)], "")),
+      read_at: lockout_fixture_instant(millis: read_at),
+    )],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
+// THE CONTROLLER SERVES NO LOCKOUT AT ALL on Redfish: AccountLockoutThreshold 0,
+// which the schema states as "the account shall never be locked". A plan here is
+// admitted whatever it costs, and that must be because the controller SAID so —
+// which is why there is no way to ask for this shape by leaving a field out.
+fn lockout_redfish_never_locked(read_at: EpochMs) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [bmc_lockout_surface(
+      surface: RedfishAccountServiceLogin,
+      policy: LockoutPolicyServed {
+        served: ServedFromRedfishAccountService {
+          properties: redfish_account_service_lockout_served(
+            account_lockout_threshold: 0,
+            account_lockout_duration: Absent {  },
+            account_lockout_counter_reset_after: Absent {  },
+            account_lockout_counter_reset_enabled: Absent {  },
+          ),
+        },
+      },
+      evidence: lockout_fixture_evidence(what: "redfish-threshold-0"),
+      read_at: lockout_fixture_instant(millis: read_at),
+    )],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
+// NOTHING WAS READ — OpenBMC 03.22.00 before the forced change, where every
+// authenticated read is refused until the password is changed. No surface carries a
+// number, so no plan carrying a potentially-failing login can be admitted.
+fn lockout_unread(read_at: EpochMs, detail: NonEmptyStr) -> BmcControllerLockoutReading {
+  bmc_lockout_reading_not_read(detail: detail, read_at: lockout_fixture_instant(millis: read_at))
+}
+// ONE SURFACE SERVED, THE OTHER NOT READ. The gate judges a plan against the
+// threshold of the surface it will actually authenticate on, so a witness needs to
+// serve one surface and withhold the other — otherwise "the plan was admitted" and
+// "the gate looked at whichever surface happened to answer" are the same shape.
+// The unread half is lockout_surface_unread, so the cause it carries is the typed
+// one the product layer names, not a string.
+fn lockout_redfish_served_ipmi_unread(read_at: EpochMs, redfish_threshold: Int, reset_after_secs: Int, ipmi_detail: NonEmptyStr) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [
+      bmc_lockout_surface(
+        surface: RedfishAccountServiceLogin,
+        policy: LockoutPolicyServed {
+          served: ServedFromRedfishAccountService {
+            properties: redfish_account_service_lockout_served(
+              account_lockout_threshold: redfish_threshold,
+              account_lockout_duration: Present { value: 300 },
+              account_lockout_counter_reset_after: Present { value: reset_after_secs },
+              account_lockout_counter_reset_enabled: Present { value: true },
+            ),
+          },
+        },
+        evidence: lockout_fixture_evidence(what: join(["redfish-threshold-", to_string(redfish_threshold), "-window-", to_string(reset_after_secs)], "")),
+        read_at: lockout_fixture_instant(millis: read_at),
+      ),
+      lockout_surface_unread(surface: IpmiLanPlusLogin { channel: 1 }, detail: ipmi_detail, serves_no_parameter: false, read_at: read_at),
+    ],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}
+
+// THE MIRROR: the IPMI LAN channel answers generously and Redfish — the surface the
+// root rotation authenticates on — does not. Nothing licenses a potentially-failing
+// login on root's Redfish counter, however healthy the other surface looks.
+fn lockout_ipmi_served_redfish_unread(read_at: EpochMs, ipmi_threshold: Int, redfish_detail: NonEmptyStr) -> BmcControllerLockoutReading {
+  bmc_lockout_reading(
+    surfaces: [
+      lockout_surface_unread(surface: RedfishAccountServiceLogin, detail: redfish_detail, serves_no_parameter: false, read_at: read_at),
+      bmc_lockout_surface(
+        surface: IpmiLanPlusLogin { channel: 1 },
+        policy: LockoutPolicyServed {
+          served: ServedFromIpmiLanBadPasswordThreshold {
+            parameters: ipmi_lan_bad_password_threshold_served(
+              invalid_password_disable: true,
+              bad_password_threshold: ipmi_threshold,
+              attempt_count_reset_secs: 300,
+              user_lockout_interval_secs: 300,
+            ),
+          },
+        },
+        evidence: lockout_fixture_evidence(what: join(["ipmi-threshold-", to_string(ipmi_threshold)], "")),
+        read_at: lockout_fixture_instant(millis: read_at),
+      ),
+    ],
+    read_at: lockout_fixture_instant(millis: read_at),
+  )
+}

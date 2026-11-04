@@ -7,6 +7,7 @@ import std.encoding { utf8_decode_octets }
 import std.coercion { unicode_scalar_fold }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.algebra { collection_count_shape, list_push }
 
 // RFC 8949, Concise Binary Object Representation (CBOR), STD 94. Cited sections: §3 (the data item
 // and its initial byte: major type in the high three bits, additional information in the low

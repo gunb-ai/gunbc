@@ -1,7 +1,8 @@
 module test.claim.extdeps_provisioning_elevation_witness
 
 import std.types { Bool, String }
-import extdeps.cache.sccache { sccache_install_script, sccache_release_0_15_0, sccache_installed_binary_path }
+import extdeps.cache.sccache { sccache_release_0_15_0, sccache_installed_binary_path }
+import gunbc.host.sccache_verified_install { sccache_verified_install_script }
 import extdeps.container.docker_ce {
   docker_ce_repo_install_script,
   docker_ce_apt_repo_noble_arm64,
@@ -12,8 +13,16 @@ import extdeps.container.docker_ce {
 // absolute sudo path and -n: a missing NOPASSWD grant must refuse instead of prompting.
 // Reverting any one call site to its old bare-sudo form makes its own witness false,
 // even while the other elevated commands in the same script remain correct.
+// THE SCCACHE INSTALL IS NOW THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT
+// (gunbc.host.verified_binary_install) run with sccache's boundary values. The two claims below are
+// UNCHANGED and they are the point: the elevation refusals -- absolute sudo path plus -n on the
+// move and on the mode -- survived the migration word for word, so a swap that silently lost the
+// non-interactive elevation would fail here rather than in production. The renderer's own module
+// (extdeps.cache.sccache) no longer contains a script builder; the values come from
+// gunbc.host.sccache_verified_install, which composes them from the release row this file already
+// imports.
 fn rendered_sccache_install() -> String {
-  sccache_install_script(
+  sccache_verified_install_script(
     rel: sccache_release_0_15_0,
     arch: "aarch64",
     digest: sccache_release_0_15_0.digest_aarch64,
@@ -31,7 +40,7 @@ test fn witness_sccache_mv_is_non_interactive() -> Bool {
   string_contains(
     s: rendered_sccache_install(),
     pattern: join([
-      "\n'/usr/bin/sudo' '-n' 'mv' '/tmp/sccache-",
+      "\n'/usr/bin/sudo' '-n' 'mv' '-T' '/tmp/sccache-",
       sccache_release_0_15_0.version as String,
       "-aarch64-unknown-linux-musl/sccache' '",
       sccache_installed_binary_path,
@@ -40,11 +49,20 @@ test fn witness_sccache_mv_is_non_interactive() -> Bool {
   )
 }
 
+// '-T' on the move and the absolute `/bin/chmod` are the fingerprints that the privileged legs are the
+// extdeps authority's argv with `sudo -n` prefixed, rather than a second argv hand-written beside it
+// (stern-bat-401 (4)): `chmod_set_mode_command` renders `chmod_binary_path` as the program, and a
+// hand-written `["chmod", …]` rendered a bare word. Written as two conjuncts because the pattern must
+// be a literal, not a composed expression.
 test fn witness_sccache_chmod_is_non_interactive() -> Bool {
   string_contains(
     s: rendered_sccache_install(),
-    pattern: "\n'/usr/bin/sudo' '-n' 'chmod' '+x' ",
+    pattern: "\n'/usr/bin/sudo' '-n' '/bin/chmod' '+x' ",
   )
+    && string_contains(
+      s: rendered_sccache_install(),
+      pattern: "'mv' '-T' ",
+    )
 }
 
 test fn witness_docker_install_keyrings_is_non_interactive() -> Bool {

@@ -1,0 +1,45 @@
+module test.claim.anonymous_record_literal_roster_witness
+
+// THE CLASS THIS FILE HOLDS OPEN (gunbc.recurring_failure_mode an_anonymous_record_literal_skips_its_expected_roster).
+// v1.compiler.infer infer_record_lit_structural keyed every roster read on the literal's own name, so a literal
+// written without one -- `data xs: List<Spec> = [{ a: 1 }]`, the corpus's ordinary spelling of a typed list --
+// skipped MissingField, FieldNotFound and the field types, and typed as an anonymous product even though the
+// expected Spec had reached it. The repair is v1.compiler.infer anonymous_record_literal_expectation: an
+// anonymous literal at an expected required record is judged by that record's roster, resolved by identity.
+//
+// One RED per roster judgment (missing, unknown, mistyped field), at a list element and at a data initializer,
+// each paired with the same module minus the defect, because compile_dag_rust_emit_check returns false for more
+// than one reason. The named-literal control pins that the anonymous arm joined the named rule rather than
+// replacing it.
+
+fn arl_source(module_leaf: String, body: String) -> String {
+  concat(concat(concat("module arls.", module_leaf), "\n\n"), concat("type Spec {\n  a: Int\n  b: Int\n}\n\n", body))
+}
+
+test fn an_anonymous_list_element_refuses_a_missing_field_test() -> Bool {
+  !compile_dag_rust_emit_check(arl_source(module_leaf: "missing", body: "data xs: List<Spec> = [{ a: 1 }]\n\nfn f() -> Int {\n  xs |> count\n}\n"), "src/arls_missing.rs", [], [])
+}
+
+test fn an_anonymous_list_element_refuses_an_unknown_field_test() -> Bool {
+  !compile_dag_rust_emit_check(arl_source(module_leaf: "unknown", body: "data xs: List<Spec> = [{ a: 1, b: 2, c: 3 }]\n\nfn f() -> Int {\n  xs |> count\n}\n"), "src/arls_unknown.rs", [], [])
+}
+
+test fn an_anonymous_list_element_refuses_a_mistyped_field_test() -> Bool {
+  !compile_dag_rust_emit_check(arl_source(module_leaf: "wrongty", body: "data xs: List<Spec> = [{ a: 1, b: \"x\" }]\n\nfn f() -> Int {\n  xs |> count\n}\n"), "src/arls_wrongty.rs", [], [])
+}
+
+test fn an_anonymous_list_element_with_the_full_roster_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(arl_source(module_leaf: "ctl_anon", body: "data xs: List<Spec> = [{ a: 1, b: 2 }]\n\nfn f() -> Int {\n  xs |> count\n}\n"), "src/arls_ctl_anon.rs", ["fn f"], ["compile_error"])
+}
+
+test fn a_named_list_element_with_the_full_roster_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(arl_source(module_leaf: "ctl_named", body: "data xs: List<Spec> = [Spec { a: 1, b: 2 }]\n\nfn f() -> Int {\n  xs |> count\n}\n"), "src/arls_ctl_named.rs", ["fn f"], ["compile_error"])
+}
+
+test fn an_anonymous_data_initializer_refuses_a_missing_field_test() -> Bool {
+  !compile_dag_rust_emit_check(arl_source(module_leaf: "direct", body: "data s: Spec = { a: 1 }\n\nfn f() -> Int {\n  s.a\n}\n"), "src/arls_direct.rs", [], [])
+}
+
+test fn an_anonymous_data_initializer_with_the_full_roster_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(arl_source(module_leaf: "direct", body: "data s: Spec = { a: 1, b: 2 }\n\nfn f() -> Int {\n  s.a\n}\n"), "src/arls_direct.rs", ["fn f"], ["compile_error"])
+}

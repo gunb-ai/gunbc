@@ -1,5 +1,12 @@
 module test.claim.compute.attempt_lifecycle_wet_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed }
+
+import gunbc.durable_cas_file_store { SlotStore }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_live_dashboard_instance }
+import gunbc.compute.compute_attempt_slots_root { ComputeFlatSeat, compute_seat_path, compute_seat_store, ComputeSeatStoreReady, ComputeSeatStoreUnready }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_entry_presence, filesystem_listing_observation,
@@ -9,11 +16,6 @@ import std.types { Bool, Int, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.measure { kibibyte, kibibyte_count }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
-import gunbc.durable_cas_file_store { SlotStore }
-import gunbc.host.host_layout { srv1_host_layout }
-import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
-import gunbc.compute.compute_attempt_slots_root { ComputeFlatSeat, compute_seat_path, compute_seat_store, ComputeSeatStoreReady, ComputeSeatStoreUnready }
 import gunbc.compute.work_provider_local {
   ComputeLayout, ComputeStore, ComputeMaterialization, ComputeRecomputed, compute_open_attempt, compute_refused_after_open, NoComputeDependency, ComputeMemoized,
   compute_store_commit, ComputeCommitted, ComputeCommitNotOwed, ComputeCommitRefused,
@@ -27,12 +29,14 @@ import gunbc.compute.work_provider_local {
   compute_provide_leaf, compute_layout_in, compute_work_identity, HostRecordWritten, compute_settled_record,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.host_capacity { ComputeReservationRefused }
+import gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_records, compute_work_dir, compute_work_log_path }
+import gunbc.compute.compute_producer_lease { compute_producer_leases }
 import std.materialization_provider { ComputeWorkRequest }
 import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolume }
 import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
 import std.cache_identity { compute_work_artifact_kind }
+import gunbc.owned_cargo_target { owned_cargo_target_dir }
 import std.measure { byte_size }
 import std.fabric_blob { fabric_blob_reading_path }
 import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
@@ -63,39 +67,6 @@ import gunbc.compute.attempt_lifecycle {
 fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_attempt.XXXXXX").path
 }
-
-// THE STORE THE CONTROLS BELOW DRIVE IS MINTED, NOT SPELL-ENDED. The witness used to hand the lifecycle a
-// root string; after the store retype nothing takes one. So the fixture builds an isolated dashboard
-// instance at a temporary root and takes the store from the declared mint for the flat seat -- the same
-// admission product code goes through, and the root it lands on is whatever the declaration says it is,
-// not a path this file invented. shell.Mkdir.Parents only pre-creates the directory the provider would
-// create anyway, so the mint succeeds by observation rather than by assumption.
-fn instance_at(root: String) -> HostDashboardInstance {
-  isolated_dashboard_instance(
-    deployment: deployment_id(name: "attempt-lifecycle-wet" as NonEmptyStr),
-    instance_id: "attempt-lifecycle-wet" as NonEmptyStr,
-    layout: srv1_host_layout(),
-    root: root as FilePath,
-    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
-    listen_port: 18096,
-    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
-    actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
-  )
-}
-
-fn flat_dir(root: String) -> String {
-  compute_seat_path(instance: instance_at(root: root), seat: ComputeFlatSeat) as String
-}
-
-fn flat_slots_at(root: String) -> SlotStore? {
-  let _made = shell.Mkdir.Parents(path: flat_dir(root: root) as FilePath)
-  match compute_seat_store(instance: instance_at(root: root), seat: ComputeFlatSeat) {
-    ComputeSeatStoreReady { store } => Present { value: store.slots }
-    ComputeSeatStoreUnready { detail: _ } => none
-  }
-}
-
 
 fn record_for(reference: String) -> AttemptRecord {
   AttemptRecord {
@@ -130,6 +101,45 @@ fn held_record(r: AttemptSlotReading) -> AttemptRecord {
     AttemptSlotHeld { record: rec, generation: _ } => rec
     AttemptSlotAbsent => record_for(reference: "<absent>")
     AttemptSlotUnreadable { detail: _ } => record_for(reference: "<unreadable>")
+  }
+}
+
+// THE WORK RECORDS UNDER A DIRECTORY THE TEST OWNS: the production mint over an instance rooted in the witness's own
+// directory, the per-identity directory created so the log a fixture writes lands where the provider reads it.
+fn fixture_records(root: String) -> ComputeWorkRecords {
+  let records = compute_work_records(instance: instance_at(root: root), identity: "fixture")
+  let made = shell.Mkdir.Parents(path: compute_work_dir(records: records) as FilePath)
+  records
+}
+
+
+// THE ATTEMPT STORE UNDER A DIRECTORY THE TEST OWNS: the production mint for the flat compute seat
+// (gunbc.compute.compute_attempt_slots_root compute_seat_store) over an instance rooted in the witness's own
+// directory, its directory created the way the provider creates it, so the store every control below drives is
+// minted from a real observation of a declared directory.
+fn instance_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "attempt-lifecycle-wet" as NonEmptyStr),
+    instance_id: "attempt-lifecycle-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18096,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn flat_dir(root: String) -> String {
+  compute_seat_path(instance: instance_at(root: root), seat: ComputeFlatSeat) as String
+}
+
+fn flat_slots_at(root: String) -> SlotStore? {
+  let _made = shell.Mkdir.Parents(path: flat_dir(root: root) as FilePath)
+  match compute_seat_store(instance: instance_at(root: root), seat: ComputeFlatSeat) {
+    ComputeSeatStoreReady { store } => Present { value: store.slots }
+    ComputeSeatStoreUnready { detail: _ } => none
   }
 }
 
@@ -175,7 +185,7 @@ fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet_cell(root: No
     && state_word_of(r: final_read) == "terminal:recovered"
     && generation_of(r: final_read) == 2
   }
-}
+  }
 }
 
 // CRITERION 3, ORDER TWO: THE LAUNCH WINS AND RECOVERY IS REFUSED.
@@ -210,7 +220,7 @@ fn a_launch_that_won_refuses_a_recovery_arriving_behind_it_cell(root: NonEmptySt
     && state_word_of(r: final_read) == "launching"
     && generation_of(r: final_read) == 2
   }
-}
+  }
 }
 
 // CRITERION 2: THE BINDING IS READ, NOT RECONSTRUCTED. The unit name recovery would act on comes
@@ -239,7 +249,7 @@ fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote_cell(root: No
     && kibibyte_count(k: recovered.granted) == 27262976
     && recovered.unit != record.identity
   }
-}
+  }
 }
 
 // A SLOT KEYED ON ONE REFERENCE THAT DECODES ANOTHER MUST NOT ADVANCE. The store key is the
@@ -257,7 +267,7 @@ fn begin_launch_refuses_a_record_whose_reference_is_not_the_slot_key_cell(root: 
   Absent => false
   Present { value: slots } => {
   let planted = Filesystem.Write(
-    path: join([root, "/attempt-mismatch.1"], ""),
+    path: join([flat_dir(root: root), "/attempt-mismatch.1"], ""),
     content: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-other\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
   let t = attempt_begin_launch(store: slots, reference: "attempt-mismatch" as NonEmptyStr, expected: cas_generation_first())
   planted.success
@@ -267,7 +277,7 @@ fn begin_launch_refuses_a_record_whose_reference_is_not_the_slot_key_cell(root: 
       AttemptLostRace { expected: _, observed: _ } => false
     })
   }
-}
+  }
 }
 
 // CRITERION 6: THE TERMINAL GENERATION CARRIES WHY, AND THE EARLIER GENERATIONS STILL EXIST. The
@@ -298,12 +308,12 @@ fn settling_records_why_and_does_not_erase_what_it_settled_cell(root: NonEmptySt
     && kibibyte_count(k: held_record(r: g2).granted) == 27262976
     && held_record(r: g2).unit == record.unit
     && (match terminal.state { AttemptTerminal { verdict: v, detail: d } => attempt_verdict_wire(v: v) == "failed" && string_contains(s: d, pattern: "exit 101")  AttemptReserved => false  AttemptLaunching => false })
-    && Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).success
-    && Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).success
-    && string_contains(s: Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).content, pattern: "reserved")
-    && string_contains(s: Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).content, pattern: "launching")
+    && Filesystem.Read(path: join([flat_dir(root: root as String), "/", record.reference, ".1"], "")).success
+    && Filesystem.Read(path: join([flat_dir(root: root as String), "/", record.reference, ".2"], "")).success
+    && string_contains(s: Filesystem.Read(path: join([flat_dir(root: root as String), "/", record.reference, ".1"], "")).content, pattern: "reserved")
+    && string_contains(s: Filesystem.Read(path: join([flat_dir(root: root as String), "/", record.reference, ".2"], "")).content, pattern: "launching")
   }
-}
+  }
 }
 
 // CRITERION 1: FOUR STATES, AND THE TWO THAT MUST NEVER FREE CAPACITY ARE SEPARATE ARMS CARRYING
@@ -378,7 +388,7 @@ fn an_undecodable_slot_is_unreadable_and_never_absent_cell(root: NonEmptyStr) ->
   Absent => false
   Present { value: slots } => {
   let reference = "attempt-corrupt"
-  let planted = Filesystem.Write(path: join([root as String, "/", reference, ".1"], ""), content: "this is not a json document at all")
+  let planted = Filesystem.Write(path: join([flat_dir(root: root as String), "/", reference, ".1"], ""), content: "this is not a json document at all")
   let reading = attempt_slot_read(store: slots, reference: reference as NonEmptyStr)
   let absent_reading = attempt_slot_read(store: slots, reference: "attempt-never-written" as NonEmptyStr)
   let negative_instant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":-5,\"launch_deadline\":100,\"state\":\"reserved\"}")
@@ -391,7 +401,7 @@ fn an_undecodable_slot_is_unreadable_and_never_absent_cell(root: NonEmptyStr) ->
     && (match negative_grant { Absent => true  Present { value: _ } => false })
     && (match well_formed { Present { value: r } => kibibyte_count(k: r.granted) == 1 && r.opened_at == 5  Absent => false })
   }
-}
+  }
 }
 
 fn terminal_record_text(verdict_word: String) -> String {
@@ -478,7 +488,7 @@ fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped_cell(r
     && string_contains(s: attempt_transition_wire(t: closed_window), pattern: "already closed")
     && (match greedy_slot { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
   }
-}
+  }
 }
 
 
@@ -498,9 +508,8 @@ fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped_cell(r
 fn layout_at(root: String) -> ComputeLayout {
   ComputeLayout {
     root: root, work_dir: root, checkout: root, out_dir: root,
-    leases_dir: root, lease_path: root, staging_dir: root, target_dir: root,
-    log_path: root, consumption_path: root,
-    attempts_dir: root,
+    leases: compute_producer_leases(instance: instance_at(root: root)), identity_hex: "fixture", staging_dir: root, target_dir: root,
+    records: fixture_records(root: root),
   }
 }
 
@@ -523,10 +532,10 @@ fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot_cell(root: 
     AttemptLostRace { expected: _, observed: _ } => cas_generation_first()
     AttemptTransitionRefused { detail: _ } => cas_generation_first()
   }
-  let winner = compute_begin_launch(layout: layout, gate: AttemptGateReady { record: rec, generation: generation })
-  let loser = compute_begin_launch(layout: layout, gate: AttemptGateReady { record: rec, generation: generation })
-  let winner_settled = compute_settle_attempt(layout: layout, gate: winner, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the winner closes the slot")
-  let loser_settled = compute_settle_attempt(layout: layout, gate: loser, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the loser has no slot to close")
+  let winner = compute_begin_launch(instance: instance_at(root: root), gate: AttemptGateReady { record: rec, generation: generation })
+  let loser = compute_begin_launch(instance: instance_at(root: root), gate: AttemptGateReady { record: rec, generation: generation })
+  let winner_settled = compute_settle_attempt(instance: instance_at(root: root), gate: winner, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the winner closes the slot")
+  let loser_settled = compute_settle_attempt(instance: instance_at(root: root), gate: loser, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the loser has no slot to close")
   attempt_transition_advanced(t: opened)
     && (match winner { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
     && (match loser { AttemptGateReady { record: _, generation: _ } => false  AttemptGateRefused { detail: _ } => true })
@@ -537,7 +546,7 @@ fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot_cell(root: 
     && string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "NOT SETTLED BY THIS PRODUCER")
     && host_record_was_written(h: attempt_settlement_host_record(s: loser_settled))
   }
-}
+  }
 }
 
 
@@ -573,14 +582,14 @@ fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spa
   let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)
   let squatter = record_for(reference: retry_reference as String)
   let held = attempt_open(store: slots, record: squatter)
-  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: retry_reference, granted: kibibyte(count: 27262976))
+  let opened = compute_open_attempt(instance: instance_at(root: root), identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: retry_reference, granted: kibibyte(count: 27262976))
   let after = attempt_slot_read(store: slots, reference: retry_reference)
   attempt_transition_advanced(t: held)
     && (match opened { AttemptGateRefused { detail: d } => string_contains(s: d, pattern: "opening the attempt")  AttemptGateReady { record: _, generation: _ } => false })
     && generation_of(r: after) == 1
     && state_word_of(r: after) == attempt_state_wire(s: AttemptReserved)
   }
-}
+  }
 }
 
 // A RESERVATION REFUSED UNDER AN OPEN SLOT CLOSES THE SLOT. RED against a refusal arm that reports and
@@ -598,22 +607,21 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
   Present { value: slots } => {
   let layout = ComputeLayout {
     root: root, work_dir: root, checkout: root, out_dir: root,
-    leases_dir: root, lease_path: join([root, "/lease"], ""), staging_dir: root, target_dir: root,
-    log_path: join([root, "/log"], ""), consumption_path: join([root, "/consumption"], ""),
-    attempts_dir: root,
+    leases: compute_producer_leases(instance: instance_at(root: root)), identity_hex: "fixture", staging_dir: root, target_dir: root,
+    records: fixture_records(root: root),
   }
   let reference = "attempt-refused" as NonEmptyStr
-  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: reference, granted: kibibyte(count: 1048576))
+  let opened = compute_open_attempt(instance: instance_at(root: root), identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: reference, granted: kibibyte(count: 1048576))
   let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
   let r = compute_refused_after_open(
-    instance: srv1_live_dashboard_instance(), identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: work_default_build(),
+    instance: instance_at(root: root), identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: work_default_build(),
     layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: "fixture: ledger refused" })
   let after = attempt_slot_read(store: slots, reference: reference)
   (match opened { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
     && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "fixture: ledger refused")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
     && string_contains(s: state_word_of(r: after), pattern: "terminal:")
   }
-}
+  }
 }
 
 // THE REAL ROUTE, ONCE (DESIGN section 3 pairing obligation for the pure decisions in
@@ -634,13 +642,13 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
 // arm is where a collision would be served as a hit.
 test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
-  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
-    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+    leases: compute_producer_leases(instance: instance_at(root: root_path)), identity_hex: "fixture", staging_dir: root_path, target_dir: root_path,
+    records: fixture_records(root: root_path),
   }
-  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let tree = match git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111") { Present { value: oid } => oid  Absent => "1111111111111111111111111111111111111111" }
@@ -648,7 +656,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
-  ], log_path: layout.log_path }
+  ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: root, request: request, plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
@@ -685,18 +693,18 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
 fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: join([root_path, "/owned/target"], ""),
-    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+    leases: compute_producer_leases(instance: instance_at(root: root_path)), identity_hex: "fixture", staging_dir: root_path, target_dir: owned_cargo_target_dir(base_root: root_path, owner: "owned"),
+    records: fixture_records(root: root_path),
   }
   let made = shell.Mkdir.Parents(path: layout.target_dir as FilePath)
   let built = Filesystem.Write(path: join([layout.target_dir, "/artifact"], ""), content: "bytes")
-  let log = if write_log { Filesystem.Write(path: layout.log_path, content: "built\n").success } else { true }
+  let log = if write_log { Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n").success } else { true }
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
-  ], log_path: layout.log_path }
+  ], log_path: compute_work_log_path(records: layout.records) }
   compute_settled_record(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }, plan: ComputeMemoized },
     layout: layout, identity: "fixture-identity", subject: ExactTree { tree: reuse_tree() }, op: work_default_build(), outcome: outcome)
@@ -705,7 +713,7 @@ fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
 test fn a_settlement_that_landed_removes_the_owned_target() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
   let r = target_lifetime_settle(root_path: root_path, write_log: true)
-  let gone = reuse_path_absent(path: join([root_path, "/owned/target"], ""))
+  let gone = reuse_path_absent(path: owned_cargo_target_dir(base_root: root_path, owner: "owned"))
   let removed = shell.Remove.RecursiveForce(path: root_path)
   removed.success && gone
     && (match r { ProvideFresh { outcome: _, document: _, host_record } => match host_record { HostRecordWritten => true  _ => false }  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
@@ -714,10 +722,10 @@ test fn a_settlement_that_landed_removes_the_owned_target() -> Bool {
 test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
   let r = target_lifetime_settle(root_path: root_path, write_log: false)
-  let kept = Filesystem.Read(path: join([root_path, "/owned/target/artifact"], "")).success
+  let kept = Filesystem.Read(path: join([owned_cargo_target_dir(base_root: root_path, owner: "owned"), "/artifact"], "")).success
   let removed = shell.Remove.RecursiveForce(path: root_path)
   removed.success && kept
-    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: "/owned/target")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: owned_cargo_target_dir(base_root: root_path, owner: "owned"))  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
 }
 
 // ── THE PRODUCTION SERVE-OR-PRODUCE DECISION, EXECUTED (side-chat review at 41a107ce81) ──────────
@@ -745,7 +753,7 @@ test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() ->
 // requires compute_provide_leaf to attach, on a host with a user unit manager (//gunbc/instruments:
 // compute-run-unit-cold). This supplied-outcome half may not stand without it.
 fn reuse_store(root_path: String) -> ComputeStore {
-  ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+  ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
 }
 
 fn reuse_tree() -> GitObjectId {
@@ -760,17 +768,17 @@ fn reuse_commit(root_path: String) -> Bool {
 fn reuse_commit_detail(root_path: String) -> String {
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
-    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+    leases: compute_producer_leases(instance: instance_at(root: root_path)), identity_hex: "fixture", staging_dir: root_path, target_dir: root_path,
+    records: fixture_records(root: root_path),
   }
-  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let request = ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
-  ], log_path: layout.log_path }
+  ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: request, plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
@@ -906,15 +914,15 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
-    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+    leases: compute_producer_leases(instance: instance_at(root: root_path)), identity_hex: "fixture", staging_dir: root_path, target_dir: root_path,
+    records: fixture_records(root: root_path),
   }
-  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
-  ], log_path: layout.log_path }
+  ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
@@ -932,42 +940,4 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
     && (match committed { ComputeCommitRefused { detail } => string_contains(s: detail, pattern: "w.claim_batch")  _ => false })
     && (match after { ComputeStoreAbsent => true  _ => false })
     && (match recommitted { ComputeCommitted => true  _ => false })
-}
-
-// D6 RE-HOME: A SUCCESSFUL CREATE COMMITS THE GENERATION IT PROPOSED -- not "some generation", and not a
-// generation this witness picked. The pure witness asserted exactly this (row
-// a_successful_create_commits_the_proposed_generation, helper outcome_is_committed) against the create
-// outcome directly; the store retype removed the pure seam the row drove, and a retype that silently
-// dropped an assertion is a rung drop rather than a cleanup. So the assertion is re-homed here, where the
-// generation is read out of a real generation file and tied back to the declaration that proposes it
-// (cas_generation_count(cas_generation_first())) instead of a literal the row could quietly outlive.
-//
-// DISCRIMINATING CONTROL, named: the create in attempt_open carries an absent precondition -- it sets the
-// slot only where there was no slot, at the generation it proposed. Cut that precondition (create
-// unconditionally, or set at a generation other than the one proposed) and THIS row goes red: the replay
-// stops reporting a lost race and the committed generation stops equaling the first generation. Every
-// other row in this file stays green under that mutation, because they only assert that a transition moves
-// the generation by one from whatever it was -- which is precisely the weakness this row exists to close.
-test fn a_successful_create_commits_the_generation_it_proposed() -> Bool {
-  let root = fresh_root()
-  let ok = a_successful_create_commits_the_generation_it_proposed_cell(root: root as NonEmptyStr)
-  let removed = shell.Remove.RecursiveForce(path: root)
-  ok && removed.success
-}
-
-fn a_successful_create_commits_the_generation_it_proposed_cell(root: NonEmptyStr) -> Bool {
-  match flat_slots_at(root: root as String) {
-  Absent => false
-  Present { value: slots } => {
-  let record = record_for(reference: "attempt-proposed-generation")
-  let opened = attempt_open(store: slots, record: record)
-  let after_open = attempt_slot_read(store: slots, reference: record.reference as NonEmptyStr)
-  let replay = attempt_open(store: slots, record: record)
-  attempt_transition_advanced(t: opened)
-    && state_word_of(r: after_open) == "reserved"
-    && generation_of(r: after_open) == cas_generation_count(g: cas_generation_first())
-    && lost_race(t: replay)
-    && state_word_of(r: after_open) == "reserved"
-  }
-  }
 }

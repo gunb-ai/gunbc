@@ -1,0 +1,48 @@
+module v2.test.claim.unary_not_eval
+
+import v2.test.claim.callexec.declaration_reference_eval { cref_assemble, cref_eval_of_call_to }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import std.optional { Absent, Present }
+
+// THE EVAL PATH FOR UNARY `!` IS A DECLARED FRONTIER, NOT A CLAIM. v2.compiler.eval (through
+// v2.extdeps.runtimes.v2_evaluator) evaluates NO canonical-operation wire today: `true && false`, `1 + 2 == 3`
+// and `!true` all refuse with the evaluator's one typed deferral, v2_eval_semantics_deferred
+// (v2_eval_runtime_diagnostic), while a literal body executes. So `!` is not a new unsupported case: it
+// joins every operator at the same frontier. These controls run the production route (assemble, infer,
+// eval of the call) and pin that parity; they turn red, and are then rewritten as value controls (`!true`
+// executes to the value `false` does, `!true` and `!false` differ), when the trigger lands.
+// TRIGGER, named as a capability: the v2 evaluator evaluates AlgebraPrimitive canonical-operation wires
+// (meet, join, complement) on Bool. Until then the native emit path (v2-bootstrap) is the only executing
+// route for `!`, and it is green.
+
+fn not_eval_reason(body: String) -> String {
+  match cref_eval_of_call_to(o: cref_assemble(src: concat(concat("module p\n\nfn callee(only_arg: Int) -> Bool {\n  ", body), "\n}\n\nfn consumer() -> Bool {\n  callee(only_arg: 3)\n}\n")), name: ^callee) {
+    Absent => "no_call"
+    Present { value: o } =>
+      match o {
+        Accepted { value: _, diagnostics: _ } => "executed"
+        Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+      }
+  }
+}
+
+test fn a_literal_body_executes_holds() -> Bool {
+  not_eval_reason(body: "false") == "executed"
+}
+
+test fn unary_not_meets_the_operator_eval_frontier_holds() -> Bool {
+  not_eval_reason(body: "!true") == "v2_eval_semantics_deferred"
+}
+
+test fn unary_not_and_meet_share_one_eval_frontier_holds() -> Bool {
+  not_eval_reason(body: "!true") == not_eval_reason(body: "true && false")
+}
+
+// One readable receipt, for `gunbc run --function unary_not_eval_receipt`.
+fn unary_not_eval_receipt() -> String {
+  concat(concat(concat(concat(concat(
+    "literal=", not_eval_reason(body: "false")),
+    "\nnot_true="), not_eval_reason(body: "!true")),
+    "\nand="), not_eval_reason(body: "true && false"))
+}

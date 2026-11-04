@@ -37,9 +37,9 @@ import std.measure { byte_size_count }
 // models the endpoints it calls.
 //
 // AN EARLIER REVISION AUTHORED THIS AS A STANDALONE DissolutionCondition, which put the module's
-// whole declared-frontier state in a shape no fold can read: gunbc.census_closure_frontier folds
-// List<FrontierRow>, there is no List<DissolutionCondition> anywhere in the corpus, and the row
-// was therefore invisible to gunbc.dissolution_census. A trigger stated only in prose is not
+// whole declared-frontier state in a shape no fold can read: the (since retired) roster fold read
+// List<FrontierRow>, there was no List<DissolutionCondition> anywhere in the corpus, and the row
+// was therefore invisible to it. A trigger stated only in prose is not
 // stated to the machine, which is the same defect as a data row no fold reads - and it was written
 // in the same change that used FrontierRow correctly one file over.
 data ci_workflow_scan_producer_frontier_rows: List<FrontierRow> = [

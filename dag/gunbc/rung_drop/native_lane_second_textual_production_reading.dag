@@ -37,12 +37,11 @@ data native_lane_second_textual_production_reading: RungDrop = RungDrop {
   identity: "native_lane_second_textual_production_reading" as NonEmptyStr,
   subject: "single authority over the `module` production, for the census route's file names",
   declared: "2026-09-12",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "the census route names each source by the name its population read bound it to, so no header text is read" },
     population: Enumerated { members: native_lane_second_textual_production_reading_population },
     restoration_trigger: "The census and refused-file routes carry the module name the population read BOUND each source to (a file's name is its path's, source layout R5) instead of reading the `module` line again, so native_lane_declared_module_name is DELETED. That must be sufficient for BOTH consumers -- native_refused_file_module and native_census_modules -- including for a file whose front end refused: a header scan retained for refused files alone would leave the second reading alive for exactly the files whose refusals a census exists to report."
-  }
+  } }
 }

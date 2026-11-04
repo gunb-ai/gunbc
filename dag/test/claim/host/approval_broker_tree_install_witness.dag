@@ -2,6 +2,7 @@ module test.claim.host.approval_broker_tree_install_witness
 
 import gunbc.host.host_effect_realize {
   TreeFileHash,
+  one_transport_route,
   tree_file_hashes_of_stdout,
   tree_entries_agree,
   tree_hash_lines,
@@ -20,7 +21,7 @@ import gunbc.host.host_effect_realize {
   TreeStepSourceObserve,
   TreeStepRevision,
 }
-import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -88,7 +89,8 @@ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> 
     base_root: "/nonexistent-w6-base",
     source_root: "/nonexistent-w6-source",
     revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
-    transport: LocalShell,
+    executables: approval_broker_release_locus_executables,
+    transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepSourceObserve)
 }
 
@@ -98,14 +100,15 @@ test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
     base_root: "/nonexistent-w6-base",
     source_root: "/nonexistent-w6-source",
     revision: RevisionNotInstalled,
-    transport: LocalShell,
+    executables: approval_broker_release_locus_executables,
+    transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepRevision)
 }
 
 // A binary that cannot be hashed on either side is a disagreement (the real LocalShell sha256sum fails),
 // and the disagreement names the unobserved side.
 test fn a_binary_with_no_readable_hash_does_not_agree() -> Bool {
-  match tree_binary_agreement(source_path: "/nonexistent-w6-source/a", installed_path: "/nonexistent-w6-base/a", transport: LocalShell) {
+  match tree_binary_agreement(source_path: "/nonexistent-w6-source/a", installed_path: "/nonexistent-w6-base/a", transport: one_transport_route(transport: LocalShell)) {
     Sha256SideUnobserved { side: SourceSide, cause: _ } => true
     Sha256SideUnobserved { side: InstalledSide, cause: _ } => false
     Sha256Agrees => false

@@ -6,10 +6,17 @@ import std.algebra { list_at_optional }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import gunbc.host.host_effect_realize {
   MicrovmControllerInstallStep, MicrovmControllerInstallReady, MicrovmControllerInstallRefused,
+  MicrovmControllerArgvStep, MicrovmControllerVerifyStep, MicrovmControllerReceiptStep, MicrovmControllerTreeStep,
   microvm_controller_install_staging, microvm_controller_starts_no_instance_refusal,
   microvm_controller_step_text, microvm_controller_step_name, microvm_controller_step_stdin,
   microvm_controller_step_words, microvm_controller_argv_step,
+  HostEffectElevationRoute, elevation_route_transport,
 }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell }
+import extdeps.sudo.elevation { sudo_elevate_command, argv_command_is_sudo_elevated }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv }
+import extdeps.tools.mkdir { mkdir_parents_command }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import extdeps.systemd.systemctl { systemctl_start_command }
 
@@ -55,7 +62,7 @@ fn microvm_w5_revision() -> ReleaseRevisionBinding {
 }
 
 fn microvm_w5_steps() -> List<MicrovmControllerInstallStep> {
-  match microvm_controller_install_staging(revision: microvm_w5_revision()) {
+  match microvm_controller_install_staging(revision: microvm_w5_revision(), checkout_root: "/fixture/checkout") {
     MicrovmControllerInstallReady { steps: steps } => steps
     MicrovmControllerInstallRefused { reason: _ } => []
   }
@@ -231,4 +238,67 @@ fn nth_text(items: List<String>, index: Int) -> String {
     Present { value: v } => v
     Absent => ""
   }
+}
+
+// ── THE ELEVATION SPLIT (gunbc.host.host_effect_realize HostEffectElevationRoute) ─────────────────
+// The install runs where the job runs and sends every elevated leg to the fleet administrator over
+// its SSH edge, whose working directory is not the job's checkout. So no elevated leg may name a
+// checkout-relative path, and the plan refuses a checkout root that is not absolute.
+
+fn microvm_w5_elevated_relative_words(step: MicrovmControllerInstallStep) -> List<String> {
+  match step {
+    MicrovmControllerArgvStep { command: c } =>
+      if argv_command_is_sudo_elevated(command: c) { filter(argv_words(command: c), w => starts_with(s: w, prefix: "target/")) } else { [] }
+    MicrovmControllerVerifyStep { name: _ } => []
+    MicrovmControllerReceiptStep { name: _ } => []
+    MicrovmControllerTreeStep { name: _ } => []
+  }
+}
+
+// GREEN: no elevated leg of the real plan names a checkout-relative path, and the staged sources the
+// installs read sit under the checkout root the plan was given.
+test fn microvm_w5_no_elevated_leg_names_a_checkout_relative_path() -> Bool {
+  let elevated_sources = flat_map(microvm_w5_steps(), s => match s {
+    MicrovmControllerArgvStep { command: c } => if argv_command_is_sudo_elevated(command: c) { filter(argv_words(command: c), w => starts_with(s: w, prefix: "/fixture/checkout/")) } else { [] }
+    _ => []
+  })
+  list_length(items: microvm_w5_steps()) > 0
+    && all(microvm_w5_steps(), s => list_length(items: microvm_w5_elevated_relative_words(step: s)) == 0)
+    && list_length(items: elevated_sources) >= 3
+}
+
+// RED: the same reader reports an elevated install whose source is checkout-relative, built by the
+// production builders, so the claim above cannot pass by never firing.
+test fn microvm_w5_an_elevated_relative_source_is_reported() -> Bool {
+  let planted = microvm_controller_argv_step(
+    name: "planted relative install",
+    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+      mode: "0644" as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr,
+      source: "target/microvm-controller-stage/firecracker", dest: "/opt/gunbc/x")),
+  )
+  list_length(items: microvm_w5_elevated_relative_words(step: planted)) == 1
+}
+
+// RED AT THE PLAN: a relative checkout root refuses before any step exists.
+test fn microvm_w5_a_relative_checkout_root_refuses_the_plan() -> Bool {
+  match microvm_controller_install_staging(revision: microvm_w5_revision(), checkout_root: "fixture/checkout") {
+    MicrovmControllerInstallRefused { reason: r } => string_contains(s: r, pattern: "is not absolute")
+    MicrovmControllerInstallReady { steps: _ } => false
+  }
+}
+
+// THE ROUTE READS ELEVATION FROM THE COMMAND: a sudo leg goes to the elevated side, an unelevated leg
+// to the job's own side, whichever transports the route holds.
+fn microvm_w5_is_local(t: HostEffectTransport) -> Bool {
+  match t {
+    LocalShell => true
+    _ => false
+  }
+}
+
+test fn microvm_w5_the_route_sends_only_elevated_legs_to_the_elevated_side() -> Bool {
+  let route = HostEffectElevationRoute { unelevated: LocalShell, elevated: SshShell { ssh_host: "elevated.invalid" as NonEmptyStr } }
+  let elevated = sudo_elevate_command(command: argv_words(command: mkdir_parents_command(path: "/opt/gunbc/x")))
+  !microvm_w5_is_local(t: elevation_route_transport(route: route, command: elevated))
+    && microvm_w5_is_local(t: elevation_route_transport(route: route, command: mkdir_parents_command(path: "/tmp/x")))
 }

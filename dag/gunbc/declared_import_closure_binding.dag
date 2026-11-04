@@ -10,8 +10,10 @@ import gunbc.compile_clean_diagnostic_policy {
   AmbiguousLeaf
 }
 
-// THE CLASS B OBSERVATION SURFACE for declared-import-closure binding (#6985). Host twin of
-// observe_declared_import_closure_symbol_binding: compile an entry under primary-precedence
+// THE CLASS B OBSERVATION SURFACE for declared-import-closure binding (#6985). Its .dag builtin
+// (observe_declared_import_closure_symbol_binding) had no caller and was deleted; the host
+// classifier v1_compiler.cli_run declared_import_closure_binding_observation_from_resolved remains
+// and its unit tests produce this shape. What it observed: compile an entry under primary-precedence
 // pool_roots using ONLY its declared import-edge closure (no reference-derived widening), then
 // report whether consumer_module binds symbol and through which UnlistedImportBindingSource arm.
 // MEASUREMENT ONLY — callers judge ListedImport vs PoolCoincidence vs refusal.

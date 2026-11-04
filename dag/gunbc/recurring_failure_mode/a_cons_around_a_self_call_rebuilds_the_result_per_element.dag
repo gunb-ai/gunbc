@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.a_cons_around_a_self_call_rebuilds_the_result_per_element
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_cons_around_a_self_call_rebuilds_the_result_per_element: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_cons_around_a_self_call_rebuilds_the_result_per_element" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a REQUIRED control that times an emitted tail-position Cons self-call across doublings of n and goes red outside a linear band, SUFFICIENT FOR a revert of v1.compiler.emit_rust is_trmc_eligible to turn v2-bootstrap red; //gunbc/instruments:cons-tail-recursion case take_n.linear is that control everywhere except that it is not on the required path."
+    }
+  },
+
+  receipts: [
+    "INVALID STATE: a self-recursive function returning a list whose recursive call is the tail of a Cons in tail position, `Cons { head: h, tail: f(args) }`, is emitted as plain recursion: each level evaluates f's whole result, clones that vector and inserts h at index 0, under a stacker frame per element. The value is right; the cost is a materialized, copied vector per element where the result is only the heads in order followed by the base.",
+    "HARM: every list built this way pays an allocation, a clone and a front insertion per element, at every recursion depth. std.algebra take_prefix sits inside list_sort_by_key's split at every level of the merge sort, so the sort pays it n log n times; the same shape is live in zip_map and list_init, and was re-authored by hand three times before the rule existed (list_map, list_flat_map, the sort merge, in #15044).",
+    "ATTRIBUTION, MEASURED BEFORE THE REPAIR WAS CHOSEN: the emitted list_sort_by_key path (#15077 head 4328288) transcribed into one crate, remote amd64, 2026-10-25, im 15.1.0, a descending input, best of 5, every arm equal to host sort at every n; the transcription reproduces the member-home-cost label (45.3 ms against the label's 44.5 ms at n = 16000). Removing one suspect at a time at n = 16000: take_prefix replaced by one structural take saves 29.5 ms (65%), and a timer around take_prefix reads 78.5% of the run; the SortKeyed wrap and the Rc'd comparator together save 5.1 ms (11%); the rest is the merge's pushes and splits. A one-off reading, not an instrument.",
+    "CAUSE, THE EARLIEST UNJUSTIFIED BOUNDARY: the emitter lowers a Cons around a self-call as a value built from the recursive result, when the only thing the Cons asks is that its head precede that result. The authored functions are the natural structural recursions and are not the defect; re-authoring each as an accumulator fold moved the cost leaf by leaf and left the rule in place for the next one.",
+    "THE REPAIR: tail recursion modulo cons in v1.compiler.emit_rust (is_trmc_eligible, trmc_tail_ok, emit_rust_tco_default_return). A function returning a list whose self-calls are all either in tail position or exactly the tail field of a tail-position Cons with a non-recursive head is lowered as the TCO loop with `__trmc_out`: a Cons step pushes its head and continues with the call's arguments, and every other exit returns `__trmc_out` followed by its value. The admission is fail-closed: any self-call the walk does not admit, a Cons self-call outside tail position, or a head that reads the recursive result keeps the ordinary lowering. The cursor analysis judges a Cons step's arguments as a self-call's, so a list walked this way is a #15014 cursor and pays no per-step skip.",
+    "EXECUTED, 2026-10-25, remote amd64, one dispatch, on the head whose mirrors heal converged to this rule (the dispatch asserted the rule is in the emitter mirror before timing). The regenerated std.algebra take_prefix is the TCO loop: `__trmc_out` declared before it, the list a #15014 cursor read through its Focus, each step `__trmc_out = rc_list_push(__trmc_out, h)` and an index advance, both exits `rc_list_concat(__trmc_out, ..)`; no recursion, clone or front insertion remains. //gunbc/instruments:cons-tail-recursion exited 0 with all seven cases held, take_n.linear at 2000:24216, 4000:48372, 8000:98147, 16000:195763 ns; the refused shapes were read in the emitted crate and kept the ordinary lowering (stacker recursion with the front insertion) and still agreed with their references. //gunbc/instruments:member-home-cost exited 0, every case held: sort_by at 16000 is 11584021 ns against 5590818 host, 2.07x, linear, agreeing with host at every n (it was 7.9x on the cursor-rule head and 19.9x before #15041); fold, map and all stay held. //gunbc/instruments:last-use-move stays 5/5.",
+    "KEYED ON THE RESOLVED CARRIER, AND THE RED THAT SHOWS IT (review: DESIGN section 4). A step is admitted only when the literal resolves to the FreeMonoid carrier's Cons (record_lit_is_host_freemonoid_cons over record_lit_variant_parent, the one judgment the Cons lowering also reads); no spelling of the return type or the constructor is consulted. Discriminating fixture user_list_not_lowered: gunbc.instruments.cons_tail_recursion_user_list declares its own Chain = End | Cons { head: Int, tail: Chain }, and user_upto has exactly the lowered shape. MUTATION RECEIPT, remote amd64, 2026-10-25, one dispatch per arm on the same head: carrier-keyed, user_upto kept the ordinary lowering and //gunbc/instruments:cons-tail-recursion exited 0 with all eight cases held; with ONLY the admission reverted to the spelling Cons in the seed's emitter mirror, user_upto was lowered onto __trmc_out and the label exited 2, rustc E0308 (mismatched types) in the emitted user module. The return-type-spelling half of the old admission has no well-typed specimen: a `List` reference resolves to the kernel's List<T> even in a module that declares its own (a module-local generic List<Int> return was emitted as Rc<Vec<i64>> while its literals built the module's enum). cons_not_in_tail and head_reads_result are positive fail-closed specimens, not boundary proof: value equality cannot tell an over-broad admission from a correct one.",
+    "FOLLOW-UP, NAMED NOT DONE HERE: the hand re-authorings this rule obsoletes, std.algebra list_map, list_flat_map and the sort merge (#15044), are scaffolding to retire in tidy-ant-251's lane once this lands.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_trmc_eligible"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "trmc_tail_ok"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_tco_default_return"),
+    decl_ref(module_path: "std.algebra", decl_name: "take_prefix"),
+    decl_ref(module_path: "std.algebra", decl_name: "zip_map"),
+    decl_ref(module_path: "std.algebra", decl_name: "list_init"),
+  ],
+}

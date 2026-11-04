@@ -8,7 +8,9 @@ import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
 import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_kvm_observer_dir
+}
 import gunbc.machine_intake.mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
 import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -25,8 +27,8 @@ import gunbc.machine_intake.megarac_kvm_observer_observe {
 // host the unit hold store lives on, the workflow run id that owns the hold, and the credential file the
 // workflow prelude materializes.
 
-// The probe's directories share the boot's observer prefix (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle
-// mtcollins1_kvm_observer_dir), derived from that authority rather than re-spelled.
+// The probe's directories share the boot's observer prefix (mtcollins1_kvm_observer_dir, this row's
+// own artifact convention in gunbc.machine_intake.mtcollins1_boot_row), derived rather than re-spelled.
 data mtcollins1_kvm_observer_probe_paths: KvmObserverProbePaths = KvmObserverProbePaths { dir_prefix: mtcollins1_kvm_observer_dir(attempt: "") }
 
 data mtcollins1_kvm_observer_probe_artifact_glob: String = megarac_kvm_observer_probe_artifact_glob(paths: mtcollins1_kvm_observer_probe_paths)

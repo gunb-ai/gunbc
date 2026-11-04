@@ -50,6 +50,19 @@ fn observed_receipt(receipt: DeclarationRef) -> ObservedReceipt
     decl_ref(module_path: "gunbc.host.host_software_surface", decl_name: "srv1_software_inhabitance_ground"),
     decl_ref(module_path: "gunbc.ci.ci_fleet", decl_name: "mtcollins1_socket0_cpu_part_standing"),
     decl_ref(module_path: "gunbc.harness.srv4_strata_wire_qualification", decl_name: "srv4_strata_wire_qualification_ground"),
+    decl_ref(module_path: "gunbc.host.srv1_serving_startup_receipt", decl_name: "srv1_serving_startup_ground"),
+    decl_ref(module_path: "product.p4261.evidence", decl_name: "p4261_e1_revision_standing"),
+    decl_ref(module_path: "product.p4261.evidence", decl_name: "p4261_k1_revision_standing"),
+    decl_ref(module_path: "product.p4261.evidence", decl_name: "p4261_e1_population_standings"),
+    decl_ref(module_path: "product.p4261.evidence", decl_name: "p4261_k1_population_standings"),
+    // The first-contact battery's zero-argument committed folds: each names its own capture manifest inside
+    // gunbc.machine_intake.bmc_first_contact_reading, so the receipt points at a fixed set of sha-checked
+    // files rather than at whatever a caller passed.
+    decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "srv13_first_contact_reading_2026_10_07"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "mtjade1_first_contact_reading_2026_10_06"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "h11ssl_unit1_first_contact_reading_2026_10_27"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "h11ssl_unit2_first_contact_reading"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "mtcollins1_first_contact_reading"),
   ]
   = ObservedReceipt { receipt: receipt }
 

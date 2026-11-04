@@ -1,0 +1,160 @@
+module gunbc.fleet.print_request
+import std.types { String, NonEmptyStr, Bool }
+import std.content_hash { Sha256Digest }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
+import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.printer_job_monitor { observe_job, JobObservation, JobRunning, JobCompletedAwaitingInspection, JobPaused, JobFailed, JobUnresolved }
+
+// ONE REQUEST IS ONE DESIRED PHYSICAL COPY. Printing the same root, recipe and printer twice takes two
+// request ids; a replacement for a bad part is a new request. The request names what to print and
+// where, never a path, a digest, a credential version or a bed-clear flag: preparation supplies the
+// artifact, the printer registry the credential, and the human acknowledgement is bound to the attempt.
+type PrintRequest {
+  request_id: NonEmptyStr
+  root: NonEmptyStr
+  recipe: NonEmptyStr
+  printer: PhysicalAssetIdentity
+}
+
+// THE REQUEST RECORD BINDS A REQUEST TO ITS ARTIFACT, once. It is written create-new after the first
+// preparation, so a later convergence on a newer source revision reuses the bytes it recorded instead
+// of preparing a different part for the same request. The location is a locator: every use re-hashes
+// the file against artifact_sha256, so a moved or altered file refuses rather than prints. It carries no credential: the version a start
+// uses is resolved when the start is selected and sealed into that attempt's signed subject.
+type PrintRequestRecord {
+  request: PrintRequest
+  source_revision: NonEmptyStr
+  artifact_sha256: Sha256Digest
+  artifact_location: NonEmptyStr
+  attempt_id: NonEmptyStr
+}
+
+fn text_sha256(s: String) -> String { sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: s))) }
+
+// The single attempt a request admits. An attempt whose outcome is ambiguous is never followed by
+// another automatically; a confirmed failure is replaced by a new request, not a new attempt.
+fn print_attempt_id(request: PrintRequest, artifact_sha256: Sha256Digest) -> NonEmptyStr {
+  concat("print-attempt-", text_sha256(s: serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "gunbc.print-attempt.v1")),
+    json_kv(key: "request_id", value: json_string(s: request.request_id as String)),
+    json_kv(key: "printer", value: json_string(s: request.printer as String)),
+    json_kv(key: "artifact_sha256", value: json_string(s: artifact_sha256.hex as String)),
+  ])))) as NonEmptyStr
+}
+
+fn request_record_name(request_id: NonEmptyStr) -> String { concat(text_sha256(s: request_id as String), ".request.json") }
+
+// A recorded request reused with a different root, recipe or printer is a different request under a
+// reused id, and refuses.
+fn record_matches(record: PrintRequestRecord, request: PrintRequest) -> Bool {
+  record.request.request_id == request.request_id && record.request.root == request.root &&
+  record.request.recipe == request.recipe && record.request.printer == request.printer
+}
+
+// THE OBSERVED FACTS A STANDING IS DERIVED FROM, each read fresh on every convergence. Nothing here is
+// a stored step number.
+type PrintEvidence
+  = NoRequestRecord
+  | RecordedNotClaimed { printer_ready: Bool }
+  | ClaimedObserved { job: JobObservation }
+  | CompletionRecorded
+  | CompletionRecordMismatched
+
+type PrintStanding
+  = NeedsPreparation
+  | PrinterBusy
+  | AwaitingBedClear
+  | Printing
+  | CompletedAwaitingRecord
+  | Completed
+  | NeedsAttention
+  | StartOutcomeUnknown
+
+fn print_standing(evidence: PrintEvidence) -> PrintStanding {
+  match evidence {
+    NoRequestRecord => NeedsPreparation
+    RecordedNotClaimed { printer_ready: r } => if r { AwaitingBedClear } else { PrinterBusy }
+    CompletionRecorded => Completed
+    CompletionRecordMismatched => NeedsAttention
+    ClaimedObserved { job: j } => match j {
+      JobRunning => Printing
+      JobCompletedAwaitingInspection => CompletedAwaitingRecord
+      JobPaused => NeedsAttention
+      JobFailed => NeedsAttention
+      JobUnresolved => StartOutcomeUnknown
+    }
+  }
+}
+
+fn print_standing_name(s: PrintStanding) -> String {
+  match s {
+    NeedsPreparation => "needs-preparation" PrinterBusy => "printer-busy" AwaitingBedClear => "awaiting-bed-clear"
+    Printing => "printing" CompletedAwaitingRecord => "completed-awaiting-record" Completed => "completed"
+    NeedsAttention => "needs-attention" StartOutcomeUnknown => "start-outcome-unknown"
+  }
+}
+
+// THE ONE EXTERNALLY MEANINGFUL ACTION a standing permits. Only AwaitingBedClear may lead to a start,
+// and only through the attempt-bound approval; an unknown start outcome is a stop, never a resend.
+type PrintAction = Prepare | RequestBedClearThenStart | RecordCompletion | ObserveOnly | Stop
+
+fn print_action(s: PrintStanding) -> PrintAction {
+  match s {
+    NeedsPreparation => Prepare
+    AwaitingBedClear => RequestBedClearThenStart
+    CompletedAwaitingRecord => RecordCompletion
+    Printing => ObserveOnly
+    PrinterBusy => ObserveOnly
+    Completed => ObserveOnly
+    NeedsAttention => Stop
+    StartOutcomeUnknown => Stop
+  }
+}
+
+// THE COMPLETION RECORD (written by gunbc.fleet.print_converge, read back by the same pass on every later run).
+// A field that is absent, malformed or empty is a refusal of the whole record, never a default.
+fn field(v: JsonValue, key: String) -> NonEmptyStr? {
+  match json_field_string(obj: v, key: key) { FieldRead { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } } FieldAbsent => none FieldMalformed { cause: _ } => none }
+}
+fn field_is(v: JsonValue, key: String, expected: String) -> Bool {
+  match field(v: v, key: key) { Present { value: s } => (s as String) == expected Absent => false }
+}
+fn completion_text(record: PrintRequestRecord, remote: NonEmptyStr, run_id: String, report: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "gunbc.print-completion.v2")),
+    json_kv(key: "request_id", value: json_string(s: record.request.request_id as String)),
+    json_kv(key: "printer", value: json_string(s: record.request.printer as String)),
+    json_kv(key: "attempt_id", value: json_string(s: record.attempt_id as String)),
+    json_kv(key: "artifact_sha256", value: json_string(s: record.artifact_sha256.hex as String)),
+    json_kv(key: "remote_name", value: json_string(s: remote as String)),
+    json_kv(key: "run_id", value: json_string(s: run_id)),
+    json_kv(key: "printer_report", value: json_string(s: report)),
+    json_kv(key: "meaning", value: json_string(s: "the printer finished this attempt; fit and visual acceptance are separate observations")),
+  ]))
+}
+
+// Completion counts only when the record restates this request, printer, attempt, artifact and job,
+// AND the printer report it retains still proves it: decoded again, that report must be this job
+// finished. An identity envelope around a RUNNING, IDLE or other-job report is a mismatch.
+fn retained_report_proves_completion(v: JsonValue, remote: NonEmptyStr) -> Bool {
+  match field(v: v, key: "printer_report") {
+    Absent => false
+    Present { value: report } => match observe_job(text: report as String, remote: remote as String) { JobCompletedAwaitingInspection => true _ => false }
+  }
+}
+fn completion_matches(text: String, record: PrintRequestRecord, remote: NonEmptyStr) -> Bool {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: v } =>
+      field_is(v: v, key: "schema", expected: "gunbc.print-completion.v2") &&
+      field_is(v: v, key: "request_id", expected: record.request.request_id as String) &&
+      field_is(v: v, key: "printer", expected: record.request.printer as String) &&
+      field_is(v: v, key: "attempt_id", expected: record.attempt_id as String) &&
+      field_is(v: v, key: "artifact_sha256", expected: record.artifact_sha256.hex as String) &&
+      field_is(v: v, key: "remote_name", expected: remote as String) &&
+      retained_report_proves_completion(v: v, remote: remote)
+  }
+}

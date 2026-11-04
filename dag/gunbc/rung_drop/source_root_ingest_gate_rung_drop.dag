@@ -82,14 +82,13 @@ data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
   standing: Superseded {
     ruling: "the operator ruling of 2026-10-11 on the source layout cutover (the ruling that abolished whole-repository ingest): a compile reads and retains only the modules it requests, no compiler API takes a whole-repository ingest, and the dead gate family was deleted rather than scheduled. The restoration trigger did NOT fire -- no live workflow reaches the gate. Superseding authority: the layout check, the population parse and the read-set receipt on native closure emission, each a required step of the witnesses job; the per-claim coverage is in the annotation above" as NonEmptyStr,
     decision_record: "the operator's answer of 2026-10-11 to session still-dove-186 (delete the family; name the cutover's own required steps as the superseding authority; send only a subject none of them covers to the standing holder), carried by the change that lands gunbc.plans.source_layout_authority" as NonEmptyStr,
-    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr
-  },
-
-  declaration: TypedDeclaration {
+    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr,
+    declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: LostAsPassenger { carrier: "the falsifier cadence, deleted by the floor cut of 2026-08-15" },
     population: Enumerated { members: FreeSemigroup { head: "v2.workflow.source_root_ingest_gate", tail: ["v2.workflow.source_root_ingest_transport", "v2.workflow.compiler_closure_ingest_transport", "v2.workflow.module_binding_supply_transport", "src/v1/stage0/src/bin/discover_owned_data.rs", "gunbc.explicit_witness_admission source_root_ingest_gate_admitted_witness", "src/v2/test/claim/program_assembly/real_ingest.dag", "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag", "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness.dag", "src/v2/test/claim/self_host/crate_layout_witness.dag"] } },
     restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci.ci_layer_roots exclusion rows above name a consumer that executes. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category. Waiters whose remaining unsatisfied condition is only that capability retire together. A waiter whose remainder is still unsatisfied is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and stays Standing until its own trigger is fully satisfied."
+  }
   }
 }

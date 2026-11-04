@@ -1,0 +1,213 @@
+module v2.test.claim.is_surface
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.compiler.infer { infer }
+import std.algebra { list_snoc_item }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { diagnostics_fatal, diagnostics_fatal_reason, NodeLocus }
+import v2.std.node_query { find_core_child }
+
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { MatchArmPatternEdge, Atom, ComputationNode, Match, Node, Symbol, Transform, TypeNode, node_subtree_nodes }
+import std.optional { Absent, Optional, Present }
+import std.types { List }
+import extdeps.filesystem.filesystem_io
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// SUBJECT: `x is V` is sugar for `match x { V => true  _ => false }`. body_lowering lowers it to that
+// Match before infer (v2.compiler.body_lowering_fold body_lower_is_node), the same Match the seed parser
+// builds (v1 02_parse parse_is_arm_test), so no `is` node survives lowering and every check, eval and
+// emit route is the Match's. BOUNDARY: source text in via tpb_assemble.
+
+fn is_unit_test() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype Color = Red | Green\n\nfn f(c: Color) -> Bool {\n  c is Red\n}\n")
+}
+
+fn is_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => Present { value: id }
+    _ => Absent
+  }
+}
+
+fn is_head_is_kw(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      fold(n.children, init: false, f: fn(acc, e) {
+        acc || match is_atom_identity(n: e.target) {
+          Present { value: id } => id == ^dag_token_kw_is
+          Absent => false
+        }
+      })
+    _ => false
+  }
+}
+
+// No kw_is node survives lowering: the `is` is a Match.
+test fn is_unit_test_lowers_to_no_is_node() -> Bool {
+  match is_unit_test() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: root.root), init: 0, f: fn(acc, x) { if is_head_is_kw(n: x) { acc + 1 } else { acc } }) == 0
+  }
+}
+
+fn is_match_count(o: Outcome<ResolvedTree>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: root, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: root.root), init: 0, f: fn(acc, x) {
+        match x.kind {
+          ComputationNode { behavior: Match } => acc + 1
+          _ => acc
+        }
+      })
+  }
+}
+
+// The kinds and atom identities of the subtree in order: occurrence-free shape of a lowering.
+fn is_shape(o: Outcome<ResolvedTree>) -> List<Symbol> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: root, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: root.root), init: [], f: fn(acc, x) {
+        match is_atom_identity(n: x) {
+          Present { value: id } => list_snoc_item(xs: acc, item: id)
+          Absent => acc
+        }
+      })
+  }
+}
+
+
+fn is_src(decls: String, body: String) -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\n" + decls + "\nfn f(c: Color) -> Bool {\n  " + body + "\n}\n")
+}
+
+fn is_infer_reason(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+fn is_infers(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn is_refused_at_or_before_infer(o: Outcome<ResolvedTree>) -> Bool {
+  if is_infers(o: o) { false } else { true }
+}
+
+fn is_explicit(decls: String, arm: String) -> Outcome<ResolvedTree> {
+  is_src(decls: decls, body: "match c {\n    " + arm + " => true\n    _ => false\n  }")
+}
+
+// POSITIVE CONTROL: unit and payload arms of x's own type infer, and each lowers to exactly one Match.
+test fn is_unit_arm_infers() -> Bool {
+  is_infers(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"))
+}
+
+test fn is_payload_arm_infers() -> Bool {
+  is_infers(o: is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint"))
+}
+
+test fn is_lowers_to_exactly_one_match() -> Bool {
+  is_match_count(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red")) == 1
+}
+
+// DIFFERENTIAL CONTROL (v2 half): `c is V` and the explicit match have the same atoms in the same order
+// for a unit arm and a payload arm; the seed half is test.claim.is_arm_seed_lowering_agrees_with_explicit_match.
+test fn is_unit_shape_equals_explicit_match() -> Bool {
+  is_shape(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red")) == is_shape(o: is_explicit(decls: "type Color = Red | Green\n", arm: "Red"))
+}
+
+test fn is_payload_shape_equals_explicit_match() -> Bool {
+  is_shape(o: is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint")) == is_shape(o: is_explicit(decls: "type Color = Red | Tint { r: Int }\n", arm: "Tint"))
+}
+
+// ARMS-SWAPPED RED: the shape with true/false swapped differs, so a lowering that swapped the arms would
+// fail the shape equality above.
+test fn is_swapped_explicit_match_shape_differs() -> Bool {
+  is_shape(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red")) != is_shape(o: is_src(decls: "type Color = Red | Green\n", body: "match c {\n    Red => false\n    _ => true\n  }"))
+}
+
+// RED: a misspelt V refuses and the refusal is the explicit match's own (same stage, same reason).
+test fn is_misspelt_arm_refuses() -> Bool {
+  is_refused_at_or_before_infer(o: is_src(decls: "type Color = Red | Green\n", body: "c is Rd"))
+}
+
+test fn is_misspelt_arm_refuses_as_the_explicit_match_does() -> Bool {
+  is_refused_at_or_before_infer(o: is_explicit(decls: "type Color = Red | Green\n", arm: "Rd"))
+}
+
+// RED: V of ANOTHER type refuses; the roster is x's type's.
+test fn is_foreign_arm_refuses() -> Bool {
+  is_refused_at_or_before_infer(o: is_src(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", body: "c is Blue"))
+}
+
+test fn is_foreign_arm_refuses_as_the_explicit_match_does() -> Bool {
+  is_refused_at_or_before_infer(o: is_explicit(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", arm: "Blue"))
+}
+
+// RED, NO ROUTE: an `is` with a non-member V yields no InferredTree, and eval and emit take only an
+// InferredTree, so the `is` cannot reach either by any route. The only path to a tree is infer.
+test fn is_non_member_arm_has_no_inferred_tree() -> Bool {
+  match is_src(decls: "type Color = Red | Green\n", body: "c is Rd") {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
+// The refusal for a V of another type is located at the ARM that used it, never at the foreign
+// declaration the resolved pattern edge points to (that locus named the other type, not the use site).
+fn is_infer_locus_is_arm(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          match diagnostics_fatal(d: d).at {
+            NodeLocus { anchor: a } =>
+              match find_core_child(root: a.at, marker: MatchArmPatternEdge) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            _ => false
+          }
+      }
+  }
+}
+
+test fn is_foreign_arm_refusal_is_located_at_the_arm() -> Bool {
+  is_infer_locus_is_arm(o: is_src(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", body: "c is Blue"))
+}
+
+test fn is_foreign_arm_refusal_locus_as_the_explicit_match_does() -> Bool {
+  is_infer_locus_is_arm(o: is_explicit(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", arm: "Blue"))
+}

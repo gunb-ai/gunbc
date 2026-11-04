@@ -13,8 +13,15 @@ import product.printed_chassis.coupon { PlateDimensions, plate_dimensions }
 // This explicit review rung replaces the former Three.js-only geometric authority.
 // Coordinates use existing affine points; quantum is one micrometre, X across rear I/O,
 // Y up, Z from rear toward the handle. Part-local frame 5100; assembly frame 5101.
+// A PROFILE PRISM is a closed outline extruded along one axis: the shape boxes and cylinders cannot make --
+// a curved air path, a 45-degree roof that prints without support. The outline's vertices are signed
+// micrometre offsets from the centre in the two other axes, in X-Y-Z order (axis X: Y then Z; axis Y: X then
+// Z; axis Z: X then Y), and the prism runs half its length either side of the centre along its axis. A curve
+// is carried as the vertices of its polyline (quarter_arc), so every bound the checks read is a vertex.
+type ProfileVertex { u: Int, v: Int }
 type Primitive = Block { size: PlateDimensions, center: Point3 }
   | RoundPrism { diameter: Micrometer, length: Micrometer, axis: Axis3, center: Point3 }
+  | ProfilePrism { outline: List<ProfileVertex>, axis: Axis3, length: Micrometer, center: Point3 }
 type PartKind = Printed | Purchased | Metal | Clearance
 // Orientation of the part's assembly-local coordinates when laid on a print bed.
 type PrintPlane = LayOnXZ | LayOnXY | LayOnYZ
@@ -27,7 +34,7 @@ type AssemblyPart {
   print_plane: PrintPlane, notes: String,
 }
 type InterfaceStatus = Proposed | OriginalPlateFitOnly | Unresolved
-type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | ProtectedDcBranch | BondingHardwarePending | FanSelfTappingScrew | FrictionFitPlug
+type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | ProtectedDcBranch | BondingHardwarePending | FanSelfTappingScrew | FrictionFitPlug | FrictionFitSleeve | LocatingSleeveNoRetention | M3IntoCardInsert
 
 type MechanicalInterface {
   id: String, members: List<String>, fastener: FastenerKind, quantity: Int,
@@ -41,6 +48,48 @@ fn block(w: Int, h: Int, d: Int, x: Int, y: Int, z: Int) -> Primitive {
 fn round(diameter: Int, length: Int, axis: Axis3, x: Int, y: Int, z: Int) -> Primitive {
   RoundPrism { diameter: micrometer(count: diameter), length: micrometer(count: length), axis: axis, center: local(x: x,y: y,z: z) }
 }
+fn prism(outline: List<ProfileVertex>, axis: Axis3, length: Int, x: Int, y: Int, z: Int) -> Primitive {
+  ProfilePrism { outline: outline, axis: axis, length: micrometer(count: length), center: local(x: x, y: y, z: z) }
+}
+
+// A quarter circle as 17 vertices, 5.625 degrees apart, CENTRE (cu, cv) and radius r, in quadrant q (0: from
+// +u to +v, 1: from +v to -u, 2: from -u to -v, 3: from -v to +u), counter-clockwise. The table is the unit
+// quarter circle (cos, sin of k * 5.625 deg) to five places. A radius of zero yields the corner point.
+data unit_quarter_circle: List<ProfileVertex> = [ProfileVertex { u: 100000, v: 0 }, ProfileVertex { u: 99518, v: 9802 }, ProfileVertex { u: 98079, v: 19509 }, ProfileVertex { u: 95694, v: 29028 }, ProfileVertex { u: 92388, v: 38268 }, ProfileVertex { u: 88192, v: 47140 }, ProfileVertex { u: 83147, v: 55557 }, ProfileVertex { u: 77301, v: 63439 }, ProfileVertex { u: 70711, v: 70711 }, ProfileVertex { u: 63439, v: 77301 }, ProfileVertex { u: 55557, v: 83147 }, ProfileVertex { u: 47140, v: 88192 }, ProfileVertex { u: 38268, v: 92388 }, ProfileVertex { u: 29028, v: 95694 }, ProfileVertex { u: 19509, v: 98079 }, ProfileVertex { u: 9802, v: 99518 }, ProfileVertex { u: 0, v: 100000 }]
+
+fn quarter_arc(cu: Int, cv: Int, r: Int, q: Int) -> List<ProfileVertex> {
+  if r <= 0 { return [ProfileVertex { u: cu, v: cv }] }
+  map(unit_quarter_circle, p => {
+    let c = r * p.u / 100000
+    let s = r * p.v / 100000
+    if q == 0 { ProfileVertex { u: cu + c, v: cv + s } }
+    else { if q == 1 { ProfileVertex { u: cu - s, v: cv + c } }
+    else { if q == 2 { ProfileVertex { u: cu - c, v: cv - s } }
+    else { ProfileVertex { u: cu + s, v: cv - c } } } }
+  })
+}
+
+// A rectangle in (u, v) with each corner rounded to its own radius (zero keeps it square), counter-clockwise
+// from the bottom-right corner.
+fn rounded_rectangle(u_lo: Int, u_hi: Int, v_lo: Int, v_hi: Int, r_bottom_left: Int, r_bottom_right: Int, r_top_right: Int, r_top_left: Int) -> List<ProfileVertex> {
+  concat(concat(concat(
+    quarter_arc(cu: u_hi - r_bottom_right, cv: v_lo + r_bottom_right, r: r_bottom_right, q: 3),
+    quarter_arc(cu: u_hi - r_top_right, cv: v_hi - r_top_right, r: r_top_right, q: 0)),
+    quarter_arc(cu: u_lo + r_top_left, cv: v_hi - r_top_left, r: r_top_left, q: 1)),
+    quarter_arc(cu: u_lo + r_bottom_left, cv: v_lo + r_bottom_left, r: r_bottom_left, q: 2))
+}
+
+// HOW A PART'S PRINT PLANE PUTS IT ON THE BED, in words, for the instructions generated beside it. The plane is
+// the one fact (the CAD check rotates the exported STL by it, product.printed_chassis.review_realization);
+// this only renders it, so a readme cannot state a pose the geometry was not exported in.
+fn print_plane_pose(plane: PrintPlane) -> String {
+  match plane {
+    LayOnXY => "flat, its part-frame Z axis vertical"
+    LayOnXZ => "on its side, its part-frame Y axis vertical"
+    LayOnYZ => "standing on its end, its part-frame X axis vertical"
+  }
+}
+
 fn part(id: String, name: String, kind: PartKind, scope: PartScope, adds: List<Primitive>, cuts: List<Primitive>, x: Int,y: Int,z: Int, ex: Int,ey: Int,ez: Int, plane: PrintPlane, notes: String) -> AssemblyPart {
   AssemblyPart { id: id,name: name,kind: kind,scope: scope,adds: adds,cuts: cuts,at: placed(x: x,y: y,z: z),explode: placed(x: ex,y: ey,z: ez),print_plane: plane,notes: notes }
 }

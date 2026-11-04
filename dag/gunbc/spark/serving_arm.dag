@@ -1,6 +1,6 @@
 module gunbc.spark.serving_arm
 
-import extdeps.docker.cli { DockerEnvAssignment }
+import extdeps.docker.create_spec { DockerEnvAssignment }
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }

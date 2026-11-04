@@ -5,6 +5,7 @@ import std.measure {
   ByteSize, byte_size_count, Second, second, second_count, Minute, minute_to_second,
   Mebibyte, mebibyte_to_byte_size,
 }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -47,7 +48,7 @@ fn gunbc_floor_cold_build_subject() -> ColdBuildSubject {
 
 type ColdBuildReceipt {
   subject: ColdBuildSubject
-  run_id: NonEmptyStr
+  run_id: GitHubWorkflowRunId
   whole_job_wall: Second
   build_step_wall: Second
   cell_memory_peak: ByteSize

@@ -1,5 +1,6 @@
 module test.claim.roadmap.session_placement_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { kibibyte, kibibyte_count }
 import std.optional { Present, Absent }
@@ -7,7 +8,6 @@ import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generati
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
 import gunbc.compute.work_provider_local { compute_layout_in, compute_unit_properties, NoPathVirtualization }
 import std.materialization_store_grant { WitnessScratchRoot }
@@ -26,19 +26,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 
-import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit_wire, session_attempt_record,
-  session_placement_record_of, session_placement_record_json, session_placement_record_write,
-  session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,
-  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
-  SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
-  SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
-  session_placement_observation_of, session_placement_observe_at,
-  attempt_worker_unit_observe_for_instance,
-  SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide,
-  SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at,
-  SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
-}
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -87,15 +75,6 @@ fn unit_b() -> String {
   }
 }
 
-fn stores_at(dir: String) -> SessionPlacementStores {
-  SessionPlacementStores {
-    slots_root: dir as NonEmptyStr,
-    records_dir: dir,
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir, "/ledger"], "") as NonEmptyStr) },
-    partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
-  }
-}
-
 fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> SessionPlacementGrant {
   SessionPlacementGrant {
     node_id: node_id,
@@ -117,7 +96,6 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
     partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
     amount: kibibyte(count: 8388608),
     class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
     slot: slot,
     slot_generation: cas_generation_first(),
   }

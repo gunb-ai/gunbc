@@ -30,6 +30,8 @@ module gunbc.roadmap.attempt_system_unit_launch
 // world-writable, sha-addressed, with the service ExecStart pinned to that path. The requester can
 // edit instance.serve_binary and the checkout; those paths are not what root runs.
 
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_log_member_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, CommitSha, path_segment_is_safe }
 import std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_array, json_string, serialize_json }
@@ -99,19 +101,12 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceForInstanceRoot, DashboardInstanceInstanceRootUnknown,
 }
 import extdeps.exec.command { ArgvCommand }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
-  dispatch_worker_unit_properties_for_plan,
-  dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
-  dispatch_pane_working_directory, GunbcHarnessProvider, dispatch_attempt_handin_dir_for_instance,
-  dispatch_worker_git_trust_environment,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_handin_dir_for_instance }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
   attempt_exit_entry_separator,
 }
-import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_swap_max, attempt_worker_slice_unit_name,
 }
@@ -125,6 +120,7 @@ fn attempt_system_unit_launcher_locus(instance: HostDashboardInstance) -> Helper
   HelperLocus {
     base: join([attempt_system_unit_launcher_helpers_root, "/", instance.instance_id as String], ""),
     owner: approval_broker_helper_root_principal,
+    step_stem: "attempt-unit",
   }
 }
 
@@ -133,7 +129,7 @@ fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: R
 }
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
-  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance worker user, with the typed confinement property set -- for a dedicated worker, that set includes the instance's root-owned credstore files the manager loads as the unit's credentials -- and, beside it, one transient path unit bound to that worker which watches the attempt's own hand-in directory and starts the instance's exit drain; no other unit, user, property, credential, or program" as NonEmptyStr
+  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance worker user, with the typed confinement property set -- for a dedicated worker, that set includes the instance's root-owned credstore file the manager loads as the unit's credential, and its environment carries git's safe.directory grant for the attempt's own worktree -- and, beside it, one transient path unit bound to that worker which watches the attempt's own hand-in directory and starts the instance's exit drain; no other unit, user, property, credential, environment, or program" as NonEmptyStr
 }
 
 fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
@@ -233,7 +229,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
       SystemdUnitNameAdmitted { name } => {
     let node = request.node_id as RoadmapNodeId
     let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
-    let log = dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
+    let log = attempt_log_member_text(instance: instance, node_id: node, attempt_key: request.attempt_key, member: AttemptWorkerLog)
     match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: request.node_id, attempt_key: request.attempt_key, role: AttemptWorkerRole, record_owner: instance.directory_owner) {
       AttemptExitHookRefused { reason } => AttemptSystemUnitStartUnderivable { reason: reason as String }
       AttemptExitHookRendered { exec_line } =>
@@ -344,7 +340,8 @@ fn attempt_system_unit_systemd_run_command(instance: HostDashboardInstance, plan
 }
 
 // THE WORKER'S ENVIRONMENT, derived here like every other privileged fact: its git trust in its own worktree
-// (gunbc.roadmap.roadmap_dispatch_actuator dispatch_worker_git_trust_environment). Each setting is one --setenv.
+// (gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_git_trust_environment). Each setting is one
+// --setenv.
 fn attempt_system_unit_worker_environment(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<SystemdSetenvBinding> {
   map(dispatch_worker_git_trust_environment(instance: instance, attempt_worktree: plan.attempt_worktree), g => SystemdSetenvBinding { name: g.name, value: g.value })
 }
@@ -1052,10 +1049,10 @@ fn attempt_system_unit_bind_handin_wake(
 // answer; a refusal (malformed body, unknown verb, a start that failed) is that job done, so it must not turn the
 // drain unit red. Only a request whose answer could not be written is the drain failing at its job.
 type AttemptUnitHandled
-  = AttemptUnitAnswered { refusal: String }
+  = AttemptUnitAnswered { refusal: String? }
   | AttemptUnitAnswerUnwritten { reason: String }
 
-fn attempt_system_unit_answer_request(instance_root: String, entry: String, body: String, answer: AttemptSystemUnitAnswer, refusal: String) -> AttemptUnitHandled {
+fn attempt_system_unit_answer_request(instance_root: String, entry: String, body: String, answer: AttemptSystemUnitAnswer, refusal: String?) -> AttemptUnitHandled {
   if attempt_system_unit_write_answer(instance_root: instance_root, entry: entry, body: body, answer: answer) {
     AttemptUnitAnswered { refusal: refusal }
   } else {
@@ -1069,7 +1066,7 @@ fn attempt_system_unit_refuse_request(instance_root: String, entry: String, body
     entry: entry,
     body: body,
     answer: AttemptSystemUnitRefusedAnswer { reason: why },
-    refusal: why,
+    refusal: Present { value: why },
   )
 }
 
@@ -1089,7 +1086,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
         } else {
           match attempt_system_unit_cli_start(instance: instance, verb: verb, request: request, handin_wake_unit: handin_wake_unit) {
             ExitSuccess =>
-              attempt_system_unit_answer_request(instance_root: root, entry: entry, body: content, answer: AttemptSystemUnitStarted, refusal: "")
+              attempt_system_unit_answer_request(instance_root: root, entry: entry, body: content, answer: AttemptSystemUnitStarted, refusal: Absent)
             ExitFailure { code: _, reason: why } =>
               attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: content, why: why)
           }
@@ -1144,60 +1141,105 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
   if pass.retired == 0 && count(pass.unmovable) > 0 { AttemptUnitStalled { unmovable: pass.unmovable } } else { AttemptUnitNotStalled }
 }
 
-// `refused` counts the retired requests whose answer is a refusal: reported, never an exit failure.
-fn attempt_unit_pass_retired(pass: AttemptUnitDrainPass, handled: AttemptUnitHandled) -> AttemptUnitDrainPass {
+// THE PASS IS DERIVED FROM ONE OUTCOME PER ENTRY, never accumulated: each spool entry is mapped to what became
+// of it, and the counts, the first failure and the unmovable list are read off that list in one pass each, so
+// no step copies a growing list (DESIGN 6, a copied accumulator is always fixed).
+type AttemptUnitEntryOutcome
+  = AttemptUnitEntrySkipped
+  | AttemptUnitEntryHandled { handled: AttemptUnitHandled }
+  | AttemptUnitEntryUnmovable { entry: String, step: SpoolStallStep, cause: String }
+
+fn attempt_unit_handled_failure(handled: AttemptUnitHandled) -> List<ProcessExit> {
   match handled {
-    AttemptUnitAnswered { refusal: why } => {
-      let refusals = if why == "" { 0 } else { 1 }
-      AttemptUnitDrainPass { exit: pass.exit, retired: pass.retired + 1, refused: pass.refused + refusals, unmovable: pass.unmovable }
-    }
-    AttemptUnitAnswerUnwritten { reason: why } =>
-      AttemptUnitDrainPass { exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: why)), retired: pass.retired + 1, refused: pass.refused, unmovable: pass.unmovable }
+    AttemptUnitAnswerUnwritten { reason: why } => [exit_failure(reason: why)]
+    AttemptUnitAnswered { refusal: _ } => [] as List<ProcessExit>
   }
 }
 
-fn attempt_unit_pass_unmovable(pass: AttemptUnitDrainPass, entry: String, step: SpoolStallStep, cause: String) -> AttemptUnitDrainPass {
+fn attempt_unit_handled_is_refusal(handled: AttemptUnitHandled) -> Bool {
+  match handled {
+    AttemptUnitAnswered { refusal: cause } =>
+      match cause {
+        Present { value: _ } => true
+        Absent => false
+      }
+    AttemptUnitAnswerUnwritten { reason: _ } => false
+  }
+}
+
+fn attempt_unit_outcome_failure(outcome: AttemptUnitEntryOutcome) -> List<ProcessExit> {
+  match outcome {
+    AttemptUnitEntryHandled { handled: h } => attempt_unit_handled_failure(handled: h)
+    AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } =>
+      [exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))]
+    AttemptUnitEntrySkipped => [] as List<ProcessExit>
+  }
+}
+
+fn attempt_unit_first_failure(failures: List<ProcessExit>) -> ProcessExit {
+  match failures.first() {
+    Present { value: failure } => failure
+    Absent => ExitSuccess
+  }
+}
+
+fn attempt_unit_outcome_is_retired(outcome: AttemptUnitEntryOutcome) -> Bool {
+  match outcome {
+    AttemptUnitEntryHandled { handled: _ } => true
+    AttemptUnitEntryUnmovable { entry: _, step: _, cause: _ } => false
+    AttemptUnitEntrySkipped => false
+  }
+}
+
+fn attempt_unit_outcome_is_refusal(outcome: AttemptUnitEntryOutcome) -> Bool {
+  match outcome {
+    AttemptUnitEntryHandled { handled: h } => attempt_unit_handled_is_refusal(handled: h)
+    AttemptUnitEntryUnmovable { entry: _, step: _, cause: _ } => false
+    AttemptUnitEntrySkipped => false
+  }
+}
+
+fn attempt_unit_outcome_unmovable(outcome: AttemptUnitEntryOutcome) -> List<SpoolStallEntry> {
+  match outcome {
+    AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } => [SpoolStallEntry { entry: entry, step: step, cause: cause }]
+    AttemptUnitEntryHandled { handled: _ } => [] as List<SpoolStallEntry>
+    AttemptUnitEntrySkipped => [] as List<SpoolStallEntry>
+  }
+}
+
+// `refused` counts the retired requests whose answer is a refusal: reported, never an exit failure. The exit is
+// the FIRST failure in entry order, kept past later refusals.
+fn attempt_unit_pass_of(outcomes: List<AttemptUnitEntryOutcome>) -> AttemptUnitDrainPass {
   AttemptUnitDrainPass {
-    exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))),
-    retired: pass.retired,
-    refused: pass.refused,
-    unmovable: concat(pass.unmovable, [SpoolStallEntry { entry: entry, step: step, cause: cause }]),
+    exit: attempt_unit_first_failure(failures: flat_map(outcomes, o => attempt_unit_outcome_failure(outcome: o))),
+    retired: count(filter(outcomes, o => attempt_unit_outcome_is_retired(outcome: o))),
+    refused: count(filter(outcomes, o => attempt_unit_outcome_is_refusal(outcome: o))),
+    unmovable: flat_map(outcomes, o => attempt_unit_outcome_unmovable(outcome: o)),
+  }
+}
+
+fn attempt_unit_entry_outcome(instance_root: String, instance: HostDashboardInstance?, entry: String, handin_wake_unit: String) -> AttemptUnitEntryOutcome {
+  match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
+    AttemptSystemUnitAlreadyClaimed { entry: _ } => AttemptUnitEntrySkipped
+    AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: SpoolStallClaim, cause: c }
+    AttemptSystemUnitClaimSymlink { entry: e } =>
+      AttemptUnitEntryHandled { handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: "request entry is a symlink") }
+    AttemptSystemUnitClaimRefused { entry: e, reason: why } =>
+      AttemptUnitEntryHandled { handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: why) }
+    AttemptSystemUnitClaimed { entry: e, path: p } =>
+      AttemptUnitEntryHandled {
+        handled: attempt_system_unit_handle_claimed(instance_root: instance_root, instance: instance, entry: e, path: p, handin_wake_unit: handin_wake_unit),
+      }
   }
 }
 
 fn attempt_system_unit_drain_pass(instance_root: String, handin_wake_unit: String) -> AttemptUnitDrainPass {
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
-  let empty = AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, refused: 0, unmovable: [] as List<SpoolStallEntry> }
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
-    AttemptSystemUnitRequestListRefused { reason } => attempt_unit_pass_unmovable(pass: empty, entry: "requests", step: SpoolStallListRequests, cause: reason)
+    AttemptSystemUnitRequestListRefused { reason } =>
+      attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: SpoolStallListRequests, cause: reason }])
     AttemptSystemUnitRequestNames { names: entries } =>
-      fold(entries, init: empty, f: (acc, entry) =>
-        match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
-          AttemptSystemUnitAlreadyClaimed { entry: _ } => acc
-          AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => attempt_unit_pass_unmovable(pass: acc, entry: e, step: SpoolStallClaim, cause: c)
-          AttemptSystemUnitClaimSymlink { entry: e } =>
-            attempt_unit_pass_retired(
-              pass: acc,
-              handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: "request entry is a symlink"),
-            )
-          AttemptSystemUnitClaimRefused { entry: e, reason: why } =>
-            attempt_unit_pass_retired(
-              pass: acc,
-              handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: why),
-            )
-          AttemptSystemUnitClaimed { entry: e, path: p } =>
-            attempt_unit_pass_retired(
-              pass: acc,
-              handled: attempt_system_unit_handle_claimed(
-                instance_root: instance_root,
-                instance: instance,
-                entry: e,
-                path: p,
-                handin_wake_unit: handin_wake_unit,
-              ),
-            )
-        }
-      )
+      attempt_unit_pass_of(outcomes: map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry, handin_wake_unit: handin_wake_unit)))
   }
 }
 

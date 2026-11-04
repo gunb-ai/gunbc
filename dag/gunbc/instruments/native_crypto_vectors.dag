@@ -1,7 +1,7 @@
 module gunbc.instruments.native_crypto_vectors
 
 import std.measure { nanosecond_count }
-import std.types { Int, List, String, Bool }
+import std.types { Int, List, String, Bool, bool_text }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import std.machine_word { machine_word_apply, machine_word_native_operate, OperatorAnd, OperatorOr, OperatorXor, OperatorNot, OperatorShiftRight, OperatorShiftLeft, OperatorRotateRight, OperatorAddWrapping, Width8, Width32 }
@@ -188,9 +188,6 @@ fn apples_p384_keys_on_curve() -> Bool {
   }
 }
 
-fn bool_text(b: Bool) -> String {
-  if b { "true" } else { "false" }
-}
 
 fn curve_parameter_cases() -> List<NativeCryptoCase> {
   let g = curve_affine(c: p384_curve, x: p384_gx, y: p384_gy)

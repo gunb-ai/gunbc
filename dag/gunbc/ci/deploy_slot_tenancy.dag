@@ -1,6 +1,10 @@
 module gunbc.ci.deploy_slot_tenancy
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import extdeps.access.posix { FileMode, FileOwnership, file_mode_class_bits }
+import gunbc.file_access { path_ancestor_prefixes }
+import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.runner.runner_group_restriction_observation {
@@ -10,7 +14,7 @@ import gunbc.ci.deploy_route_requirement { DeployRouteJobTenancy, SharesJobUidWi
 
 // ── THE SLOT THAT TAKES ONLY MAIN-PINNED DEPLOY DISPATCHES ──────────────────────────────────────
 // gunbc.ci.deploy_route_requirement requires the host-root effects of a deploy to run where no pull
-// request job shares the job uid. Two walls make a slot such a tenant, and neither alone does:
+// request job shares the job uid. Three walls make a slot such a tenant, and no two of them do:
 //   * ADMISSION: a runner group restricted to exactly one workflow at the default branch
 //     (gunbc.runner.runner_group_restriction_observation RestrictedRunnerGroup, minted only by
 //     reading the org's groups back). A label alone does not admit or refuse: selection is set
@@ -19,6 +23,13 @@ import gunbc.ci.deploy_route_requirement { DeployRouteJobTenancy, SharesJobUidWi
 //   * ISOLATION: a job uid no pull request slot runs as. The group controls what is scheduled onto
 //     the slot, not whether a same-uid job in ANOTHER slot reaches this slot's in-run ssh-agent or
 //     the _work/_temp/fleet-ssh-mux socket, so admission without a distinct uid leaves the arm open.
+//   * CONFIDENTIALITY: no other slot's job user can reach the slot's tree or the listener's state in it.
+//     The listener writes its registration and its RSA key under the tree (extdeps.github.actions_runner
+//     actions_runner_state_paths), and a process holding them IS that runner to GitHub: it can open a
+//     session and take the restricted group's next job, admission and uid notwithstanding. srv1 read
+//     2026-10-30 after L2 run 41055515944: srv1-02's tree 0755 under UMask=0022, its .credentials_rsaparams
+//     0644 and readable as ghrunner (gunbc.recurring_failure_mode
+//     a_slot_isolated_by_uid_leaves_its_runner_credentials_readable_by_other_uids).
 // gunbc.plans.srv1_deploy_principal_split, D3 precondition.
 
 // The runner group and the runner label are one string (as private_heal_publisher_runner_group_name
@@ -37,24 +48,224 @@ fn deploy_slot_selected_workflow() -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-// What a read of the deploy slot holds: the group's standing as the sealed observer reports it, the
-// uid the deploy slot's jobs run as, and the uid of every other slot on the host.
-type DeploySlotReading {
-  group: MicrovmRunnerGroupStanding
-  deploy_slot_job_user: NonEmptyStr
-  other_slot_job_users: List<NonEmptyStr>
+// THE GROUP'S ID, AS THE ENSURE RUN THAT CREATED IT READ IT BACK. GitHub assigns the id at creation,
+// so the repository cannot author it; it reaches the slot's registration only through this receipt of
+// gunbc.runner.runner_group_restriction_ensure_run (its `microvm-runner-group=created` line, uploaded
+// as the run's microvm-runner-group-ensure-receipts artifact), committed as a row because the slot's
+// drop-in is rendered before any job runs. The row records an observation; it admits nothing. The
+// deploy route's admission stays deploy_slot_observed_tenancy over a live read.
+//
+// THE ID IS TRANSCRIBED, AND THIS IS THE BOUNDARY THAT ADMITS IT. The guard below catches a receipt for
+// another group name or another workflow, but not the group being deleted and recreated under the same
+// name with a new id. A slot rendered from this row would then register with the old id. The expected
+// answer is that the JIT registration is refused for a group that no longer exists, so the slot fails to
+// register visibly; that is inferred from the API taking a group id, not yet observed. What retires this
+// row is a read of the slot's group from the org's runner groups at render time; the in-job read
+// (gunbc.live_deploy.apply microvm_controller_install_admission_wet) happens after the drop-in is rendered, so it
+// cannot.
+type RunnerGroupEnsureReceipt {
+  run_id: NonEmptyStr
+  observed_at: NonEmptyStr
+  name: NonEmptyStr
+  group: JitRunnerGroupId
+  selected_workflow: NonEmptyStr
 }
 
-// SOLE TENANT ONLY WHEN BOTH WALLS HOLD. Anything the observer refused, or a uid shared with another
-// slot, reads as shared: absence of the group is not irrelevance.
+data deploy_slot_runner_group_ensure_receipt: RunnerGroupEnsureReceipt = RunnerGroupEnsureReceipt {
+  run_id: "40812313878",
+  observed_at: "2026-10-29",
+  name: "gunbc-deploy",
+  group: JitRunnerGroupId { value: 10 },
+  selected_workflow: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+}
+
+// The id only when the receipt is for THIS group restricted to THIS workflow: a rename of the group
+// or of the workflow makes the row a receipt for something else, and it refuses rather than
+// registering the slot into a group nobody re-read.
+fn deploy_slot_runner_group_id(receipt: RunnerGroupEnsureReceipt) -> JitRunnerGroupId? {
+  if (receipt.name as String) == (deploy_slot_runner_group_name as String)
+    && (receipt.selected_workflow as String) == (deploy_slot_selected_workflow() as String) {
+    Present { value: receipt.group }
+  } else {
+    Absent
+  }
+}
+
+// ── THE THIRD WALL, JUDGED PER PATH ─────────────────────────────────────────────────────────────
+// Each private path is judged on what the host holds at it and at every ancestor, never inferred from
+// the tree's mode: a file written under the old umask keeps its 0644 inside a directory chmodded later,
+// and a later widening of the directory must fail on the file, not pass on the directory.
+// An absent path is private: nothing there can be read. It is a reading only when the directory that
+// would hold it was listed, so absence is observed, never assumed from a failed read.
+type DeploySlotPathReading
+  = DeploySlotPathRead { path: NonEmptyStr, directory: Bool, ownership: FileOwnership, mode: FileMode }
+  | DeploySlotPathAbsent { path: NonEmptyStr }
+  | DeploySlotPathUnread { path: NonEmptyStr, reason: String }
+
+// Another slot's job user as id(1) reports it: the uid and EVERY group the account database gives it,
+// observed rather than declared, since a group the host grants and the model omits is a group that can
+// read.
+type DeploySlotJobUserIdentity
+  = DeploySlotJobUserRead { user: NonEmptyStr, uid: Int, gids: List<Int> }
+  | DeploySlotJobUserUnread { user: NonEmptyStr, reason: String }
+
+type DeploySlotPrivacy
+  = DeploySlotPathsPrivate
+  | DeploySlotPathReachable { path: NonEmptyStr, user: NonEmptyStr }
+  | DeploySlotPrivacyUnread { subject: NonEmptyStr, reason: String }
+  | DeploySlotPrivacyNotYetObserved
+
+fn deploy_slot_privacy_holds(p: DeploySlotPrivacy) -> Bool {
+  match p {
+    DeploySlotPathsPrivate => true
+    DeploySlotPathReachable { path: _, user: _ } => false
+    DeploySlotPrivacyUnread { subject: _, reason: _ } => false
+    DeploySlotPrivacyNotYetObserved => false
+  }
+}
+
+fn deploy_slot_privacy_text(p: DeploySlotPrivacy) -> String {
+  match p {
+    DeploySlotPathsPrivate => "private"
+    DeploySlotPathReachable { path, user } => join(["REACHABLE path=", path as String, " by=", user as String], "")
+    DeploySlotPrivacyUnread { subject, reason } => join(["UNREAD ", subject as String, ": ", reason], "")
+    DeploySlotPrivacyNotYetObserved => "NOT-YET-OBSERVED"
+  }
+}
+
+fn deploy_slot_path_reading_at(readings: List<DeploySlotPathReading>, path: String) -> DeploySlotPathReading {
+  fold(readings, init: DeploySlotPathUnread { path: path as NonEmptyStr, reason: "no reading was taken of this path" }, f: (acc, r) =>
+    match r {
+      DeploySlotPathRead { path: p, directory: _, ownership: _, mode: _ } => if (p as String) == path { r } else { acc }
+      DeploySlotPathAbsent { path: p } => if (p as String) == path { r } else { acc }
+      DeploySlotPathUnread { path: p, reason: _ } => if (p as String) == path { r } else { acc }
+    })
+}
+
+// A PATH IS REACHABLE BY A USER when the class it falls in (extdeps.access.posix file_mode_class_bits,
+// owner by uid, group by ANY observed gid) may search every ancestor and may read the path itself -- or,
+// for a directory, read or search it. uid 0 reaches everything, as the kernel lets it.
+fn deploy_slot_user_reaches(chain: List<DeploySlotPathReading>, uid: Int, gids: List<Int>) -> Bool? {
+  let leaf_index = count(chain) - 1
+  fold(enumerate(chain), init: Present { value: true }, f: (acc, pair) =>
+    match acc {
+      Absent => none
+      Present { value: so_far } =>
+        match pair.second {
+          DeploySlotPathUnread { path: _, reason: _ } => none
+          DeploySlotPathAbsent { path: _ } => Present { value: false }
+          DeploySlotPathRead { path: _, directory: dir, ownership: o, mode: m } => {
+            let bits = file_mode_class_bits(mode: m, caller_is_owner: o.uid == uid, caller_in_group: any(gids, g => g == o.gid))
+            let allowed = if uid == 0 { true }
+              else if pair.first < leaf_index { bits.execute }
+              else if dir { bits.read || bits.execute }
+              else { bits.read }
+            Present { value: so_far && allowed }
+          }
+        }
+    })
+}
+
+fn deploy_slot_first_unread(chain: List<DeploySlotPathReading>) -> DeploySlotPrivacy? {
+  fold(chain, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match r {
+          DeploySlotPathUnread { path: p, reason: why } => Present { value: DeploySlotPrivacyUnread { subject: p, reason: why } }
+          DeploySlotPathRead { path: _, directory: _, ownership: _, mode: _ } => none
+          DeploySlotPathAbsent { path: _ } => none
+        }
+    })
+}
+
+// PURE OVER THE READINGS: every private path, for every other slot's job user. The first reachable
+// (path, user) pair answers; an unread path or user refuses by name rather than reading private.
+fn deploy_slot_privacy(private_paths: List<NonEmptyStr>, readings: List<DeploySlotPathReading>, others: List<DeploySlotJobUserIdentity>) -> DeploySlotPrivacy {
+  fold(private_paths, init: DeploySlotPathsPrivate, f: (acc, p) =>
+    match acc {
+      DeploySlotPathsPrivate => {
+        let chain = map(concat(path_ancestor_prefixes(path: p as String), [p as String]), q => deploy_slot_path_reading_at(readings: readings, path: q))
+        match deploy_slot_first_unread(chain: chain) {
+          Present { value: unread } => unread
+          Absent =>
+            fold(others, init: DeploySlotPathsPrivate, f: (per_user, u) =>
+              match per_user {
+                DeploySlotPathsPrivate =>
+                  match u {
+                    DeploySlotJobUserUnread { user: name, reason: why } => DeploySlotPrivacyUnread { subject: name, reason: why }
+                    DeploySlotJobUserRead { user: name, uid: uid, gids: gids } =>
+                      match deploy_slot_user_reaches(chain: chain, uid: uid, gids: gids) {
+                        Absent => DeploySlotPrivacyUnread { subject: p, reason: "a path in its chain was not read" }
+                        Present { value: reaches } => if reaches { DeploySlotPathReachable { path: p, user: name } } else { DeploySlotPathsPrivate }
+                      }
+                  }
+                _ => per_user
+              })
+        }
+      }
+      _ => acc
+    })
+}
+
+// THE HOST HALF OF A READING, what one host read can establish without the org's groups: the deploy
+// slot's effective job user, the effective job user of every other slot that can run, and the privacy
+// of the deploy slot's paths against those users. gunbc.runner.runner_host_file_converge reads it as the
+// administrator after converging the slot; the group half is the org read's (deploy_slot_observed_tenancy
+// takes both).
+type DeploySlotHostReading
+  = DeploySlotHostRead {
+      unit: NonEmptyStr,
+      deploy_slot_job_user: NonEmptyStr,
+      other_slot_job_users: List<NonEmptyStr>,
+      privacy: DeploySlotPrivacy,
+    }
+  | DeploySlotHostUnread { unit: NonEmptyStr, cause: String }
+
+// THE HOST'S TWO WALLS: the deploy slot runs as its account, no other slot runs as that account, and no
+// other slot's account reaches its paths.
+fn deploy_slot_host_walls_hold(r: DeploySlotHostReading) -> Bool {
+  match r {
+    DeploySlotHostUnread { unit: _, cause: _ } => false
+    DeploySlotHostRead { unit: _, deploy_slot_job_user: u, other_slot_job_users: others, privacy: p } =>
+      (u as String) == (deploy_slot_job_user as String)
+        && !any(others, o => (o as String) == (u as String))
+        && deploy_slot_privacy_holds(p: p)
+  }
+}
+
+fn deploy_slot_host_reading_line(r: DeploySlotHostReading) -> String {
+  match r {
+    DeploySlotHostUnread { unit, cause } => join(["deploy-slot-reading unit=", unit as String, " UNREAD ", cause], "")
+    DeploySlotHostRead { unit, deploy_slot_job_user: u, other_slot_job_users: others, privacy: p } =>
+      join([
+        "deploy-slot-reading unit=", unit as String,
+        " job_user=", u as String,
+        " other_job_users=", if count(others) == 0 { "none" } else { join(map(others, o => o as String), ",") },
+        " privacy=", deploy_slot_privacy_text(p: p),
+        " host-walls=", if deploy_slot_host_walls_hold(r: r) { "hold" } else { "BROKEN" },
+      ], "")
+  }
+}
+
+// What a read of the deploy slot holds: the group's standing as the sealed observer reports it, and
+// the host half (who the deploy slot and every other runnable slot run as, and whether those users
+// reach the deploy slot's paths). The host half is the one DeploySlotHostReading the converge also
+// prints, so the route's admission and the converge's receipt read one shape.
+type DeploySlotReading {
+  group: MicrovmRunnerGroupStanding
+  host: DeploySlotHostReading
+}
+
+// SOLE TENANT ONLY WHEN ALL THREE WALLS HOLD: the group is restricted to this workflow (ADMISSION),
+// and the host walls hold (ISOLATION and CONFIDENTIALITY, deploy_slot_host_walls_hold). Anything the
+// observer refused, an unread host, a uid shared with another slot, or a private path another uid can
+// reach or that was not read, reads as shared: absence of the group is not irrelevance, and an unread
+// path is not a private one.
 fn deploy_slot_observed_tenancy(reading: DeploySlotReading) -> DeployRouteJobTenancy {
   match reading.group {
     RunnerGroupRestrictionRefused { name: _, cause: _ } => SharesJobUidWithPullRequestJobs
     RunnerGroupRestrictedToWorkflow { restriction: _ } =>
-      if count(filter(reading.other_slot_job_users, u => (u as String) == (reading.deploy_slot_job_user as String))) == 0 {
-        SoleTenantOfJobUid
-      } else {
-        SharesJobUidWithPullRequestJobs
-      }
+      if deploy_slot_host_walls_hold(r: reading.host) { SoleTenantOfJobUid } else { SharesJobUidWithPullRequestJobs }
   }
 }

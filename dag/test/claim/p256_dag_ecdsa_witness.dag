@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { Int, List }
 import std.integer { UInt8 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.optional { optional_is_absent }
 import std.bignat { BigNat, bignat_zero_limbs }
 import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets, p256_on_curve, p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine }
 import extdeps.crypto.nist_prime_curve { jacobian_is_infinity }
@@ -23,13 +24,6 @@ fn is_false(v: Bool?) -> Bool {
   match v {
     Present { value: b } => !b
     Absent => false
-  }
-}
-
-fn is_absent(v: Bool?) -> Bool {
-  match v {
-    Present { value: _ } => false
-    Absent => true
   }
 }
 
@@ -90,7 +84,7 @@ test fn the_wrong_key_is_false() -> Bool {
 
 // The RFC key with the last bit of y flipped: 65 octets, 0x04, and not a point on the curve.
 test fn a_point_off_the_curve_is_absent() -> Bool {
-  is_absent(v: p256_ecdsa_verify_octets(key: [4, 96, 254, 212, 186, 37, 90, 157, 49, 201, 97, 235, 116, 198, 53, 109, 104, 192, 73, 184, 146, 59, 97, 250, 108, 230, 105, 98, 46, 96, 242, 159, 182, 121, 3, 254, 16, 8, 184, 188, 153, 164, 26, 233, 233, 86, 40, 188, 100, 242, 241, 178, 12, 45, 126, 159, 81, 119, 163, 194, 148, 212, 70, 34, 152], signature: rfc6979_sample_sig, message: ascii(s: "sample")))
+  optional_is_absent(opt: p256_ecdsa_verify_octets(key: [4, 96, 254, 212, 186, 37, 90, 157, 49, 201, 97, 235, 116, 198, 53, 109, 104, 192, 73, 184, 146, 59, 97, 250, 108, 230, 105, 98, 46, 96, 242, 159, 182, 121, 3, 254, 16, 8, 184, 188, 153, 164, 26, 233, 233, 86, 40, 188, 100, 242, 241, 178, 12, 45, 126, 159, 81, 119, 163, 194, 148, 212, 70, 34, 152], signature: rfc6979_sample_sig, message: ascii(s: "sample")))
 }
 
 // ── Wycheproof ecdsa_secp256r1_sha256_p1363_test.json ───────────────────────────────────────
@@ -114,15 +108,15 @@ test fn wycheproof_4_n_minus_r_is_false() -> Bool {
 
 // tcId 11, invalid: r = 0 and s = 0, outside [1, n-1].
 test fn wycheproof_11_r_and_s_zero_are_absent() -> Bool {
-  is_absent(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], message: wycheproof_msg))
+  optional_is_absent(opt: p256_ecdsa_verify_octets(key: wycheproof_key, signature: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], message: wycheproof_msg))
 }
 
 // tcId 26, invalid: r = n, outside [1, n-1].
 test fn wycheproof_26_r_equal_to_n_is_absent() -> Bool {
-  is_absent(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: [255, 255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 188, 230, 250, 173, 167, 23, 158, 132, 243, 185, 202, 194, 252, 99, 37, 81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], message: wycheproof_msg))
+  optional_is_absent(opt: p256_ecdsa_verify_octets(key: wycheproof_key, signature: [255, 255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 188, 230, 250, 173, 167, 23, 158, 132, 243, 185, 202, 194, 252, 99, 37, 81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], message: wycheproof_msg))
 }
 
 // tcId 2, invalid: r replaced by r + n, which needs 33 octets -- not the 64-octet encoding.
 test fn wycheproof_2_r_plus_n_is_absent() -> Bool {
-  is_absent(v: p256_ecdsa_verify_octets(key: wycheproof_key, signature: [1, 43, 163, 168, 189, 107, 148, 213, 237, 128, 166, 217, 209, 25, 10, 67, 110, 188, 204, 8, 51, 73, 6, 134, 222, 172, 134, 53, 188, 185, 191, 83, 105, 0, 179, 41, 244, 121, 162, 187, 208, 165, 195, 132, 238, 20, 147, 177, 245, 24, 106, 135, 19, 156, 172, 93, 244, 8, 124, 19, 75, 73, 21, 104, 71, 219], message: wycheproof_msg))
+  optional_is_absent(opt: p256_ecdsa_verify_octets(key: wycheproof_key, signature: [1, 43, 163, 168, 189, 107, 148, 213, 237, 128, 166, 217, 209, 25, 10, 67, 110, 188, 204, 8, 51, 73, 6, 134, 222, 172, 134, 53, 188, 185, 191, 83, 105, 0, 179, 41, 244, 121, 162, 187, 208, 165, 195, 132, 238, 20, 147, 177, 245, 24, 106, 135, 19, 156, 172, 93, 244, 8, 124, 19, 75, 73, 21, 104, 71, 219], message: wycheproof_msg))
 }

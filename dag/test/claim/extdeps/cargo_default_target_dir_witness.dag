@@ -1,0 +1,57 @@
+module test.claim.extdeps.cargo_default_target_dir_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+import extdeps.rust.cargo {
+  cargo_default_dev_profile,
+  cargo_default_profile_dir,
+  cargo_default_release_dir,
+  cargo_default_release_dir_rel,
+  cargo_default_target_dir,
+  cargo_profile_dir_under_target_dir,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ONE CLAIM NAMING CARGO'S DEFAULT OUTPUT-TREE LAYOUT, upstream-cited at
+// extdeps.rust.cargo::cargo_default_target_dir (cargo book, build cache page, 'target
+// directory': cargo puts the output tree in target/ under the (workspace) root, and
+// CARGO_TARGET_DIR overrides that location). Scope honestly: this pins the fn against an
+// unannounced EDIT of the constant. It cannot detect upstream itself moving the default --
+// nothing in-repo can -- so that stays a watch item on the cited page, and is exactly why the
+// constant has one home to update when it happens. A claim, not a use: the fn's production
+// callers are the instruments and witness sites that stopped spelling the join themselves. This
+// is NOT gunbc.owned_cargo_target's partition (<base>/<owner>/target, C4): no owner segment
+// appears here, and the two fns never call each other; collapsing them is the failure mode this
+// separation prevents.
+test fn cargo_default_target_dir_is_target_under_the_build_root() -> Bool {
+  cargo_default_target_dir(build_root: "/work/repo") == "/work/repo/target"
+    && cargo_default_target_dir(build_root: "/w") == "/w/target"
+}
+
+// The release face is the SAME fact plus the release profile: one constant, derived twice into the
+// two shapes consumers hold (relative for a cwd-bound site, absolute for a build-root one), and it
+// is checked to agree with itself -- an edit to the segment moves all three, and any consumer that
+// re-derived "target/release" locally would sit outside this pin, which is what §6b forbids.
+test fn cargo_default_release_dirs_derive_from_the_same_segment() -> Bool {
+  cargo_default_release_dir_rel == "target/release"
+    && cargo_default_release_dir(build_root: "/work/repo") == "/work/repo/target/release"
+    && cargo_default_release_dir(build_root: "") == "/target/release"
+}
+
+// The PROFILE faces are the same layout plus cargo's own profile names, and they are the only
+// spelling of that append in the corpus: a site holding a target dir from another authority takes
+// its profile face from cargo_profile_dir_under_target_dir rather than concatenating "/release" or
+// "/debug" by hand (four sites did, which is the second-local-implementation §6b deletes). RED:
+// hand-joining "/release" in one of those sites while the home moved, or renaming a profile
+// constant without moving the faces.
+test fn cargo_profile_faces_derive_from_the_same_segment() -> Bool {
+  cargo_default_dev_profile == "debug"
+    && cargo_default_profile_dir(build_root: "/work/repo", profile: cargo_default_dev_profile)
+         == "/work/repo/target/debug"
+    && cargo_default_profile_dir(build_root: "/work/repo", profile: "release") == "/work/repo/target/release"
+    && cargo_default_release_dir(build_root: "/work/repo")
+         == cargo_default_profile_dir(build_root: "/work/repo", profile: "release")
+    && cargo_profile_dir_under_target_dir(target_dir: "/owned/ab12/target", profile: cargo_default_dev_profile)
+         == "/owned/ab12/target/debug"
+}

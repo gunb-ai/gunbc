@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.the_supervision_verdict_is_written_where_the_workers_tools_reach_it
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundBelowTheLadder, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data the_supervision_verdict_is_written_where_the_workers_tools_reach_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_supervision_verdict_is_written_where_the_workers_tools_reach_it" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "the session hand-in/supervision protocol (lab-dev S1/S2) lands on main, with the alignment check and supervisor verdicts written by a principal other than the worker into a directory the worker unit cannot write, sufficient for a worker-side rewrite of its own verdict to have no writable target" } },
+
+  receipts: [
+    "INVALID STATE: the supervision verdict that steers a session's next turn (the in-session alignment check's artifacts) is written where the worker's own tools can reach it, so the model being supervised can read and rewrite the judgment of itself.",
+    "FOUND ON bright-moth-475/lab-dev, 2026-10-24, as the RESIDUAL of lab-dev 85866292: that commit split the session's own check and supervisor artifacts (moved beside the event stream in worker/, which the worker writes) from the acceptance outcome (HarnessAcceptanceRoute.outcome_directory, the attempt directory, which it cannot). The acceptance outcome is out of the worker's reach; the supervision verdict is not, because the session process writes it and the model's tool runs share that session's uid.",
+    "DISTINGUISHING FACTS: the verdict file's directory is in the unit's ReadWritePaths; the harness and the model's tool subprocesses are one principal; nothing reads the verdict back from an independent copy.",
+    "HARM: a rewritten verdict would steer the session silently -- no refusal, no receipt -- so the class sits below the ladder until a principal boundary separates writer from subject.",
+    "RUNG FOUND AT: below the ladder (silent if exercised; identified by reading the 85866292 split, not by an observed rewrite). CURRENT: the same. Not present on main, which has no supervision protocol. CEILING: structurally impossible, once the verdict's writer is a principal distinct from the worker and its location is outside the worker unit's writable set. NEXT-RUNG TRIGGER: the standing's capability.",
+  ],
+  evidence: [],
+}

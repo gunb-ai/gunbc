@@ -27,9 +27,14 @@ module std.durable_exclusive_hold
 // API, which is the same second authority wearing a type parameter.
 
 import std.types { NonEmptyStr, String, Bool, brand }
+import std.optional { Present, Absent }
 import std.durable_compare_and_set {
   CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasUnreadableSlot, cas_generation_count,
+}
+import std.scoped_authorization {
+  AuthorizationDecision, AuthorizationPermitted, AuthorizationRefused,
+  AuthorizationRefusalCause, OperatorGrant,
 }
 
 // Who holds the slot. A branded string rather than a structured identity
@@ -236,6 +241,174 @@ fn durable_hold_recovery_assess(observed: DurableHoldObservation, report: Durabl
           HolderObservedDead { evidence: e } =>
             HoldRecoveryEligible { generation: g, dead_holder: holder, evidence: e }
         }
+      }
+  }
+}
+
+
+// A NON-HOLDER RELEASE TYPED BY ITS EVIDENCE -- THE FOURTH AMENDMENT, BESIDE RECOVERY AND NOT INSIDE IT.
+//
+// Recovery frees a hold because its holder was OBSERVED DEAD. Two other lawful reasons to free a hold
+// that its holder never released say nothing about liveness, and routing either through
+// HolderObservedDead would fabricate a liveness verdict nobody took: the PROTECTED SECTION WAS OBSERVED
+// COMPLETE (what the hold protected has already happened, so the hold protects nothing whoever holds
+// it), and an OPERATOR AUTHORIZED the release (the operator's consent is the load-bearing input, and
+// nothing observes the holder at all). gunbc.deploy_transition clears its transition lease on exactly
+// these two bases, and without a home here its lease forks this protocol.
+//
+// The subject of either is ONE HOLD: WHICH hold (its identity in the store that realizes it), the
+// holder, and the generation it holds at. A release taken of a hold at N cannot free a hold at any other
+// generation, nor another holder's hold at N, for the same reason recovery's report is bound to both --
+// and it cannot free ANOTHER SLOT that happens to stand at the same holder and generation. Holder and
+// generation alone do not identify a hold: one converge identity can hold two slots at generation 1,
+// and a release for one would free both (side-chat merge review of gunbc#15061 at 868875d).
+//
+// THE IDENTITY IS OPAQUE HERE AND MINTED BY THE REALIZATION. This protocol has no store and no key, so it
+// cannot say what a hold's identity is made of; the realization that owns the slot derives it from the
+// exact store and slot (gunbc.durable_exclusive_hold_file_store file_hold_ref) and hands the SAME
+// derivation to the assessment, so a subject names a hold only by the address the realization reads.
+// One equality, exact, for the reason durable_hold_owner_equal is the only owner equality.
+type DurableHoldRef = NonEmptyStr where brand("DurableHoldRef")
+
+fn durable_hold_ref_equal(left: DurableHoldRef, right: DurableHoldRef) -> Bool {
+  (left as String) == (right as String)
+}
+
+type DurableHoldSubject {
+  hold: DurableHoldRef
+  holder: DurableHoldOwnerRef
+  generation: CasGeneration
+}
+
+// WHAT WAS OBSERVED IS THE CONSUMER'S TYPE, AND THE VERDICT IS TAKEN OF IT. What it means for a
+// protected section to be complete is the consumer's question (a repository observed at the candidate a
+// transition record names), so this protocol takes the verdict, not the method, exactly as it does for
+// liveness -- but the verdict CARRIES THE OBSERVATION it was read from, in the consumer's own type,
+// rather than a sentence or a flag. Three verdicts, and the third is why there are three: a completion
+// that could not be observed is not a completion, and a release over it would be ⊤-as-ignorance.
+type DurableHoldSectionCompletion<Observation>
+  = SectionObservedComplete { observation: Observation }
+  | SectionObservedIncomplete { observation: Observation }
+  | SectionCompletionUnobservable { cause: NonEmptyStr }
+
+type DurableHoldCompletionReport<Observation> {
+  hold: DurableHoldSubject
+  completion: DurableHoldSectionCompletion<Observation>
+}
+
+// THE OPERATOR ARM CONSUMES std.scoped_authorization's DECISION, IT DOES NOT MINT A SECOND ONE. Who
+// may authorize, for which escalation and attempt, under which scope and until when is decided there by
+// `authorize`; this protocol adds only what that module never reads -- that the grant's Subject names
+// THIS hold. A refused decision is carried in, not filtered out by the caller, so "no authorization"
+// refuses here with the cause the operator needs rather than being a release that was never attempted.
+type DurableHoldNonHolderRelease<Observation>
+  = ReleasedOnEvidence { evidence: DurableHoldCompletionReport<Observation> }
+  | ReleasedByOperator { authorization: AuthorizationDecision<DurableHoldSubject> }
+
+// Each refusal names its own remedy: nothing held means there is nothing to release; a report for
+// another holder or a moved slot means the evidence is about a hold that no longer stands; an
+// incomplete section means wait for it (or ask an operator); an unobservable completion sends the
+// caller to whatever prevented the look; an unauthorized operator release sends it to the grant.
+type DurableHoldNonHolderReleaseRefusal<Observation>
+  = NonHolderReleaseNothingHeld
+  | NonHolderReleaseForAnotherHold { hold: DurableHoldRef, subject: DurableHoldRef }
+  | NonHolderReleaseForAnotherHolder { holder: DurableHoldOwnerRef, subject: DurableHoldOwnerRef }
+  | NonHolderReleaseSlotMoved { subject: CasGeneration, observed: CasGeneration }
+  | NonHolderReleaseSectionIncomplete { generation: CasGeneration, holder: DurableHoldOwnerRef, observation: Observation }
+  | NonHolderReleaseCompletionUnobservable { generation: CasGeneration, holder: DurableHoldOwnerRef, cause: NonEmptyStr }
+  | NonHolderReleaseNotAuthorized { generation: CasGeneration, holder: DurableHoldOwnerRef, cause: AuthorizationRefusalCause }
+  | NonHolderReleaseSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
+  | NonHolderReleaseObservationUnavailable { cause: CasUnreadableSlot }
+
+// The eligible arm hands the basis it was admitted on back to the caller, so the caller can tell
+// evidence from consent and derive its release reference from it. The free state itself stores only
+// that reference (DurableHoldFree released_by), exactly as for a release or a recovery.
+type DurableHoldNonHolderReleaseBasis<Observation>
+  = NonHolderReleasedOnEvidence { observation: Observation }
+  | NonHolderReleasedByOperator { grant: OperatorGrant<DurableHoldSubject> }
+
+// Like recovery, the eligible arm frees the slot at the generation both the live read and the subject
+// name and hands it to no one: the next holder acquires through durable_hold_acquire_assess.
+type DurableHoldNonHolderReleaseAssessment<Observation>
+  = NonHolderReleaseEligible { generation: CasGeneration, released_holder: DurableHoldOwnerRef, basis: DurableHoldNonHolderReleaseBasis<Observation> }
+  | NonHolderReleaseRefused { refusal: DurableHoldNonHolderReleaseRefusal<Observation> }
+
+// THE SUBJECT CHECK DOMINATES THE BASIS CHECK: a sound basis taken of another hold describes a hold
+// that is not the one on the slot, so the binding is decided first and the basis only after it.
+fn durable_hold_nonholder_subject_refusal<Observation>(
+  hold: DurableHoldRef,
+  generation: CasGeneration,
+  holder: DurableHoldOwnerRef,
+  subject: DurableHoldSubject,
+) -> DurableHoldNonHolderReleaseRefusal<Observation>? {
+  if !durable_hold_ref_equal(left: hold, right: subject.hold) {
+    Present { value: NonHolderReleaseForAnotherHold { hold: hold, subject: subject.hold } }
+  } else if !durable_hold_owner_equal(left: holder, right: subject.holder) {
+    Present { value: NonHolderReleaseForAnotherHolder { holder: holder, subject: subject.holder } }
+  } else if cas_generation_count(g: generation) != cas_generation_count(g: subject.generation) {
+    Present { value: NonHolderReleaseSlotMoved { subject: subject.generation, observed: generation } }
+  } else {
+    none
+  }
+}
+
+fn durable_hold_release_on_evidence_assess<Observation>(
+  hold: DurableHoldRef,
+  generation: CasGeneration,
+  holder: DurableHoldOwnerRef,
+  report: DurableHoldCompletionReport<Observation>,
+) -> DurableHoldNonHolderReleaseAssessment<Observation> {
+  match durable_hold_nonholder_subject_refusal(hold: hold, generation: generation, holder: holder, subject: report.hold) {
+    Present { value: r } => NonHolderReleaseRefused { refusal: r }
+    Absent =>
+      match report.completion {
+        SectionObservedIncomplete { observation: o } =>
+          NonHolderReleaseRefused { refusal: NonHolderReleaseSectionIncomplete { generation: generation, holder: holder, observation: o } }
+        SectionCompletionUnobservable { cause: c } =>
+          NonHolderReleaseRefused { refusal: NonHolderReleaseCompletionUnobservable { generation: generation, holder: holder, cause: c } }
+        SectionObservedComplete { observation: o } =>
+          NonHolderReleaseEligible { generation: generation, released_holder: holder, basis: NonHolderReleasedOnEvidence { observation: o } }
+      }
+  }
+}
+
+fn durable_hold_release_by_operator_assess<Observation>(
+  hold: DurableHoldRef,
+  generation: CasGeneration,
+  holder: DurableHoldOwnerRef,
+  authorization: AuthorizationDecision<DurableHoldSubject>,
+) -> DurableHoldNonHolderReleaseAssessment<Observation> {
+  match authorization {
+    AuthorizationRefused { cause: c } =>
+      NonHolderReleaseRefused { refusal: NonHolderReleaseNotAuthorized { generation: generation, holder: holder, cause: c } }
+    AuthorizationPermitted { grant: grant } =>
+      match durable_hold_nonholder_subject_refusal(hold: hold, generation: generation, holder: holder, subject: grant.subject) {
+        Present { value: r } => NonHolderReleaseRefused { refusal: r }
+        Absent =>
+          NonHolderReleaseEligible { generation: generation, released_holder: holder, basis: NonHolderReleasedByOperator { grant: grant } }
+      }
+  }
+}
+
+// `hold` is the identity of the slot `observed` was read from, supplied by the realization that read it.
+fn durable_hold_nonholder_release_assess<Observation>(
+  hold: DurableHoldRef,
+  observed: DurableHoldObservation,
+  request: DurableHoldNonHolderRelease<Observation>,
+) -> DurableHoldNonHolderReleaseAssessment<Observation> {
+  match observed {
+    HoldSlotAbsent => NonHolderReleaseRefused { refusal: NonHolderReleaseNothingHeld }
+    HoldSlotFree { generation: _, released_by: _ } => NonHolderReleaseRefused { refusal: NonHolderReleaseNothingHeld }
+    HoldSlotUndecodable { generation: g, detail: d } =>
+      NonHolderReleaseRefused { refusal: NonHolderReleaseSlotUndecodable { generation: g, detail: d } }
+    HoldObservationUnavailable { cause: c } =>
+      NonHolderReleaseRefused { refusal: NonHolderReleaseObservationUnavailable { cause: c } }
+    HoldSlotHeld { generation: g, owner: holder } =>
+      match request {
+        ReleasedOnEvidence { evidence: e } =>
+          durable_hold_release_on_evidence_assess(hold: hold, generation: g, holder: holder, report: e)
+        ReleasedByOperator { authorization: a } =>
+          durable_hold_release_by_operator_assess(hold: hold, generation: g, holder: holder, authorization: a)
       }
   }
 }

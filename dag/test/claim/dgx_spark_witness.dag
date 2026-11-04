@@ -54,7 +54,8 @@ import gunbc.fleet.fleet_lifecycle_observation {
   EnvelopeHostDisagreesWithSubject,
   envelope_host_presentation_evidence,
 }
-import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
+import extdeps.dhcp.v4 { StaticDhcpReservation, Active }
+import extdeps.network.mac { mac_address }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
@@ -186,7 +187,7 @@ fn synthetic_bound_binding_for(identity_host: NonEmptyStr, last_octet: Int) -> D
   SlotAssigned {
     identity: identity_host as HostIdentity,
     reservation: Cr1000aDhcpLeaseRow {
-      mac_address: "00:00:00:00:00:00" as MacAddress,
+      mac_address: mac_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 0),
       ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
       lease: StaticDhcpReservation {
         reservation_label: "synthetic-dgx-spark-fixture" as NonEmptyStr,
@@ -746,7 +747,7 @@ fn unobserved_hw_deployment(subject_host: NonEmptyStr, last_octet: Int) -> DgxSp
     catalog: nvidia_dgx_spark_4tb_catalog,
     observation: observation,
     router_reservation: Cr1000aDhcpLeaseRow {
-      mac_address: "00:00:00:00:00:00" as MacAddress,
+      mac_address: mac_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 0),
       ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
       lease: StaticDhcpReservation {
         reservation_label: "synthetic-dgx-spark-fixture" as NonEmptyStr,

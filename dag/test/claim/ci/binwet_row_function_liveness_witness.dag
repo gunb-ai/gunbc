@@ -1,0 +1,165 @@
+module test.claim.ci.binwet_row_function_liveness_witness
+
+// THE IDENTITY JOIN: roster row -> parsed declaration. Every row of
+// gunbc.ci.ci_layer_roots.bin_witness_wet_entries names an entry file and one function it is
+// supposed to run. A roster that names a function the entry no longer declares is a lie about
+// coverage -- the row enrolls a claim that cannot execute, and CI reports the batch as green.
+// (Found live: two rows named functions that had moved to another file; this claim caught them.)
+//
+// BOTH SIDES ARE PARSED IDENTITIES, NOT TEXT (review 85702, DESIGN §5). The roster side is the
+// typed ScheduleWitnessEntry values themselves -- the same carriers the executor consumes, not a
+// re-parse of the file they are written in. The declaration side is v2.std.decl_index.decl_facts:
+// the host module index parses every .dag under the pool roots, and a fact is a parsed item, so a
+// function that exists only inside a comment or a string literal produces NO fact. The join key
+// is the identity pair (rel_path, name) with kind FnItem -- repo-relative path and parsed item
+// name, the same pair the executor resolves by. The previous revision compared indentation-filtered
+// source lines against string_contains("fn " + name + "("), which a comment or a string literal
+// could satisfy for a nonexistent declaration; that shape is retired, and test fn
+// decoy_pairs_are_not_declarations keeps it retired by planting the exact decoys in a fixture and
+// demanding the join refuse them.
+//
+// ONE CENSUS PER CLAIM, THREADED AS A VALUE. v2.std.decl_index's own note measures a whole-corpus
+// fold at ~3.6s per call against 1ms for keyed reads; each test fn here takes the census EXACTLY
+// ONCE and passes the fact list into every fold. A per-row call would marshal the corpus 91 times.
+
+import std.types { Bool, Int, List, String }
+import std.algebra { Cons, Empty, fold_list }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.integer { int_to_decimal_string }
+import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import gunbc.ci.ci_layer_roots { bin_witness_wet_entries }
+import v2.std.decl_index { DeclFact, FnItem, decl_facts }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The same roots the executor's own discovery walks, so the join judges the corpus the lanes
+// actually run. Repo-relative like DeclFact.rel_path itself (repo_rel strips the workspace root).
+data binwet_liveness_pool_roots: List<String> = [ "dag", "src/v2" ]
+
+// THE JOIN PREDICATE. A row is executable when the parsed corpus carries, AT THE ROW'S EXACT
+// REPO-RELATIVE PATH, a function item of the row's name. A file-grain row (function == "") asks
+// only that the entry file parses and declares something -- the roster holds exactly one such row
+// (roadmap_belt_actuate_witness.dag, a whole-entry runner). There is no substring of source text
+// in this predicate: the only values it reads are DeclFact fields produced by the host parse, so
+// a name surviving only in a comment or a string literal has no fact and the row refuses.
+fn fact_is_function(f: DeclFact) -> Bool {
+  match f.kind {
+    FnItem => true
+    _ => false
+  }
+}
+
+fn fact_matches_row(f: DeclFact, entry: String, name: String) -> Bool {
+  f.rel_path == entry && (
+    if name == "" {
+      true
+    } else {
+      f.name == name && fact_is_function(f)
+    }
+  )
+}
+
+fn row_is_executable(facts: List<DeclFact>, row: ScheduleWitnessEntry) -> Bool {
+  any(facts, f => fact_matches_row(f: f, entry: row.entry, name: row.function))
+}
+
+fn unexecutable_rows(facts: List<DeclFact>) -> List<ScheduleWitnessEntry> {
+  filter(bin_witness_wet_entries, row => !row_is_executable(facts: facts, row: row))
+}
+
+fn row_identity(row: ScheduleWitnessEntry) -> String {
+  concat(row.entry, concat(" :: ", row.function))
+}
+
+fn first_row_text(rows: List<ScheduleWitnessEntry>) -> String {
+  match rows {
+    Cons { head: h, tail: _ } => row_identity(row: h)
+    Empty {} => "(none)"
+  }
+}
+
+fn count_items(facts: List<DeclFact>) -> Int {
+  fold_list(xs: facts, empty: 0, cons: fn(n, f) { n + 1 })
+}
+
+// PROCESS-EXIT, NOT BOOL, ON PURPOSE. claim_batch prints `FAIL <fn>` plus the typed reason for a
+// ProcessExit claim (claim_batch.rs ClaimOutcome::ExitFailure) but only the bare function name for
+// a false Bool. This join's whole value is naming WHICH row drifted; a Bool would make the
+// operator re-derive it by hand, and the falsifier runs could not show the row's identity in the
+// receipt.
+test fn every_binwet_row_names_an_existing_function() -> ProcessExit {
+  let facts = decl_facts(pool_roots: binwet_liveness_pool_roots)
+  let bad = unexecutable_rows(facts: facts)
+  if length(xs: bad) == 0 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        concat("bin_wet roster rows naming a declaration the parsed corpus does not carry at that path: ", int_to_decimal_string(value: length(xs: bad))),
+        concat(" of ", concat(int_to_decimal_string(value: length(xs: bin_witness_wet_entries)), "; first: ", first_row_text(rows: bad)))
+      )
+    }
+  }
+}
+
+// THE JOIN READS REAL INPUTS -- the anti-vacuity arm, BOTH sides. A join over an empty roster is
+// vacuously green (a renamed or emptied authority file); a join against an empty fact pool fails
+// every row, which is loud -- so the silent failure mode is the roster side. The bounds sit WELL
+// BELOW the populations on purpose: anti-vacuity guards, not hand-kept counts that rot into the
+// drift they police. Populations measured by this claim at head-built runs on 2026-10-25: 91
+// roster rows at the PR head (93 at base 3390986a, before the 2 stale rows were deleted); the
+// fact pool is the whole declaration census of dag + src/v2 (tens of thousands). Receipts here:
+// the PR that introduced this file.
+test fn the_binwet_roster_join_reads_real_inputs() -> ProcessExit {
+  let facts = decl_facts(pool_roots: binwet_liveness_pool_roots)
+  let rows = length(xs: bin_witness_wet_entries)
+  let fact_count = count_items(facts: facts)
+  if rows >= 80 && fact_count >= 1000 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        "the join read only ",
+        concat(int_to_decimal_string(value: rows), " roster rows and ",
+        concat(int_to_decimal_string(value: fact_count), " declaration facts; either the roster authority moved/re-quoted or the pool roots stopped parsing"))
+      )
+    }
+  }
+}
+
+// THE MANAGER'S RED (review 85702): a name appearing ONLY in a comment or a string literal of the
+// entry file must NOT satisfy the join. dag/test/fixture/binwet_row_liveness_decoys.dag plants
+// exactly those decoys -- a commented-out fn, a fn spelling inside a string literal -- plus one
+// REAL fn as the positive control. The synthetic rows are the same typed ScheduleWitnessEntry
+// carriers the roster holds and go through the same row_is_executable fold, so if a decoy name
+// were ever accepted this claim fails the way the roster claim would. The positive control proves
+// the fixture path is really indexed, so the two refusals cannot be vacuous on a wrong path.
+data decoy_fixture_path: String = "dag/test/fixture/binwet_row_liveness_decoys.dag"
+
+fn decoy_rows() -> List<ScheduleWitnessEntry> {
+  [
+    ScheduleWitnessEntry { entry: decoy_fixture_path, function: "bw_decoy_only_in_comment", kind: ExecutionWitnessKind },
+    ScheduleWitnessEntry { entry: decoy_fixture_path, function: "bw_decoy_only_in_string", kind: ExecutionWitnessKind }
+  ]
+}
+
+test fn decoy_pairs_are_not_declarations() -> ProcessExit {
+  let facts = decl_facts(pool_roots: binwet_liveness_pool_roots)
+  let accepted = filter(decoy_rows(), row => row_is_executable(facts: facts, row: row))
+  let control_present = any(facts, f => fact_matches_row(f: f, entry: decoy_fixture_path, name: "bw_decoy_real_fn"))
+  if length(xs: accepted) == 0 && control_present {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        "the parsed-identity join accepted ",
+        concat(int_to_decimal_string(value: length(xs: accepted)), " decoy rows (comment/string-literal fn spellings) of 2; positive control bw_decoy_real_fn indexed: ",
+        if control_present { "yes" } else { "NO -- fixture not in the pool, negatives vacuous" })
+      )
+    }
+  }
+}

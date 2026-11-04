@@ -1,0 +1,29 @@
+module gunbc.rung_drop.owned_provisioning_impossible_pair_admitted_at_enrolment
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyImpossible, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for an owned machine whose OS is installed over virtual media with no BMC (DESIGN 4b(3)).
+// The old fused OwnedProvisioning arms made that state unwritable: BmcVirtualMediaInstall implied the BMC. The
+// ruling to decompose control route from OS delivery (merry-fox-82, 2026-10-22) made them two independent
+// fields, so the pair is now spellable and `gunbc.fleet.fleet_enrollment admit_enrollment` (one call of
+// `gunbc.fleet.fleet_host_backing admit_owned_provisioning`) refuses it at the enrollment boundary instead.
+// The trigger is a capability: the delivery medium becomes a capability of the control route, so a delivery
+// cannot name a medium its route lacks. Splitting the medium out of delivery alone does not restore it.
+data owned_provisioning_impossible_pair_admitted_at_enrolment: RungDrop = RungDrop {
+  identity: "owned_provisioning_impossible_pair_admitted_at_enrolment" as NonEmptyStr,
+
+  subject: "an OwnedMachine backing whose control route is NoOutOfBand and whose OS delivery is InstalledViaVirtualMedia (gunbc.fleet.fleet_host_backing OwnedProvisioning)",
+
+  declared: "2026-10-23",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyImpossible,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "OwnedProvisioning decomposed into OwnedControlRoute and OwnedOsDelivery (ruling merry-fox-82, 2026-10-22); the pair is refused by admit_owned_provisioning at gunbc.fleet.fleet_enrollment admit_enrollment, the one call site" },
+    population: Enumerated { members: FreeSemigroup { head: "OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia }", tail: [] } },
+    restoration_trigger: "the delivery medium becomes a capability of the control route, so a delivery cannot name a medium its route lacks and the pair has no constructor; owed at the first non-BMC delivery medium (PXE, the network-boot cut). Splitting the medium out of delivery alone is not sufficient. No writer of the pair exists today: the admission refuses it, and fleet_enrollment_refusals is gated empty by host_control_route_witness."
+  } }
+}

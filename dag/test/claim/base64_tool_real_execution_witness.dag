@@ -1,0 +1,65 @@
+module test.claim.base64_tool_real_execution_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.integer { Int }
+import std.algebra { length }
+import v2.std.text { string_all_chars_in }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
+import extdeps.tools.base64 { Base64FileEncoded, Base64FileUnreadable, base64_encode_file_via_shell }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE COMMITTED CHAINLOADER THROUGH THE REAL base64 OPERATION. The pairing obligation of the supplied-status
+// witnesses in test.claim.base64_tool_witness: base64_encode_file_via_shell runs the real coreutils `base64`
+// over artifacts/ipxe/snponly-arm64.efi, so the argv's wrapping flag is executed, which the supplied-status
+// witnesses never do. Refused by the hermetic envelope (shell.Exec.Run has no mock_response here), so excluded
+// from discovery and enrolled in gunbc.ci.ci_layer_roots as a real-execution witness.
+
+data committed_image_path: NonEmptyStr = "artifacts/ipxe/snponly-arm64.efi" as NonEmptyStr
+
+// POSITIVE CONTROL: the real encoding of the committed image is one unwrapped line of exactly
+// 4*ceil(337920/3) characters (337,920 B is the size in the S1 SitePxeEdgeChainloaderBuildReceipt
+// record; GNU base64 emits 4 characters per 3 input bytes). The argv's `-w 0` is what keeps it one
+// line: `-w 76` inserts newlines outside the alphabet and reds the first conjunct. Content equality is the sha256 witness
+// of the image itself (test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness); a decode
+// of this text would have to go through raw shell, a second path beside the modelled one.
+data base64_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+
+data committed_image_encoded_length: Int = 450560
+
+test fn the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length() -> Bool {
+  match base64_encode_file_via_shell(path: committed_image_path) {
+    Base64FileEncoded { text: t } => string_all_chars_in(s: t, alphabet: base64_alphabet) && length(t) == committed_image_encoded_length
+    Base64FileUnreadable { stderr: _ } => false
+    _ => false
+  }
+}
+
+// CONTENT JOIN: the exact encoded text, digested by the modelled sha256sum DigestStdin, equals the digest
+// of the base64 of the committed image. The expected hex was derived once, outside this witness, from the
+// committed image by the host tools (`base64 -w 0 artifacts/ipxe/snponly-arm64.efi | sha256sum`), and that
+// image is the one whose own sha256 (18b1cbd2...7e05) test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness
+// holds to the pin; so this binds the tool's output text to the pinned bytes through a fixed encoding.
+// A single changed base64 character keeps the alphabet and the length and moves this digest.
+data committed_image_encoding_sha256: String = "0010d0eef7a5a7ffa463edbb957008d4470c4c77912dfee9370ea03f655a2d7a"
+
+test fn the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image() -> Bool {
+  match base64_encode_file_via_shell(path: committed_image_path) {
+    Base64FileEncoded { text: t } =>
+      match sha256sum_stdin_digest_via_shell(content: t) {
+        Sha256FileDigest { digest: d } => d.hex as String == committed_image_encoding_sha256
+        Sha256FileDigestUnavailable { path: _, reason: _ } => false
+      }
+    Base64FileUnreadable { stderr: _ } => false
+    _ => false
+  }
+}
+
+// RED: a path that does not exist is the real status 1 arm, not an encoding.
+test fn a_missing_file_is_the_real_unreadable_arm() -> Bool {
+  match base64_encode_file_via_shell(path: "artifacts/ipxe/does-not-exist.efi" as NonEmptyStr) {
+    Base64FileUnreadable { stderr: _ } => true
+    _ => false
+  }
+}

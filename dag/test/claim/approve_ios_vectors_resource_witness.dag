@@ -85,7 +85,7 @@ fn rows_resource_needle() -> String {
 
 // POSITIVE: the emission is not silently refused, so the claims below are not being satisfied by an
 // empty file.
-fn emission_is_not_silently_refused_helper() -> Bool {
+test fn emission_is_not_silently_refused_helper() -> Bool {
   match expected_approve_ios_protocol_vector_tests_swift() {
     SwiftRowEmitted { source: s } => s != ""
     SwiftRowEmissionRefused { reason: _ } => false
@@ -94,13 +94,13 @@ fn emission_is_not_silently_refused_helper() -> Bool {
 
 // POSITIVE: the emitted load() asks Bundle for the name the authority row carries. Both the needle and
 // the line are derived, and the line must be non-empty, so an absent load() cannot pass.
-fn emitted_bytes_carry_the_rows_resource_name_helper() -> Bool {
+test fn emitted_bytes_carry_the_rows_resource_name_helper() -> Bool {
   let s = emitted_load_line()
   s != "" && s.contains(rows_resource_needle())
 }
 
 // POSITIVE: the carrier's total match agrees with an independent split of the same row, in both fields.
-fn derivation_agrees_with_the_row_helper() -> Bool {
+test fn derivation_agrees_with_the_row_helper() -> Bool {
   let row_stem = authority_stem()
   let row_ext = authority_extension()
   match approve_ios_vectors_artifact_resource_parts() {
@@ -112,7 +112,7 @@ fn derivation_agrees_with_the_row_helper() -> Bool {
 // POSITIVE (was a red-by-design claim before the boundary was made driveable): every name that is not
 // <stem>.<extension> yields NO parts, and the real row's name yields exactly the row's two halves. The
 // shapes below are the whole class of rename that used to silently retarget load().
-fn malformed_names_yield_no_parts_helper() -> Bool {
+test fn malformed_names_yield_no_parts_helper() -> Bool {
   all(["vectors", ".json", "vectors.", "", "a.b.json"], name =>
     match approve_ios_vectors_resource_parts(name: name) {
       Present { value: _ } => false
@@ -132,7 +132,7 @@ fn malformed_names_yield_no_parts_helper() -> Bool {
 //
 // The literal below is the diagnostic's identity, so spelling it a second time is the point: it is what a
 // runbook and the CI log match against, not a derivation of anything.
-fn refusal_is_taken_and_carries_the_named_reason_helper() -> Bool {
+test fn refusal_is_taken_and_carries_the_named_reason_helper() -> Bool {
   match approve_ios_vectors_emission(parts: approve_ios_vectors_no_resource_parts(), escape_present: true) {
     SwiftRowEmissionRefused { reason: r } =>
       r == "approve-ios-vectors-resource-name-not-a-stem-and-extension"
@@ -142,7 +142,7 @@ fn refusal_is_taken_and_carries_the_named_reason_helper() -> Bool {
 }
 
 // POSITIVE: the reason is carried as a value, not baked into bytes — this arm produces no Swift at all.
-fn refusal_produces_no_bytes_helper() -> Bool {
+test fn refusal_produces_no_bytes_helper() -> Bool {
   match approve_ios_vectors_emission(parts: approve_ios_vectors_no_resource_parts(), escape_present: true) {
     SwiftRowEmissionRefused { reason: _ } => true
     SwiftRowEmitted { source: _ } => false

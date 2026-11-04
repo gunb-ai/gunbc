@@ -42,6 +42,7 @@
 // src/gunbc_rust_emitted_crate.rs
 // src/gunbc_rust_emitted_edge.rs
 // src/gunbc_rust_source_type_bindings.rs
+// src/gunbc_stage0_stage0_cargo_manifest.rs
 // src/gunbc_stage0_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_stage0_crate_partition_generated.rs
 // src/gunbc_stage0_stage0_emitted_edge_admission.rs
@@ -65,6 +66,7 @@
 // src/std_effects.rs
 // src/std_emit_model.rs
 // src/std_error_primitives.rs
+// src/std_float.rs
 // src/std_generated_provider.rs
 // src/std_graph.rs
 // src/std_host_text.rs

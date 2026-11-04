@@ -1,0 +1,339 @@
+module v2.test.claim.compiler.infer_arm_close_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, Some }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, Int, List, String }
+import v2.compiler.infer { infer }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ers_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_artifact, file_path: "src/v2/pilot/ers_pilot.dag" }
+data ers_collection_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_collection_artifact, file_path: "src/v2/pilot/ers_collection_pilot.dag" }
+data ers_algebra_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_algebra_artifact, file_path: "src/v2/pilot/ers_algebra_pilot.dag" }
+data ers_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_expected_return_seed_std_artifact, file_path: "src/v2/pilot/ers_std_pilot.dag" }
+
+fn ers_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^infer_expected_return_seed_cu,
+    source_root: V2Tree
+  }
+}
+
+fn ers_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      ers_witness(src: concat("module p\n\nimport std.optional { Absent, Optional, Present }\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\n", body), artifact: ers_artifact),
+      ers_witness(src: osd_std_optional(), artifact: ers_std_artifact),
+      ers_witness(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: ers_collection_artifact),
+      ers_witness(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n\nfn collection_concat_shape() -> Int { 0 }\n", artifact: ers_algebra_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+
+// RULE A (native): an application at a declared position is judged with its type variables seeded by matching the callee's
+// declared return against the position's declared type (v2.compiler.infer infer_expected_return_seed). Every control runs the
+// real route: assemble, resolve, infer. `none` is not used: it does not lower to Absent natively yet (a separate gap), and Absent
+// at an expected T? exercises the seed exactly because Absent's own T is otherwise unbound.
+
+fn ers_id2() -> String { "fn id2<T>(a: T?, b: T?) -> T? { a }\n\n" }
+fn ers_row() -> String { "type Row {\n  f: Int?\n}\n\ntype Cell {\n  c: Int?\n}\n\n" }
+
+fn ers_f() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn f() -> Int? { id2(Absent, Absent) }\n")) }
+fn ers_h() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn h<U>() -> U? { id2(Absent, Absent) }\n")) }
+fn ers_let_annotated() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn a() -> Int? {\n  let x: Int? = id2(Absent, Absent)\n  x\n}\n")) }
+fn ers_g() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_id2(), "fn g() -> Int? {\n  let x = id2(Absent, Absent)\n  x\n}\n")) }
+fn ers_k() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_row(), concat(ers_id2(), "fn keep<T>(a: T, b: T?) -> T? { b }\n\nfn k(c: Cell) -> Row? { keep(c, Absent) }\n"))) }
+fn ers_plain() -> Outcome<ResolvedTree> { ers_assemble(body: "fn plain() -> Int? { 1 }\n") }
+fn ers_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool { 1 }\n") }
+
+fn ers_infer_accepted(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn ers_fatal_is(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+fn ers_error_count(o: Outcome<ResolvedTree>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => 0
+        Rejected { diagnostics: d } => fold(d.tail, init: 1, f: fn(acc, _x) { acc + 1 })
+      }
+  }
+}
+
+
+fn ers_pick() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_row(), "fn pick<T>(a: T) -> T { a }\n\nfn kp(c: Cell) -> Row { pick(c) }\n")) }
+
+fn rb_b1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Present { value: 1 } } else { Absent }\n  x\n}\n") }
+test fn rb_b1_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b1()) }
+
+fn rb_b2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Absent }\n\nfn t() -> Int? {\n  let x = if true { mk() } else { Absent }\n  x\n}\n") }
+test fn rb_b2_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b2()) }
+
+fn rb_if_alias() -> Outcome<ResolvedTree> { ers_assemble(body: "type MyInt = Int\n\nfn t(a: MyInt, b: Int) -> Int {\n  if true { a } else { b }\n}\n") }
+test fn rb_if_alias_arm_equals_underlying_arm_accepts() -> Bool { ers_infer_accepted(o: rb_if_alias()) }
+
+fn rb_match_alias() -> Outcome<ResolvedTree> { ers_assemble(body: "type MyInt = Int\n\ntype S =\n  | P\n  | Q\n  | R\n\nfn t(s: S, a: MyInt, b: Int) -> Int {\n  match s {\n    P => a\n    Q => b\n    R => b\n  }\n}\n") }
+test fn rb_match_alias_coproduct_arms_equal_underlying_accepts() -> Bool { ers_infer_accepted(o: rb_match_alias()) }
+
+fn rb_b6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Present { value: 1 } }\n\nfn t() -> Int? {\n  if true { mk() } else { Present { value: 2 } }\n}\n") }
+test fn rb_b6_application_arm_equals_constructor_arm_accepts() -> Bool { ers_infer_accepted(o: rb_b6()) }
+
+fn rb_b3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(o: Int?) -> Int? {\n  let x = match o {\n    Present { value: v } => Present { value: v }\n    Absent => Absent\n  }\n  x\n}\n") }
+test fn rb_b3_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b3()) }
+
+fn rb_b4() -> Outcome<ResolvedTree> { ers_assemble(body: "type Row {\n  f: Int?\n}\n\ntype Cell {\n  c: Int?\n}\n\nfn t(r: Row, e: Cell) -> Row {\n  let x = if true { r } else { e }\n  r\n}\n") }
+test fn rb_b4_has_arms_declare_conflicting_types() -> Bool { ers_fatal_is(o: rb_b4(), reason: ^infer_arms_declare_conflicting_types) }
+
+fn rb_planted() -> Outcome<ResolvedTree> { ers_assemble(body: "fn bad() -> Bool { 1 }\n") }
+test fn rb_planted_count_is_1() -> Bool { ers_error_count(o: rb_planted()) == 1 }
+
+fn rb_resolved(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+fn rb_b5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { Absent }\n  x\n}\n") }
+test fn rb_b5_refuses_no_arm_declares() -> Bool { ers_fatal_is(o: rb_b5(), reason: ^infer_no_arm_declares_a_type) }
+
+// Mixed-state arms with NO expected type (an unannotated let): an Int arm beside an Absent arm. Absent is underived, so the join
+// elaborates it at the declaring sibling's type (Int) and the arms conflict. The Optional control beside it accepts through the same join.
+// With a declared expected type each arm is judged against it (Rule A part 2, child-frame hops), so that case is covered there.
+fn rb_g1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { 1 } else { Absent }\n  x\n}\n") }
+test fn rb_g1_int_beside_absent_refuses() -> Bool { ers_fatal_is(o: rb_g1(), reason: ^infer_arms_declare_conflicting_types) }
+test fn rb_g1_the_optional_sibling_control_accepts() -> Bool { ers_infer_accepted(o: rb_b1()) }
+
+// Cost bound: arm nesting depth 1/2/4/8. The instrument is claim_batch's per-claim eval_steps receipt; the four claims differ only in depth.
+fn rb_d1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { Present { value: 1 } }\n}\n") }
+test fn rb_d1_depth_1_accepts() -> Bool { ers_infer_accepted(o: rb_d1()) }
+fn rb_d2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { if true { Absent } else { Present { value: 1 } } }\n}\n") }
+test fn rb_d2_depth_2_accepts() -> Bool { ers_infer_accepted(o: rb_d2()) }
+fn rb_d4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { Present { value: 1 } } } } }\n}\n") }
+test fn rb_d4_depth_4_accepts() -> Bool { ers_infer_accepted(o: rb_d4()) }
+fn rb_d8() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { if true { Absent } else { Present { value: 1 } } } } } } } } }\n}\n") }
+test fn rb_d8_depth_8_accepts() -> Bool { ers_infer_accepted(o: rb_d8()) }
+
+fn rb_e1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f() -> List<Int> { [] }\n") }
+fn rb_e2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn g() -> List<Int> {\n  let x = []\n  x\n}\n") }
+fn rb_e3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> { if true { [1] } else { [] } }\n") }
+test fn rb_e1_empty_list_at_declared_list_accepts() -> Bool { ers_infer_accepted(o: rb_e1()) }
+test fn rb_e2_unfixed_empty_list_let_refuses() -> Bool { ers_fatal_is(o: rb_e2(), reason: ^infer_unsolved_constructor_type_variable) }
+test fn rb_e3_empty_list_arm_closes_at_sibling() -> Bool { ers_infer_accepted(o: rb_e3()) }
+// WITH a declared expected type, Int beside Absent must refuse at this head (no silent accept), with its accepting positive beside it.
+fn rb_x1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool) -> Int? { if b { 1 } else { Absent } }\n") }
+test fn rb_x1_int_beside_absent_at_declared_return_refuses() -> Bool { ers_fatal_is(o: rb_x1(), reason: ^infer_literal_at_optional_is_not_present) }
+fn rb_x2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool) -> Int? { if b { Present { value: 1 } } else { Absent } }\n") }
+test fn rb_x2_present_beside_absent_at_declared_return_accepts() -> Bool { ers_infer_accepted(o: rb_x2()) }
+
+// RULE A AT A BRANCH: the expected type reaches the arms (child-frame hop). Int beside Absent at a declared return refuses (no implicit lift)
+// and no longer as a conflict between the arms; Present beside Absent still accepts.
+// The refusal is the typed literal-at-Optional reason (infer_literal_at_optional_is_not_present): no implicit lift (explicit_present_is_the_authoring_policy).
+fn rb_x3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f() -> Int? { 1 }\n") }
+test fn rb_x3_a_bare_literal_at_optional_refuses_the_same_way() -> Bool { ers_fatal_is(o: rb_x3(), reason: ^infer_literal_at_optional_is_not_present) }
+test fn rb_x1_is_not_an_arm_conflict() -> Bool { !ers_fatal_is(o: rb_x1(), reason: ^infer_arms_declare_conflicting_types) }
+
+// [] controls. With a declared List<Int> both [] arms close at the expected type; with no expected type two [] arms declare nothing.
+fn rb_l1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  if true { [] } else { [] }\n}\n") }
+test fn rb_l1_two_empties_at_declared_list_accept() -> Bool { ers_infer_accepted(o: rb_l1()) }
+fn rb_l2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  let x = if true { [] } else { [] }\n  x\n}\n") }
+test fn rb_l2_two_empties_declare_nothing() -> Bool { ers_fatal_is(o: rb_l2(), reason: ^infer_no_arm_declares_a_type) }
+
+// B1: WITH A DECLARED EXPECTED TYPE THE JOIN MUST NOT CHOOSE A LAYER. `if b { Absent } else { x }` with x: Int? at Optional<Int?> would
+// join at Int? and then elaborate to Present at Optional<Int?>, so Absent would mean Present{Absent}, not the outer Absent. The sibling must not win:
+// the join refuses with the typed deferral until the expected type reaches the arms. The positive beside it declares the layer the join chose.
+fn rb_n1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> { if b { Absent } else { x } }\n") }
+// The expected type reaches the if arms (Rule A), so the branch no longer defers; x: Int? at Optional<Int?> is a bare T at a T? position and refuses by layer depth (no implicit lift).
+test fn rb_n1_nested_optional_sibling_must_not_win() -> Bool { ers_fatal_is(o: rb_n1(), reason: ^inhabitance_optional_layer_depth_mismatch) }
+fn rb_n2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int? { if b { Absent } else { x } }\n") }
+test fn rb_n2_same_shape_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_n2()) }
+fn rb_n3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Optional<Int?> {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
+test fn rb_n3_match_sibling_must_not_win() -> Bool { ers_fatal_is(o: rb_n3(), reason: ^inhabitance_optional_layer_depth_mismatch) }
+fn rb_n4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Int? {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
+test fn rb_n4_match_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_n4()) }
+
+// B3: ARM ORDER IS NOT A MEANING. Open (Absent) and derived (Present{x}) arms in every placement settle the same way.
+// A `[]` arm is an open arm like Absent: the three placements below settle on one verdict (control rb_o_empty_arm_every_placement_accepts).
+fn rb_o_code(o: Outcome<ResolvedTree>) -> Int {
+  if ers_infer_accepted(o: o) { 0 } else if ers_fatal_is(o: o, reason: ^infer_arms_declare_conflicting_types) { 1 } else if ers_fatal_is(o: o, reason: ^infer_no_arm_declares_a_type) { 2 } else { 3 }
+}
+fn rb_o_APA() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Present { value: 1 } } else { Absent } }\n  x\n}\n") }
+fn rb_o_AAP() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Absent } else { Present { value: 1 } } }\n  x\n}\n") }
+fn rb_o_PAA() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Present { value: 1 } } else { if true { Absent } else { Absent } }\n  x\n}\n") }
+// [] AS THE OPEN ARM, EVERY PLACEMENT: a `[]` arm beside a derived List<Int> sibling settles the same way wherever the derived arm sits.
+fn rb_o_LPE() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(xs: List<Int>) -> List<Int> {\n  let x = if true { [] } else { if true { xs } else { [] } }\n  x\n}\n") }
+fn rb_o_ELP() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(xs: List<Int>) -> List<Int> {\n  let x = if true { if true { [] } else { [] } } else { xs }\n  x\n}\n") }
+fn rb_o_PLE() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(xs: List<Int>) -> List<Int> {\n  let x = if true { xs } else { if true { [] } else { [] } }\n  x\n}\n") }
+test fn rb_o_empty_arm_every_placement_accepts() -> Bool {
+  rb_o_code(o: rb_o_LPE()) == 0 && rb_o_code(o: rb_o_ELP()) == 0 && rb_o_code(o: rb_o_PLE()) == 0
+}
+
+// An inner join with no declaring arm hands its held arms to the enclosing join (infer_gather_branch_hand_up), so Present placed first
+// settles exactly as Present placed last: one verdict under every placement (this was the pinned PAA gap).
+test fn rb_o_every_order_gives_one_verdict() -> Bool {
+  let v = rb_o_code(o: rb_o_APA())
+  rb_o_code(o: rb_o_AAP()) == v && rb_o_code(o: rb_o_PAA()) == v
+}
+test fn rb_o_the_verdict_is_acceptance() -> Bool { rb_o_code(o: rb_o_PAA()) == 0 }
+// The hand-up refuses where no enclosing declaring arm exists, in either nesting position.
+fn rb_o_none() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { if true { Absent } else { Absent } }\n  x\n}\n") }
+test fn rb_o_no_declaring_arm_anywhere_refuses() -> Bool { rb_o_code(o: rb_o_none()) == 2 }
+
+// B1 THROUGH THE HAND-UP: arms handed up from an inner branch are closed by the enclosing join, so the deferral covers them too.
+fn rb_n5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Optional<Int?> { if b { if c { Absent } else { Absent } } else { x } }\n") }
+// The same refusal for arms handed up from an inner branch; they are not closed at the sibling's Int? (MEASURED reason: infer_grounding_not_derived).
+test fn rb_n5_handed_up_arms_do_not_close_at_the_sibling() -> Bool { !ers_infer_accepted(o: rb_n5()) }
+fn rb_n6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool, x: Int?) -> Int? { if b { if c { Absent } else { Absent } } else { x } }\n") }
+test fn rb_n6_handed_up_arms_at_the_joined_layer_accept() -> Bool { ers_infer_accepted(o: rb_n6()) }
+
+// ONE ARM JOIN FOR if AND Bool match (infer_join_arm_types): an unannotated let over a Bool match settles as the if does.
+fn rb_m1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Present { value: 1 }\n    false => Absent\n  }\n  x\n}\n") }
+fn rb_m2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Absent\n    false => Present { value: 1 }\n  }\n  x\n}\n") }
+fn rb_m3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(b: Bool) -> Int? {\n  let x = match b {\n    true => Absent\n    false => Absent\n  }\n  x\n}\n") }
+test fn rb_m1_bool_match_present_then_absent_accepts() -> Bool { ers_infer_accepted(o: rb_m1()) }
+test fn rb_m2_bool_match_absent_then_present_accepts() -> Bool { ers_infer_accepted(o: rb_m2()) }
+test fn rb_m3_all_absent_bool_match_refuses_no_arm_declares() -> Bool { ers_fatal_is(o: rb_m3(), reason: ^infer_no_arm_declares_a_type) }
+
+// B3 THROUGH A NESTED Bool MATCH, both orders (manager 1 condition): order changes only whether a program is accepted, never its type or layer.
+fn rb_mn_a() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Int? {\n  let x = if c { Present { value: 1 } } else { match b {\n      true => Absent\n      false => Absent\n    } }\n  x\n}\n") }
+fn rb_mn_b() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Int? {\n  let x = if c { match b {\n      true => Absent\n      false => Absent\n    } } else { Present { value: 1 } }\n  x\n}\n") }
+fn rb_mn_c() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Int? {\n  let x = if c { Absent } else { match b {\n      true => Present { value: 1 }\n      false => Absent\n    } }\n  x\n}\n") }
+fn rb_mn_c2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Optional<Int?> {\n  let x = if c { Absent } else { match b {\n      true => Present { value: 1 }\n      false => Absent\n    } }\n  x\n}\n") }
+fn rb_mn_d() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Int? {\n  let x = if c { match b {\n      true => Present { value: 1 }\n      false => Absent\n    } } else { Absent }\n  x\n}\n") }
+fn rb_mn_d2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(c: Bool, b: Bool) -> Optional<Int?> {\n  let x = if c { match b {\n      true => Present { value: 1 }\n      false => Absent\n    } } else { Absent }\n  x\n}\n") }
+test fn rb_mn_a_all_absent_inner_match_refuses_no_arm_declares() -> Bool { ers_fatal_is(o: rb_mn_a(), reason: ^infer_no_arm_declares_a_type) }
+test fn rb_mn_b_all_absent_inner_match_refuses_no_arm_declares() -> Bool { ers_fatal_is(o: rb_mn_b(), reason: ^infer_no_arm_declares_a_type) }
+test fn rb_mn_c_declaring_inner_match_accepts_at_the_joined_layer() -> Bool { ers_infer_accepted(o: rb_mn_c()) }
+test fn rb_mn_c2_and_does_not_accept_a_deeper_layer() -> Bool { ers_fatal_is(o: rb_mn_c2(), reason: ^inhabitance_optional_layer_depth_mismatch) }
+test fn rb_mn_d_declaring_inner_match_accepts_at_the_joined_layer() -> Bool { ers_infer_accepted(o: rb_mn_d()) }
+test fn rb_mn_d2_and_does_not_accept_a_deeper_layer() -> Bool { ers_fatal_is(o: rb_mn_d2(), reason: ^inhabitance_optional_layer_depth_mismatch) }
+
+// RULE A FOR THE Bool MATCH: the open arm is closed at the declared Optional<Int?>, so the join cannot choose the Int? layer; Int? beside it conflicts.
+fn rb_m4() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
+fn rb_m5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Int? {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
+test fn rb_m4_bool_match_must_not_choose_a_layer() -> Bool { ers_fatal_is(o: rb_m4(), reason: ^inhabitance_optional_layer_depth_mismatch) }
+test fn rb_m5_same_bool_match_at_the_joined_layer_accepts() -> Bool { ers_infer_accepted(o: rb_m5()) }
+
+// [] PERMUTATION INVARIANCE: an empty-list arm beside a declaring [1] arm gives one verdict (acceptance) in every order, declared and let-bound.
+fn rb_p_ee1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  if true { [] } else { if false { [] } else { [1] } }\n}\n") }
+fn rb_p_ee1_let() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  let x = if true { [] } else { if false { [] } else { [1] } }\n  x\n}\n") }
+fn rb_p_e1e() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  if true { [] } else { if false { [1] } else { [] } }\n}\n") }
+fn rb_p_e1e_let() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  let x = if true { [] } else { if false { [1] } else { [] } }\n  x\n}\n") }
+fn rb_p_1ee() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  if true { [1] } else { if false { [] } else { [] } }\n}\n") }
+fn rb_p_1ee_let() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  let x = if true { [1] } else { if false { [] } else { [] } }\n  x\n}\n") }
+test fn rb_p_every_order_accepts_declared() -> Bool { ers_infer_accepted(o: rb_p_ee1()) && ers_infer_accepted(o: rb_p_e1e()) && ers_infer_accepted(o: rb_p_1ee()) }
+test fn rb_p_every_order_accepts_let_bound() -> Bool { ers_infer_accepted(o: rb_p_ee1_let()) && ers_infer_accepted(o: rb_p_e1e_let()) && ers_infer_accepted(o: rb_p_1ee_let()) }
+
+// THE ALL-OPEN COPRODUCT MATCH: with the declared List<Int> reaching the arms both [] arms close there (accept); let-bound, nothing grounds the match (refuse infer_no_arm_declares_a_type, as rb_b5 and rb_m3 do).
+fn rb_q1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(o: Int?) -> List<Int> {\n  match o {\n    Absent => []\n    Present { value: _ } => []\n  }\n}\n") }
+fn rb_q2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t(o: Int?) -> List<Int> {\n  let x = match o {\n    Absent => []\n    Present { value: _ } => []\n  }\n  x\n}\n") }
+test fn rb_q1_all_open_coproduct_match_closes_at_the_declared_type() -> Bool { ers_infer_accepted(o: rb_q1()) }
+test fn rb_q2_all_open_coproduct_match_without_expected_refuses() -> Bool { ers_fatal_is(o: rb_q2(), reason: ^infer_no_arm_declares_a_type) }
+
+// THE B1 NESTED-OPTIONAL CASE with the deferral gone: Absent at Int?? is the OUTER Absent. The bare x: Int? at an Int?? position is an implicit lift and
+// refuses (explicit_present_is_the_authoring_policy); the explicit Present{value: x} beside Absent accepts, and the Absent arm is elaborated at Int??.
+fn rb_r1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> { if b { Absent } else { Present { value: x } } }\n") }
+fn rb_r2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Optional<Int?> {\n  match o {\n    Absent => Absent\n    Present { value: _ } => Present { value: x }\n  }\n}\n") }
+fn rb_r3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> { if b { Absent } else { x } }\n") }
+test fn rb_r1_explicit_present_beside_absent_accepts_at_the_outer_layer() -> Bool { ers_infer_accepted(o: rb_r1()) }
+test fn rb_r2_match_form_accepts() -> Bool { ers_infer_accepted(o: rb_r2()) }
+test fn rb_r3_bare_x_at_the_outer_layer_refuses_as_an_implicit_lift() -> Bool { ers_fatal_is(o: rb_r3(), reason: ^inhabitance_optional_layer_depth_mismatch) }
+// ADMISSION IS NEVER SKIPPED BY A HAND-UP (Manager 1): an inner branch whose condition is not Bool refuses even when its held arms are closed by an enclosing declaring arm.
+fn rb_h1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(n: Int, b: Bool) -> Int? { if b { Present { value: 1 } } else { if n { Absent } else { Absent } } }\n") }
+fn rb_h2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(n: Bool, b: Bool) -> Int? { if b { Present { value: 1 } } else { if n { Absent } else { Absent } } }\n") }
+test fn rb_h1_non_bool_inner_condition_refuses_after_a_hand_up() -> Bool { ers_fatal_is(o: rb_h1(), reason: ^infer_branch_cond_not_bool) && !ers_infer_accepted(o: rb_h1()) }
+test fn rb_h2_same_shape_with_a_bool_condition_accepts() -> Bool { ers_infer_accepted(o: rb_h2()) }
+
+// ONE REASON FOR ONE SHAPE: the if and match forms of a bare x: Int? at Optional<Int?> refuse with the same optional-layer-depth reason (match arms are judged by infer_judge_declared_position_closing like branch arms).
+fn rb_s1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?) -> Optional<Int?> {\n  match o {\n    Absent => Absent\n    Present { value: _ } => x\n  }\n}\n") }
+fn rb_s2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
+test fn rb_s_if_and_both_match_forms_refuse_with_one_reason() -> Bool { ers_fatal_is(o: rb_n1(), reason: ^inhabitance_optional_layer_depth_mismatch) && ers_fatal_is(o: rb_s1(), reason: ^inhabitance_optional_layer_depth_mismatch) && ers_fatal_is(o: rb_s2(), reason: ^inhabitance_optional_layer_depth_mismatch) }
+
+// ON THE STACKED BRANCH the declared expected type reaches the nested arm first, so a constructor of another declaration refuses as a declared-position mismatch: the FATAL reason is the ordinary declared-return inhabitance judgment (arrow_body_does_not_inhabit_declared_return), the same one the plain `-> Int? { OtherNone }` gets (rb_k4). infer_grounding_not_derived is only a companion advisory (the foreign constructor's type variable is underived), never the refusal.
+// ARM AGREEMENT IS JUDGED AFTER CLOSURE, NOT ONLY AT THE FIRST HELD ARM (Manager 1): a nested arm of another type, whose closure at the declaring type is incompatible, refuses in either inner-arm order; Absent beside Absent still accepts.
+fn rb_k1() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { Absent } else { OtherNone } } }\n") }
+fn rb_k2() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { OtherNone } else { Absent } } }\n") }
+fn rb_k3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { Absent } else { Absent } } }\n") }
+test fn rb_k1_nested_arm_of_another_type_refuses_after_closure() -> Bool { ers_fatal_is(o: rb_k1(), reason: ^arrow_body_does_not_inhabit_declared_return) && !ers_infer_accepted(o: rb_k1()) }
+test fn rb_k2_same_in_the_other_inner_arm_order() -> Bool { ers_fatal_is(o: rb_k2(), reason: ^arrow_body_does_not_inhabit_declared_return) && !ers_infer_accepted(o: rb_k2()) }
+test fn rb_k3_absent_beside_absent_accepts() -> Bool { ers_infer_accepted(o: rb_k3()) }
+fn rb_k4() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { OtherNone }\n") }
+test fn rb_k4_foreign_constructor_at_the_declared_position_refuses_with_the_declared_return_judgment() -> Bool { ers_fatal_is(o: rb_k4(), reason: ^arrow_body_does_not_inhabit_declared_return) }
+
+// RULE A, RECORD FIELDS AND DECLARED FORMALS: the expected type seeds the generic instantiation at every position that declares one.
+// Each refusal asserts its exact fatal reason and has its accepting positive beside it.
+fn rc_fold() -> String { "type Fold<R> {\n  init: fn(Int) -> R\n  is_done: fn(R) -> Bool\n}\n\nfn run<R>(a: Fold<R>) -> Bool { true }\n\n" }
+fn rc_row() -> String { "type Row {\n  f: Int?\n}\n\nfn cat<T>(a: List<T>, b: List<T>) -> List<T> { a }\n\nfn takes(xs: List<Int?>) -> Bool { true }\n\nfn one(x: Int?) -> Bool { true }\n\n" }
+fn rc1() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_fold(), "fn c() -> Bool { run(Fold { init: fn(n) { n + 1 }, is_done: fn(s) { s > 3 } }) }\n")) }
+fn rc2() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_fold(), "fn c() -> Bool { run(Fold { init: fn(n) { n + 1 }, is_done: fn(s) { s && true } }) }\n")) }
+test fn rc1_sibling_lambda_field_takes_instance_accepts() -> Bool { ers_infer_accepted(o: rc1()) }
+test fn rc2_sibling_lambda_field_wrong_instance_refuses() -> Bool { ers_fatal_is(o: rc2(), reason: ^infer_transform_operand_type_mismatch) }
+fn rc3() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Row { Row { f: Absent } }\n")) }
+fn rc4() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> List<Row> { cat([Row { f: Absent }], []) }\n")) }
+fn rc5() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Bool { takes([Absent]) }\n")) }
+fn rc6() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Bool { takes([]) }\n")) }
+fn rc7() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Bool { one(Absent) }\n")) }
+fn rc8() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Bool { one(1) }\n")) }
+test fn rc3_record_field_absent_accepts() -> Bool { ers_infer_accepted(o: rc3()) }
+test fn rc4_concat_of_row_with_absent_field_accepts() -> Bool { ers_infer_accepted(o: rc4()) }
+test fn rc5_declared_formal_list_absent_accepts() -> Bool { ers_infer_accepted(o: rc5()) }
+test fn rc6_declared_formal_empty_list_accepts() -> Bool { ers_infer_accepted(o: rc6()) }
+test fn rc7_declared_formal_absent_accepts() -> Bool { ers_infer_accepted(o: rc7()) }
+test fn rc8_declared_formal_bare_literal_refuses() -> Bool { ers_fatal_is(o: rc8(), reason: ^infer_literal_at_optional_is_not_present) }
+fn rc_box() -> String { "type Box<T> {\n  items: List<T>\n}\n\n" }
+fn rc9() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_box(), "fn r() -> Box<Int> { Box { items: [] } }\n")) }
+fn rc10() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_box(), "fn r() -> Box<Int> { Box { items: [1] } }\n")) }
+fn rc11() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_box(), "fn r() -> Box<Int> { Box { items: [true] } }\n")) }
+fn rc12() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_box(), "fn r() -> Bool { let b = Box { items: [] }\n true }\n")) }
+test fn rc9_record_construct_empty_list_takes_expected_instance_accepts() -> Bool { ers_infer_accepted(o: rc9()) }
+test fn rc10_record_construct_matching_list_accepts() -> Bool { ers_infer_accepted(o: rc10()) }
+test fn rc11_record_construct_wrong_element_refuses() -> Bool { ers_fatal_is(o: rc11(), reason: ^record_field_value_does_not_inhabit) }
+test fn rc12_record_construct_empty_list_without_expected_refuses() -> Bool { ers_fatal_is(o: rc12(), reason: ^infer_unsolved_constructor_type_variable) }
+fn rc13() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r() -> List<Int> { collection_concat_shape([], []) }\n") }
+fn rc14() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r() -> Bool { let x = collection_concat_shape([], [])\n true }\n") }
+test fn rc13_roster_call_empty_lists_take_expected_instance_accepts() -> Bool { ers_infer_accepted(o: rc13()) }
+test fn rc14_roster_call_empty_lists_without_expected_refuses() -> Bool { ers_fatal_is(o: rc14(), reason: ^infer_unsolved_constructor_type_variable) }
+
+// HELD-ARM CLOSE CONTROLS: the two shapes measured to mint and close an InferHeldArm (an argument position and a record field), so acceptance
+// is acceptance THROUGH infer_close_held_root_closed after the arm carries its own open type (InferHeldArm.open_type).
+fn hc_arg() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Absent }\n\nfn take(o: Int?) -> Int { 0 }\n\nfn t() -> Int {\n  take(if true { Absent } else { mk() })\n}\n") }
+test fn hc_arg_held_arm_closes_and_accepts() -> Bool { ers_infer_accepted(o: hc_arg()) }
+
+fn hc_field() -> Outcome<ResolvedTree> { ers_assemble(body: "type Row {\n  f: Int?\n}\n\nfn t() -> Row {\n  Row { f: if true { Absent } else { Present { value: 1 } } }\n}\n") }
+test fn hc_field_held_arm_closes_and_accepts() -> Bool { ers_infer_accepted(o: hc_field()) }

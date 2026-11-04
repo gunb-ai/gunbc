@@ -1,8 +1,5 @@
-Planted closure for v2.test.claim.census_scoped_acquisition. Outside every corpus source root on
-purpose: broken.dag does not parse, and entry.dag imports a module that does not exist.
-entry -> ok (acquired), broken (blocked: does not parse), missing (blocked: no such module).
-behind is reachable only through broken, so it must stay unknown; outside is imported by nothing.
+# Scoped-acquisition fixtures
 
-diamond -> left, right -> broken: one malformed member reached twice must be one block with two requesters.
+Exercise acquisition without widening past a blocked dependency. `entry` reaches `ok`, malformed `broken`, and nonexistent `missing`; `behind` stays unknown behind `broken`, and `outside` is unreachable. `diamond` reaches the same malformed member through two requesters, producing one block with both identities.
 
-cross/: v2.cx.entry imports v2.cx.shared (permitted) and cx.fromdag (dag tree), which imports v2.cx.shared too -- denied, since the dag tree may not import v2. entry_denied_first is the same with the denied path first. Sharing the observation of v2.cx.shared must never share the permission.
+`cross/` exercises shared observations reached through different import edges. Admission follows `v2.std.cross_tree.import_model.cross_tree_import_admitted`: roots must be supplied and crossing namespaces declared. Tree direction alone is not a prohibition; sharing an observation must not share an edge's admission verdict. Controls: `v2.test.claim.census_scoped_acquisition`.

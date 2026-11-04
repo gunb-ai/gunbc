@@ -1,0 +1,145 @@
+module v2.test.claim.native_census.declarer_cascade
+
+import v2.compiler.source_root_eval {
+  NativeCensusCascadeMemberOf,
+  NativeCensusCascadeNone,
+  NativeCensusCascadeUnattributed,
+  NativeCensusCascadeRoot,
+  NativeCensusCauseMember,
+  native_census_cause_group_rows,
+  native_census_cause_groups_add_module,
+  native_census_cause_groups_from_file_refusals,
+  native_census_closure_index,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.integer { Int }
+import std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// TWO REFUSED DECLARERS WITH ONE REASON SEQUENCE ARE TWO ROOTS. d1 and d2 are the same source up to
+// their module name (each imports a v2-tree module from the dag tree and refuses identically); u1
+// imports d1 and u2 imports d2, so each user refuses declarer_refused with an identical chain. A
+// census that grouped by reason sequence would file u2 under d1's root, or merge d1 and d2; the typed
+// declarer files each user under its own declarer. The sources are supplied (DESIGN section 3); the
+// fold above them is the production census route.
+data dc_lib_source: String = "module v2.test.dc.lib\n\ntype Lib = L\n"
+
+data dc_d1_source: String = "module v2.test.dc.d1\n\nimport v2.test.dc.lib { Lib }\ntype Rec { value: Lib }\n"
+
+data dc_d2_source: String = "module v2.test.dc.d2\n\nimport v2.test.dc.lib { Lib }\ntype Rec { value: Lib }\n"
+
+data dc_u1_source: String = "module v2.test.dc.u1\n\nimport v2.test.dc.d1 { Rec }\nfn f(x: Rec) -> Rec { x }\n"
+
+data dc_u2_source: String = "module v2.test.dc.u2\n\nimport v2.test.dc.d2 { Rec }\nfn f(x: Rec) -> Rec { x }\n"
+
+// u3 REFUSES ON ITS OWN ACCOUNT (an unbound name) AND ON d1 (an imported Rec from the refused declarer).
+data dc_u3_source: String = "module v2.test.dc.u3\n\nimport v2.test.dc.d1 { Rec }\nfn f(x: Rec, y: Nowhere) -> Rec { x }\n"
+
+fn dc_read(text: String, unit: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: root
+  }
+}
+
+data dc_ingest: SourceRootIngest = [
+  dc_read(text: dc_lib_source, unit: ^dc_lib_cu, path: "src/v2/test/fixture/dc/lib.dag", root: V2Tree),
+  dc_read(text: dc_d1_source, unit: ^dc_d1_cu, path: "dag/dc_d1.dag", root: DagTree),
+  dc_read(text: dc_d2_source, unit: ^dc_d2_cu, path: "dag/dc_d2.dag", root: DagTree),
+  dc_read(text: dc_u1_source, unit: ^dc_u1_cu, path: "dag/dc_u1.dag", root: DagTree),
+  dc_read(text: dc_u2_source, unit: ^dc_u2_cu, path: "dag/dc_u2.dag", root: DagTree),
+  dc_read(text: dc_u3_source, unit: ^dc_u3_cu, path: "dag/dc_u3.dag", root: DagTree)
+]
+
+type DcCounts {
+  roots: Int
+  members_of_d1: Int
+  members_of_d2: Int
+  other: Int
+  u3_roots: Int
+}
+
+fn dc_tally(counts: DcCounts, m: NativeCensusCauseMember) -> DcCounts {
+  match m.cascade {
+    NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
+      DcCounts { roots: if m.path == ^dc_d1_cu || m.path == ^dc_d2_cu { counts.roots + 1 } else { counts.roots }, u3_roots: if m.path == ^dc_u3_cu { counts.u3_roots + 1 } else { counts.u3_roots }, members_of_d1: counts.members_of_d1, members_of_d2: counts.members_of_d2, other: counts.other }
+    NativeCensusCascadeNone =>
+      DcCounts { roots: counts.roots, members_of_d1: counts.members_of_d1, members_of_d2: counts.members_of_d2, other: counts.other + 1, u3_roots: counts.u3_roots }
+    NativeCensusCascadeUnattributed { reason: _ } =>
+      DcCounts { roots: counts.roots, members_of_d1: counts.members_of_d1, members_of_d2: counts.members_of_d2, other: counts.other + 1, u3_roots: counts.u3_roots }
+    NativeCensusCascadeMemberOf { root: r, root_reason: _ } =>
+      if r == ^dc_d1_cu {
+        DcCounts { roots: counts.roots, members_of_d1: counts.members_of_d1 + 1, members_of_d2: counts.members_of_d2, other: counts.other, u3_roots: counts.u3_roots }
+      } else {
+        if r == ^dc_d2_cu {
+          DcCounts { roots: counts.roots, members_of_d1: counts.members_of_d1, members_of_d2: counts.members_of_d2 + 1, other: counts.other, u3_roots: counts.u3_roots }
+        } else {
+          DcCounts { roots: counts.roots, members_of_d1: counts.members_of_d1, members_of_d2: counts.members_of_d2, other: counts.other + 1, u3_roots: counts.u3_roots }
+        }
+      }
+  }
+}
+
+fn dc_census() -> Optional<DcCounts> {
+  match native_test_context_from_ingest(ingest: dc_ingest) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        let modules = native_census_modules(ingest: dc_ingest)
+        let closure = native_census_closure_index(context: context, refusal_index: refusal_index, modules: modules)
+        let rows = native_census_cause_group_rows(groups: fold_list(
+          xs: modules,
+          empty: native_census_cause_groups_from_file_refusals(refusals: context.file_refusals, closure: closure, resolves: true),
+          cons: fn(acc, entry) {
+            native_census_cause_groups_add_module(
+              groups: acc,
+              closure: closure,
+              entry: entry,
+              step: native_census_module_resolution(context: context, refusal_index: refusal_index, entry: entry)
+            )
+          }
+        ))
+        optional_present(value: fold_list(xs: rows, empty: DcCounts { roots: 0, members_of_d1: 0, members_of_d2: 0, other: 0, u3_roots: 0 }, cons: fn(acc, g) {
+          fold_list(xs: g.members, empty: acc, cons: fn(c, m) { dc_tally(counts: c, m: m) })
+        }))
+      }
+  }
+}
+
+// The v2-tree lib is a root of its own and is not one of the two declarers, so roots are counted at the declarers' paths.
+// RED if the two declarers collapse into one root (reason-sequence grouping), if either user is filed
+// under the other's declarer, or if a user is left as a root of its own (the pre-change count of 4).
+test fn two_refused_declarers_with_one_reason_sequence_are_two_roots_holds() -> Bool {
+  match dc_census() {
+    Absent => false
+    Present { value: c } => c.roots == 2 && c.members_of_d1 > 1 && c.members_of_d2 == 1 && c.other == 0
+  }
+}
+
+
+// A MODULE THAT REFUSED ON ITS OWN ACCOUNT AND ON A DECLARER IS BOTH: one root row for its own chain (u3_roots)
+// and a member row of d1 for the declarer chain (the extra members of d1 above: one row per declarer-bearing chain). RED if the module is filed
+// wholly as a root (u3 would add no member of d1), or wholly as a member (u3 would carry no root row).
+test fn a_module_with_its_own_refusal_and_a_declarer_refusal_is_a_root_and_a_member_holds() -> Bool {
+  match dc_census() {
+    Absent => false
+    Present { value: c } => c.u3_roots == 1
+  }
+}

@@ -1,0 +1,79 @@
+module gunbc.recurring_failure_mode.a_per_run_receipt_read_back_without_binding_the_run_it_answers
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE CLASS: A PER-RUN RECEIPT READ BACK WITHOUT BINDING THE RUN IT ANSWERS FOR.
+//
+// A per-run artifact written at a per-run path -- "the receipt" -- records what the LAST writer
+// observed, not what THIS run asked for. When a readback consumes such a file as success without
+// taking the run's identity as input, a receipt left by an earlier run answers for a plan it never
+// served, and the readback is not merely wrong but SILENTLY right-shaped: exit 0, a decodable
+// document, a plausible verdict. The first defect of the class, found by proud-boar-59 in the store
+// migration, is the convergence readback (store row S83469995): `repository-convergence.json` read
+// through a function that took only the path. The class is the shape, not that file: a plan receipt,
+// an apply receipt, a standing report -- any per-run artifact whose bytes do not name the run that
+// wrote them, read back as evidence of the run reading them.
+//
+// THE SIGNATURE IS AN IDENTITY THE READ COULD HAVE CHECKED AND DID NOT. The write side almost
+// always stamps something -- a candidate, a revision, an attempt -- because writing the identity is
+// cheap and habitual; the readback then drops it, because the read itself succeeds either way and
+// only a second run reveals the difference. That asymmetry is why the class recurs: every single-run
+// test of the readback is green under both the bound and the unbound read, and the discriminator is
+// a SECOND run -- which is exactly the fixture a discriminating RED has to author.
+//
+// THE FIX SHAPE, FOR THE NEXT OCCURRENCE: the readback takes the identity as an INPUT (the plan
+// candidate, or an attempt id minted before the effecting unit starts), compares it after the same
+// normalization that admitted it, and refuses with typed causes -- absent, stale/wrong-identity,
+// malformed-question -- where a mismatch is never success. Age is never the binding: an mtime
+// heuristic replaces a missing observation with a guess and passes whenever the clock cooperates.
+data a_per_run_receipt_read_back_without_binding_the_run_it_answers: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_per_run_receipt_read_back_without_binding_the_run_it_answers" as NonEmptyStr,
+  // UNREAD, NOT UNFOUND. The class is not a member of the ladder: a receipt read back unbound is a
+  // receipt that never REPORTS its run, which is the absence RungUnread is for, and there is no rung
+  // below the first one to place it at. It stays unread until the class's own trigger capability is
+  // named -- what this row can state now is the class and its shape, not the rung.
+  rung: RungUnread { cause: BlockerClassUnstated },
+  receipts: [
+    "found by proud-boar-59 during the store migration; store row S83469995",
+    "first occurrence fixed in gunbc.live_deploy.repository_convergence_placement: the readback now",
+    "takes the plan candidate and refuses a stale, wrong-candidate, or unbound receipt",
+    "the class's scope was traced over the ReHomedObservability population of the jolly-hawk-60",
+    "store inventory (.store-inventory/inventory.tsv): its per-row `readers` column is the census",
+    "that enumerates which consumers read each per-run artifact back, which is what made the",
+    "population check possible. The two consumers named in `evidence` below, from that population,",
+    "are its existing instances of the fix shape -- open them to re-derive the judgment.",
+  ],
+  evidence: [
+    DeclarationRef {
+      module_path: "gunbc.live_deploy.repository_convergence_placement" as NonEmptyStr,
+      decl_name: "read_convergence_receipt_bound" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "gunbc.live_deploy.repository_convergence_placement" as NonEmptyStr,
+      decl_name: "convergence_readback_of_text_bound" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "gunbc.live_deploy.repository_convergence_placement" as NonEmptyStr,
+      decl_name: "repository_convergence_readback_wet" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    // S777c2edf (apply_receipt): the readback consumer compares the receipt's candidate against
+    // the subject's revision, so a prior run's receipt refuses as a blocker rather than success.
+    DeclarationRef {
+      module_path: "gunbc.roadmap.roadmap_launch_deployment_receipt" as NonEmptyStr,
+      decl_name: "dashboard_receipt_blockers" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    // S26c2dc31 (fleet converge plan receipt): the readback consumer admits the plan it answers
+    // for, binding the run id before any read is treated as success.
+    DeclarationRef {
+      module_path: "gunbc.fleet.fleet_converge_receipt" as NonEmptyStr,
+      decl_name: "admit_apply_plan_binding" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+  ],
+}

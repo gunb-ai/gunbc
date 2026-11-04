@@ -52,6 +52,7 @@ import gunbc.fleet.host_credential_custody_converge {
   CustodyPathUnobservable,
   CustodyOnlyOnHost,
 }
+import std.content_hash { sha256_hex_of_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

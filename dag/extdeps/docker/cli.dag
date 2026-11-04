@@ -3,7 +3,7 @@ module extdeps.docker.cli
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
-import std.nat { Nat }
+
 import std.measure { Second, second, second_count, ByteSize, byte_size_count }
 import std.optional { Present, Absent }
 import std.algebra { trim }
@@ -11,6 +11,9 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
+import extdeps.docker.create_spec {
+  DockerCreateSpec, DockerDeviceMapping, DockerEnvAssignment, DockerNamespaceMode, DockerRestartPolicy, NamespaceHost, NamespacePrivate, RestartAlways, RestartNo, RestartOnFailure, RestartUnlessStopped, docker_cap_add_words, docker_cdi_device_words, docker_container_identity_flags, docker_container_image_and_command, docker_container_resource_flags, docker_create_arguments, docker_device_words, docker_memlock_unlimited_words, docker_mount_flag, docker_namespace_mode_wire, docker_restart_policy_wire,
+}
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -28,144 +31,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // docker 29.2.1 on the Sparks (2026-09-05). The program is spelled absolute because a systemd
 // ExecStart= requires an absolute path and the same argv is what the unit renders.
 fn docker_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/docker" as NonEmptyStr)
-
-type DockerRestartPolicy = RestartNo | RestartUnlessStopped | RestartAlways | RestartOnFailure
-
-fn docker_restart_policy_wire(p: DockerRestartPolicy) -> NonEmptyStr {
-  match p {
-    RestartNo => "no" as NonEmptyStr
-    RestartUnlessStopped => "unless-stopped" as NonEmptyStr
-    RestartAlways => "always" as NonEmptyStr
-    RestartOnFailure => "on-failure" as NonEmptyStr
-  }
-}
-
-type DockerNamespaceMode = NamespaceHost | NamespacePrivate
-
-fn docker_namespace_mode_wire(m: DockerNamespaceMode) -> NonEmptyStr {
-  match m {
-    NamespaceHost => "host" as NonEmptyStr
-    NamespacePrivate => "private" as NonEmptyStr
-  }
-}
-
-type DockerDeviceMapping {
-  host_path: FilePath
-  container_path: FilePath
-  cgroup_permissions: NonEmptyStr
-}
-
-type DockerEnvAssignment {
-  name: NonEmptyStr
-  value: String
-}
-
-// Everything `docker create` is told for one container, as the fields the engine exposes back
-// through `docker inspect` (HostConfig, Config, Mounts), so an observation and a desired spec are
-// comparable field by field.
-type DockerCreateSpec {
-  name: NonEmptyStr
-  image: NonEmptyStr
-  network: DockerNamespaceMode
-  ipc: DockerNamespaceMode
-  shm_size_bytes: Nat
-  memlock_unlimited: Bool
-  gpus_all: Bool
-  devices: List<DockerDeviceMapping>
-  cap_add: List<NonEmptyStr>
-  restart: DockerRestartPolicy
-  mounts: List<DockerMount>
-  env: List<DockerEnvAssignment>
-  command: List<String>
-}
-
-fn docker_mount_flag(m: DockerMount) -> List<String> {
-  match m {
-    BindMount { host_path: h, container_path: c, readonly: ro } =>
-      ["--mount", join(["type=bind,src=", h as String, ",dst=", c as String, if ro { ",ro" } else { "" }], "")]
-    VolumeMount { volume: v, container_path: c, readonly: ro } =>
-      ["--mount", join(["type=volume,src=", v as String, ",dst=", c as String, if ro { ",ro" } else { "" }], "")]
-    TmpfsMount { container_path: c, size_bytes: n } =>
-      ["--mount", join(["type=tmpfs,dst=", c as String, ",tmpfs-size=", to_string(n)], "")]
-  }
-}
-
-// THE WORD SHAPES, ONE AUTHORITY. docker create's structured renderer and the raw word-list
-// renderers (the GLM native arm's systemd Exec line) must spell a device mapping, a capability
-// and the memlock ulimit identically; extracted 2026-09-17 when the native arm took the RoCE
-// collective-transport plan and would otherwise have re-typed the three literals.
-fn docker_memlock_unlimited_words() -> List<String> { ["--ulimit", "memlock=-1:-1"] }
-
-fn docker_device_words(d: DockerDeviceMapping) -> List<String> {
-  ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]
-}
-
-fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as String] }
-
-// ── ONE CONTAINER PLAN, TWO VERB PROJECTIONS ─────────────────────────────────────────────────
-//
-// A CONTAINER IS CREATED TWO WAYS IN THIS FLEET AND THEY ARE THE SAME CONTAINER. The relaunch
-// transaction runs `docker create` then `docker start`, because it needs a handle it can rename and
-// restore; a systemd unit runs `docker run --rm` in the foreground, because a unit stays active
-// exactly while its exec does. Those are two REALIZATION handlers for one plan (DESIGN section 3:
-// transport is a handler bound to a shape, never a fork of the shape), so the flags they spell come
-// from one body here and neither may hand-assemble its own.
-//
-// WHAT THIS CLOSED. Until 2026-09-18 the GLM native arm's systemd unit built its own word list, and
-// the two renderings of ONE Group-B launch had already drifted on three fields -- the create spec
-// carried a --shm-size the unit did not, the two read their environment values from different
-// authorities, and only the unit declared the usage-stats reporter off. Nothing could report the
-// disagreement, because there was no shared value for a comparison to be against.
-//
-// THE RESTART FLAG IS THE ONE FIELD THE TWO PROJECTIONS DO NOT SHARE, and it is a refusal rather
-// than an omission. `docker run --rm` conflicts with a restart policy: under systemd the supervisor
-// IS systemd, so the container's own policy must be RestartNo, and a spec asking for anything else
-// has asked for two supervisors. Dropping the field silently would be exactly the widen DESIGN
-// section 5 forbids.
-fn docker_container_identity_flags(spec: DockerCreateSpec) -> List<String> {
-  [
-    "--name", spec.name as String,
-    "--network", docker_namespace_mode_wire(m: spec.network) as String,
-    "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
-    "--shm-size", to_string(spec.shm_size_bytes),
-  ]
-}
-
-fn docker_container_resource_flags(spec: DockerCreateSpec) -> List<String> {
-  concat(
-    concat(
-      concat(
-        if spec.memlock_unlimited { docker_memlock_unlimited_words() } else { [] },
-        if spec.gpus_all { ["--gpus", "all"] } else { [] },
-      ),
-      flat_map(spec.devices, d => docker_device_words(d: d)),
-    ),
-    concat(
-      flat_map(spec.cap_add, c => docker_cap_add_words(c: c)),
-      concat(
-        flat_map(spec.mounts, m => docker_mount_flag(m: m)),
-        flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
-      ),
-    ),
-  )
-}
-
-fn docker_container_image_and_command(spec: DockerCreateSpec) -> List<String> {
-  concat([spec.image as String], spec.command)
-}
-
-fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
-  concat(
-    concat(
-      concat(
-        concat(["create"], docker_container_identity_flags(spec: spec)),
-        ["--restart", docker_restart_policy_wire(p: spec.restart) as String],
-      ),
-      docker_container_resource_flags(spec: spec),
-    ),
-    docker_container_image_and_command(spec: spec),
-  )
-}
 
 type DockerForegroundRun
   = DockerForegroundRunArgv { argv: List<String> }
@@ -774,3 +639,26 @@ fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_program(), arguments: ["image", "pull", image as String])
 }
+
+// THE GPU CONTAINER ACCEPTANCE RUN, AS ONE RENDERED COMMAND. This is the shape the fleet's GPU gates
+// ask on a host: a container, run by the job user through the job user's OWN rootless daemon, that
+// sees a device. It is spelled here rather than at the call site because the two things that make it
+// an acceptance run and not a smoke test are each load-bearing and each easy to lose when retyped:
+//   * --rm, so a probe that dies cannot leave a container that later reads as capacity;
+//   * the BARE CDI device name (docker_cdi_device_words), not the path triple — see the measurement
+//     recorded there, where the triple is refused with exit 125 while the bare name lists the GPU.
+// The rendered words are the command measured to work, not an approximation of it: on srv1 2026-10-25,
+// as the job user over its own socket, `docker run --rm --device nvidia.com/gpu=all ubuntu:24.04
+// nvidia-smi -L` printed the GPU and exited 0. The probe is nvidia-smi -L because it lists devices
+// through the driver nodes the CDI spec made present, which is the question "did the device reach the
+// container", as distinct from whether the host's driver stack is healthy.
+fn docker_gpu_cdi_probe_run_command(image: NonEmptyStr, device: NonEmptyStr, probe_argv: List<String>) -> ArgvCommand {
+  argv_command(
+    program: docker_program(),
+    arguments: concat(
+      concat(["run", "--rm"], docker_cdi_device_words(device: device)),
+      concat([image as String], probe_argv),
+    ),
+  )
+}
+

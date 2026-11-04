@@ -5,7 +5,7 @@ import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
 }
 import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Atom,
   ComputationNode,
@@ -19,6 +19,7 @@ import v2.std.node {
   well_formed,
   ArrowBodyEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.node_query { find_arrow_body_child }
 
@@ -47,21 +48,24 @@ fn add_arrow_swapped_operand_body() -> Node {
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_token_plus } },
           children: []
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
           children: []
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
           children: []
-        )
+        ),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -70,7 +74,7 @@ fn add_arrow_swapped_operand_body() -> Node {
 test fn add_body_operand_order_differs() -> Bool {
   let canonical = dag_add_binary_body_fixture
   let swapped = add_arrow_swapped_operand_body()
-  canonical != swapped
+  !node_same_occurrence(a: canonical, b: swapped)
 }
 
 // Deliberately hand-built shape with no producer: the retired positional-types Arrow [T1..Tn, U] (Program P).
@@ -83,28 +87,32 @@ fn add_body_arrow_with_atom_body_rejects() -> Bool {
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: core_edge_label(marker: ArrowBodyEdge),
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^add_body_producer_fail } },
           children: []
-        )
+        ),
+        declaration: NotADeclaration
       }
     ]
   )

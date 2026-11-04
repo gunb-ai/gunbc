@@ -14,9 +14,12 @@ import gunbc.superseded_run_starvation_census {
   filter_completed_jobs,
   earliest_started_at,
   earliest_created_at,
+  live_head_list_jobs_run_id,
+  SupersededRunPair,
 }
 import extdeps.github.workflow_runs {
   WorkflowRun,
+  GitHubWorkflowRunId,
   WorkflowRunPullRequest,
   WorkflowJobRun,
   Queued,
@@ -359,4 +362,14 @@ test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
     Present { value: _ } => false
     Absent => true
   }
+}
+
+test fn witness_the_live_head_list_jobs_argument_is_the_digits_not_the_carrier_debug_text() -> Bool {
+  live_head_list_jobs_run_id(pair: SupersededRunPair {
+    pull_request: 1,
+    superseded_run: GitHubWorkflowRunId { value: 7 },
+    superseded_head: "a",
+    live_head_run: GitHubWorkflowRunId { value: 35447067113 },
+    live_head: "b",
+  }) == "35447067113"
 }

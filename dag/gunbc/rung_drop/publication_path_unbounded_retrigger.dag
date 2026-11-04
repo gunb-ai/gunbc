@@ -19,9 +19,7 @@ data publication_path_unbounded_retrigger: RungDrop = RungDrop {
 
   declared: "2026-10-10",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
@@ -29,5 +27,5 @@ data publication_path_unbounded_retrigger: RungDrop = RungDrop {
     },
     population: Enumerated { members: FreeSemigroup { head: "gunbc.live_deploy.emit live_deploy_publication_path_unit_file on each deployed dashboard instance", tail: ["gunbc.roadmap.roadmap_publication_helper HelperAnswerWriteFailed, HelperRequestNotConsumed, HelperRequestUnreadable, HelperRequestNotQuarantined"] } },
     restoration_trigger: "THE CAPABILITY: every stopping helper outcome either consumes the request or moves it out of the DirectoryNotEmpty set, and a failed quarantine is reset-failed and re-asked by a modeled belt obligation without waiting for the next apply. SUFFICIENT FOR: a leftover pending file no longer reaches trigger-limit-hit, and a disk-full quarantine still produces a later helper start. An apply-only reset-failed does not retire this row.",
-  }
+  } }
 }

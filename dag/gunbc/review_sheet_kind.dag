@@ -1,0 +1,183 @@
+module gunbc.review_sheet_kind
+
+import std.optional { Absent, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, skip }
+import gunbc.review_sheet_projection {
+  ReviewSheetSchema,
+  ReviewColumn,
+  DerivedField,
+  OperatorEntered,
+  ListingStanding,
+  DerivedErasureMark,
+  ProjectionRow,
+  ValidatedHeaderSchema,
+  HeaderSchemaValidated,
+  HeaderSchemaRefused,
+  validate_header_schema,
+}
+import gunbc.review_sheet_format_actuator { FormatRule, ColumnWidth }
+import std.measure { Measure, DisplayPixelCount, CharacterCount }
+
+// A REVIEW SHEET KIND IS A VALUE, AND THE CONVERGE TAKES IT AS ONE. Before this module the converge
+// knew one kind by name -- the CI prospect sheet's schema, file name and Drive marker were literals
+// inside it -- so a second kind could only arrive as a copied branch (DESIGN section 6b: the third
+// instance of one shape becomes a row). Everything that differs between kinds is here: the Drive
+// file's name and marker, and per tab its title, schema, conditional-format rules and where its
+// rows come from. gunbc.review_sheet_kind_roster lists the kinds, and nothing in the converge
+// branches on which one it holds.
+
+// WHO WRITES A TAB'S ROWS IS PART OF THE KIND, BECAUSE TWO ANSWERS EXIST TODAY. The realization
+// census supplies its rows as typed data, so this converge writes them. The CI prospect sheet's rows
+// have no producer in this corpus (they were written once from outside it, and the planned writer
+// is gunbc-private's, not yet landed); this converge must not write them, and saying so is a typed
+// arm rather than an empty projection, because an empty projection is a different instruction -- it says the
+// tab should hold no derived rows -- and would read as one.
+type ReviewTabRows
+  = TabRowsProjected { rows: List<ProjectionRow> }
+  | TabRowsWrittenElsewhere { writer: NonEmptyStr }
+
+// WHAT A COLUMN HOLDS, SO ITS WIDTH IS A CONSEQUENCE RATHER THAN A NUMBER. A closed vocabulary is
+// as wide as its longest member; a count as wide as its header; an identifier and a short code are
+// one width each; prose is the widest. The pixel per character and the padding are the only
+// numbers, and they are about the sheet's font rather than about any column.
+type ColumnContentClass
+  = ContentVocabulary { members: FreeSemigroup<String> }
+  | ContentIdentifier
+  | ContentCode
+  | ContentCount
+  | ContentProse
+
+type ColumnContent {
+  column: NonEmptyStr
+  content: ColumnContentClass
+}
+
+type ReviewSheetTab {
+  title: NonEmptyStr
+  schema: ReviewSheetSchema
+  rules: List<FormatRule>
+  content: List<ColumnContent>
+  rows: ReviewTabRows
+}
+
+// THE FONT'S ADVANCE: display pixels PER character, a rate and not a width, so it has its own carrier
+// and is spent only through display_width_of, the one declared conversion from a character budget
+// to a display width.
+type DisplayPixelsPerCharacter {
+  advance: DisplayPixelCount
+}
+
+data review_sheet_column_character_advance: DisplayPixelsPerCharacter = DisplayPixelsPerCharacter { advance: DisplayPixelCount { pixels: 7 } }
+data review_sheet_column_padding_pixels: DisplayPixelCount = DisplayPixelCount { pixels: 16 }
+data review_sheet_identifier_characters: CharacterCount = Measure { count: 40 }
+data review_sheet_code_characters: CharacterCount = Measure { count: 12 }
+data review_sheet_prose_characters: CharacterCount = Measure { count: 60 }
+
+fn display_width_of(characters: CharacterCount, advance: DisplayPixelsPerCharacter, padding: DisplayPixelCount) -> DisplayPixelCount {
+  DisplayPixelCount { pixels: characters.count * advance.advance.pixels + padding.pixels }
+}
+
+fn characters_of(t: String) -> CharacterCount { Measure { count: string_length(s: t) } }
+
+fn wider(a: CharacterCount, b: CharacterCount) -> CharacterCount { if a.count > b.count { a } else { b } }
+
+fn longest(texts: List<String>) -> CharacterCount {
+  fold(texts, init: Measure { count: 0 }, f: fn(acc, t) { wider(a: acc, b: characters_of(t: t)) })
+}
+
+fn content_characters(header: String, content: ColumnContentClass) -> CharacterCount {
+  let body = match content {
+    ContentVocabulary { members: m } => longest(texts: concat([m.head], m.tail))
+    ContentIdentifier => review_sheet_identifier_characters
+    ContentCode => review_sheet_code_characters
+    ContentCount => Measure { count: 0 }
+    ContentProse => review_sheet_prose_characters
+  }
+  wider(a: body, b: characters_of(t: header))
+}
+
+fn column_pixels(header: String, content: ColumnContentClass) -> DisplayPixelCount {
+  display_width_of(characters: content_characters(header: header, content: content), advance: review_sheet_column_character_advance, padding: review_sheet_column_padding_pixels)
+}
+
+// An operator's column is prose by its declared kind; a derived column takes the content its tab
+// declares for it, and a derived column the tab says nothing about keeps the width it has. A tab
+// that declares no content at all is not sized, operator columns included, so a kind that predates
+// widths (the CI prospect sheet) keeps the widths its live workbook already has.
+fn column_content_of(tab: ReviewSheetTab, column: ReviewColumn) -> ColumnContentClass? {
+  match column.kind {
+    OperatorEntered => Present { value: ContentProse }
+    DerivedField { source_field: _ } => match first(filter(tab.content, c => (c.column as String) == (column.name as String))) {
+      Present { value: c } => Present { value: c.content }
+      Absent => none
+    }
+    ListingStanding => none
+    DerivedErasureMark => none
+  }
+}
+
+fn review_sheet_tab_widths(tab: ReviewSheetTab) -> List<ColumnWidth> {
+  if count(tab.content) == 0 { [] } else { flat_map(tab.schema.columns, col => match column_content_of(tab: tab, column: col) {
+    Present { value: c } => [ColumnWidth { column: col.name, pixels: column_pixels(header: col.name as String, content: c) }]
+    Absent => []
+  }) }
+}
+
+type ReviewSheetKind {
+  kind_id: NonEmptyStr
+  sheet_name: NonEmptyStr
+  marker_value: NonEmptyStr
+  tabs: FreeSemigroup<ReviewSheetTab>
+}
+
+fn review_sheet_kind_tabs(kind: ReviewSheetKind) -> List<ReviewSheetTab> {
+  concat([kind.tabs.head], kind.tabs.tail)
+}
+
+fn review_sheet_kind_tab_titles(kind: ReviewSheetKind) -> FreeSemigroup<NonEmptyStr> {
+  FreeSemigroup { head: kind.tabs.head.title, tail: map(kind.tabs.tail, t => t.title) }
+}
+
+// A KIND IS ADMITTED BEFORE ANY REQUEST IS SPENT ON IT. Two tabs under one title would make the tab
+// set unconvergeable (the set check refuses a doubled title) and every per-title locate ambiguous,
+// so the kind refuses at its declaration instead of at the workbook. Each schema is validated here
+// once, and the validated schema is what the header init, the row write and the formatter receive.
+type AdmittedReviewSheetTab {
+  tab: ReviewSheetTab
+  validated: ValidatedHeaderSchema
+}
+
+type ReviewSheetKindAdmission
+  = ReviewSheetKindAdmitted { kind: ReviewSheetKind, tabs: List<AdmittedReviewSheetTab> }
+  | ReviewSheetKindRefused { kind_id: NonEmptyStr, cause: NonEmptyStr }
+
+type TabAdmissionScan {
+  admitted: List<AdmittedReviewSheetTab>
+  refusals: List<String>
+}
+
+fn admit_review_sheet_tabs(tabs: List<ReviewSheetTab>) -> TabAdmissionScan {
+  fold(tabs, init: TabAdmissionScan { admitted: [], refusals: [] }, f: fn(acc, tab) {
+    let doubled = count(filter(tabs, t => (t.title as String) == (tab.title as String))) > 1
+    if doubled {
+      TabAdmissionScan { admitted: acc.admitted, refusals: append(acc.refusals, [join(["tab title ", tab.title as String, " is declared more than once"], "")]) }
+    } else {
+      match validate_header_schema(schema: tab.schema) {
+        HeaderSchemaRefused { refusal: _, reason: r } =>
+          TabAdmissionScan { admitted: acc.admitted, refusals: append(acc.refusals, [join(["tab ", tab.title as String, ": ", r as String], "")]) }
+        HeaderSchemaValidated { validated: v } =>
+          TabAdmissionScan { admitted: append(acc.admitted, [AdmittedReviewSheetTab { tab: tab, validated: v }]), refusals: acc.refusals }
+      }
+    }
+  })
+}
+
+fn admit_review_sheet_kind(kind: ReviewSheetKind) -> ReviewSheetKindAdmission {
+  let scan = admit_review_sheet_tabs(tabs: review_sheet_kind_tabs(kind: kind))
+  if count(scan.refusals) > 0 {
+    ReviewSheetKindRefused { kind_id: kind.kind_id, cause: join(scan.refusals, "; ") as NonEmptyStr }
+  } else {
+    ReviewSheetKindAdmitted { kind: kind, tabs: scan.admitted }
+  }
+}

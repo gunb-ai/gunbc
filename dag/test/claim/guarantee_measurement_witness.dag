@@ -139,9 +139,9 @@ test fn probe_set_digest_is_input_determined() -> Bool {
   let same = [ "p1" as GuaranteeProbeId, "p2" as GuaranteeProbeId ]
   let fewer = [ "p1" as GuaranteeProbeId ]
   let reordered = [ "p2" as GuaranteeProbeId, "p1" as GuaranteeProbeId ]
-  ((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: same) as String))
-    && !((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: fewer) as String))
-    && !((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: reordered) as String))
+  ((probe_set_digest(probe_ids: one).digest) == (probe_set_digest(probe_ids: same).digest))
+    && !((probe_set_digest(probe_ids: one).digest) == (probe_set_digest(probe_ids: fewer).digest))
+    && !((probe_set_digest(probe_ids: one).digest) == (probe_set_digest(probe_ids: reordered).digest))
 }
 
 fn obs_count_view(o: ProbeObservation) -> Int {

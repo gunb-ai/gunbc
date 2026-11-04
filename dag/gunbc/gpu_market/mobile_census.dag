@@ -1,0 +1,97 @@
+module gunbc.gpu_market.mobile_census
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count, mebibyte, mebibyte_to_byte_size }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.wikipedia.gpu_spec_table { WikipediaGpuSpecRow, WikipediaSpecTable, WikipediaNonSpecTable }
+import gunbc.gpu_market.census {
+  CensusRowRef,
+  CensusSourcePage,
+  GpuCensusPartition,
+  MobileGpuCensus,
+  MobileModuleCensus,
+  WholeSystemCensus,
+  EmbeddedCensus,
+  CensusPartitioned,
+  census_sources,
+  census_dispose,
+}
+
+// THE MOBILE CENSUS: every GPU the pinned pages list that gunbc.gpu_market.census partitions to the mobile or
+// module census, claimed here once, with the grain a buyer acquires it at. It does not re-decide what is
+// mobile: it reads the source census's own disposition of each row, so a row is mobile here exactly when
+// the census says so, and a re-pinned page moves both together.
+//
+// TWO ACQUISITION TIERS, because they are bought, powered and benchmarked differently:
+//   WholeMobileSystem (M1): a GPU soldered into a laptop or compact workstation. The price and the
+//     benchmark are the whole system's; "RTX 5000 Ada Laptop = N tok/s" is never written, only that GPU in
+//     one system at one observed TGP.
+//   RemovableModule (M2): an MXM or similar module, bought bare, close to a card but needing a carrier,
+//     cooling and power the module does not supply.
+// A third tier, conversion and salvage boards (laptop silicon on a desktop PCB, an MXM-to-PCIe carrier),
+// has no row in any source read, so it is not an arm yet; it lands with the first board row that is one.
+type MobileAcquisitionTier = WholeMobileSystem | RemovableModule
+
+fn mobile_tier_of(p: GpuCensusPartition) -> MobileAcquisitionTier? {
+  match p {
+    MobileGpuCensus => Present { value: WholeMobileSystem }
+    MobileModuleCensus => Present { value: RemovableModule }
+    WholeSystemCensus => none
+    EmbeddedCensus => none
+  }
+}
+
+// One source row of a mobile GPU, as its cells state it. memory_per_gpu holds every size the memory cell
+// states and is empty where the cell was not read: the mobile census claims the row either way, and a
+// consumer that needs memory reads a non-empty list or stops.
+type MobileCensusEntry {
+  row: CensusRowRef
+  vendor: Vendor<Hardware>
+  model: String
+  launch_year: Nat?
+  tier: MobileAcquisitionTier
+  memory_per_gpu: List<ByteSize>
+}
+
+fn mobile_entry_of(src: CensusSourcePage, table: Nat, heading: NonEmptyStr, row: WikipediaGpuSpecRow) -> List<MobileCensusEntry> {
+  match census_dispose(src: src, table: table, heading: heading, row: row) {
+    CensusPartitioned { row: ref, partition: p, cause: _ } => match mobile_tier_of(p: p) {
+      Present { value: tier } => [MobileCensusEntry {
+        row: ref,
+        vendor: src.vendor,
+        model: match row.model { Present { value: m } => m  Absent => "" },
+        launch_year: row.launch_year,
+        tier: tier,
+        memory_per_gpu: match row.memory {
+          Present { value: m } => m.sizes_mib |> map(s => mebibyte_to_byte_size(m: mebibyte(count: s)))
+          Absent => []
+        },
+      }]
+      Absent => []
+    }
+    _ => []
+  }
+}
+
+fn mobile_census_entries() -> List<MobileCensusEntry> {
+  census_sources |> flat_map(src => src.page.tables |> flat_map(t => match t {
+    WikipediaSpecTable { ordinal: o, heading: h, row_count: _, rows: rs } => rs |> flat_map(r => mobile_entry_of(src: src, table: o, heading: h, row: r))
+    WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => []
+  }))
+}
+
+// The entries of one tier with some stated memory size at or above a floor: the population a mobile
+// pricing or benchmark pass starts from (the workload's 16 GiB long-context floor, say).
+fn mobile_entries_with_memory_at_least(tier: MobileAcquisitionTier, floor: ByteSize) -> List<MobileCensusEntry> {
+  mobile_census_entries() |> filter(e => mobile_tier_eq(a: e.tier, b: tier)
+    && e.memory_per_gpu |> any(m => byte_size_count(b: m) >= byte_size_count(b: floor)))
+}
+
+fn mobile_tier_eq(a: MobileAcquisitionTier, b: MobileAcquisitionTier) -> Bool {
+  match a {
+    WholeMobileSystem => match b { WholeMobileSystem => true  RemovableModule => false }
+    RemovableModule => match b { RemovableModule => true  WholeMobileSystem => false }
+  }
+}

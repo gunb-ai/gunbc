@@ -9,6 +9,7 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
+  NotADeclaration
 }
 
 data conj_positional_only_child: Node = Node {
@@ -20,7 +21,7 @@ data conj_positional_only_child: Node = Node {
 data conj_positional_only_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Positional, target: conj_positional_only_child }
+    Edge { label: Positional, target: conj_positional_only_child, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

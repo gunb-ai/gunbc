@@ -1,0 +1,64 @@
+module v2.test.claim.occurrence_resolution_partial_validity
+
+import std.types { List }
+import std.algebra { length, empty_map }
+import std.optional { optional_present, optional_absent }
+import std.occurrence_identity { OccurrenceId }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.compiler.resolve { OccurrenceResolutionEntry, OccurrenceResolutionRecord, BoundToDeclaration, ResolvedToDeclaration }
+import v2.compiler.occurrence_resolution_census { occurrence_resolution_partial, occurrence_resolution_partial_lines }
+
+// THE VALIDITY OF A REFUSED MODULE'S PARTIAL OBSERVATION, at its one interface
+// (v2.compiler.occurrence_resolution_census occurrence_resolution_partial), with the entries SUPPLIED: resolve
+// does not emit two disagreeing records for one occurrence on any authorable source (that is the defect
+// the exactly-one-source control exists for), so the conflicting arm is reachable only as supplied input.
+// The real producer's route is held by the ambient-name-census fixture (examples.partial's
+// binding_partial rows and its binding_partial_module line).
+
+fn pv_entry(id: Int, spelling: String, target: String) -> OccurrenceResolutionEntry {
+  OccurrenceResolutionEntry {
+    reference: OccurrenceId { value: id },
+    record: OccurrenceResolutionRecord {
+      authored: optional_present(value: qualified_name_from_dotted_string(dotted: spelling)),
+      binding: BoundToDeclaration { identity: ResolvedToDeclaration { path: qualified_name_from_dotted_string(dotted: target) } }
+    }
+  }
+}
+
+fn pv_unreadable_entry(id: Int, target: String) -> OccurrenceResolutionEntry {
+  OccurrenceResolutionEntry {
+    reference: OccurrenceId { value: id },
+    record: OccurrenceResolutionRecord {
+      authored: optional_absent(),
+      binding: BoundToDeclaration { identity: ResolvedToDeclaration { path: qualified_name_from_dotted_string(dotted: target) } }
+    }
+  }
+}
+
+// IDENTICAL-REPEAT CONTROL: one occurrence recorded twice with the same record is one row, not two,
+// and is not a conflict.
+test fn an_identical_repeat_dedupes_to_one_row_holds() -> Bool {
+  let p = occurrence_resolution_partial(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")], loci: empty_map())
+  (length(xs: p.rows) == 2) && (p.conflicting == 0) && (p.unreadable == 0)
+}
+
+// CONFLICTING-RECORD DISCRIMINATOR: one occurrence recorded with two different bindings makes the
+// partial observation unusable -- rows withheld, the conflict counted -- never first-record-wins.
+test fn a_conflicting_record_withholds_the_rows_and_is_counted_holds() -> Bool {
+  let p = occurrence_resolution_partial(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "b.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")], loci: empty_map())
+  (length(xs: p.rows) == 0) && (p.conflicting == 1)
+}
+
+test fn a_conflicting_record_prints_only_the_validity_line_holds() -> Bool {
+  occurrence_resolution_partial_lines(module: "m", entries: [pv_entry(id: 1, spelling: "helper", target: "a.helper"), pv_entry(id: 1, spelling: "helper", target: "b.helper")], loci: empty_map())
+    == ["binding_partial_module\tm\t0\t1\t0"]
+}
+
+// UNREADABLE SPELLINGS ARE COUNTED, never dropped silently.
+test fn an_unreadable_spelling_is_counted_holds() -> Bool {
+  let p = occurrence_resolution_partial(module: "m", entries: [pv_unreadable_entry(id: 1, target: "a.helper"), pv_entry(id: 2, spelling: "other", target: "a.other")], loci: empty_map())
+  (length(xs: p.rows) == 1) && (p.conflicting == 0) && (p.unreadable == 1)
+}

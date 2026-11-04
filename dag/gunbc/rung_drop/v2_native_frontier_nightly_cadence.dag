@@ -29,13 +29,11 @@ data v2_native_frontier_nightly_cadence: RungDrop = RungDrop {
 
   declared: "2026-09-23",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: OutsideTheLadder,
     reason: ReplacementStaged { replacement: "the native route's REQUIRED lane on the merge_group revision (node://adhoc-11684de4-07b), running //gunbc/instruments:v2-native-frontier" },
     population: Enumerated { members: v2_native_frontier_nightly_cadence_population },
     restoration_trigger: "The required native-route lane's run on the merge_group revision executes //gunbc/instruments:v2-native-frontier over the whole v2.test.* universe, its red blocks the landing, AND that run produces a [native-frontier-roster] proposal that a mint pull request carries into v2.workflow.native_frontier_roster -- the capability is a ratchet judging every merge candidate against a minted roster, so the lane existing, or running without a mint taken from it, does NOT retire this row. The receipt (run id, merge_group sha as tested_tree, the minting pull request) becomes trigger_fired. The lower-bound population (front-end file refusals, ObservationIncomplete under refused binders, call arguments, per-identity refusals after the first) is NOT restored by that lane either. Each of those retires only when the route observes it, and a row naming one of them must be split out rather than retired with this one",
-  }
+  } }
 }

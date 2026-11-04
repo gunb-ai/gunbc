@@ -54,7 +54,7 @@ fn plan_ineligible_probe_source(cause: String) -> String {
 // THE ROWS ACCESSOR IS NOT REDECLARED HERE -- it is imported from its one home,
 // gunbc.compile_census_probe. This file used to carry its own `type ProbeCensusRows` and a
 // `plan_ineligible_probe_rows` that matched the census coproduct by hand; that was the second local
-// implementation of one rule (§6b), and review 82870 named it when a third copy appeared. The
+// implementation of one rule (§6b), which a third copy exposed. The
 // semantics the deleted comment carried are preserved in the home: `Absent` is the `CensusNotRunnable`
 // arm, a census that could not run is not a green, and the optional keeps that fact visible instead
 // of answering 0.
@@ -172,6 +172,7 @@ fn fabricated_row(diagnostic_class: String, subject_name: String, blocking: Bool
     subject_name: subject_name,
     blocking: blocking,
     count: count,
+    rendered_pair: Absent {},
   }
 }
 

@@ -1,8 +1,9 @@
 module gunbc.auth.netrc_binding
 
-import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
+import std.types { NonEmptyStr, String, Bool, Secret, FilePath, PathSegment }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.private_secret_file { PrivateSecretFileBracket, with_private_secret_file }
 
 // A CREDENTIAL BINDING: THE ONE SANCTIONED WAY A SECRET REACHES A SUBPROCESS ON THIS FLEET.
 //
@@ -140,31 +141,32 @@ fn place_netrc_binding(
   }
 }
 
-// A PRIVATE DIRECTORY PER PLACEMENT, because a fixed path is a substitution race with no attacker in
-// it. The printer path previously used one process-global name, so two deliveries running together
-// would delete and replace each other's credentials between mint and use: place_netrc_binding does
-// remove-then-write, so delivery A's netrc can vanish after A minted its binding and before A's curl
-// reads it, and A then authenticates with B's access code or with nothing. mktemp -d creates a fresh
-// 0700 directory per call, which makes the collision unspellable rather than unlikely.
-fn place_netrc_binding_privately(
+// A PRIVATE DIRECTORY PER CALL, AS A BRACKET. A fixed path is a substitution race with no attacker
+// in it: place_netrc_binding does remove-then-write, so two runs sharing one name delete and replace
+// each other's credentials between mint and use. The private placement used to be
+// place_netrc_binding_privately plus a shred each consumer remembered to call; the shred removed the
+// file and left the mktemp directory behind, and the BMC tools skipped the private placement and the
+// shred entirely. It is now gunbc.auth.private_secret_file with_private_secret_file with a netrc as its
+// content: a fresh 0700 directory, an O_EXCL 0600 file, and both removed and checked on every arm. A
+// fresh directory holds nothing beforehand, so the remove-first order place_netrc_binding needs for a
+// caller-chosen path does not arise.
+//
+// `use` RECEIVES THE SEALED BINDING, minted here from the bracket's path, so a consumer whose command
+// builder takes a NetrcBinding (gunbc.fleet.printer_project_delivery) keeps its seal. The bracket's
+// arms are the residue facts: a failed removal is CompletedResidueRemains carrying `use`'s result,
+// never a locator.
+fn with_private_netrc_binding<R>(
   machine: NonEmptyStr,
   login: NonEmptyStr,
   password: Secret,
-) -> NetrcPlacement
+  use: fn(NetrcBinding) -> R,
+) -> PrivateSecretFileBracket<R>
 {
-  let created = shell.Mktemp.Dir()
-  if created.success == false {
-    NetrcBindingRefused {
-      cause: "no private directory could be created for the credential, so none was placed",
-    }
-  } else {
-    place_netrc_binding(
-      path: concat(created.path as String, "/netrc") as FilePath,
-      machine: machine,
-      login: login,
-      password: password
-    )
-  }
+  with_private_secret_file(
+    file_name: "netrc" as PathSegment,
+    content: netrc_content(machine: machine, login: login, password: password) as Secret,
+    use: fn(path) { use(NetrcBinding { path: path as FilePath }) },
+  )
 }
 
 // SHREDDING IS UNCONDITIONAL AT THE CALL SITE, INCLUDING ON THE FAILING ARM. A refused transfer that

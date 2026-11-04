@@ -34,6 +34,7 @@ import v2.std.node {
   symbol_eq,
   symbol_intern_lexeme,
   symbol_lexeme,
+  NotADeclaration
 }
 import v2.std.text { String, string_eq }
 
@@ -474,7 +475,7 @@ fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
     output: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_callee_atom_node() }
+        Edge { label: Positional, target: probe_mint_callee_atom_node(), declaration: NotADeclaration }
       ],
       occurrence_id: OccurrenceSynthetic
     },
@@ -500,7 +501,7 @@ fn parameter_borne_fixture_mint_planted_decl() -> FnArrowDecl {
     output: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_provenanced_callee_atom_node() }
+        Edge { label: Positional, target: probe_mint_provenanced_callee_atom_node(), declaration: NotADeclaration }
       ],
       occurrence_id: OccurrenceSynthetic
     },
@@ -540,8 +541,8 @@ fn structural_red_control_planted_decl() -> FnArrowDecl {
     output: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_callee_atom_node() },
-        Edge { label: Positional, target: probe_fixture_tree_atom_node() }
+        Edge { label: Positional, target: probe_mint_callee_atom_node(), declaration: NotADeclaration },
+        Edge { label: Positional, target: probe_fixture_tree_atom_node(), declaration: NotADeclaration }
       ],
       occurrence_id: OccurrenceSynthetic
     },
@@ -560,16 +561,17 @@ fn nested_fixture_marker_planted_decl() -> FnArrowDecl {
     output: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_callee_atom_node() },
+        Edge { label: Positional, target: probe_mint_callee_atom_node(), declaration: NotADeclaration },
         Edge {
           label: Positional,
           target: Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge { label: Positional, target: probe_fixture_tree_atom_node() }
+              Edge { label: Positional, target: probe_fixture_tree_atom_node(), declaration: NotADeclaration }
             ],
             occurrence_id: OccurrenceSynthetic
-          }
+          },
+          declaration: NotADeclaration
         }
       ],
       occurrence_id: OccurrenceSynthetic
@@ -588,8 +590,8 @@ fn target_without_fixture_tree_red_control_planted_decl() -> FnArrowDecl {
     output: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: probe_mint_callee_atom_node() },
-        Edge { label: Positional, target: probe_target_model_callee_atom_node() }
+        Edge { label: Positional, target: probe_mint_callee_atom_node(), declaration: NotADeclaration },
+        Edge { label: Positional, target: probe_target_model_callee_atom_node(), declaration: NotADeclaration }
       ],
       occurrence_id: OccurrenceSynthetic
     },

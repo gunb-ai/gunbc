@@ -1,0 +1,114 @@
+gunbc.machine_intake.mtcollins1_virtual_media_readout_observation mtcollins1_b0_virtual_media_readout
+  (B0 of gunbc.plans.boot_origin_bmc_media; work items adhoc-b4222c87-d37 and adhoc-9e4ea90a-fd0)
+
+WHAT THIS IS. An OUT-OF-BAND, READ-ONLY, UNAUTHENTICATED capture of the media-admission surface of
+the mtcollins1 BMC (Foxconn Ampere Mt. Collins, Ami MegaRAC at 0.45) at 192.168.1.228:443. Every
+request below is an HTTP GET issued from the observer's own network position. NOTHING was sent to
+the controller: no POST, PATCH, PUT, DELETE, no account creation, no media action, no session
+creation. In-band ipmitool was NOT used (operator ruling 2026-09-18: fleet observation is
+out-of-band and least-privilege). No BMC credential was fetched, held or presented -- see AUTHORITY.
+
+SUPERSEDES. artifacts/bmc/mtcollins1-virtual-media-readonly-probe-192.168.1.228-20261027T005424Z/
+was an EARLIER, PARTIAL pass of the same probe (started 00:54Z, observer clock). It is retained
+rather than deleted -- deleting a capture is not how a superseded measurement is handled -- but it
+is superseded by this directory, and it is the one the module's rows are drawn from. Two things
+about the earlier pass make this one authoritative instead:
+  (a) the module's ladder rows for /redfish and /redfish/v1 were transcribed as 401 when BOTH
+      captures record 200 there. The captures were right and the transcription was not -- the more
+      dangerous direction of this error, since a reader checking module against artifact would have
+      found the artifact contradicting the receipt. The three root paths were re-probed nine times
+      over three further passes with fresh connections and returned 200 every time; and
+  (b) it captured no per-request observer timestamp, so its file mtimes and the BMC's own Date
+      headers could not be told apart. That ambiguity is what let two Date headers, one 14h old,
+      sit in a directory claiming a 2-second window.
+This pass stamps the observer's wall clock PER REQUEST alongside the BMC's own Date header, so the
+two clocks are never conflated and no row depends on a file mtime.
+
+ONE COMMAND, RUN AS ONE PASS (observer wall clock 2026-10-27T04:00:12Z to 04:00:15Z). Paths in the
+order issued; -k because the BMC serves a self-signed certificate; the status code IS the
+observation, so curl ran WITHOUT --fail-with-body -- the admitted exception recorded at
+extdeps.bmc.http redfish_http_hardwired_transport_note: when the status is the consumed answer,
+omitting the flag is required, and a 404 must not be coerced into success.
+
+  mkdir -p headers
+  for p in /redfish /redfish/v1 /redfish/v1/ /redfish/v1/Systems /redfish/v1/Managers \
+           /redfish/v1/Managers/Self /redfish/v1/Managers/Self/VirtualMedia \
+           /redfish/v1/Systems/1 /redfish/v1/Systems/1/VirtualMedia /redfish/v1/Chassis \
+           /redfish/v1/SessionService /redfish/v1/AccountService /api/session \
+           /api/settings/media/general / ; do
+    safe=$(echo "$p" | tr '/' '_'); [ -z "$safe" ] && safe=_root
+    code=$(timeout 15 curl -sk -m 10 -D headers/$safe.hdr -o headers/$safe.body \
+           -w "%{http_code}" "https://192.168.1.228$p")
+    ou=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    srv=$(grep -im1 '^server:' headers/$safe.hdr | tr -d '\r' | cut -d' ' -f2-)
+    bd=$(grep -im1 '^date:'   headers/$safe.hdr | tr -d '\r' | cut -d' ' -f2-)
+    auth=$(grep -i '^www-authenticate:' headers/$safe.hdr | tr -d '\r' | cut -d' ' -f2- \
+           | paste -sd', ' -)
+    printf '%-42s %-5s %-21s %-21s %s%s%s\n' "$p" "$code" "$ou" "$bd" "$srv" \
+           "${auth:+ | WWW-Authenticate: $auth}"
+  done
+
+FILES.
+  surface-ladder.txt                      the ladder: path, status, OBSERVER utc, BMC Date, and the
+                                          Server / WWW-Authenticate as the controller rendered them
+  redfish_discovery_document.json         GET /redfish -> 200, body {"v1":"/redfish/v1/"}: the
+                                          DSP0266 service-discovery document, NOT the service root
+  redfish_ServiceRoot_no_trailing_slash.json
+                                          GET /redfish/v1 -> 200, the service root; differs from
+                                          redfish_ServiceRoot.json ONLY in @odata.id ("/redfish/v1"
+                                          vs "/redfish/v1/"), which is why both forms are kept --
+                                          they are the same resource answered twice, and only the
+                                          trailing-slash form is the canonical @odata.id the body
+                                          itself reports
+  redfish_ServiceRoot.json                the service root body, verbatim (GET /redfish/v1/)
+  redfish_ServiceRoot_headers.txt         its response headers, verbatim
+  redfish_VirtualMedia_401_headers.txt    headers of the 401 on Managers/Self/VirtualMedia
+  oem_api_session_404_headers.txt         headers of the OEM 404 (note Server: lighttpd)
+  oem_api_session_404_body.txt            its body, verbatim: { "error": "Invalid API Call", "code": 1010 }
+  oem_media_settings_401_headers.txt      headers of the OEM media-settings 401 (Server: lighttpd);
+                                          its Set-Cookie VALUE is redacted, see SECRETS
+  redfish_VirtualMedia_401_body.txt       the JSON body of the VirtualMedia 401, verbatim: a DMTF
+                                          Security.1.0.AccessDenied ExtendedInfo, Severity Critical
+  oem_media_settings_401_body.txt         the body of the OEM media-settings 401, verbatim:
+                                          { "cc": 7, "error": "Invalid Authentication" }
+  META.txt                                subject, method, clock handling, holds and confounders
+  SHA256SUMS                              this directory, every file above
+
+TWO 401 SHAPES, BECAUSE THERE ARE TWO SERVERS. The Redfish layer refuses with a DMTF message
+(Security.1.0.AccessDenied, "While attempting to establish a connection to <uri>, the service was
+denied access", Resolution naming credentials) while the OEM layer refuses with its own shape
+({ "cc": 7, "error": "Invalid Authentication" }) and sets a QSESSIONID cookie. Both bodies are
+committed because which layer refused is itself the observation: a Redfish refusal and an OEM
+refusal are answers from different servers about different surfaces, and collapsing them into "the
+BMC 401'd" is how the 0.32 reading lost the distinction that this pass recovers.
+
+AUTHORITY (who authenticated as what): NOBODY. No principal was asserted; every request is
+anonymous. THE PINNED READ-ONLY BMC CREDENTIAL WAS NOT READ AND NOT PRESENTED. It lives in Secret
+Manager under a grant pinned to the fleet-converge runner identity (extdeps.cloud.gcp.secret_manager
+secret_version_payload_read, dispatched only from CI), and the observing container has no ADC, no
+workload-identity federation and no grant -- so the credential axis is out of reach from here and is
+recorded as a typed gap in the module, not papered over. The credential that COULD fill the reading
+is the health-ReadOnly account (gunbc.bmc.bmc_health_reader, username gunbc_health), not the boot
+credential bmc-mtcollins1-gunbc v2.
+
+SECRETS. No token, password, credential or Authorization value is committed in this directory, and
+the claim is checked rather than asserted -- the check is this, run from inside the directory, so it
+cannot silently rot if a file is added later:
+
+  grep -riE 'qsessionid=[a-z0-9]{8}' . | grep -v 'REDACTED' | grep -v ARGV.txt   ->  no matches
+
+WHAT WAS REDACTED, AND WHY IT IS DISCLOSED RATHER THAN SILENTLY FIXED. The OEM media-settings 401
+came back with a Set-Cookie header carrying a live-looking session identifier:
+
+  Set-Cookie: QSESSIONID=<value>; path=/; secure; HttpOnly
+
+The NAME and the attributes are kept (that the OEM layer mints a session cookie even on a 401 is
+evidence about the surface, and dropping the line would have destroyed it); the VALUE is replaced
+with [REDACTED-SESSION-VALUE]. A session identifier issued by a BMC is a credential-shaped object:
+it authenticates whoever holds it for the rest of that session, and an artifact directory is read by
+more people and systems than a BMC should ever be reached by. It is redacted even though this
+particular cookie came from an unauthenticated 401, because "probably worthless" is not the standard
+for something that looks like a key -- and because a first-pass version of this capture shipped the
+value before the check caught it, which is the whole reason the check is now written to fail loudly
+instead of asking a human to notice. No Authorization header was ever SENT (nothing was
+authenticated), so no request-side credential exists to redact.

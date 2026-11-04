@@ -19,7 +19,7 @@ module gunbc.host.virtual_media_boot_selection
 
 import std.types { String }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, aarch64_uefi_once_boot_selection }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, uefi_once_boot_selection }
 import extdeps.board_soc { BoardSocArchitectureStanding }
 import extdeps.bmc.access_profile { BmcAccessObservationStanding }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
@@ -93,7 +93,7 @@ fn virtual_media_boot_selection(
                 VirtualMediaBootSelectionRefused { cause: VirtualMediaUnestablished }
               Present { value: row } =>
                 VirtualMediaBootSelectionAdmitted {
-                  selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom),
+                  selection: uefi_once_boot_selection(device: IpmiBootCdrom),
                   capability_row: row,
                 }
             }

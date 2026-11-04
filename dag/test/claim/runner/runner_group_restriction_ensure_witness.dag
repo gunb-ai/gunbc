@@ -10,14 +10,15 @@ import gunbc.runner.runner_group_restriction_ensure {
   CreatedGroupRestricted, CreatedGroupNotRestricted,
   plan_runner_group_ensure, readback_after_create, microvm_runner_group_create_subject,
   runner_group_create_subject_text, private_heal_publisher_runner_group_subject,
-  private_heal_publisher_runner_group_name, restricted_runner_groups,
+  private_heal_publisher_runner_group_name, restricted_runner_groups, qualification_runner_group_subject,
 }
-import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction }
+import gunbc.runner.runner_qualification_ref_pin { qualification_runner_group_name }
+import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction, MicrovmRunnerGroupStanding }
 import gunbc.ci.deploy_slot_tenancy {
   deploy_slot_runner_group_name, deploy_slot_job_user, deploy_slot_selected_workflow,
-  DeploySlotReading, deploy_slot_observed_tenancy,
+  DeploySlotReading, deploy_slot_observed_tenancy, DeploySlotPrivacy, DeploySlotPathsPrivate, DeploySlotPathReachable, DeploySlotPrivacyNotYetObserved,
+  DeploySlotHostRead, DeploySlotHostUnread,
 }
-import gunbc.runner.runner_slot_job_role { srv1_modeled_deploy_slot_reading }
 import gunbc.ci.deploy_route_requirement { srv1_deploy_route_requirement, deploy_route_switch_admitted }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 
@@ -157,27 +158,113 @@ fn deploy_group(id: Int, selected: List<String>) -> OrgRunnerGroupWire {
   group_wire(id: id, name: deploy_slot_runner_group_name as String, restricted: true, selected: selected)
 }
 
-fn deploy_reading(groups: List<OrgRunnerGroupWire>, user: NonEmptyStr) -> DeploySlotReading {
+fn deploy_group_read(groups: List<OrgRunnerGroupWire>) -> MicrovmRunnerGroupStanding {
+  observe_runner_group_restriction(name: deploy_slot_runner_group_name, selected_workflow: deploy_slot_selected_workflow(), listed: listed(groups: groups))
+}
+
+fn deploy_reading_among(groups: List<OrgRunnerGroupWire>, user: NonEmptyStr, others: List<NonEmptyStr>, privacy: DeploySlotPrivacy) -> DeploySlotReading {
   DeploySlotReading {
-    group: observe_runner_group_restriction(name: deploy_slot_runner_group_name, selected_workflow: deploy_slot_selected_workflow(), listed: listed(groups: groups)),
-    deploy_slot_job_user: user,
-    other_slot_job_users: ["ghrunner" as NonEmptyStr],
+    group: deploy_group_read(groups: groups),
+    host: DeploySlotHostRead {
+      unit: "actions-runner@srv1-02.service" as NonEmptyStr,
+      deploy_slot_job_user: user,
+      other_slot_job_users: others,
+      privacy: privacy,
+    },
   }
 }
 
-// RED TODAY, GREEN WITH THE MODEL. srv1 as read today (no deploy group, one shared uid) leaves the
-// deploy route's switch refused; a deploy group restricted to fleet-converge at main plus a uid no
-// other slot runs as admits it. Each wall alone still refuses, so neither is decoration.
-test fn witness_deploy_slot_admits_the_route_switch_only_when_group_and_uid_both_hold() -> Bool {
+fn deploy_reading_with(groups: List<OrgRunnerGroupWire>, user: NonEmptyStr, privacy: DeploySlotPrivacy) -> DeploySlotReading {
+  deploy_reading_among(groups: groups, user: user, others: ["ghrunner" as NonEmptyStr], privacy: privacy)
+}
+
+fn deploy_reading(groups: List<OrgRunnerGroupWire>, user: NonEmptyStr) -> DeploySlotReading {
+  deploy_reading_with(groups: groups, user: user, privacy: DeploySlotPathsPrivate)
+}
+
+// ALL THREE WALLS, OR SHARED. A deploy group restricted to fleet-converge at main, a deploy slot
+// running as ghdeploy that no other slot runs as, and paths no other uid reaches admit the switch.
+// Each wall alone still refuses, so none is decoration: a host that was not read, a deploy slot that
+// runs as another user, another slot running as ghdeploy, and the confidentiality rows each hold the
+// group and break one host wall.
+test fn witness_deploy_slot_admits_the_route_switch_only_when_group_uid_and_privacy_all_hold() -> Bool {
   let wf = deploy_slot_selected_workflow()
   let restricted = [default_group(), deploy_group(id: 31, selected: [wf as String])]
   let admit = r => deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: deploy_slot_observed_tenancy(reading: r))
   (wf as String) == "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main"
-    && !admit(srv1_modeled_deploy_slot_reading())
+    && !admit(DeploySlotReading { group: deploy_group_read(groups: restricted), host: DeploySlotHostUnread { unit: "actions-runner@srv1-02.service" as NonEmptyStr, cause: "systemctl list-units refused" } })
+    && !admit(deploy_reading_among(groups: restricted, user: deploy_slot_job_user, others: ["ghrunner" as NonEmptyStr, deploy_slot_job_user], privacy: DeploySlotPathsPrivate))
     && admit(deploy_reading(groups: restricted, user: deploy_slot_job_user))
     && !admit(deploy_reading(groups: restricted, user: "ghrunner" as NonEmptyStr))
     && !admit(deploy_reading(groups: [default_group()], user: deploy_slot_job_user))
     && !admit(deploy_reading(groups: [default_group(), group_wire(id: 31, name: deploy_slot_runner_group_name as String, restricted: false, selected: [])], user: deploy_slot_job_user))
     && !admit(deploy_reading(groups: [default_group(), deploy_group(id: 31, selected: ["gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"])], user: deploy_slot_job_user))
+    && !admit(deploy_reading_with(groups: restricted, user: deploy_slot_job_user, privacy: DeploySlotPathReachable { path: "/opt/actions-runner/srv1-02/.credentials_rsaparams" as NonEmptyStr, user: "ghrunner" as NonEmptyStr }))
+    && !admit(deploy_reading_with(groups: restricted, user: deploy_slot_job_user, privacy: DeploySlotPrivacyNotYetObserved))
     && count(filter(restricted_runner_groups(), g => g.name == deploy_slot_runner_group_name)) == 1
+}
+
+// ── the qualification group: created at the bare prefix, admitted as one branch under it ─────────
+// (operator decision A, 2026-10-30). The workflow strings are spelled here, independently of the model.
+
+data qualification_seed: String = "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/qualification/"
+
+fn qualification_group(id: Int, restricted: Bool, selected: List<String>) -> OrgRunnerGroupWire {
+  group_wire(id: id, name: qualification_runner_group_name as String, restricted: restricted, selected: selected)
+}
+
+fn qualification_planned(groups: List<OrgRunnerGroupWire>) -> RunnerGroupEnsurePlan {
+  plan_runner_group_ensure(subject: qualification_runner_group_subject(), listed: listed(groups: groups))
+}
+
+fn refused_outside_prefix(plan: RunnerGroupEnsurePlan) -> Bool {
+  match plan {
+    GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupSelectsOutsidePrefix")
+    _ => false
+  }
+}
+
+// THE GROUP IS ROSTERED ONCE AND CREATED ADMITTING NOTHING: the create body names the qualification workflow at
+// the bare prefix (no branch can match it), behind the same three walls as every restricted group.
+test fn witness_qualification_group_is_created_at_the_bare_prefix() -> Bool {
+  let s = qualification_runner_group_subject()
+  (s.name as String) == "runner-qualification"
+    && (s.selected_workflow as String) == qualification_seed
+    && s.restricted_to_workflows && !s.allows_public_repositories
+    && count(filter(restricted_runner_groups(), g => g.name == qualification_runner_group_name)) == 1
+    && (match qualification_planned(groups: [default_group()]) {
+      GroupCreateRequired { subject: c } => (c.selected_workflow as String) == qualification_seed
+      _ => false
+    })
+    && (match readback_after_create(subject: s, listed: listed(groups: [default_group(), qualification_group(id: 41, restricted: true, selected: [qualification_seed])])) {
+      CreatedGroupRestricted { restriction: r } => r.group.value == 41 && (r.selected_workflow as String) == qualification_seed
+      CreatedGroupNotRestricted { cause: _ } => false
+    })
+}
+
+// AN ATTEMPT'S PIN IS STILL THE GROUP: after an attempt re-pins it to its own branch, the ensure leaves it alone
+// and the sealed record carries the branch actually observed, not the class.
+test fn witness_qualification_group_pinned_to_one_attempt_branch_is_already_restricted() -> Bool {
+  let pinned = concat(qualification_seed, "1234-1")
+  match qualification_planned(groups: [default_group(), qualification_group(id: 41, restricted: true, selected: [pinned])]) {
+    GroupAlreadyRestricted { restriction: r } => r.group.value == 41 && (r.selected_workflow as String) == pinned
+    _ => false
+  }
+}
+
+// RED: A PIN OUTSIDE THE PREFIX REFUSES. The default branch, another workflow file at a qualification branch, a
+// nested branch, a component git would refuse, and a second entry each name a workflow no attempt pinned; an
+// unrestricted group refuses by its own cause.
+test fn witness_qualification_group_pinned_outside_the_prefix_refuses() -> Bool {
+  let g = sel => qualification_planned(groups: [default_group(), qualification_group(id: 41, restricted: true, selected: sel)])
+  refused_outside_prefix(plan: g(["gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main"]))
+    && refused_outside_prefix(plan: g(["gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/qualification/1234-1"]))
+    && refused_outside_prefix(plan: g([concat(qualification_seed, "a/b")]))
+    && refused_outside_prefix(plan: g([concat(qualification_seed, "x.lock")]))
+    && refused_outside_prefix(plan: g([qualification_seed, concat(qualification_seed, "1234-1")]))
+    && refused_outside_prefix(plan: g([]))
+    && (match qualification_planned(groups: [qualification_group(id: 41, restricted: false, selected: [])]) {
+      GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupNotRestrictedToWorkflows")
+      _ => false
+    })
 }

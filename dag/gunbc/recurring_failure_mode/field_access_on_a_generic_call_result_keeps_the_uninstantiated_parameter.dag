@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter: RecurringFailureMode = RecurringFailureMode {
+  identity: "field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a generic application type node carries its authored type arguments against the declaration's parameter identity, with the declaration's expansion derived from them rather than cached in their place, so every reader of a call result (field access first) instantiates through that one relation." } },
+
+  receipts: [
+    "INVALID STATE: a field projected from the result of a generic call (`f(...).first`, `.second`, `.value`, with `fn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B>`) is accepted at the WRONG type. `ap_int(x: ap_mk_pair(a: i, b: t).second)` with `i: Int`, `t: String` and `ap_int(x: Int)` is Accepted with 0 blocking diagnostics, and so is the let-bound form (`let p = ap_mk_pair(...)` then `p.second`). The projected field keeps the uninstantiated parameter (`Primitive(B)`), which every position accepts.",
+
+    "HARM: silent wrongness at the compiler floor (DESIGN 4b: values inhabit declared types). Below the ladder, not a rung. It also inverts under a stricter declared-type wall: a VALID program is refused. `test.claim.generic_arity_n_descent_witness` arity_n_ctl_pair, arity_n_ctl_brand_slot and arity_n_ctl_cas_slot_version_brand pass on main only because nothing judges the leftover parameter, and fail on the head of gunbc#14430.",
+
+    "DISTINGUISHING FACTS, measured on main by compiling probe modules. The call result's own type is right (matching it against `ApPair<Int, Int>` refuses). Monomorphic returns, a parameter typed `ApPair<Int, String>`, and an annotated let all refuse correctly. Only a receiver that is a generic call result, or a binder of one, loses the instantiation. A record literal `.second` is accepted too.",
+
+    "NAME CAPTURE, the second half of the same defect. The call node's inferred type holds the DECLARATION body as a Resolved target, substituted by `substitute_generics_apply` with the CALLEE's spelled parameter names, which are not the declaration's parameters. A permuting return (`fn ap_mk<B, A>(a: A, b: B) -> ApPair<B, A>`) captures them and `.first` is read at the wrong position; a callee spelling its parameters differently (`ap_mk<X, Y>`) leaves the body uninstantiated. Both are accepted at the wrong type. `resolve_scrutinee_type_node_seen` returns the Resolved target and drops the carrier's type arguments, so the field-access reader trusts the cached expansion instead of the authored application.",
+
+    "SHARED ROOT, INFERRED FROM TWO LANES: a type node carries its expansion in place of the authored reference. Related, not the same row: nested_field_read_through_a_binder_of_an_inferred_generic_result is the binder polarity of the lost substitution and may share this root.",
+
+    "RUNG FOUND AT: below the ladder (silent wrongness). CEILING: structurally guaranteed -- the call's type arguments and the declaration's parameters are both resolved, so the instantiation is decidable. NEXT-RUNG TRIGGER: the representation change in the trigger capability above (the type-argument representation PR); sufficient when arity_n_red_pair_projection_wrong_position and the renamed and permuted REDs refuse and the three controls pass on the stricter wall. Not satisfied by a field-site special case.",
+  ],
+
+  evidence: [],
+}

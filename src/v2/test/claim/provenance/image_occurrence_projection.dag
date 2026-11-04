@@ -24,6 +24,7 @@ import v2.std.node {
   allocate_pending_occurrences,
   close_lowered_image,
   node_with_occurrence_id,
+  NotADeclaration
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
@@ -50,7 +51,7 @@ fn iop_minted(id: Int) -> NodeOccurrenceIdentity {
 fn iop_node(occurrence: NodeOccurrenceIdentity, children: List<Node>) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: map(children, c => Edge { label: Positional, target: c }),
+    children: map(children, c => Edge { label: Positional, target: c, declaration: NotADeclaration }),
     occurrence_id: occurrence,
   )
 }

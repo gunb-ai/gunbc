@@ -1,6 +1,8 @@
 module test.claim.roadmap.roadmap_site_healthz_json_parse_witness
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.roadmap.roadmap_static_site { roadmap_site_healthz_body }
+import gunbc.roadmap.roadmap_site_surface_expect { roadmap_site_healthz_json_string_parses }
 
 
 fn roadmap_site_healthz_json_parse_witness() -> ProcessExit {

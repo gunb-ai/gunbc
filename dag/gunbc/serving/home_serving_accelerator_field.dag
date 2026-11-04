@@ -1,31 +1,54 @@
 module gunbc.serving.home_serving_accelerator_field
 
-import std.types { List, NonEmptyStr }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.gpu.types { GpuModelCatalogRow }
+import std.types { List }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.gpu.types { GpuBoardAdmission }
 import extdeps.gpu.nvidia {
-  nvidia_rtx_pro_5000_48gb_catalog,
-  nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_rtx_pro_6000_workstation_catalog,
-  nvidia_rtx_pro_6000_max_q_catalog,
-  nvidia_b200_sxm_catalog,
-  nvidia_b300_sxm_catalog,
+  nvidia_rtx_pro_5000_48gb_board_catalog,
+  nvidia_rtx_pro_5000_72gb_board_catalog,
+  nvidia_rtx_pro_6000_workstation_board_catalog,
+  nvidia_rtx_pro_6000_max_q_board_catalog,
+  nvidia_b200_sxm_board_catalog,
+  nvidia_b300_sxm_board_catalog,
 }
 
-// HOME-SERVING POLICY, not NVIDIA's catalog: which cited add-in cards are purchase candidates
-// and which SXM modules are references only.
-data home_serving_accelerator_field_p4_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c declared frontier: these lists are consumed by P4 home-serving selection, which imports home_serving_add_in_card_catalog_rows as the purchase-candidate field and home_serving_reference_sxm_catalog_rows as references only. Trigger: that fold exists and deleting either list makes it fail to resolve. A witness that only asserts the lists exist does not close this frontier." as NonEmptyStr
+// HOME-SERVING POLICY, not NVIDIA's catalog: which cited add-in boards are purchase candidates
+// and which SXM modules are references only. The lists hold BOARD admissions, not GPUs: what is bought
+// and powered is a board, and a board the catalog's own admission refuses stays in the roster so the
+// consuming fold can name it rather than lose it.
+
+// THE CONSUMING FOLD, NAMED RATHER THAN DESCRIBED. This frontier's own trigger was "that fold exists
+// and deleting either list makes it fail to resolve". It exists now — gunbc.serving.home_serving_candidate_field
+// imports BOTH lists below (home_serving_add_in_card_catalog_rows as the candidate field,
+// home_serving_reference_sxm_catalog_rows to assert them non-candidates), so deleting either one stops
+// that module resolving. Naming the declaration is what bound_dissolution is for: a free-text
+// description can drift from the thing it describes, a DeclarationRef either resolves or it does not.
+//
+// WHAT THIS CARRIER DELIBERATELY DOES NOT SAY. It answers ONE question — does the consuming fold exist
+// — and not the separate question "has a card been chosen". Those were once the same carrier, which is
+// why binding it used to be described as "someone actually chose": with no fold, the only thing to bind
+// was a choice. Now that a fold exists and refuses on evidence, that proxy would have said a card was
+// chosen the moment the fold was written, which is false. "No card is chosen" is stated where it can be
+// checked instead — test.claim.home_serving_candidate_field_witness::home_serving_live_verdict_is_never_a_pick_and_never_empty
+// calls the fold and refuses if any arm is SelectedWithin — so neither fact rides on the other.
+data home_serving_p4_selection_fold_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.serving.home_serving_candidate_field",
+  decl_name: "select_home_serving_candidate",
 )
 
-data home_serving_add_in_card_catalog_rows: List<GpuModelCatalogRow> = [
-  nvidia_rtx_pro_5000_48gb_catalog,
-  nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_rtx_pro_6000_workstation_catalog,
-  nvidia_rtx_pro_6000_max_q_catalog,
+data home_serving_accelerator_field_p4_frontier: DissolutionCondition = bound_dissolution(
+  ref: home_serving_p4_selection_fold_ref,
+)
+
+data home_serving_add_in_card_catalog_rows: List<GpuBoardAdmission> = [
+  nvidia_rtx_pro_5000_48gb_board_catalog,
+  nvidia_rtx_pro_5000_72gb_board_catalog,
+  nvidia_rtx_pro_6000_workstation_board_catalog,
+  nvidia_rtx_pro_6000_max_q_board_catalog,
 ]
 
-data home_serving_reference_sxm_catalog_rows: List<GpuModelCatalogRow> = [
-  nvidia_b200_sxm_catalog,
-  nvidia_b300_sxm_catalog,
+data home_serving_reference_sxm_catalog_rows: List<GpuBoardAdmission> = [
+  nvidia_b200_sxm_board_catalog,
+  nvidia_b300_sxm_board_catalog,
 ]

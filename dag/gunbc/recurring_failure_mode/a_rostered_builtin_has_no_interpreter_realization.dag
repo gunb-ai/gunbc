@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_rostered_builtin_has_no_interpreter_realization
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data a_rostered_builtin_has_no_interpreter_realization: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_rostered_builtin_has_no_interpreter_realization" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "every name v1.compiler.method builtin_function_registry types is joined to the interpreter's realization of it, so a call the checker types and the interpreter cannot run refuses at compile time, located, rather than at the first evaluation" } },
+
+  receipts: [
+    "INVALID STATE: a builtin that v1.compiler.method builtin_function_registry rosters, so the checker types a call to it and accepts the program, has no realization in v1_interpreter, so the first evaluation of the call refuses at runtime. HARM: an Accepted program whose meaning is a runtime refusal; loud and located, never fabricated, so it sits on rung 1 and not below the ladder.",
+    "SPECIMEN (found 2026-10-24 by the chain (ii) Phase A probes of gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text, one BuildBuddy dispatch building gunbc at the census branch and running the probe): `to_int` is rostered as derived_signature(names: [\"s\"], method: \"to_int\", returns: int_type) and std.algebra rosters it in the scalar free-monoid profile, and `to_int(mk_p())` compiled and then failed with `NoSuchFunction { name: \"to_int\" }`. No `to_int` arm exists in the interpreter source. The corpus has no call site of `to_int`, so no Accepted corpus program reaches the refusal today.",
+    "DISTINGUISHING FACTS: registered_realization_missing_its_registry_row_panics_at_runtime is the emission-path sibling (a realization exists and the emitter's registry does not know it); here the signature exists and the interpreter realization does not, on the interpretation path. Not that row's population. POPULATION: only to_int is measured; the registry-to-realization join that would enumerate the rest is the trigger, not yet built.",
+  ],
+
+  evidence: [],
+}

@@ -15,7 +15,7 @@ import v2.std.model_core {
   model_core_first_primitive_substrate,
   bool_model_core
 }
-import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode }
+import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, NotADeclaration }
 
 type LanguageModel {
   lex: LexRules
@@ -28,7 +28,8 @@ type LanguageModel {
 fn language_model_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
     label: Authored { name: name },
-    target: target
+    target: target,
+    declaration: NotADeclaration
   }
 }
 

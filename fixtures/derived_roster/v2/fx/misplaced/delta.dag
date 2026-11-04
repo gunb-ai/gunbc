@@ -1,0 +1,5 @@
+module v2.fx.misplaced.delta
+
+import v2.fx.misplaced { FxRow }
+
+data not_delta: FxRow = FxRow { weight: 4 }

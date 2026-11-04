@@ -27,13 +27,11 @@ data provider_guest_ci_egress_unfiltered: RungDrop = RungDrop {
 
   declared: "2026-10-09",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: ReplacementStaged { replacement: "operator ruling 2026-10-09: a guest rebuilt from the provider's image before every job, so nothing a job leaves behind survives into the next; egress itself is uncontained" },
     population: Enumerated { members: FreeSemigroup { head: "gunbc.fleet.fleet_host_identity operator_host_183527 (Hetzner Cloud CAX41 169308819, nbg1)", tail: ["gunbc.fleet.fleet_host_identity operator_host_3dde7f (Hetzner Cloud CAX41 169308796, hel1)"] } },
     restoration_trigger: "egress from these guests is contained BELOW the guest -- at the site's network layer (SDN / VXLAN behind a router the fleet owns) or at the provider's hypervisor -- so a job with root in the guest cannot widen it, and a filtered-egress receipt on one of them records denials and grants each proven by the guest's outcome and the enforcing layer's own counter, as gunbc.runner.runner_filtered_egress_receipt does for the microVM path. SUFFICIENT FOR deleting this row: the provider-rebuild offer lists DefaultDenyEgress as evidenced on that receipt and the excuse is removed from the admission in the same change. NOT satisfied by an nftables ruleset inside the guest."
-  }
+  } }
 }

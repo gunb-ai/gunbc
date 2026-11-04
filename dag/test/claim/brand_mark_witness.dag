@@ -3,7 +3,7 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.types { Bool, Int, String }
 import std.optional { Absent, Present }
-import extdeps.languages.html { serialize_html_source }
+import extdeps.languages.html { serialize_html_source, EmitOk, EmitRejected }
 import gunbc.design.brand_mark {
   BrandMark, BrandMarkBox, FaceMark, RobotMark, Stencil, UnderpaintedStencil,
   brand_mark, brand_mark_frame, brand_mark_shape_bounds, brand_mark_stencil_path, brand_mark_antenna_path,
@@ -47,10 +47,13 @@ test fn the_face_stencil_is_the_seals_drawing() -> Bool {
 
 // The favicon the workspace serves is the face on the stone badge, painted in the ink.
 test fn the_favicon_is_the_face_on_the_stone_badge() -> Bool {
-  let svg = site_favicon_source()
-  string_contains(s: svg, pattern: face_eyes_and_mouth)
-    && string_contains(s: svg, pattern: "fill=\"#f4f1ec\"")
-    && string_contains(s: svg, pattern: "color=\"#0f0f0f\"")
+  match site_favicon_source() {
+    EmitOk { html: svg } =>
+      string_contains(s: svg, pattern: face_eyes_and_mouth)
+        && string_contains(s: svg, pattern: "fill=\"#f4f1ec\"")
+        && string_contains(s: svg, pattern: "color=\"#0f0f0f\"")
+    EmitRejected { reason: _ } => false
+  }
 }
 
 // ═══ STRUCTURE ═══

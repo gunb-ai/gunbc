@@ -19,7 +19,7 @@ import gunbc.roadmap.dispatch_unit_created_paths {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole }
 import gunbc.roadmap.roadmap_belt_actuate { belt_worker_created_paths_outcome }
-import gunbc.roadmap.roadmap_dispatch_actuator { DispatchWorkerUnitPlan }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 
 // srv1 lab, 2026-10-21: the worker unit's "+" ExecStopPost created the exit record as root:root 0755,

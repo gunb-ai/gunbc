@@ -85,6 +85,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.logic { bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert, map_contains_key }
@@ -336,7 +337,7 @@ fn kotlin_atom(id: Symbol) -> Node {
 }
 
 fn kotlin_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn kotlin_int_width_node(width: KotlinIntWidth) -> Node {

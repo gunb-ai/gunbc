@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_confined_worker_can_write_the_managers_exit_inbox
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data a_confined_worker_can_write_the_managers_exit_inbox: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_confined_worker_can_write_the_managers_exit_inbox" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "the session hand-in/supervision protocol (lab-dev S1/S2) lands on main, with each session's hand-in written only into a directory keyed by its own attempt identity and relayed into the exit inbox by the manager's principal, sufficient for a hand-in naming another attempt to have no writable location" } },
+
+  receipts: [
+    "INVALID STATE: a confined worker unit can write the instance's exit inbox (gunbc.roadmap.roadmap_attempt_exit_spool). The inbox holds the MANAGER's statements -- exit records the unit's + stop hook writes as the manager -- so a worker that can write it can record an exit or a hand-in for ANY attempt, its own or another's.",
+    "FOUND ON bright-moth-475/lab-dev, srv1 lab, 2026-10-24, by the session hand-in protocol (lab-dev S1/S2, 6550c8f7..3acb72c8): a supervised session wrote its hand-in entry straight into the exit inbox. Under the system-manager launcher the inbox is read-only to the unit, so the write was refused rather than accepted; the class is the capability the design asked for, not an observed forgery.",
+    "KNOWN REPAIR: lab-dev 85866292 (route A). The session writes into its own attempt's worker/handin; a launcher-bound transient path unit (DirectoryNotEmpty, BindsTo and After on the worker) starts the exit drain, which relays, as the service user, only an entry naming that attempt into the inbox and moves anything else to refused. It is not on main because main has no hand-in producer: the S1/S2 protocol is lab-dev only, and on main the worker never writes the inbox (HandedExitRoot is the manager's path, entered by no worker).",
+    "DISTINGUISHING FACTS: the inbox entry's name is its whole claim (attempt_handin_entry_name), so whoever can create a name can make the claim; the manager cannot tell a worker-written entry from its own.",
+    "HARM: a worker could end or accept another attempt, or forge its own exit; on the lab it would have been silent had the inbox been writable.",
+    "RUNG FOUND AT: mitigatable (the unit's ReadOnlyPaths refused the write). CURRENT RUNG on lab-dev before 85866292: mitigatable, by the same confinement. CEILING: structurally impossible: when a worker's only writable hand-in location is keyed by its own attempt identity, a cross-attempt hand-in has no path to write. NEXT-RUNG TRIGGER: the standing's capability, which needs the hand-in protocol to exist on main first.",
+  ],
+  evidence: [],
+}

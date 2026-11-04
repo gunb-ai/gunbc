@@ -22,7 +22,7 @@ data sandbox_properties_declared_but_not_enforced_by_the_realization: RecurringF
   ],
 
   evidence: [
-    decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_worker_unit_stream_properties"),
+    decl_ref(module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_worker_unit_stream_properties"),
     decl_ref(module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox"),
     decl_ref(module_path: "gunbc.rung_drop.user_manager_worker_write_boundary_unenforced", decl_name: "user_manager_worker_write_boundary_unenforced"),
   ],

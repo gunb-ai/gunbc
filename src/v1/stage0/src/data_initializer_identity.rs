@@ -21,6 +21,7 @@ use std::rc::Rc;
 
 use im::HashMap;
 
+use crate::coproduct_reflection::decl_qualified_name;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_infer_env::{lookup_binding_by_name_local, lookup_type};
 use crate::v1_compiler_infer_items::{item_kind, ItemKind, TypedModule};
@@ -220,15 +221,6 @@ fn declared_field_type_on_coproduct_variant_parse_tree(
     declared_field_type_bare_on_coproduct_variant(&coproduct, variant_name, field_name, si)
 }
 
-fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
-    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
-    if logical.is_empty() {
-        name.to_string()
-    } else {
-        format!("{logical}.{name}")
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedDeclarationLocator {
     pub qualified_name: String,
@@ -378,7 +370,7 @@ fn declaration_identity_for_type_item(
         .unwrap_or_else(|| fallback_module_path.to_string());
     let name = authored_name_at(si.clone(), type_item.clone());
     ResolvedDeclarationLocator {
-        qualified_name: decl_logical_qualified_name(&module_path, &name),
+        qualified_name: decl_qualified_name(&module_path, &name),
         name,
         module_path,
         rel_path: rel_path_from_node(type_item),

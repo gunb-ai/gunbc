@@ -1,6 +1,6 @@
 module test.claim.print_batch_plan_witness
 import std.types {Bool}
-import product.printed_chassis.print_batch_plan {parse_plan}
+import product.printed_chassis.print_batch_plan {parse_plan,parse_plate_plan}
 
 // Each independent admission rule has its own counterexample and verdict.
 test fn two_printer_plan_decodes() -> Bool {
@@ -49,4 +49,12 @@ test fn duplicate_part_is_refused() -> Bool {
 
 test fn duplicate_printer_is_refused() -> Bool {
  match parse_plan(text:"[\{\"printer\":\"printer-01\",\"version\":\"1\",\"plates\":[\{\"attempt\":\"workflow-shadow-lower-printer-01\",\"placements\":[\{\"id\":\"CL-1-1\",\"rx\":0,\"ry\":0,\"rz\":0,\"x_um\":6000,\"y_um\":10000\},\{\"id\":\"CL-11\",\"rx\":0,\"ry\":0,\"rz\":0,\"x_um\":48000,\"y_um\":10000\}],\"support_free\":[]\}]\},\{\"printer\":\"printer-01\",\"version\":\"1\",\"plates\":[\{\"attempt\":\"workflow-shadow-lower-printer-02\",\"placements\":[\{\"id\":\"CL1-1\",\"rx\":0,\"ry\":0,\"rz\":0,\"x_um\":6000,\"y_um\":10000\},\{\"id\":\"CL11\",\"rx\":0,\"ry\":0,\"rz\":0,\"x_um\":48000,\"y_um\":10000\}],\"support_free\":[]\}]\}]") {Absent=>true Present {value:_}=>false}
+}
+
+// A request's plate plan is placements and support policy only. The physical attempt is derived from
+// the request, artifact and printer, so a plate plan that still authors an "attempt" is refused, not
+// silently ignored.
+test fn request_plate_plan_decodes_without_an_attempt_and_refuses_one() -> Bool {
+ (match parse_plate_plan(text:"\{\"placements\":[\{\"id\":\"FIT-RING\",\"rx\":0,\"ry\":0,\"rz\":0,\"x_um\":40000,\"y_um\":70000\}],\"support_free\":[\"FIT-RING\"]\}") {Present {value:p}=>count(p.placements)==1 Absent=>false}) &&
+ (match parse_plate_plan(text:"\{\"attempt\":\"a16-plug-fit-ring-v1\",\"placements\":[\{\"id\":\"FIT-RING\",\"rx\":0,\"ry\":0,\"rz\":0,\"x_um\":40000,\"y_um\":70000\}],\"support_free\":[\"FIT-RING\"]\}") {Absent=>true Present {value:_}=>false})
 }

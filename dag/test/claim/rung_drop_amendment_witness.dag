@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.rung_drop_amendment {
   RungDropAmendment, rung_drop_amendment_message, every_amendment_names_a_rostered_drop,
 }
-import gunbc.rung_drop { Standing, Retired }
+import gunbc.rung_drop { Standing, Retired, AuthoredProse, RetiredAuthoredProse, FloorCutFalsifierCadence, RungDropStanding }
 import gunbc.rung_drop_amendment.roster { rung_drop_amendment_roster, amendments_for_drop }
 import gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign {
   namespace_wave_admission_carrier_redesign,
@@ -23,6 +23,8 @@ data control_dangling_amendment: RungDropAmendment = RungDropAmendment {
 fn rostered_drop_identities() -> List<String> {
   map(rung_drop_roster, d => (d.identity as String))
 }
+
+data control_standing: RungDropStanding = Standing { declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, authored: "control" } }
 
 fn contains_text(haystack: String, needle: String) -> Bool {
   haystack.contains(needle)
@@ -53,7 +55,7 @@ test fn amendments_are_selected_by_drop_identity() -> Bool {
 // last being the one a reader of the projected restoration trigger alone would get wrong, and would
 // act on by re-landing gunbc#11704, which retires nothing.
 test fn the_amendment_renders_the_reasoning_that_was_lost() -> Bool {
-  let rendered = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign, standing: Standing, admissible: true)
+  let rendered = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign, standing: control_standing)
   contains_text(haystack: rendered, needle: "gunbc#11704")
     && contains_text(haystack: rendered, needle: "priced the gate itself")
     && contains_text(haystack: rendered, needle: "BUILT AND DELETED")
@@ -64,11 +66,13 @@ test fn the_amendment_renders_the_reasoning_that_was_lost() -> Bool {
 // trigger field would have let it do -- agrees with itself here and is caught. This is the
 // assertion that keeps the amendment from becoming a second authority for retirement.
 test fn the_closing_sentence_is_derived_from_the_rows_standing() -> Bool {
-  let standing = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign, standing: Standing, admissible: true)
+  let standing = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign, standing: control_standing)
   let retired = rung_drop_amendment_message(
     a: namespace_wave_admission_carrier_redesign,
-    standing: Retired { trigger_fired: "control trigger fired" as NonEmptyStr },
-    admissible: true
+    standing: Retired {
+      trigger_fired: "control trigger fired" as NonEmptyStr,
+      declaration: RetiredAuthoredProse { legacy: FloorCutFalsifierCadence, authored: "control" }
+    }
   )
   contains_text(haystack: standing, needle: "The restoration trigger above stands whole.")
     && !contains_text(haystack: retired, needle: "stands whole")

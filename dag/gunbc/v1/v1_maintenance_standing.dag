@@ -436,6 +436,19 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // becomes a defect the seed exhibits today and lands squarely in DefectRepairDiagnosticsMayMove.
 // Until then the honest name for the class is dead-code-shaped fabrication, and the honest
 // disposition is refused-and-recorded.
+//
+// A NEAR-MISS, 2026-10-27, which moves the argument and not the disposition. Choosing how the
+// diagnostic.ipmi.Tool lanplus operations take a cipher suite (gunb-ai/gunbc#15262, review 86975), a
+// reviewer-proposed design was a sealed record carrying the words, typed as an operation input and
+// spliced by bare name -- exactly a declared argv element typed to a structured kind. It was checked
+// against this seam before it was built and rejected: the record would have reached ipmitool as one
+// word of its type-and-fields rendering. The part worth keeping is HOW IT WOULD HAVE HIDDEN: the
+// declaration materializer (std.operation_argv shell_materialize_operation_argv) binds the list a
+// witness supplies and never sees the declared type, so a byte-equality witness through it would
+// have stayed green while execution fabricated the argument. So the first specimen this row waits
+// for is not a far-fetched one: it is the natural shape of sealing argv words, and the tree's own
+// argv witnesses would not catch it. Nothing was built, so the tree still has no reachable site and
+// the disposition above stands; the extdeps.bmc.ipmi operations kept a List<String> input instead.
 
 // THE FIRST ADMISSION RECORDED UNDER THE 2026-08-20 PURPOSE TEST, placed deliberately beside the
 // argv fabrication refusal above because the two split on one axis and neither is readable alone.

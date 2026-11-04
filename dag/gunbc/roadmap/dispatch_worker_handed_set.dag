@@ -182,8 +182,8 @@ fn dispatch_worker_set_path_settings(set: List<HandedEntry>, exit_hook: NonEmpty
 }
 
 // THE CREDENTIALS THE MANAGER HANDS THE UNIT, one LoadCredential= per credential entry, in set order. Empty
-// for a set with none, which is every set but a dedicated worker's (gunbc.roadmap.roadmap_dispatch_actuator
-// dispatch_worker_credential_sources).
+// for a set with none, which is every set but a dedicated worker's (gunbc.roadmap.dispatch_worker_unit_confinement
+// dispatch_worker_credentials).
 fn dispatch_worker_set_credential_settings(set: List<HandedEntry>) -> List<SystemdRunProperty> {
   fold(set, init: [], f: (acc, e) =>
     match e.role {

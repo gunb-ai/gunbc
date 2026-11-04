@@ -1,0 +1,131 @@
+module v2.test.claim.rigid_binder_leaf
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+
+data rbl_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^rigid_binder_leaf_artifact,
+  file_path: "src/v2/pilot/rigid_binder_leaf_pilot.dag"
+}
+
+data rbl_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^rigid_binder_leaf_std_artifact,
+  file_path: "src/v2/pilot/rigid_binder_leaf_std_pilot.dag"
+}
+
+fn rbl_assemble(src: String, subject: List<Symbol>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+        artifact: rbl_std_artifact,
+        compilation_unit: ^rigid_binder_leaf_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: src, fidelity: Lossless },
+          artifact: rbl_artifact,
+          compilation_unit: ^rigid_binder_leaf_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: subject }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn rbl_reason(src: String, subject: List<Symbol>) -> String {
+  match rbl_assemble(src: src, subject: subject) {
+    Rejected { diagnostics: d } => concat("assemble:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+        Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+      }
+  }
+}
+
+
+
+// A DECLARATION'S OWN TYPE PARAMETER IS RIGID AND KNOWN INSIDE IT (N7 roots std.keyed_row 106 /
+// std.keyed_roster 105). A type atom bound to an enclosing declaration's type parameter derives as that rigid
+// variable, so an Arrow type over it forms: a callback parameter typed fn(K, K) -> Bool is grounded, and its
+// application is a Bool condition. On main every arrow-over-K parameter was BinderTypeUnjudged and the call
+// underived (infer_branch_cond_not_bool). The negatives pin that a rigid K is equal only to itself (g(1) at
+// fn(K) -> Bool refuses), an unbound name still refuses, and K means nothing outside the declaration binding it.
+
+test fn a_callback_over_k_is_a_bool_condition_holds() -> Bool {
+  rbl_reason(src: "module p\n\nfn f<K>(eq: fn(K, K) -> Bool, a: K) -> Int {\n  if eq(a, a) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()) == "ACCEPTED"
+}
+
+test fn a_one_k_callback_is_a_bool_condition_holds() -> Bool {
+  rbl_reason(src: "module p\n\nfn f<K>(eq: fn(K) -> Bool, a: K) -> Int {\n  if eq(a) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()) == "ACCEPTED"
+}
+
+test fn a_mixed_callback_is_a_bool_condition_holds() -> Bool {
+  rbl_reason(src: "module p\n\nfn f<K>(eq: fn(Int, K) -> Bool, n: Int, a: K) -> Int {\n  if eq(n, a) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()) == "ACCEPTED"
+}
+
+test fn a_k_producer_feeds_a_k_consumer_holds() -> Bool {
+  rbl_reason(src: "module p\n\nfn f<K>(eq: fn(K) -> Bool, g: fn() -> K) -> Int {\n  if eq(g()) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()) == "ACCEPTED"
+}
+
+test fn a_rigid_k_never_takes_an_int_holds() -> Bool {
+  rbl_reason(src: "module p\n\nfn f<K>(g: fn(K) -> Bool) -> Bool {\n  g(1)\n}\n", subject: rbl_p()) == "infer:application_argument_does_not_inhabit"
+}
+
+test fn an_unbound_type_name_refuses_holds() -> Bool {
+  rbl_reason(src: "module p\n\nfn f(eq: fn(Q) -> Bool, a: Int) -> Int {\n  if eq(a) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()) != "ACCEPTED"
+}
+
+test fn k_outside_its_declaration_refuses_holds() -> Bool {
+  rbl_reason(src: "module p\n\nfn f<K>(a: K) -> K {\n  a\n}\n\nfn g(b: K) -> Int {\n  1\n}\n", subject: rbl_p()) != "ACCEPTED"
+}
+
+
+// THE OTHER JUDGE PATHS SEE THE SAME SCOPE (review 84519): a let annotation and a record construct field typed
+// by the rigid K are judged by the same predicate, so an Int there refuses and a K is admitted.
+test fn a_let_annotated_k_refuses_an_int_holds() -> Bool {
+  rbl_reason(src: "module p\n\ntype B<T> {\n  v: T\n}\n\nfn f<K>(k: K) -> Int {\n  let x: K = 1\n  2\n}\n", subject: rbl_p()) == "infer:infer_reason_bound_value_does_not_inhabit_annotation"
+}
+
+test fn a_let_annotated_k_takes_a_k_holds() -> Bool {
+  rbl_reason(src: "module p\n\ntype B<T> {\n  v: T\n}\n\nfn f<K>(k: K) -> Int {\n  let x: K = k\n  2\n}\n", subject: rbl_p()) == "ACCEPTED"
+}
+
+// DECLARED FRONTIER, NOT THIS PR'S PATH: the construct judge IS threaded with the rigid scope, but the field's
+// formal is B's own parameter T, which becomes K only when an expected-type seed instantiates T := K at the
+// construct. That seed is gentle-newt-78's Rule B (#14644, not on main). TRIGGER: #14644 lands -- this pin then
+// turns red and is rewritten to assert the refusal (application_argument_does_not_inhabit at the field).
+test fn a_construct_field_of_k_given_an_int_is_admitted_until_the_expected_type_seed_holds() -> Bool {
+  rbl_reason(src: "module p\n\ntype B<T> {\n  v: T\n}\n\nfn f<K>(k: K) -> B<K> {\n  B { v: 1 }\n}\n", subject: rbl_p()) == "ACCEPTED"
+}
+
+test fn a_construct_field_of_k_takes_a_k_holds() -> Bool {
+  rbl_reason(src: "module p\n\ntype B<T> {\n  v: T\n}\n\nfn f<K>(k: K) -> B<K> {\n  B { v: k }\n}\n", subject: rbl_p()) == "ACCEPTED"
+}
+
+fn rbl_p() -> List<Symbol> {
+  Cons { head: ^p, tail: Empty }
+}
+
+fn rigid_binder_leaf_receipt() -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat("a_callback_over_k_is_a_bool_condition=", rbl_reason(src: "module p\n\nfn f<K>(eq: fn(K, K) -> Bool, a: K) -> Int {\n  if eq(a, a) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p())), "\n"), concat("a_one_k_callback_is_a_bool_condition=", rbl_reason(src: "module p\n\nfn f<K>(eq: fn(K) -> Bool, a: K) -> Int {\n  if eq(a) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()))), "\n"), concat("a_mixed_callback_is_a_bool_condition=", rbl_reason(src: "module p\n\nfn f<K>(eq: fn(Int, K) -> Bool, n: Int, a: K) -> Int {\n  if eq(n, a) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()))), "\n"), concat("a_k_producer_feeds_a_k_consumer=", rbl_reason(src: "module p\n\nfn f<K>(eq: fn(K) -> Bool, g: fn() -> K) -> Int {\n  if eq(g()) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()))), "\n"), concat("a_rigid_k_never_takes_an_int=", rbl_reason(src: "module p\n\nfn f<K>(g: fn(K) -> Bool) -> Bool {\n  g(1)\n}\n", subject: rbl_p()))), "\n"), concat("an_unbound_type_name_refuses=", rbl_reason(src: "module p\n\nfn f(eq: fn(Q) -> Bool, a: Int) -> Int {\n  if eq(a) {\n    1\n  } else {\n    2\n  }\n}\n", subject: rbl_p()))), "\n"), concat("k_outside_its_declaration_refuses=", rbl_reason(src: "module p\n\nfn f<K>(a: K) -> K {\n  a\n}\n\nfn g(b: K) -> Int {\n  1\n}\n", subject: rbl_p()))), "\n"), concat("identity_alias=", rbl_reason(src: "module p\n\ntype Id<T> = T\n", subject: rbl_p()))), concat("\na_let_annotated_k_refuses_an_int=", rbl_reason(src: "module p\n\ntype B<T> {\n  v: T\n}\n\nfn f<K>(k: K) -> Int {\n  let x: K = 1\n  2\n}\n", subject: rbl_p()))), concat("\na_let_annotated_k_takes_a_k=", rbl_reason(src: "module p\n\ntype B<T> {\n  v: T\n}\n\nfn f<K>(k: K) -> Int {\n  let x: K = k\n  2\n}\n", subject: rbl_p()))), concat("\na_construct_field_of_k_refuses_an_int=", rbl_reason(src: "module p\n\ntype B<T> {\n  v: T\n}\n\nfn f<K>(k: K) -> B<K> {\n  B { v: 1 }\n}\n", subject: rbl_p()))), concat("\na_construct_field_of_k_takes_a_k=", rbl_reason(src: "module p\n\ntype B<T> {\n  v: T\n}\n\nfn f<K>(k: K) -> B<K> {\n  B { v: k }\n}\n", subject: rbl_p())))
+}

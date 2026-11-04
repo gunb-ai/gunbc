@@ -1,0 +1,156 @@
+module std.retained_materialization
+
+import std.types { String, NonEmptyStr, Int, List, Bool }
+import std.optional { Present, Absent }
+import std.algebra { unique }
+import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
+import std.content_hash { sha256_hex_digest, content_hash_of_value, serialize_content_hash }
+import std.fabric_storage { FabricObject, FabricHeadReading, FabricHeadAbsent, FabricHeadAt, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonString, JsonNumber, JsonArray, json_object, json_kv, json_int, json_string, json_array, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
+
+// Latest-only retention, distinct from checkpointed_workspace's permanent history.
+// A provider registers owners BEFORE publishing their heads; closes a head BEFORE
+// unregistering it. Under its exclusive hold, the registered open heads are the
+// complete roots. Missing heads are interrupted registration, not committed state.
+// Corrupt/unreadable metadata refuses reclamation. No clock or idle expiry.
+// Consumer: gunbc.serving.checkpoint_store; bytes remain FabricBlobRequest artifacts.
+type RetainedHead
+  = RetainedOpen { blob: FabricBlobAddress? }
+  | RetainedClosed
+
+type RetainedOwner {
+  owner: NonEmptyStr
+  revision: CasGeneration
+  head: RetainedHead
+}
+
+type RetainedRegistry {
+  revision: CasGeneration
+  owners: List<NonEmptyStr>
+}
+
+fn retained_expectation(reading: FabricHeadReading) -> FabricHeadExpectation {
+  match reading {
+    FabricHeadAbsent => ExpectHeadAbsent
+    FabricHeadAt { object: o, generation: _ } => ExpectHeadAt { object: o }
+  }
+}
+
+// This is a metadata locator, not blob identity or engine compatibility. The full
+// owner is checked on every read; a structural-locator collision refuses.
+fn retained_owner_name(registry: NonEmptyStr, owner: NonEmptyStr) -> NonEmptyStr {
+  join([registry as String, ".", serialize_content_hash(hash: content_hash_of_value(value: owner)) as String], "") as NonEmptyStr
+}
+
+fn retained_head_json(head: RetainedHead) -> JsonValue {
+  match head {
+    RetainedClosed => JsonBool { value: false }
+    RetainedOpen { blob: b } => match b {
+      Absent => JsonNull
+      Present { value: address } => json_string(s: fabric_blob_object_name(address: address) as String)
+    }
+  }
+}
+
+fn retained_owner_object(record: RetainedOwner) -> FabricObject {
+  FabricObject { links: [], body: serialize_json(v: json_object(members: [
+    json_kv(key: "format", value: json_string(s: "retained-owner/1")),
+    json_kv(key: "revision", value: json_int(n: cas_generation_count(g: record.revision))),
+    json_kv(key: "owner", value: json_string(s: record.owner as String)),
+    json_kv(key: "head", value: retained_head_json(head: record.head)),
+  ])) as NonEmptyStr }
+}
+
+fn retained_registry_object(record: RetainedRegistry) -> FabricObject {
+  FabricObject { links: [], body: serialize_json(v: json_object(members: [
+    json_kv(key: "format", value: json_string(s: "retained-registry/1")),
+    json_kv(key: "revision", value: json_int(n: cas_generation_count(g: record.revision))),
+    json_kv(key: "owners", value: json_array(elements: record.owners |> map(o => json_string(s: o as String)))),
+  ])) as NonEmptyStr }
+}
+
+fn retained_json_field(value: JsonValue, name: String) -> JsonValue {
+  match json_object_unique_member(v: value, key: name) {
+    JsonMemberFound { value: v } => v
+    _ => JsonNull
+  }
+}
+
+fn retained_json_revision(value: JsonValue) -> CasGeneration? {
+  match retained_json_field(value: value, name: "revision") {
+    JsonNumber { lexeme: n } => match parse_int(s: n as String) {
+      Present { value: i } => cas_generation(n: i)
+      Absent => none
+    }
+    _ => none
+  }
+}
+
+fn retained_json_head(value: JsonValue) -> RetainedHead? {
+  match value {
+    JsonNull => Present { value: RetainedOpen { blob: none } }
+    JsonBool { value: b } => if b { none } else { Present { value: RetainedClosed } }
+    JsonString { value: s } => match sha256_hex_digest(hex: s) {
+      Present { value: d } => Present { value: RetainedOpen { blob: Present { value: FabricBlobAddress { key: d } } } }
+      Absent => none
+    }
+    _ => none
+  }
+}
+
+// Canonical round-trip also rejects missing/duplicate/extra fields, wrong versions
+// and alternate spellings. In particular, absent "head" cannot mean Open(empty).
+fn retained_owner_decode(object: FabricObject) -> RetainedOwner? {
+  if count(object.links) != 0 { none } else {
+    match parse_json_document(s: object.body as String) {
+      JsonDocumentUnreadable { gap: _ } => none
+      JsonDocumentParsed { value: v } => match retained_json_revision(value: v) {
+        Absent => none
+        Present { value: revision } => match retained_json_field(value: v, name: "owner") {
+          JsonString { value: owner } => if length(owner) == 0 { none } else {
+            match retained_json_head(value: retained_json_field(value: v, name: "head")) {
+              Absent => none
+              Present { value: head } => {
+                let record = RetainedOwner { owner: owner as NonEmptyStr, revision: revision, head: head }
+                if retained_owner_object(record: record).body == object.body { Present { value: record } } else { none }
+              }
+            }
+          }
+          _ => none
+        }
+      }
+    }
+  }
+}
+
+fn retained_registry_decode(object: FabricObject) -> RetainedRegistry? {
+  if count(object.links) != 0 { none } else {
+    match parse_json_document(s: object.body as String) {
+      JsonDocumentUnreadable { gap: _ } => none
+      JsonDocumentParsed { value: v } => match retained_json_revision(value: v) {
+        Absent => none
+        Present { value: revision } => match retained_json_field(value: v, name: "owners") {
+          JsonArray { elements: xs } => {
+            let owners = xs |> flat_map(x => match x {
+              JsonString { value: s } => if length(s) == 0 { [] } else { [s as NonEmptyStr] }
+              _ => []
+            })
+            let record = RetainedRegistry { revision: revision, owners: owners }
+            if count(owners) == count(xs) && unique(xs: owners, eq: (a, b) => a == b)
+              && retained_registry_object(record: record).body == object.body { Present { value: record } } else { none }
+          }
+          _ => none
+        }
+      }
+    }
+  }
+}
+
+fn retained_head_roots(head: RetainedHead) -> List<FabricBlobAddress> {
+  match head {
+    RetainedClosed => []
+    RetainedOpen { blob: b } => match b { Present { value: address } => [address] Absent => [] }
+  }
+}

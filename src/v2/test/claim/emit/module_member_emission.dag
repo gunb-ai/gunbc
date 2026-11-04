@@ -4,6 +4,9 @@ import v2.extdeps.languages.dag { dag_surface_edge_label }
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_produced { emit_module_member }
+import v2.compiler.infer { InferredTree }
+import std.algebra { PartialFunction }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.body_lowering_fold { DeclaredRefinement }
 import v2.compiler.self_host.closure_emission {
   ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
@@ -14,10 +17,17 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, symbol_lexeme, NotADeclaration }
 import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { bind_outcome, outcome_accepted }
+import v2.compiler.body_lowering_fold { DeclaredRecord }
+import std.algebra { fold_list }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -94,7 +104,15 @@ fn member_emission_opaque_verdict() -> MemberEmissionVerdict {
 }
 
 fn member_emission_generic_verdict() -> MemberEmissionVerdict {
-  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T> = A | B { value: T }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_generic_record_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Box<T> { value: T }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_generic_refinement_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Pos<T> = Int where positive\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n")
 }
 
 fn member_emission_payload_variant_verdict() -> MemberEmissionVerdict {
@@ -107,6 +125,18 @@ fn member_emission_label_spelled_record_verdict() -> MemberEmissionVerdict {
 
 fn member_emission_bool_signature_verdict() -> MemberEmissionVerdict {
   member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn f(p: Bool) -> Bool { p }\n")
+}
+
+fn member_emission_string_signature_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn f(s: String) -> String { s }\n")
+}
+
+fn member_emission_string_field_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Named { name: String }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_declared_string_signature_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype String = Empty | Cons { head: Int }\n\nfn f(s: String) -> String { s }\n")
 }
 
 fn member_emission_declared_type_signature_verdict() -> MemberEmissionVerdict {
@@ -161,16 +191,19 @@ fn member_emission_supplied_refinement() -> String {
     target: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Authored { name: ^dag_surface_type_expr }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: []) },
-        Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^positive } }, children: []) }
+        Edge { label: Authored { name: ^dag_surface_type_expr }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: []), declaration: NotADeclaration },
+        Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^positive } }, children: []), declaration: NotADeclaration }
       ]
-    )
+    ),
+    declaration: NotADeclaration
   }
   match emit_module_member(
     edge: member,
     target: rust_target_model(),
     realization_host: rust_target_model(),
-    kinds: [DeclaredRefinement { name: ^Pos }]
+    kinds: [DeclaredRefinement { name: ^Pos }],
+    tree: InferredTree { root: member.target, facts: PartialFunction { lookup: fn(n) { Absent } } },
+    declarations: empty_symbol_index()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried
     Rejected { diagnostics: d } => concat("REFUSED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
@@ -232,6 +265,39 @@ test fn a_bool_signature_is_spelled_by_its_realization_holds() -> Bool {
   }
 }
 
+// HOST TEXT IS SPELLED BY ITS OWN REALIZATION ROW (v2.extdeps.languages.rust
+// rust_target_atom_realization_host_text, keyed on host_text_type_node): the kernel `String` at a signature
+// and at a record field reaches Rust `String`, and the first is the case that refused
+// produced_decl_type_ref_unrealized before the row.
+test fn a_host_text_signature_is_spelled_by_its_realization_holds() -> Bool {
+  match member_emission_string_signature_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "fn f(s: String) -> String")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_host_text_record_field_is_spelled_by_its_realization_holds() -> Bool {
+  match member_emission_string_field_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "name: String")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// THE IDENTITY GUARD (DESIGN section 4, text crossings): a String the module itself declares is a different
+// declaration and must NOT take the host-text row. It keeps its declaration-reference spelling; spelling it
+// bare `String` would be the leaf-name capture the row is keyed to avoid.
+test fn a_module_declared_string_does_not_take_the_host_text_realization_holds() -> Bool {
+  match member_emission_declared_string_signature_verdict() {
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "crate::v2_test_member_emission::String")
+        && !string_contains(s: t, pattern: "fn f(s: String)")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
 // A REFERENCE TO A DECLARED TYPE IS SPELLED BY THE TARGET'S DECLARATION-REFERENCE FORM -- the rule the
 // type-expression translate applies (v2.std.compilers.target_model
 // target_type_expr_declaration_reference_emitted): Rust's is crate-rooted, `crate::<module>::<Name>`,
@@ -280,10 +346,122 @@ test fn a_bodyless_member_refuses_under_its_own_reason_holds() -> Bool {
   }
 }
 
-test fn a_generic_member_refuses_under_its_own_reason_holds() -> Bool {
+// A GENERIC COPRODUCT IS THE PLAIN COPRODUCT WITH ITS BINDERS: the classifier unwraps the declaration
+// once and the same semantic-declaration route renders it with the declared parameters. Its alias and
+// bodyless siblings above keep their refusal pins as the controls for the kinds still unrealized.
+test fn a_generic_coproduct_member_emits_with_its_parameters_holds() -> Bool {
   match member_emission_generic_verdict() {
-    MemberEmitted { text: _ } => false
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "enum Tag<T>")
+        && string_contains(s: t, pattern: "value: T")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// THE WALKER AND INFER DECLINE THE SAME WHERE-PREDICATE SET (v2.std.type_binder where_predicate_set_edge): a where-refinement
+// module is never refused at the partition closure for facts infer was not asked to derive. The claim above is
+// still judged by the member classifier; this one isolates the partition boundary so its RED is not masked by it.
+test fn a_where_refinement_is_not_refused_for_missing_facts_holds() -> Bool {
+  match member_emission_refinement_verdict() {
+    MemberEmitted { text: _ } => true
+    MemberRefused { reason: r } => r != ^partition_facts_miss
+    MemberClosureRefused { reason: r } => r != ^partition_facts_miss
+  }
+}
+
+// THE DECLARED KIND normalize CAPTURES FOR A SOURCE, one token per kind row (the production route's own
+// type_declaration_kinds, which emit_module_member classifies a plain Conj by). A where clause refines the
+// declaration only at its grammar position, so these controls pin both directions.
+fn kind_capture_of(source: String) -> String {
+  let lm = dag_language_model()
+  match bind_outcome(
+    o: tokenize(text: source, file: ^member_emission_read, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(normalized) {
+              outcome_accepted(value: fold_list(xs: normalized.type_declaration_kinds, empty: "", cons: fn(acc, k) {
+                concat(acc, match k {
+                  DeclaredRecord { name: n } => concat("R:", concat(symbol_lexeme(sym: n), ";"))
+                  DeclaredRefinement { name: n } => concat("F:", concat(symbol_lexeme(sym: n), ";"))
+                  _ => "O;"
+                })
+              }))
+            }
+          )
+        }
+      )
+    }
+  ) {
+    Accepted { value: t, diagnostics: _ } => t
+    Rejected { diagnostics: _ } => "REJECTED"
+  }
+}
+
+test fn a_where_refinement_is_captured_as_a_declared_refinement_holds() -> Bool {
+  kind_capture_of(source: "module v2.test.member_emission\n\ntype Pos = Int where positive\n\nfn positive(x: Int) -> Bool { true }\n") == "F:Pos;"
+}
+
+test fn a_plain_alias_is_captured_kindless_holds() -> Bool {
+  kind_capture_of(source: "module v2.test.member_emission\n\ntype Id = Int\n") == ""
+}
+
+test fn a_record_keeps_its_declared_record_kind_holds() -> Bool {
+  kind_capture_of(source: "module v2.test.member_emission\n\ntype Point { a: Int }\n") == "R:Point;"
+}
+
+test fn a_field_refinement_inside_a_variant_payload_does_not_refine_the_declaration_holds() -> Bool {
+  kind_capture_of(source: "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n") == ""
+}
+
+// A FIELD'S where INSIDE A VARIANT PAYLOAD DOES NOT REFINE THE DECLARATION ON THE LOWERING ROUTE EITHER
+// (body_lower_declared_where_host_optional stops at declared member edges): the member is CLASSIFIED a
+// coproduct, where before it was refused emit_module_member_record_or_refinement_undecided (probe cc2-nw at
+// d834c395). It then reaches the coproduct emitter and refuses at the NEXT link, declared-wrong: the field
+// type `Int where positive` is a Conj, not an atom (target_semantic_decl_field_type_not_atom). Realizing an
+// inline-refined field type is a separate emitter slice; this pin names it and goes RED the moment that
+// slice lands, to be replaced by an emission claim (DESIGN 4b: the control stays enrolled).
+fn member_emission_nested_where_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+test fn a_field_where_inside_a_variant_payload_is_classified_a_coproduct_and_refuses_at_the_field_type_holds() -> Bool {
+  match member_emission_nested_where_verdict() {
+    MemberRefused { reason: r } => r == ^target_semantic_decl_field_type_not_atom
+    _ => false
+  }
+}
+
+test fn a_plain_payload_coproduct_control_emits_its_enum_holds() -> Bool {
+  match member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Bag2 = A { n: Int } | B\n\nfn f(x: Int) -> Int { x as Int }\n") {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Bag2")
+    _ => false
+  }
+}
+
+// THE GENERIC RECORD ARM RUNS: a generic record is the plain record with its binders, rendered through the
+// same semantic-declaration route as the coproduct above.
+test fn a_generic_record_member_emits_a_generic_struct_holds() -> Bool {
+  match member_emission_generic_record_verdict() {
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "struct Box<T>")
+        && string_contains(s: t, pattern: "value: T")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// THE GENERIC KINDS STILL UNREALIZED KEEP THEIR OWN TYPED REFUSAL (4b: the RED stays enrolled when a
+// sibling arm climbs). A generic refinement is neither a coproduct nor a record, so emit_generic_module_member
+// refuses it under emit_module_member_generic_not_realized rather than rendering a struct or a bare alias.
+test fn a_generic_refinement_member_refuses_under_the_generic_reason_holds() -> Bool {
+  match member_emission_generic_refinement_verdict() {
     MemberRefused { reason: r } => r == ^emit_module_member_generic_not_realized
+    MemberEmitted { text: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
 }

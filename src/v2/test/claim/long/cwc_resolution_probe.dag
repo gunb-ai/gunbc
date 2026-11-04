@@ -10,7 +10,7 @@ import v2.std.arrow_signature { declared_signature }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Connective, content_hash, core_edge_label }
+import v2.std.node { Connective, content_hash, core_edge_label, NotADeclaration }
 import v2.std.node_query { binder_edge, construct_node, construct_node_elided }
 import v2.std.qualified_name { qualified_name_spine_of_atoms }
 
@@ -48,8 +48,8 @@ fn cwc_pt_production(identity: Symbol, captured: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: cwc_pt_token(sym: identity) },
-      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured }
+      Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: cwc_pt_token(sym: identity), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -59,8 +59,8 @@ fn cwc_pt_seq(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left },
-      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right }
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -82,7 +82,7 @@ fn cwc_node(connective: Connective, children: List<Edge>) -> Node {
 }
 
 fn cwc_member(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 // `type Name = V1 | V2 ...`, each variant with its own fields (none for a bare variant).
@@ -107,10 +107,10 @@ fn cwc_data(name: Symbol, type_name: Symbol, body: Node) -> Edge {
   let signature = declared_signature(params: [], source: body)
   cwc_member(name: name, target: cwc_node(connective: Arrow, children: [
     signature.domain,
-    Edge { label: Positional, target: cwc_atom(identity: type_name) },
-    Edge { label: Positional, target: cwc_atom(identity: type_name) },
+    Edge { label: Positional, target: cwc_atom(identity: type_name), declaration: NotADeclaration },
+    Edge { label: Positional, target: cwc_atom(identity: type_name), declaration: NotADeclaration },
     signature.order,
-    Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+    Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body, declaration: NotADeclaration }
   ]))
 }
 
@@ -125,18 +125,20 @@ fn cwc_headed(tag: Symbol, fields: List<Edge>) -> Node {
 // `module probe` with `members`, as normalize grafts a one-segment module.
 fn cwc_module_root(members: List<Edge>) -> Node {
   cwc_node(connective: Conj, children: [
-    Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: cwc_atom(identity: ^dag_surface_module) },
+    Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: cwc_atom(identity: ^dag_surface_module), declaration: NotADeclaration },
     Edge {
       label: Authored { name: ^grammar_production_captured_node_projection },
       target: cwc_node(connective: Conj, children: [
         Edge {
           label: Authored { name: ^probe },
           target: cwc_node(connective: Conj, children: concat(
-            [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
+            [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node(), declaration: NotADeclaration }],
             members
-          ))
+          )),
+          declaration: NotADeclaration
         }
-      ])
+      ]),
+      declaration: NotADeclaration
     }
   ])
 }

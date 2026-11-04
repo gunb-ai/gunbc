@@ -8,11 +8,8 @@ import gunbc.review_sheet_format_actuator {
   format_converge_is_converged,
 }
 import gunbc.review_sheet_projection {
-  ci_prospect_sheet_schema,
-  validate_header_schema,
   ValidatedHeaderSchema,
-  HeaderSchemaValidated,
-  HeaderSchemaRefused,
+  ReviewSheetProjection,
 }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
@@ -66,7 +63,70 @@ import gunbc.review_sheet_spreadsheet_actuator {
   converge_review_spreadsheet,
   spreadsheet_outcome_text,
 }
-import gunbc.review_sheet_drive_converge { ci_prospect_sheet_marker_value }
+import std.optional { Absent, Present }
+import gunbc.review_sheet_federation { WriterTokenStanding, WriterTokenMinted, WriterTokenRefused, observe_writer_token }
+import std.upsert_decision { Noop, Apply, Refuse }
+import extdeps.google.sheets { ValueRange }
+import gunbc.review_sheet_kind {
+  ReviewSheetKind,
+  AdmittedReviewSheetTab,
+  ReviewSheetKindAdmission,
+  ReviewSheetKindAdmitted,
+  ReviewSheetKindRefused,
+  ReviewTabRows,
+  TabRowsProjected,
+  TabRowsWrittenElsewhere,
+  admit_review_sheet_kind,
+  review_sheet_kind_tab_titles,
+  review_sheet_tab_widths,
+}
+import gunbc.review_sheet_kind_roster { review_sheet_kind_roster, review_sheet_roster_collisions }
+import gunbc.review_sheet_tab_set {
+  TabSetConvergeOutcome,
+  converge_review_tab_set,
+  tab_set_converge_is_converged,
+  tab_set_converge_text,
+}
+import gunbc.review_sheet_sheets {
+  A1RangeEncoded,
+  A1TitleApostropheUnsupported,
+  review_sheet_get_values_request,
+  sheet_a1_range_wire,
+  review_sheet_ensure_assess,
+  review_sheet_ensure_decide,
+}
+import gunbc.review_sheet_formula_observation { observe_formula_whole_tab }
+import gunbc.review_sheet_header_init {
+  HeaderInitPlan,
+  HeaderInitWriteHeaderRow,
+  HeaderInitTabOccupied,
+  HeaderInitHeaderRowUnaddressable,
+  HeaderInitTabTitleUnquotable,
+  HeaderInitObservationRefused,
+  plan_header_init,
+  header_row_value_range_write,
+  header_init_plan_text,
+}
+import gunbc.review_sheet_values_actuator {
+  ValuesWriteOutcome,
+  ValuesAlreadyMatch,
+  ValuesWrittenAndVerified,
+  ValuesWriteUnverified,
+  ValuesWriteRefused,
+  ValuesRead,
+  ValuesUnreadable,
+  converge_sheet_values,
+  read_values,
+  values_outcome_text,
+}
+import gunbc.review_sheet_batch_actuator {
+  ReviewSheetWriteReceipt,
+  WriteVerifiedConverged,
+  WriteUnverified,
+  WriteNotCommitted,
+  write_and_verify_review_sheet,
+  review_sheet_write_receipt_text,
+}
 import gunbc.review_sheet_tab_locator {
   ReviewTabStanding,
   TabLocated,
@@ -106,7 +166,6 @@ data review_sheet_writer_account_id: NonEmptyStr = "review-sheet-writer"
 
 data review_sheet_writer_display_name: NonEmptyStr = "Review sheet writer (Sheets only, shared-drive member)"
 
-data ci_prospect_sheet_name: NonEmptyStr = "CI prospect sheet"
 
 // A residency that is not a shared drive cannot be converged by this entry point, and saying so is
 // better than converging something else: a My Drive sheet needs a per-sheet share that this run
@@ -160,6 +219,7 @@ fn converge_review_sheet_all(
   project_id: GcpProjectId,
   writer: ServiceAccountEmail,
   drive_id: NonEmptyStr,
+  kind: ReviewSheetKind,
   policy: EnsurePolicy,
 ) -> ReviewSheetConvergeReport {
   let sheets_api = converge_service_enablement(
@@ -189,8 +249,8 @@ fn converge_review_sheet_all(
   )
   let spreadsheet = converge_review_spreadsheet(
     drive_id: drive_id,
-    sheet_name: ci_prospect_sheet_name,
-    marker_value: ci_prospect_sheet_marker_value,
+    sheet_name: kind.sheet_name,
+    marker_value: kind.marker_value,
     policy: policy,
   )
   ReviewSheetConvergeReport {
@@ -310,52 +370,316 @@ fn converge_report_exit(report: ReviewSheetConvergeReport) -> ProcessExit {
 
 
 // THE DRIVE HALF ALONE, AND THE ENTRY POINT THAT TAKES NO ARGUMENTS AT ALL. The GCP steps read a
-// token as an operation input, so an operator must still hand them one; the Drive operations read
-// theirs at the transport from GUNBC_REVIEW_SHEET_TOKEN, so this entry has nothing a caller could
-// put on a command line. That is the point: gunbc run passes arguments only as argv, and on this
-// fleet an argv word is readable by any job payload a pull request can influence.
+// token as an operation input, so this entry does not reach them; the Drive operations read theirs
+// at the transport from GUNBC_REVIEW_SHEET_TOKEN, which the review_sheet_converge mode's delegation
+// step sets, so this entry has nothing a caller could put on a command line. That is the point: gunbc
+// run passes arguments only as argv, and on this fleet an argv word is readable by any job payload a
+// pull request can influence. A hand-exported token is break-glass only
+// (gunbc.review_sheet_federation review_sheet_hand_minted_token_break_glass).
 //
-// It is also the half worth running first. The three GCP steps were actuated by hand and observed
-// converged, so running them proves a Noop; membership and the spreadsheet are the two that have
-// never executed.
+// IT CONVERGES EVERY KIND IN THE ROSTER, AND HOLDS THE NAME OF NONE. Which kinds exist is
+// gunbc.review_sheet_kind_roster; what each one is -- its file name, marker, tabs, schemas, rules
+// and rows -- is the kind value. So a new kind is a roster row and this module does not change,
+// and the entry stays argv-free because choosing a kind is not an argument either. Each kind is
+// converged independently and reported, so one kind's refusal does not hide another's state.
+type ReviewTabHeader
+  = TabHeaderWritten { outcome: ValuesWriteOutcome }
+  | TabHeaderPresent
+  | TabHeaderRefused { cause: NonEmptyStr }
+
+type ReviewTabRowsOutcome
+  = TabRowsAlreadyConverged
+  | TabRowsWritten { receipt: ReviewSheetWriteReceipt }
+  | TabRowsLeftToWriter { writer: NonEmptyStr }
+  | TabRowsRefused { cause: NonEmptyStr }
+
+type ReviewTabReport {
+  title: NonEmptyStr
+  header: ReviewTabHeader
+  rows: ReviewTabRowsOutcome
+  format: FormatDisposition
+}
+
+type ReviewSheetKindSheet
+  = KindSheetConverged { tab_set: TabSetConvergeOutcome, tabs: List<ReviewTabReport> }
+  | KindSheetSkipped { cause: NonEmptyStr }
+
+type ReviewSheetKindReport {
+  kind_id: NonEmptyStr
+  spreadsheet: SpreadsheetConvergeOutcome?
+  sheet: ReviewSheetKindSheet
+}
+
 type DriveHalfReport {
   membership: MembershipConvergeOutcome
-  spreadsheet: SpreadsheetConvergeOutcome
+  kinds: List<ReviewSheetKindReport>
+}
+
+// THE HEADER IS WRITTEN ONLY INTO AN EMPTY TAB, through the sealed header-init plan. An occupied tab
+// already has a header, and whether it is THIS schema's header is the row converge's question: its
+// classification refuses a missing or duplicated header before any row is written, so a header the
+// operator edited is a loud refusal there and never a rewrite here.
+fn converge_review_tab_header(
+  spreadsheet_id: NonEmptyStr,
+  at: AdmittedReviewSheetTab,
+  policy: EnsurePolicy,
+) -> ReviewTabHeader {
+  let plan = plan_header_init(
+    reading: observe_formula_whole_tab(spreadsheet_id: spreadsheet_id, requested: review_sheet_get_values_request(tab: at.tab.title)),
+    validated: at.validated,
+  )
+  match plan {
+    HeaderInitTabOccupied { tab: _, first: _ } => TabHeaderPresent
+    HeaderInitWriteHeaderRow { authorization: a } =>
+      match policy {
+        EnsureObserveOnly => TabHeaderRefused { cause: join(["observe-only, and the tab needs: ", header_init_plan_text(plan: plan)], "") as NonEmptyStr }
+        EnsureMayApply => {
+          let w = header_row_value_range_write(authorization: a)
+          let written = converge_sheet_values(
+            spreadsheet_id: spreadsheet_id,
+            a1: w.range,
+            desired: ValueRange { range: w.range, majorDimension: Present { value: w.majorDimension }, values: Present { value: w.values } },
+          )
+          match written {
+            ValuesAlreadyMatch { rows: _ } => TabHeaderWritten { outcome: written }
+            ValuesWrittenAndVerified { rows: _ } => TabHeaderWritten { outcome: written }
+            ValuesWriteUnverified { cause: c } => TabHeaderRefused { cause: c }
+            ValuesWriteRefused { cause: c } => TabHeaderRefused { cause: c }
+          }
+        }
+      }
+    HeaderInitHeaderRowUnaddressable { tab: _, header_count: _, addressable_columns: _ } =>
+      TabHeaderRefused { cause: header_init_plan_text(plan: plan) as NonEmptyStr }
+    HeaderInitTabTitleUnquotable { tab: _ } => TabHeaderRefused { cause: header_init_plan_text(plan: plan) as NonEmptyStr }
+    HeaderInitObservationRefused { refusal: _ } => TabHeaderRefused { cause: header_init_plan_text(plan: plan) as NonEmptyStr }
+  }
+}
+
+fn tab_header_is_established(h: ReviewTabHeader) -> Bool {
+  match h {
+    TabHeaderWritten { outcome: _ } => true
+    TabHeaderPresent => true
+    TabHeaderRefused { cause: _ } => false
+  }
+}
+
+// THE ROWS GO THROUGH THE IDENTITY-KEYED ENSURE, NEVER A WHOLE-RANGE WRITE. The tab is read whole,
+// classified against the projection by identity (a duplicated identity in the sheet or in the
+// projection refuses there), and only derived cells are written; Ruling and Note are the operator's
+// and no plan touches them. The write is verified by an independent re-read of the whole tab.
+fn converge_review_tab_rows(
+  spreadsheet_id: NonEmptyStr,
+  at: AdmittedReviewSheetTab,
+  policy: EnsurePolicy,
+) -> ReviewTabRowsOutcome {
+  match at.tab.rows {
+    TabRowsWrittenElsewhere { writer: w } => TabRowsLeftToWriter { writer: w }
+    TabRowsProjected { rows: rows } => {
+      let requested = review_sheet_get_values_request(tab: at.tab.title)
+      let projection = ReviewSheetProjection { schema: at.tab.schema, rows: rows }
+      match sheet_a1_range_wire(range: requested) {
+        A1TitleApostropheUnsupported { title: t } =>
+          TabRowsRefused { cause: join(["tab ", t as String, " cannot be quoted in A1 notation"], "") as NonEmptyStr }
+        A1RangeEncoded { wire: a1 } =>
+          match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
+            ValuesUnreadable { cause: c } => TabRowsRefused { cause: c }
+            ValuesRead { range: got } =>
+              match review_sheet_ensure_decide(
+                policy: policy,
+                assessment: review_sheet_ensure_assess(requested: requested, range: got, projection: projection, erasures: []),
+              ) {
+                Noop => TabRowsAlreadyConverged
+                Refuse { reason: r } => TabRowsRefused { cause: r }
+                Apply { plan: bound } =>
+                  TabRowsWritten {
+                    receipt: write_and_verify_review_sheet(spreadsheet_id: spreadsheet_id, bound: bound, projection: projection, erasures: []),
+                  }
+              }
+          }
+      }
+    }
+  }
+}
+
+fn tab_rows_is_converged(o: ReviewTabRowsOutcome) -> Bool {
+  match o {
+    TabRowsAlreadyConverged => true
+    TabRowsWritten { receipt: r } =>
+      match r {
+        WriteVerifiedConverged { commit: _, observed: _ } => true
+        WriteUnverified { commit: _, readback_assessment: _ } => false
+        WriteNotCommitted { cause: _ } => false
+      }
+    TabRowsLeftToWriter { writer: _ } => true
+    TabRowsRefused { cause: _ } => false
+  }
+}
+
+fn tab_rows_text(o: ReviewTabRowsOutcome) -> String {
+  match o {
+    TabRowsAlreadyConverged => "rows: already the projection"
+    TabRowsWritten { receipt: r } => join(["rows: ", review_sheet_write_receipt_text(receipt: r)], "")
+    TabRowsLeftToWriter { writer: w } => join(["rows: written by ", w as String, ", not by this converge"], "")
+    TabRowsRefused { cause: c } => join(["rows REFUSED: ", c as String], "")
+  }
+}
+
+fn tab_header_text(h: ReviewTabHeader) -> String {
+  match h {
+    TabHeaderWritten { outcome: o } => join(["header: ", values_outcome_text(o: o)], "")
+    TabHeaderPresent => "header: the tab is occupied; the row converge checks its header"
+    TabHeaderRefused { cause: c } => join(["header REFUSED: ", c as String], "")
+  }
+}
+
+// HEADER, THEN ROWS, THEN FORMAT, and each later step runs only on what the earlier one established:
+// rows into a tab with no established header would be classified against a header that is not
+// there, and formatting is keyed to the header row.
+fn converge_review_tab(
+  spreadsheet_id: NonEmptyStr,
+  at: AdmittedReviewSheetTab,
+  policy: EnsurePolicy,
+) -> ReviewTabReport {
+  let header = converge_review_tab_header(spreadsheet_id: spreadsheet_id, at: at, policy: policy)
+  if tab_header_is_established(h: header) {
+    let rows = converge_review_tab_rows(spreadsheet_id: spreadsheet_id, at: at, policy: policy)
+    ReviewTabReport {
+      title: at.tab.title,
+      header: header,
+      rows: rows,
+      format: if tab_rows_is_converged(o: rows) {
+        format_located_tab(file_id: spreadsheet_id, at: at)
+      } else {
+        FormatSkipped { cause: "the rows did not converge" as NonEmptyStr }
+      },
+    }
+  } else {
+    ReviewTabReport {
+      title: at.tab.title,
+      header: header,
+      rows: TabRowsRefused { cause: "the header was not established" as NonEmptyStr },
+      format: FormatSkipped { cause: "the header was not established" as NonEmptyStr },
+    }
+  }
+}
+
+fn review_tab_is_converged(r: ReviewTabReport) -> Bool {
+  tab_header_is_established(h: r.header) && tab_rows_is_converged(o: r.rows) && format_disposition_is_applied(d: r.format)
+}
+
+fn review_tab_text(r: ReviewTabReport) -> String {
+  join(["  tab ", r.title as String, ":\n    ", tab_header_text(h: r.header), "\n    ", tab_rows_text(o: r.rows), "\n    ", format_disposition_text(d: r.format)], "")
+}
+
+// THE SPREADSHEET IS ESTABLISHED BY MARKER, THEN ITS TAB SET, THEN EACH TAB. Formatting and rows
+// run only on a spreadsheet this run established by readback, and only once the workbook carries
+// exactly the kind's declared tabs: a tab the kind does not declare is a refusal, never a tab to
+// ignore, and a missing one is created before anything is written to it.
+fn converge_kind_sheet(file_id: NonEmptyStr, tabs: List<AdmittedReviewSheetTab>, kind: ReviewSheetKind, policy: EnsurePolicy) -> ReviewSheetKindSheet {
+  let tab_set = converge_review_tab_set(spreadsheet_id: file_id, declared: review_sheet_kind_tab_titles(kind: kind), policy: policy)
+  if tab_set_converge_is_converged(o: tab_set) {
+    KindSheetConverged { tab_set: tab_set, tabs: map(tabs, at => converge_review_tab(spreadsheet_id: file_id, at: at, policy: policy)) }
+  } else {
+    KindSheetConverged { tab_set: tab_set, tabs: [] }
+  }
+}
+
+fn converged_file_id(o: SpreadsheetConvergeOutcome) -> NonEmptyStr? {
+  match o {
+    SpreadsheetAdopted { file_id: id } => Present { value: id }
+    SpreadsheetAdoptedByDeclaredId { file_id: id } => Present { value: id }
+    SpreadsheetCreatedAndVerified { file_id: id } => Present { value: id }
+    SpreadsheetCreateUnverified { cause: _ } => none
+    SpreadsheetConvergeRefused { cause: _ } => none
+  }
+}
+
+fn converge_review_sheet_kind(drive_id: NonEmptyStr, kind: ReviewSheetKind, policy: EnsurePolicy) -> ReviewSheetKindReport {
+  match admit_review_sheet_kind(kind: kind) {
+    ReviewSheetKindRefused { kind_id: k, cause: c } =>
+      ReviewSheetKindReport { kind_id: k, spreadsheet: none, sheet: KindSheetSkipped { cause: c } }
+    ReviewSheetKindAdmitted { kind: admitted, tabs: tabs } => {
+      let spreadsheet = converge_review_spreadsheet(
+        drive_id: drive_id,
+        sheet_name: admitted.sheet_name,
+        marker_value: admitted.marker_value,
+        policy: policy,
+      )
+      ReviewSheetKindReport {
+        kind_id: admitted.kind_id,
+        spreadsheet: Present { value: spreadsheet },
+        sheet: match converged_file_id(o: spreadsheet) {
+          Present { value: id } => converge_kind_sheet(file_id: id, tabs: tabs, kind: admitted, policy: policy)
+          Absent => KindSheetSkipped { cause: spreadsheet_outcome_text(o: spreadsheet) as NonEmptyStr }
+        },
+      }
+    }
+  }
 }
 
 fn converge_drive_half(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
+  kinds: List<ReviewSheetKind>,
   policy: EnsurePolicy,
 ) -> DriveHalfReport {
   let membership = converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy)
-  let spreadsheet = converge_review_spreadsheet(
-    drive_id: drive_id,
-    sheet_name: ci_prospect_sheet_name,
-    marker_value: ci_prospect_sheet_marker_value,
-    policy: policy,
-  )
   DriveHalfReport {
     membership: membership,
-    spreadsheet: spreadsheet,
+    kinds: if membership_is_converged(o: membership) {
+      map(kinds, k => converge_review_sheet_kind(drive_id: drive_id, kind: k, policy: policy))
+    } else {
+      map(kinds, k => ReviewSheetKindReport { kind_id: k.kind_id, spreadsheet: none, sheet: KindSheetSkipped { cause: "the writer is not a member of the drive" as NonEmptyStr } })
+    },
   }
 }
 
+fn kind_report_is_converged(r: ReviewSheetKindReport) -> Bool {
+  match r.sheet {
+    KindSheetSkipped { cause: _ } => false
+    KindSheetConverged { tab_set: t, tabs: tabs } =>
+      tab_set_converge_is_converged(o: t) && count(filter(tabs, tab => !review_tab_is_converged(r: tab))) == 0
+  }
+}
+
+fn kind_report_text(r: ReviewSheetKindReport) -> String {
+  let sheet_line = match r.spreadsheet {
+    Present { value: o } => join(["  sheet: ", spreadsheet_outcome_text(o: o)], "")
+    Absent => "  sheet: not converged"
+  }
+  let body = match r.sheet {
+    KindSheetSkipped { cause: c } => join(["  SKIPPED: ", c as String], "")
+    KindSheetConverged { tab_set: t, tabs: tabs } =>
+      join(concat([join(["  ", tab_set_converge_text(o: t)], "")], map(tabs, tab => review_tab_text(r: tab))), "\n")
+  }
+  join(["kind ", r.kind_id as String, ":\n", sheet_line, "\n", body], "")
+}
+
 fn drive_half_is_converged(r: DriveHalfReport) -> Bool {
-  membership_is_converged(o: r.membership) && spreadsheet_is_converged(o: r.spreadsheet)
+  membership_is_converged(o: r.membership) && count(filter(r.kinds, k => !kind_report_is_converged(r: k))) == 0
 }
 
 fn drive_half_text(r: DriveHalfReport) -> String {
-  join(
-    [
-      "membership: ", membership_outcome_text(o: r.membership),
-      "\nsheet:      ", spreadsheet_outcome_text(o: r.spreadsheet),
-    ],
-    "",
-  )
+  join(concat([join(["membership: ", membership_outcome_text(o: r.membership)], "")], map(r.kinds, k => kind_report_text(r: k))), "\n")
 }
 
+// THE WRITER TOKEN IS ESTABLISHED BEFORE ANY CALL, and it is minted by the run, not handed in. The
+// review_sheet_converge fleet-converge mode federates and delegates (gunbc.review_sheet_federation),
+// and a refused delegation stops here with the one cell that is missing, so a run with no grant
+// writes nothing and never reports success.
 fn converge_drive_half_cli() -> ProcessExit {
+  let collisions = review_sheet_roster_collisions(kinds: review_sheet_kind_roster())
+  if count(collisions) > 0 {
+    exit_failure(reason: join(["the kind roster has kinds sharing an identity, marker or file name: ", join(map(collisions, k => k as String), ", ")], ""))
+  } else {
+    match observe_writer_token() {
+      WriterTokenRefused { cause: c } => exit_failure(reason: c as String)
+      WriterTokenMinted => converge_drive_half_roster()
+    }
+  }
+}
+
+fn converge_drive_half_roster() -> ProcessExit {
   match calling_home_resolution() {
     HomeUnresolved { cause: c } => exit_failure(reason: c as String)
     HomeResolved { project_id: _, writer: w } =>
@@ -363,66 +687,29 @@ fn converge_drive_half_cli() -> ProcessExit {
         DriveUnresolved { cause: c } => exit_failure(reason: c as String)
         DriveResolved { drive_id: d } =>
           drive_half_exit(
-            report: converge_drive_half(drive_id: d, writer: w, policy: EnsureMayApply)
+            report: converge_drive_half(drive_id: d, writer: w, kinds: review_sheet_kind_roster(), policy: EnsureMayApply)
           )
       }
   }
 }
 
-// FORMATTING RUNS ONLY ON A SPREADSHEET THIS RUN ESTABLISHED, which is the whole reason it can be
-// reached from an argv-free entry at all: the id is not an argument, it is what the converge above
-// just verified by readback. A converge that refused has no id to format, and formatting a sheet
-// whose identity was not settled is how the first live run wrote properties into a file nobody
-// could find again.
 // THE SKIP TEXT NAMES NO CAUSE OF ITS OWN, and that stopped being cosmetic when the locator
-// landed. It read "no converged spreadsheet", which was true while the only way to skip was a
-// spreadsheet that did not converge; there are now three more ways -- the tab is absent, ambiguous
-// or unreadable -- and the sentence would have asserted a converge failure that did not happen,
-// sending an operator to look at Drive for a problem that is inside the workbook. The carried
-// cause already says which it was, so the prefix says only that formatting did not run.
+// landed. The carried cause already says why formatting did not run, so the prefix says only that.
 type FormatDisposition
   = FormatAttempted { outcome: FormatConvergeOutcome }
   | FormatSkipped { cause: NonEmptyStr }
 
 // TWO FACTS MUST BOTH BE ESTABLISHED BEFORE A SINGLE CELL IS FORMATTED, and they arrived from
-// different directions. gunbc#11705 made the SCHEMA a sealed ValidatedHeaderSchema so the
-// formatter cannot be handed a malformed header row; this branch made the TAB a sealed
-// LocatedReviewTab so it cannot be handed a guess about which tab to write to. They are
-// orthogonal -- a validated schema says what to write, a located tab says where -- and the
-// formatter now requires both, so neither can be supplied by assertion.
-//
-// The composition order is the cheap refusal first: validating the schema costs nothing and
-// reaches no network, while locating the tab is a spreadsheets.get. A run that cannot format
-// anyway should not spend a request discovering that.
-fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition {
-  match validate_header_schema(schema: ci_prospect_sheet_schema()) {
-    HeaderSchemaRefused { refusal: _, reason: r } => FormatSkipped { cause: r }
-    HeaderSchemaValidated { validated: v } => format_located_tab(file_id: id, validated: v)
-  }
-}
-
-// THE FILE ID IS NOT ENOUGH AND THIS IS WHERE THAT WAS DISCOVERED. The converge above establishes
-// WHICH SPREADSHEET by a marker property on the Drive file; it establishes nothing about which tab
-// inside it the review lives in, and the formatter used to fill that gap with the constant zero.
-// The locator is now between them: the file id it reads from the converge is the spreadsheet it
-// asks Sheets about, and only a TabLocated reaches the formatter. Absent, ambiguous and unreadable
-// each skip formatting with the locator's own account of why, because formatting the wrong tab is
-// a silent wrong answer and skipping is a loud one.
-fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition {
-  match o {
-    SpreadsheetAdopted { file_id: id } => format_with_validated_schema(id: id)
-    SpreadsheetAdoptedByDeclaredId { file_id: id } => format_with_validated_schema(id: id)
-    SpreadsheetCreatedAndVerified { file_id: id } => format_with_validated_schema(id: id)
-    SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
-    SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
-  }
-}
-
-fn format_located_tab(file_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatDisposition {
-  let standing = locate_review_tab(spreadsheet_id: file_id)
+// different directions: a sealed ValidatedHeaderSchema says what to write and a sealed
+// LocatedReviewTab says where. The kind's admission validated the schema; the locator answers the
+// one tab carrying the declared title, and only a TabLocated reaches the formatter. Absent,
+// ambiguous and unreadable each skip formatting with the locator's own account of why, because
+// formatting the wrong tab is a silent wrong answer and skipping is a loud one.
+fn format_located_tab(file_id: NonEmptyStr, at: AdmittedReviewSheetTab) -> FormatDisposition {
+  let standing = locate_review_tab(spreadsheet_id: file_id, title: at.tab.title)
   match standing {
     TabLocated { tab: t } =>
-      FormatAttempted { outcome: converge_review_sheet_format(tab: t, validated: validated) }
+      FormatAttempted { outcome: converge_review_sheet_format(tab: t, validated: at.validated, rules: at.tab.rules, widths: review_sheet_tab_widths(tab: at.tab)) }
     TabAbsent => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
     TabAmbiguous { candidates: _ } => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
     TabUnreadable { cause: _ } => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
@@ -445,12 +732,7 @@ fn format_disposition_is_applied(d: FormatDisposition) -> Bool {
 
 fn drive_half_exit(report: DriveHalfReport) -> ProcessExit {
   if drive_half_is_converged(r: report) {
-    let formatting = format_converged_spreadsheet(o: report.spreadsheet)
-    if format_disposition_is_applied(d: formatting) {
-      ExitSuccess
-    } else {
-      exit_failure(reason: format_disposition_text(d: formatting))
-    }
+    ExitSuccess
   } else {
     exit_failure(reason: drive_half_text(r: report))
   }

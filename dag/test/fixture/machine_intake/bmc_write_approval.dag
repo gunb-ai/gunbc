@@ -1,0 +1,60 @@
+module test.fixture.machine_intake.bmc_write_approval
+
+import std.types { NonEmptyStr }
+import std.optional { Absent, Present }
+import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization, AuthorizationDenied }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
+import gunbc.machine_intake.bmc_rotation_route {
+  BmcRotationRouteStanding, BmcAccountWriteRequest, BmcAccountWriteApproval, BmcAccountWritePurpose,
+  RouteQualificationSubject, bmc_account_write_authorization_request, bmc_account_write_approval_of, route_subject_of,
+}
+
+// THE OPERATOR'S GO, PRODUCED BY THE REAL GATE. Every grant here is the output of
+// gunbc.auth.approval_gate approval_gate_from_poll over the production request
+// (bmc_account_write_authorization_request, whose scopes and intent hash are derived from the write) and an
+// approved decision for that request's own revision. Only the decision is supplied: what the approval app
+// would have recorded after the operator's tap. A request the builder cannot frame, or a decision the
+// gate refuses, yields a denial, so a positive control that reaches either fails loudly.
+
+fn refused(attempt: NonEmptyStr, why: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  AuthorizationDenied { escalation_id: attempt, denied_by: "fixture" as NonEmptyStr, denied_at: "2026-10-03T00:00:00Z", reason: why }
+}
+
+// The gate's grant for `request`, decided by the operator.
+fn gate_grant(request: AuthorizationRequest<BmcAccountWriteApproval>) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  let approved = PollApproved { revision: request_revision_of(request: request), decided_by: "operator" as NonEmptyStr, decided_at: "2026-10-03T00:00:00Z", execute_by: "2026-10-03T00:15:00Z" }
+  match approval_gate_from_poll(poll: approved, request: request, observed_at: "2026-10-03T00:01:00Z") {
+    GateAdmitted { authorization: a } => a
+    GateRefused { cause: _ } => refused(attempt: request.escalation_id, why: "the gate refused the fixture's approved decision" as NonEmptyStr)
+  }
+}
+
+// An approved go for one convergence, filed by `attempt`.
+fn approved_bmc_convergence(approval: BmcAccountWriteApproval, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  match bmc_account_write_authorization_request(escalation_id: attempt, approval: approval) {
+    Absent => refused(attempt: attempt, why: "the convergence has no framed intent" as NonEmptyStr)
+    Present { value: request } => gate_grant(request: request)
+  }
+}
+
+// An approved go for a convergence of one write, the `subject`'s, filed by `attempt`.
+fn approved_bmc_write_for(subject: RouteQualificationSubject, purpose: BmcAccountWritePurpose, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  approved_bmc_convergence(approval: bmc_account_write_approval_of(subject: subject, purpose: purpose), attempt: attempt)
+}
+
+// The common case: the go for `request` on the route's own controller and build.
+fn approved_bmc_write(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, purpose: BmcAccountWritePurpose, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  approved_bmc_write_for(subject: route_subject_of(standing: standing, request: request), purpose: purpose, attempt: attempt)
+}
+
+// The operator's refusal of a request.
+fn denied_bmc_write(attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  AuthorizationDenied {
+    escalation_id: attempt,
+    denied_by: "operator" as NonEmptyStr,
+    denied_at: "2026-10-03T00:01:00Z",
+    reason: "not this controller today" as NonEmptyStr,
+  }
+}

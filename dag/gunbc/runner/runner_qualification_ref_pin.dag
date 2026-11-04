@@ -21,6 +21,7 @@ import gunbc.github_effect_perform {
   read_runner_groups_with, update_runner_group_workflows_with,
 }
 import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
+import extdeps.git { git_ref_component_admitted }
 
 // THE QUALIFICATION REF PIN: ONE CREATE-ONCE BRANCH PER ATTEMPT, AND THE DEDICATED GROUP PINNED TO IT.
 //
@@ -71,6 +72,13 @@ fn qualification_workflow_path() -> NonEmptyStr {
 fn qualification_selected_workflow(branch: NonEmptyStr) -> NonEmptyStr {
   join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", branch as String], "") as NonEmptyStr
 }
+
+// THE GROUP'S RESTRICTION CLASS: the qualification workflow at refs/heads/qualification/ and at most one
+// branch below it. Created as the bare prefix, which no branch can match, so the group admits nothing until
+// an attempt pins it (gunbc.runner.runner_group_restriction_ensure qualification_runner_group_subject).
+fn qualification_selected_workflow_prefix() -> NonEmptyStr {
+  qualification_selected_workflow(branch: qualification_branch_prefix)
+}
 data qualification_runner_group_name: NonEmptyStr = "runner-qualification"
 
 // ── THE BRANCH NAME ─────────────────────────────────────────────────────────────────────────────
@@ -86,26 +94,9 @@ type QualificationBranchNameStanding
 
 // ONE PATH SEGMENT UNDER THE PREFIX. An attempt label carrying a slash, a `..`, whitespace, a ref
 // metacharacter or a leading dot would address a ref outside refs/heads/qualification/<attempt> or an
-// invalid one, so it refuses rather than being escaped.
-fn attempt_is_one_ref_segment(attempt: String) -> Bool {
-  string_length(s: attempt) > 0
-    && !starts_with(s: attempt, prefix: ".")
-    && !string_contains(s: attempt, pattern: "/")
-    && !string_contains(s: attempt, pattern: "..")
-    && !string_contains(s: attempt, pattern: " ")
-    && !string_contains(s: attempt, pattern: "~")
-    && !string_contains(s: attempt, pattern: "^")
-    && !string_contains(s: attempt, pattern: ":")
-    && !string_contains(s: attempt, pattern: "?")
-    && !string_contains(s: attempt, pattern: "*")
-    && !string_contains(s: attempt, pattern: "[")
-    && !string_contains(s: attempt, pattern: "\\")
-    && !string_contains(s: attempt, pattern: "@{")
-    && !ends_with(s: attempt, suffix: ".lock")
-}
-
+// invalid one, so it refuses rather than being escaped (extdeps.git git_ref_component_admitted).
 fn qualification_branch_name(attempt: NonEmptyStr) -> QualificationBranchNameStanding {
-  if attempt_is_one_ref_segment(attempt: attempt as String) {
+  if git_ref_component_admitted(component: attempt as String) {
     QualificationBranchNamed {
       name: QualificationBranchName { attempt: attempt, branch: concat(qualification_branch_prefix as String, attempt as String) as NonEmptyStr },
     }
@@ -224,7 +215,8 @@ fn qualification_ref_pin_of(
     decl_ref(module_path: "test.claim.runner.runner_qualification_ref_pin_witness", decl_name: "the_pin_is_minted_only_from_the_exact_revision_and_the_pinned_group"),
     decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
     decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
-    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_the_generated_fleet_converge_workflow_admits_its_floor_job"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_attempt_pass_witness", decl_name: "pin_ok"),
   ]
 {
   match readback {

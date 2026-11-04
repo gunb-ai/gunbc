@@ -1,7 +1,11 @@
 module test.claim.fleet.fleet_runner_connectivity_witness
 
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput, ReceiptAbsent, ReceiptUnreadable }
+import test.claim.runner.runner_user_session_label_witness { srv4_holding_input }
+
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
+import product.host_identity { HostIdentity }
 import std.nat { Nat }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
@@ -51,7 +55,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // repair loop must not misread as detached on a roster API blip.
 
 test fn srv1_01_is_healthy_while_busy() -> Bool {
-  match runner_slot_connectivity_verdict(
+  match runner_slot_connectivity_verdict(receipt: ReceiptAbsent, 
     slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
   ) {
     SlotConnectivityHealthy { slot: _, registration_id: id } => id == 1
@@ -60,7 +64,7 @@ test fn srv1_01_is_healthy_while_busy() -> Bool {
 }
 
 test fn active_offline_registration_is_detached_not_healthy() -> Bool {
-  match runner_slot_connectivity_verdict(
+  match runner_slot_connectivity_verdict(receipt: ReceiptAbsent, 
     slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 2 }
   ) {
     SlotConnectivityDetached { slot: _, registration_id: _ } => true
@@ -69,13 +73,13 @@ test fn active_offline_registration_is_detached_not_healthy() -> Bool {
 }
 
 test fn active_without_registration_is_orphaned() -> Bool {
-  match runner_slot_connectivity_verdict(
+  match runner_slot_connectivity_verdict(receipt: ReceiptAbsent, 
     slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 3 }
   ) {
     SlotConnectivityOrphaned { slot: _ } => true
     _ => false
   }
-    && match runner_slot_connectivity_verdict(
+    && match runner_slot_connectivity_verdict(receipt: ReceiptAbsent, 
       slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 3 }
     ) {
       SlotConnectivityOrphaned { slot: _ } => true
@@ -89,9 +93,9 @@ test fn active_without_registration_is_orphaned() -> Bool {
 
 test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
   let roster = RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
-  roster_unavailable_yields_unknown_not_detached(roster: roster)
+  roster_unavailable_yields_unknown_not_detached(receipt: ReceiptAbsent, roster: roster)
     && all(
-      connectivity_verdicts_for_active_incarnations(roster: roster),
+      connectivity_verdicts_for_active_incarnations(receipt: ReceiptAbsent, roster: roster),
       v => connectivity_verdict_is_unknown(v: v)
     )
 }
@@ -138,13 +142,13 @@ test fn materialized_and_unit_active_widths_are_twenty_not_desired() -> Bool {
 
 test fn detached_count_matches_offline_registrations_on_active_slots() -> Bool {
   let roster = incident_2026_08_06_roster_fixture()
-  let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
+  let verdicts = connectivity_verdicts_for_active_incarnations(receipt: ReceiptAbsent, roster: roster)
   count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_detached(v: v)) == 15
 }
 
 test fn healthy_count_is_one_and_orphaned_count_is_four() -> Bool {
   let roster = incident_2026_08_06_roster_fixture()
-  let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
+  let verdicts = connectivity_verdicts_for_active_incarnations(receipt: ReceiptAbsent, roster: roster)
   count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_healthy(v: v)) == 1
     && count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_orphaned(v: v)) == 4
 }
@@ -158,7 +162,7 @@ test fn local_incarnation_observation_covers_twenty_active_units() -> Bool {
 }
 
 test fn fleet_runner_connectivity_RED_orphaned_slot_must_not_read_detached() -> Bool {
-  match runner_slot_connectivity_verdict(
+  match runner_slot_connectivity_verdict(receipt: ReceiptAbsent, 
     slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 3 }
   ) {
     SlotConnectivityOrphaned { slot: _ } => true
@@ -233,7 +237,7 @@ test fn page_equal_to_authority_total_is_complete() -> Bool {
 // THE RED. Before the repair every unseen slot rendered Orphaned here.
 test fn truncated_roster_never_orphans_an_unseen_slot() -> Bool {
   all(
-    connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
+    connectivity_verdicts_for_active_incarnations(receipt: ReceiptAbsent, roster: truncated_incident_roster()),
     v => !connectivity_verdict_is_orphaned(v: v)
   )
 }
@@ -244,7 +248,7 @@ test fn truncated_roster_never_orphans_an_unseen_slot() -> Bool {
 // has stopped discriminating.
 test fn complete_roster_still_orphans_an_unseen_slot() -> Bool {
   !all(
-    connectivity_verdicts_for_active_incarnations(roster: complete_incident_roster()),
+    connectivity_verdicts_for_active_incarnations(receipt: ReceiptAbsent, roster: complete_incident_roster()),
     v => !connectivity_verdict_is_orphaned(v: v)
   )
 }
@@ -254,24 +258,33 @@ test fn complete_roster_still_orphans_an_unseen_slot() -> Bool {
 // reconciliation on hosts the read covered perfectly well.
 test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool {
   !all(
-    connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
+    connectivity_verdicts_for_active_incarnations(receipt: ReceiptAbsent, roster: truncated_incident_roster()),
     v => connectivity_verdict_is_unknown(v: v)
   )
 }
 
-// ── registration-label readback: the desired side is runner_registration_labels(slot host) ───────
+// ── registration-label readback: the desired side is runner_evidence_gated_registration_labels(slot host, receipt) ──
 // ONE ONLINE REGISTRATION, VARIED ONLY IN ITS LABELS, read through the real verdict fold over a
 // complete roster. The expected sets are spelled here rather than computed from the composition, so
 // a composition that dropped a label would turn the positive control red.
-fn online_srv4_01_under(labels: List<NonEmptyStr>) -> RunnerSlotConnectivityVerdict {
-  runner_slot_connectivity_verdict_for_incarnation(
-    incarnation: runner_slot_incarnation(host: operator_host_srv4, slot_index: 1, unit_active: true),
+//
+// SRV4'S CI SLOT CARRIES gunbc-user-session exactly when the converge receipt the leg read grants it
+// (gunbc.runner.runner_registration_labels runner_evidence_gated_registration_labels); the receipt is a parameter
+// here, supplied at this boundary. test.claim.runner.runner_user_session_label_witness covers the receipt-backed side.
+// Controls that do not concern the label supply ReceiptAbsent explicitly.
+fn online_srv4_01_under(labels: List<NonEmptyStr>, receipt: RunnerUserSessionReceiptInput) -> RunnerSlotConnectivityVerdict {
+  online_01_under(host: operator_host_srv4, name: "srv4-01", labels: labels, receipt: receipt)
+}
+
+fn online_01_under(host: HostIdentity, name: String, labels: List<NonEmptyStr>, receipt: RunnerUserSessionReceiptInput) -> RunnerSlotConnectivityVerdict {
+  runner_slot_connectivity_verdict_for_incarnation(receipt: receipt,
+    incarnation: runner_slot_incarnation(host: host, slot_index: 1, unit_active: true),
     roster: organization_runner_roster_from_page(
       observed_on: "2026-09-19" as NonEmptyStr,
       registrations: [
         GitHubSelfHostedRunnerRegistration {
           id: 9401,
-          name: "srv4-01" as NonEmptyStr,
+          name: name as NonEmptyStr,
           status: GitHubRunnerOnline,
           busy: false,
           ephemeral: Present { value: true },
@@ -287,26 +300,50 @@ fn online_srv4_01_under(labels: List<NonEmptyStr>) -> RunnerSlotConnectivityVerd
 
 test fn online_registration_under_its_own_class_and_host_labels_is_healthy() -> Bool {
   connectivity_verdict_is_healthy(
-    v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr]),
+    v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr], receipt: ReceiptAbsent),
   )
+}
+
+// THE READBACK EXPECTS THE LABEL EXACTLY WHEN THE RECEIPT GRANTS IT: srv4 is rostered, so its CI registration
+// carrying gunbc-user-session is healthy under a fresh holding receipt and diverges under no receipt (the grant
+// lapsed or was never made, and the label is held on roster membership alone); an unrostered host carrying it
+// diverges under any receipt -- a stale config, a hand-edited .credential file.
+// RED control: tolerate the label on roster alone and the no-receipt arm goes red; ignore the receipt and the
+// healthy arm goes red; license it on every host and the srv3 arm goes red.
+test fn the_user_session_label_is_healthy_only_under_a_receipt_that_grants_it() -> Bool {
+  connectivity_verdict_is_healthy(
+    v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr], receipt: srv4_holding_input()),
+  )
+    && connectivity_verdict_labels_diverge(
+      v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr], receipt: ReceiptAbsent),
+    )
+    && connectivity_verdict_labels_diverge(
+      v: online_01_under(host: operator_host_srv3, name: "srv3-01", labels: ["srv3" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr], receipt: srv4_holding_input()),
+    )
+    && connectivity_verdict_is_unknown(
+      v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr, "gunbc-user-session" as NonEmptyStr], receipt: ReceiptUnreadable { why: "converge receipt read, run listing: absence not established" }),
+    )
+    && connectivity_verdict_is_unknown(
+      v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr], receipt: ReceiptUnreadable { why: "converge receipt read, run listing: absence not established" }),
+    )
 }
 
 test fn online_registration_missing_the_class_label_is_not_healthy() -> Bool {
   connectivity_verdict_labels_diverge(
-    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "srv4" as NonEmptyStr]),
+    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "srv4" as NonEmptyStr], receipt: ReceiptAbsent),
   )
 }
 
 test fn online_registration_missing_the_host_label_is_not_healthy() -> Bool {
   connectivity_verdict_labels_diverge(
-    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr]),
+    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr], receipt: ReceiptAbsent),
   )
 }
 
 // WRONG HOST: an srv3-labelled runner answering to srv4-01's name must not read as srv4's.
 test fn online_registration_under_another_hosts_label_is_not_healthy() -> Bool {
   connectivity_verdict_labels_diverge(
-    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "srv3" as NonEmptyStr]),
+    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "srv3" as NonEmptyStr], receipt: ReceiptAbsent),
   )
 }
 
@@ -314,12 +351,12 @@ test fn online_registration_under_another_hosts_label_is_not_healthy() -> Bool {
 // so a case-only difference proposes no repair; a mixed-case wrong host still diverges.
 test fn online_registration_under_a_case_variant_of_its_labels_is_healthy() -> Bool {
   connectivity_verdict_is_healthy(
-    v: online_srv4_01_under(labels: ["Self-Hosted" as NonEmptyStr, "Linux" as NonEmptyStr, "ARM64" as NonEmptyStr, "GUNBC-HEAVY" as NonEmptyStr, "SRV4" as NonEmptyStr]),
+    v: online_srv4_01_under(labels: ["Self-Hosted" as NonEmptyStr, "Linux" as NonEmptyStr, "ARM64" as NonEmptyStr, "GUNBC-HEAVY" as NonEmptyStr, "SRV4" as NonEmptyStr], receipt: ReceiptAbsent),
   )
 }
 
 test fn online_registration_under_a_mixed_case_wrong_host_label_is_not_healthy() -> Bool {
   connectivity_verdict_labels_diverge(
-    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "Linux" as NonEmptyStr, "ARM64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "SRV3" as NonEmptyStr]),
+    v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "Linux" as NonEmptyStr, "ARM64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "SRV3" as NonEmptyStr], receipt: ReceiptAbsent),
   )
 }

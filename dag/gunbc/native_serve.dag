@@ -2,8 +2,8 @@ module gunbc.native_serve
 
 import std.types { Int, List, String, Bool, CommitSha }
 import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count, Second, second, second_count }
-import std.algebra { Cons, Empty, trim }
-import extdeps.http.server { ServeWireResponse, ServeWireHeader, serve_wire_header_name_label }
+import std.algebra { Cons, Empty, trim, list_push }
+import extdeps.http.server { ServeWireResponse, ServeWireHeader }
 import gunbc.running_release_identity { release_revision_text_valid }
 import extdeps.tailscale.identity { tailscale_user_login_header }
 import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
@@ -463,9 +463,9 @@ data native_serve_handler_name: String = "native_serve_handle"
 // into the header block just like a header value), because a value is handler data and one carrying a line break would split the
 // header block. The seed makes the same two checks in hand Rust after evaluation; here they are a
 // fold, and a response that fails them is answered as a typed 500 naming why, never written.
-// Header NAMES need no check: ServeWireHeaderName is closed, and its spelling is
-// extdeps.http.server serve_wire_header_name_label's, so the framing headers the main writes
-// itself (Content-Type, Content-Length, Connection) cannot be set by a handler.
+// Header NAMES need no check: a ServeWireHeader is sole_constructor in extdeps.http.server and is
+// built only from a ServeResponseHeader, whose open arm carries an HttpExtensionFieldName, so the
+// framing headers the main writes itself (Content-Type, Content-Length, Connection) cannot be set.
 type NativeServeOutgoing {
   status: Int
   content_type_label: String
@@ -489,7 +489,7 @@ fn native_serve_unwritable(reason: String) -> NativeServeOutgoing {
 }
 
 fn native_serve_header_line(h: ServeWireHeader) -> String {
-  concat(serve_wire_header_name_label(name: h.name), concat(": ", h.value))
+  concat(h.name, concat(": ", h.value))
 }
 
 fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {

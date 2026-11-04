@@ -1,6 +1,6 @@
 module v2.test.claim.manual.structured_body_dispatch
 
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   TypeNode,
@@ -36,7 +36,7 @@ fn structured_body_pick_branch_body() -> Node {
 
 test fn structured_body_dispatch_accepts_transform_call() -> Bool {
   match body_producer_dispatch_structured_body(body: dag_add_binary_body_node()) {
-    Accepted { value: validated, diagnostics: _ } => validated == dag_add_binary_body_node()
+    Accepted { value: validated, diagnostics: _ } => node_same_occurrence(a: validated, b: dag_add_binary_body_node())
     Rejected { diagnostics: _ } => false
   }
 }
@@ -44,7 +44,7 @@ test fn structured_body_dispatch_accepts_transform_call() -> Bool {
 test fn structured_body_dispatch_accepts_branch() -> Bool {
   let branch = structured_body_pick_branch_body()
   match body_producer_dispatch_structured_body(body: branch) {
-    Accepted { value: validated, diagnostics: _ } => validated == branch
+    Accepted { value: validated, diagnostics: _ } => node_same_occurrence(a: validated, b: branch)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -62,7 +62,7 @@ test fn structured_body_produce_subsumes_add_table() -> Bool {
     structured_body: dag_add_binary_body_node()
   ) {
     Accepted { value: arrow_with_body, diagnostics: _ } =>
-      arrow_with_body == dag_add_arrow_with_body_node()
+      node_same_occurrence(a: arrow_with_body, b: dag_add_arrow_with_body_node())
         && well_formed(n: arrow_with_body)
     Rejected { diagnostics: _ } => false
   }

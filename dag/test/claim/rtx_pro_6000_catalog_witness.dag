@@ -3,7 +3,7 @@ module test.claim.rtx_pro_6000_catalog_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import std.measure { bandwidth_count }
-import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_bandwidth_count }
+import extdeps.gpu.types { GpuDeviceCatalogRow, gpu_catalog_bandwidth_count }
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog,
@@ -101,6 +101,8 @@ fn a_read_region() -> ProviderRegionObservation {
 
 fn vast_offer_arch(gpus: Int, arch: String?) -> VastAiOffer {
   VastAiOffer {
+    cuda_max_good: Absent,
+    inet_down: Absent,
     id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: gpus,
     compute_cap: 1200, gpu_arch: arch,
     verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: Present { value: false },
@@ -120,6 +122,8 @@ fn vast_offer(gpus: Int) -> VastAiOffer {
 
 fn vast_offer_bid(bid: Bool?) -> VastAiOffer {
   VastAiOffer {
+    cuda_max_good: Absent,
+    inet_down: Absent,
     id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: 2,
     compute_cap: 1200, gpu_arch: Present { value: "nvidia" },
     verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: bid,
@@ -344,7 +348,7 @@ fn figure_citation_eq(a: FactCitation, b: FactCitation) -> Bool {
   a.fact == b.fact && a.authority == b.authority
 }
 
-fn row_cites_field(row: GpuModelCatalogRow, decl_name: String, field_name: String) -> Bool {
+fn row_cites_field(row: GpuDeviceCatalogRow, decl_name: String, field_name: String) -> Bool {
   row.figure_citations.any(c => c.fact == decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: decl_name, field_name: field_name))
 }
 

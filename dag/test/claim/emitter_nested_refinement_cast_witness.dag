@@ -1,5 +1,8 @@
 module test.claim.emitter_nested_refinement_cast_witness
 
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows_of_class }
+
+
 // PERMANENT REGRESSION EVIDENCE FOR REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS
 // (gunbc#10266). `type NonEmptyStr = String where string_non_empty` and `type PathSegment = NonEmptyStr
 // where brand("PathSegment")` are three .dag types over ONE host carrier -- all three emit as the
@@ -29,11 +32,15 @@ module test.claim.emitter_nested_refinement_cast_witness
 // leaves every projection still fabricating a panic, which is exactly the state gunbc#10266
 // measured. single_refinement is the pre-existing positive control and is unchanged.
 //
-// NOT CLAIMED: that every unsupported cast is now a located compile-time refusal. The third arm of
-// emit_typed_cast_shared still fabricates a panic for a cast that is neither representation-
-// identical nor available in the target's cast syntax. That is the fail-open recorded by
-// gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target and it is untouched here;
-// this change removes the identical case from that arm, it does not repair the arm.
+// THE THIRD ARM IS NO LONGER A FABRICATION. A cast that no carrier, grounded crossing or target cast
+// rule answers used to emit panic!("unsupported cast from ..") -- the fail-open recorded by
+// gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target. It is now refused at
+// compile time, located at the cast, by v1.compiler.emit cast_realization_diagnostics, which
+// v1.compiler.compile emit_artifact runs before any artifact is written;
+// unrelated_carriers_refuse_the_cast_at_compile_time is its red. The casts moved OUT of that arm are
+// the alias of a refinement (alias_of_refinement_cast_emits_the_operand), and the empty list literal
+// and the generic call typed by their cast (empty_list_cast_emits_the_operand,
+// generic_call_cast_emits_the_operand). std.nat Nat as Int is test.claim.emitter_nat_int_cast_witness's.
 
 fn w_single_refinement_emits_no_unsupported_cast() -> Bool {
   compile_dag_rust_emit_check(
@@ -85,12 +92,52 @@ fn w_brand_refinement_casts_emit_no_unsupported_cast() -> Bool {
   )
 }
 
-fn w_unrelated_carriers_still_refuse_the_cast() -> Bool {
+// THE RED IS READ AS A TYPED REFUSAL WITH ITS CAUSE, never as text in an artifact: the compile must
+// stop with a blocking CastRealizationRefused whose fact names the uncastable pair. A census that
+// could not run is a failure with its own cause, not the expected red.
+data unrelated_carriers_cast_source: String = "module emitnested_unrelated\n\nimport std.types \{ Int, String }\n\nfn coerce(raw: String) -> Int \{\n  raw as Int\n}\n"
+
+fn w_unrelated_carriers_refuse_the_cast_at_compile_time() -> Bool {
+  match compile_dag_diagnostic_census(unrelated_carriers_cast_source) {
+    CensusObserved { rows: rows } =>
+      census_blocking_rows_of_class(rows: rows, wanted: "CastRealizationRefused") |> any(r => contains(r.subject_name, "no declared conversion route from String to i64"))
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// A GENERIC CALL WHOSE RETURN IS UNSOLVED IS INSTANTIATED BY ITS CAST, the call-shaped sibling of
+// the empty list literal: the specimen is gunbc.package_delivery's fold seed
+// `empty_set() as Set<String>`.
+fn w_generic_call_cast_emits_the_operand() -> Bool {
   compile_dag_rust_emit_check(
-    "module emitnested_unrelated\n\nimport std.types { Int, String }\n\nfn coerce(raw: String) -> Int {\n  raw as Int\n}\n",
-    "src/emitnested_unrelated.rs",
-    ["unsupported cast"],
-    []
+    "module emitnested_generic_call\n\nimport std.types \{ Set, String }\n\nfn seed() -> Set<String> \{\n  empty_set() as Set<String>\n}\n",
+    "src/emitnested_generic_call.rs",
+    ["fn seed"],
+    ["unsupported cast", "compile_error!", "panic!"]
+  )
+}
+
+// AN ALIAS OF A REFINEMENT IS ITS CARRIER TOO, read from the alias's declared right-hand side. The
+// specimen is extdeps.git git_remote_url_config_key (`name as String` for name: GitRemoteName, an
+// alias of NonEmptyStr), whose cast the walk used to stop at the alias declaration and emit as a
+// panic; the local alias is the same edge declared beside the cast.
+fn w_alias_of_refinement_cast_emits_the_operand() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_alias_of_refinement\n\nimport std.types \{ NonEmptyStr, String }\nimport extdeps.git \{ GitRemoteName }\n\ntype LocalName = NonEmptyStr\n\nfn remote_text(name: GitRemoteName) -> String \{\n  name as String\n}\n\nfn local_text(name: LocalName) -> String \{\n  name as String\n}\n",
+    "src/emitnested_alias_of_refinement.rs",
+    ["fn remote_text", "fn local_text"],
+    ["unsupported cast", "compile_error!", "panic!"]
+  )
+}
+
+// AN EMPTY LIST LITERAL CAST TO A LIST TYPE IS TYPED BY THE CAST, so it emits the empty vector and
+// neither a fabricated abort nor a refusal: the specimen is extdeps.linux.cgroup_v2's fold seed.
+fn w_empty_list_cast_emits_the_operand() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_empty_list\n\nimport std.types \{ Int, List }\n\nfn seed() -> List<Int> \{\n  [] as List<Int>\n}\n",
+    "src/emitnested_empty_list.rs",
+    ["fn seed"],
+    ["unsupported cast", "compile_error!", "panic!"]
   )
 }
 
@@ -122,8 +169,20 @@ test fn brand_refinement_casts_emit_no_unsupported_cast() -> Bool {
   w_brand_refinement_casts_emit_no_unsupported_cast()
 }
 
-test fn unrelated_carriers_still_refuse_the_cast() -> Bool {
-  w_unrelated_carriers_still_refuse_the_cast()
+test fn unrelated_carriers_refuse_the_cast_at_compile_time() -> Bool {
+  w_unrelated_carriers_refuse_the_cast_at_compile_time()
+}
+
+test fn alias_of_refinement_cast_emits_the_operand() -> Bool {
+  w_alias_of_refinement_cast_emits_the_operand()
+}
+
+test fn generic_call_cast_emits_the_operand() -> Bool {
+  w_generic_call_cast_emits_the_operand()
+}
+
+test fn empty_list_cast_emits_the_operand() -> Bool {
+  w_empty_list_cast_emits_the_operand()
 }
 
 test fn numeric_conversion_still_uses_cast_syntax() -> Bool {

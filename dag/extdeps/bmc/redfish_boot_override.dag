@@ -1,0 +1,135 @@
+module extdeps.bmc.redfish_boot_override
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_string_list,
+}
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideTarget, BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb,
+  BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp,
+  RedfishBootSourceOverrideEnabled, BootOverrideDisabled, BootOverrideOnce, BootOverrideContinuous,
+  RedfishBootSourceOverrideMode, BootOverrideModeLegacy, BootOverrideModeUefi,
+  redfish_boot_target_wire, redfish_boot_override_enabled_wire, redfish_boot_override_mode_wire,
+}
+
+// THE ComputerSystem `Boot` OBJECT, READ (DMTF ComputerSystem schema: BootSourceOverrideEnabled,
+// BootSourceOverrideMode, BootSourceOverrideTarget and its @Redfish.AllowableValues annotation). The
+// members' wire spellings are extdeps.bmc.types' (redfish_boot_target_wire and siblings); this module
+// only reads them back through those same functions, so a spelling lives once. An AllowableValues token
+// that is not a member this model carries -- a DMTF member not yet modeled, or a vendor's own token -- is
+// kept by its spelling and never dropped, so a consumer can see what the service offered and this model
+// cannot name.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/ComputerSystem.json"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.redfish_boot_override",
+      decl_name: "RedfishBootOverrideReading",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The members this model carries, in one roster each, read back through the wire functions.
+data redfish_boot_targets_modeled: List<RedfishBootSourceOverrideTarget> = [
+  BootTargetNone, BootTargetPxe, BootTargetHdd, BootTargetCd, BootTargetUsb, BootTargetBiosSetup, BootTargetDiags, BootTargetUefiHttp,
+]
+
+data redfish_boot_enabled_modeled: List<RedfishBootSourceOverrideEnabled> = [BootOverrideDisabled, BootOverrideOnce, BootOverrideContinuous]
+
+data redfish_boot_modes_modeled: List<RedfishBootSourceOverrideMode> = [BootOverrideModeLegacy, BootOverrideModeUefi]
+
+fn redfish_boot_target_of_wire(wire: String) -> RedfishBootSourceOverrideTarget? {
+  first(filter(redfish_boot_targets_modeled, t => (redfish_boot_target_wire(t: t) as String) == wire))
+}
+
+fn redfish_boot_enabled_of_wire(wire: String) -> RedfishBootSourceOverrideEnabled? {
+  first(filter(redfish_boot_enabled_modeled, e => (redfish_boot_override_enabled_wire(e: e) as String) == wire))
+}
+
+fn redfish_boot_mode_of_wire(wire: String) -> RedfishBootSourceOverrideMode? {
+  first(filter(redfish_boot_modes_modeled, m => (redfish_boot_override_mode_wire(m: m) as String) == wire))
+}
+
+type RedfishBootOverrideReading {
+  enabled: RedfishBootSourceOverrideEnabled
+  mode: RedfishBootSourceOverrideMode?
+  target: RedfishBootSourceOverrideTarget
+  allowable_targets: List<RedfishBootSourceOverrideTarget>
+  allowable_unmodeled: List<String>
+}
+
+fn modeled_targets(tokens: List<String>) -> List<RedfishBootSourceOverrideTarget> {
+  flat_map(tokens, t => match redfish_boot_target_of_wire(wire: t) {
+    Present { value: x } => [x]
+    Absent => []
+  })
+}
+
+fn unmodeled_tokens(tokens: List<String>) -> List<String> {
+  filter(tokens, t => match redfish_boot_target_of_wire(wire: t) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+fn boot_override_of_boot_object(boot: JsonValue) -> ObservationAttempt<RedfishBootOverrideReading, NonEmptyStr> {
+  match json_field_string(obj: boot, key: "BootSourceOverrideEnabled") {
+    FieldAbsent => ObservationRefused { cause: "Boot carries no BootSourceOverrideEnabled" }
+    FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    FieldRead { value: e } => match redfish_boot_enabled_of_wire(wire: e) {
+      Absent => ObservationRefused { cause: concat("BootSourceOverrideEnabled is not a modeled member: ", e) as NonEmptyStr }
+      Present { value: enabled } => match json_field_string(obj: boot, key: "BootSourceOverrideTarget") {
+        FieldAbsent => ObservationRefused { cause: "Boot carries no BootSourceOverrideTarget" }
+        FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+        FieldRead { value: t } => match redfish_boot_target_of_wire(wire: t) {
+          Absent => ObservationRefused { cause: concat("BootSourceOverrideTarget is not a modeled member: ", t) as NonEmptyStr }
+          Present { value: target } => match json_field_string_list(obj: boot, key: "BootSourceOverrideTarget@Redfish.AllowableValues") {
+            FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+            FieldAbsent => mode_then(boot: boot, enabled: enabled, target: target, allowable: [])
+            FieldRead { value: tokens } => mode_then(boot: boot, enabled: enabled, target: target, allowable: tokens)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn mode_then(boot: JsonValue, enabled: RedfishBootSourceOverrideEnabled, target: RedfishBootSourceOverrideTarget, allowable: List<String>) -> ObservationAttempt<RedfishBootOverrideReading, NonEmptyStr> {
+  match json_field_string(obj: boot, key: "BootSourceOverrideMode") {
+    FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    FieldAbsent => ObservationEstablished { observed: RedfishBootOverrideReading { enabled: enabled, mode: none, target: target, allowable_targets: modeled_targets(tokens: allowable), allowable_unmodeled: unmodeled_tokens(tokens: allowable) } }
+    FieldRead { value: m } => match redfish_boot_mode_of_wire(wire: m) {
+      Absent => ObservationRefused { cause: concat("BootSourceOverrideMode is not a modeled member: ", m) as NonEmptyStr }
+      Present { value: mode } => ObservationEstablished { observed: RedfishBootOverrideReading { enabled: enabled, mode: Present { value: mode }, target: target, allowable_targets: modeled_targets(tokens: allowable), allowable_unmodeled: unmodeled_tokens(tokens: allowable) } }
+    }
+  }
+}
+
+// The ComputerSystem body's Boot object. A system that publishes no Boot object refuses: absence is not
+// "no override".
+fn redfish_boot_override_of_system(body: String) -> ObservationAttempt<RedfishBootOverrideReading, NonEmptyStr> {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } => ObservationRefused { cause: concat("the ComputerSystem body is not a JSON document: ", json_document_gap_text(gap: g)) as NonEmptyStr }
+    JsonDocumentParsed { value: doc } => match json_field(obj: doc, key: "Boot") {
+      FieldAbsent => ObservationRefused { cause: "the ComputerSystem publishes no Boot object" }
+      FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+      FieldRead { value: boot } => boot_override_of_boot_object(boot: boot)
+    }
+  }
+}

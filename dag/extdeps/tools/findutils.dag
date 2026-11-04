@@ -17,6 +17,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import std.algebra { is_empty }
 import extdeps.crypto.hash { sha256sum_program }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -87,6 +88,13 @@ fn find_owned_regular_files_exec_argv(dir: String, owner: String, command: List<
   concat(concat([find_program().invocation as String, dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"])
 }
 
+fn find_owned_regular_files_exec_command(dir: String, owner: String, command: List<String>) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(concat([dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"]),
+  )
+}
+
 // THE REGULAR FILES UNDER A ROOT, ONE `<size> <relative path>` LINE EACH (find(1) -printf: %s is the
 // size in bytes, %P the path with the starting point removed). A plain argv: no shell, and find's own
 // status is the one the caller reads.
@@ -124,6 +132,14 @@ fn find_tree_regular_files_sha256_command(root: String) -> ArgvCommand {
 // %f is the entry's final component). The matching entry's own subtree is never walked.
 fn find_children_named_command(root: String, name_glob: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-maxdepth", "1", "-name", name_glob, "-printf", "%f\\n"])
+}
+
+// THE ENTRY AT ONE EXACT PATH, FOUND BELOW A ROOT THAT EXISTS, printed when present and nothing when absent
+// (-path is a whole-path match; -maxdepth bounds the walk). A missing ENTRY exits 0 with empty stdout; only a
+// walk that could not complete (unreadable directory, bad root) exits nonzero. That split is the point: it
+// lets a caller tell "not there" from "could not look" by exit status, without reading any tool's stderr.
+fn find_entry_at_path_command(root: String, path: String, max_depth: Int) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-maxdepth", to_string(max_depth), "-path", path, "-print"])
 }
 
 // ENTRIES UNDER ROOTS THAT ARE NOT TRUSTED AS A ROOT-OWNED LOCUS: not owned by `owner`, writable by

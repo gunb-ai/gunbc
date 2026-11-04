@@ -1,5 +1,5 @@
-//! Derived membership for the one-row-per-file ledgers: `gunbc.recurring_failure_mode.roster`
-//! and `gunbc.rung_drop.roster` (`DERIVED_ROW_ROSTERS`).
+//! Derived membership for the one-row-per-file ledgers: `gunbc.recurring_failure_mode.roster`,
+//! `gunbc.rung_drop.roster` and `gunbc.guarantee_stall.roster` (`DERIVED_ROW_ROSTERS`).
 //!
 //! Row files under each row directory are the authority. A hand-appended roster list is a second
 //! authoring of the same membership -- the rung-drop list was one until it was cut over to this
@@ -8,7 +8,8 @@
 //! MEMBERSHIP IS SELECTED BY DECLARED TYPE, NOT BY DIRECTORY ALONE. A sibling file is a member
 //! exactly when it declares the row under its own stem with the ledger's row type
 //! (`data <stem>: <RowType> =`), so a helper module that lives beside the rows
-//! (`gunbc.rung_drop.shared_capability`, `gunbc.rung_drop.standing`) is not rostered. That
+//! (`gunbc.rung_drop.shared_capability`, `gunbc.rung_drop.standing`,
+//! `gunbc.guarantee_stall.roster_pins`) is not rostered. That
 //! selector is a line-shape read and NOT the authority on what was declared: the parse join in
 //! `rostered_row_join` reads the compiled declaration population, and a `RowType` row the selector
 //! missed refuses there as `DeclaredNotRostered`. The two disagree only loudly.
@@ -88,7 +89,16 @@ pub const RUNG_DROP: DerivedRowRoster = DerivedRowRoster {
     roster_declaration: "rung_drop_roster",
 };
 
-pub const DERIVED_ROW_ROSTERS: [&DerivedRowRoster; 2] = [&RECURRING_FAILURE_MODE, &RUNG_DROP];
+pub const GUARANTEE_STALL: DerivedRowRoster = DerivedRowRoster {
+    row_module: "gunbc.guarantee_stall",
+    row_dir_rel: "gunbc/guarantee_stall",
+    row_type: "GuaranteeStall",
+    roster_module: "gunbc.guarantee_stall.roster",
+    roster_declaration: "guarantee_stall_roster",
+};
+
+pub const DERIVED_ROW_ROSTERS: [&DerivedRowRoster; 3] =
+    [&RECURRING_FAILURE_MODE, &RUNG_DROP, &GUARANTEE_STALL];
 
 /// The failure-mode ledger's parts, read by `rostered_row_join`'s file-to-roster join, which is
 /// specific to that ledger: its directory holds rows only, so every file must be a member. The
@@ -470,6 +480,10 @@ mod tests {
             (
                 "dag/gunbc/rung_drop/roster.dag",
                 "dag/gunbc/rung_drop/some_row.dag",
+            ),
+            (
+                "dag/gunbc/guarantee_stall/roster.dag",
+                "dag/gunbc/guarantee_stall/some_row.dag",
             ),
         ] {
             assert!(super::is_derived_roster_path(roster));

@@ -6,7 +6,7 @@ import v2.compiler.normalized_tree { admit_unmarked_normalized_roots }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected, None }
-import v2.std.node { Node, Edge, Positional, ComputationNode, Value, node_synthetic }
+import v2.std.node { Node, Edge, Positional, ComputationNode, Value, node_synthetic, NotADeclaration }
 
 // THE 03_resolve ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
 // v2.compiler.resolve resolve accepts a well-formed normalized tree and refuses one whose root is
@@ -19,7 +19,7 @@ fn rsc_value_node() -> Node {
 fn rsc_value_with_child() -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Value },
-    children: [Edge { label: Positional, target: rsc_value_node() }]
+    children: [Edge { label: Positional, target: rsc_value_node(), declaration: NotADeclaration }]
   )
 }
 

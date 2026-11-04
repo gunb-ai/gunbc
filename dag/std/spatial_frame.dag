@@ -79,6 +79,7 @@ fn length_scale_is_decimal(s: Scale) -> Bool {
     Nano  => true
     Micro => true
     Milli => true
+    Centi => true
     One   => true
     Kilo  => true
     Mega  => true
@@ -94,6 +95,7 @@ fn length_scale_is_decimal(s: Scale) -> Bool {
     DegreeAngle    => false
     TurnAngle      => false
     Sixty          => false
+    ThirtySixHundred => false
     RackUnitHeight => false
     SquareFootArea => false
   }

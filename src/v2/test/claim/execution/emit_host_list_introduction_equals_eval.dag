@@ -62,7 +62,7 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.node_query { binder_edge, find_arrow_body_child }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   RuntimeFieldValue,
   BindInterpreter,
   BranchInterpreter,
@@ -281,7 +281,7 @@ fn emit_fold_eval_closure_arg(args: List<RuntimeValue>, node: Node) -> Outcome<N
 // allocates only 0..3, so the search is closed.
 fn emit_fold_eval_decode(v: RuntimeValue) -> Optional<Int> {
   fold([0, 1, 2, 3], init: optional_absent(), f: fn(acc, n) {
-    if v == emit_fold_eval_octet_value(n: n) { optional_present(value: n) } else { acc }
+    if (runtime_value_equality(a: v, b: emit_fold_eval_octet_value(n: n)) == RuntimeValuesEqual) { optional_present(value: n) } else { acc }
   })
 }
 

@@ -1,5 +1,6 @@
 module test.claim.floor.floor_cold_build_receipt_witness
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, String, Int, List }
 import std.decl_ref { DeclarationRef }
 import std.measure { byte_size, byte_size_count, second, second_count, minute, minute_to_second, gibibyte, gibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size }
@@ -23,7 +24,7 @@ fn cold_subject() -> ColdBuildSubject {
 fn receipt(subject: ColdBuildSubject, wall: Int, peak: Int, used: Int) -> ColdBuildReceipt {
   ColdBuildReceipt {
     subject: subject,
-    run_id: "fixture",
+    run_id: GitHubWorkflowRunId { value: 33668368846 },
     whole_job_wall: second(count: wall),
     build_step_wall: second(count: 600),
     cell_memory_peak: byte_size(peak),

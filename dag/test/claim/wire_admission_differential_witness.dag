@@ -1,0 +1,172 @@
+module test.claim.wire_admission_differential_witness
+
+import std.types { String, List, Bool }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import extdeps.languages.json.emit { JsonValue, JsonNull }
+import gunbc.auth.approval_device_wire {
+  WireDecoded, WireRefused, decode_verifying_key, decode_signature_bytes, decode_signing_input, decode_google_enrolment_request,
+  wire_admission_platform, wire_admission_decision, wire_admission_signature_suite, wire_admission_public_key_encoding,
+  wire_admission_signature_encoding, wire_admission_apns_environment,
+}
+import gunbc.auth.wire_strict_reader {
+  WireVerdict, wire_cause_text, WireAccepted, WireRefusedAt, WireField, WireFreeString, WireAdmittedString, WireNested,
+  WireShape, WireRecord, WireSum, WireSumArm, WireAdmission, sum_admission, read_shape, bind_record, BoundShape, ShapeBound, ShapeRefused,
+}
+
+// THE FOUR ADMISSION ROWS READ BY THE FOLD, against the server chains that still spell the same
+// admission as if-chains: platform (decode_google_enrolment_request), decision (decode_signing_input),
+// signature suite and the two encodings (decode_verifying_key, decode_signature_bytes). The shapes
+// take their admitted sets from the rows in approval_device_wire and author nothing of their own.
+fn adm(row: WireAdmission, cause: String) -> WireField {
+  WireField { name: row.subject, rule: WireAdmittedString { row: row, cause: cause } }
+}
+
+fn key_shape() -> WireShape {
+  WireRecord { fields: [
+    WireField { name: "suite", rule: WireAdmittedString { row: wire_admission_signature_suite, cause: "not the admitted suite" } },
+    WireField { name: "encoding", rule: WireAdmittedString { row: wire_admission_public_key_encoding, cause: "not the admitted encoding" } },
+    WireField { name: "point_b64url", rule: WireFreeString },
+  ] }
+}
+
+fn sig_shape() -> WireShape {
+  WireRecord { fields: [
+    WireField { name: "suite", rule: WireAdmittedString { row: wire_admission_signature_suite, cause: "not the admitted suite" } },
+    WireField { name: "encoding", rule: WireAdmittedString { row: wire_admission_signature_encoding, cause: "not the admitted encoding" } },
+    WireField { name: "b64url", rule: WireFreeString },
+  ] }
+}
+
+fn challenge_shape() -> WireShape {
+  WireRecord { fields: [WireField { name: "expires_at", rule: WireFreeString }, WireField { name: "nonce_hex", rule: WireFreeString }] }
+}
+
+fn signing_input_shape() -> WireShape {
+  WireRecord { fields: [
+    WireField { name: "audience", rule: WireFreeString },
+    WireField { name: "enrollment_id", rule: WireFreeString },
+    WireField { name: "challenge", rule: WireNested { shape: challenge_shape() } },
+    WireField { name: "escalation_id", rule: WireFreeString },
+    WireField { name: "request_revision", rule: WireFreeString },
+    WireField { name: "stored_request_text", rule: WireFreeString },
+    WireField { name: "decision", rule: WireAdmittedString { row: wire_admission_decision, cause: "not approve or deny" } },
+    WireField { name: "capability_text", rule: WireFreeString },
+    WireField { name: "capability_tag_b64url", rule: WireFreeString },
+  ] }
+}
+
+fn push_shape() -> WireShape {
+  WireSum {
+    arms: [WireSumArm { wire_tag: "apns", fields: [
+      WireField { name: "environment", rule: WireAdmittedString { row: wire_admission_apns_environment, cause: "not an APNs environment" } },
+      WireField { name: "topic", rule: WireFreeString },
+      WireField { name: "token", rule: WireFreeString },
+    ] }],
+    admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "apns", fields: [WireField { name: "environment", rule: WireAdmittedString { row: wire_admission_apns_environment, cause: "not an APNs environment" } }, WireField { name: "topic", rule: WireFreeString }, WireField { name: "token", rule: WireFreeString }] }], admitted: ["apns"]),
+    cause: "not an admitted push provider",
+  }
+}
+
+fn evidence_shape() -> WireShape {
+  WireSum {
+    arms: [WireSumArm { wire_tag: "ios_app_attest", fields: [WireField { name: "attest_key_id", rule: WireFreeString }, WireField { name: "attestation_b64", rule: WireFreeString }] }],
+    admitted: sum_admission(subject: "kind", arms: [WireSumArm { wire_tag: "ios_app_attest", fields: [WireField { name: "attest_key_id", rule: WireFreeString }, WireField { name: "attestation_b64", rule: WireFreeString }] }], admitted: ["ios_app_attest"]),
+    cause: "not an admitted evidence kind",
+  }
+}
+
+fn enrolment_shape() -> WireShape {
+  WireRecord { fields: [
+    WireField { name: "platform", rule: WireAdmittedString { row: wire_admission_platform, cause: "not an admitted platform" } },
+    WireField { name: "decision_key", rule: WireNested { shape: key_shape() } },
+    WireField { name: "attest_key_id", rule: WireFreeString },
+    WireField { name: "attestation_b64", rule: WireFreeString },
+    WireField { name: "id_token", rule: WireFreeString },
+  ] }
+}
+
+fn parsed(text: String) -> JsonValue {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => v
+    JsonDocumentUnreadable { gap: _ } => JsonNull
+  }
+}
+
+fn verdict_key(v: WireVerdict) -> String {
+  match v {
+    WireAccepted => "ok"
+    WireRefusedAt { at: a, cause: c } => join([a, "|", wire_cause_text(c: c)], "")
+  }
+}
+
+fn reader_key(shape: WireShape, text: String, path: String) -> String {
+  verdict_key(v: read_shape(shape: shape, v: parsed(text: text), path: path))
+}
+
+fn key_chain(text: String) -> String {
+  match decode_verifying_key(v: parsed(text: text)) { WireDecoded { value: _ } => "ok"  WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "") }
+}
+
+fn sig_chain(text: String) -> String {
+  match decode_signature_bytes(v: parsed(text: text)) { WireDecoded { value: _ } => "ok"  WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "") }
+}
+
+fn signing_chain(text: String) -> String {
+  match decode_signing_input(v: parsed(text: text)) { WireDecoded { value: _ } => "ok"  WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "") }
+}
+
+fn enrol_chain(text: String) -> String {
+  match decode_google_enrolment_request(text: text) { WireDecoded { value: _ } => "ok"  WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "") }
+}
+
+fn key_body(suite: String, enc: String) -> String {
+  join(["{\"suite\":\"", suite, "\",\"encoding\":\"", enc, "\",\"point_b64url\":\"p\"}"], "")
+}
+
+fn sig_body(suite: String, enc: String) -> String {
+  join(["{\"suite\":\"", suite, "\",\"encoding\":\"", enc, "\",\"b64url\":\"s\"}"], "")
+}
+
+fn signing_body(decision: String) -> String {
+  join(["{\"audience\":\"a\",\"enrollment_id\":\"e\",\"challenge\":{\"expires_at\":\"t\",\"nonce_hex\":\"n\"},\"escalation_id\":\"x\",\"request_revision\":\"r\",\"stored_request_text\":\"s\",\"decision\":\"", decision, "\",\"capability_text\":\"c\",\"capability_tag_b64url\":\"g\"}"], "")
+}
+
+fn enrol_body(platform: String) -> String {
+  join(["{\"platform\":\"", platform, "\",\"decision_key\":", key_body(suite: "ECDSA-P256-SHA256", enc: "SEC1-uncompressed"), ",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\",\"id_token\":\"t\"}"], "")
+}
+
+test fn key_suite_and_encoding_rows_match_the_chain() -> Bool {
+  all([key_body(suite: "ECDSA-P256-SHA256", enc: "SEC1-uncompressed"), key_body(suite: "RSA", enc: "SEC1-uncompressed"), key_body(suite: "ECDSA-P256-SHA256", enc: "DER")], t =>
+    reader_key(shape: key_shape(), text: t, path: "decision_key") == key_chain(text: t))
+}
+
+test fn signature_suite_and_encoding_rows_match_the_chain() -> Bool {
+  all([sig_body(suite: "ECDSA-P256-SHA256", enc: "P1363-fixed-width"), sig_body(suite: "RSA", enc: "P1363-fixed-width"), sig_body(suite: "ECDSA-P256-SHA256", enc: "DER")], t =>
+    reader_key(shape: sig_shape(), text: t, path: "signature") == sig_chain(text: t))
+}
+
+test fn decision_row_matches_the_chain() -> Bool {
+  all([signing_body(decision: "approve"), signing_body(decision: "deny"), signing_body(decision: "maybe")], t =>
+    reader_key(shape: signing_input_shape(), text: t, path: "signing_input") == signing_chain(text: t))
+}
+
+test fn platform_row_matches_the_chain() -> Bool {
+  all([enrol_body(platform: "ios"), enrol_body(platform: "android"), enrol_body(platform: "windows")], t =>
+    reader_key(shape: enrolment_shape(), text: t, path: "") == enrol_chain(text: t))
+}
+
+// RED: the platform row is the admission authority: android is declared but not admitted, and the
+// fold refuses it while the same body with the admitted spelling is accepted.
+test fn the_platform_row_discriminates_the_admitted_arm() -> Bool {
+  reader_key(shape: enrolment_shape(), text: enrol_body(platform: "ios"), path: "") == "ok"
+    && reader_key(shape: enrolment_shape(), text: enrol_body(platform: "android"), path: "") == "platform|not an admitted platform"
+}
+
+// RED: a rule whose row admits an undeclared spelling does not bind.
+test fn a_rule_admitting_an_undeclared_spelling_does_not_bind() -> Bool {
+  let bad = WireAdmission { subject: "platform", declared: ["ios", "android"], admitted: ["ios", "windows"] }
+  match bind_record(derived: ["platform"], rules: [WireField { name: "platform", rule: WireAdmittedString { row: bad, cause: "x" } }]) {
+    ShapeRefused { cause: c } => wire_cause_text(c: c) == "policy admits a spelling no declared arm has: platform windows"
+    ShapeBound { shape: _ } => false
+  }
+}

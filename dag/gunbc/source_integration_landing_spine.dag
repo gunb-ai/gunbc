@@ -1,7 +1,7 @@
 module gunbc.source_integration_landing_spine
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, brand }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, serialize_content_hash }
 import std.integer { PositiveInt }
 import std.measure { Minute, minute }
 import std.optional { Optional, Present, Absent }
@@ -395,7 +395,7 @@ fn landing_native_refusal(
     plain_reason: refusal.plain_reason as String,
     responsible_party: refusal.responsible_party as String,
     next_action: refusal.next_action as String,
-    refusal_receipt: refusal.receipt as String,
+    refusal_receipt: serialize_content_hash(hash: refusal.receipt) as String,
   }
 }
 

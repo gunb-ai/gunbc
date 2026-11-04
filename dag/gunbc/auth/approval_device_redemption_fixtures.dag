@@ -5,17 +5,19 @@ import std.algebra { list_append }
 import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
+import gunbc.auth.approval_google_enrolment { google_enrolment_transcript, google_enrolment_nonce }
+import extdeps.apple.app_attest { AttestKeyId }
 import gunbc.auth.approval_device_wire {
   DeviceRedemptionSigningInput, RedemptionChallenge, MobilePlatform, MobileIos, MobileAndroid, PushRegistration,
-  device_redemption_signing_input, enrolment_transcript, platform_wire, approval_device_audience,
+  device_redemption_signing_input, platform_wire, approval_device_audience,
   device_read_client_data, approval_device_pending_path, approval_device_request_path_prefix,
-  EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion,
+  GoogleEnrolmentRequest, ApnsRegistration, SignedRedemption, IosAppAttestAssertion,
   EnrolmentGrant, PendingApproval, VerbCapability, FetchedRequest, EnrolmentReadback, EnrolmentStandingActive,
-  enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
+  google_enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
   fetched_request_json, enrolment_readback_json, redemption_response_json, device_push_update_client_data,
-  device_request_path, device_enrollment_path, enrollment_id_for_code, path_segment,
+  device_request_path, device_enrollment_path, path_segment,
   ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json,
-  EnrolmentRefusalWire, enrolment_refusal_kinds, enrolment_refusal_wire_label, enrolment_refusal_json,
+  GoogleEnrolmentRefusalWire, google_enrolment_refusal_kinds, google_enrolment_refusal_wire_label, google_enrolment_refusal_json,
   decode_push_update, WireDecode, WireDecoded, WireRefused,
   approval_device_enrol_path, approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
 }
@@ -43,7 +45,7 @@ type RedemptionVector {
 
 type EnrolmentVector {
   name: NonEmptyStr
-  code: NonEmptyStr
+  attest_key_id: NonEmptyStr
   platform: MobilePlatform
   point_b64url: NonEmptyStr
 }
@@ -77,13 +79,13 @@ data redemption_vectors: List<RedemptionVector> = [
 ]
 
 data enrolment_vectors: List<EnrolmentVector> = [
-  EnrolmentVector { name: "ios", code: "482913", platform: MobileIos, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
-  EnrolmentVector { name: "android", code: "482913", platform: MobileAndroid, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
+  EnrolmentVector { name: "ios", attest_key_id: "attest-key-1", platform: MobileIos, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
+  EnrolmentVector { name: "android", attest_key_id: "attest-key-1", platform: MobileAndroid, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
 ]
 
 fn enrolment_expected(v: EnrolmentVector) -> NonEmptyStr {
-  enrolment_transcript(
-    code: v.code,
+  google_enrolment_transcript(
+    attest_key_id: v.attest_key_id as AttestKeyId,
     decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: v.point_b64url },
     platform: v.platform,
   )
@@ -113,11 +115,12 @@ fn enrolment_vector_json(v: EnrolmentVector) -> JsonValue {
   json_object(members: [
     json_kv(key: "name", value: json_string(s: v.name as String)),
     json_kv(key: "input", value: json_object(members: [
-      json_kv(key: "code", value: json_string(s: v.code as String)),
+      json_kv(key: "attest_key_id", value: json_string(s: v.attest_key_id as String)),
       json_kv(key: "platform", value: json_string(s: platform_wire(p: v.platform) as String)),
       json_kv(key: "point_b64url", value: json_string(s: v.point_b64url as String)),
     ])),
     json_kv(key: "expected", value: json_string(s: enrolment_expected(v: v) as String)),
+    json_kv(key: "nonce", value: json_string(s: google_enrolment_nonce(transcript: enrolment_expected(v: v)) as String)),
   ])
 }
 
@@ -132,7 +135,7 @@ type ReadVector {
 data read_vectors: List<ReadVector> = [
   ReadVector { name: "pending", path: approval_device_pending_path, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
   ReadVector { name: "request", path: device_request_path(escalation_id: "esc-mtc1-boot-1"), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
-  ReadVector { name: "enrollment_readback", path: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "enrollment_readback", path: device_enrollment_path(enrollment_id: "genr-fixture" as NonEmptyStr), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
 ]
 
 fn read_vector_json(v: ReadVector) -> JsonValue {
@@ -166,17 +169,16 @@ type EnvelopeVector {
 // One envelope per ARM of the enrol route's typed refusal, named by the arm's wire label, so the
 // Swift side decodes each and a new arm without a vector reds the arm-coverage check there.
 // The reason is a fixed string: the vector pins the kind's bytes, not the route's prose.
-fn enrolment_refusal_vector(k: EnrolmentRefusalWire) -> EnvelopeVector {
-  EnvelopeVector { name: ("enrolment_refusal_" + (enrolment_refusal_wire_label(k: k) as String)) as NonEmptyStr, body: enrolment_refusal_json(reason: "fixture refusal", kind: k) }
+fn enrolment_refusal_vector(k: GoogleEnrolmentRefusalWire) -> EnvelopeVector {
+  EnvelopeVector { name: ("enrolment_refusal_" + (google_enrolment_refusal_wire_label(k: k) as String)) as NonEmptyStr, body: google_enrolment_refusal_json(reason: "fixture refusal", kind: k) }
 }
 
-data envelope_vectors: List<EnvelopeVector> = list_append(left: envelope_vectors_fixed, right: map(enrolment_refusal_kinds(), k => enrolment_refusal_vector(k: k)))
+data envelope_vectors: List<EnvelopeVector> = list_append(left: envelope_vectors_fixed, right: map(google_enrolment_refusal_kinds(), k => enrolment_refusal_vector(k: k)))
 
-data fx_env_enrolment_request: EnvelopeVector = EnvelopeVector { name: "enrolment_request", body: enrolment_request_json(r: EnrolmentRequest {
-      code: "482913", platform: MobileIos,
+data fx_env_enrolment_request: EnvelopeVector = EnvelopeVector { name: "enrolment_request", body: google_enrolment_request_json(r: GoogleEnrolmentRequest {
+      platform: MobileIos,
       decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: fx_point },
-      evidence: IosAppAttestAttestation { attest_key_id: "attest-key-1", attestation_b64: "o2NmbXRvYXBwbGUtYXBwYXR0ZXN0" },
-      push: fx_push,
+      attest_key_id: "attest-key-1", attestation_b64: "o2NmbXRvYXBwbGUtYXBwYXR0ZXN0", id_token: "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln",
     }) }
 
 data fx_env_signed_redemption: EnvelopeVector = EnvelopeVector { name: "signed_redemption", body: signed_redemption_json(r: SignedRedemption {
@@ -218,9 +220,9 @@ data fx_env_push_update_client_data: EnvelopeVector = EnvelopeVector { name: "pu
 
 data fx_env_request_path: EnvelopeVector = EnvelopeVector { name: "request_path", body: device_request_path(escalation_id: "esc-mtc1-boot-1") as String }
 
-data fx_env_enrollment_id_for_code_482913: EnvelopeVector = EnvelopeVector { name: "enrollment_id_for_code_482913", body: enrollment_id_for_code(code: "482913") as String }
+data fx_env_enrollment_id_fixture: EnvelopeVector = EnvelopeVector { name: "enrollment_id_fixture", body: "genr-fixture" }
 
-data fx_env_enrollment_path: EnvelopeVector = EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")) as String }
+data fx_env_enrollment_path: EnvelopeVector = EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: "genr-fixture" as NonEmptyStr) as String }
 
 data envelope_vectors_fixed: List<EnvelopeVector> = [
   fx_env_enrolment_request,
@@ -239,7 +241,7 @@ data envelope_vectors_fixed: List<EnvelopeVector> = [
   fx_env_redemption_response_enrollment_unknown,
   fx_env_push_update_client_data,
   fx_env_request_path,
-  fx_env_enrollment_id_for_code_482913,
+  fx_env_enrollment_id_fixture,
   fx_env_enrollment_path,
 ]
 

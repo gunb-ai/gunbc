@@ -68,6 +68,25 @@ import gunbc.live_deploy.member_identity {
   GitWorkerSubtree, GitWorkerSubtreeAt, SubtreeConverged, SubtreeNeedsRegroup,
   RepositorySharedPosture, RepositorySharedPostureAt, RepositorySharedPostureIdentity,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
+
+// WORKER-ROOT-EQUIVALENT-3: the instance rows and the single-home posture/subtree builders. These come
+// from the dashboard-instance module (which imports NO live_deploy module -- cycle-safe; five other
+// live_deploy modules already import it), so the roster gate reads the instance's declared worker account
+// and the posture document is laid out by the same function the emitter hashes.
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, WorkerDedicatedAccount, WorkerIsServiceUser,
+  dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown,
+  dashboard_git_worker_directory_children, dashboard_git_worker_subtree_path,
+  dashboard_git_worker_subtree_confined_children, dashboard_git_worker_subtree_walk_depth,
+  dashboard_git_subtree_readback_is_granted,
+  dashboard_git_worker_posture_readback_keys, DashboardGitConfigPosturePair,
+  dashboard_git_shared_repository_posture_document, dashboard_git_shared_repository_posture_desired_document,
+  dashboard_git_maintenance_service_unit_path, dashboard_git_maintenance_timer_unit_path,
+}
+import extdeps.git { git_local_config_get_command }
+import extdeps.tools.findutils { find_subtree_mode_readback_command }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 
 // WORKER-ROOT-EQUIVALENT-3: the instance rows and the single-home posture/subtree builders. These come
 // from the dashboard-instance module (which imports NO live_deploy module -- cycle-safe; five other
@@ -254,7 +273,7 @@ fn observe_executable(arm: ObservationArm, path: String) -> ObservedMember {
 // The emitter verifies the source against this digest again immediately before the copy, so a build
 // that changes between planning and actuation stops the line rather than installing under a stale
 // identity (gunbc.live_deploy.emit emit_release_member_effects).
-data release_executable_source_path: String = "target/release/gunbc"
+data release_executable_source_path: String = concat(cargo_default_release_dir_rel, "/gunbc")
 
 fn desired_executable() -> ObservedMember {
   observe_executable(arm: OnTheHostItself, path: release_executable_source_path)

@@ -8,7 +8,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  WorkflowRunTriggered, WorkflowRunRequestedActivity,
+  WorkflowRunTriggered, WorkflowRunActivity, WorkflowRunRequestedActivity,
   WorkflowPermissions, PermRead, PermWrite,
   HostedRunner, Ubuntu2404Arm
 }
@@ -27,8 +27,7 @@ import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.ci.ci_spec { gunbc_ci_branch_run_grant_broker_invoke }
-import gunbc.auth.branch_dispatch_federation { branch_run_key_variable, run_scoped_modes }
-import gunbc.auth.branch_run_grant_broker { branch_run_title_variable, branch_run_branch_variable }
+import gunbc.auth.branch_dispatch_federation { branch_run_key_variable }
 
 // THE WORKFLOW THAT ASKS FOR A RUN-SCOPED GRANT ON A BRANCH RUN'S BEHALF (gunbc.auth.branch_run_grant_broker).
 //
@@ -38,8 +37,9 @@ import gunbc.auth.branch_run_grant_broker { branch_run_title_variable, branch_ru
 // requesting run reaches the step that waits for it.
 //
 // IT HOLDS THE ONE CAPABILITY THE REQUESTING RUN MUST NOT: actions: write, to dispatch the grant run.
-// It never fetches the branch's tree -- its checkout takes no ref -- and it reads the run id, attempt
-// and title from GitHub's event, passed through the environment rather than spliced into a script.
+// It never fetches the branch's tree -- its checkout takes no ref -- and it reads the run id and attempt
+// from GitHub's event, passed through the environment rather than spliced into a script; the title and
+// branch it reads from the run's record (gunbc.auth.branch_run_grant_broker).
 //
 // IT RUNS ON A GITHUB-HOSTED RUNNER for the reason gunbc.heal_publisher_workflow gives: the fleet's
 // self-hosted runners also run branch jobs and share a filesystem between slots, so a token minted on
@@ -55,17 +55,46 @@ data branch_run_grant_broker_requesting_workflow: String = "fleet-converge"
 
 data branch_run_grant_broker_required_bins: List<String> = ["gunbc"]
 
-// ONLY A DISPATCHED fleet-converge RUN OF THIS REPOSITORY WHOSE TITLE NAMES A RUN-SCOPED MODE. The
-// title test is a cheap pre-filter so other dispatches spend no runner; the broker entry re-parses the
-// mode exactly, so a title that merely contains the word asks for nothing it maps to no account.
+data branch_run_grant_broker_activity: WorkflowRunActivity = WorkflowRunRequestedActivity
+
+// ONLY A DISPATCHED fleet-converge RUN OF THIS REPOSITORY. The prefilter is a list of terms over payload
+// members, so the job condition and the witness that evaluates it against a payload read one list. It
+// filters on no title: at `requested` the payload's title is the workflow's static name
+// (extdeps.github.actions workflow_run_display_title_at), and a title filter there skipped every run. The
+// broker entry reads the mode from the run itself and refuses a title that names none.
+type BrokerPrefilterTerm
+  = DispatchedRunTerm
+  | RunOfThisRepositoryTerm
+
+data branch_run_grant_broker_prefilter: List<BrokerPrefilterTerm> = [DispatchedRunTerm, RunOfThisRepositoryTerm]
+
+fn broker_prefilter_term_expression(t: BrokerPrefilterTerm) -> String {
+  match t {
+    DispatchedRunTerm => "github.event.workflow_run.event == 'workflow_dispatch'"
+    RunOfThisRepositoryTerm => "github.event.workflow_run.head_repository.full_name == github.repository"
+  }
+}
+
 fn branch_run_grant_broker_job_condition() -> String {
-  join([
-    "github.event.workflow_run.event == 'workflow_dispatch'",
-    " && github.event.workflow_run.head_repository.full_name == github.repository",
-    " && (",
-    join(map(run_scoped_modes(), m => join(["contains(github.event.workflow_run.display_title, ' ", m.mode as String, " ')"], "")), " || "),
-    ")",
-  ], "")
+  join(map(branch_run_grant_broker_prefilter, t => broker_prefilter_term_expression(t: t)), " && ")
+}
+
+// THE PAYLOAD MEMBERS THE PREFILTER READS, as one event delivers them, and the same terms read as a
+// predicate over it.
+type BrokerPayloadReading {
+  originating_event: String
+  head_repository_is_this_repository: Bool
+}
+
+fn broker_prefilter_term_admits(t: BrokerPrefilterTerm, p: BrokerPayloadReading) -> Bool {
+  match t {
+    DispatchedRunTerm => p.originating_event == "workflow_dispatch"
+    RunOfThisRepositoryTerm => p.head_repository_is_this_repository
+  }
+}
+
+fn broker_prefilter_admits(p: BrokerPayloadReading) -> Bool {
+  all(branch_run_grant_broker_prefilter, t => broker_prefilter_term_admits(t: t, p: p))
 }
 
 fn branch_run_grant_broker_checkout_step() -> Step {
@@ -95,8 +124,6 @@ fn branch_run_grant_broker_step() -> Step {
     env: Present { value: [
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
       kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}")),
-      kv(key: branch_run_title_variable as String, value: yaml_string(s: "${{ github.event.workflow_run.display_title }}")),
-      kv(key: branch_run_branch_variable as String, value: yaml_string(s: "${{ github.event.workflow_run.head_branch }}")),
     ] },
     working_directory: none,
     if_condition: none,
@@ -177,7 +204,7 @@ data branch_run_grant_broker_workflow: Workflow = Workflow {
     WorkflowRunTriggered {
       workflows: [branch_run_grant_broker_requesting_workflow],
       branches: ["**"],
-      activity: WorkflowRunRequestedActivity
+      activity: branch_run_grant_broker_activity
     }
   ],
   concurrency: none,

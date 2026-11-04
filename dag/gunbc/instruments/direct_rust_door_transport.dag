@@ -1,5 +1,6 @@
 module gunbc.instruments.direct_rust_door_transport
 
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.rust.cargo_build
 import extdeps.shell
 import v2.compiler.self_host.fixture_synthetic_emission {
@@ -28,7 +29,7 @@ fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
   let build = cargo.Build.BuildManifest(
     workdir: workspace_dir,
     manifest_path: concat(workspace_dir, "/Cargo.toml"),
-    target_dir: concat(workspace_dir, "/target"),
+    target_dir: cargo_default_target_dir(build_root: workspace_dir),
     extra_args: ["--quiet"]
   )
   build.success

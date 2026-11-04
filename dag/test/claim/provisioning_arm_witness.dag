@@ -1,31 +1,58 @@
 module test.claim.provisioning_arm_witness
 
+import gunbc.boot_artifact_delivery {
+  BootControlByFirmwareBootOrder,
+  BootDeliveryPlan,
+  BootDeliveryPlanAdmitted,
+  BootDeliveryPlanned,
+  BootDeliverySolution,
+  BootDeliveryPlanIncoherence,
+  PlanBootControlNotTheDeliverys,
+  PlanControlRouteNotTheTargets,
+  PlanControllerDeliveryWithoutController,
+  PlanEligibilityNotTheDeliverys,
+  PlanEligibilityNotEstablished,
+  PlanNetworkEstablishmentForOtherTarget,
+  BootFromUefiHttp,
+  NetworkAddressedTarget,
+  admit_boot_delivery_plan,
+}
+import extdeps.network.mac { mac_address }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
+import test.claim.machine_intake.boot_artifact_delivery_witness { solver_emitted_pxe_solution, solver_emitted_media_solution }
+import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution, pxe_plan, removable_media_plan, unit, attempt_one, controller_target, network_target, intake_artifact, intake_subject, solution_selecting_control, uefi_http_plan_serving, configfs_plan_without_qualification }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
-import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_of_value }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64 }
+import gunbc.site_pxe_edge { EveryKnownClient }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
-import gunbc.machine_intake.subject { UnitKey }
+import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId }
 import gunbc.fleet.site_pxe_edge_converge {
-  SitePxeEdgeChainloaderPin,
+  SitePxeEdgeChainPin,
+  SitePxeEdgeChainUnpinned,
+  site_pxe_edge_arm64_ipxe_chain_pin,
   SitePxeEdgeChainloaderPinned,
-  SitePxeEdgeChainloaderUnpinned,
   SitePxeEdgeSecureBootStanding,
   SecureBootObserved,
   SecureBootUnobserved,
   SecureBootVerdictBooted,
   SecureBootVerdictRejected,
   site_pxe_edge_chainloader_build_receipt,
+  SitePxeEdgeCommittedArtifact,
 }
 import gunbc.secure_boot_observation { SecureBootDisabled, VendorCommandRejected }
 import gunbc.provisioning.provisioning_arm {
+  ArmRefused,
+  BootDeliveryPlanNotCoherent,
+  EvidenceNotForThisPlan,
+  SeedBoundForOtherAttempt,
+  SeedBoundForOtherUnit,
+  PlanEvidenceAxis,
   provisioning_arm_consumer_frontier,
   provisioning_arm_consumer_ref,
   ArmShape,
-  DeliveryStrategy,
-  PxeOrUefiHttp,
-  VirtualMedia,
   VirtualMediaStanding,
   VirtualMediaAvailable,
   VirtualMediaUnavailable,
@@ -43,11 +70,12 @@ import gunbc.provisioning.provisioning_arm {
   ArmUnobserved,
   ArmRefused,
   FirmwareStandingNotObserved,
-  ChainloaderNotPinned,
+  LoaderChainNotPinned,
   OriginNotObserved,
   SeedBindingNotObserved,
   SecureBootRejectsChainloader,
   provisioning_arm_derive,
+  BootDeliveryNotPlanned,
   provisioning_arm_attempt,
 }
 
@@ -80,9 +108,9 @@ import extdeps.bmc.types { BootTargetHdd, BootTargetUefiHttp }
 import extdeps.provisioning.network_boot { UefiHttpBoot }
 import extdeps.uri { uri_https }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
-import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
-import test.claim.altra_autoinstall_seed_witness { built_seed_and_binding }
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
+import gunbc.provisioning.ubuntu_autoinstall_seed { UbuntuAutoinstallSeedBinding }
+import test.claim.ubuntu_autoinstall_seed_witness { built_seed_and_binding_for }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -90,8 +118,12 @@ fn fixture_origin() -> UbuntuNetworkOrigin? {
   ubuntu_noble_arm64_network_origin()
 }
 
-fn fixture_seed() -> AltraAutoinstallSeedBinding? {
-  match built_seed_and_binding() {
+fn fixture_seed() -> UbuntuAutoinstallSeedBinding? {
+  fixture_seed_for(unit: unit, attempt: attempt_one)
+}
+
+fn fixture_seed_for(unit: UnitKey, attempt: IntakeAttemptId) -> UbuntuAutoinstallSeedBinding? {
+  match built_seed_and_binding_for(unit: unit, attempt: attempt) {
     Present { value: built } => Present { value: built.binding }
     Absent => Absent
   }
@@ -153,21 +185,21 @@ fn fixture_firmware_ready() -> FirmwareNetworkBootStanding {
 
 data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })
 
-fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainloaderPin {
-  SitePxeEdgeChainloaderPinned {
+fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainPin {
+  site_pxe_edge_arm64_ipxe_chain_pin(pin: SitePxeEdgeChainloaderPinned {
     build: site_pxe_edge_chainloader_build_receipt(
       embedded_revision: "ipxe-fixture-revision",
       built_from_commit: "fixture-commit",
       build_target: ipxe_arm64_efi_snponly,
       architecture: Aarch64,
-      digest: digest_a,
+      artifact: SitePxeEdgeCommittedArtifact { path: "artifacts/ipxe/snponly-arm64.efi", digest: digest_a },
       installed_filename: "snponly.efi",
       secure_boot: secure_boot,
     )
-  }
+  })
 }
 
-fn pinned() -> SitePxeEdgeChainloaderPin {
+fn pinned() -> SitePxeEdgeChainPin {
   pin_with(secure_boot: SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: "fixture: booted" })
 }
 
@@ -175,10 +207,10 @@ fn media_available() -> VirtualMediaStanding {
   VirtualMediaAvailable { capability_observation: decl_ref(module_path: "fixture.bmc", decl_name: "virtual_media") }
 }
 
-fn evidence_with(firmware: FirmwareNetworkBootStanding, chainloader: SitePxeEdgeChainloaderPin, virtual_media: VirtualMediaStanding) -> DeliveryEvidence {
+fn evidence_with(firmware: FirmwareNetworkBootStanding, chain: SitePxeEdgeChainPin, virtual_media: VirtualMediaStanding) -> DeliveryEvidence {
   DeliveryEvidence {
     firmware: firmware,
-    chainloader: chainloader,
+    chain: chain,
     virtual_media: virtual_media,
     origin: fixture_origin(),
     seed: fixture_seed(),
@@ -186,25 +218,26 @@ fn evidence_with(firmware: FirmwareNetworkBootStanding, chainloader: SitePxeEdge
 }
 
 fn full_evidence() -> DeliveryEvidence {
-  evidence_with(firmware: fixture_firmware_needs_boot_next(), chainloader: pinned(), virtual_media: media_available())
+  evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: pinned(), virtual_media: media_available())
 }
 
-fn attempt(unit: String) -> AttemptBinding {
-  AttemptBinding { unit: unit as UnitKey, attempt: "attempt-1" }
+// The attempt every plan in the fixture is solved for: the fixture subject's own unit and intake attempt.
+fn attempt() -> AttemptBinding {
+  AttemptBinding { unit: unit, attempt: attempt_one }
 }
 
-fn arm_for(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> ProvisioningArm {
-  provisioning_arm_derive(strategy: strategy, evidence: evidence, attempt: attempt(unit: unit))
+fn arm_for(solution: BootDeliverySolution, evidence: DeliveryEvidence) -> ProvisioningArm {
+  provisioning_arm_derive(solution: solution, evidence: evidence)
 }
 
-fn derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> ArmShape {
-  arm_for(strategy: strategy, evidence: evidence, unit: unit).shape
+fn derive(solution: BootDeliverySolution, evidence: DeliveryEvidence) -> ArmShape {
+  arm_for(solution: solution, evidence: evidence).shape
 }
 
 fn is_unobserved_as(arm: ArmShape, expected: ArmMissingEvidence) -> Bool {
   match arm {
     ArmUnobserved { missing: m } => m == expected
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => false
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
     ArmRefused { cause: _ } => false
   }
@@ -214,52 +247,16 @@ fn is_unobserved_as(arm: ArmShape, expected: ArmMissingEvidence) -> Bool {
 // stops this witness compiling: the type's whole field set is pinned at this one site.
 fn arm_field_set_is_closed(arm: ArmShape) -> Bool {
   match arm {
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => true
+    ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => true
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => true
     ArmUnobserved { missing: _ } => true
     ArmRefused { cause: _ } => true
   }
 }
 
-// The unit identity reaches the arm as the `attempt` field and nowhere else: provisioning_arm_derive
-// computes `shape` from (strategy, evidence) alone, so these witnesses compare shapes for identities no
-// test names a rule for. They are not an allowlist of fleet hostnames.
-fn same_shape_for(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> Bool {
-  arm_for(strategy: strategy, evidence: evidence, unit: unit).shape == arm_for(strategy: strategy, evidence: evidence, unit: "unit-alpha").shape
-}
-
-fn shape_is_identity_independent(strategy: DeliveryStrategy, evidence: DeliveryEvidence) -> Bool {
-  same_shape_for(strategy: strategy, evidence: evidence, unit: "unit-bravo")
-    && same_shape_for(strategy: strategy, evidence: evidence, unit: "owen")
-    && same_shape_for(strategy: strategy, evidence: evidence, unit: "mtcollins1")
-    && same_shape_for(strategy: strategy, evidence: evidence, unit: "srv4")
-    && same_shape_for(strategy: strategy, evidence: evidence, unit: "BRD-0042")
-    && same_shape_for(strategy: strategy, evidence: evidence, unit: "x")
-    && same_shape_for(strategy: strategy, evidence: evidence, unit: "unit-alpha-2")
-    && same_shape_for(strategy: strategy, evidence: evidence, unit: "0")
-}
-
-test fn many_units_with_the_same_evidence_derive_the_same_pxe_shape() -> Bool {
-  shape_is_identity_independent(strategy: PxeOrUefiHttp, evidence: full_evidence())
-}
-
-test fn many_units_with_the_same_evidence_derive_the_same_virtual_media_shape() -> Bool {
-  shape_is_identity_independent(strategy: VirtualMedia, evidence: full_evidence())
-}
-
-test fn many_units_with_unobserving_evidence_derive_the_same_unobserved_shape() -> Bool {
-  shape_is_identity_independent(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: pinned(), virtual_media: media_available()))
-}
-
-test fn the_carried_identity_is_the_identity_given() -> Bool {
-  let a = arm_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
-  provisioning_arm_attempt(arm: a) == attempt(unit: "unit-alpha")
-    && provisioning_arm_attempt(arm: arm_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-bravo")) != provisioning_arm_attempt(arm: a)
-}
-
 test fn two_strategies_with_the_same_identity_derive_different_arms() -> Bool {
-  let p = derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
-  let v = derive(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha")
+  let p = derive(solution: pxe_solution, evidence: full_evidence())
+  let v = derive(solution: removable_media_solution, evidence: full_evidence())
   p != v
 }
 
@@ -271,8 +268,8 @@ fn firmware_is_prepared_via_fixture(f: FirmwarePreparation) -> Bool {
 }
 
 test fn the_pxe_arm_carries_the_pinned_chainloader_and_the_preparation_route() -> Bool {
-  match derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha") {
-    ArmedPxeOrUefiHttp { chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && firmware_is_prepared_via_fixture(f)
+  match derive(solution: pxe_solution, evidence: full_evidence()) {
+    ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: _, seed: _ } => (c.members.head.member.served_path as String) == "snponly.efi" && firmware_is_prepared_via_fixture(f)
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
     ArmUnobserved { missing: _ } => false
     ArmRefused { cause: _ } => false
@@ -280,86 +277,86 @@ test fn the_pxe_arm_carries_the_pinned_chainloader_and_the_preparation_route() -
 }
 
 test fn the_firmware_route_comes_from_the_standing_not_from_a_default() -> Bool {
-  let a = derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
-  let b = derive(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: fixture_firmware_needs_other(), chainloader: pinned(), virtual_media: media_available()), unit: "unit-alpha")
+  let a = derive(solution: pxe_solution, evidence: full_evidence())
+  let b = derive(solution: pxe_solution, evidence: evidence_with(firmware: fixture_firmware_needs_other(), chain: pinned(), virtual_media: media_available()))
   a != b
 }
 
 test fn virtual_media_arm_does_not_need_a_pinned_chainloader() -> Bool {
-  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: SitePxeEdgeChainloaderUnpinned { obligation: "fixture" }, virtual_media: media_available())
-  match derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha") {
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, audience: EveryKnownClient, obligation: "fixture" }, virtual_media: media_available())
+  match derive(solution: removable_media_solution, evidence: e) {
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => true
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => false
     ArmUnobserved { missing: _ } => false
     ArmRefused { cause: _ } => false
   }
 }
 
 test fn unobserved_firmware_is_an_unobserved_arm_not_a_fallback_to_virtual_media() -> Bool {
-  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: pinned(), virtual_media: media_available())
-  is_unobserved_as(arm: derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"), expected: FirmwareStandingNotObserved)
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chain: pinned(), virtual_media: media_available())
+  is_unobserved_as(arm: derive(solution: pxe_solution, evidence: e), expected: FirmwareStandingNotObserved)
 }
 
 test fn an_unpinned_chainloader_is_an_unobserved_arm() -> Bool {
-  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chainloader: SitePxeEdgeChainloaderUnpinned { obligation: "pin it" }, virtual_media: media_available())
-  is_unobserved_as(arm: derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"), expected: ChainloaderNotPinned { obligation: "pin it" })
+  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: SitePxeEdgeChainUnpinned { architecture: Aarch64, audience: EveryKnownClient, obligation: "pin it" }, virtual_media: media_available())
+  is_unobserved_as(arm: derive(solution: pxe_solution, evidence: e), expected: LoaderChainNotPinned { obligation: "pin it" })
 }
 
 test fn a_missing_origin_is_an_unobserved_arm_for_both_strategies() -> Bool {
-  let e = DeliveryEvidence { firmware: fixture_firmware_needs_boot_next(), chainloader: pinned(), virtual_media: media_available(), origin: Absent, seed: fixture_seed() }
-  is_unobserved_as(arm: derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"), expected: OriginNotObserved)
-    && is_unobserved_as(arm: derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha"), expected: OriginNotObserved)
+  let e = DeliveryEvidence { firmware: fixture_firmware_needs_boot_next(), chain: pinned(), virtual_media: media_available(), origin: Absent, seed: fixture_seed() }
+  is_unobserved_as(arm: derive(solution: pxe_solution, evidence: e), expected: OriginNotObserved)
+    && is_unobserved_as(arm: derive(solution: removable_media_solution, evidence: e), expected: OriginNotObserved)
 }
 
 test fn a_missing_seed_is_an_unobserved_arm_for_both_strategies() -> Bool {
-  let e = DeliveryEvidence { firmware: fixture_firmware_needs_boot_next(), chainloader: pinned(), virtual_media: media_available(), origin: fixture_origin(), seed: Absent }
-  is_unobserved_as(arm: derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"), expected: SeedBindingNotObserved)
-    && is_unobserved_as(arm: derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha"), expected: SeedBindingNotObserved)
+  let e = DeliveryEvidence { firmware: fixture_firmware_needs_boot_next(), chain: pinned(), virtual_media: media_available(), origin: fixture_origin(), seed: Absent }
+  is_unobserved_as(arm: derive(solution: pxe_solution, evidence: e), expected: SeedBindingNotObserved)
+    && is_unobserved_as(arm: derive(solution: removable_media_solution, evidence: e), expected: SeedBindingNotObserved)
 }
 
 test fn a_secure_boot_rejection_is_a_refused_arm() -> Bool {
-  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chainloader: pin_with(secure_boot: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "fixture: rejected" }), virtual_media: media_available())
-  match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
+  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: pin_with(secure_boot: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "fixture: rejected" }), virtual_media: media_available())
+  match derive(solution: pxe_solution, evidence: e) {
     ArmRefused { cause: c } => c == SecureBootRejectsChainloader { evidence: "fixture: rejected" }
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => false
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
     ArmUnobserved { missing: _ } => false
   }
 }
 
 test fn unobserved_secure_boot_is_not_armed() -> Bool {
-  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chainloader: pin_with(secure_boot: SecureBootUnobserved { why: "not booted yet" }), virtual_media: media_available())
-  match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
+  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: pin_with(secure_boot: SecureBootUnobserved { why: "not booted yet" }), virtual_media: media_available())
+  match derive(solution: pxe_solution, evidence: e) {
     ArmUnobserved { missing: _ } => true
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => false
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
     ArmRefused { cause: _ } => false
   }
 }
 
 test fn unavailable_virtual_media_is_refused_not_rerouted_to_pxe() -> Bool {
-  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chainloader: pinned(), virtual_media: VirtualMediaUnavailable { cause: "catalog row lacks the capability" })
-  match derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha") {
+  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: pinned(), virtual_media: VirtualMediaUnavailable { cause: "catalog row lacks the capability" })
+  match derive(solution: removable_media_solution, evidence: e) {
     ArmRefused { cause: _ } => true
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => false
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
     ArmUnobserved { missing: _ } => false
   }
 }
 
 test fn the_refused_firmware_standing_is_terminal() -> Bool {
-  let e = evidence_with(firmware: Refused { cause: FirmwareReadRefused { refusal: VendorCommandRejected { detail: "fixture" as NonEmptyStr } }, gaps: [] }, chainloader: pinned(), virtual_media: media_available())
-  match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
+  let e = evidence_with(firmware: Refused { cause: FirmwareReadRefused { refusal: VendorCommandRejected { detail: "fixture" as NonEmptyStr } }, gaps: [] }, chain: pinned(), virtual_media: media_available())
+  match derive(solution: pxe_solution, evidence: e) {
     ArmRefused { cause: _ } => true
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => false
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
     ArmUnobserved { missing: _ } => false
   }
 }
 
 test fn an_arm_has_no_alternates_field_and_the_field_set_is_closed() -> Bool {
-  arm_field_set_is_closed(arm: derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha"))
-    && arm_field_set_is_closed(arm: derive(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha"))
+  arm_field_set_is_closed(arm: derive(solution: pxe_solution, evidence: full_evidence()))
+    && arm_field_set_is_closed(arm: derive(solution: removable_media_solution, evidence: full_evidence()))
 }
 
 // PAIRING OBLIGATION: every other test supplies fixture_seed() as evidence, and an Absent fixture would
@@ -390,9 +387,9 @@ test fn the_fixture_standings_are_the_shapes_their_names_say() -> Bool {
 }
 
 test fn a_ready_standing_arms_pxe_with_no_preparation() -> Bool {
-  let e = evidence_with(firmware: fixture_firmware_ready(), chainloader: pinned(), virtual_media: media_available())
-  match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
-    ArmedPxeOrUefiHttp { chainloader: _, firmware: FirmwareAlreadyReady, origin: _, seed: _ } => true
+  let e = evidence_with(firmware: fixture_firmware_ready(), chain: pinned(), virtual_media: media_available())
+  match derive(solution: pxe_solution, evidence: e) {
+    ArmedPxeOrUefiHttp { chain: _, firmware: FirmwareAlreadyReady, origin: _, seed: _ } => true
     _ => false
   }
 }
@@ -418,4 +415,213 @@ test fn the_arm_consumer_frontier_is_pending_until_the_named_actuator_appears() 
          condition: provisioning_arm_consumer_frontier,
          present_decls: [decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps_other")],
        ) == DissolutionPending
+}
+
+// THE ROUTE IS THE SOLVER'S, NOT THE EVIDENCE'S. A plan that selected the PXE chain arms as network boot
+// even when removable-media evidence is fully available; it can never come out as removable media.
+test fn a_pxe_plan_never_arms_as_removable_media_even_with_media_available() -> Bool {
+  match derive(solution: pxe_solution, evidence: full_evidence()) {
+    ArmedPxeOrUefiHttp { chain: _, firmware: _, origin: _, seed: _ } => true
+    _ => false
+  }
+}
+
+test fn a_removable_media_plan_never_arms_as_network_boot() -> Bool {
+  match derive(solution: removable_media_solution, evidence: full_evidence()) {
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => true
+    _ => false
+  }
+}
+
+test fn a_solution_that_planned_nothing_refuses_the_arm_whatever_the_evidence() -> Bool {
+  match derive(solution: refused_solution, evidence: full_evidence()) {
+    ArmRefused { cause: BootDeliveryNotPlanned { cause: _ } } => true
+    _ => false
+  }
+}
+
+// INHABITANCE: the solutions the REAL solver emits (not the supplied fixtures) drive the arm, and the arm
+// follows the plan's route: a solved PXE plan yields the PXE arm, a solved media plan the media arm. The
+// shapes also equal those derived from the supplied fixtures, so the fixtures inhabit the interface.
+test fn the_solvers_emitted_plans_drive_the_arm_by_their_route() -> Bool {
+  let p = derive(solution: solver_emitted_pxe_solution(), evidence: full_evidence())
+  let v = derive(solution: solver_emitted_media_solution(), evidence: full_evidence())
+  p == derive(solution: pxe_solution, evidence: full_evidence())
+    && v == derive(solution: removable_media_solution, evidence: full_evidence())
+    && p != v
+}
+
+// THE JOINS. Evidence arrives independently of the solver's plan, so each observation naming a unit or an
+// attempt is compared with the plan's own subject; a mismatch withholds the arm. Each RED differs from the
+// positive control (pxe_solution with full_evidence, armed above) in exactly one coordinate.
+fn other_unit() -> UnitKey {
+  "BRD-000778" as UnitKey
+}
+
+fn other_attempt() -> IntakeAttemptId {
+  "intake-20260830-0002" as IntakeAttemptId
+}
+
+fn evidence_with_seed(seed: UbuntuAutoinstallSeedBinding?) -> DeliveryEvidence {
+  DeliveryEvidence {
+    firmware: fixture_firmware_needs_boot_next(),
+    chain: pinned(),
+    virtual_media: media_available(),
+    origin: fixture_origin(),
+    seed: seed,
+  }
+}
+
+fn refused_for(shape: ArmShape, axis: PlanEvidenceAxis) -> Bool {
+  shape == ArmRefused { cause: EvidenceNotForThisPlan { axis: axis } }
+}
+
+test fn a_seed_bound_for_another_unit_withholds_both_arms() -> Bool {
+  let e = evidence_with_seed(seed: fixture_seed_for(unit: other_unit(), attempt: attempt_one))
+  refused_for(shape: derive(solution: pxe_solution, evidence: e), axis: SeedBoundForOtherUnit)
+    && refused_for(shape: derive(solution: removable_media_solution, evidence: e), axis: SeedBoundForOtherUnit)
+}
+
+test fn a_seed_bound_for_another_attempt_withholds_both_arms() -> Bool {
+  let e = evidence_with_seed(seed: fixture_seed_for(unit: unit, attempt: other_attempt()))
+  refused_for(shape: derive(solution: pxe_solution, evidence: e), axis: SeedBoundForOtherAttempt)
+    && refused_for(shape: derive(solution: removable_media_solution, evidence: e), axis: SeedBoundForOtherAttempt)
+}
+
+// THE ADMISSION BOUNDARY. A supplied plan is not solver-admitted by being a BootDeliveryPlan: the arm refuses
+// one whose fields do not cohere, whatever evidence exists.
+fn incoherence_of(plan: BootDeliveryPlan) -> BootDeliveryPlanIncoherence? {
+  match derive(solution: BootDeliveryPlanned { plan: plan }, evidence: full_evidence()) {
+    ArmRefused { cause: BootDeliveryPlanNotCoherent { cause: c } } => Present { value: c }
+    _ => none
+  }
+}
+
+test fn a_media_plan_over_the_firmware_boot_order_route_is_incoherent() -> Bool {
+  match incoherence_of(plan: BootDeliveryPlan {
+    target: removable_media_plan.target,
+    artifact: removable_media_plan.artifact,
+    delivery: removable_media_plan.delivery,
+    boot_control: removable_media_plan.boot_control,
+    boot_control_route: BootControlByFirmwareBootOrder,
+    eligibility: removable_media_plan.eligibility,
+  }) {
+    Present { value: PlanControlRouteNotTheTargets { target: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_media_delivery_on_a_network_addressed_target_is_incoherent() -> Bool {
+  match incoherence_of(plan: BootDeliveryPlan {
+    target: network_target,
+    artifact: removable_media_plan.artifact,
+    delivery: removable_media_plan.delivery,
+    boot_control: removable_media_plan.boot_control,
+    boot_control_route: BootControlByFirmwareBootOrder,
+    eligibility: removable_media_plan.eligibility,
+  }) {
+    Present { value: PlanControllerDeliveryWithoutController { target: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_pxe_plan_carrying_another_targets_establishment_is_incoherent() -> Bool {
+  match incoherence_of(plan: BootDeliveryPlan {
+    target: NetworkAddressedTarget { subject: intake_subject, mac: mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 2) },
+    artifact: pxe_plan.artifact,
+    delivery: pxe_plan.delivery,
+    boot_control: pxe_plan.boot_control,
+    boot_control_route: pxe_plan.boot_control_route,
+    eligibility: pxe_plan.eligibility,
+  }) {
+    Present { value: PlanNetworkEstablishmentForOtherTarget { plan_target: _, establishment_target: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_media_plan_whose_eligibility_selected_another_delivery_is_incoherent() -> Bool {
+  match incoherence_of(plan: BootDeliveryPlan {
+    target: removable_media_plan.target,
+    artifact: removable_media_plan.artifact,
+    delivery: removable_media_plan.delivery,
+    boot_control: removable_media_plan.boot_control,
+    boot_control_route: removable_media_plan.boot_control_route,
+    eligibility: pxe_plan.eligibility,
+  }) {
+    Present { value: PlanEligibilityNotTheDeliverys { selected: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_plan_whose_boot_control_is_not_its_deliverys_is_incoherent() -> Bool {
+  match incoherence_of(plan: BootDeliveryPlan {
+    target: removable_media_plan.target,
+    artifact: removable_media_plan.artifact,
+    delivery: removable_media_plan.delivery,
+    boot_control: BootFromUefiHttp,
+    boot_control_route: removable_media_plan.boot_control_route,
+    eligibility: removable_media_plan.eligibility,
+  }) {
+    Present { value: PlanBootControlNotTheDeliverys { declared: _, derived: _ } } => true
+    _ => false
+  }
+}
+
+// The seed witnesses' HTTP-boot fixture pairs a PxeChainBoot delivery with BootFromUefiHttp: it is a seed
+// input, NOT an admitted plan, and the boundary refuses it. It is no evidence that HTTP delivery is admitted.
+test fn the_seed_fixtures_http_boot_control_over_a_pxe_delivery_is_refused() -> Bool {
+  match solution_selecting_control(control: BootFromUefiHttp, client_arch: Present { value: UefiArm64 }) {
+    BootDeliveryPlanned { plan: p } =>
+      match incoherence_of(plan: p) {
+        Present { value: PlanBootControlNotTheDeliverys { declared: _, derived: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// An evidence-bearing arm must carry the evidence of ITS delivery: a UEFI HTTP delivery whose params serve
+// another artifact is refused although its selected-evidence constructor family is right.
+test fn a_uefi_http_delivery_serving_another_artifact_is_incoherent() -> Bool {
+  match incoherence_of(plan: uefi_http_plan_serving(digest: content_hash_of_value(value: "another-artifact"))) {
+    Present { value: PlanEligibilityNotTheDeliverys { selected: _ } } => true
+    _ => false
+  }
+}
+
+// Missing eligibility evidence is never an admitted fact: a UEFI HTTP plan serving the plan's artifact with an
+// EMPTY evidence list is refused as not established (it passed admission before), and so is a configfs plan.
+test fn an_empty_uefi_http_evidence_plan_is_not_admitted() -> Bool {
+  match incoherence_of(plan: uefi_http_plan_serving(digest: intake_artifact.digest)) {
+    Present { value: PlanEligibilityNotEstablished { delivery: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_configfs_plan_with_an_empty_qualification_is_not_admitted() -> Bool {
+  match incoherence_of(plan: configfs_plan_without_qualification()) {
+    Present { value: PlanEligibilityNotEstablished { delivery: _ } } => true
+    _ => false
+  }
+}
+
+
+// INHABITANCE: the plans the real solver emits are admitted by the boundary, so the boundary refuses supplied
+// incoherence without refusing the real producer's output (deleting the solver route makes this go red).
+fn solver_plan_is_admitted(solution: BootDeliverySolution) -> Bool {
+  match solution {
+    BootDeliveryPlanned { plan: p } =>
+      match admit_boot_delivery_plan(plan: p) {
+        BootDeliveryPlanAdmitted { plan: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn the_solvers_emitted_plans_are_admitted_and_the_fixtures_are_too() -> Bool {
+  solver_plan_is_admitted(solution: solver_emitted_pxe_solution())
+    && solver_plan_is_admitted(solution: solver_emitted_media_solution())
+    && solver_plan_is_admitted(solution: pxe_solution)
+    && solver_plan_is_admitted(solution: removable_media_solution)
 }

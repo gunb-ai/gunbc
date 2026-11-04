@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.measure { ByteSize }
 import std.types { Milliseconds, NonEmptyStr, Seconds, String }
+import extdeps.bmc.ipmi { IpmiCipherSuite, ipmi_cipher_suite_argv }
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -80,10 +81,13 @@ data sol_console_capture_bash_emit_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
+// cipher_suite is the route's lanplus cipher suite, rendered through extdeps.bmc.ipmi ipmi_cipher_suite_argv like
+// every other lanplus command (Absent renders no -C); the ObmcConsoleCli transport does not read it.
 type SolConsoleSendIntent {
   bmc_host: NonEmptyStr
   transport: SolConsoleTransport
   username: NonEmptyStr
+  cipher_suite: IpmiCipherSuite?
   input: String
   settle_seconds: Seconds
   read_timeout_seconds: Seconds
@@ -107,7 +111,8 @@ fn sol_console_send_script(intent: SolConsoleSendIntent) -> String {
   let u = intent.username as String
   let settle = to_string(intent.settle_seconds)
   let read = to_string(intent.read_timeout_seconds)
-  let ipmi = concat(concat("ipmitool -I lanplus -H \"", h), concat("\" -U \"", concat(u, "\" -E")))
+  let suite_words = join(map(ipmi_cipher_suite_argv(suite: intent.cipher_suite), w => concat(w, " ")), "")
+  let ipmi = concat(concat(concat("ipmitool -I lanplus ", suite_words), concat("-H \"", h)), concat("\" -U \"", concat(u, "\" -E")))
   let feed = concat(
     concat(concat("{ sleep ", settle), concat("; printf '%b' '", intent.input)),
     concat(concat("'; sleep ", read), "; printf '~.\\n'; }"),

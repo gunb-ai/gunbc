@@ -1,0 +1,91 @@
+module test.claim.fabric.fabric_allocation_store_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE ALLOCATION STORE IS MINTED FROM ITS DECLARATIONS OVER A HOST-STATE TREE AND CANNOT BE SPELLED OR MINTED FROM A
+// PATH. gunbc.fabric.fabric_allocation_store FabricAllocationStore is sole_constructor; every broker, grant, observation
+// and workspace or runner consumer takes it, and only fabric_allocation_store(tree) builds it. Each RED hands the
+// compiler a module outside the defining file and asserts the refusal on the real acceptance path:
+//   - a forged literal, a forged cast and a store around a LITERAL PATH: each EXACTLY ONE SoleConstructorViolation;
+//   - the deleted root authority (gunbc.fabric.fabric_control_plane fabric_control_plane_store_root) and a bare root
+//     handed where the store is required: each at least one blocking diagnostic beyond a baseline importing the same
+//     closure (gunbc.compile_diagnostic_census).
+// The GREEN is the lawful route, the mint into a store operation. WHAT IS SEALED IS CONSTRUCTION: field reads are not
+// sealed, so a holder can read store.root, and no rung is claimed for reaching the root. NOT closed here: any module
+// can still call the hold library over a path of its own (the expecting-red probe below). The tree's own residual
+// (isolated_host_state_tree takes any directory) is gunbc.host_state_root's, not restated here.
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data forged_store_literal_source: String = "module probe_allocation_store_literal\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nfn f(s: FabricAllocationStore) -> FabricAllocationStore {\n  FabricAllocationStore { root: s.root }\n}\n"
+
+data forged_store_cast_source: String = "module probe_allocation_store_cast\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nfn f(r: NonEmptyStr) -> FabricAllocationStore {\n  r as FabricAllocationStore\n}\n"
+
+data literal_path_store_source: String = "module probe_allocation_store_literal_path\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nfn f() -> FabricAllocationStore {\n  FabricAllocationStore { root: \"/tmp/forged-allocation\" }\n}\n"
+
+data deleted_root_source: String = "module probe_allocation_deleted_root\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nimport gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }\nfn f() -> NonEmptyStr {\n  fabric_control_plane_store_root()\n}\n"
+
+data bare_root_as_store_source: String = "module probe_allocation_bare_root\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nfn f(r: NonEmptyStr) -> DurableHoldObservation {\n  fabric_allocation_observe_hold(store: r, key: \"srv3-06\")\n}\n"
+
+data lawful_store_source: String = "module probe_allocation_lawful\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nfn f(t: HostStateTree) -> String {\n  match fabric_allocation_store(tree: t) {\n    FabricAllocationStoreReady { store } => match fabric_allocation_observe_hold(store: store, key: \"srv3-06\") { _ => \"observed\" }\n    FabricAllocationStoreUnready { detail } => detail as String\n  }\n}\n"
+
+data closure_baseline_source: String = "module probe_allocation_baseline\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data plain_hold_literal_path_source: String = "module probe_allocation_plain_literal_path\nimport std.types { NonEmptyStr, String }\nimport std.durable_exclusive_hold { DurableHoldObservation }\nimport gunbc.host_state_root { HostStateTree, host_state_tree }\nimport gunbc.durable_exclusive_hold_file_store { observe_file_hold }\nimport gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold }\nfn f() -> DurableHoldObservation {\n  observe_file_hold(root: \"/any/literal\", key: \"srv3-06\")\n}\n"
+
+data operator_tree_source: String = "module probe_allocation_operator_tree\nimport std.types { NonEmptyStr, String }\nimport std.process { ProcessExit }\nimport gunbc.instruments.fabric_control_plane_live_probe { fci1_disposable_release }\nfn f() -> ProcessExit {\n  fci1_disposable_release(tree: \"/any/operator/dir\")\n}\n"
+
+data operator_tree_baseline_source: String = "module probe_allocation_operator_tree_baseline\nimport std.types { NonEmptyStr, String }\nimport std.process { ProcessExit }\nimport gunbc.instruments.fabric_control_plane_live_probe { fci1_disposable_release }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+test fn a_forged_allocation_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_store_literal_source, subject: "FabricAllocationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_allocation_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_store_cast_source, subject: "FabricAllocationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn an_allocation_store_from_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_path_store_source, subject: "FabricAllocationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_deleted_root_authority_does_not_resolve() -> ProcessExit {
+  census_exit(blocking_delta(hostile: deleted_root_source, safe: closure_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_bare_root_is_not_an_allocation_store() -> ProcessExit {
+  census_exit(blocking_delta(hostile: bare_root_as_store_source, safe: closure_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_allocation_mint_route_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful_store_source, safe: closure_baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful_store_source, subject: "FabricAllocationStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// AN EXPECTING-RED PROBE, recorded as what holds TODAY (gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module): a foreign module that observes a hold over a literal path
+// through the hold library is ACCEPTED. When the ambient-authority lane lands this must go red; it is not evidence
+// that the route is closed.
+test fn the_plain_hold_library_over_a_literal_path_is_accepted_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: plain_hold_literal_path_source, safe: closure_baseline_source, holds: fn(n) { n <= 0 }))
+}
+
+// A SECOND EXPECTING-RED PROBE, for the one caller-chosen-root route this change adds (gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module, the FCI1 instrument's specimen): a foreign module hands the
+// live instrument's disposable entry any directory it likes, and the instrument mints an allocation store over it
+// (gunbc.instruments.fabric_control_plane_live_probe fci1_disposable_store, through
+// gunbc.host_state_root isolated_host_state_tree). It is ACCEPTED today; it must go red when the trigger capability lands.
+test fn an_operator_handed_tree_mints_an_allocation_store_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: operator_tree_source, safe: operator_tree_baseline_source, holds: fn(n) { n <= 0 }))
+}

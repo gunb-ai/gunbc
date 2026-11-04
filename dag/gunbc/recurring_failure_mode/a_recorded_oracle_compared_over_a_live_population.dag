@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.a_recorded_oracle_compared_over_a_live_population
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_recorded_oracle_compared_over_a_live_population: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_recorded_oracle_compared_over_a_live_population" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a witness-side lens that refuses a claim comparing a recorded literal to a value folded over a repository population the claim does not supply (a data roster read through a production module, such as fleet_reach_probe_targets), enrolled with a fixture red that maps a live roster into a pinned string and a control that maps a supplied roster",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a claim pins bytes recorded once over a closed population (the hosts enrolled at the recording) but re-derives them over the live population every time it runs. The recording is a sound oracle, an independent referent from a past head, and the comparison is not: the left side is an open population, the right side a closed one, so the claim is a change detector for the roster rather than a check of the interface it names. DESIGN section 5 (a live repository population may be compared to a literal only when the literal is grounded in a controlled fixture; completeness is an identity join, not an equality) and section 3 (a witness discriminates at one interface; its inputs are supplied values).",
+
+    "HARM: every correct enrollment turns the claim red while no byte of the subject changed, the red is found later by whoever runs the file (nothing on the required path evaluates a witness, gunbc.recurring_failure_mode a_witness_population_reds_on_main_with_nothing_gating_it), and the repair reflex is to re-record the pin with the new host -- which keeps the change detector and buys the next red. The quieter harm: while red, the pin no longer distinguishes a shaper regression from a roster change, so a real regression landing in that window is invisible.",
+
+    "SPECIMEN (2026-10-24, snappy-cat-148): test.claim.fleet.fleet_ssh_target_address_witness every_enrolled_host_renders_byte_identically_at_port_22 rendered over map(fleet_reach_probe_targets) and compared to bytes recorded over six hosts at the S2(b1) head and re-recorded by gunbc#14108. gunbc#14762 enrolled mtcollins1 (git log -S 'host: operator_host_mtcollins1' on gunbc.fleet.fleet_enrollment names only it), and the claim went red on main: the live render carried one extra host block and, with that block removed, was byte-identical to the recording. The repair supplies the recorded (host, endpoint) population at the crossing, keeps the live roster in the inhabitance claims that resolve every enrolled host through the real producer, and adds a recorded -> enrolled join so a recorded host's endpoint cannot drift past the pin unseen.",
+
+    "RECOGNITION RULE. In a claim that compares to a recorded literal, find what the compared value is folded over. If it is a roster the claim imports from production (a data row of hosts, modules, sites) rather than a list the claim supplies, the claim is this class. The cheap test: would a correct addition to the roster turn the claim red without any change to the function the claim is named for? If yes, supply the population and move the live roster to a claim that asserts a property of every member, never bytes of the whole.",
+
+    "RUNG found at 1, mitigatable: per-file review and whoever happens to run the witness catch it. ATTAINABLE CEILING 2, mechanically preventable: whether a compared expression's closure folds over an imported data roster is decidable over the accepted tree, but a lens cannot tell a roster that is the claim's subject from one that is only its input, so the refusal needs a declared exemption and stays a lens, not construction.",
+  ],
+
+  evidence: [],
+}

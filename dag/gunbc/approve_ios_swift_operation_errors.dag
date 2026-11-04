@@ -1,0 +1,288 @@
+module gunbc.approve_ios_swift_operation_errors
+
+import std.types { NonEmptyStr, String, List }
+import std.logic { Bool }
+import std.algebra { list_append }
+import std.optional { Present }
+import gunbc.approve_ios_enrolment_machine { EnrolmentPhase, PhaseSignedOut, PhaseEnrolled, PhaseRevoked, phase_name }
+import gunbc.approve_ios_operation_errors {
+  AppOperation, OpConfiguration, OpEnrolmentRead, OpSignIn, OpSignOut, OpApnsRegistration, OpPushForward, OpInboxRefresh, OpRequestFetch, OpRedemption,
+  OperationOutcome, OperationSucceeded, OperationFailed, OperationErrorSlot, NoCurrentError, CurrentError,
+  RelevanceCell, operation_name, app_operations, slot_after, operation_relevant_in, relevance_cells,
+}
+import v2.extdeps.languages.swift.syntax {
+  SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftSwitchCase, SwiftStaticModifier, SwiftMutatingModifier, SwiftPrivateModifier,
+  SwiftImportDecl, SwiftAttribute, SwiftFinalModifier, SwiftClassDecl, SwiftTuplePattern, SwiftVariableDecl, SwiftVar, SwiftIdentifierPattern,
+  SwiftComputedPropertyDecl, SwiftStructDecl,
+  sw_t, sw_tel, sw_tarr, sw_tdict, sw_id, sw_dot, sw_mem, sw_path, sw_call, sw_calln, sw_callt, sw_cloe, sw_sub, sw_pos, sw_arg, sw_str, sw_strs,
+  sw_bool, sw_dict, sw_tuple, sw_not, sw_expr, sw_ret, sw_assign, sw_var, sw_if, sw_cond, sw_for, sw_switch, sw_case, sw_default,
+  sw_pexpr, sw_pcase, sw_plet, sw_cases, sw_case_payload, sw_param, sw_p_, sw_func, sw_enum, sw_doc, sw_cmt, sw_import,
+}
+import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
+
+// TWO GENERATED SWIFT FILES FOR THE APP'S ERROR LIFETIME (gunbc.approve_ios_operation_errors):
+//   apps/approve-ios/Approve/OperationErrors.swift       the keyed error set. Its `record` arms are
+//     PRINTED BY EVALUATING slot_after on each outcome arm, and its relevance table by evaluating
+//     operation_relevant_in over the closed operation x phase product (only the true cells become
+//     cases), so an edit to either rule in the .dag changes the Swift;
+//   apps/approve-ios/ApproveTests/OperationErrorsTests.swift   the discriminating test.
+//
+// THE TEST'S ORACLE IS NOT THE MODEL. error_scenarios and expected_relevance below state the ruling
+// as literals, without calling the rule they check. The same rows are run against the .dag model by
+// test.claim.approve_ios_operation_errors_witness and against the Swift by the XCTest, so one
+// statement of the ruling judges both realizations. The 503 scenario is the operator's report:
+// an inbox refusal followed by a successful refresh shows nothing.
+//
+// STANDING: nothing on the merge path compiles Swift (gunbc.approve_ios_app
+// approve_ios_vector_check_unenrolled_frontier); the XCTest is executed by an operator on a Mac.
+// The merge path checks the printed bytes, by the drift gate.
+
+type ScenarioStep
+  = StepRecord { operation: AppOperation, outcome: OperationOutcome }
+  | StepEnter { phase: EnrolmentPhase }
+
+type ErrorScenario {
+  name: String
+  doc: String
+  steps: List<ScenarioStep>
+  shown: List<String>
+}
+
+data error_scenarios: List<ErrorScenario> = [
+  ErrorScenario {
+    name: "testAnErrorClearsOnTheSameOperationsNextSuccess",
+    doc: "The operator's report: an inbox read refused 503 is gone once the next inbox read succeeds.",
+    steps: [
+      StepRecord { operation: OpInboxRefresh, outcome: OperationFailed { message: "server refused 503" } },
+      StepRecord { operation: OpInboxRefresh, outcome: OperationSucceeded },
+    ],
+    shown: [],
+  },
+  ErrorScenario {
+    name: "testAFailureIsShownUntilItsOperationAnswers",
+    doc: "The positive control: a failure with no later attempt of its operation is shown.",
+    steps: [StepRecord { operation: OpInboxRefresh, outcome: OperationFailed { message: "server refused 503" } }],
+    shown: ["server refused 503"],
+  },
+  ErrorScenario {
+    name: "testAnotherOperationsSuccessLeavesTheError",
+    doc: "Errors are keyed by operation: an inbox success says nothing about a push token that was not forwarded.",
+    steps: [
+      StepRecord { operation: OpPushForward, outcome: OperationFailed { message: "APNs token not forwarded" } },
+      StepRecord { operation: OpInboxRefresh, outcome: OperationSucceeded },
+    ],
+    shown: ["APNs token not forwarded"],
+  },
+  ErrorScenario {
+    name: "testARepeatedFailureReplacesAndNeverAccumulates",
+    doc: "One slot per operation: the latest failure is the current state, not a log of every attempt.",
+    steps: [
+      StepRecord { operation: OpInboxRefresh, outcome: OperationFailed { message: "server refused 503" } },
+      StepRecord { operation: OpInboxRefresh, outcome: OperationFailed { message: "transport failed" } },
+    ],
+    shown: ["transport failed"],
+  },
+  ErrorScenario {
+    name: "testLeavingEnrolledDropsTheEnrolmentsErrors",
+    doc: "An operation no longer relevant takes its error with it; the launch-time configuration error stays.",
+    steps: [
+      StepRecord { operation: OpInboxRefresh, outcome: OperationFailed { message: "server refused 503" } },
+      StepRecord { operation: OpConfiguration, outcome: OperationFailed { message: "no server configuration" } },
+      StepEnter { phase: PhaseSignedOut },
+    ],
+    shown: ["no server configuration"],
+  },
+]
+
+type ExpectedRelevance {
+  operation: AppOperation
+  signed_out: Bool
+  enrolled: Bool
+  revoked: Bool
+}
+
+data expected_relevance: List<ExpectedRelevance> = [
+  ExpectedRelevance { operation: OpConfiguration, signed_out: true, enrolled: true, revoked: true },
+  ExpectedRelevance { operation: OpEnrolmentRead, signed_out: true, enrolled: true, revoked: true },
+  ExpectedRelevance { operation: OpSignIn, signed_out: true, enrolled: false, revoked: false },
+  ExpectedRelevance { operation: OpSignOut, signed_out: false, enrolled: true, revoked: true },
+  ExpectedRelevance { operation: OpApnsRegistration, signed_out: false, enrolled: true, revoked: false },
+  ExpectedRelevance { operation: OpPushForward, signed_out: false, enrolled: true, revoked: false },
+  ExpectedRelevance { operation: OpInboxRefresh, signed_out: false, enrolled: true, revoked: false },
+  ExpectedRelevance { operation: OpRequestFetch, signed_out: false, enrolled: true, revoked: false },
+  ExpectedRelevance { operation: OpRedemption, signed_out: false, enrolled: true, revoked: false },
+]
+
+fn expected_relevance_in(r: ExpectedRelevance, p: EnrolmentPhase) -> Bool {
+  match p {
+    PhaseSignedOut => r.signed_out
+    PhaseEnrolled => r.enrolled
+    PhaseRevoked => r.revoked
+  }
+}
+
+// ── The realization ──────────────────────────────────────────────────────────────────────────
+fn oe_operation_expr(o: AppOperation) -> SwiftExpr { sw_dot(n: operation_name(o: o) as String) }
+
+fn oe_phase_expr(p: EnrolmentPhase) -> SwiftExpr { sw_dot(n: phase_name(p: p) as String) }
+
+fn oe_messages_at_operation() -> SwiftExpr { sw_sub(b: sw_id(n: "messages"), a: [sw_pos(v: sw_id(n: "operation"))]) }
+
+// What the slot slot_after names becomes in the dictionary: no entry, or the failure's message.
+fn oe_slot_value(s: OperationErrorSlot) -> SwiftExpr {
+  match s {
+    NoCurrentError => sw_id(n: "nil")
+    CurrentError { message: _ } => sw_id(n: "message")
+  }
+}
+
+fn oe_record_cases() -> List<SwiftSwitchCase> {
+  [
+    sw_case(p: [sw_pexpr(e: sw_dot(n: "succeeded"))], s: [sw_assign(l: oe_messages_at_operation(), r: oe_slot_value(s: slot_after(outcome: OperationSucceeded)))]),
+    sw_case(p: [sw_pcase(n: "failed", a: [sw_plet(n: "message")])], s: [sw_assign(l: oe_messages_at_operation(), r: oe_slot_value(s: slot_after(outcome: OperationFailed { message: "message" })))]),
+  ]
+}
+
+fn oe_relevance_case(c: RelevanceCell) -> SwiftSwitchCase {
+  sw_case(
+    p: [SwiftTuplePattern { elements: [sw_pexpr(e: oe_operation_expr(o: c.operation)), sw_pexpr(e: oe_phase_expr(p: c.phase))] }],
+    s: [sw_ret(e: sw_bool(b: true))]
+  )
+}
+
+fn oe_relevance_cases() -> List<SwiftSwitchCase> {
+  list_append(
+    left: map(filter(relevance_cells(), c => operation_relevant_in(o: c.operation, p: c.phase)), c => oe_relevance_case(c: c)),
+    right: [sw_default(s: [sw_ret(e: sw_bool(b: false))])]
+  )
+}
+
+fn oe_operation_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_operation_errors AppOperation, spelled by operation_name, in display order."],
+    d: sw_enum(n: "AppOperation", i: [sw_t(n: "String"), sw_t(n: "CaseIterable")], m: [sw_cases(n: map(app_operations(), o => operation_name(o: o) as String))])
+  )
+}
+
+fn oe_outcome_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_operation_errors OperationOutcome: what one attempt of an operation came to."],
+    d: sw_enum(n: "OperationOutcome", i: [sw_t(n: "Equatable")], m: [
+      sw_cases(n: ["succeeded"]),
+      sw_case_payload(n: "failed", a: [sw_tel(t: sw_t(n: "String"))]),
+    ])
+  )
+}
+
+fn oe_errors_struct() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_operation_errors: the CURRENT error of each operation, never a log. The glue records every attempt's outcome, success included."],
+    d: SwiftStructDecl { attributes: [], modifiers: [], name: "OperationErrors", inherits: [sw_t(n: "Equatable")], members: [
+      SwiftVariableDecl { attributes: [], modifiers: [SwiftPrivateModifier], keyword: SwiftVar, pattern: SwiftIdentifierPattern { name: "messages" }, annotation: Present { value: sw_tdict(k: sw_t(n: "AppOperation"), v: sw_t(n: "String")) }, initializer: Present { value: sw_dict(e: []) } },
+      sw_doc(
+        c: ["slot_after: the operation's slot is decided by this attempt's outcome alone."],
+        d: sw_func(m: [SwiftMutatingModifier], n: "record", p: [sw_p_(n: "operation", t: sw_t(n: "AppOperation")), sw_p_(n: "outcome", t: sw_t(n: "OperationOutcome"))], th: false, r: none, b: [
+          sw_switch(e: sw_id(n: "outcome"), c: oe_record_cases()),
+        ])
+      ),
+      sw_doc(
+        c: ["enter_phase: an operation not relevant in the phase takes its error with it."],
+        d: sw_func(m: [SwiftMutatingModifier], n: "enter", p: [sw_p_(n: "phase", t: sw_t(n: "EnrolmentPhase"))], th: false, r: none, b: [
+          sw_for(n: "operation", e: sw_path(b: "AppOperation", m: "allCases"), s: [
+            sw_if(c: [sw_cond(e: sw_not(e: sw_call(f: sw_path(b: "OperationErrors", m: "relevant"), a: [sw_pos(v: sw_id(n: "operation")), sw_arg(l: "in", v: sw_id(n: "phase"))])))], s: [
+              sw_assign(l: oe_messages_at_operation(), r: sw_id(n: "nil")),
+            ]),
+          ]),
+        ])
+      ),
+      sw_doc(
+        c: ["shown_errors: the current messages, in AppOperation order."],
+        d: SwiftComputedPropertyDecl { attributes: [], modifiers: [], name: "shown", property_type: sw_tarr(e: sw_t(n: "String")), getter: [
+          sw_ret(e: sw_callt(f: sw_mem(b: sw_path(b: "AppOperation", m: "allCases"), m: "compactMap"), a: [], c: sw_cloe(e: sw_sub(b: sw_id(n: "messages"), a: [sw_pos(v: sw_id(n: "$0"))])))),
+        ] }
+      ),
+      sw_doc(
+        c: ["operation_relevant_in, printed by evaluating it over the operation x phase product."],
+        d: sw_func(m: [SwiftStaticModifier], n: "relevant", p: [sw_p_(n: "operation", t: sw_t(n: "AppOperation")), sw_param(l: Present { value: "in" }, n: "phase", t: sw_t(n: "EnrolmentPhase"))], th: false, r: Present { value: sw_t(n: "Bool") }, b: [
+          sw_switch(e: sw_tuple(e: [sw_pos(v: sw_id(n: "operation")), sw_pos(v: sw_id(n: "phase"))]), c: oe_relevance_cases()),
+        ])
+      ),
+    ] }
+  )
+}
+
+data oe_header: List<String> = [
+  "The app's error lifetime, printed from gunbc.approve_ios_operation_errors: one current error per operation, removed by",
+  "that operation's next success or by leaving the phases it is relevant in. AppState and the views record every outcome.",
+  "GENERATED from gunbc.approve_ios_swift_operation_errors from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
+]
+
+fn approve_ios_operation_errors_swift_file() -> SwiftSourceFile {
+  SwiftSourceFile { declarations: [sw_cmt(c: oe_header, d: sw_import(n: "Foundation")), oe_operation_enum(), oe_outcome_enum(), oe_errors_struct()] }
+}
+
+fn expected_approve_ios_operation_errors_swift() -> SwiftRowEmission {
+  swift_rows_emit_source_file(f: approve_ios_operation_errors_swift_file())
+}
+
+// ── The test ─────────────────────────────────────────────────────────────────────────────────
+fn oe_outcome_expr(o: OperationOutcome) -> SwiftExpr {
+  match o {
+    OperationSucceeded => sw_dot(n: "succeeded")
+    OperationFailed { message: m } => sw_call(f: sw_dot(n: "failed"), a: [sw_pos(v: sw_str(s: m as String))])
+  }
+}
+
+fn oe_step(s: ScenarioStep) -> SwiftStmt {
+  match s {
+    StepRecord { operation: o, outcome: x } => sw_expr(e: sw_call(f: sw_path(b: "errors", m: "record"), a: [sw_pos(v: oe_operation_expr(o: o)), sw_pos(v: oe_outcome_expr(o: x))]))
+    StepEnter { phase: p } => sw_expr(e: sw_call(f: sw_path(b: "errors", m: "enter"), a: [sw_pos(v: oe_phase_expr(p: p))]))
+  }
+}
+
+fn oe_assert(a: SwiftExpr, b: SwiftExpr, msg: String) -> SwiftStmt {
+  sw_expr(e: sw_calln(f: "XCTAssertEqual", a: [sw_pos(v: a), sw_pos(v: b), sw_pos(v: sw_str(s: msg))]))
+}
+
+fn oe_scenario_test(s: ErrorScenario) -> SwiftDecl {
+  sw_doc(c: [s.doc], d: sw_func(m: [], n: s.name, p: [], th: false, r: none, b: list_append(
+    left: list_append(left: [sw_var(n: "errors", e: sw_calln(f: "OperationErrors", a: []))], right: map(s.steps, x => oe_step(s: x))),
+    right: [oe_assert(a: sw_path(b: "errors", m: "shown"), b: sw_strs(e: s.shown), msg: s.name)]
+  )))
+}
+
+fn oe_relevance_assert(r: ExpectedRelevance, p: EnrolmentPhase) -> SwiftStmt {
+  oe_assert(
+    a: sw_call(f: sw_path(b: "OperationErrors", m: "relevant"), a: [sw_pos(v: oe_operation_expr(o: r.operation)), sw_arg(l: "in", v: oe_phase_expr(p: p))]),
+    b: sw_bool(b: expected_relevance_in(r: r, p: p)),
+    msg: (operation_name(o: r.operation) as String) + " in " + (phase_name(p: p) as String)
+  )
+}
+
+fn oe_relevance_test() -> SwiftDecl {
+  sw_doc(
+    c: ["The relevance ruling, one assertion per cell of the operation x phase product, stated independently of the table."],
+    d: sw_func(m: [], n: "testEveryRelevanceCellMatchesTheRuling", p: [], th: false, r: none, b: flat_map(expected_relevance, r => [
+      oe_relevance_assert(r: r, p: PhaseSignedOut),
+      oe_relevance_assert(r: r, p: PhaseEnrolled),
+      oe_relevance_assert(r: r, p: PhaseRevoked),
+    ]))
+  )
+}
+
+data oe_tests_header: List<String> = [
+  "The error lifetime against the ruling, stated independently of the model (error_scenarios and expected_relevance in the generator).",
+  "GENERATED from gunbc.approve_ios_swift_operation_errors from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
+]
+
+fn approve_ios_operation_errors_tests_swift_file() -> SwiftSourceFile {
+  SwiftSourceFile { declarations: [
+    sw_cmt(c: oe_tests_header, d: sw_import(n: "XCTest")),
+    SwiftImportDecl { attributes: [SwiftAttribute { name: "testable", arguments: [] }], module_name: "Approve" },
+    SwiftClassDecl { attributes: [], modifiers: [SwiftFinalModifier], name: "OperationErrorsTests", inherits: [sw_t(n: "XCTestCase")], members: list_append(left: map(error_scenarios, s => oe_scenario_test(s: s)), right: [oe_relevance_test()]) },
+  ] }
+}
+
+fn expected_approve_ios_operation_errors_tests_swift() -> SwiftRowEmission {
+  swift_rows_emit_source_file(f: approve_ios_operation_errors_tests_swift_file())
+}

@@ -38,6 +38,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import std.nat { Zero }
 import v2.std.witness { Holds, Violates, Witness }
@@ -59,7 +60,7 @@ data nested_body_leaf: Node = Node {
 data nested_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: nested_body_leaf }
+    Edge { label: Positional, target: nested_body_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -73,8 +74,8 @@ data nested_inner_measure: Node = Node {
 data nested_inner: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: nested_body },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_inner_measure }
+    Edge { label: Positional, target: nested_body, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_inner_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -88,8 +89,8 @@ data nested_input_measure: Node = Node {
 data nested_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: nested_inner },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_input_measure }
+    Edge { label: Positional, target: nested_inner, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_input_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

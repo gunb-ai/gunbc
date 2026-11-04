@@ -10,6 +10,7 @@ import extdeps.systemd {
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.access.posix { FileMode, file_mode_octal }
 
 // THE UNIT FILE FORMAT ITSELF, not a unit's runtime state.
 //
@@ -132,6 +133,10 @@ type SystemdUnitDirective
   | OnSuccess { unit: NonEmptyStr }
   | OnFailure { unit: NonEmptyStr }
   | Condition { kind: SystemdConditionKind, negated: Bool, argument: NonEmptyStr }
+  // systemd.unit(5) (v255), Assert*=: the same checks as Condition*=, but a false assertion FAILS the start
+  // job ("Assertion failed on job for ...") instead of skipping it, so a unit that must not start without
+  // the asserted state is refused loudly rather than quietly reported as a successful skip.
+  | Assert { kind: SystemdConditionKind, negated: Bool, argument: NonEmptyStr }
   | SuccessAction { action: SystemdUnitStateAction }
   | FailureAction { action: SystemdUnitStateAction }
 
@@ -147,6 +152,13 @@ fn systemd_condition_kind_wire(kind: SystemdConditionKind) -> String {
   match kind {
     ConditionPathExists => "ConditionPathExists"
     ConditionDirectoryNotEmpty => "ConditionDirectoryNotEmpty"
+  }
+}
+
+fn systemd_assert_kind_wire(kind: SystemdConditionKind) -> String {
+  match kind {
+    ConditionPathExists => "AssertPathExists"
+    ConditionDirectoryNotEmpty => "AssertDirectoryNotEmpty"
   }
 }
 
@@ -305,6 +317,9 @@ type SystemdServiceDirective
   | ExecStartPost { command: NonEmptyStr }
   | ExecStop { command: NonEmptyStr }
   | ExecStopPost { command: NonEmptyStr }
+  // systemd.service(5) ExecReload=: the command `systemctl reload` runs on an active unit; the unit stays
+  // active and its process (for a RemainAfterExit oneshot, its active state) is not restarted.
+  | ExecReload { command: NonEmptyStr }
   | ExecStopPostIgnoringFailure { command: NonEmptyStr }
   | ServiceStandardOutput { stream: SystemdOutputStream }
   | ServiceStandardError { stream: SystemdOutputStream }
@@ -328,6 +343,10 @@ type SystemdServiceDirective
   // systemd.resource-control(5) on the service's own cgroup; the knob and value have one owner each.
   | ServiceResourceControl { directive: SystemdServiceResourceDirective }
   | TimeoutStopSec { duration: NonEmptyStr }
+  // systemd.exec(5) UMask=: "Controls the file mode creation mask. Takes an access mode in octal
+  // notation." The mask is the bits REMOVED from every file the unit's processes create, so it is carried
+  // as the mode whose set bits are masked and rendered in chmod's four-digit spelling.
+  | ServiceUMask { mask: FileMode }
 
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
@@ -786,6 +805,7 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     OnSuccess { unit: v } => join(["OnSuccess=", v as String], "")
     OnFailure { unit: v } => join(["OnFailure=", v as String], "")
     Condition { kind: k, negated: n, argument: v } => join([systemd_condition_kind_wire(kind: k), "=", if n { "!" } else { "" }, v as String], "")
+    Assert { kind: k, negated: n, argument: v } => join([systemd_assert_kind_wire(kind: k), "=", if n { "!" } else { "" }, v as String], "")
     SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
     FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }
@@ -805,6 +825,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ExecStartPost { command: v } => join(["ExecStartPost=", v as String], "")
     ExecStop { command: v } => join(["ExecStop=", v as String], "")
     ExecStopPost { command: v } => join(["ExecStopPost=", v as String], "")
+    ExecReload { command: v } => join(["ExecReload=", v as String], "")
     ExecStopPostIgnoringFailure { command: v } => join(["ExecStopPost=-", v as String], "")
     ServiceStandardOutput { stream: v } =>
       join(["StandardOutput=", systemd_output_stream_wire(stream: v)], "")
@@ -830,6 +851,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceTasksMax { count: v } => join(["TasksMax=", to_string(v)], "")
     ServiceResourceControl { directive: d } => systemd_service_resource_directive_line(directive: d)
     TimeoutStopSec { duration: v } => join(["TimeoutStopSec=", v as String], "")
+    ServiceUMask { mask: m } => join(["UMask=", file_mode_octal(mode: m)], "")
   }
 }
 
@@ -1068,6 +1090,17 @@ type SystemdDropInSection
 
 type SystemdDropIn {
   sections: List<SystemdDropInSection>
+}
+
+// WHICH DROP-IN WINS. systemd.unit(5) (v255), "Description": the drop-in files of a unit -- its own
+// `.d/` directories AND, for a template instance foo@bar.service, the template's foo@.service.d/ -- are
+// sorted by FILE NAME and parsed in that order, regardless of which directory they reside in; a file
+// with the same name in a higher-priority directory replaces the other. A setting assigned twice takes
+// the later assignment (for Environment=, the later value of the same variable). So an instance drop-in
+// does NOT apply after the template's drop-ins by virtue of its directory: it applies after exactly the
+// files whose names sort before its own. The order is the byte order of the names.
+fn systemd_drop_in_applies_after(later_file_name: String, earlier_file_name: String) -> Bool {
+  later_file_name > earlier_file_name
 }
 
 fn systemd_drop_in_section_block(section: SystemdDropInSection) -> List<String> {

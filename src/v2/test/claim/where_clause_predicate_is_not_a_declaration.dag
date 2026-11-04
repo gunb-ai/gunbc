@@ -7,7 +7,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import std.types { List }
 import std.algebra { Cons, Empty }
-import v2.std.node { label_sort_key, Atom, Authored, Conj, Edge, Node, TypeNode, node_synthetic }
+import v2.std.node { label_sort_key, Atom, Authored, Conj, Edge, Node, TypeNode, node_synthetic, NotADeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -23,13 +23,13 @@ fn wc_conj(children: List<Edge>) -> Node {
 
 fn wc_module(carrier: Edge) -> Node {
   wc_conj(children: [
-    Edge { label: Authored { name: ^Char }, target: wc_conj(children: [carrier]) }
+    Edge { label: Authored { name: ^Char }, target: wc_conj(children: [carrier]), declaration: NotADeclaration }
   ])
 }
 
 fn wc_predicates() -> Node {
   wc_conj(children: [
-    Edge { label: Authored { name: ^unicode_scalar }, target: wc_conj(children: []) }
+    Edge { label: Authored { name: ^unicode_scalar }, target: wc_conj(children: []), declaration: NotADeclaration }
   ])
 }
 
@@ -51,8 +51,8 @@ fn wc_indexed_below_char(carrier: Edge) -> Bool {
 }
 
 test fn a_where_clause_predicate_is_never_indexed_holds() -> Bool {
-  let clause = Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: wc_predicates() }
-  let control = Edge { label: Authored { name: ^refinement }, target: wc_predicates() }
+  let clause = Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: wc_predicates(), declaration: NotADeclaration }
+  let control = Edge { label: Authored { name: ^refinement }, target: wc_predicates(), declaration: NotADeclaration }
   !wc_indexed_below_char(carrier: clause)
     && wc_indexed_below_char(carrier: control)
 }

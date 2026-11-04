@@ -1,0 +1,235 @@
+module test.claim.fleet.posix_quoted_remote_word_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import gunbc.remote_shell_command { remote_exec_command_string, remote_exec_command_rendered, RemoteExecCommandBuilt, RemoteExecCommandRefused, PosixShellInterpreted }
+import extdeps.ssh.openssh_remote_command { openssh_remote_command_string, openssh_remote_command_execution, openssh_release_of_version_output }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTarget,
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
+  shape_ssh_shell_exec,
+  PosixLoginShellProof,
+  LoginShellStanding,
+  LoginShellPosix,
+  LoginShellNotPosix,
+  LoginShellUnreadable,
+  login_shell_standing,
+  portable_remote_words,
+  fleet_posix_quoted_leg,
+  FleetRemoteLeg,
+  PosixRemoteRoute,
+  PosixRemoteRouteStanding,
+  PosixRemoteRouteCovered,
+  PosixRemoteRouteUnmeasured,
+  PosixRemoteRouteUncovered,
+  OpenSshExecutorClient,
+  OpenSshTargetServer,
+  posix_remote_route_standing,
+  FleetBareWordLeg,
+  FleetPosixQuotedLeg,
+  fleet_remote_leg_target,
+  fleet_remote_leg_strings,
+  portable_remote_words_strings,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn proof_or_fail(standing: LoginShellStanding, claim: fn(PosixLoginShellProof) -> Bool) -> Bool {
+  match standing {
+    LoginShellPosix { proof: p } => claim(p)
+    LoginShellNotPosix { principal: _, shell: _ } => false
+    LoginShellUnreadable { principal: _, reason: _ } => false
+  }
+}
+
+fn target_at(endpoint: String, principal: String) -> SshTarget? {
+  match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: principal as NonEmptyStr) {
+    SshTargetResolved { target: t } => Present { value: t }
+    SshTargetRefused { endpoint: _, refusal: _ } => Absent
+  }
+}
+
+fn with_target(endpoint: String, principal: String, claim: fn(SshTarget) -> Bool) -> Bool {
+  match target_at(endpoint: endpoint, principal: principal) {
+    Present { value: t } => claim(t)
+    Absent => false
+  }
+}
+
+fn bash_proof(claim: fn(PosixLoginShellProof) -> Bool) -> Bool {
+  with_target(endpoint: "192.0.2.10", principal: "ubuntu", claim: t => proof_or_fail(standing: login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash\n"), claim: claim))
+}
+
+// SUPPLIED `-V` READINGS (the witness's boundary is the route standing, not the reads): the client line is what
+// `ssh -V` printed in this repository's session container on 2026-10-25, the server line is the format Ubuntu 24.04's
+// openssh-server prints. The real client producer is run by the real-execution witness; the target's sshd -V is read
+// on srv4 by the placement step (frontier row on typed_argv_exec_over_fleet_ssh_posix).
+data executor_client_version: String = "OpenSSH_10.0p2 Debian-7+deb13u4, OpenSSL 3.5.7 9 Jun 2026\n"
+data ubuntu_noble_server_version: String = "OpenSSH_9.6p1 Ubuntu-3ubuntu13.5, OpenSSL 3.0.13 30 Jan 2024\n"
+
+fn route_or_fail(p: PosixLoginShellProof, claim: fn(PosixRemoteRoute) -> Bool) -> Bool {
+  match posix_remote_route_standing(proof: p, client_success: true, client_output: executor_client_version, server_success: true, server_output: ubuntu_noble_server_version) {
+    PosixRemoteRouteCovered { route: r } => claim(r)
+    PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
+    PosixRemoteRouteUncovered { side: _, release_name: _ } => false
+  }
+}
+
+fn leg_or_fail(raws: List<String>, p: PosixLoginShellProof, claim: fn(FleetRemoteLeg) -> Bool) -> Bool {
+  route_or_fail(p: p, claim: r => match fleet_posix_quoted_leg(route: r, argv: raws) {
+    Present { value: leg } => claim(leg)
+    Absent => false
+  })
+}
+
+fn leg_refused(raws: List<String>, p: PosixLoginShellProof) -> Bool {
+  route_or_fail(p: p, claim: r => match fleet_posix_quoted_leg(route: r, argv: raws) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+// THE BARE ROUTE STILL REFUSES what it always refused; only the measured route quotes.
+test fn the_bare_route_still_refuses_a_plus() -> Bool {
+  match portable_remote_words(raws: ["dpkg-deb", "-x", "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb", "/tmp/x"]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ONE QUOTING AUTHORITY (review 86131): the quoted leg's command is gunbc.remote_shell_command's own rendering of the
+// argv under PosixShellInterpreted -- every word posix_single_quote'd by extdeps.posix.shell_command_language and
+// space-joined -- not a second encoding in the fleet layer. Pinned against both: the module's mint, and the cited
+// function applied word by word.
+test fn the_quoted_leg_carries_remote_shell_commands_own_rendering() -> Bool {
+  let argv = ["dpkg-deb", "-x", "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb", "it's $(id)"]
+  bash_proof(claim: p => leg_or_fail(raws: argv, p: p, claim: leg =>
+    match remote_exec_command_string(argv: map(argv, w => w as NonEmptyStr), interpretation: PosixShellInterpreted) {
+      RemoteExecCommandRefused { cause: _ } => false
+      RemoteExecCommandBuilt { command: c } =>
+        fleet_remote_leg_strings(leg: leg) == [remote_exec_command_rendered(command: c) as String]
+          && fleet_remote_leg_strings(leg: leg) == [join(map(argv, w => posix_single_quote(spelling: w)), " ")]
+    }))
+}
+
+// RED: a NUL cannot ride a C argv and refuses, as does an empty word or an empty argv; a newline is literal inside
+// single quotes and is carried, as remote_shell_command states (RFC 4254 section 6.5 has no line discipline).
+test fn nul_empty_words_and_empty_argv_refuse_and_a_newline_is_carried() -> Bool {
+  bash_proof(claim: p =>
+    leg_refused(raws: ["printf", "a\x00b"], p: p)
+      && leg_refused(raws: ["printf", ""], p: p)
+      && leg_refused(raws: [], p: p)
+      && leg_or_fail(raws: ["printf", "a\nb"], p: p, claim: leg => fleet_remote_leg_strings(leg: leg) == ["'printf' 'a\nb'"])
+  )
+}
+
+// THE PROOF IS READ, NOT ASSUMED: a POSIX shell mints it; a non-POSIX shell, another principal's entry, a truncated
+// entry, two entries (an NSS answer with more than one line) and a failed read do not.
+test fn only_the_principals_own_posix_passwd_entry_mints_the_proof() -> Bool {
+  with_target(endpoint: "192.0.2.10", principal: "ubuntu", claim: t =>
+  bash_proof(claim: p => (p.shell as String) == "/bin/bash" && (p.target.principal as String) == "ubuntu")
+    && proof_or_fail(standing: login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/sh"), claim: p => (p.shell as String) == "/bin/sh")
+    && (match login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/usr/bin/zsh\n") {
+      LoginShellNotPosix { principal: _, shell: s } => s == "/usr/bin/zsh"
+      LoginShellPosix { proof: _ } => false
+      LoginShellUnreadable { principal: _, reason: _ } => false
+    })
+    && (match login_shell_standing(target: t, success: true, output: "root:x:0:0:root:/root:/bin/bash\n") {
+      LoginShellUnreadable { principal: _, reason: _ } => true
+      LoginShellPosix { proof: _ } => false
+      LoginShellNotPosix { principal: _, shell: _ } => false
+    })
+    && (match login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000:/bin/bash\n") {
+      LoginShellUnreadable { principal: _, reason: _ } => true
+      LoginShellPosix { proof: _ } => false
+      LoginShellNotPosix { principal: _, shell: _ } => false
+    })
+    && (match login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/bash\nubuntu:x:1001:1001::/home/u2:/bin/bash\n") {
+      LoginShellUnreadable { principal: _, reason: _ } => true
+      LoginShellPosix { proof: _ } => false
+      LoginShellNotPosix { principal: _, shell: _ } => false
+    })
+    && (match login_shell_standing(target: t, success: false, output: "") {
+      LoginShellUnreadable { principal: _, reason: _ } => true
+      LoginShellPosix { proof: _ } => false
+      LoginShellNotPosix { principal: _, shell: _ } => false
+    })
+  )
+}
+
+
+// THE QUOTED LEG RUNS AGAINST ITS PROOF'S TARGET (merry-fox-82 hold 1; review 86015). The command carries the proof,
+// and FleetPosixQuotedLeg has no target field, so the target the transport shapes for is the one the login shell was
+// read from: the same command cannot be addressed to another principal or host. The bare leg, by contrast, names its
+// target, which is sound because its words are literal under any shell. (Spelling a target into a quoted leg, or a
+// quoted word into PortableRemoteWords, has no constructor; this claim pins the route, not that unwritability.)
+test fn a_quoted_leg_runs_against_the_target_its_proof_was_read_from() -> Bool {
+  bash_proof(claim: p => leg_or_fail(raws: ["dpkg-deb", "-x", "a b+c.deb", "/tmp/x"], p: p, claim: leg =>
+    fleet_remote_leg_target(leg: leg) == p.target
+      && (p.target.principal as String) == "ubuntu"
+      && with_target(endpoint: "192.0.2.11", principal: "ubuntu", claim: other =>
+        match portable_remote_words(raws: ["hostname"]) {
+          Absent => false
+          Present { value: w } => fleet_remote_leg_target(leg: FleetBareWordLeg { target: other, words: w }) == other && other != p.target
+        })
+  ))
+}
+
+// THE FINAL STRING, STRUCTURALLY (merry-fox-82 hold 2): the fleet shaper hands ssh the leg's rendered words verbatim
+// after `--` (gunbc.fleet.fleet_known_hosts_anchor shape_fleet_ssh_leg), OpenSSH joins the arguments after the destination with single spaces (extdeps.ssh.openssh_remote_command, ssh.c
+// V_9_6_P1), and sshd runs that string as the login shell's -c argument (session.c). So the string the remote shell
+// parses is exactly openssh_remote_command_string of the rendered words.
+test fn the_final_remote_string_is_the_space_join_of_the_rendered_words() -> Bool {
+  bash_proof(claim: p => leg_or_fail(raws: ["dpkg-deb", "-x", "a b+c.deb", "/tmp/x"], p: p, claim: leg => {
+    let rendered = fleet_remote_leg_strings(leg: leg)
+    shape_ssh_shell_exec(host: "192.0.2.10", argv: rendered) == concat(["192.0.2.10", "--"], rendered)
+      && openssh_remote_command_string(arguments: rendered) == "'dpkg-deb' '-x' 'a b+c.deb' '/tmp/x'"
+      && openssh_remote_command_execution(login_shell: p.shell as String, command: openssh_remote_command_string(arguments: rendered)) == ["/bin/bash", "-c", "'dpkg-deb' '-x' 'a b+c.deb' '/tmp/x'"]
+  }))
+}
+
+// THE `-V` LINE, PARSED (ssh.c and sshd.c case 'V'; version.h SSH_RELEASE): the release is the token after
+// "OpenSSH_" up to a space or comma, whether or not a distribution suffix follows; no line, or two, is no reading.
+test fn a_version_line_parses_to_its_release() -> Bool {
+  openssh_release_of_version_output(output: executor_client_version) == Present { value: "10.0p2" as NonEmptyStr }
+    && openssh_release_of_version_output(output: ubuntu_noble_server_version) == Present { value: "9.6p1" as NonEmptyStr }
+    && openssh_release_of_version_output(output: "OpenSSH_9.6p1, OpenSSL 3.0.13 30 Jan 2024") == Present { value: "9.6p1" as NonEmptyStr }
+    && (match openssh_release_of_version_output(output: "usage: sshd [-46DdeGiqTtV]\n") { Absent => true Present { value: _ } => false })
+    && (match openssh_release_of_version_output(output: "OpenSSH_9.6p1, x\nOpenSSH_10.0p2, y\n") { Absent => true Present { value: _ } => false })
+}
+
+// THE ROUTE IS MINTED ONLY OVER MEASURED, COVERED RELEASES (merry-fox-82, hold at 1859d9cc). A covered pair binds both
+// releases and the proof; a release whose source extdeps.ssh.openssh_remote_command has not read refuses on its side,
+// and so does a side that gave no reading.
+test fn only_a_measured_covered_release_pair_mints_the_route() -> Bool {
+  bash_proof(claim: p =>
+    route_or_fail(p: p, claim: r => (r.client_release as String) == "10.0p2" && (r.server_release as String) == "9.6p1" && r.proof.target == p.target)
+      && (match posix_remote_route_standing(proof: p, client_success: true, client_output: executor_client_version, server_success: true, server_output: "OpenSSH_9.7p1 Ubuntu-7ubuntu4, OpenSSL 3.0.13 30 Jan 2024") {
+        PosixRemoteRouteUncovered { side: OpenSshTargetServer, release_name: rl } => (rl as String) == "9.7p1"
+        PosixRemoteRouteUncovered { side: OpenSshExecutorClient, release_name: _ } => false
+        PosixRemoteRouteCovered { route: _ } => false
+        PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
+      })
+      && (match posix_remote_route_standing(proof: p, client_success: true, client_output: "OpenSSH_8.9p1 Ubuntu-3ubuntu0.10, OpenSSL 3.0.2 15 Mar 2022", server_success: true, server_output: ubuntu_noble_server_version) {
+        PosixRemoteRouteUncovered { side: OpenSshExecutorClient, release_name: rl } => (rl as String) == "8.9p1"
+        PosixRemoteRouteUncovered { side: OpenSshTargetServer, release_name: _ } => false
+        PosixRemoteRouteCovered { route: _ } => false
+        PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
+      })
+      && (match posix_remote_route_standing(proof: p, client_success: false, client_output: "", server_success: true, server_output: ubuntu_noble_server_version) {
+        PosixRemoteRouteUnmeasured { side: OpenSshExecutorClient, reason: _ } => true
+        PosixRemoteRouteUnmeasured { side: OpenSshTargetServer, reason: _ } => false
+        PosixRemoteRouteCovered { route: _ } => false
+        PosixRemoteRouteUncovered { side: _, release_name: _ } => false
+      })
+      && (match posix_remote_route_standing(proof: p, client_success: true, client_output: executor_client_version, server_success: true, server_output: "sshd: command not found\n") {
+        PosixRemoteRouteUnmeasured { side: OpenSshTargetServer, reason: _ } => true
+        PosixRemoteRouteUnmeasured { side: OpenSshExecutorClient, reason: _ } => false
+        PosixRemoteRouteCovered { route: _ } => false
+        PosixRemoteRouteUncovered { side: _, release_name: _ } => false
+      })
+  )
+}

@@ -13,6 +13,7 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -31,8 +32,8 @@ data nested_product_inner_measure: Node = Node {
 data nested_product_inner: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: nested_product_body },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_product_inner_measure }
+    Edge { label: Positional, target: nested_product_body, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_product_inner_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -46,8 +47,8 @@ data nested_product_input_measure: Node = Node {
 data nested_product_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: nested_product_inner },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_product_input_measure }
+    Edge { label: Positional, target: nested_product_inner, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: nested_product_input_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

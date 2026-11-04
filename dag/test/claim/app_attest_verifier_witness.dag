@@ -10,7 +10,8 @@ import extdeps.apple.app_attest {
   AttestationUndecodable,
   AssertionExpectation, verify_assertion, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
   assertion_signature_verifies_for, chain_link_verifies, base64_of,
-  assertion_parts, AssertionPartsOk, AssertionPartsRefused,
+  assertion_parts, assertion_structural_refusal, AssertionPartsOk, AssertionPartsRefused,
+  AttestationBundleVersionAbsent,
   AttestationDecoded, attestation_structural_refusal, attestation_step_order,
   AttestationStep, KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
   LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep, IntermediateCaAuthorityStep,
@@ -25,17 +26,13 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_assertion_counter, sample_client_data,
 }
 
-// THE VERIFIER FOLDS OVER APPLE'S REAL OBJECT. The sample predates the two extension steps (9 and
-// 10: apple_validation_category_01 and apple_bundle_version_01 in authData's extensions map), so
-// the whole attestation fold REFUSES on it, correctly, with AttestationValidationCategoryAbsent --
-// and because every check before that one in the fold's order is a step Apple names (nonce, key
-// id, RP ID, counter, AAGUID, credentialId, chain names, validity), reaching that refusal IS the
-// executed evidence that steps 2-8 pass on real bytes. TWO THINGS THIS DOES NOT ESTABLISH, each
-// with its own reason: the whole-fold positive control needs an attestation carrying those
-// extensions (the first object off the operator's phone); and step 1, the chain signatures, runs
-// after the extension steps and so is not reached here at all -- it is claimed at its own producer
-// below, where its refusing arms execute and its verifying arms are enrolled with the P-384 cost
-// stated as the reason they do not.
+// THE VERIFIER FOLDS OVER APPLE'S REAL OBJECT. The sample carries no authData extensions map, which
+// Apple documents as optional client properties, so steps 9 and 10 (apple_validation_category_01 and
+// apple_bundle_version_01) do not refuse it: the structural fold (every step Apple names but the
+// chain signatures) passes on the real bytes, and that is the executed evidence here. The chain
+// signatures (step 1) cost two interpreted P-384 verifications; the whole fold is held to verify the
+// sample and the operator's iPhone attestation by gunbc.instruments.native_app_attest, the native
+// program, and by the serve probe.
 
 fn sample_expectation() -> AttestationExpectation {
   AttestationExpectation {
@@ -60,33 +57,48 @@ fn attestation_refusal_name(c: AttestationRefusal) -> String {
     AttestationEnvironmentUnexpected { expected: _ } => "environment"
     AttestationCredentialIdMismatch { declared: _ } => "credential-id"
     AttestationValidationCategoryAbsent => "category-absent"
+    AttestationBundleVersionAbsent => "bundle-version-absent"
     AttestationUndecodable { cause: d } => "undecodable:" + d
     _ => "other"
   }
 }
 
-// THE REAL PATH, end to end: Apple's bytes through decode_attestation and the whole verify fold.
-fn sample_attestation_refusal_of(e: AttestationExpectation) -> String {
-  match verify_attestation(object: sample_attestation_octets, e: e) {
-    AttestationVerified { verified: _ } => "verified"
-    AttestationRefused { cause: c } => attestation_refusal_name(c: c)
+// INHABITANCE, THE ATTESTATION'S REAL PATH: Apple's bytes through decode and the structural fold
+// (attestation_structural_refusal, the fold verify_attestation runs before the chain signatures).
+// It asserts the ROUTE: no step refuses the real object, including steps 9 and 10, which see no
+// extensions map. Every supplied-input claim below leans on this one for the real path.
+fn sample_structural_refusal_of(e: AttestationExpectation) -> String {
+  match sample_fold_inputs() {
+    Absent => "undecodable"
+    Present { value: d } =>
+      match attestation_structural_refusal(d: d, e: e) {
+        Absent => "none"
+        Present { value: c } => attestation_refusal_name(c: c)
+      }
   }
 }
 
-// INHABITANCE, THE ATTESTATION'S REAL PATH: Apple's bytes through decode_attestation and the whole
-// verify fold. It asserts the ROUTE by the refusal it names -- steps 2-8 and the chain's names and
-// validity pass on the real object, so the first refusal is step 9's absence, which the 2021 sample
-// cannot satisfy. Every supplied-input claim below leans on this one for the real path.
-test fn the_sample_passes_every_step_before_the_extension_steps() -> Bool {
-  sample_attestation_refusal_of(e: sample_expectation()) == "category-absent"
+test fn the_sample_passes_every_structural_step() -> Bool {
+  sample_structural_refusal_of(e: sample_expectation()) == "none"
+}
+
+// STEPS 9 AND 10 AS APPLE DEFINES THEM: extensions are optional client properties, so no map at all
+// does not refuse either step. (A carried map is held to both; its refusing arms are the native
+// program's cases over the carried-map objects.)
+test fn an_absent_extensions_map_refuses_neither_extension_step() -> Bool {
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      ordered_name(step: ValidationCategoryStep, d: d, e: sample_expectation()) == "none"
+        && ordered_name(step: BundleVersionStep, d: d, e: sample_expectation()) == "none"
+  }
 }
 
 // THE FOLD'S INPUTS, SUPPLIED AT ITS INTERFACE. The step fold reads the pinned root ONLY for its
 // subject name (the intermediate's issuer must equal it), so the root is supplied as the one field
 // the fold reads -- a certificate whose subject is the intermediate's issuer -- rather than paid for
 // with a PEM decode of Apple's root in every claim. That the REAL root's subject is that name is
-// asserted on the real path by the_sample_passes_every_step_before_the_extension_steps, whose
-// refusal lies past the issuer check. Everything else is the sample's own decode.
+// asserted on the real path by the_sample_passes_every_structural_step. Everything else is the sample's own decode.
 fn sample_fold_inputs() -> AttestationDecoded? {
   match attestation_parts(object: sample_attestation_octets) {
     AttestationPartsRefused { cause: _ } => none
@@ -117,9 +129,9 @@ fn sample_fold_inputs() -> AttestationDecoded? {
 // nonce_step, key_id_step, ...) over supplied inputs (sample_fold_inputs), asserting that the step
 // REFUSES by name on the mutated expectation -- so its cost is its own step's and nothing before it.
 // The positive control for every step is the real-path claim: a step that refused everything would
-// make it name that step instead of category-absent. That the steps are the ones production runs, in production's
+// make it name that step instead of none. That the steps are the ones production runs, in production's
 // order, is attestation_step_order_is_the_declared_order below; the real path's inhabitance is
-// the_sample_passes_every_step_before_the_extension_steps.
+// the_sample_passes_every_structural_step.
 fn ordered_name(step: AttestationStep, d: AttestationDecoded, e: AttestationExpectation) -> String {
   match ordered_step_refusal(step: step, d: d, e: e) {
     AttestationStepNotInOrder => "not-in-order"
@@ -248,18 +260,22 @@ test fn the_sample_assertion_counter_is_the_published_one() -> Bool {
 // The assertion fold: RP ID passes on real bytes and the first refusal is step 7's absence (the
 // 37-octet prefix carries no extensions); the counter is carried out as 1 either way; a wrong App
 // ID reds step 4 by name.
-test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> Bool {
+test fn the_sample_assertion_passes_the_structural_steps_and_reds_on_another_app_id() -> Bool {
   match assertion_expectation() {
     Absent => false
     Present { value: e } =>
-  match verify_assertion(object: sample_assertion_octets, e: e) {
-    AssertionRefused { cause: AssertionValidationCategoryAbsent } =>
-      match verify_assertion(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
-        AssertionRefused { cause: AssertionAppIdMismatch { expected_app_id: _ } } => true
-        _ => false
+      match assertion_parts(object: sample_assertion_octets) {
+        AssertionPartsRefused { cause: _ } => false
+        AssertionPartsOk { parts: p } =>
+          match assertion_structural_refusal(parts: p, e: e) {
+            Present { value: _ } => false
+            Absent =>
+              match assertion_structural_refusal(parts: p, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
+                Present { value: AssertionAppIdMismatch { expected_app_id: _ } } => true
+                _ => false
+              }
+          }
       }
-    _ => false
-  }
   }
 }
 
@@ -302,7 +318,7 @@ fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool {
 // AssertionSignatureInvalid) -- and it is cheap, refusing before any curve arithmetic or nonce hash.
 // SUBJECT: assertion_signature_verifies' key decoding. The key is the value under test, so it is
 // supplied; it is not read from the attestation, whose join to the assertion is carried by
-// the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions.
+// the_sample_assertion_passes_the_structural_steps_and_reds_on_another_app_id.
 test fn an_undecodable_stored_key_is_absent_not_a_false_verdict() -> Bool {
   match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation {
     key_id: sample_key_id_b64 as AttestKeyId,

@@ -1,7 +1,8 @@
 module test.claim.lambda_return_solves_generic_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 
 // THE EXECUTING EVIDENCE for the lambda-return member of gunbc.recurring_failure_mode
 // unbound_generic_reaches_conformance_unjudged, closed by solving a generic from a lambda
@@ -21,20 +22,20 @@ data lambda_return_after_its_argument_source: String = "module test.claim.lrs_af
 
 data lambda_return_at_its_own_type_source: String = "module test.claim.lrs_own_type\nimport std.types { Int }\nfn lrs_idf<R>(f: fn() -> R) -> R { f() }\nfn lrs_app<T, R>(x: T, f: fn(T) -> R) -> R { f(x) }\nfn probe() -> Int { lrs_idf(f: fn() { 5 }) }\nfn probe_after() -> Int { lrs_app(x: 1, f: fn(v) { v }) }\n"
 
-test fn a_generic_fixed_by_a_lambda_return_refuses_a_wrong_argument_position() -> Bool {
-  blocking_class_count_for(source: lambda_return_into_argument_source, wanted_class: "TypeMismatch") >= 1
+test fn a_generic_fixed_by_a_lambda_return_refuses_a_wrong_argument_position() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: lambda_return_into_argument_source, wanted_class: "TypeMismatch"), holds: fn(n) { n >= 1 }))
 }
 
-test fn a_generic_fixed_by_a_lambda_return_refuses_a_wrong_declared_return() -> Bool {
-  blocking_class_count_for(source: lambda_return_into_declared_return_source, wanted_class: "TypeMismatch") >= 1
+test fn a_generic_fixed_by_a_lambda_return_refuses_a_wrong_declared_return() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: lambda_return_into_declared_return_source, wanted_class: "TypeMismatch"), holds: fn(n) { n >= 1 }))
 }
 
-test fn a_lambda_after_the_argument_that_fixes_its_parameter_solves_the_result() -> Bool {
-  blocking_class_count_for(source: lambda_return_after_its_argument_source, wanted_class: "TypeMismatch") >= 1
+test fn a_lambda_after_the_argument_that_fixes_its_parameter_solves_the_result() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: lambda_return_after_its_argument_source, wanted_class: "TypeMismatch"), holds: fn(n) { n >= 1 }))
 }
 
-test fn the_same_calls_at_the_type_the_lambda_returns_are_accepted() -> Bool {
-  total_blocking_count_for(source: lambda_return_at_its_own_type_source) == 0
+test fn the_same_calls_at_the_type_the_lambda_returns_are_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: lambda_return_at_its_own_type_source), holds: fn(n) { n == 0 }))
 }
 
 // THE ROUND-2 MISMATCH IS ALREADY JUDGED, AND THIS PINS IT. R is fixed by `r: true`, so the
@@ -51,13 +52,13 @@ data lambda_return_disagrees_with_a_fixed_parameter_source: String = "module tes
 // boundary so that neither a wider bound nor the wall can arrive unannounced.
 data lambda_before_the_fixing_argument_source: String = "module test.claim.lrs_two_round_boundary\nimport std.types { Bool, Int }\nfn lrs_apply2<T, R>(f: fn(T) -> R, x: T) -> R { f(x) }\nfn lrs_take(b: Bool) -> Bool { b }\nfn probe() -> Bool { lrs_take(b: lrs_apply2(f: fn(v) { v }, x: 1)) }\n"
 
-test fn a_lambda_return_that_disagrees_with_a_fixed_parameter_refuses() -> Bool {
-  // Exactly one TypeMismatch and nothing else blocking: a duplicated refusal of the node, or an
-  // unrelated blocking row beside it, fails this as written.
-  blocking_class_count_for(source: lambda_return_disagrees_with_a_fixed_parameter_source, wanted_class: "TypeMismatch") == 1 &&
-    total_blocking_count_for(source: lambda_return_disagrees_with_a_fixed_parameter_source) == 1
+test fn a_lambda_return_that_disagrees_with_a_fixed_parameter_refuses() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: lambda_return_disagrees_with_a_fixed_parameter_source, wanted_class: "TypeMismatch"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_blocking_census(source: lambda_return_disagrees_with_a_fixed_parameter_source), holds: fn(n) { n == 1 }),
+  ])
 }
 
-test fn a_lambda_before_the_argument_that_fixes_its_parameter_stays_unsolved_at_the_two_round_bound() -> Bool {
-  total_blocking_count_for(source: lambda_before_the_fixing_argument_source) == 0
+test fn a_lambda_before_the_argument_that_fixes_its_parameter_stays_unsolved_at_the_two_round_bound() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: lambda_before_the_fixing_argument_source), holds: fn(n) { n == 0 }))
 }

@@ -8,7 +8,7 @@ import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.access_profile { BmcAccessObservation }
+import extdeps.bmc.access_profile { BmcAccessObservation, bmc_observation_ipmi_cipher_suite }
 import product.host_identity { HostIdentity }
 import product.fan_policy_standing {
   FanDutyCeilingVerdict,
@@ -39,9 +39,13 @@ import gunbc.machine_intake.bmc_fan_observation {
   FanObservationRound,
   FanObservationSeries,
   FanObservationTaken,
+  RunVerboseCapture,
+  RunVerboseNotTaken,
   elapsed_at_round,
   first_posted_round_index,
   observe_fan_policy,
+  observe_verbose_repository,
+  render_run_verbose_block,
   render_series,
   samples_of_round,
 }
@@ -197,15 +201,33 @@ fn render_excursion_bound(bound: ExcursionBound) -> String {
 
 // EACH ROUND'S SAMPLES ARE STAMPED WITH THAT ROUND'S OWN ELAPSED, never with the series'. The first
 // posted index is a property of the series and is computed once; the elapsed is the round's.
-fn render_observation(host: FanObserveHost, window: Second, rounds: List<FanObservationRound>, interval: Second) -> String {
+//
+// run_verbose IS NOT OPTIONAL AND IT IS NOT INFERRED: the standalone observe mode passes the capture it
+// took, and the boot lane takes NO such parameter -- boot_observation_content below fixes its state.
+// A reader of the receipt can therefore tell the three states apart -- not_taken, unread, captured --
+// and no lane can silently claim a repository read it never issued (manager msg_cdf72bcc acceptance 2,
+// the discriminating host-off control).
+fn render_observation(host: FanObserveHost, window: Second, rounds: List<FanObservationRound>, interval: Second, run_verbose: RunVerboseCapture) -> String {
   let first_posted = first_posted_round_index(rounds: rounds)
   join([
     render_series(rounds: rounds),
+    render_run_verbose_block(capture: run_verbose),
     join(
       map(rounds, r => render_round_standings(host: host, window: window, round: r, first_posted: first_posted, interval: interval)),
       "\n",
     ),
   ], "\n")
+}
+
+// THE BOOT LANE'S OBSERVATION TEXT, and the only place that lane's verbose state is chosen. The literal
+// below is NOT an argument a caller hands in: this function takes no RunVerboseCapture at all, so there
+// is no signature through which the boot lane could claim a repository read it never issued. The state
+// is a property of the lane, enforced by construction rather than by review, and
+// test.claim.machine_intake.fan_observe_witness the_boot_lane_cannot_claim_a_repository_read_it_never_issued
+// executes THIS function and goes red on written bytes if the literal is ever swapped for a capture or
+// the lane grows an inferred read.
+fn boot_observation_content(host: FanObserveHost, window: Second, rounds: List<FanObservationRound>, interval: Second) -> String {
+  render_observation(host: host, window: window, rounds: rounds, interval: interval, run_verbose: RunVerboseNotTaken)
 }
 
 fn render_round_standings(host: FanObserveHost, window: Second, round: FanObservationRound, first_posted: Int?, interval: Second) -> String {
@@ -227,29 +249,44 @@ fn fan_observe_with(host: FanObserveHost, password_file: NonEmptyStr, policy: Fa
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_observe", decl_name: "mtcollins1_fan_observe_wet"),
   ]
 {
+  // THE RUN-SCOPE VERBOSE CAPTURE (M2a): issued ONCE, before the round loop, UNCONDITIONALLY -- the SDR
+  // repository is BMC-side and readable with the host OFF, which is exactly the state every fan_observe
+  // run has come back in (run 41389794851: chassis=off in all 6 rounds, thermal undecoded=0 every round,
+  // so the round-scope conditional correctly never fired and the capture carried no records). Taking it
+  // BEFORE the loop means the records exist even if a later round times out. The boot phase does not do
+  // this and must not: fan_observe_boot_phase_with renders through boot_observation_content, which takes
+  // no capture parameter and fixes the state to RunVerboseNotTaken.
+  let run_verbose = observe_verbose_repository(
+    bmc_host: host.observation.endpoint.host,
+    username: host.account,
+    password_file: password_file,
+    cipher_suite: bmc_observation_ipmi_cipher_suite(observation: host.observation),
+  )
   fan_write_observation(
     host: host,
     policy: policy,
+    run_verbose: run_verbose,
     series: observe_fan_policy(
       bmc_host: host.observation.endpoint.host,
       username: host.account,
       password_file: password_file,
       rounds: policy.rounds,
       interval: policy.interval,
+      cipher_suite: bmc_observation_ipmi_cipher_suite(observation: host.observation),
     ),
   )
 }
 
 // THE RECEIPT IS WRITTEN ONLY FOR A SERIES THAT WAS TAKEN. A refused observation's text would leave an
 // artifact that LOOKS like a measurement attached to a run that failed.
-fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series: FanObservationSeries) -> ProcessExit {
+fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series: FanObservationSeries, run_verbose: RunVerboseCapture) -> ProcessExit {
   match series {
     FanObservationRefused { cause: cause } =>
       exit_failure(reason: concat("fan observation: ", cause as String))
     FanObservationTaken { rounds: rounds, interval: interval } => {
       let written = Filesystem.Write(
         path: policy.receipt_path,
-        content: render_observation(host: host, window: policy.transition_window, rounds: rounds, interval: interval),
+        content: render_observation(host: host, window: policy.transition_window, rounds: rounds, interval: interval, run_verbose: run_verbose),
       )
       if written.success {
         ExitSuccess
@@ -297,6 +334,7 @@ fn fan_observe_boot_phase_with(host: FanObserveHost, password_file: NonEmptyStr,
       password_file: password_file,
       rounds: policy.rounds,
       interval: policy.interval,
+      cipher_suite: bmc_observation_ipmi_cipher_suite(observation: host.observation),
     ),
   )
 }
@@ -321,7 +359,7 @@ fn fan_write_boot_phase_observation(host: FanObserveHost, policy: FanObservePoli
           } else {
             fan_boot_phase_taken_prefix
           }, "\n"),
-          render_observation(host: host, window: policy.transition_window, rounds: rounds, interval: interval),
+          boot_observation_content(host: host, window: policy.transition_window, rounds: rounds, interval: interval),
         ),
       )
   }

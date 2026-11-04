@@ -20,6 +20,7 @@ import std.human_intervention {
   HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly,
   DischargedAt, NoDischargeSiteModeled,
 }
+import std.scoped_authorization { AuthorizationScope, first_uncovered_scope, authorization_scope_wire }
 import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -140,9 +141,49 @@ fn standing_ruling_discharges_irreversibility(r: StandingDestructiveAuthorizatio
   }
 }
 
+// THE WITNESS WAS GIVEN TO THE CONVERGENCE THAT ENTAILS THE EFFECT (operator ruling 2026-10-25,
+// gunbc.design_ruling the_initial_convergence_is_the_only_approval). The operator approves ONE thing:
+// the initial convergence -- its plan, its host, its scopes, through route (b). Every effect that plan
+// entails is granted THAT approval when it is sufficient, and is not asked about again. This is not
+// the standing ruling above: a standing ruling witnesses a CLASS ahead of every instance and discharges
+// only irreversibility, while this witness is per INSTANCE -- the operator read this plan -- so it meets
+// every witness ground the plan's effects carry, and only inside the approval that covers them.
+//
+// THE ROOT CARRIES ITS OWN EFFECT, NOT A NAME (review 85926). A bare DeclarationRef let any name, approved
+// or not, add the inheriting candidate, and only a census fold no required path runs caught it. So the
+// root is the site AND the characteristics of the effect performed there, and the selection decides the
+// root itself before it admits inheritance (inheritance_admission): the root must declare no lineage of
+// its own, and its own selection must be OperatorApprovedCapability. A root that fails either is a typed
+// refusal of the inheriting effect, never a silent fall back to another pattern. What stays a census join
+// is only that the root's site is a rostered row (gunbc.auth.privileged_effect_census
+// convergence_lineage_defects); the census shares the row's value as the root, so the characteristics
+// cannot drift from the row.
+//
+// ENTAILMENT IS SCOPE COVERAGE, NOT A DECLARATION (review 85948). The ruling admits an effect against the
+// approval's std.scoped_authorization scopes, so the root carries the scopes its approval grants and the
+// inheriting effect carries the scopes it exercises, and admission refuses unless every required scope is
+// covered by a granted one (first_uncovered_scope, the same relation authorize() applies to the redeemed
+// grant at run time). An effect that states no scope refuses rather than passing vacuously, which is
+// std.scoped_authorization's own rule. The scopes stated here are what the root's access request must
+// ask for and what the inheriting site must present; the run-time grant is checked against the same rows.
+type ConvergenceRoot {
+  site: DeclarationRef
+  effect: PrivilegedEffect
+  approved_scopes: List<AuthorizationScope>
+}
+
 type WitnessDischarge
   = NoWitnessDischarge
   | StandingRulingUnderInterlock { ruling: StandingDestructiveAuthorization }
+  | EntailedByApprovedConvergence { root: ConvergenceRoot, required_scopes: List<AuthorizationScope> }
+
+fn convergence_lineage_root(e: PrivilegedEffect) -> ConvergenceRoot? {
+  match e.witness_discharge {
+    EntailedByApprovedConvergence { root: r, required_scopes: _ } => Present { value: r }
+    NoWitnessDischarge => none
+    StandingRulingUnderInterlock { ruling: _ } => none
+  }
+}
 
 type PrivilegedEffect {
   subject: NonEmptyStr
@@ -168,6 +209,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
       match e.witness_discharge {
         NoWitnessDischarge => true
         StandingRulingUnderInterlock { ruling: r } => !standing_ruling_discharges_irreversibility(r: r)
+        EntailedByApprovedConvergence { root: _, required_scopes: _ } => true
       }
     ReversibleByReapply => false
   }
@@ -205,16 +247,17 @@ fn unattended_required(e: PrivilegedEffect) -> Bool {
   }
 }
 
-// ── The candidate field: five patterns, of which three are ever selected ─────────────────────
+// ── The candidate field: six patterns, of which the operator's own session is never selected ──────
 //
 // (a) FederatedScopedGrant -- a dispatched run's own identity (GitHub OIDC -> STS, the
 //     WorkloadIdentityToken arm of gunbc.auth.access_token_source) holding one cell per effect
 //     (gunbc.auth.gcp_secret_access SecretAccessGrant, rostered in
 //     gunbc.auth.fleet_secret_accessor_roster). Zero human actions per effect; receipt is the run.
 // (b) OperatorApprovedCapability -- one request (gunbc.auth.access_request) filed and notified
-//     (approval_request_submission, approval_notification), one tap on the operator's phone, one
-//     capability bound to that request's revision (approval_capability), redeemed once
-//     (approval_broker), the effect executed by the authority adapter under ITS identity. One human
+//     (approval_request_submission, approval_apns_publish), one biometric-gated decision in the
+//     enrolled Approve app, one capability bound to that request's revision (approval_capability),
+//     redeemed once under the device's signature (approval_device_redemption
+//     redeem_device_over_store), the effect executed by the authority adapter under ITS identity. One human
 //     action per effect; the credential is scoped to the request; receipt is the decision store row.
 // (c) HumanOnlyStep -- the effect has no API. The selection cannot automate it and says so by naming
 //     the std.human_intervention row that models the step.
@@ -229,21 +272,39 @@ fn unattended_required(e: PrivilegedEffect) -> Bool {
 // (e) AdministratorEdge -- the fleet's administrator principal over its SSH edge
 //     (gunbc.fleet.fleet_bootstrap_principal executor_bootstrap_principal), whose key is itself
 //     released only to a run pinned at reviewed main (gunbc.auth.oidc_claim_pins). It is a candidate
-//     ONLY for an effect of MintsHostRootReach: the merge to main is the consent that witnesses the
-//     effect's class, the run is unattended, and the receipt is the run. The job user of a run that
-//     executes pull-request code holds neither the key nor this pattern.
+//     ONLY for an effect of MintsHostRootReach that must run unattended (unattended_required): the
+//     merge to main is the consent that witnesses the effect's class, the run is unattended, and the
+//     receipt is the run. The job user of a run that executes pull-request code holds neither the
+//     key nor this pattern. OPERATOR RULING 2026-10-22 (gunbc.design_ruling one_approval_route_for_every_privileged_action):
+//     the edge is not a second approval route. An effect a human can attend is approved through the
+//     broker route (b) alone, so for FleetOnce, DeviceOnce, EveryOperatorRequest and BreakGlassOnly
+//     host-root reach the edge is not a candidate; it remains only where no human can be present.
+// (f) ApprovedConvergenceGrant -- the effect runs inside the attempt that claimed the operator's
+//     approval of the convergence entailing it (EntailedByApprovedConvergence), under that approval's
+//     std.scoped_authorization OperatorGrant: authorize() with the effect's own required scopes refuses
+//     a changed plan (AuthorizationIntentMismatch), a scope the operator did not approve
+//     (AuthorizationScopeNotGranted), an expired approval and another attempt's claim, and an
+//     insufficient approval is a fresh request, never a widening. Zero human actions per effect, a
+//     witness per instance, unattended, scoped to the approved plan, receipt the decision row plus the
+//     claim. It is a candidate ONLY where inheritance_admission admits the declared lineage: the effect
+//     is not break-glass (witnessed per instance by declaration) and its root is itself an effect the
+//     selection sends to (b), with no lineage of its own. Where it is a candidate it dominates both (b),
+//     which asks again for what was already approved, and (e), whose reach is the whole host: operator
+//     ruling 2026-10-25 (gunbc.design_ruling the_initial_convergence_is_the_only_approval).
 type AuthorizationPattern
   = FederatedScopedGrant
   | OperatorApprovedCapability
   | HumanOnlyStep { step: HumanIntervention }
   | OperatorOwnSession
   | AdministratorEdge
+  | ApprovedConvergenceGrant
 
 data pattern_federated_scoped_grant: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_federated_scoped_grant")
 data pattern_operator_approved_capability: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_approved_capability")
 data pattern_human_only_step: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_human_only_step")
 data pattern_operator_own_session: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_own_session")
 data pattern_administrator_edge: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_administrator_edge")
+data pattern_approved_convergence_grant: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_approved_convergence_grant")
 
 fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
   match p {
@@ -252,6 +313,7 @@ fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
     HumanOnlyStep { step: _ } => pattern_human_only_step
     OperatorOwnSession => pattern_operator_own_session
     AdministratorEdge => pattern_administrator_edge
+    ApprovedConvergenceGrant => pattern_approved_convergence_grant
   }
 }
 
@@ -262,16 +324,20 @@ fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
     HumanOnlyStep { step: s } => join(["human-only step: ", s.identity as String], "") as NonEmptyStr
     OperatorOwnSession => "the operator's own interactive session or token file" as NonEmptyStr
     AdministratorEdge => "the fleet administrator principal over its SSH edge, key released to a run pinned at reviewed main" as NonEmptyStr
+    ApprovedConvergenceGrant => "the operator's approval of the convergence that entails this effect, authorized inside the attempt that claimed it" as NonEmptyStr
   }
 }
 
 // THE HUMAN-ONLY CANDIDATE EXISTS ONLY WHEN THE CORPUS HAS MODELED THE STEP. A human can always do
 // anything through a console, but a candidate with no HumanIntervention row behind it would be
 // selected with nothing to name, and "do it by hand" is not a step.
-fn candidate_patterns(e: PrivilegedEffect) -> List<AuthorizationPattern> {
-  let api_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession]
+// `inherits` is decided once, by inheritance_admission, before the field is built; the field never
+// re-derives it, which is also what keeps the root's own selection from recursing into this one.
+fn candidate_patterns(e: PrivilegedEffect, inherits: Bool) -> List<AuthorizationPattern> {
+  let base_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession]
+  let api_patterns = if inherits { concat(base_patterns, [ApprovedConvergenceGrant]) } else { base_patterns }
   let with_edge = match e.minted_reach {
-    MintsHostRootReach => concat(api_patterns, [AdministratorEdge])
+    MintsHostRootReach => if unattended_required(e: e) { concat(api_patterns, [AdministratorEdge]) } else { api_patterns }
     MintsNoCredential => api_patterns
     MintsResourceScopedCredential => api_patterns
     MintsProjectWideCredential => api_patterns
@@ -318,6 +384,7 @@ fn pattern_is_api_pattern(p: AuthorizationPattern) -> Bool {
     OperatorApprovedCapability => true
     OperatorOwnSession => true
     AdministratorEdge => true
+    ApprovedConvergenceGrant => true
   }
 }
 
@@ -341,6 +408,7 @@ fn identity_bound(e: PrivilegedEffect, p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -354,6 +422,7 @@ fn credential_custody(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -366,6 +435,7 @@ fn witnessed(p: AuthorizationPattern) -> Int {
     FederatedScopedGrant => 0
     OperatorOwnSession => 0
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -378,6 +448,7 @@ fn unattended(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 0
     OperatorOwnSession => 0
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -401,6 +472,7 @@ fn human_actions_per_effect(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
     AdministratorEdge => 0
+    ApprovedConvergenceGrant => 0
   }
 }
 
@@ -413,6 +485,7 @@ fn credential_scoped_to_resource(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 0
     OperatorOwnSession => 0
     AdministratorEdge => 0
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -429,6 +502,7 @@ fn receipt_in_substrate(p: AuthorizationPattern) -> Int {
       }
     OperatorOwnSession => 0
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -454,8 +528,8 @@ fn pattern_entry(e: PrivilegedEffect, p: AuthorizationPattern) -> ParetoEntry {
   }
 }
 
-fn candidate_field(e: PrivilegedEffect) -> List<ParetoEntry> {
-  map(candidate_patterns(e: e), p => pattern_entry(e: e, p: p))
+fn candidate_field(e: PrivilegedEffect, inherits: Bool) -> List<ParetoEntry> {
+  map(candidate_patterns(e: e, inherits: inherits), p => pattern_entry(e: e, p: p))
 }
 
 // ── The constraints: five gates, each at 1, and the two obligation gates are named on their own
@@ -599,6 +673,8 @@ fn witness_discharge_text(d: WitnessDischarge) -> String {
     NoWitnessDischarge => "NoWitnessDischarge"
     StandingRulingUnderInterlock { ruling: r } =>
       join(["StandingRulingUnderInterlock: under ", standing_ruling_interlock_label(r: r), "; ruling ", r.ruling_text as String], "")
+    EntailedByApprovedConvergence { root: r, required_scopes: rs } =>
+      join(["EntailedByApprovedConvergence: approved at ", declaration_ref_display_key(ref: r.site), "; requires ", join(map(rs, x => scope_text(scope: x)), ", ")], "")
   }
 }
 
@@ -689,16 +765,91 @@ type AuthorizationPatternSelection
   | PatternSelectionNeedsPolicy { survivors: List<DeclarationRef> }
   | PatternSelectionRefused { defects: List<NonEmptyStr> }
 
-fn pattern_by_identity(e: PrivilegedEffect, wanted: DeclarationRef) -> AuthorizationPattern? {
-  (filter(candidate_patterns(e: e), p => declaration_ref_eq(a: pattern_identity(p: p), b: wanted))).first()
+fn pattern_by_identity(e: PrivilegedEffect, inherits: Bool, wanted: DeclarationRef) -> AuthorizationPattern? {
+  (filter(candidate_patterns(e: e, inherits: inherits), p => declaration_ref_eq(a: pattern_identity(p: p), b: wanted))).first()
+}
+
+// WHETHER THIS EFFECT MAY INHERIT, decided before the field exists. No lineage: it may not, and nothing
+// is refused. A lineage on a break-glass effect, a lineage whose root declares a lineage of its own, or a
+// root whose own selection is not the approval capability: a located refusal naming the root.
+type InheritanceAdmission
+  = NoInheritanceDeclared
+  | InheritanceAdmitted
+  | InheritanceRefused { defect: NonEmptyStr }
+
+fn root_selects_operator_approval(root: ConvergenceRoot) -> Bool {
+  match select_within(e: root.effect, inherits: false) {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+fn scope_text(scope: AuthorizationScope) -> String {
+  match authorization_scope_wire(scope: scope) {
+    Present { value: w } => w as String
+    Absent => "an unrenderable scope"
+  }
+}
+
+fn required_scopes_of(e: PrivilegedEffect) -> List<AuthorizationScope> {
+  match e.witness_discharge {
+    EntailedByApprovedConvergence { root: _, required_scopes: rs } => rs
+    NoWitnessDischarge => []
+    StandingRulingUnderInterlock { ruling: _ } => []
+  }
+}
+
+fn scope_entailment(root: ConvergenceRoot, at: String, required: List<AuthorizationScope>) -> InheritanceAdmission {
+  if (required |> count) == 0 {
+    InheritanceRefused { defect: join(["the effect inheriting the approval at ", at, " states no scope, so nothing shows the approved convergence entails it"], "") as NonEmptyStr }
+  } else {
+    match first_uncovered_scope(granted: root.approved_scopes, required: required) {
+      Present { value: missing } => InheritanceRefused { defect: join(["the effect requires ", scope_text(scope: missing), ", which the approval at ", at, " does not grant"], "") as NonEmptyStr }
+      Absent => InheritanceAdmitted
+    }
+  }
+}
+
+fn inheritance_admission(e: PrivilegedEffect) -> InheritanceAdmission {
+  match convergence_lineage_root(e: e) {
+    Absent => NoInheritanceDeclared
+    Present { value: root } => {
+      let at = declaration_ref_display_key(ref: root.site)
+      let break_glass = match e.frequency {
+        BreakGlassOnly => true
+        FleetOnce => false
+        DeviceOnce => false
+        EveryOperatorRequest => false
+        EveryProvision => false
+      }
+      if break_glass {
+        InheritanceRefused { defect: join(["a break-glass effect is witnessed per instance and may not inherit the approval at ", at], "") as NonEmptyStr }
+      } else {
+        match convergence_lineage_root(e: root.effect) {
+          Present { value: _ } => InheritanceRefused { defect: join(["the lineage root ", at, " declares a lineage of its own; an approval is inherited only from the convergence the operator approved"], "") as NonEmptyStr }
+          Absent =>
+            if root_selects_operator_approval(root: root) { scope_entailment(root: root, at: at, required: required_scopes_of(e: e)) }
+            else { InheritanceRefused { defect: join(["the lineage root ", at, " does not select OperatorApprovedCapability, so no operator approval exists to inherit"], "") as NonEmptyStr } }
+        }
+      }
+    }
+  }
 }
 
 fn select_authorization_pattern(e: PrivilegedEffect) -> AuthorizationPatternSelection {
+  match inheritance_admission(e: e) {
+    NoInheritanceDeclared => select_within(e: e, inherits: false)
+    InheritanceAdmitted => select_within(e: e, inherits: true)
+    InheritanceRefused { defect: d } => PatternSelectionRefused { defects: [d] }
+  }
+}
+
+fn select_within(e: PrivilegedEffect, inherits: Bool) -> AuthorizationPatternSelection {
   let cs = authorization_pattern_hard_constraints
   match select_realization(
     assessment: assessment_for(e: e, cs: cs),
     candidate_field_identity: id_field,
-    field: candidate_field(e: e),
+    field: candidate_field(e: e, inherits: inherits),
     axes: authorization_pattern_axes,
     constraints: cs,
     constraint_authority: authorization_pattern_constraints,
@@ -706,7 +857,7 @@ fn select_authorization_pattern(e: PrivilegedEffect) -> AuthorizationPatternSele
     evidence_snapshot: id_evidence,
   ) {
     SelectedWithin { candidate: c, receipt: r } =>
-      match pattern_by_identity(e: e, wanted: c.identity) {
+      match pattern_by_identity(e: e, inherits: inherits, wanted: c.identity) {
         Absent => PatternSelectionRefused { defects: ["selected identity is not a candidate pattern" as NonEmptyStr] }
         Present { value: p } =>
           match p {
@@ -715,6 +866,7 @@ fn select_authorization_pattern(e: PrivilegedEffect) -> AuthorizationPatternSele
             OperatorApprovedCapability => PatternSelected { pattern: p, receipt: r }
             OperatorOwnSession => PatternSelected { pattern: p, receipt: r }
             AdministratorEdge => PatternSelected { pattern: p, receipt: r }
+            ApprovedConvergenceGrant => PatternSelected { pattern: p, receipt: r }
           }
       }
     CandidateFieldUnestablished { causes: cs2 } => PatternSelectionRefused { defects: cs2 }

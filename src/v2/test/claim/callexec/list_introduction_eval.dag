@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_f
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
-import v2.std.node { ComputationNode, Edge, Node, Positional, Transform }
+import v2.std.node { ComputationNode, Edge, Node, Positional, Transform, NotADeclaration }
 import v2.std.qualified_name { declaration_reference_node }
 import v2.std.runtime { RuntimeAggregate, RuntimeFieldValue, RuntimePrimitive, RuntimeValue }
 import std.algebra { Cons, Empty, list_snoc_item }
@@ -32,8 +32,8 @@ fn lie_head() -> Node {
 fn lie_list(elements: List<Node>) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: fold(elements, init: [Edge { label: Positional, target: lie_head() }], f: fn(acc, e) {
-      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e })
+    children: fold(elements, init: [Edge { label: Positional, target: lie_head(), declaration: NotADeclaration }], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e, declaration: NotADeclaration })
     }),
     occurrence_id: OccurrenceSynthetic
   }

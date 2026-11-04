@@ -16,10 +16,9 @@ import v2.std.diagnostic {
 }
 import v2.std.decl_index {
   DeclFact,
-  TypeItem,
   decl_facts_at,
-  logical_qualified_name_from_module,
-  type_declarer_qualified_names
+  decl_facts_declaring_type,
+  qualified_name_from_module
 }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { coproduct_arm_key_list_from_node, node_is_coproduct }
@@ -112,14 +111,21 @@ fn coproduct_nullary_inhabitants<T>(
 // keyed read, sharing at no grain -- four calls inside ONE claim frame cost four times one. That put
 // the guard that makes reflection sound far above the floor's per-claim ceiling, and it was itself
 // gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame in the very route
-// meant to make the reflection memo key sound. v2.std.decl_index type_declarer_qualified_names is
-// the keyed answer: the host filters the same memoized pool decl_facts_at reads and marshals no
-// declaration nodes, and it returns EVERY candidate rather than choosing among them, so the
-// multiplicity and the candidate identities are both decided here.
-fn type_declarer_names(pool_roots: List<String>, type_name: Symbol) -> List<String> {
-  type_declarer_qualified_names(
-    pool_roots: pool_roots,
-    bare_name: symbol_lexeme(sym: type_name)
+// meant to make the reflection memo key sound. v2.std.decl_index decl_facts_at with a type-name key
+// is the keyed answer: the host filters the census on the bare spelling and the TypeItem kind and
+// returns EVERY candidate row rather than choosing among them, so the multiplicity and the
+// candidate identities are both decided here.
+//
+// ONE READ, NOT TWO. The candidates used to come back as qualified names from a bare-name seam, and
+// the accept path then asked the pool AGAIN, by qualified name, for the node -- two walks of one pool
+// per resolution wherever no census provider was registered. The rows this returns already carry
+// the node, so uniqueness is proven and the node is taken from the SAME population, which also
+// makes "proven over one population, answered from another" unconstructible rather than guarded.
+fn type_declarer_rows(pool_roots: List<String>, type_name: Symbol) -> List<DeclFact> {
+  let spelling = symbol_lexeme(sym: type_name)
+  decl_facts_declaring_type(
+    type_name: spelling,
+    facts: decl_facts_at(pool_roots: pool_roots, qualified_names: [], type_names: [spelling])
   )
 }
 
@@ -131,12 +137,11 @@ fn scoped_type_reflection_diagnostic(type_name: Symbol, invariant: Symbol) -> Di
   }
 }
 
-// THE ONLY PATH TO THE BARE HOST SEAM, SHARED BY BOTH ROUTES ON PURPOSE. review 65571 found that
-// the shape check had been added to the spelling route and not to the citation route, so the
-// citation route still reached the seam for a record and got an untyped host error -- the exact
-// exit the sibling had just closed. Two copies of one acceptance law is the section 3 fork that
-// produced that divergence, so there is now ONE copy and neither route may call the seam except
-// through it.
+// THE ONE ACCEPTANCE LAW, SHARED BY BOTH ROUTES ON PURPOSE. review 65571 found that the shape
+// check had been added to the spelling route and not to the citation route, so the citation route
+// still reached the seam for a record and got an untyped host error -- the exact exit the sibling
+// had just closed. Two copies of one acceptance law is the section 3 fork that produced that
+// divergence, so there is ONE copy and both routes accept through it.
 //
 // It establishes SHAPE after its caller has established uniqueness. decl_facts kind TypeItem does
 // not separate a closed coproduct from a record -- this module's own UriScheme specimen depends on
@@ -144,70 +149,30 @@ fn scoped_type_reflection_diagnostic(type_name: Symbol, invariant: Symbol) -> Di
 // the annotations claimed. No new authority: node_is_coproduct is v2.std.node_query's existing
 // predicate, read from the node the keyed fact already carries.
 //
-// IT READS AT THE GRAIN ITS CALLER MEASURED, which review 65885 caught it not doing. Both callers
-// establish multiplicity over a KIND-FILTERED census: type_declarer_qualified_names counts only
-// declarations whose kind is TypeItem. decl_facts_at filters on qualified name and NOTHING ELSE, so
-// taking its head would answer from whichever row the canonical order happened to put first
-// whenever a logical qualified name carries a type declaration AND a non-type one -- the uniqueness
-// would have been proven over one population and the answer taken from another, which is the
-// first-match-without-a-diagnostic shape this module exists to close, one filter down.
-//
-// The repair is construction rather than a check: narrow the keyed read to the same kind the guard
-// counted, and refuse unless exactly one row survives. There is no arm to test into existence
-// because there is no arm that picks.
-//
-// THE STATE IS CURRENTLY UNPOPULATED AND THAT IS NOT WHY IT IS FIXED. Two declarations share one
-// logical qualified name only when logical_qualified_name_from_module strips a leading `v2.` and
-// both `v2.X` and `X` declare the name; searched across those twelve colliding module pairs, ZERO
-// names are declared as a type on one side and a non-type on the other today. So no RED is
-// authorable from the live corpus, and writing a refusal claim against it would be a decoration
-// that greens by construction (DESIGN section 4b). The mismatch is removed at the read instead,
-// where it cannot be reintroduced by someone later adding the declaration that would populate it.
-fn accept_sole_declaration(
-  pool_roots: List<String>,
-  type_name: Symbol,
-  sole_qualified_name: String
-) -> Outcome<Node> {
-  let at_name = decl_facts_at(pool_roots: pool_roots, qualified_name: sole_qualified_name)
-  let type_rows = filter(xs: at_name, predicate: fn(fact) { fact.kind == TypeItem })
-  if length(xs: type_rows) > 1 {
+// IT IS HANDED THE ROW ITS CALLER COUNTED. review 65885 caught an earlier revision re-reading the
+// pool by qualified name and taking a head over a population the caller had not measured (the
+// qualified read was not kind-filtered). Both callers now count type rows from one keyed read and
+// pass the sole survivor here, so there is no second population to disagree with the first.
+fn accept_sole_type_row(type_name: Symbol, sole: DeclFact) -> Outcome<Node> {
+  if node_is_coproduct(node: sole.node) {
+    outcome_accepted(value: sole.node)
+  } else {
     outcome_rejected(
       d: scoped_type_reflection_diagnostic(
         type_name: type_name,
-        invariant: ^cited_type_qualified_name_ambiguous
+        invariant: ^type_spelling_is_not_a_closed_coproduct
       )
     )
-  } else {
-    match list_head(xs: type_rows) {
-      Absent =>
-        outcome_rejected(
-          d: scoped_type_reflection_diagnostic(
-            type_name: type_name,
-            invariant: ^type_declaration_absent
-          )
-        )
-      Present { value: sole } =>
-        if node_is_coproduct(node: sole.node) {
-          outcome_accepted(value: sole.node)
-        } else {
-          outcome_rejected(
-            d: scoped_type_reflection_diagnostic(
-              type_name: type_name,
-              invariant: ^type_spelling_is_not_a_closed_coproduct
-            )
-          )
-        }
-    }
   }
 }
 
 // A bare spelling resolves ONLY where the index proves exactly one type declaration answers to
 // it; zero and many each refuse, typed and located, rather than widening to a first match
 // (DESIGN section 5 -- a failure arm refuses, never widens). The single-row arm is the only one
-// that may reach the bare host seam, and it may do so precisely because uniqueness has been
-// established BEFORE the call rather than assumed by it.
+// that reaches the acceptance law, and it may do so precisely because uniqueness has been
+// established over the very rows it is handed rather than assumed.
 fn resolve_type_node(pool_roots: List<String>, type_name: Symbol) -> Outcome<Node> {
-  let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
+  let candidates = type_declarer_rows(pool_roots: pool_roots, type_name: type_name)
   let n = length(xs: candidates)
   if n == 0 {
     outcome_rejected(
@@ -232,12 +197,7 @@ fn resolve_type_node(pool_roots: List<String>, type_name: Symbol) -> Outcome<Nod
             invariant: ^type_declaration_absent
           )
         )
-      Present { value: sole_qualified_name } =>
-        accept_sole_declaration(
-          pool_roots: pool_roots,
-          type_name: type_name,
-          sole_qualified_name: sole_qualified_name
-        )
+      Present { value: sole } => accept_sole_type_row(type_name: type_name, sole: sole)
     }
   }
 }
@@ -293,19 +253,19 @@ fn coproduct_arm_keys_at(
 // earlier revision also required the BARE spelling to be globally unique, and refused otherwise on
 // an invariant naming the bare host seam. That prohibition was true when the accept path still
 // delegated to the seam, which could not be told which module to read -- and it outlived its own
-// premise by one commit: once `accept_sole_declaration` began returning the node the KEYED read
-// already carries, nothing in this module consults load order, so a qualified key is exact and a
+// premise by one commit: once acceptance began returning the node the KEYED read already
+// carries (today `accept_sole_type_row`), nothing in this module consults load order, so a qualified key is exact and a
 // cited type in a forked spelling is perfectly resolvable. Keeping the conjunct would have forbidden
 // more than the evidence supports (DESIGN section 4d) and would have made the citation route unable
 // to serve the only case it exists for.
 fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcome<Node> {
-  let wanted = logical_qualified_name_from_module(
+  let wanted = qualified_name_from_module(
     module_name: ref.module_path as String,
     name: ref.decl_name as String
   )
   let type_name = symbol_intern_lexeme(lexeme: ref.decl_name as String)
-  let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
-  let scoped = filter(xs: candidates, predicate: fn(qn) { qn == wanted })
+  let candidates = type_declarer_rows(pool_roots: pool_roots, type_name: type_name)
+  let scoped = filter(xs: candidates, predicate: fn(fact) { fact.qualified_name == wanted })
   if length(xs: scoped) == 0 {
     outcome_rejected(
       d: scoped_type_reflection_diagnostic(
@@ -321,10 +281,15 @@ fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcom
       )
     )
   } else {
-    accept_sole_declaration(
-      pool_roots: pool_roots,
-      type_name: type_name,
-      sole_qualified_name: wanted
-    )
+    match list_head(xs: scoped) {
+      Absent =>
+        outcome_rejected(
+          d: scoped_type_reflection_diagnostic(
+            type_name: type_name,
+            invariant: ^cited_type_declaration_absent
+          )
+        )
+      Present { value: sole } => accept_sole_type_row(type_name: type_name, sole: sole)
+    }
   }
 }

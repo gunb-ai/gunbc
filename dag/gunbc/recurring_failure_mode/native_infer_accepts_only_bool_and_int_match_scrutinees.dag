@@ -3,12 +3,12 @@ module gunbc.recurring_failure_mode.native_infer_accepts_only_bool_and_int_match
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data native_infer_accepts_only_bool_and_int_match_scrutinees: RecurringFailureMode = RecurringFailureMode {
   identity: "native_infer_accepts_only_bool_and_int_match_scrutinees" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "variant-scrutinee match infer plus payload binder grounding in the emitted front end -- a match whose scrutinee's type is a coproduct accepts at prepare, arm binders ground from the alternative's payload fields, and the four vfb_* round-trip identities pass native prepare (NativeTestPassed rows beside the floor green)." }, trigger_capability: "variant-scrutinee match infer plus payload binder grounding in the emitted front end -- a match whose scrutinee's type is a coproduct accepts at prepare, arm binders ground from the alternative's payload fields, and the four vfb_* round-trip identities pass native prepare (NativeTestPassed rows beside the floor green)." } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "variant-scrutinee match infer plus payload binder grounding in the emitted front end -- a match whose scrutinee's type is a coproduct accepts at prepare, arm binders ground from the alternative's payload fields, and the four vfb_* round-trip identities pass native prepare (NativeTestPassed rows beside the floor green)." } },
 
   receipts: [
     "**the native v2 front end's infer accepts only Bool and Int match scrutinees -- a `match` whose scrutinee's type is a variant (coproduct) refuses its module at prepare with infer_match_scrutinee_not_bool, so variant-field lowering is never reached on the native route** (INVALID STATE: every claim body that would observe variant-field lowering must first match over a variant, and the emitted infer has no path for that scrutinee).",

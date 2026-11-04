@@ -1,0 +1,37 @@
+CPU Temp         | 01h | ok  |  3.1 | 63 degrees C
+System Temp      | 0Bh | ok  |  7.1 | 37 degrees C
+Peripheral Temp  | 0Ch | ok  |  7.2 | 42 degrees C
+M2NVMeSSD Temp1  | 4Bh | ns  |  7.48 | No Reading
+VRMCpu Temp      | 10h | ok  |  8.1 | 39 degrees C
+VRMSoc Temp      | 12h | ok  |  8.3 | 49 degrees C
+VRMABCD Temp     | 14h | ok  |  8.5 | 49 degrees C
+VRMEFGH Temp     | 16h | ok  |  8.6 | 46 degrees C
+DIMMA1 Temp      | B0h | ok  | 32.64 | 55 degrees C
+DIMMB1 Temp      | B2h | ok  | 32.66 | 56 degrees C
+DIMMC1 Temp      | B4h | ok  | 32.68 | 52 degrees C
+DIMMD1 Temp      | B6h | ok  | 32.70 | 49 degrees C
+DIMME1 Temp      | B8h | ok  | 32.72 | 47 degrees C
+DIMMF1 Temp      | BAh | ok  | 32.74 | 47 degrees C
+DIMMG1 Temp      | BCh | ok  | 32.76 | 46 degrees C
+DIMMH1 Temp      | BEh | ok  | 32.78 | 41 degrees C
+FAN1             | 41h | ns  | 29.1 | No Reading
+FAN2             | 42h | ns  | 29.2 | No Reading
+FAN3             | 43h | ok  | 29.3 | 3400 RPM
+FAN4             | 44h | ns  | 29.4 | No Reading
+FAN5             | 45h | ns  | 29.5 | No Reading
+FANA             | 47h | ns  | 29.6 | No Reading
+FANB             | 48h | ok  | 29.7 | 2900 RPM
+12V              | 30h | ok  |  7.18 | 12.18 Volts
+5VCC             | 31h | ok  |  7.19 | 4.93 Volts
+3.3VCC           | 32h | ok  |  7.20 | 3.29 Volts
+VBAT             | 33h | ok  | 40.0 | Presence Detected
+VDDCR            | 34h | ok  |  3.3 | 1.16 Volts
+VMEMABCD         | 35h | ok  |  3.4 | 1.24 Volts
+VMEMEFGH         | 37h | ok  | 32.34 | 1.23 Volts
+VDD_5_DUAL       | 38h | ok  | 32.35 | 5.07 Volts
+VDD_33_DUAL      | 39h | ok  | 32.36 | 3.29 Volts
+SOCRUN           | 3Ch | ok  |  7.23 | 0.85 Volts
+SOCDUAL          | 3Eh | ok  |  7.25 | 0.89 Volts
+Chassis Intru    | AAh | ok  | 23.1 | 
+GPU1 Temp        | 70h | ok  | 11.1 | 87 degrees C
+GPU3 Temp        | 72h | ns  | 11.3 | No Reading

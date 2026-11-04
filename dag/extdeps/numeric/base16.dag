@@ -5,7 +5,7 @@ import std.integer { QualifiedOctets, qualified_octets, qualified_octet_members 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.optional { Absent, Present }
-import std.algebra { collection_concat_shape, collection_map_shape, collection_join_shape }
+import std.algebra { collection_concat_shape, collection_map_shape, collection_join_shape, list_push }
 import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -145,6 +145,40 @@ fn base16_is_upper_digit_code_point(cp: Int) -> Bool {
   any(base16_digit_rows, row => code_point(row.upper) == cp && row.lower != row.upper)
 }
 
+// EVEN-LENGTH HEX IN EITHER CASE, walking the same pairs as `base16_decode_lower` and reading each digit with
+// `base16_digit_value_at`, the module's existing either-case lookup over `base16_digit_rows`. It exists because
+// the spellings that arrive over a wire do not agree on case: the Redfish EthernetInterface schema publishes
+// `MACAddress` as uppercase hex pairs while EDK2's device-path text spells the same address lowercase, and
+// refusing one spelling would report the same physical NIC as no NIC at all -- a wrong answer, not a refusal.
+// The case POLICY is chosen here, beside the lowercase one; the alphabet stays in the rows.
+fn base16_decode_any_from(hex: String, i: Int, len: Int, acc: List<Int>) -> List<Int>? {
+  if i >= len {
+    Present { value: acc }
+  } else {
+    match base16_digit_value_at(cp: code_point(char_at(hex, i))) {
+      Absent => none
+      Present { value: high } =>
+        match base16_digit_value_at(cp: code_point(char_at(hex, i + 1))) {
+          Absent => none
+          Present { value: low } =>
+            base16_decode_any_from(hex: hex, i: i + 2, len: len, acc: acc |> list_push(high * 16 + low))
+        }
+    }
+  }
+}
+
+fn base16_decode_any(hex: String) -> QualifiedOctets? {
+  let len = string_length(hex)
+  if len % 2 != 0 {
+    none
+  } else {
+    match base16_decode_any_from(hex: hex, i: 0, len: len, acc: []) {
+      Absent => none
+      Present { value: members } => Present { value: qualified_octets(members: members) }
+    }
+  }
+}
+
 // THE LOOKUP IS OVER A CODE POINT, AND THAT IS THE WHOLE OPERATION. A String-shaped wrapper stood
 // here and read its argument with code_point, which returns only the FIRST scalar (and 0 for the
 // empty string): "one lowercase digit" silently widened to "this text starts with one", so "aa"
@@ -156,37 +190,37 @@ fn base16_lower_digit_value_at(cp: Int) -> Int? {
     if code_point(row.lower) == cp { Present { value: row.value } } else { acc })
 }
 
-// The accumulation is over raw `Int` and the mint happens once, at the boundary below: every
-// member is `high * 16 + low` with both digits drawn from base16_digit_rows, so each is computed
-// in [0, 255] by the operation that produced it. That is the SAME ground `std.machine_word`
-// word_to_octets stands on in qualified_octets' admission roster -- remainders modulo the octet
-// radix -- so routing this list through uint8_octets_of_ints would add a refusal arm no input can
-// reach.
-fn base16_decode_lower_from(hex: String, i: Int, len: Int, acc: List<Int>) -> List<Int>? {
-  if i >= len {
-    Present { value: acc }
-  } else {
-    match base16_lower_digit_value_at(cp: code_point(char_at(hex, i))) {
-      Absent => none
-      Present { value: high } =>
-        match base16_lower_digit_value_at(cp: code_point(char_at(hex, i + 1))) {
-          Absent => none
-          Present { value: low } =>
-            base16_decode_lower_from(hex: hex, i: i + 2, len: len, acc: acc |> list_push(high * 16 + low))
-        }
-    }
-  }
+// ONE WALK, ONE MINTER. The pair walk and the single call to `qualified_octets` live in `base16_decode_any`
+// above; the lowercase decoder is that walk PLUS the alphabet's own membership test over the text it was
+// given, asked through `base16_lower_digit_value_at` -- whose refusal is exactly the non-canonical spelling.
+// Before this the module carried two walks and two minters, and the second one needed a second entry on
+// `std.integer`'s `qualified_octets` roster: an admission gate widened by a duplication that did not have to
+// exist (review 90329's remark; the manager asked for a measurement rather than a prediction). MEASURED, and
+// the prediction that came with it was WRONG: this fold compiles with 0 diagnostics and 0 blocking errors, all
+// 16 claims in `test.claim.base16_rfc4648_witness` pass -- including `base16_refuses_uppercase_as_noncanonical`,
+// the arm this case check carries, and `the_lowercase_decoder_is_the_either_case_walk_plus_the_case_check`,
+// which pins that the two decoders now differ in case policy and nothing else -- and all 21 claims in
+// `test.claim.network_mac_witness` still read the either-case spelling. `std.integer`'s `qualified_octets`
+// roster is down to ONE base16 minter.
+//
+// The accumulation stays over raw `Int` and the mint stays in one place: every member is `high * 16 + low`
+// with both digits drawn from `base16_digit_rows`, so each is computed in [0, 255] by the operation that
+// produced it -- the same ground `std.machine_word`'s `word_to_octets` stands on in the roster, remainders
+// modulo the octet radix -- so routing the list through `uint8_octets_of_ints` would add a refusal arm no
+// input can reach.
+fn base16_text_is_lowercase(hex: String) -> Bool {
+  let cps = hex |> chars
+  any(cps, cp => match base16_lower_digit_value_at(cp: cp) {
+    Absent => true
+    Present { value: digit } => false
+  }) == false
 }
 
 fn base16_decode_lower(hex: String) -> QualifiedOctets? {
-  let len = string_length(hex)
-  if len % 2 != 0 {
-    none
-  } else {
-    match base16_decode_lower_from(hex: hex, i: 0, len: len, acc: []) {
-      Absent => none
-      Present { value: members } => Present { value: qualified_octets(members: members) }
-    }
+  match base16_decode_any(hex: hex) {
+    Absent => none
+    Present { value: octets } =>
+      if base16_text_is_lowercase(hex: hex) { Present { value: octets } } else { none }
   }
 }
 

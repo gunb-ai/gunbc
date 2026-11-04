@@ -5,7 +5,7 @@ import std.decl_ref { declaration_ref_display_key }
 import v2.std.decl_ref_resolution_host {
   DeclarationRefResolution,
   declaration_ref_resolution_is_resolved, declaration_ref_resolution_arm_key,
-  resolve_declaration_ref_live
+  declaration_ref_live_facts, resolve_declaration_ref_live_over
 }
 import gunbc.generated_artifact { GeneratedArtifactProducerRow }
 import gunbc.generated_artifact_registry { generated_artifact_producer_rows }
@@ -33,15 +33,14 @@ fn generated_artifact_producer_coverage_of(row: GeneratedArtifactProducerRow, re
   }
 }
 
-fn generated_artifact_producer_coverage_row(row: GeneratedArtifactProducerRow, pool_roots: List<String>) -> GeneratedArtifactProducerCoverage {
-  generated_artifact_producer_coverage_of(
-    row: row,
-    resolution: resolve_declaration_ref_live(ref: row.producer, pool_roots: pool_roots)
-  )
-}
-
+// The producers are read from the pool ONCE for the whole row population, then each row is
+// resolved against that read by its own key: one keyed read per fold, not one per row.
 fn generated_artifact_producer_coverage_over(rows: List<GeneratedArtifactProducerRow>, pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
-  map(rows, r => generated_artifact_producer_coverage_row(row: r, pool_roots: pool_roots))
+  let live_facts = declaration_ref_live_facts(refs: map(rows, r => r.producer), pool_roots: pool_roots)
+  map(rows, r => generated_artifact_producer_coverage_of(
+    row: r,
+    resolution: resolve_declaration_ref_live_over(ref: r.producer, pool_roots: pool_roots, live_facts: live_facts)
+  ))
 }
 
 fn generated_artifact_producer_coverage_is_refused(c: GeneratedArtifactProducerCoverage) -> Bool {

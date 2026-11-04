@@ -7,6 +7,8 @@ import gunbc.plan { PlanDerivation, PlanDerived, PlanDerivationRefused }
 import gunbc.plans.md_helpers { h2, p, cell, row }
 import v2.std.decl_index { DeclFact, decl_facts, TypeItem, FnItem, DataItem, ServiceItem, OtherItem }
 import v2.std.decl_ref_resolution_host { resolve_declaration_ref_live, declaration_ref_resolution_is_resolved }
+import std.integer { int_to_decimal_string }
+import std.nat { nat_to_decimal_string }
 
 // THE SHARED TYPE-NAME CENSUS OF THE dag/std <-> src/v2/std FORK, DERIVED RATHER THAN TRANSCRIBED.
 //
@@ -19,11 +21,11 @@ import v2.std.decl_ref_resolution_host { resolve_declaration_ref_live, declarati
 // authored half cannot drift from the derived half without the plan's generation refusing, and
 // with it the required generated-artifact drift gate.
 //
-// "Declares a type" is the seed's item kind: `TypeItem` (a record or coproduct) or `OtherItem` (a
-// declaration with no connective, transport or body -- on these two roots, exactly the `type`
-// aliases). The node kind cannot be used instead: a function's declaration node is its signature,
-// a TypeNode. Any over-inclusion by `OtherItem` fails CLOSED: a non-type declaration entering the
-// population is a name no disposition row carries, and that refuses.
+// "Declares a type" is the seed's item kind: `TypeItem` alone (a record, a coproduct, or a `type`
+// alias, which decl_index item_kind reads from the declaration's own kind). `OtherItem` is the
+// host's cannot-classify answer, so a declaration it could not classify as a type is not counted
+// as one; the node kind cannot be used instead, because a function's declaration node is its
+// signature, a TypeNode.
 data defork_census_dag_root: String = "dag/std"
 data defork_census_v2_root: String = "src/v2/std"
 
@@ -36,7 +38,7 @@ type SharedTypeName {
 fn census_declares_type(f: DeclFact) -> Bool {
   match f.kind {
     TypeItem => true
-    OtherItem => true
+    OtherItem => false
     FnItem => false
     DataItem => false
     ServiceItem => false
@@ -171,7 +173,7 @@ fn defork_census_finding_text(f: DeforkCensusFinding) -> String {
     DuplicateDisposition { name } =>
       concat(concat("DuplicateDisposition: ", name), " is named by more than one disposition row")
     ResolvedNameReforked { name, change } =>
-      concat(concat(concat(concat("ResolvedNameReforked: ", name), " was resolved by #"), change as String), " and is declared under both roots again")
+      concat(concat(concat(concat("ResolvedNameReforked: ", name), " was resolved by #"), int_to_decimal_string(value: change)), " and is declared under both roots again")
   }
 }
 
@@ -341,7 +343,7 @@ fn defork_census_blocks(shared: List<SharedTypeName>, rows: List<SharedTypeNameR
     h2(text: "2D. The shared type-name census (the one list): the population is derived, the dispositions are authored"),
     p(text: concat(concat(concat(concat(
       "**Derived:** every name declared as a `type` (record, coproduct or alias) under both `dag/std` and `src/v2/std`, read from the namespace by `gunbc.defork_type_name_census` `shared_type_names` at generation — **",
-      length(xs: shared) as String),
+      nat_to_decimal_string(value: length(xs: shared))),
       " names** in this projection. **Authored:** each row's disposition, and — until the frontier below lands — the reading of what each side's body RESOLVES to. The two meet in an identity join by name, refused in both directions (a derived name no row disposes of; a row naming a pair that no longer exists), so this section cannot be generated from a stale disposition. Resolution, not body text, is what separates the classes: `Float = Float64` was byte-identical on both sides and bound two different `Float64`s. A **meaning fork** is one name for materially different concepts (DESIGN §3), resolved by renaming or deleting one side at its declaration, delete-first with no alias, the new name taken from the cited framework. **Frontier:** "),
       defork_census_referent_frontier.capability as String),
       concat(concat(" Candidate home: `", declaration_ref_display_key(ref: defork_census_referent_frontier.candidate_home)), "`.")
@@ -365,7 +367,7 @@ fn defork_census_blocks(shared: List<SharedTypeName>, rows: List<SharedTypeNameR
       rows: map(resolved, r => row(cells: [
         cell(text: census_names_text(names: r.names)),
         cell(text: census_resolution_text(r: r.resolution)),
-        cell(text: concat("#", r.change as String))
+        cell(text: concat("#", int_to_decimal_string(value: r.change)))
       ])),
     },
   ]

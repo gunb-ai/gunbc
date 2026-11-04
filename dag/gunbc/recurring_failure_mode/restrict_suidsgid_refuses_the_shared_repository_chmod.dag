@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.restrict_suidsgid_refuses_the_shared_repository_chmod
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data restrict_suidsgid_refuses_the_shared_repository_chmod: RecurringFailureMode = RecurringFailureMode {
+  identity: "restrict_suidsgid_refuses_the_shared_repository_chmod" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the worker unit's UMask derived in one fold from the shared repository's core.sharedRepository posture and the unit's RestrictSUIDSGID confinement, sufficient for a unit planned with RestrictSUIDSGID=yes over a group-shared repository and a mask under which git would chmod a new directory setgid to refuse when the unit is planned" } },
+
+  receipts: [
+    "INVALID STATE: a worker unit confined with RestrictSUIDSGID=yes writes into a repository configured core.sharedRepository=group under a umask that does not already produce the shared mode, so git creates a directory (an object fan-out, a ref directory) and then chmods it to 02775; the seccomp filter refuses any chmod carrying setuid or setgid, and the write fails.",
+    "RECEIPT, srv1 lab on bright-moth-475/lab-dev, 2026-10-25: the first worker to reach its model could not `git add` at all: strace fchmodat(.../objects/41, 02775) = EPERM; git printed unable to create temporary file: Operation not permitted. Measured with transient gunbc-worker units under RestrictSUIDSGID=yes: UMask=0022 refused, UMask=0002 wrote (git 2.43.0). The model's own workaround (mkdir of all 256 fan-out directories at 2755) then broke the belt's commit of its work and was repaired by hand on the host. Repair: lab-dev 60438c67, the dedicated unit runs at UMask=0002 (gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_umask_properties); RestrictSUIDSGID stays.",
+    "DISTINGUISHING FACTS: EPERM on fchmodat with a setgid mode, under a unit whose RestrictSUIDSGID is yes; the same write as the same user outside the unit succeeds; the repository's config has core.sharedRepository=group. Two independently correct facts, the confinement and the sharing posture, are set in two modules and meet only at run time.",
+    "HARM: a worker that can read and edit but cannot record its work in git; worse, a model that routes around it by hand-making directories at a mode that breaks the controller's later commit.",
+    "RUNG FOUND AT: mitigatable (the refusal on the host). CURRENT RUNG: mechanically preventable: test.claim.roadmap.roadmap_dispatch_actuator_witness the_dedicated_worker_unit_runs_at_umask_0002_and_the_service_user_unit_does_not goes RED on a dedicated unit without the mask. The mask is a literal beside the confinement, not derived from the repository posture, so a change to either side alone is still writable.",
+    "CEILING: structurally guaranteed, by deriving the mask from the two facts it reconciles (the standing's trigger). Residual outside the guarantee: when git issues the chmod is git's behaviour, read on one version (2.43.0) and not a modeled upstream fact; a git upgrade re-opens it until re-measured.",
+  ],
+  evidence: [],
+}

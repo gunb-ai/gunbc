@@ -1,12 +1,18 @@
 module extdeps.nvidia.system_management_interface
 
-import std.types { NonEmptyStr, Bool, Int, List, Unit }
+import std.types { NonEmptyStr, Bool, Int, List, Unit, String }
 import std.nat { Nat }
-import std.measure { Mebibyte, mebibyte }
-import std.algebra { trim, skip }
+import std.measure { Mebibyte, mebibyte, Milliwatt, milliwatt, Hertz, hertz, mega_factor, Celsius, celsius, Microsecond, microsecond, micro_per_unit, milli_per_unit, Bandwidth, bandwidth, milliwatt_count, hertz_count, Millisecond, millisecond, Second, second, millisecond_count, second_count }
+import std.optional { Present, Absent }
+import extdeps.numeric.base16 { base16_word_value }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_unix_seconds_at, iso8601_seconds_since_midnight }
+import std.algebra { trim, skip, string_contains }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.numeric.base16 { base16_is_digit_code_point }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -41,6 +47,137 @@ service nvidia_smi.Smi {
     }
     mock_response {
       0 => { value: "", success: true } "hermetic nvidia_smi.Smi.QueryComputeApps: no process holds a compute context"
+    }
+  }
+
+  // ── POWER, CLOCK, P-STATE AND PERSISTENCE, ONE ROW PER GPU. The field list is fixed here, so the
+  // column order the parser reads is this operation's argv and nothing else. `nounits` drops the W,
+  // MHz and C suffixes; power keeps two decimals ("45.62"). The field names were read accepted on
+  // driver 595.91.07; which fields a driver accepts is a fact of its release, and an unknown field
+  // is a nonzero exit, not a row.
+  operation QueryGpuPowerState {
+    requires none
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["nvidia-smi", "--query-gpu=index,pci.bus_id,pstate,power.draw,power.limit,power.min_limit,power.max_limit,clocks.gr,clocks.mem,persistence_mode,temperature.gpu,clocks_event_reasons.active", "--format=csv,noheader,nounits"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi --query-gpu power state failed"
+    }
+  }
+
+  // One row per supported (memory, graphics) clock pair, in MHz, for one GPU.
+  operation QuerySupportedClocks {
+    requires none
+    input { index: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["nvidia-smi", "-i", "{index}", "--query-supported-clocks=mem,gr", "--format=csv,noheader,nounits"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi --query-supported-clocks failed"
+    }
+  }
+
+  // ── EFFECTS. Each changes one GPU's state until reset or reboot; none persists across a reboot on
+  // its own. They need root on the host; which elevation realizes that is the caller's transport,
+  // not this interface. A refusal prints to stdout and exits nonzero, so stdout is carried for the
+  // refusal parse below. `limit` is in watts as nvidia-smi spells it ("48.75").
+  operation SetPowerLimit {
+    requires none
+    input { index: NonEmptyStr, limit: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["nvidia-smi", "-i", "{index}", "-pl", "{limit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi -pl refused"
+    }
+  }
+
+  operation SetPersistenceMode {
+    requires none
+    input { index: NonEmptyStr, mode: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["nvidia-smi", "-i", "{index}", "-pm", "{mode}"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi -pm refused"
+    }
+  }
+
+  // `range` is "MIN,MAX" in MHz, one argv token, as nvidia-smi takes it.
+  operation LockMemoryClocks {
+    requires none
+    input { index: NonEmptyStr, range: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["nvidia-smi", "-i", "{index}", "-lmc", "{range}"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi -lmc refused"
+    }
+  }
+
+  operation ResetMemoryClocks {
+    requires none
+    input { index: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["nvidia-smi", "-i", "{index}", "-rmc"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi -rmc refused"
+    }
+  }
+
+  operation LockGraphicsClocks {
+    requires none
+    input { index: NonEmptyStr, range: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["nvidia-smi", "-i", "{index}", "-lgc", "{range}"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi -lgc refused"
+    }
+  }
+
+  operation ResetGraphicsClocks {
+    requires none
+    input { index: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["nvidia-smi", "-i", "{index}", "-rgc"] }
+    exit {
+      0 => Unit
+      nonzero => String "nvidia-smi -rgc refused"
     }
   }
 }
@@ -136,3 +273,616 @@ fn parse_compute_apps(text: String) -> NvidiaComputeAppsRead {
     }) }
   }
 }
+
+// ── GPU IDENTITY AND SAMPLES, AS `--query-gpu` PRINTS THEM ─────────────────────────────────────
+//
+// `nvidia-smi --query-gpu=<fields> --format=csv,noheader,nounits` prints one comma-separated row per
+// device, fields in the order asked (nvidia-smi --help-query-gpu). Units are dropped: memory in MiB,
+// power in W with two decimals, clocks in MHz, temperature in degrees C. The clocks event mask prints
+// as 0x-prefixed hex (extdeps.nvidia.management_library NvmlClocksEventReason). A field the device cannot
+// report prints a bracketed marker; a row holding one is not a row of numbers and is refused whole.
+// The field lists below are the queries a serving benchmark asks, kept beside their parsers so the
+// order the parser reads is the order the query asked.
+
+data nvidia_smi_gpu_identity_fields: String = "index,uuid,name,vbios_version,driver_version,memory.total,power.limit,pcie.link.gen.max,pcie.link.width.max"
+
+data nvidia_smi_gpu_sample_fields: String = "timestamp,uuid,power.draw,clocks.sm,clocks.mem,temperature.gpu,clocks_event_reasons.active,pcie.link.gen.gpucurrent,pcie.link.width.current"
+
+// THE TWO SAMPLER COMMANDS, RENDERED WHERE THEIR FLAGS ARE DOCUMENTED. A sampler's cadence is a
+// duration on the std.measure axis; `nvidia-smi`'s own words (`-lms` takes milliseconds, dmon's `-d`
+// takes whole seconds) are rendered here, never spelled as string literals inside a gunbc instrument.
+// The version pins the cadence (gunbc.serving.serving_benchmark), so a run's rows carry the rate they
+// were sampled at.
+
+fn nvidia_smi_gpu_sample_command(fields: String, interval: Millisecond, out_path: String) -> List<String> {
+  ["nvidia-smi", concat("--query-gpu=", fields), "--format=csv,noheader,nounits", "-lms", to_string(millisecond_count(m: interval)), "-f", out_path]
+}
+
+fn nvidia_smi_dmon_pcie_command(interval: Second, out_path: String) -> List<String> {
+  ["nvidia-smi", "dmon", "-s", "t", "-o", "DT", "-d", to_string(second_count(s: interval)), "-f", out_path]
+}
+
+type NvidiaSmiGpuIdentity {
+  index: Nat
+  uuid: NonEmptyStr
+  name: NonEmptyStr
+  vbios: NonEmptyStr
+  driver: NonEmptyStr
+  memory_total: Mebibyte
+  power_limit: Milliwatt
+  link_generation_max: Nat
+  link_width_max: Nat
+}
+
+// A sample's timestamp is `YYYY/MM/DD HH:MM:SS.mmm` in the sampling process's local time zone; a
+// caller that pins TZ=UTC for the sampler reads it as UTC, and this reader states that reading by
+// returning Unix microseconds only under that premise (nvidia_smi_utc_timestamp_micros).
+type NvidiaSmiGpuSample {
+  at_unix: Microsecond
+  uuid: NonEmptyStr
+  power_draw: Milliwatt
+  sm_clock: Hertz
+  memory_clock: Hertz
+  temperature: Celsius
+  clocks_event_mask: Nat
+  link_generation: Nat
+  link_width: Nat
+}
+
+fn nvidia_smi_cells(line: String) -> List<String> {
+  map(split(s: line, delimiter: ","), c => trim(s: c))
+}
+
+fn cell_at(cells: List<String>, i: Nat) -> String? {
+  first(cells |> skip(n: i))
+}
+
+fn nonempty_cell(cells: List<String>, i: Nat) -> NonEmptyStr? {
+  match cell_at(cells: cells, i: i) {
+    Absent => none
+    Present { value: c } => if c == "" || starts_with(s: c, prefix: "[") { none } else { Present { value: c as NonEmptyStr } }
+  }
+}
+
+fn nat_cell(cells: List<String>, i: Nat) -> Nat? {
+  match cell_at(cells: cells, i: i) { Absent => none, Present { value: c } => parse_nat(raw: c) }
+}
+
+// Watts with up to three decimals, as milliwatts: "52.31" is 52,310 mW. A fourth decimal or a
+// non-numeral refuses rather than rounding.
+fn milliwatts_of_watts(raw: String) -> Milliwatt? {
+  let parts = split(s: raw, delimiter: ".")
+  match first(parts) {
+    Absent => none
+    Present { value: whole } => match parse_nat(raw: whole) {
+      Absent => none
+      Present { value: w } =>
+        if count(parts) == 1 {
+          Present { value: milliwatt(count: w * 1000) }
+        } else if count(parts) == 2 {
+          match first(parts |> skip(n: 1)) {
+            Absent => none
+            Present { value: frac } =>
+              if length(frac) == 0 || length(frac) > 3 { none } else {
+                match parse_nat(raw: frac) {
+                  Absent => none
+                  Present { value: f } => Present { value: milliwatt(count: w * 1000 + f * pow10_nat(n: 3 - length(frac))) }
+                }
+              }
+          }
+        } else { none }
+    }
+  }
+}
+
+fn pow10_nat(n: Nat) -> Nat {
+  if n == 0 { 1 } else { 10 * pow10_nat(n: n - 1) }
+}
+
+fn milliwatt_cell(cells: List<String>, i: Nat) -> Milliwatt? {
+  match cell_at(cells: cells, i: i) { Absent => none, Present { value: c } => milliwatts_of_watts(raw: c) }
+}
+
+fn megahertz_cell(cells: List<String>, i: Nat) -> Hertz? {
+  match nat_cell(cells: cells, i: i) { Absent => none, Present { value: n } => Present { value: hertz(count: n * mega_factor()) } }
+}
+
+// "0x0000000000000004": leading zeros are not significant, and the remaining digits must fit the
+// fifteen-digit hex word reader.
+fn hex_mask_cell(cells: List<String>, i: Nat) -> Nat? {
+  match cell_at(cells: cells, i: i) {
+    Absent => none
+    Present { value: c } =>
+      if !starts_with(s: c, prefix: "0x") { none } else {
+        let digits = strip_leading_zeros(s: substring(s: c, start: 2, end: length(c)))
+        if digits == "" { Present { value: 0 } } else {
+          match base16_word_value(word: digits, max_digits: 15) { Absent => none, Present { value: v } => Present { value: v } }
+        }
+      }
+  }
+}
+
+fn strip_leading_zeros(s: String) -> String {
+  if starts_with(s: s, prefix: "0") { strip_leading_zeros(s: substring(s: s, start: 1, end: length(s))) } else { s }
+}
+
+fn nvidia_smi_gpu_identity_row(line: String) -> NvidiaSmiGpuIdentity? {
+  let c = nvidia_smi_cells(line: line)
+  if count(c) != 9 { none } else {
+    match nat_cell(cells: c, i: 0) { Absent => none, Present { value: index } =>
+    match nonempty_cell(cells: c, i: 1) { Absent => none, Present { value: uuid } =>
+    match nonempty_cell(cells: c, i: 2) { Absent => none, Present { value: name } =>
+    match nonempty_cell(cells: c, i: 3) { Absent => none, Present { value: vbios } =>
+    match nonempty_cell(cells: c, i: 4) { Absent => none, Present { value: driver } =>
+    match nat_cell(cells: c, i: 5) { Absent => none, Present { value: mem } =>
+    match milliwatt_cell(cells: c, i: 6) { Absent => none, Present { value: limit } =>
+    match nat_cell(cells: c, i: 7) { Absent => none, Present { value: gen } =>
+    match nat_cell(cells: c, i: 8) { Absent => none, Present { value: width } =>
+      Present { value: NvidiaSmiGpuIdentity { index: index, uuid: uuid, name: name, vbios: vbios, driver: driver, memory_total: mebibyte(count: mem), power_limit: limit, link_generation_max: gen, link_width_max: width } }
+    } } } } } } } } }
+  }
+}
+
+// `YYYY/MM/DD HH:MM:SS.mmm` read as UTC, to Unix microseconds.
+fn nvidia_smi_utc_timestamp_micros(raw: String) -> Microsecond? {
+  let halves = split(s: raw, delimiter: " ")
+  let date = split(s: match first(halves) { Present { value: d } => d, Absent => "" }, delimiter: "/")
+  let time = split(s: match first(halves |> skip(n: 1)) { Present { value: t } => t, Absent => "" }, delimiter: ":")
+  let secs = split(s: match first(time |> skip(n: 2)) { Present { value: s } => s, Absent => "" }, delimiter: ".")
+  if count(halves) != 2 || count(date) != 3 || count(time) != 3 || count(secs) != 2 { none } else {
+    match nat_cell(cells: date, i: 0) { Absent => none, Present { value: y } =>
+    match nat_cell(cells: date, i: 1) { Absent => none, Present { value: mo } =>
+    match nat_cell(cells: date, i: 2) { Absent => none, Present { value: d } =>
+    match nat_cell(cells: time, i: 0) { Absent => none, Present { value: h } =>
+    match nat_cell(cells: time, i: 1) { Absent => none, Present { value: mi } =>
+    match nat_cell(cells: secs, i: 0) { Absent => none, Present { value: s } =>
+    match nat_cell(cells: secs, i: 1) { Absent => none, Present { value: ms } =>
+      if mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 60 || ms > 999 { none } else {
+        let unix = iso8601_unix_seconds_at(date: Iso8601CivilDate { year: y, month: mo, day: d }, since_midnight: iso8601_seconds_since_midnight(hour: h, minute: mi, second: s))
+        if unix < 0 { none } else { Present { value: microsecond(count: unix * micro_per_unit() + ms * milli_per_unit()) } }
+      }
+    } } } } } } }
+  }
+}
+
+fn nvidia_smi_gpu_sample_row(line: String) -> NvidiaSmiGpuSample? {
+  let c = nvidia_smi_cells(line: line)
+  if count(c) != 9 { none } else {
+    match cell_at(cells: c, i: 0) { Absent => none, Present { value: ts } =>
+    match nvidia_smi_utc_timestamp_micros(raw: ts) { Absent => none, Present { value: at } =>
+    match nonempty_cell(cells: c, i: 1) { Absent => none, Present { value: uuid } =>
+    match milliwatt_cell(cells: c, i: 2) { Absent => none, Present { value: draw } =>
+    match megahertz_cell(cells: c, i: 3) { Absent => none, Present { value: sm } =>
+    match megahertz_cell(cells: c, i: 4) { Absent => none, Present { value: mem } =>
+    match nat_cell(cells: c, i: 5) { Absent => none, Present { value: temp } =>
+    match hex_mask_cell(cells: c, i: 6) { Absent => none, Present { value: mask } =>
+    match nat_cell(cells: c, i: 7) { Absent => none, Present { value: gen } =>
+    match nat_cell(cells: c, i: 8) { Absent => none, Present { value: width } =>
+      Present { value: NvidiaSmiGpuSample { at_unix: at, uuid: uuid, power_draw: draw, sm_clock: sm, memory_clock: mem, temperature: celsius(count: temp), clocks_event_mask: mask, link_generation: gen, link_width: width } }
+    } } } } } } } } } }
+  }
+}
+
+// EVERY CSV QUERY IS READ THE SAME WAY: blank lines skip, and any other line that is not a row refuses the
+// whole read with that line, so a sample the parser cannot read is never a missing sample. Each query has
+// its own entry below over the shared line split, so the row type is stated, not inferred, and each
+// has its own read type.
+type NvidiaSmiIdentityRead
+  = NvidiaSmiIdentityRowsParsed { rows: List<NvidiaSmiGpuIdentity> }
+  | NvidiaSmiIdentityRowUnparsed { line: String }
+
+type NvidiaSmiSampleRead
+  = NvidiaSmiSampleRowsParsed { rows: List<NvidiaSmiGpuSample> }
+  | NvidiaSmiSampleRowUnparsed { line: String }
+
+type NvidiaSmiPcieRead
+  = NvidiaSmiPcieRowsParsed { rows: List<NvidiaSmiPcieSample> }
+  | NvidiaSmiPcieRowUnparsed { line: String }
+
+type NvidiaSmiMemoryUsedRead
+  = NvidiaSmiMemoryUsedRowsParsed { rows: List<NvidiaSmiGpuMemoryUsed> }
+  | NvidiaSmiMemoryUsedRowUnparsed { line: String }
+
+fn nvidia_smi_data_lines(text: String) -> List<String> {
+  flat_map(split(s: text, delimiter: "\n"), l => if trim(s: l) == "" { [] as List<String> } else { [l] })
+}
+
+fn nvidia_smi_identity_rows(text: String) -> NvidiaSmiIdentityRead {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_identity_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiIdentityRowUnparsed { line: b }
+    Absent => NvidiaSmiIdentityRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_identity_row(line: l) { Absent => [] as List<NvidiaSmiGpuIdentity>, Present { value: r } => [r] }) }
+  }
+}
+
+fn nvidia_smi_sample_rows(text: String) -> NvidiaSmiSampleRead {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_sample_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiSampleRowUnparsed { line: b }
+    Absent => NvidiaSmiSampleRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_sample_row(line: l) { Absent => [] as List<NvidiaSmiGpuSample>, Present { value: r } => [r] }) }
+  }
+}
+
+// ── PCIE THROUGHPUT, AS `nvidia-smi dmon -s t -o DT` PRINTS IT ─────────────────────────────────
+//
+// Two `#` header lines, then one row per device per interval: date YYYYMMDD, time HH:MM:SS, the
+// device index, rxpci and txpci in "MB/s" (the dmon page's unit word). WHICH MEGABYTE is not stated
+// by the page this repository read, so the reading below takes the decimal one (10^6 bytes) as a
+// TranscribedUncited premise; read obligation: NVML nvmlDeviceGetPcieThroughput reports KB/s, and the
+// dmon source's KB-to-MB divisor decides the basis. A binary reading would raise every figure by 4.9%.
+
+type NvidiaSmiPcieSample {
+  at_unix: Microsecond
+  index: Nat
+  rx: Bandwidth
+  tx: Bandwidth
+}
+
+fn nvidia_smi_dmon_pcie_row(line: String) -> NvidiaSmiPcieSample? {
+  if starts_with(s: trim(s: line), prefix: "#") { none } else {
+    let c = flat_map(split(s: line, delimiter: " "), w => if w == "" { [] as List<String> } else { [w] })
+    if count(c) != 5 { none } else {
+      match cell_at(cells: c, i: 0) { Absent => none, Present { value: ymd } =>
+      match cell_at(cells: c, i: 1) { Absent => none, Present { value: hms } =>
+        if length(ymd) != 8 { none } else {
+          match nvidia_smi_utc_timestamp_micros(raw: join([substring(s: ymd, start: 0, end: 4), "/", substring(s: ymd, start: 4, end: 6), "/", substring(s: ymd, start: 6, end: 8), " ", hms, ".000"], "")) {
+            Absent => none
+            Present { value: at } =>
+              match nat_cell(cells: c, i: 2) { Absent => none, Present { value: idx } =>
+              match nat_cell(cells: c, i: 3) { Absent => none, Present { value: rx } =>
+              match nat_cell(cells: c, i: 4) { Absent => none, Present { value: tx } =>
+                Present { value: NvidiaSmiPcieSample { at_unix: at, index: idx, rx: bandwidth(count: rx * mega_factor()), tx: bandwidth(count: tx * mega_factor()) } }
+              } } }
+          }
+        }
+      } }
+    }
+  }
+}
+
+// dmon's header lines are part of its output, not rows, so they are dropped before the rows are read.
+fn nvidia_smi_dmon_pcie_rows(text: String) -> NvidiaSmiPcieRead {
+  let lines = nvidia_smi_data_lines(text: text) |> filter(l => !starts_with(s: trim(s: l), prefix: "#"))
+  match first(lines |> filter(l => match nvidia_smi_dmon_pcie_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiPcieRowUnparsed { line: b }
+    Absent => NvidiaSmiPcieRowsParsed { rows: flat_map(lines, l => match nvidia_smi_dmon_pcie_row(line: l) { Absent => [] as List<NvidiaSmiPcieSample>, Present { value: r } => [r] }) }
+  }
+}
+
+// ── DEVICE MEMORY IN USE, per GPU: `--query-gpu=uuid,memory.used` ─────────────────────────────
+//
+// Read beside the process list because a container's nvidia-smi sees the device but not necessarily
+// the processes of other PID namespaces: memory in use is what any holder leaves on the device.
+data nvidia_smi_gpu_memory_used_fields: String = "uuid,memory.used"
+
+type NvidiaSmiGpuMemoryUsed {
+  uuid: NonEmptyStr
+  used: Mebibyte
+}
+
+fn nvidia_smi_gpu_memory_used_row(line: String) -> NvidiaSmiGpuMemoryUsed? {
+  let c = nvidia_smi_cells(line: line)
+  if count(c) != 2 { none } else {
+    match nonempty_cell(cells: c, i: 0) { Absent => none, Present { value: uuid } =>
+    match nat_cell(cells: c, i: 1) { Absent => none, Present { value: m } =>
+      Present { value: NvidiaSmiGpuMemoryUsed { uuid: uuid, used: mebibyte(count: m) } }
+    } }
+  }
+}
+
+fn nvidia_smi_memory_used_rows(text: String) -> NvidiaSmiMemoryUsedRead {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_memory_used_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiMemoryUsedRowUnparsed { line: b }
+    Absent => NvidiaSmiMemoryUsedRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_memory_used_row(line: l) { Absent => [] as List<NvidiaSmiGpuMemoryUsed>, Present { value: r } => [r] }) }
+  }
+}
+
+// ── THE POWER-STATE ROW, AS nvidia-smi REPORTS IT. A field the device withholds ("[N/A]",
+// "[Not Supported]") is its own arm and carries no figure, for the reason `ComputeAppUsedMemory`
+// gives: a withheld power is not zero watts.
+type SmiReading<T>
+  = SmiReported { value: T }
+  | SmiWithheld { marker: NonEmptyStr }
+
+type NvidiaPerformanceState { level: Nat }
+
+type NvidiaPersistenceMode = PersistenceEnabled | PersistenceDisabled
+
+// The clock-event-reasons bitmask, kept as the device's hex text. Which bit means what is NVML's
+// documentation to cite, and decoding it is a later row; a mask kept whole cannot be decoded wrongly.
+type NvidiaClockEventReasons { mask: NonEmptyStr }
+
+type NvidiaGpuPowerState {
+  index: Nat
+  pci_bus_id: NonEmptyStr
+  pstate: SmiReading<NvidiaPerformanceState>
+  power_draw: SmiReading<Milliwatt>
+  power_limit: SmiReading<Milliwatt>
+  power_min_limit: SmiReading<Milliwatt>
+  power_max_limit: SmiReading<Milliwatt>
+  graphics_clock: SmiReading<Hertz>
+  memory_clock: SmiReading<Hertz>
+  persistence: SmiReading<NvidiaPersistenceMode>
+  temperature: SmiReading<Celsius>
+  clock_event_reasons: SmiReading<NvidiaClockEventReasons>
+}
+
+type NvidiaGpuPowerStateRead
+  = PowerStateParsed { gpus: List<NvidiaGpuPowerState> }
+  | PowerStateUnparsed { line: String }
+
+fn smi_withheld_marker(raw: String) -> NonEmptyStr? {
+  let t = trim(s: raw)
+  if starts_with(s: t, prefix: "[") && length(t) > 1 && substring(s: t, start: length(t) - 1, end: length(t)) == "]" {
+    Present { value: t as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+// A field that is neither withheld nor parseable makes the whole row unparsed: a malformed figure
+// is not a withheld one.
+fn smi_reading<T>(raw: String, parse: fn(String) -> T?) -> SmiReading<T>? {
+  match smi_withheld_marker(raw: raw) {
+    Present { value: m } => Present { value: SmiWithheld { marker: m } }
+    Absent => match parse(trim(s: raw)) {
+      Absent => none
+      Present { value: v } => Present { value: SmiReported { value: v } }
+    }
+  }
+}
+
+// "45.62" -> 45620 mW, exactly. More than three decimals cannot be held in milliwatts without
+// rounding, so it is no reading rather than a rounded one.
+fn parse_watts_as_milliwatt(raw: String) -> Milliwatt? {
+  let parts: List<String> = split(s: raw, delimiter: ".")
+  match parts {
+    Cons { head: whole, tail: Empty } => match parse_nat(raw: whole) {
+      Absent => none
+      Present { value: w } => Present { value: milliwatt(count: w * 1000) }
+    }
+    Cons { head: whole, tail: Cons { head: frac, tail: Empty } } =>
+      if length(frac) == 0 || length(frac) > 3 { none } else {
+        match parse_nat(raw: whole) {
+          Absent => none
+          Present { value: w } => match parse_nat(raw: concat(frac, substring(s: "000", start: 0, end: 3 - length(frac)))) {
+            Absent => none
+            Present { value: f } => Present { value: milliwatt(count: w * 1000 + f) }
+          }
+        }
+      }
+    _ => none
+  }
+}
+
+fn parse_megahertz_as_hertz(raw: String) -> Hertz? {
+  match parse_nat(raw: raw) {
+    Absent => none
+    Present { value: m } => Present { value: hertz(count: m * 1000000) }
+  }
+}
+
+fn parse_performance_state(raw: String) -> NvidiaPerformanceState? {
+  if starts_with(s: raw, prefix: "P") {
+    match parse_nat(raw: substring(s: raw, start: 1, end: length(raw))) {
+      Absent => none
+      Present { value: n } => if n > 15 { none } else { Present { value: NvidiaPerformanceState { level: n } } }
+    }
+  } else {
+    none
+  }
+}
+
+fn parse_persistence_mode(raw: String) -> NvidiaPersistenceMode? {
+  match raw {
+    "Enabled" => Present { value: PersistenceEnabled }
+    "Disabled" => Present { value: PersistenceDisabled }
+    _ => none
+  }
+}
+
+fn parse_celsius(raw: String) -> Celsius? {
+  match parse_int(s: raw) {
+    Absent => none
+    Present { value: n } => Present { value: celsius(count: n) }
+  }
+}
+
+// The mask is kept as the device's hex text, because nothing decodes it yet. Its alphabet is still
+// checked against the shared base-16 rows, so "0xzz" is no reading rather than a reported mask.
+// base16_word_value is not the check: it caps at fifteen digits, and this mask prints sixteen.
+fn parse_clock_event_reasons(raw: String) -> NvidiaClockEventReasons? {
+  let digits = raw |> chars |> skip(n: 2)
+  if starts_with(s: raw, prefix: "0x") && length(digits) >= 1 && all(digits, cp => base16_is_digit_code_point(cp: cp)) {
+    Present { value: NvidiaClockEventReasons { mask: raw as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn smi_cell(cells: List<String>, at: Int) -> String? {
+  first(cells |> skip(n: at))
+}
+
+fn power_state_row(line: String) -> NvidiaGpuPowerState? {
+  let cells: List<String> = map(split(s: line, delimiter: ","), c => trim(s: c))
+  if count(cells) != 12 { none } else {
+    let index = match smi_cell(cells: cells, at: 0) { Absent => none  Present { value: v } => parse_nat(raw: v) }
+    let bus = match smi_cell(cells: cells, at: 1) { Absent => ""  Present { value: v } => v }
+    let pstate = match smi_cell(cells: cells, at: 2) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_performance_state) }
+    let draw = match smi_cell(cells: cells, at: 3) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_watts_as_milliwatt) }
+    let limit = match smi_cell(cells: cells, at: 4) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_watts_as_milliwatt) }
+    let min_limit = match smi_cell(cells: cells, at: 5) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_watts_as_milliwatt) }
+    let max_limit = match smi_cell(cells: cells, at: 6) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_watts_as_milliwatt) }
+    let gr = match smi_cell(cells: cells, at: 7) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_megahertz_as_hertz) }
+    let mem = match smi_cell(cells: cells, at: 8) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_megahertz_as_hertz) }
+    let pm = match smi_cell(cells: cells, at: 9) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_persistence_mode) }
+    let temp = match smi_cell(cells: cells, at: 10) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_celsius) }
+    let reasons = match smi_cell(cells: cells, at: 11) { Absent => none  Present { value: v } => smi_reading(raw: v, parse: parse_clock_event_reasons) }
+    match index {
+        Absent => none
+        Present { value: i } => if bus == "" { none } else {
+          match pstate { Absent => none  Present { value: ps } =>
+          match draw { Absent => none  Present { value: d } =>
+          match limit { Absent => none  Present { value: l } =>
+          match min_limit { Absent => none  Present { value: lo } =>
+          match max_limit { Absent => none  Present { value: hi } =>
+          match gr { Absent => none  Present { value: g } =>
+          match mem { Absent => none  Present { value: m } =>
+          match pm { Absent => none  Present { value: pe } =>
+          match temp { Absent => none  Present { value: t } =>
+          match reasons { Absent => none  Present { value: r } =>
+            Present { value: NvidiaGpuPowerState {
+              index: i, pci_bus_id: bus as NonEmptyStr, pstate: ps, power_draw: d, power_limit: l,
+              power_min_limit: lo, power_max_limit: hi, graphics_clock: g, memory_clock: m,
+              persistence: pe, temperature: t, clock_event_reasons: r,
+            } }
+          } } } } } } } } } }
+        }
+    }
+  }
+}
+
+// One pass per line and one flatten, as `parse_compute_apps` does; an unparsed row is never skipped.
+fn parse_gpu_power_state(text: String) -> NvidiaGpuPowerStateRead {
+  let lines = flat_map(split(s: text, delimiter: "\n"), l => if trim(s: l) == "" { [] as List<String> } else { [l] })
+  let rows = map(lines, l => match power_state_row(line: l) {
+    Absent => PowerStateUnparsed { line: l }
+    Present { value: g } => PowerStateParsed { gpus: [g] }
+  })
+  let unparsed = flat_map(rows, r => match r {
+    PowerStateUnparsed { line: l } => [l]
+    PowerStateParsed { gpus: _ } => [] as List<String>
+  })
+  match first(unparsed) {
+    Present { value: bad } => PowerStateUnparsed { line: bad }
+    Absent => PowerStateParsed { gpus: flat_map(rows, r => match r {
+      PowerStateParsed { gpus: xs } => xs
+      PowerStateUnparsed { line: _ } => [] as List<NvidiaGpuPowerState>
+    }) }
+  }
+}
+
+// ── SUPPORTED CLOCKS. Each line is "MEM, GR" in MHz.
+type NvidiaSupportedClockPair { memory: Hertz, graphics: Hertz }
+
+type NvidiaSupportedClocksRead
+  = SupportedClocksParsed { pairs: List<NvidiaSupportedClockPair> }
+  | SupportedClocksUnparsed { line: String }
+
+fn supported_clock_pair(line: String) -> NvidiaSupportedClockPair? {
+  let cells: List<String> = map(split(s: line, delimiter: ","), c => trim(s: c))
+  if count(cells) != 2 { none } else {
+    match smi_cell(cells: cells, at: 0) {
+      Absent => none
+      Present { value: m } => match smi_cell(cells: cells, at: 1) {
+        Absent => none
+        Present { value: g } => match parse_megahertz_as_hertz(raw: m) {
+          Absent => none
+          Present { value: mh } => match parse_megahertz_as_hertz(raw: g) {
+            Absent => none
+            Present { value: gh } => Present { value: NvidiaSupportedClockPair { memory: mh, graphics: gh } }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn parse_supported_clocks(text: String) -> NvidiaSupportedClocksRead {
+  let lines = flat_map(split(s: text, delimiter: "\n"), l => if trim(s: l) == "" { [] as List<String> } else { [l] })
+  let rows = map(lines, l => match supported_clock_pair(line: l) {
+    Absent => SupportedClocksUnparsed { line: l }
+    Present { value: c } => SupportedClocksParsed { pairs: [c] }
+  })
+  let unparsed = flat_map(rows, r => match r {
+    SupportedClocksUnparsed { line: l } => [l]
+    SupportedClocksParsed { pairs: _ } => [] as List<String>
+  })
+  match first(unparsed) {
+    Present { value: bad } => SupportedClocksUnparsed { line: bad }
+    Absent => SupportedClocksParsed { pairs: flat_map(rows, r => match r {
+      SupportedClocksParsed { pairs: xs } => xs
+      SupportedClocksUnparsed { line: _ } => [] as List<NvidiaSupportedClockPair>
+    }) }
+  }
+}
+
+// The lowest supported memory clock, which is what a park locks to. Absent on an empty list: no
+// pair is not a zero clock.
+fn minimum_memory_clock(pairs: List<NvidiaSupportedClockPair>) -> Hertz? {
+  let unread: Hertz? = none
+  fold(pairs, init: unread, f: (acc, p) => match acc {
+    Absent => Present { value: p.memory }
+    Present { value: m } => if hertz_count(p.memory) < hertz_count(m) { Present { value: p.memory } } else { acc }
+  })
+}
+
+// ── WHAT AN EFFECT'S REFUSAL SAYS. The out-of-range power limit carries the device's own bounds,
+// which is the reading the cap policy needs; an unrecognized option says the installed driver's
+// surface lacks it (595.91.07 rejects -lmi with exit 255). Anything else is kept as the text.
+type SmiEffectOutcome
+  = SmiEffectApplied
+  | SmiPowerLimitOutOfRange { minimum: Milliwatt, maximum: Milliwatt }
+  | SmiOptionUnrecognized { option: NonEmptyStr }
+  | SmiEffectRefused { exit_code: Int, text: String }
+
+fn between_watts(text: String) -> SmiEffectOutcome? {
+  // "... should be between 48.75 W and 62.50 W for GPU ..."
+  let after: List<String> = split(s: text, delimiter: "between ")
+  match first(after |> skip(n: 1)) {
+    Absent => none
+    Present { value: rest } => {
+      let words: List<String> = split(s: rest, delimiter: " ")
+      match smi_cell(cells: words, at: 0) {
+        Absent => none
+        Present { value: lo } => match smi_cell(cells: words, at: 3) {
+          Absent => none
+          Present { value: hi } => match parse_watts_as_milliwatt(raw: lo) {
+            Absent => none
+            Present { value: lom } => match parse_watts_as_milliwatt(raw: hi) {
+              Absent => none
+              Present { value: him } => Present { value: SmiPowerLimitOutOfRange { minimum: lom, maximum: him } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn unrecognized_option(text: String) -> SmiEffectOutcome? {
+  // "ERROR: Option -lmi is not recognized. ..."
+  let after: List<String> = split(s: text, delimiter: "Option ")
+  match first(after |> skip(n: 1)) {
+    Absent => none
+    Present { value: rest } => if string_contains(s: rest, pattern: " is not recognized") {
+      match first(split(s: rest, delimiter: " ")) {
+        Absent => none
+        Present { value: opt } => if opt == "" { none } else { Present { value: SmiOptionUnrecognized { option: opt as NonEmptyStr } } }
+      }
+    } else { none }
+  }
+}
+
+fn smi_effect_outcome(exit_code: Int, text: String) -> SmiEffectOutcome {
+  if exit_code == 0 { SmiEffectApplied } else {
+    match unrecognized_option(text: text) {
+      Present { value: o } => o
+      Absent => if string_contains(s: text, pattern: "is not a valid power limit") {
+        match between_watts(text: text) {
+          Present { value: o } => o
+          Absent => SmiEffectRefused { exit_code: exit_code, text: text }
+        }
+      } else {
+        SmiEffectRefused { exit_code: exit_code, text: text }
+      }
+    }
+  }
+}
+
+// DESIGN section 3c declared frontier, for the power-state query, supported clocks and effects above.
+data smi_power_state_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a host converge leg imports parse_gpu_power_state and the effect operations to apply a selected power cap and clock park per GPU and read them back, refusing through smi_effect_outcome when the device refuses. SUFFICIENT FOR: the power-state model has a production consumer. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness parses captures produced by running exactly these argv on the H11 (driver 595.91.07), but no enrolled claim executes QueryGpuPowerState on a real GPU host; that claim runs host-side in the converge leg." as NonEmptyStr
+)

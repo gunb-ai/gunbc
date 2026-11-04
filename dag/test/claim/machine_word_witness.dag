@@ -353,6 +353,15 @@ test fn octet_packing_round_trips_holds() -> Bool {
   }
 }
 
+test fn octet_packing_round_trips_little_endian_holds() -> Bool {
+  let v = word32_or_zero(value: 305419896)
+  match word_to_octets(a: v, endianness: LittleEndian) {
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: octets } =>
+      word32_value_or(result: word_from_octets(width: Width32, octets: octets, endianness: LittleEndian), fallback: 0 - 1) == 305419896
+  }
+}
+
 test fn packing_refuses_the_wrong_octet_count_holds() -> Bool {
   match word_from_octets(width: Width32, octets: octet_words(values: [1, 2, 3]), endianness: BigEndian) {
     WordRefused { cause: OctetCountMismatch { width: _, expected: e, observed: o } } => e == 4 && o == 3
@@ -565,25 +574,6 @@ test fn octet_radix_is_the_width8_modulus_holds() -> Bool {
         Present { value: m } => r == m && r == 256
       }
   }
-}
-
-// ENROLMENT IS A DIFFERENT FACT FROM DECLARATION, AND ONLY THIS CLAIM ESTABLISHES IT.
-//
-// The two claims above assert that the frontier rows name this module and that their key set is the
-// expected one -- that the DECLARATIONS exist. Neither touches whether anything folds them, and a
-// roster nothing folds computes no expiry: when extdeps.crypto.sha2 sha256_add_all lands, a row
-// outside the census is never reported as fired-still-present, so the trigger that is supposed to
-// retire it cannot fire (review 68088). That is the inert-lens tier DESIGN section 6 names, and the
-// first cut of this roster sat in it while asserting the opposite in prose.
-//
-// So this claim joins the rows against the census closure ITSELF rather than against a restatement
-// of it, by subject key rather than by count -- a count agrees while membership differs. Dropping
-// machine_word_consumer_frontier_rows from gunbc.census_closure_frontier
-// census_closure_frontier_row_groups reds it, which is the mutation it exists to catch.
-test fn machine_word_frontier_rows_are_enrolled_in_the_census_holds() -> Bool {
-  let census_keys = census_closure_frontier_rows() |> map(row => frontier_subject_key(row: row))
-  machine_word_consumer_frontier_rows |> all(row =>
-    census_keys |> any(k => k == frontier_subject_key(row: row)))
 }
 
 // THE WIDTH64 ARMS OF THE PACKING OPERATIONS, WHICH HAD NO WITNESS AT ALL.

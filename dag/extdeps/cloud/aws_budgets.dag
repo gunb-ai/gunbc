@@ -1,0 +1,150 @@
+module extdeps.cloud.aws_budgets
+
+import std.types { Int, NonEmptyStr, String, List }
+import std.decimal { ExactDecimal }
+import std.measure { MoneyAmountMicro }
+import extdeps.currency.currency { CurrencyCode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// AWS BUDGETS, the shapes of the backstop the flex plan uses: a cost budget and a budget action that
+// attaches an IAM policy (a deny of ec2:RunInstances) to the flex principal when actual cost crosses a
+// threshold. API version 2016-10-20. Read 2026-10-23. A budget is evaluated on billing data that lags
+// usage, so the action is a backstop behind the loop's own liability ceiling, never the ceiling itself.
+// This module owns the shapes only; the amount, threshold and principal are policy (product.fabric).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_budgets_CreateBudgetAction.html" }
+}
+
+data aws_budgets_create_budget_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_budgets_CreateBudget.html" }
+}
+
+data aws_budgets_controls_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/cost-management/latest/userguide/budgets-controls.html" }
+}
+
+// The subject is the service; aws_budgets_api_version is its revision fact.
+data aws_budgets_api: NonEmptyStr = "AWS Budgets API"
+
+data aws_budgets_definition_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_budgets_Definition.html" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.aws_budgets",
+      decl_name: "aws_budgets_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [aws_budgets_create_budget_page, aws_budgets_controls_page, aws_budgets_definition_page]
+}
+
+data aws_budgets_api_version: NonEmptyStr = "2016-10-20"
+
+// DECLARED FRONTIER (DESIGN 3c): nothing imports this module yet. Its consumer is the spend-budget backstop the flex AWS principal is provisioned with, in the flex AWS
+// supplier row, PR 4 of gunbc.plans.flex_supplier_generalization.
+data aws_budgets_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_budgets for the flex AWS supplier row (gunbc.plans.flex_supplier_generalization PR 4) and a Plan-mode pass executes over these shapes.")
+
+type AwsBudgetTimeUnit
+  = AwsBudgetDaily
+  | AwsBudgetMonthly
+  | AwsBudgetQuarterly
+  | AwsBudgetAnnually
+
+// Spend {Amount, Unit}: a decimal string and a currency code on the wire. Here the amount is std.measure
+// MoneyAmountMicro and the unit is the extdeps.currency CurrencyCode, the carriers the rest of the
+// corpus prices money in; the projection renders them back to the wire strings.
+type AwsBudgetSpend {
+  amount: MoneyAmountMicro
+  unit: CurrencyCode
+}
+
+// Cost filters narrow the budget, e.g. to a cost-allocation tag (`user:<key>$<value>`) so the budget
+// counts only the flex owner tag's spend.
+type AwsBudgetCostFilter {
+  name: NonEmptyStr
+  values: List<String>
+}
+
+// BudgetType: the backstop is a COST budget; the other types (usage, RI and Savings Plans coverage and
+// utilization) are not used and not modeled, so a non-cost budget is unwritable here.
+type AwsBudgetType
+  = | AwsBudgetCost
+
+type AwsBudget {
+  budget_name: NonEmptyStr
+  budget_type: AwsBudgetType
+  budget_limit: AwsBudgetSpend
+  time_unit: AwsBudgetTimeUnit
+  cost_filters: List<AwsBudgetCostFilter>
+}
+
+// CreateBudget {AccountId, Budget}. account_id is a request PARAMETER supplied at the call from the
+// operator's custody; it is never written into the corpus as data (plan section 4). Notifications are
+// not created with the budget: the backstop's only consequence is the action below.
+type AwsCreateBudgetRequest {
+  account_id: NonEmptyStr
+  budget: AwsBudget
+}
+
+type AwsBudgetNotificationType
+  = AwsBudgetActual
+  | AwsBudgetForecasted
+
+type AwsBudgetThresholdType
+  = AwsBudgetPercentage
+  | AwsBudgetAbsoluteValue
+
+type AwsBudgetActionThreshold {
+  value: ExactDecimal
+  threshold_type: AwsBudgetThresholdType
+}
+
+type AwsBudgetApprovalModel
+  = AwsBudgetAutomatic
+  | AwsBudgetManual
+
+// IamActionDefinition: the managed policy to attach and the roles, groups or users to attach it to.
+type AwsBudgetIamActionDefinition {
+  policy_arn: NonEmptyStr
+  roles: List<NonEmptyStr>
+  groups: List<NonEmptyStr>
+  users: List<NonEmptyStr>
+}
+
+// Definition, NESTED AS THE API NESTS IT ({IamActionDefinition} | {ScpActionDefinition} |
+// {SsmActionDefinition}). Only the IAM arm is used. ActionType is NOT a separate member here: the wire
+// ActionType (APPLY_IAM_POLICY) is a function of the arm, emitted by the projection, so a request whose
+// ActionType disagrees with its Definition is unwritable.
+type AwsBudgetActionDefinition
+  = | AwsBudgetApplyIamPolicy { iam_action_definition: AwsBudgetIamActionDefinition }
+
+data aws_budget_action_type_apply_iam_policy: NonEmptyStr = "APPLY_IAM_POLICY"
+
+type AwsBudgetSubscriber {
+  subscription_type: NonEmptyStr
+  address: NonEmptyStr
+}
+
+type AwsCreateBudgetActionRequest {
+  account_id: NonEmptyStr
+  budget_name: NonEmptyStr
+  notification_type: AwsBudgetNotificationType
+  action_threshold: AwsBudgetActionThreshold
+  definition: AwsBudgetActionDefinition
+  execution_role_arn: NonEmptyStr
+  approval_model: AwsBudgetApprovalModel
+  subscribers: List<AwsBudgetSubscriber>
+}
+
+type AwsCreateBudgetActionResponse {
+  account_id: NonEmptyStr
+  budget_name: NonEmptyStr
+  action_id: NonEmptyStr
+}

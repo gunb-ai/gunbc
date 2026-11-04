@@ -34,7 +34,7 @@ import extdeps.tailscale.serve { TailscaleServeCapability }
 // plan that claims user-manager confinement (sysctl 1 → system-manager launcher). Sysctl 0 is a
 // bet that the user manager would enforce, not an observation of confinement, so the plan refuses
 // rather than minting ProtectHome (DESIGN 4d). The selected identity is SystemManagerLauncherSelected.
-// live_deploy.emit apply_selected_worker_sandbox_steps is that realization on the applying path.
+// gunbc.live_deploy.apply_legs deploy_apply_worker_sandbox_plan is that realization on the applying path.
 
 type WorkerSandboxChoice
   = | SystemManagerLauncherSelected
@@ -135,7 +135,7 @@ fn srv1_lab_deploy_plan() -> LabDeployPlan {
 }
 
 data system_manager_launcher_wiring_frontier: DissolutionCondition = bound_dissolution(
-  ref: decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "apply_selected_worker_sandbox_steps"),
+  ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_worker_sandbox_plan"),
 )
 
 fn lab_plan_refusal_reason(cause: LabDeployPlanRefusal) -> NonEmptyStr {
@@ -151,19 +151,6 @@ fn lab_plan_refusal_reason(cause: LabDeployPlanRefusal) -> NonEmptyStr {
           join(["apparmor userns sysctl unreadable: ", to_string(n)], "") as NonEmptyStr
       }
   }
-}
-
-fn lab_plan_refused_emit_line(cause: LabDeployPlanRefusal, fold_label: String) -> String {
-  concat(
-    "__GUNBC_DEPLOY_REFUSED__ live-deploy ",
-    concat(
-      fold_label,
-      concat(
-        " NOT EMITTED: lab plan refused (",
-        concat(lab_plan_refusal_reason(cause: cause) as String, ") (DESIGN 5: refuse, never widen)"),
-      ),
-    ),
-  )
 }
 
 // WHY DispatchHostEnvironment SUBSTRING PROBES ARE NOT REPLACED HERE. Those probes are a live

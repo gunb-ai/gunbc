@@ -36,6 +36,7 @@ import v2.std.node {
   node_synthetic,
   ArrowBodyEdge,
   core_edge_label,
+  NotADeclaration
 }
 
 // WHAT THIS FILE ESTABLISHES: a fn's body is judged at its declared return. v2.compiler.infer
@@ -48,10 +49,10 @@ import v2.std.node {
 //
 // WHY TREES AND NOT SOURCE TEXT. The fixtures are the Arrow body lowering produces
 // (v2.compiler.body_lowering_fold body_lower_fn_decl_arrow: domain, return, return, declared order,
-// body), handed to `infer`. A source-text v2 acceptance harness that admits the fixture's peer
-// roots does not exist yet (test.claim.named_argument_binding_two_route_witness records that
-// v2's standalone driver refuses its own positive control); that harness is this file's next-rung
-// trigger, at which point these arms gain source-text twins.
+// body), handed to `infer`, so each arm judges the relation at one interface. The source-text twins
+// -- the same judgment reached from authored source through the production assembly route, with
+// records, coproducts, aliases and FreeMonoid applications -- are
+// v2.test.claim.compiler.infer_declared_return_source_witness.
 //
 // WHY THE GENERIC DISCRIMINATOR AT INFER IS A LIST LITERAL. The only Instantiation-typed value v2
 // infer derives is the FreeMonoid introduction (v2.compiler.infer infer_freemonoid_type_of); an
@@ -84,10 +85,10 @@ fn dr_arrow(return_type: Node, body: Node) -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: return_type },
-      Edge { label: Positional, target: return_type },
+      Edge { label: Positional, target: return_type, declaration: NotADeclaration },
+      Edge { label: Positional, target: return_type, declaration: NotADeclaration },
       signature.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body, declaration: NotADeclaration }
     ]
   )
 }
@@ -102,7 +103,7 @@ fn dr_generic_arrow(type_param: Symbol, return_type: Node, body: Node) -> Node {
         conj: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: type_binder_set_children(binders: [
-            Edge { label: Authored { name: type_param }, target: dag_type_atom_node(identity: type_param) }
+            Edge { label: Authored { name: type_param }, target: dag_type_atom_node(identity: type_param), declaration: NotADeclaration }
           ], source: dag_type_atom_node(identity: type_param))
         )
       )
@@ -126,8 +127,8 @@ fn dr_applied(head: Node, argument: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: head },
-      Edge { label: Positional, target: argument }
+      Edge { label: Positional, target: head, declaration: NotADeclaration },
+      Edge { label: Positional, target: argument, declaration: NotADeclaration }
     ]
   )
 }

@@ -179,6 +179,27 @@ fn required_ci_phase_enrolled(p: RequiredCiPhase, phases: List<RequiredCiPhase>)
   any(phases, x => required_ci_phase_is(a: x, b: p))
 }
 
+// WHICH PHASES REGENERATE GENERATED ARTIFACTS, TOTAL AND WITHOUT A WILDCARD: a new phase arm does
+// not compile until it is classified here. It is the property gunbc.rung_drop
+// floor_cut_regen_second_generation_agreement is declared over; the drop's other half (no required
+// lane compares a second generation) is the drop's own claim and holds of every phase uniformly.
+fn required_ci_phase_regenerates_artifacts(p: RequiredCiPhase) -> Bool {
+  match p {
+    ParsePhase => false
+    GeneratedArtifactPhase => true
+    FloorPhase => false
+    PrimitiveRuntimeBodyPhase => false
+    BareReferenceAdmissionPhase => false
+  }
+}
+
+// Parameterized on the roster, like required_ci_phase_enrolled, so a witness authors the population.
+fn regenerating_phase_names(phases: List<RequiredCiPhase>) -> List<String> {
+  phases
+    |> filter(p => required_ci_phase_regenerates_artifacts(p: p))
+    |> map(p => required_ci_phase_name(p: p))
+}
+
 fn lane_phase_names(lane: RequiredCiLane, phases: List<RequiredCiPhase>) -> List<String> {
   phases
     |> filter(p => required_ci_lane_name(l: required_ci_phase_lane(p: p)) == required_ci_lane_name(l: lane))

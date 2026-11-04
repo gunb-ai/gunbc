@@ -91,8 +91,10 @@ import extdeps.github.deployment_protection_rule {
   GitHubDeploymentProtectionRuleId,
 }
 import extdeps.github.app { GitHubAppInstallationId, GitHubAppId }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 
 data forged_run_id: Int = 35447067113
+data forged_run: GitHubWorkflowRunId = GitHubWorkflowRunId { value: forged_run_id }
 data forged_environment: NonEmptyStr = "srv1-production"
 data forged_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 888800001 }
 data forged_app_id: GitHubAppId = GitHubAppId { value: 1900000001 }
@@ -113,7 +115,7 @@ data forged_identity: ObservedGateInstallation = ObservedGateInstallation {
 // refused for MISSING fields would prove nothing about the seal, so what remains to refuse it is the
 // seal.
 data forged_approved_receipt: AcceptedRuleReviewReceipt = AcceptedRuleReviewReceipt {
-  run_id: forged_run_id,
+  run_id: forged_run,
   environment_name: forged_environment,
   state: Approved,
   rule_id: GitHubDeploymentProtectionRuleId { value: 900000001 },
@@ -158,7 +160,7 @@ fn forge_an_accepted_review() -> AcceptedReviewOutcome {
   mint_accepted_rule_review(
     owner: "gunb-ai",
     repo: "gunbc",
-    run_id: forged_run_id,
+    run_id: forged_run,
     environment_name: forged_environment,
     intended: Approved,
     review: DeploymentProtectionRuleReview {

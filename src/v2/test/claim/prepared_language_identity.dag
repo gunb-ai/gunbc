@@ -1,0 +1,97 @@
+module v2.test.claim.prepared_language_identity
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { PreparedLanguage, assemble_program_from_ingest, assemble_program_from_prepared_ingest, prepare_language }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.go { go_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.program_assembly prepare_language / assemble_program_from_prepared_ingest, the
+// carried-value form of the language preparation (DESIGN section 2, step 1). A frame that assembles many
+// sources under one model prepares the model once and passes the value; the preparation is a field
+// BESIDE the model it was derived from, so the assembly reads one model and its own preparation.
+// BOUNDARY: the model and its preparation in, the assembled outcome out. THE RED: a frame whose
+// language model is a DIFFERENT model must not receive the shared dag preparation -- it holds its own,
+// and the same source assembles differently under it. The claim reds if the assembly reads a fixed dag
+// model instead of the carried preparation (mutation run: it FAILS). It does NOT red on a hand-built
+// mismatched PreparedLanguage: that state is writable (see the comment on the type) and is a declared
+// gap, not a covered one.
+// THE PAIRING OBLIGATION (DESIGN section 3): assemble_program_from_ingest, the route that prepares per
+// call, stays the production route for every caller that holds one assembly, and a third claim asserts
+// the carried form reaches the same verdict as it, so supplying the preparation never removes the last
+// execution of the preparing path.
+
+data pli_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^prepared_language_identity_artifact,
+  file_path: "src/v2/pilot/prepared_language_identity_pilot.dag"
+}
+
+fn pli_ingest() -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: "module p\n\ntype Q = Int\n", fidelity: Lossless },
+      artifact: pli_artifact,
+      compilation_unit: ^prepared_language_identity_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn pli_admission() -> Admission {
+  Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty }
+}
+
+fn pli_accepts(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pli_assembles(prepared: Outcome<PreparedLanguage>) -> Bool {
+  match prepared {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prep, diagnostics: _ } =>
+      pli_accepts(o: assemble_program_from_prepared_ingest(ingest: pli_ingest(), admission: pli_admission(), prep: prep))
+  }
+}
+
+fn pli_identity(prepared: Outcome<PreparedLanguage>) -> Symbol {
+  match prepared {
+    Rejected { diagnostics: _ } => ^pli_no_preparation
+    Accepted { value: prep, diagnostics: _ } => prep.model.language_identity
+  }
+}
+
+data pli_dag_prepared: Outcome<PreparedLanguage> = prepare_language(lm: dag_language_model())
+data pli_go_prepared: Outcome<PreparedLanguage> = prepare_language(lm: go_language_model())
+
+// The preparation carries the model it was derived from, so two models are two preparations.
+test fn pli_each_preparation_carries_the_model_it_was_derived_from() -> Bool {
+  pli_identity(prepared: pli_dag_prepared) == dag_language_model().language_identity &&
+    pli_identity(prepared: pli_go_prepared) == go_language_model().language_identity &&
+    pli_identity(prepared: pli_dag_prepared) != pli_identity(prepared: pli_go_prepared)
+}
+
+// THE RED. The same dag source, assembled over the go model's own preparation, is not accepted.
+test fn pli_a_frame_with_a_different_model_does_not_receive_the_dag_preparation() -> Bool {
+  !pli_assembles(prepared: pli_go_prepared)
+}
+
+// THE POSITIVE CONTROL, and the pairing claim: the dag preparation accepts the source, and the
+// per-call route reaches the same verdict.
+test fn pli_the_dag_preparation_reaches_the_per_call_routes_verdict() -> Bool {
+  pli_assembles(prepared: pli_dag_prepared) &&
+    pli_accepts(o: assemble_program_from_ingest(ingest: pli_ingest(), admission: pli_admission(), lm: dag_language_model()))
+}

@@ -14,9 +14,7 @@ data builtin_signature_arity_pairing_fabricates: RungDrop = RungDrop {
 
   declared: "2026-09-01",
 
-  standing: Standing,
-
-    declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: Mitigatable,
     reason: LostAsPassenger {
@@ -24,5 +22,5 @@ data builtin_signature_arity_pairing_fabricates: RungDrop = RungDrop {
     },
     population: Enumerated { members: builtin_signature_arity_pairing_fabricates_population },
     restoration_trigger: "THE CAPABILITY: construction-time refusal available inside a `data` initializer, sufficient for a declared/derived arity disagreement to stop the line with a typed, located diagnostic at the row that causes it, rather than a marked value that construction accepts. A witness asserting the marker's absence would raise the class to mechanically preventable but would not retire this row, because the invalid state would still be writable"
-  }
+  } }
 }

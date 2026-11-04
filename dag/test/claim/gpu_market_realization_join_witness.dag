@@ -1,0 +1,80 @@
+module test.claim.gpu_market_realization_join_witness
+
+// A RUN RECEIPT'S GPUS JOIN TO THE BOARD THE DRIVER NAMES THEM AS, OR ARE REFUSED WITH THE CAUSE. The real
+// route: srv3's own nvidia-smi identity capture (fixtures/serving_benchmark/srv3_captures_2026_10_25,
+// 2x RTX 2000 Ada, driver 595.91.07), read by the same reader the receipt's producer uses, joins both GPUs to
+// the catalogue's RTX 2000 Ada board at its 70 W and Gen4 x8. An admitted fixture run on that cell is joined
+// level by level. Supplied GPUs exercise each refusal.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { mebibyte, milliwatt, milliwatt_count, milli_tokens_per_second_count }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
+import extdeps.storage.types { PcieLink, Gen4, Gen5 }
+import extdeps.nvidia.system_management_interface { NvidiaSmiIdentityRowsParsed, NvidiaSmiIdentityRowUnparsed, nvidia_smi_identity_rows }
+import extdeps.gpu.types { gpu_catalog_row_eq }
+import extdeps.gpu.nvidia { nvidia_rtx_2000_ada_catalog }
+import gunbc.serving.serving_benchmark_run_receipt { ObservedGpu, admit_serving_benchmark_run }
+import gunbc.serving.serving_benchmark_telemetry { observed_gpu }
+import gunbc.gpu_market.realization_join {
+  RealizationGpuJoined, RealizationGpuRefused, GpuNameNotDriverListed, NoCatalogBoardForName, SeveralCatalogBoardsForName,
+  MemoryAboveCatalog, PowerCapAboveBoardCeiling, LinkAboveBoardEndpoint, ReceiptRealized, ReceiptNotAdmitted,
+  realization_gpu_join, serving_receipt_realization, serving_realization_complete,
+}
+import test.claim.serving.serving_benchmark_run_receipt_witness { fx_version, fx_cell_complete, fx_run_text, fx_telemetry, observe }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data capture_dir: String = "fixtures/serving_benchmark/srv3_captures_2026_10_25/"
+
+fn srv3_gpus() -> List<ObservedGpu> {
+  match nvidia_smi_identity_rows(text: filesystem_read(path: join([capture_dir, "query_gpu_identity.csv"], "")).content) {
+    NvidiaSmiIdentityRowsParsed { rows: gs } => gs |> flat_map(g => match observed_gpu(row: g) { Present { value: o } => [o]  Absent => [] })
+    NvidiaSmiIdentityRowUnparsed { line: _ } => []
+  }
+}
+
+// THE REAL ROUTE: both of srv3's GPUs join to the catalogue's RTX 2000 Ada board.
+test fn w_srv3_gpus_join_to_the_rtx_2000_ada_board() -> Bool {
+  let gpus = srv3_gpus()
+  count(gpus) == 2 && gpus |> all(g => match realization_gpu_join(gpu: g) {
+    RealizationGpuJoined { gpu: _, board: b } => gpu_catalog_row_eq(a: b.facts.gpu, b: nvidia_rtx_2000_ada_catalog)
+    RealizationGpuRefused { gpu: _, refusal: _ } => false
+  })
+}
+
+fn gpu(name: NonEmptyStr, mib: Nat, cap_mw: Nat, link: PcieLink) -> ObservedGpu {
+  ObservedGpu { name: name, uuid: "GPU-fixture", vbios: "00.00.00.00.00", driver: "580.95.05", memory: mebibyte(count: mib), power_limit: milliwatt(count: cap_mw), link_max: link }
+}
+
+data gen4_x8: PcieLink = PcieLink { generation: Gen4, lane_count: 8 }
+
+// EACH REFUSAL, ON ITS OWN CAUSE: a name the driver does not list; a listed name no board carries (the
+// A10G); a name two boards carry (the M60's passive and active boards); memory above the device's; a cap
+// above the board's 70 W; a link faster than the board's Gen4 x8 endpoint.
+test fn w_each_refusal_names_its_cause() -> Bool {
+  (match realization_gpu_join(gpu: gpu(name: "NVIDIA Imaginary GPU", mib: 16380, cap_mw: 70000, link: gen4_x8)) {
+    RealizationGpuRefused { gpu: _, refusal: GpuNameNotDriverListed { name: _ } } => true  _ => false })
+    && (match realization_gpu_join(gpu: gpu(name: "NVIDIA A10G", mib: 22000, cap_mw: 150000, link: gen4_x8)) {
+      RealizationGpuRefused { gpu: _, refusal: NoCatalogBoardForName { name: _ } } => true  _ => false })
+    && (match realization_gpu_join(gpu: gpu(name: "Tesla M60", mib: 8000, cap_mw: 150000, link: gen4_x8)) {
+      RealizationGpuRefused { gpu: _, refusal: SeveralCatalogBoardsForName { name: _, boards: n } } => n == 2  _ => false })
+    && (match realization_gpu_join(gpu: gpu(name: "NVIDIA RTX 2000 Ada Generation", mib: 24000, cap_mw: 70000, link: gen4_x8)) {
+      RealizationGpuRefused { gpu: _, refusal: MemoryAboveCatalog { observed: _, catalog: _ } } => true  _ => false })
+    && (match realization_gpu_join(gpu: gpu(name: "NVIDIA RTX 2000 Ada Generation", mib: 16380, cap_mw: 120000, link: gen4_x8)) {
+      RealizationGpuRefused { gpu: _, refusal: PowerCapAboveBoardCeiling { cap: _, ceiling: c } } => milliwatt_count(w: c) == 70000  _ => false })
+    && (match realization_gpu_join(gpu: gpu(name: "NVIDIA RTX 2000 Ada Generation", mib: 16380, cap_mw: 70000, link: PcieLink { generation: Gen5, lane_count: 16 })) {
+      RealizationGpuRefused { gpu: _, refusal: LinkAboveBoardEndpoint { observed: _, endpoint: _ } } => true  _ => false })
+}
+
+// AN ADMITTED RUN IS JOINED LEVEL BY LEVEL: its cell is a complete realization (both GPUs on the RTX 2000
+// Ada board), and each level carries its throughput beside the two GPUs' summed mean power (2 x 52 W).
+test fn w_an_admitted_run_is_joined_to_its_realization_by_level() -> Bool {
+  match serving_receipt_realization(admission: admit_serving_benchmark_run(version: fx_version, observation: observe(cell: fx_cell_complete, text: fx_run_text, telemetry: fx_telemetry))) {
+    ReceiptRealized { realization: r, levels: ls } =>
+      serving_realization_complete(r: r) && count(ls) == 2
+        && ls |> all(l => milliwatt_count(w: l.gpu_power_mean_total) == 104000 && milli_tokens_per_second_count(r: l.aggregate_end_to_end) > 0)
+    ReceiptNotAdmitted => false
+  }
+}

@@ -182,13 +182,12 @@ data fleet_posix_worker_shared_group_gid: Int = 1003
 data fleet_srv1_observed_numeric_ids: List<Int> = [1000, 1001, 1002, 995, 985, 994, 984]
 
 // THE GROUPS THE WORKER ACCOUNT BELONGS TO, DECLARED AS A CLOSED LIST: the shared attempt group alone.
-// Membership of any group in fleet_root_equivalent_group_names would hand the worker a credential that
+// Membership of any group in fleet_root_equivalent_group_names (gunbc.fleet.fleet_root_equivalent_groups) would hand the worker a credential that
 // reaches root through a daemon socket or sudo, so a declaration check refuses it here. NO CONVERGE OR HOST READBACK CONSUMES THESE ROWS YET: the only consumer is
 // test.claim.roadmap.worker_dedicated_account_witness; the host readback (id gunbc-worker) is the declared
 // frontier whose arrival makes this a host-level guarantee.
 data fleet_posix_worker_supplementary_groups: List<NonEmptyStr> = [fleet_posix_worker_shared_group_name]
 
-data fleet_root_equivalent_group_names: List<NonEmptyStr> = ["docker", "lxd", "sudo", "adm", "root", "wheel", "disk", "shadow"]
 
 data fleet_posix_srv3_host_administrator_user: PosixUser = PosixUser {
   name: "ubuntu",

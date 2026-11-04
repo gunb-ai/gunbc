@@ -36,7 +36,7 @@ import v2.std.find_witness {
   find_witness,
 }
 import std.optional { Absent, Optional, Present }
-import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed }
+import v2.std.node { node_equal_ignoring_provenance, Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed, NotADeclaration }
 import v2.std.refinement_widening_predicate { refinement_widening_is_strict_coarsening }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
@@ -151,11 +151,12 @@ fn coercion_homomorphism_evidence_for_node(
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^coercion_homomorphism_evidence_source }, target: source },
-      Edge { label: Authored { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      Edge { label: Authored { name: ^coercion_homomorphism_evidence_source }, target: source, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate, declaration: NotADeclaration },
       Edge {
         label: Authored { name: ^coercion_homomorphism_evidence_find_witness },
-        target: fw.witness.evidence
+        target: fw.witness.evidence,
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -219,7 +220,7 @@ fn coercion_quality_for_witness(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
 ) -> CoercionQuality {
-  if fw.candidate == source.node {
+  if node_equal_ignoring_provenance(a: fw.candidate, b: source.node) {
     Identity
   } else {
     Exact
@@ -450,7 +451,7 @@ fn coercion_cast_crossing(
       Accepted {
         value: CoercionResult {
           target: fw.candidate,
-          quality: if fw.candidate == source_type { Identity } else { Exact },
+          quality: if node_equal_ignoring_provenance(a: fw.candidate, b: source_type) { Identity } else { Exact },
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
               rule: ^homomorphism_rule_exact_structural_equality,

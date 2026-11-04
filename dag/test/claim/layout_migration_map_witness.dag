@@ -2,7 +2,7 @@ module test.claim.layout_migration_map_witness
 
 import std.types { Bool, List, String }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
-import v2.compiler.source_authority { SourceStorageLayout, StorageNamespaceRoot }
+import v2.compiler.source_authority { SourceStorageLayout, StorageNamespaceRoot, source_storage_layout }
 import gunbc.instruments.layout_migration_map {
   CaseFoldCollision,
   DecisionUnused,
@@ -31,10 +31,12 @@ data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.Su
 // carried by the census over the real population (layout_census), not by this file.
 
 fn layout() -> SourceStorageLayout {
-  SourceStorageLayout {
+  source_storage_layout(
     namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree {}, elides_namespace: true }],
-    default_tree: DagTree {}
-  }
+    default_tree: DagTree {},
+    namespace_rows: [],
+    derived_rosters: []
+  )
 }
 
 fn site(path: String, module: String) -> MigrationSite {
@@ -234,11 +236,13 @@ test fn planner_refuses_a_decision_for_a_module_no_file_declares() -> Bool {
   ) == "refused:decision-unused"
 }
 
+// `v2` is the namespace this layout elides: a directory of its tree with no file of its own (module_file
+// refuses it). A bare `x` is NOT unplaceable: an undeclared first segment falls to the default tree (dag/x.dag).
 test fn planner_refuses_a_decision_whose_name_the_rule_cannot_place() -> Bool {
   planned_with(
     sites: [site(path: "dag/a/b/c_test.dag", module: "a.b.c_test")],
     occupied: ["dag/a/b/c_test.dag"],
     name_wins: [],
-    decisions: [SuffixDecision { module: "a.b.c_test", takes: "x" }]
+    decisions: [SuffixDecision { module: "a.b.c_test", takes: "v2" }]
   ) == "refused:site-refused"
 }

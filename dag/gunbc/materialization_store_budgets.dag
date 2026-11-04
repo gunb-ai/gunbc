@@ -1,5 +1,7 @@
 module gunbc.materialization_store_budgets
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed }
+
 import std.types { List, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size }
@@ -31,8 +33,8 @@ data materialization_store_typed_module_budget_policy: ByteSize = byte_size(coun
 data materialization_store_compute_work_budget_policy: ByteSize = byte_size(count: 1073741824)
 
 data materialization_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
-  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: materialization_store_typed_module_budget_policy },
-  LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: materialization_store_compute_work_budget_policy },
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: typed_module_artifact_kind, budget: materialization_store_typed_module_budget_policy },
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: compute_work_artifact_kind, budget: materialization_store_compute_work_budget_policy },
 ]
 
 // The one host-wide figure: the sum of the durable root's declared family budgets.

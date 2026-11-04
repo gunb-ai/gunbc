@@ -4,6 +4,7 @@ import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_h
 
 import gunbc.host.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
+import extdeps.network.mac { Eui48Address }
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
 import std.nat { Nat }
@@ -26,7 +27,7 @@ type PreOsHostArchiveAssessment {
   population_statement: ObservationAttempt<NonEmptyStr, NonEmptyStr>
 }
 
-fn pre_os_host_archive_assessment(payload: String, host_mac: NonEmptyStr) -> PreOsHostArchiveAssessment {
+fn pre_os_host_archive_assessment(payload: String, host_mac: Eui48Address) -> PreOsHostArchiveAssessment {
   PreOsHostArchiveAssessment {
     milestones: pre_os_milestones(console: ObservationEstablished { observed: payload }, os_boot: pre_os_host_userspace_boot(text: payload, host_mac: host_mac)),
     population_statement: pre_os_host_population_statement(text: payload),

@@ -22,7 +22,7 @@ module test.claim.approve_ios_vectors_envelope_witness
 // emission it gates, and both were tested in the other direction: at the pre-rework head, where 15 names
 // were hand-typed at call sites, the first lens is the one that reddens.
 //
-// Run each evidence_* at the head under review. A Bool false under `gunbc run --function` exits 2, which
+// Each *_helper is a test fn; the evidence_* wrappers remain for gunbc run --function. Run each evidence_* at the head under review. A Bool false under `gunbc run --function` exits 2, which
 // means "did not return a ProcessExit" and is NOT a verdict, so every evidence_* returns one.
 
 import std.types { Bool, String, List }
@@ -70,7 +70,7 @@ fn exercised_rows() -> List<String> {
 // before the rework, and this is the claim that reddens that head. The searched shape is the call site
 // itself — `at_envelope(name: "…")` — not prose about it, so a comment cannot satisfy it and a comment
 // about the old shape cannot break it.
-fn carrier_source_carries_no_envelope_call_literal_helper() -> Bool {
+test fn carrier_source_carries_no_envelope_call_literal_helper() -> Bool {
   let src = carrier_source()
   src != "" && !src.contains("at_envelope(name:")
 }
@@ -82,7 +82,7 @@ fn carrier_source_carries_no_envelope_call_literal_helper() -> Bool {
 // satisfied by any other map over a row (surface_vectors renders it too), so an earlier version of this
 // claim survived a control that hardcoded "pending_list" into the envelope call. The whole expression is
 // therefore asserted, and it occurs exactly once in the module, at the envelope call.
-fn carrier_renders_the_rows_own_name_helper() -> Bool {
+test fn carrier_renders_the_rows_own_name_helper() -> Bool {
   let src = carrier_source()
   src != ""
     && src.contains("fn at_envelope(v: EnvelopeVector)")
@@ -91,14 +91,14 @@ fn carrier_renders_the_rows_own_name_helper() -> Bool {
 
 // POSITIVE, the fixture side of the join: the fixture spells every row with a non-empty name, so the
 // rows the carrier passes are rows the fixture actually owns.
-fn fixture_spells_every_row_helper() -> Bool {
+test fn fixture_spells_every_row_helper() -> Bool {
   count(envelope_vectors_fixed) > 0
     && all(envelope_vectors_fixed, v => v.name != "")
 }
 
 // POSITIVE: some fixture rows really are exercised by the emitted Swift, so a deleted envelope test
 // cannot leave the file green while the lenses above stay satisfied.
-fn some_fixture_rows_are_exercised_helper() -> Bool {
+test fn some_fixture_rows_are_exercised_helper() -> Bool {
   emission_text() != "" && count(exercised_rows()) > 0
 }
 

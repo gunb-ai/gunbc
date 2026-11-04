@@ -22,7 +22,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire }
 import extdeps.vllm.environment { vllm_environment_variable_name, VllmEngineReadyTimeoutSeconds, vllm_engine_ready_timeout_default }
-import extdeps.docker.cli { DockerEnvAssignment }
+import extdeps.docker.create_spec { DockerEnvAssignment }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.sparse_prefill_transient {
   sparse_indexer_k_gather_workspace_bytes, sparse_indexer_prefill_logits_cap_bytes,

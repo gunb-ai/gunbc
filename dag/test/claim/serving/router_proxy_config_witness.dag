@@ -1,0 +1,127 @@
+module test.claim.serving.router_proxy_config_witness
+
+import std.types { String, Bool, Int, List, Port }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.proxy.openresty {
+  NginxDirective, HttpBlock, ServerBlock, LocationBlock, PrefixMatch, nginx_token, nginx_variable, ProxyPassDirective, ProxyNextUpstreamDirective,
+  ProxyBufferingDirective, ProxyRequestBufferingDirective, ProxyPassToHost, LuaPhaseBlock, AccessPhase, LogPhase,
+  render_nginx_directives, ProxyNextUpstreamOff,
+}
+import std.optional { Optional, Present, Absent }
+import gunbc.serving.router_proxy_config {
+  RouterProxyVocabulary, RouterProxyConfig, router_proxy_directives, router_proxy_config, router_proxy_vocabulary, RouterProxyConfigRendered, RouterProxyConfigRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rows() -> List<NginxDirective> {
+  match router_proxy_vocabulary() {
+    Present { value: v } => router_proxy_directives(v: v, listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)
+    Absent => [] as List<NginxDirective>
+  }
+}
+
+// The body of the router location (the /v1/ prefix), reached by walking http -> server -> location.
+fn v1_body(ds: List<NginxDirective>) -> List<NginxDirective> {
+  fold(ds, init: [] as List<NginxDirective>, f: (acc, d) => concat(acc, match d {
+    HttpBlock { body: b } => v1_body(ds: b)
+    ServerBlock { body: b } => v1_body(ds: b)
+    LocationBlock { matching: m, body: b } => match m { PrefixMatch { path: _ } => b _ => [] as List<NginxDirective> }
+    _ => [] as List<NginxDirective>
+  }))
+}
+
+fn is_pass(d: NginxDirective) -> Bool { match d { ProxyPassDirective { target: _ } => true _ => false } }
+fn is_retry_off(d: NginxDirective) -> Bool { match d { ProxyNextUpstreamDirective { value: _ } => true _ => false } }
+fn is_buffering_off(d: NginxDirective) -> Bool {
+  match d { ProxyBufferingDirective { value: _ } => true ProxyRequestBufferingDirective { value: _ } => true _ => false }
+}
+fn is_fixed_pass(d: NginxDirective) -> Bool { match d { ProxyPassToHost { host: _, port: _, path: _ } => true _ => false } }
+// The hooks are read from the rendered rows themselves, so adding, dropping or moving one in
+// router_proxy_directives changes what these count.
+fn is_access_hook(d: NginxDirective) -> Bool { match d { LuaPhaseBlock { phase: ph, lines: _ } => match ph { AccessPhase => true _ => false } _ => false } }
+fn is_log_hook(d: NginxDirective) -> Bool { match d { LuaPhaseBlock { phase: ph, lines: _ } => match ph { LogPhase => true _ => false } _ => false } }
+
+// The router location has exactly one proxy_pass, the variable one, and no fixed-host proxy_pass.
+test fn the_router_location_proxies_only_to_the_authz_supplied_upstream() -> Bool {
+  count(filter(v1_body(ds: rows()), d => is_pass(d: d))) == 1 && count(filter(v1_body(ds: rows()), d => is_fixed_pass(d: d))) == 0
+}
+
+test fn retries_and_buffering_are_off() -> Bool {
+  count(filter(v1_body(ds: rows()), d => is_retry_off(d: d))) == 1 && count(filter(v1_body(ds: rows()), d => is_buffering_off(d: d))) == 2
+}
+
+test fn one_access_hook_and_one_log_hook_in_the_router_location() -> Bool {
+  count(filter(v1_body(ds: rows()), d => is_access_hook(d: d))) == 1 && count(filter(v1_body(ds: rows()), d => is_log_hook(d: d))) == 1
+}
+
+fn text_of(r: RouterProxyConfig) -> String { match r { RouterProxyConfigRendered { text: t } => t RouterProxyConfigRefused { token: _ } => "" } }
+
+test fn the_vocabulary_is_accepted_and_rows_are_nonempty() -> Bool {
+  count(rows()) > 0
+}
+
+test fn rendering_follows_the_rows() -> Bool {
+  render_nginx_directives(rows: [ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff }]) == "proxy_next_upstream off;\n"
+    && text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) == render_nginx_directives(rows: rows())
+    && text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) != ""
+    && text_of(r: router_proxy_config(listen_port: 8444 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) != text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port))
+}
+
+// Expected text from the concrete ports: the internal exact-match location, its proxy_pass, the listen line
+// and the two Lua hooks. A fixed literal per fragment, so a mis-rendered arm goes red.
+test fn the_rendered_text_holds_the_expected_fragments() -> Bool {
+  let t = text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port))
+  string_contains(t, "location = /_authz")
+    && string_contains(t, "listen 127.0.0.1:8443;")
+    && string_contains(t, "proxy_pass http://127.0.0.1:9001")
+    && string_contains(t, "ngx.exit(503)")
+    && string_contains(t, "s:connect('127.0.0.1', 9002)")
+    && string_contains(t, "always_forward_body = true")
+    && string_contains(t, "string.match(v, '^[%w%.%-]+:%d+$')")
+    && !string_contains(t, "proxy_pass_request_body off")
+}
+
+// An unsafe token has no constructor result: the checked constructors return Absent, so it cannot reach a row.
+// The refusals go BEYOND the old blacklist: characters that no quote/comment/block rule catches but the admitted
+// class does not list — '?', ',', '=', '&', '<', '|', backtick, '(', ')' — are refused too, and a variable must
+// start at a letter. These are the cases a blacklist lets through; the whitelist is the construction.
+test fn an_unsafe_token_is_absent() -> Bool {
+  match nginx_token(text: "x'; os.execute('x") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "a$b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "x#") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "a-b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "x-seat-permit") { Absent => false Present { value: _ } => true }
+    && match nginx_token(text: "a?b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a,b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a=b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a&b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a<b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a|b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a`b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "a(b)") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "1abc") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "a.b") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "a_b") { Absent => false Present { value: _ } => true }
+}
+
+// The permit copied into the stream-end notice's raw request must be shaped like a token value, not just
+// non-empty: the notice interpolates the value verbatim ('header: ' .. value), so a CR/LF in it would split
+// the request. The emitted shape check refuses it at capture time, before any forwarding.
+test fn the_permit_shape_refuses_a_framing_break() -> Bool {
+  let t = render_nginx_directives(rows: rows())
+  string_contains(s: t, pattern: "string.match(v, '^[A-Za-z0-9._:/%-]+$')")
+    && !string_contains(s: t, pattern: "v ~= ''")
+}
+
+// What the brand does NOT do: it is not enforced, so a forced cast reaches a row and renders unescaped.
+// This test pins the hole the gunbc.guarantee_stall nginx_token_validator_not_constructor_stall row carries — it is
+// expected to go red when the gap closes (constructor-only admission), not to certify the hole as fine.
+test fn a_forced_cast_bypasses_the_constructor_and_renders_unescaped() -> Bool {
+  let injected = render_nginx_directives(rows: [ProxyPassToHost {
+    host: "127.0.0.1'; os.exit(1)" as NginxToken,
+    port: 9001 as Port,
+    path: "/" as NginxToken,
+  }])
+  string_contains(injected, "'; os.exit(1)")
+}

@@ -29,7 +29,7 @@ import gunbc.auth.approval_cutover_posture {
 //
 // THE TRIGGER THAT ENDS THIS ARRANGEMENT IS NOT RESTATED HERE. It is the restoration_trigger of
 // gunbc.rung_drop.approval_store_single_writer_by_agreement, which is rostered and projected into
-// docs/design-rung-drops.md. A second spelling beside this declaration was written first and
+// `gunbc.design_ledgers` `expected_design_rung_drops_md`. A second spelling beside this declaration was written first and
 // deleted (review 68420): it was a bare String carrying commentary, which DESIGN section 4c names
 // as misplaced or dead data, and it was the copy NOT reachable from the roster that owns it -- so
 // it was the one that would have rotted while the ledger moved.

@@ -9,7 +9,7 @@ data srv1_option12_host_name: HostName = HostName {
 }
 
 data sample_dynamic_srv1_lease: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
-  mac_address: "48:21:0B:81:C6:EA" as MacAddress,
+  mac_address: mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 198, octet6: 234),
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 185),
   lease: DynamicDhcpLease {
     client_hostname: Present { value: srv1_option12_host_name },
@@ -19,7 +19,7 @@ data sample_dynamic_srv1_lease: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
 }
 
 data sample_static_srv3_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
-  mac_address: "48:21:0B:81:C5:14" as MacAddress,
+  mac_address: mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 197, octet6: 20),
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 192),
   lease: StaticDhcpReservation {
     reservation_label: "bmc-altrad8ud-1l2t-3" as NonEmptyStr,

@@ -1,6 +1,7 @@
 module test.claim.workspace_acquisition_storage_wet_witness
 
 import std.types { Bool, String, NonEmptyStr }
+import std.process { ProcessExit }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_from_json, workspace_reservation_plan_reservation }
 import gunbc.workspace_allocation { workspace_reservation_json }
 import extdeps.shell
@@ -8,12 +9,19 @@ import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted }
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
+import test.claim.fabric.fabric_allocation_witness_store { allocation_witness_run }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
+}
 import extdeps.languages.json.emit { serialize_json, json_array, json_object, json_kv, json_string }
 import gunbc.workspace_acquisition_invocation {
+  workspace_slot_unit,
   workspace_acquisition_protocol_key, workspace_acquisition_actor_key, workspace_recorded_actor, RecordedActorInvocation, workspace_rearm_actor,
-  WorkspaceSlotInvocationReading, SlotInvocationObserved, SlotInvocationUnreadable,
-}
+  workspace_acquisition_store }
+import gunbc.systemd_unit_invocation_liveness { SystemManager, UnitRunIdentity, UnitInvocationUnreadable, UnitInvocationObservation, UnitInvocationPresent, unit_invocation_observation, unit_run_wire }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceAcquiring, WorkspaceRetired, WorkspaceReleased, workspace_owner_key, workspace_allocation_json, WorkspaceStoreWritten, WorkspaceStoreWriteRefused }
 import gunbc.workspace_allocation_acquisition { workspace_settle_unelected_retirement }
 import test.claim.workspace_launch_directive_witness { launch_fixture_allocation }
@@ -52,10 +60,28 @@ fn acquisition_actor_wire(plan: WorkspaceReservationPlan, invocation: String) ->
 // The fixture seeds an interrupted owner row, never an actual reservation or host effect. Without
 // the protocol marker legacy absence stays unknown; a marked unelected actor can cancel; an elected
 // actor is replaced only when the slot reading proves its invocation ended and no hold exists.
-fn acquisition_cancellation_fixture(store: FabricStorageBinding, root: NonEmptyStr, marked: Bool, elected: Bool, slot: WorkspaceSlotInvocationReading, expect_released: Bool) -> Bool {
+// THE ALLOCATION STORE IS MINTED FROM A HOST-STATE TREE THE TEST OWNS by the production mint
+// (test.claim.fabric.fabric_allocation_witness_store allocation_witness_run), and the fixture plan is rooted at
+// that store's identity. A refused mint fails the claim with its detail; it never reads as a retained quota.
+data fixture_boot_id: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b"
+data fixture_proc_stat: String = "cpu 1 2 3\nbtime 1792000000\nprocesses 5\n"
+
+fn fixture_slot(unit: NonEmptyStr, invocation: String) -> UnitInvocationObservation {
+  unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: fixture_boot_id, proc_stat_text: fixture_proc_stat, invocation_text: invocation)
+}
+
+fn fixture_run(unit: NonEmptyStr, invocation: String) -> UnitRunIdentity? {
+  match fixture_slot(unit: unit, invocation: invocation) { UnitInvocationPresent { unit: _, run: r } => Present { value: r }  _ => none }
+}
+
+fn fixture_actor_wire(plan: WorkspaceReservationPlan) -> String {
+  match fixture_run(unit: workspace_slot_unit(plan: plan), invocation: "0123456789abcdef0123456789abcdef") { Present { value: r } => unit_run_wire(run: r)  Absent => "" }
+}
+
+fn acquisition_cancellation_fixture(store: FabricStorageBinding, cells: FabricAllocationStore, marked: Bool, elected: Bool, slot_invocation: String?, expect_released: Bool) -> Bool {
   match launch_fixture_allocation() {
     Absent => false
-    Present { value: fixture } => match acquisition_rooted_plan(root: root) {
+    Present { value: fixture } => match acquisition_rooted_plan(root: cells.root) {
       Absent => false
       Present { value: prepared } => {
         let retired = WorkspaceAllocation { recorded_at: fixture.recorded_at, retired_at: "2026-09-27T12:30:00Z",
@@ -63,11 +89,15 @@ fn acquisition_cancellation_fixture(store: FabricStorageBinding, root: NonEmptyS
           phase: WorkspaceAcquiring, connection: "", observed_at: "", reason: "fixture interrupted around actor election" }
         let seeded = acquisition_fixture_write(store: store, key: workspace_owner_key(owner: fixture.request.owner),
           value: serialize_json(v: json_array(elements: [workspace_allocation_json(allocation: retired)])) as NonEmptyStr)
-        let protocol = if marked { acquisition_fixture_write(store: store, key: workspace_acquisition_protocol_key(plan: prepared), value: "actor-journal/1" as NonEmptyStr) } else { true }
-        let actor = if elected { acquisition_fixture_write(store: store, key: workspace_acquisition_actor_key(plan: prepared),
-          value: acquisition_actor_wire(plan: prepared, invocation: "0123456789abcdef0123456789abcdef")) } else { true }
+        let protocol = if marked { acquisition_fixture_write(store: store, key: workspace_acquisition_protocol_key(store: workspace_acquisition_store(binding: store), plan: prepared), value: "actor-journal/1" as NonEmptyStr) } else { true }
+        let actor = if elected { acquisition_fixture_write(store: store, key: workspace_acquisition_actor_key(store: workspace_acquisition_store(binding: store), plan: prepared),
+          value: acquisition_actor_wire(plan: prepared, invocation: fixture_actor_wire(plan: prepared))) } else { true }
         if !seeded || !protocol || !actor { false } else {
-          match workspace_settle_unelected_retirement(store: store, fabric_root: root, owner: fixture.request.owner, idempotency_key: fixture.request.idempotency_key, observed_at: "2026-09-27T12:31:00Z", slot: slot) {
+          let slot = match slot_invocation {
+            Absent => UnitInvocationUnreadable { cause: "fixture" as NonEmptyStr }
+            Present { value: inv } => fixture_slot(unit: workspace_slot_unit(plan: prepared), invocation: inv)
+          }
+          match workspace_settle_unelected_retirement(store: store, cells: cells, owner: fixture.request.owner, idempotency_key: fixture.request.idempotency_key, observed_at: "2026-09-27T12:31:00Z", slot: slot) {
             WorkspaceStoreWritten { allocation: settled } => expect_released && settled.phase == WorkspaceReleased
             WorkspaceStoreWriteRefused { reason: _ } => !expect_released
             other => false
@@ -78,49 +108,56 @@ fn acquisition_cancellation_fixture(store: FabricStorageBinding, root: NonEmptyS
   }
 }
 
-fn acquisition_cancellation_temporary_store(marked: Bool, elected: Bool, slot: WorkspaceSlotInvocationReading, expect_released: Bool) -> Bool {
-  let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: concat(directory.path as String, "/fabric") as NonEmptyStr)
-  let observed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => acquisition_cancellation_fixture(store: FabricStorageLocalFiles { root: root }, root: directory.path as NonEmptyStr,
-      marked: marked, elected: elected, slot: slot, expect_released: expect_released)
-    other => false
-  } }
-  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
-  observed && cleaned.success
+// The fabric DB the fixture writes through lives beside the host-state tree's allocation namespace, under its
+// own directory, so the two stores share no entries.
+fn acquisition_cancellation_temporary_store(claim: String, marked: Bool, elected: Bool, slot_invocation: String?, expect_released: Bool) -> ProcessExit {
+  allocation_witness_run(template: "/tmp/gunbc_acquisition.XXXXXX", claim: claim, body: fn(dir, cells) {
+    match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as String)) {
+      FabricWetStoreReady { store: ops } => acquisition_cancellation_fixture(store: FabricStorageLocalFiles { operations: ops }, cells: cells,
+        marked: marked, elected: elected, slot_invocation: slot_invocation, expect_released: expect_released)
+      other => false
+    }
+  })
 }
 
-test fn legacy_acquiring_without_actor_journal_retains_quota() -> Bool {
-  acquisition_cancellation_temporary_store(marked: false, elected: false, slot: SlotInvocationUnreadable, expect_released: false)
+test fn legacy_acquiring_without_actor_journal_retains_quota() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "legacy_acquiring_without_actor_journal_retains_quota", marked: false, elected: false, slot_invocation: none, expect_released: false)
 }
-test fn marked_unelected_actor_cancellation_releases_owner_quota() -> Bool {
-  acquisition_cancellation_temporary_store(marked: true, elected: false, slot: SlotInvocationUnreadable, expect_released: true)
+test fn marked_unelected_actor_cancellation_releases_owner_quota() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "marked_unelected_actor_cancellation_releases_owner_quota", marked: true, elected: false, slot_invocation: none, expect_released: true)
 }
-test fn elected_actor_cannot_be_cancelled_from_absent_hold_assumption() -> Bool {
-  acquisition_cancellation_temporary_store(marked: true, elected: true, slot: SlotInvocationUnreadable, expect_released: false)
+test fn elected_actor_cannot_be_cancelled_from_absent_hold_assumption() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "elected_actor_cannot_be_cancelled_from_absent_hold_assumption", marked: true, elected: true, slot_invocation: none, expect_released: false)
 }
 
 // The wedge: the elected actor's invocation ended before its hold CAS. With no hold and a slot
 // running another invocation, retirement cancels the actor by fenced CAS and releases the quota.
-test fn terminal_elected_actor_without_hold_settles_retirement() -> Bool {
-  acquisition_cancellation_temporary_store(marked: true, elected: true, slot: SlotInvocationObserved { current: "fedcba9876543210fedcba9876543210" }, expect_released: true)
+test fn terminal_elected_actor_without_hold_settles_retirement() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "terminal_elected_actor_without_hold_settles_retirement", marked: true, elected: true, slot_invocation: Present { value: "fedcba9876543210fedcba9876543210" }, expect_released: true)
 }
 
 // Its neighbour: the recorded invocation is still the slot's invocation, so it is retained.
-test fn running_elected_actor_retains_quota() -> Bool {
-  acquisition_cancellation_temporary_store(marked: true, elected: true, slot: SlotInvocationObserved { current: "0123456789abcdef0123456789abcdef" }, expect_released: false)
+test fn running_elected_actor_retains_quota() -> ProcessExit {
+  acquisition_cancellation_temporary_store(claim: "running_elected_actor_retains_quota", marked: true, elected: true, slot_invocation: Present { value: "0123456789abcdef0123456789abcdef" }, expect_released: false)
 }
 
 // No double hold: two replacements fenced on one recorded generation -- only the first commits.
 fn actor_rearm_race(store: FabricStorageBinding, root: NonEmptyStr) -> Bool {
   match acquisition_rooted_plan(root: root) {
     Absent => false
-    Present { value: prepared } => if !acquisition_fixture_write(store: store, key: workspace_acquisition_actor_key(plan: prepared),
-      value: acquisition_actor_wire(plan: prepared, invocation: "0123456789abcdef0123456789abcdef")) { false } else {
-      match workspace_recorded_actor(store: store, plan: prepared) {
-        RecordedActorInvocation { generation, invocation: _ } =>
-          workspace_rearm_actor(store: store, plan: prepared, generation: generation, invocation: "11111111111111111111111111111111")
-          && !workspace_rearm_actor(store: store, plan: prepared, generation: generation, invocation: "22222222222222222222222222222222")
+    Present { value: prepared } => if !acquisition_fixture_write(store: store, key: workspace_acquisition_actor_key(store: workspace_acquisition_store(binding: store), plan: prepared),
+      value: acquisition_actor_wire(plan: prepared, invocation: fixture_actor_wire(plan: prepared))) { false } else {
+      match workspace_recorded_actor(store: workspace_acquisition_store(binding: store), plan: prepared) {
+        RecordedActorInvocation { generation, run: _ } =>
+          match fixture_run(unit: workspace_slot_unit(plan: prepared), invocation: "11111111111111111111111111111111") {
+            Absent => false
+            Present { value: first } => match fixture_run(unit: workspace_slot_unit(plan: prepared), invocation: "22222222222222222222222222222222") {
+              Absent => false
+              Present { value: second } =>
+                workspace_rearm_actor(store: workspace_acquisition_store(binding: store), plan: prepared, generation: generation, invocation: first)
+                && !workspace_rearm_actor(store: workspace_acquisition_store(binding: store), plan: prepared, generation: generation, invocation: second)
+            }
+          }
         other => false
       }
     }
@@ -129,9 +166,8 @@ fn actor_rearm_race(store: FabricStorageBinding, root: NonEmptyStr) -> Bool {
 
 test fn concurrent_actor_replacement_admits_exactly_one() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: concat(directory.path as String, "/fabric") as NonEmptyStr)
-  let observed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => actor_rearm_race(store: FabricStorageLocalFiles { root: root }, root: directory.path as NonEmptyStr)
+  let observed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
+    FabricWetStoreReady { store: ops } => actor_rearm_race(store: FabricStorageLocalFiles { operations: ops }, root: directory.path as NonEmptyStr)
     other => false
   } }
   let cleaned = shell.Remove.RecursiveForce(path: directory.path)

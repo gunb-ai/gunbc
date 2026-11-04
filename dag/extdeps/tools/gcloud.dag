@@ -2,14 +2,14 @@ module extdeps.tools.gcloud
 
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
-import std.types { NonEmptyStr }
+import std.types { String, NonEmptyStr }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.package_managers.apt { apt_bin_dir, package_google_cloud_cli }
 import extdeps.exec.command { ArgvCommand, argv_command }
-
+import extdeps.cloud.gcp.gcp { GcpProjectId }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -34,4 +34,23 @@ data gcloud_cli_tool: CliTool = CliTool {
 // `command -v gcloud >/dev/null && gcloud auth list ... 2>&1` inside a shell.
 fn gcloud_auth_list_accounts_command() -> ArgvCommand {
   argv_command(program: gcloud_program(), arguments: ["auth", "list", "--format=value(account)"])
+}
+
+// SECRET MANAGER WRITE LEGS, typed as argv so the fleet host-key mint (gunbc.host.anchored_host_transport)
+// renders from ONE carrier instead of transcribing shell text. The NO-DATA-FILE rule on create is
+// load-bearing, not stylistic: creating with --data-file=/dev/null publishes an EMPTY version 1 that a
+// reader resolving "latest" could pick up as key material; without data the secret exists with zero
+// versions and the real key becomes version 1. The add leg carries --data-file=- and NOTHING ELSE that
+// names a file: the private half reaches the server only over the caller's stdin, never argv (rule Q1;
+// the class in dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_plain_string.dag
+// is exactly what a --data-file=<path> spelling here would reintroduce).
+fn gcloud_secrets_create_command(project: GcpProjectId, secret: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: gcloud_program(), arguments: ["secrets", "create", secret as String, "--project", project])
+}
+
+fn gcloud_secrets_versions_add_stdin_command(project: GcpProjectId, secret: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: gcloud_program(),
+    arguments: ["secrets", "versions", "add", secret as String, "--project", project, "--data-file=-"],
+  )
 }

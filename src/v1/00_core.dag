@@ -95,7 +95,7 @@ type InferredNode
 // type for unreachable code. The name stays empty because there is genuinely no type
 // to name; what consumers match on is the fact, via type_is_divergent.
 fn divergent_type() -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Divergent }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Divergent }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn inferred_to_node(inferred: InferredNode) -> Node? {
@@ -344,9 +344,9 @@ type OperationModifier = Idempotent | Readonly | Hermetic
 // The closed transport roster. Before this, the roster was implicit and re-derived in four
 // places at once -- emit_unified_transport_dispatch's if-chain, the Rust emit_transport_call's
 // copy of it, is_file_transport_after_dispatch_precedence's private copy of the ordering, and
-// is_local_transport's definition-by-exclusion -- so four carriers agreed about which arm claims
+// is_undeclared_transport's definition-by-exclusion -- so four carriers agreed about which arm claims
 // a multi-key transport by coincidence rather than by construction (DESIGN section 3).
-type TransportKind = RestTransport | ShellTransport | FileTransport | LocalTransport
+type TransportKind = RestTransport | ShellTransport | FileTransport | UndeclaredTransport
 
 type CompileResult {
   files: List<TextFile>
@@ -376,6 +376,7 @@ type CompilerDiagnostic
   | ImportCollidesWithKernelName { name: String, module_path: String, importing_module: String, kernel_declaration_module: String, span: SourceSpan }
   | KernelMintDeclarationAmbiguousAtImport { name: String, module_path: String, importing_module: String, row_count: Int, span: SourceSpan }
   | UnresolvedType     { name: String, span: SourceSpan }
+  | TypeRefMeasureBindingDisagreement { name: String, production_route: String, span: SourceSpan }
   | UnitVariantPhantomIdentityEvidenceUnavailable { name: String, span: SourceSpan }
   | TypeMismatch       { expected: String, got: String, span: SourceSpan }
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
@@ -397,13 +398,13 @@ type CompilerDiagnostic
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
   | DuplicateModule    { name: String, span: SourceSpan }
+  | TypeAliasCycle     { members: List<String>, span: SourceSpan }
   | DuplicateDeclaration { module_name: String, name: String, span: SourceSpan }
   | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
   | ParseError         { message: String, span: SourceSpan }
   | InternalError      { message: String, span: SourceSpan }
   | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
   | WhereRefinementUnenforced { predicate: String, formal_type: String, reason: String, span: SourceSpan }
-  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | KernelMintShapeMismatch { declaration_name: String, cause: String, span: SourceSpan }
@@ -420,6 +421,10 @@ type CompilerDiagnostic
   | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
+  | DeclaredTypeInhabitanceUnmodeled { position: String, span: SourceSpan }
+  | ArithmeticWithoutCarrier { operation: String, operands: List<String>, span: SourceSpan }
+  | ArithmeticAmbiguousCarrier { operation: String, candidates: List<String>, span: SourceSpan }
+  | ArithmeticUndecidedCarrier { operation: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | ReferenceDerivedImportProviderUnknown { name: String, referencing_module: String, span: SourceSpan }
   | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
@@ -439,6 +444,7 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | EqualityOnFunctionMember { type_name: String, member: String, span: SourceSpan }
   | EqualityMemberUnjudgeable { type_name: String, member: String, span: SourceSpan }
+  | EqualityOnInadmissibleType { type_name: String, span: SourceSpan }
   | EqualityOptionalityMismatch { optional_side: String, span: SourceSpan }
   | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
   | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
@@ -456,6 +462,13 @@ type CompilerDiagnostic
       service: String,
       operation: String,
       declaring_module: String,
+      target: String,
+      missing_realization_fact: String,
+      span: SourceSpan
+    }
+  // AN ACCEPTED CAST THE TARGET CANNOT REALIZE, refused at the cast before any artifact is written
+  // (v1.compiler.emit cast_realization_diagnostics). It used to be emitted as a runtime abort.
+  | CastRealizationRefused {
       target: String,
       missing_realization_fact: String,
       span: SourceSpan
@@ -624,6 +637,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: s } => s
     KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: s } => s
     UnresolvedType     { name: _, span: s }                    => s
+    TypeRefMeasureBindingDisagreement { name: _, production_route: _, span: s } => s
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: s } => s
     TypeMismatch       { expected: _, got: _, span: s }        => s
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
@@ -645,13 +659,13 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
     DuplicateModule    { name: _, span: s }                    => s
+    TypeAliasCycle     { members: _, span: s }                 => s
     DuplicateDeclaration { module_name: _, name: _, span: s }  => s
     MissingAnnotation  { fn_name: _, what: _, span: s }        => s
     ParseError         { message: _, span: s }                 => s
     InternalError      { message: _, span: s }                 => s
     ComplexityUnknown  { func_name: _, reason: _, span: s }    => s
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: _, span: s } => s
-    OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
     KernelMintShapeMismatch { declaration_name: _, cause: _, span: s } => s
@@ -668,6 +682,10 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
+    DeclaredTypeInhabitanceUnmodeled { position: _, span: s } => s
+    ArithmeticWithoutCarrier { operation: _, operands: _, span: s } => s
+    ArithmeticAmbiguousCarrier { operation: _, candidates: _, span: s } => s
+    ArithmeticUndecidedCarrier { operation: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: s } => s
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
@@ -687,6 +705,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     CallNamedArgOnFunctionValue { callee: _, argument: _, span: s } => s
     EqualityOnFunctionMember { type_name: _, member: _, span: s } => s
     EqualityMemberUnjudgeable { type_name: _, member: _, span: s } => s
+    EqualityOnInadmissibleType { type_name: _, span: s } => s
     EqualityOptionalityMismatch { optional_side: _, span: s } => s
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
@@ -699,6 +718,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: s } => s
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
+    CastRealizationRefused { target: _, missing_realization_fact: _, span: s } => s
     TypeNameCarriesNoRecordConstructor { type_name: _, declared_variants: _, span: s } => s
   }
 }
@@ -711,6 +731,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') collides with the kernel name whose mint is the declaration in '", k, "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.")
     KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') cannot be judged against the kernel mint: ", to_string(value: c), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.")
     UnresolvedType     { name: n, span: _ }                       => concat("unresolved type '", n, "'")
+    TypeRefMeasureBindingDisagreement { name: n, production_route: r, span: _ } => concat("type reference '", n, "' resolves in production through ", r, ", but the N1a measure's binding authority finds no binding for it here: its qualifier is neither an ancestor of this module nor a module this module imports. The two routes disagree; the measure refuses rather than reading a production binding as unresolved.")
     UnitVariantPhantomIdentityEvidenceUnavailable { name: n, span: _ } => concat("unit-variant marker identity evidence unavailable for '", n, "'")
     TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
@@ -733,6 +754,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
     DuplicateModule    { name: n, span: _ }                       => concat("duplicate module declaration: '", n, "'")
+    TypeAliasCycle     { members: ms, span: _ }                   => concat("type alias cycle: ", join(ms, separator: " -> "))
     DuplicateDeclaration { module_name: m, name: n, span: _ }     => concat("duplicate declaration '", n, "' in module '", m, "' -- a second declaration of one name silently replaced the first")
     MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
     ParseError         { message: m, span: _ }                    => m
@@ -740,7 +762,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ComplexityUnknown  { func_name: f, reason: r, span: _ }      => concat("complexity: ", f, ": ", r)
     WhereRefinementUnenforced { predicate: p, formal_type: t, reason: r, span: _ } =>
       concat("where-refinement unenforced: predicate '", p, "' on '", t, "' — ", r)
-    OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     KernelMintShapeMismatch { declaration_name: d, cause: c, span: _ } => concat("kernel mint binding: '", d, "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ", c)
@@ -775,6 +796,14 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
     DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
       concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
+    ArithmeticWithoutCarrier { operation: op, operands: os, span: _ } =>
+      concat("no arithmetic carrier: no declared carrier defines ", op, " for the operands (", join(os, separator: ", "), ") through the declared implicit injections")
+    ArithmeticAmbiguousCarrier { operation: op, candidates: cs, span: _ } =>
+      concat("arithmetic carrier is ambiguous for ", op, ": ", to_string(cs |> count), " incomparable carriers (", join(cs, separator: ", "), ") define it through the declared implicit injections; name the conversion")
+    ArithmeticUndecidedCarrier { operation: op, span: _ } =>
+      concat("arithmetic carrier is undecided for ", op, ": an operand's alias chain is longer than the carrier reader's bound, so its carrier was not read; no carrier is assumed")
+    DeclaredTypeInhabitanceUnmodeled { position: pos, span: _ } =>
+      concat("declared-type inhabitance is UNMODELED at the ", pos, ": no arm of the relation judges this pair yet. This is not an undecidable fact but a gap in the relation's wiring, counted here instead of read as acceptance until the class is dispositioned and the terminal arm refuses")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, span: _ } =>
       concat("no provider is present for '", n, "', referenced by module '", rm, "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply")
@@ -801,6 +830,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("call shape mismatch calling function value '", c, "': named argument '", a, "' is not supported — use positional arguments")
     EqualityOnFunctionMember { type_name: t, member: m, span: _ } =>
       concat("equality is not defined for '", t, "': member '", m, "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='")
+    EqualityOnInadmissibleType { type_name: t, span: _ } =>
+      concat("equality is not defined for '", t, "': it is declared equality-inadmissible (it carries provenance that derived '==' would compare) — compare through the erasure route (node_equal_ignoring_provenance for structure, node_same_occurrence for identity) instead of '=='")
     EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>
@@ -819,6 +850,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
+    CastRealizationRefused { target: tgt, missing_realization_fact: missing, span: _ } =>
+      concat("cast cannot be emitted for target '", tgt, "' -- ", missing)
     TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, span: _ } =>
       concat("record literal names '", t, "' which declares no record constructor: '", t, "' is a union with variants [", join(vs, separator: ", "), "]; construct one of its variants instead (DESIGN §4b: a value inhabits its declared type)")
   }
@@ -877,6 +910,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnresolvedType { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeRefMeasureBindingDisagreement { name: _, production_route: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeMismatch { expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ArityMismatch { name: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -898,6 +932,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     NonExhaustiveMatch { missing: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CircularDependency { modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateModule { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeAliasCycle { members: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateDeclaration { module_name: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingAnnotation { fn_name: _, what: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ParseError { message: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -913,7 +948,6 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
       } else {
         DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
       }
-    OwnershipViolation { binding: _, fn_name: _, consumers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SoleConstructorViolation { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     KernelMintShapeMismatch { declaration_name: _, cause: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -922,7 +956,11 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ConstructorCallAdmissionRefused { constructor_module_path: _, constructor_decl_name: _, caller_module_path: _, caller_decl_name: _, permitted_callers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticWithoutCarrier { operation: _, operands: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticAmbiguousCarrier { operation: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticUndecidedCarrier { operation: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
+    DeclaredTypeInhabitanceUnmodeled { position: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
@@ -942,6 +980,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     CallNamedArgOnFunctionValue { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityOnInadmissibleType { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOptionalityMismatch { optional_side: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -950,6 +989,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CastRealizationRefused { target: _, missing_realization_fact: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeNameCarriesNoRecordConstructor { type_name: _, declared_variants: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
   }
 }
@@ -1234,6 +1274,7 @@ fn empty_node_list() -> List<Node> {
 
 fn make_expr_node(occurrence_identity: NodeOccurrenceIdentity, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: "", span: span, ident_span: none, children: children,
     connective: NoConnective,
@@ -1247,6 +1288,7 @@ fn make_expr_node(occurrence_identity: NodeOccurrenceIdentity, expr_data: ExprDa
 
 fn make_named_expr_node(occurrence_identity: NodeOccurrenceIdentity, name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
     connective: NoConnective,
@@ -1272,6 +1314,7 @@ fn make_pattern_binder_declaration_node(occurrence_identity: NodeOccurrenceIdent
 
 fn make_expr_error_node(occurrence_identity: NodeOccurrenceIdentity, kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
@@ -1286,6 +1329,7 @@ fn make_expr_error_node(occurrence_identity: NodeOccurrenceIdentity, kind: ExprE
 fn make_arg_node(occurrence_identity: NodeOccurrenceIdentity, name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   let arg_name = match name { Present { value: n } => n  Absent => "" }
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
 
@@ -1299,6 +1343,7 @@ fn make_arg_node(occurrence_identity: NodeOccurrenceIdentity, name: String?, val
 fn make_arm_node(occurrence_identity: NodeOccurrenceIdentity, pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
   let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
@@ -1312,6 +1357,7 @@ fn make_arm_node(occurrence_identity: NodeOccurrenceIdentity, pattern: MatchPatt
 
 fn make_resource_use_node(occurrence_identity: NodeOccurrenceIdentity, name: String, resource: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
 
@@ -1333,6 +1379,7 @@ fn resource_use_resource(n: Node) -> Node {
 
 fn make_field_init_node(occurrence_identity: NodeOccurrenceIdentity, name: String, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [value], connective: NoConnective,
 
@@ -1345,6 +1392,7 @@ fn make_field_init_node(occurrence_identity: NodeOccurrenceIdentity, name: Strin
 
 fn make_field_binding_node(occurrence_identity: NodeOccurrenceIdentity, field_name: String, binding: MatchPattern, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -1362,6 +1410,7 @@ fn field_binding_pattern(n: Node) -> MatchPattern {
 
 fn make_text_part_node(occurrence_identity: NodeOccurrenceIdentity, text: String, span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
@@ -1375,6 +1424,7 @@ fn make_text_part_node(occurrence_identity: NodeOccurrenceIdentity, text: String
 
 fn make_interp_part_node(occurrence_identity: NodeOccurrenceIdentity, expr: Node, span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: "", span: span, ident_span: none, children: [expr], connective: NoConnective,
 
@@ -1388,6 +1438,7 @@ fn make_interp_part_node(occurrence_identity: NodeOccurrenceIdentity, expr: Node
 fn make_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -1400,6 +1451,7 @@ fn make_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ty
 fn make_resolved_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: Present { value: Resolved { node: type_expr } }, return_cardinality: Required,
@@ -1412,6 +1464,10 @@ fn make_resolved_param_node(occurrence_identity: NodeOccurrenceIdentity, name: S
 fn param_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
 fn generic_param_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn item_generic_param_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  item.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+}
 
 fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
   match node.ident_span {
@@ -1460,6 +1516,7 @@ fn param_node_span(n: Node) -> SourceSpan { n.span }
 fn make_field_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key_properties: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: cardinality,
@@ -1517,6 +1574,7 @@ fn field_node_span(n: Node) -> SourceSpan { n.span }
 
 fn make_variant_node(occurrence_identity: NodeOccurrenceIdentity, name: String, fields: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: fields, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -1951,6 +2009,7 @@ data transport_tls_key: String = "tls"
 
 fn make_transport_node(occurrence_identity: NodeOccurrenceIdentity, properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
   Node {
+    ident: Absent,
     occurrence_identity: occurrence_identity,
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
@@ -1961,7 +2020,7 @@ fn make_transport_node(occurrence_identity: NodeOccurrenceIdentity, properties: 
   }
 }
 
-fn local_transport_node(occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan) -> Node {
+fn undeclared_transport_node(occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan) -> Node {
   make_transport_node(occurrence_identity: occurrence_identity, properties: [], children: [], body: none, span: span)
 }
 
@@ -1993,14 +2052,14 @@ fn rest_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_url: No
 }
 
 fn shell_transport_node(occurrence_identity: NodeOccurrenceIdentity, argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
-  let shell_marker = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let shell_marker = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
   let zero_span = no_span()
   let stdin_props = match stdin {
     Present { value: s } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let all_props = concat(env, stdin_props)
-  Node { occurrence_identity: occurrence_identity,
+  Node { ident: Absent, occurrence_identity: occurrence_identity,
     name: "", span: span, ident_span: none, children: argv, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: Present { value: shell_marker }, transport: none, properties: all_props,
@@ -2132,7 +2191,8 @@ fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
 fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
-// A local transport is the one local_transport_node builds: no properties, no argv, no body.
+// A bare transport is the one undeclared_transport_node builds: no properties, no argv, no body. It
+// declares no realization, so it binds UnboundOperation and refuses; it is not a local transport.
 fn is_bare_transport(t: Node) -> Bool {
   t.properties |> count == 0 && t.children |> count == 0 && t.body == none
 }
@@ -2146,7 +2206,10 @@ fn is_bare_transport(t: Node) -> Bool {
 // reached by any input whatsoever, and a check whose red is unreachable is a decoration:
 // permanently green and cited as coverage (DESIGN, the reachability-read-as-occupancy class).
 // Local is now a POSITIVE test, so that arm is reachable and an unrecognized transport is refused
-// instead of silently emitting as a direct function call.
+// instead of silently emitting as a direct function call. (Local was later renamed
+// UndeclaredTransport: the bare node only ever meant that no transport was declared, and that arm
+// now binds to UnboundOperation, which refuses too -- see v1.compiler.emit
+// emit_unbound_operation_refusal.)
 //
 // IT DOES NOT MAKE THE ARM FIRE ON ANY SOURCE SPELLING TODAY, and this PR does not claim it does.
 // A REACHABLE WALL AND A WALL THAT FIRES ARE DIFFERENT PROPERTIES. Both parse_file_fields and
@@ -2172,13 +2235,13 @@ fn classify_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Tra
   if is_rest_transport(t: t, source_indices: source_indices) { Present { value: RestTransport } }
   else if is_shell_transport(t: t) { Present { value: ShellTransport } }
   else if is_file_transport(t: t, source_indices: source_indices) { Present { value: FileTransport } }
-  else if is_bare_transport(t: t) { Present { value: LocalTransport } }
+  else if is_bare_transport(t: t) { Present { value: UndeclaredTransport } }
   else { none }
 }
 
-fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn is_undeclared_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match classify_transport(t: t, source_indices: source_indices) {
-    Present { value: LocalTransport } => true
+    Present { value: UndeclaredTransport } => true
     _ => false
   }
 }
@@ -2448,7 +2511,7 @@ fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>
 }
 
 fn module_node(occurrence_identity: NodeOccurrenceIdentity, name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
-  Node { occurrence_identity: occurrence_identity,
+  Node { ident: Absent, occurrence_identity: occurrence_identity,
     name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: items, connective: NoConnective,
 
     params: imports, inferred: none, return_cardinality: Required,
@@ -2460,9 +2523,9 @@ fn module_node(occurrence_identity: NodeOccurrenceIdentity, name: String, import
 
 fn import_node(occurrence_identity: NodeOccurrenceIdentity, module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   let wildcard_marker = if is_all {
-    Present { value: Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData } }
+    Present { value: Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData } }
   } else { none }
-  Node { occurrence_identity: occurrence_identity,
+  Node { ident: Absent, occurrence_identity: occurrence_identity,
     name: module_path, span: span, ident_span: Present { value: name_span }, children: specific_names, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -2489,7 +2552,7 @@ fn module_items(n: Node) -> List<Node> {
 }
 
 fn leaf_node_with_span(occurrence_identity: NodeOccurrenceIdentity, name: String, span: SourceSpan) -> Node {
-  Node { occurrence_identity: occurrence_identity, name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { ident: Absent, occurrence_identity: occurrence_identity, name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn kernel_span(name: String) -> SourceSpan {
@@ -2655,15 +2718,15 @@ fn provenance_reported_file(p: TypeDeclarationProvenance) -> String {
   }
 }
 
-data unit_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-data bool_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-data string_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-data hash_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Hash", span: kernel_span(name: "Hash"), ident_span: Present { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-data int_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-data float_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-data none_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data unit_type: Node = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data bool_type: Node = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data string_type: Node = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data symbol_type: Node = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Symbol", span: kernel_span(name: "Symbol"), ident_span: Present { value: kernel_span(name: "Symbol") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data int_type: Node = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data float_type: Node = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data none_type: Node = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 data tuple_type_name: String = "Tuple"
-data error_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
+data error_type: Node = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {
   SourceSpan { file: file, start: start, end: end }

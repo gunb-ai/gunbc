@@ -1,0 +1,46 @@
+module gunbc.recurring_failure_mode.a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// WHY A CLASS AND NOT ONE INCIDENT. A serving host's image is changed by a route that does not pass
+// through the file the host is relaunched from (a hand `docker run` of a patched build), and the next
+// relaunch -- made for an unrelated reason, from that file -- silently installs the image the file
+// names. Nothing refuses: the container starts, serves and reports healthy, on the build the repair
+// was meant to replace. The same shape recurs wherever a launch has two writers and one of them is not
+// the launch's authority; the model-side half (a provision derivation taking the recipe build's pin
+// instead of the deployment's image) is the same class one layer up, and is closed in the model by
+// gunbc.serving.serving_provision_derivation taking gunbc.serving.srv1_serving_launch srv1_serving_image.
+
+data a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a read of the running serving container's image ID (docker inspect --format {{.Image}}) compared against the deployment's one image authority, gunbc.serving.srv1_serving_launch srv1_serving_image, after every relaunch and on a schedule, refusing on mismatch",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: the serving container on a host runs an image other than the deployment's declared image, because the host was relaunched from a launch file that names a different image than the one a separate, out-of-band route had installed. Harm: the repair the out-of-band image carried is silently off while the host reports healthy; nothing on the serving path or the required CI path compares the running image with any declaration.",
+
+    "RECEIPT (srv1, 2026-10-29). The LMCache delete-accounting repair (gunbc-private#255) ran on srv1 as a hand-launched container from local build da08aaf9 (created 2026-10-28 13:54). The retained wrapper ~/strata-test/srv1_lil_serve.sh still named the upstream tag (image af14f1a9). The operator-approved LMCache tier relaunches at 10:58 and 11:55 ran that wrapper, so srv1 served on the unpatched base from 10:55 until eager-lynx-183's handoff verification read the running image and the adapter file's sha256 (b6e87817, the unpatched one). Restored at 12:55 on the operator's decision; the wrapper now names the image by ID and gunbc.serving.srv1_serving_launch srv1_serving_image_derivation records the derivation.",
+
+    "DISTINGUISHING FACTS. Not configuration drift of a declared value: both writers were individually correct, and the defect is that the image had two authorities (the wrapper file and the hand launch). Not caught by the startup checks: the engine version banner is the base's, since the repair replaces one Python file, so a version-only readback cannot see it; only the image ID or the file's digest can.",
+
+    "THE RUNG. Found at mitigatable: it was noticed by a person reading the container back, and repaired by relaunching. CEILING: mechanically preventable -- the running image ID is readable on the host and the declared image is one symbol, so a comparison can refuse; it cannot be structurally impossible while the host can be relaunched by hand outside the model. NEXT-RUNG TRIGGER (a capability, not an artifact): a live read of the running container's image against srv1_serving_image after every relaunch and on a schedule, refusing on mismatch. The model-side twin is already guarded by test.claim.serving.serving_provision_derivation_witness, which goes red if the provision installs the build's pin, but that witness is off the required path, so it does not lift this class's rung.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_image_derivation", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_provision_derivation", decl_name: "serving_provision_from_vllm", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.srv1_serving_startup_receipt", decl_name: "srv1_serving_startup_reading", field: WholeDeclaration },
+  ],
+}

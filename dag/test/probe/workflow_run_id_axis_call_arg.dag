@@ -1,0 +1,9 @@
+module test.probe.workflow_run_id_axis_call_arg
+
+// A RULE ID, BY REFERENCE, PASSED WHERE A RUN ID BELONGS AT A CALL: the review endpoint path builder
+// takes the run carrier. Read by a_rule_id_carrier_where_a_run_id_belongs_is_refused_at_the_call.
+import extdeps.github.deployment_protection_rule { GitHubDeploymentProtectionRuleId, review_endpoint_path_built_for, BuiltRoutePath }
+
+data a_rule_arg: GitHubDeploymentProtectionRuleId = GitHubDeploymentProtectionRuleId { value: 1 }
+
+data forged_path: BuiltRoutePath = review_endpoint_path_built_for(owner: "o", repo: "r", run_id: a_rule_arg)

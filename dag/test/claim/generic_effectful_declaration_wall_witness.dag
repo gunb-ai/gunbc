@@ -1,9 +1,8 @@
 module test.claim.generic_effectful_declaration_wall_witness
 
 import std.types { String, Bool, Int }
-import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, total_blocking_census, census_verdict, census_exit, CensusVerdict }
 
 // ENROLLED EVIDENCE for the refusal that the `func` keyword cut made necessary, kept here rather
 // than run once and discarded because DESIGN section 4b(4) enrolls a class's discriminating RED
@@ -95,34 +94,28 @@ data gew_legacy_func_source: String = "module gew_wall_legacy\n\nfunc gew_legacy
 
 // NOT-RUNNABLE IS NOT ZERO: a census that could not run has observed nothing, and rendering that
 // as "no diagnostics of this class" would let a broken harness satisfy the == 0 control while
-// making the == 1 refusal unsatisfiable -- the empty-observation narrow. -1 is neither.
-fn gew_blocking_count(source: String, wanted: String) -> Int {
-  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted) {
-    Present { value: n } => n
-    Absent => 0 - 1
-  }
+// making the == 1 refusal unsatisfiable -- the empty-observation narrow. CensusUnobserved is neither.
+fn gew_blocking_verdict(source: String, wanted: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: blocking_class_census(source: source, wanted_class: wanted), holds: holds)
 }
 
-fn gew_total_blocking(source: String) -> Int {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
+fn gew_total_blocking_verdict(source: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: total_blocking_census(source: source), holds: holds)
 }
 
-test fn a_generic_effectful_declaration_is_refused_at_parse() -> Bool {
-  gew_blocking_count(source: gew_generic_effectful_source, wanted: "ParseError") == 1
+test fn a_generic_effectful_declaration_is_refused_at_parse() -> ProcessExit {
+  census_exit(gew_blocking_verdict(source: gew_generic_effectful_source, wanted: "ParseError", holds: fn(n) { n == 1 }))
 }
 
 // THE ARM THAT GOES RED IF THE EFFECT ROW IS DISCARDED. `net.id` needs the `uses` binding, so a
 // zero here is a statement about the repair and not merely about the grammar.
-test fn an_effectful_declaration_binds_the_resource_it_declares() -> Bool {
-  gew_total_blocking(source: gew_plain_effectful_source) == 0
+test fn an_effectful_declaration_binds_the_resource_it_declares() -> ProcessExit {
+  census_exit(gew_total_blocking_verdict(source: gew_plain_effectful_source, holds: fn(n) { n == 0 }))
 }
 
 // GREATER THAN ZERO RATHER THAN AN EXACT COUNT, because a refused declaration head also orphans
 // whatever follows it and the cascade size is not the claim. What is claimed is that the removed
 // spelling is REFUSED: before the cut this same source compiled clean, so the arm discriminates.
-test fn the_removed_func_spelling_is_refused() -> Bool {
-  gew_blocking_count(source: gew_legacy_func_source, wanted: "ParseError") > 0
+test fn the_removed_func_spelling_is_refused() -> ProcessExit {
+  census_exit(gew_blocking_verdict(source: gew_legacy_func_source, wanted: "ParseError", holds: fn(n) { n > 0 }))
 }

@@ -1,0 +1,52 @@
+module test.claim.bmc.ipmi_boot_selection_witness
+
+import std.types { Bool, List, String }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.ipmi_boot_selection {
+  IpmiBootCdrom,
+  IpmiBootPxe,
+  uefi_once_boot_selection,
+  ipmi_boot_device_label,
+  ipmi_boot_selection_label,
+  ipmi_boot_selection_options_token,
+  ipmi_boot_flags_parameter_data,
+  ipmi_boot_flags_parameter_hex,
+}
+import extdeps.bmc.ipmitool_observed_output { ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootparam5_no_override }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WIRE BYTES FOR mtcollins1 ARE UNCHANGED (merry-fox-82 condition 1 on the generalization): the
+// selection mtcollins1's boot path now spells as uefi_once_boot_selection(device: IpmiBootCdrom) encodes
+// to the parameter-5 data ipmitool read back off that BMC after the old aarch64-only selection was set
+// (extdeps.bmc.ipmitool_observed_output ipmitool_bootparam5_cdrom_efi_next_boot), and to the argv words the
+// handoff sends. The observed line is the oracle, not the encoder.
+test fn the_mtcollins1_cdrom_selection_encodes_to_its_observed_readback() -> Bool {
+  let sel = uefi_once_boot_selection(device: IpmiBootCdrom)
+  (match ipmi_boot_flags_parameter_hex(selection: sel) {
+    Present { value: hex } => string_contains(s: ipmitool_bootparam5_cdrom_efi_next_boot, pattern: concat("Boot parameter data: ", hex))
+    Absent => false
+  })
+    && (ipmi_boot_device_label(device: sel.device) as String) == "cdrom"
+    && (ipmi_boot_selection_options_token(selection: sel) as String) == "efiboot"
+    && (ipmi_boot_selection_label(selection: sel) as String) == "cdrom/efi/once"
+}
+
+// THE x86 PXE OVERRIDE, the same constructor with the PXE device: valid + EFI once (0xa0), force PXE
+// (0001b << 2 = 0x04), nothing else.
+test fn the_pxe_selection_encodes_force_pxe_efi_once() -> Bool {
+  let sel = uefi_once_boot_selection(device: IpmiBootPxe)
+  ipmi_boot_flags_parameter_data(selection: sel) == [160, 4, 0, 0, 0]
+    && ipmi_boot_flags_parameter_hex(selection: sel) == Present { value: "a004000000" }
+    && (ipmi_boot_device_label(device: sel.device) as String) == "pxe"
+    && (ipmi_boot_selection_options_token(selection: sel) as String) == "efiboot"
+}
+
+// RED: the encoder does not render the observed no-override bytes for either selection.
+test fn neither_selection_encodes_to_the_no_override_readback() -> Bool {
+  all([IpmiBootCdrom, IpmiBootPxe], d => match ipmi_boot_flags_parameter_hex(selection: uefi_once_boot_selection(device: d)) {
+    Present { value: hex } => !string_contains(s: ipmitool_bootparam5_no_override, pattern: concat("Boot parameter data: ", hex))
+    Absent => false
+  })
+}

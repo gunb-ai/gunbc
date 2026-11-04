@@ -1,7 +1,8 @@
 module test.claim.local_callable_value_call_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { total_blocking_count_for }
+import gunbc.compile_census_probe { census_verdict, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 
 // Enrolled controls for calling a LOCALLY BOUND function value (the extdeps.apple.app_attest
 // first_assertion_refusal idiom before gunbc#12251 rewrote it). The EXECUTION half -- one program
@@ -23,16 +24,16 @@ data unary_element_called_source: String = "module lcv_unary\n\nfn sum_applied(f
 
 data map_element_called_source: String = "module lcv_map\n\nfn run_all(rs: List<fn() -> Int>) -> List<Int> {\n  rs |> map(r => r())\n}\n"
 
-test fn a_lambda_parameter_bound_to_a_callable_element_is_callable() -> Bool {
-  total_blocking_count_for(source: fold_lambda_param_called_source) == 0
+test fn a_lambda_parameter_bound_to_a_callable_element_is_callable() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: fold_lambda_param_called_source), holds: fn(n) { n == 0 }))
 }
 
-test fn a_unary_callable_element_is_callable() -> Bool {
-  total_blocking_count_for(source: unary_element_called_source) == 0
+test fn a_unary_callable_element_is_callable() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: unary_element_called_source), holds: fn(n) { n == 0 }))
 }
 
-test fn a_map_lambda_parameter_bound_to_a_callable_element_is_callable() -> Bool {
-  total_blocking_count_for(source: map_element_called_source) == 0
+test fn a_map_lambda_parameter_bound_to_a_callable_element_is_callable() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: map_element_called_source), holds: fn(n) { n == 0 }))
 }
 
 test fn a_lambda_list_literal_realizes_each_element_at_the_arrow_carrier() -> Bool {

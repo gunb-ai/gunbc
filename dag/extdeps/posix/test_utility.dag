@@ -65,6 +65,15 @@ fn test_writable_command(path: String) -> ArgvCommand {
   argv_command(program: test_program(), arguments: ["-w", path])
 }
 
+// -r IS "EXISTS AND IS READABLE BY THE EFFECTIVE UID" (POSIX test, OPERAND -r), and it is the operand the
+// boot medium reader probe needs and no other row offered. It is NOT -e: a file can exist and be readable,
+// and a file can exist and NOT be readable, and the reader account's whole question is which of those the
+// served image is. The account whose readability is in question is chosen by the CALLER's privilege (the
+// probe runs it under `sudo -u <reader>`), so this row stays about the utility and not about any account.
+fn test_readable_command(path: String) -> ArgvCommand {
+  argv_command(program: test_program(), arguments: ["-r", path])
+}
+
 fn test_executable_command(path: String) -> ArgvCommand {
   argv_command(program: test_program(), arguments: ["-x", path])
 }

@@ -12,6 +12,7 @@ import v2.std.compilers.body_lowering { lower_bind, lower_match }
 import v2.std.integer { Int }
 import v2.std.type_binder { type_annotation_edge }
 import v2.std.node {
+  NotADeclaration,
   ComputationNode,
   Bind,
   Edge,
@@ -99,9 +100,9 @@ test fn sts_an_annotation_edge_stored_first_does_not_shift_the_bind_roles() -> B
     kind: ComputationNode { behavior: Bind },
     children: [
       type_annotation_edge(annotation: annotation),
-      Edge { label: Positional, target: key },
-      Edge { label: Positional, target: value },
-      Edge { label: Positional, target: body }
+      Edge { label: Positional, target: key, declaration: NotADeclaration },
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
+      Edge { label: Positional, target: body, declaration: NotADeclaration }
     ]
   )
   !sts_child_is_positional_at(n: bind, index: 0)
@@ -118,10 +119,10 @@ test fn sts_an_annotation_edge_interleaved_between_positionals_does_not_shift_th
   let bind = node_synthetic(
     kind: ComputationNode { behavior: Bind },
     children: [
-      Edge { label: Positional, target: key },
-      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: key, declaration: NotADeclaration },
+      Edge { label: Positional, target: value, declaration: NotADeclaration },
       type_annotation_edge(annotation: value),
-      Edge { label: Positional, target: body }
+      Edge { label: Positional, target: body, declaration: NotADeclaration }
     ]
   )
   sts_child_is_positional_at(n: bind, index: 1)

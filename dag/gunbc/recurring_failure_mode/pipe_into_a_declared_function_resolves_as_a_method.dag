@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.pipe_into_a_declared_function_resolves_as_a_method
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data pipe_into_a_declared_function_resolves_as_a_method: RecurringFailureMode = RecurringFailureMode {
+  identity: "pipe_into_a_declared_function_resolves_as_a_method" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyImpossible,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the seed parser builds, for an unqualified pipe, the call node the direct call f(x, ..) builds (staged on session/smart-tern-402-seed-pipe as v1.compiler.parse pipe_call_expr_data), landing only after three seed prerequisites that keep it from adding refusals: the known-method bridge inferred through the ExprMethodCall arm (one route for a kernel method applied to a receiver), a declared generic's type parameter never bound by an inference variable (the fold-accumulator repair), and a kernel-built container slot spelled by its argument (#15132), SUFFICIENT FOR a pipe into an imported declared function to bind and run on the seed path with zero new refusals over every module containing |>"
+    }
+  },
+
+  receipts: [
+    "INVALID STATE: `x |> f(a)`, where f is a declared function the site can reach by import or in its own module, is resolved as a method `f` on the type of x instead of as the call f(x, a) it abbreviates. Only heads with no declared signature (count, map, filter, a host-registered primitive) existed as methods, so the pipe worked for them and refused for every declared function.",
+    "HARM: a loud refusal, not silent wrongness -- the seed reported \"method 'f' not found on receiver type 'Primitive(Int)'\" -- so the cost was authorship time. Every NAMESPACE-XL rename wave had to rewrite pipe sites into direct calls (31 of 38 sites in the join instrument slice, 75 of 85 sort_by sites), and the binding-diff join (#15083) grew a RelocateHeadStep arm to do it; that arm's dissolution trigger is this repair. A witness fixture had to be weakened to avoid the shape (test.claim.dag_parse_continuation_operator_witness, restored by this change).",
+    "THE CHAIN (DESIGN 6b), MEASURED ON BOTH PATHS AT 88e8991e557 BEFORE THE REPAIR, each by a binary built from that tree. SEED: the earliest unjustified link is the parser. v1.compiler.parse parse_pipe_rhs built an ExprMethodCall for an unqualified pipe, the node `x.f(a)` builds, so v1.compiler.infer could only ask the receiver's type for a method, while the qualified pipe `x |> a.b.f(a)` already built the node a direct qualified call builds and bound through the kernel. The pipe's meaning was recorded for one of its two forms. v2 (THE AUTHORITY): resolve bound the head correctly -- `f` in `7 |> f(a: true)` resolved to the imported pa.f by declaration identity -- and infer refused the inner application with application_positional_deficit at `f`, because v2.compiler.body_lowering_fold body_lower_binary_apply lowered the pipe as an opaque infix Transform and gave it its call meaning only for a fold head (fold_call_lowering_piped). So v2 failed one link later than the seed: at lowering, not resolution. v2.extdeps.languages.dag dag_infix_operators carries only the pipe's binding power; its meaning (a call with the left operand first) is stated by the seed parser and by v2's receiver-call lowering, which already lowers `recv.f(a)` to f(recv, a).",
+    "THE REPAIR, v2 FIRST (the authority, DESIGN section 7). v2.compiler.body_lowering_fold body_lower_pipe_application makes every non-fold pipe the application its right operand names with the left operand as its first positional actual, the encoding a receiver call recv.f(a) already takes; v2.std.arrow_signature application_binding_plan then binds it like any application. The piped fold (fold_call_lowering_piped) was the one head that had been given the pipe's meaning; this is that meaning for every other head (DESIGN 6b root generalization).",
+    "THE SEED HALF IS STAGED, NOT LANDED, AND WHY (manager ruling, tidy-ant-251, 2026-10-25). The seed repair is one rule at the parser (v1.compiler.parse pipe_call_expr_data: the unqualified pipe builds the ExprCall the direct call builds), measured to bind and run on the seed (test.claim.pipe_into_declared_function_witness, staged with it). But a per-module census over every module containing |> (main 88e8991e557 against the staged branch, each seed built from its tree) found that pipe == call moves the ~12k kernel-head pipe sites from the ExprMethodCall arm onto the ExprCall arm's known-method bridge, a second inference route that disagrees with the arm, and that a pipe into an imported std.algebra generic inherits two direct-call gaps -- a kernel-built slot spelled by its parameter (#15132) and a type parameter bound first-wins by an inference variable (the fold-accumulator repair, heal E0282 on crate_partition). Each is pre-existing on main with no pipe involved. Landing the seed half before them would add refusals, so it waits on all three; the v2 half does not depend on them.",
+    "EVIDENCE, EXECUTED. v2: v2.test.claim.pipe_application runs resolve, infer_and_discharge and eval over a two-module program: the direct-call control, named, positional, bare and chained pipes evaluate; `true |> f(7)` refuses with application_argument_does_not_inhabit (the left operand fills the first slot); the lowered pipe hashes equal to its direct call; unknown-label and bound-twice refusals reach the piped application; not-found and ambiguous heads refuse at resolve with resolve_reason_unbound_symbol and resolve_reason_ambiguous_symbol. RED at 88e8991e557: claims (1) through (5) red, the control (0) and the resolve refusals (6) green; a mutation appending the operand instead of prepending it reds (1) through (5).",
+    "RUNG FOUND AT: mitigatable (a typed, located refusal on both paths; nothing silent). NOW, PER PATH (DESIGN 4b(1), the class rung is the minimum): v2 is structurally impossible at the grain of the pipe form -- lowering has no node for a pipe other than the application it abbreviates. The seed path is still at the found rung (it refuses), so the class stays below ceiling until the staged seed half lands. NOT A CLAIM: that a declared function can never be shadowed by or confused with a kernel method of the same spelling; that is name resolution's question, decided the same way for count(xs) and xs |> count. A consequence of pipe == call that IS this class's: the pipe head is lexically scoped, so a local named like the head binds (three corpus sites renamed in this change: ampere_altra_package contact_designators, yaml ingest yaml_key_sequence_is_clean, native_serve_probe native_serve_clock_failure).",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_pipe_application"),
+    decl_ref(module_path: "v2.test.claim.pipe_application", decl_name: "a_pipe_into_an_imported_declared_function_evaluates"),
+    decl_ref(module_path: "v2.test.claim.pipe_application", decl_name: "the_left_operand_fills_the_first_slot"),
+  ],
+}

@@ -20,6 +20,10 @@ settings:
     STRING_CATALOG_GENERATE_SYMBOLS: YES
     SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
     GCC_TREAT_WARNINGS_AS_ERRORS: YES
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 9.0.0
 targets:
   Approve:
     type: application
@@ -41,11 +45,17 @@ targets:
         UIBackgroundModes: [remote-notification]
         ApproveServerHost: srv1.tailecbe08.ts.net
         ApproveApnsEnvironment: $(APNS_ENVIRONMENT)
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: [com.googleusercontent.apps.433089409875-p2dbfd5ug7f0svkm2dpec1uh9pk09bq6]
+        CFBundleShortVersionString: "1"
+        CFBundleVersion: "1"
     entitlements:
       path: Approve/Approve.entitlements
       properties:
         aps-environment: $(APNS_ENVIRONMENT)
         com.apple.developer.devicecheck.appattest-environment: $(APP_ATTEST_ENVIRONMENT)
+    dependencies:
+      - package: GoogleSignIn
   ApproveTests:
     type: bundle.unit-test
     platform: iOS

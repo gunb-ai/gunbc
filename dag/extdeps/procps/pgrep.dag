@@ -60,6 +60,14 @@ fn pgrep_match_full_command_line_argv(pattern: NonEmptyStr) -> List<String> {
   ["pgrep", "-f", pattern as String]
 }
 
+// THE SCAN KEYED ON THE OWNING ACCOUNT. -u is the only honest way to ask "does this account have
+// processes at all": a `-f` pattern matches whatever the caller can guess about a command line, and an
+// account whose processes the caller cannot name would then look empty. Same exit-code contract as the
+// `-f` scan above -- 0 some, 1 none, 2 syntax error -- and a syntax error is never read as "none".
+fn pgrep_user_argv(user: NonEmptyStr) -> List<String> {
+  ["pgrep", "-u", user as String]
+}
+
 type PgrepScanOutcome
   = PgrepMatched { listing: String }
   | PgrepNoMatch

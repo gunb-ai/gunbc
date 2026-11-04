@@ -1,0 +1,13 @@
+Set in progress                 : set-complete
+Enabled                         : true
+Force Encryption                : false
+Force Authentication            : false
+Privilege Level                 : OPERATOR
+Character Accumulate Level (ms) : 0
+Character Send Threshold        : 0
+Retry Count                     : 0
+Retry Interval (ms)             : 0
+Volatile Bit Rate (kbps)        : 115.2
+Non-Volatile Bit Rate (kbps)    : 115.2
+Payload Channel                 : 1 (0x01)
+Payload Port                    : 623

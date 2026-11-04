@@ -58,7 +58,7 @@ impl NrdfcParsed {
 }
 
 pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
-    match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source(file.clone(), source.clone())).clone() {
+    match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source(file, source)).clone() {
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => Rc::new(NrdfcParsed::NrdfcParsedRefused),
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport, module_path, .. } => Rc::new(NrdfcParsed::NrdfcParsedReady {
     transport: transport.clone(),
@@ -228,10 +228,10 @@ pub fn namespace_structural_binding_observations_from_parsed(
     homonym_name: String,
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     Rc::new(vec![
-        same_file_neighbour_observation(parsed.clone(), neighbour_name.clone()),
-        sibling_branch_observation(parsed.clone(), branch_binder_name.clone()),
-        later_declaration_observation(parsed.clone(), later_name.clone()),
-        distinct_homonym_observation(parsed.clone(), homonym_name.clone()),
+        same_file_neighbour_observation(parsed.clone(), neighbour_name),
+        sibling_branch_observation(parsed.clone(), branch_binder_name),
+        later_declaration_observation(parsed.clone(), later_name),
+        distinct_homonym_observation(parsed.clone(), homonym_name),
     ])
 }
 
@@ -244,11 +244,11 @@ pub fn namespace_structural_binding_observations_a_through_d(
     homonym_name: String,
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     namespace_structural_binding_observations_from_parsed(
-        nrdfc_parse(file.clone(), source.clone()),
-        neighbour_name.clone(),
-        branch_binder_name.clone(),
-        later_name.clone(),
-        homonym_name.clone(),
+        nrdfc_parse(file, source),
+        neighbour_name,
+        branch_binder_name,
+        later_name,
+        homonym_name,
     )
 }
 
@@ -271,7 +271,7 @@ pub fn namespace_structural_observation_compiled_module(
     file: String,
     source: String,
 ) -> Rc<StructuralObservationSubjectModule> {
-    nrdfc_compiled_module(nrdfc_parse(file.clone(), source.clone()))
+    nrdfc_compiled_module(nrdfc_parse(file, source))
 }
 
 pub fn namespace_structural_observation_admissions(
@@ -285,12 +285,12 @@ pub fn namespace_structural_observation_admissions(
     Rc::new({
         let mut __result = Vec::new();
         for observation in namespace_structural_binding_observations_a_through_d(
-            file.clone(),
-            source.clone(),
-            neighbour_name.clone(),
-            branch_binder_name.clone(),
-            later_name.clone(),
-            homonym_name.clone(),
+            file,
+            source,
+            neighbour_name,
+            branch_binder_name,
+            later_name,
+            homonym_name,
         )
         .iter()
         .cloned()

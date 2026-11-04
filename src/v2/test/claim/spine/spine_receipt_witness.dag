@@ -1,5 +1,7 @@
 module v2.test.claim.spine.spine_receipt_witness
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -10,7 +12,7 @@ fn atom(sym: Symbol) -> Node {
 fn chain1(child: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Authored { name: ^only }, target: child }]
+    children: [Edge { label: Authored { name: ^only }, target: child, declaration: NotADeclaration }]
   )
 }
 
@@ -18,9 +20,9 @@ fn star3(a: Node, b: Node, c: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^first }, target: a },
-      Edge { label: Authored { name: ^second }, target: b },
-      Edge { label: Authored { name: ^third }, target: c }
+      Edge { label: Authored { name: ^first }, target: a, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^second }, target: b, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^third }, target: c, declaration: NotADeclaration }
     ]
   )
 }

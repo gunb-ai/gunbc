@@ -64,6 +64,7 @@ data gan_red_box_second_source: String = "module arity_probe_mod\n\nimport std.a
 data gan_ctl_user_fsf_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(f: FinitelySupportedFunction<String, String>) -> String \{\n  match ap_fsf_look(f: f, k: \"a\") \{ Present \{ value: v \} => ap_str(x: v) Absent => \"\" \}\n\}\n"
 data gan_ctl_pair_second_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(pr: ApPair<String, String>) -> String \{\n  ap_str(x: ap_second_of(p: pr))\n\}\n"
 data gan_ctl_box_second_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\n\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApBox<A, B> = ApBoth \{ first: A second: B \} | ApNone\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_second_of<A, B>(p: ApPair<A, B>) -> B \{ p.second \}\nfn ap_fsf_look<K, V>(f: FinitelySupportedFunction<K, V>, k: K) -> V? \{ f.get(k) \}\nfn ap_box_of<A, B>(p: ApPair<A, B>) -> ApBox<A, B> \{ ApBoth \{ first: p.first, second: p.second \} \}\n\nfn ap_f(pr: ApPair<String, String>) -> String \{\n  match ap_box_of(p: pr) \{ ApBoth \{ first: a, second: b \} => ap_str(x: b) ApNone => \"\" \}\n\}\n"
+data gan_ctl_declaration_actual_source: String = "module arity_probe_mod\n\nimport std.optional \{ Present, Absent \}\n\ntype ApOutcome<R, C> = ApEstablished \{ receipt: R \} | ApRefused \{ cause: C \}\ntype ApReceipt = ApFirst \{ n: Int \} | ApSecond \{ n: Int \}\n\nfn ap_receipt_of<R, C>(o: ApOutcome<R, C>) -> R? \{\n  match o \{ ApEstablished \{ receipt: r \} => Present \{ value: r \} ApRefused \{ cause: _ \} => none \}\n\}\n\nfn ap_f(xs: List<ApOutcome<ApReceipt, Int>>) -> Bool \{\n  match xs.last() \{\n    Absent => false\n    Present \{ value: o \} =>\n      match ap_receipt_of(o: o) \{\n        Absent => false\n        Present \{ value: r \} => match r \{ ApFirst \{ n: _ \} => true ApSecond \{ n: _ \} => false \}\n      \}\n  \}\n\}\n"
 data gan_cas_closure_source: String = "module arity_probe_mod\n\nimport std.content_hash \{ ContentHash \}\nimport std.durable_compare_and_set \{ CasSlotVersion, CasGeneration \}\nimport gunbc.roadmap.roadmap_event_log \{ RoadmapEventId \}\n\nfn ap_k(x: Int) -> Int \{ x \}\n"
 
 test fn arity_n_red_lookup() -> Bool {
@@ -259,4 +260,17 @@ test fn arity_n_else_map_formal_bare_actual() -> Bool {
 
 test fn arity_n_else_pair_formal_mapbox_actual() -> Bool {
   gan_refused_arg(green: gan_census(source: gan_fx_else_pair_mapbox_green), red: gan_census(source: gan_fx_else_pair_mapbox_red), param: "p")
+}
+
+// ONE FORM ON BOTH SIDES (gunbc#14594 regression). A list element read through `.last()` arrives as the
+// coproduct's DECLARATION (Disj, one child per variant), while the generic formal ApOutcome<R, C> is an
+// application with one child per type argument. Equal arity alone let unify_generic_child_pairs bind R to
+// the variant ApEstablished, and the match over the receipt's own variants refused `variant not found in
+// type ApOutcome`. This source is correct code; at #14594 through main 476be2f5386d it drew blocking rows
+// (the live specimen: every arm of gunbc.machine_intake.arrival_converge
+// arrival_prefix_outcomes_through_bmc_secure). R stays free on this route, which is the class
+// gunbc.recurring_failure_mode unbound_generic_reaches_conformance_unjudged records; this claim pins only
+// that a form mismatch binds nothing.
+test fn arity_n_ctl_declaration_actual_binds_no_variant() -> Bool {
+  gan_blocking_count(source: gan_ctl_declaration_actual_source) == 0
 }

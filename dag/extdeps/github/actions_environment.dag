@@ -60,6 +60,10 @@ data github_run_id_variable_name: String = "GITHUB_RUN_ID"
 data github_run_attempt_variable_name: String = "GITHUB_RUN_ATTEMPT"
 data github_runner_name_variable_name: String = "RUNNER_NAME"
 
+// GITHUB_JOB is the job_id of the current job (the cited variables reference): the key under `jobs:`
+// in the workflow file, set by the runner, so a step cannot rename the job it runs in.
+data github_job_variable_name: String = "GITHUB_JOB"
+
 // RUNNER_TEMP is likewise a runner-supplied directory, not a run coordinate: the cited variables
 // reference defines it as the per-job temporary directory. Consumers that write attempt-owned
 // files during a workflow read this name here rather than re-spelling the variable.

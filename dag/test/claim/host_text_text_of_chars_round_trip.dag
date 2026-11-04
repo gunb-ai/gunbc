@@ -1,0 +1,65 @@
+module test.claim.host_text_text_of_chars_round_trip
+
+import std.host_text { chars, text_of_chars }
+import std.types { Bool, Char, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// std.host_text text_of_chars IS chars' DECLARED INVERSE (operator ruling H4; ruling
+// text_crossings_go_through_the_unfold): chars then text_of_chars returns the original host text, through
+// the imported declarations and so through their realizations (the interpreter's std.host_text bridge for
+// chars, the kernel slice writer over the whole list for text_of_chars). Each non-ASCII case separates the
+// scalar reading from a near miss: a byte-wise inverse would decode octets, a UTF-16 one would need a
+// surrogate pair for the astral scalar, a grapheme one would merge the decomposed accent.
+
+test fn empty_scalar_list_is_empty_host_text_holds() -> Bool {
+  text_of_chars(scalars: []) == ""
+}
+
+test fn empty_host_text_round_trips_holds() -> Bool {
+  text_of_chars(scalars: chars(text: "")) == ""
+}
+
+test fn ascii_host_text_round_trips_holds() -> Bool {
+  text_of_chars(scalars: chars(text: "abc")) == "abc"
+}
+
+// U+00E9 precomposed: one scalar, written back as the one two-octet character.
+test fn a_two_byte_scalar_round_trips_holds() -> Bool {
+  text_of_chars(scalars: chars(text: "é")) == "é"
+}
+
+// U+1F600 from its one scalar, not from the surrogate pair [55357, 56832].
+test fn an_astral_scalar_is_written_from_one_scalar_holds() -> Bool {
+  text_of_chars(scalars: [128512]) == "😀"
+}
+
+// "e" + U+0301 COMBINING ACUTE ACCENT: two scalars in, the same two out, never composed to U+00E9.
+test fn a_decomposed_accent_round_trips_uncomposed_holds() -> Bool {
+  text_of_chars(scalars: chars(text: "é")) == "é" && !(text_of_chars(scalars: [101, 769]) == "é")
+}
+
+test fn mixed_widths_round_trip_in_order_holds() -> Bool {
+  text_of_chars(scalars: chars(text: "a😀éé")) == "a😀éé"
+}
+
+// The other direction of the inverse: chars of the written text is the list it was written from.
+test fn chars_of_written_text_is_the_scalar_list_holds() -> Bool {
+  chars(text: text_of_chars(scalars: [97, 128512, 101, 769])) == [97, 128512, 101, 769]
+}
+
+// THE WHOLE-LIST WINDOW IS A SPECIALIZATION OF THE WINDOWED KERNEL WRITER, NOT THE SAME OPERATION: at
+// [0, count) the two agree; a nonzero start or a shortened end writes a different text, which text_of_chars
+// never does.
+test fn the_whole_list_window_is_text_of_chars_holds() -> Bool {
+  text_of_chars(scalars: [97, 128512, 99]) == chars_to_string(chars: [97, 128512, 99], start: 0, end: 3)
+}
+
+test fn a_nonzero_start_window_is_not_text_of_chars_holds() -> Bool {
+  chars_to_string(chars: [97, 128512, 99], start: 1, end: 3) == "😀c" && !(chars_to_string(chars: [97, 128512, 99], start: 1, end: 3) == text_of_chars(scalars: [97, 128512, 99]))
+}
+
+test fn a_shortened_end_window_is_not_text_of_chars_holds() -> Bool {
+  chars_to_string(chars: [97, 128512, 99], start: 0, end: 2) == "a😀" && !(chars_to_string(chars: [97, 128512, 99], start: 0, end: 2) == text_of_chars(scalars: [97, 128512, 99]))
+}

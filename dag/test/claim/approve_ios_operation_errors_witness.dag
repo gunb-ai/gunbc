@@ -1,0 +1,58 @@
+module test.claim.approve_ios_operation_errors_witness
+
+import std.logic { Bool }
+import std.types { String, List, list_length }
+import gunbc.approve_ios_enrolment_machine { EnrolmentPhase, PhaseSignedOut, PhaseEnrolled, PhaseRevoked }
+import gunbc.approve_ios_operation_errors {
+  OperationError, OpInboxRefresh, OpPushForward, OperationSucceeded, OperationFailed,
+  record_outcome, enter_phase, shown_errors, operation_relevant_in, app_operations, operation_name,
+}
+import gunbc.approve_ios_swift_operation_errors {
+  ScenarioStep, StepRecord, StepEnter, ErrorScenario, ExpectedRelevance, error_scenarios, expected_relevance, expected_relevance_in,
+}
+
+// The error-lifetime model against the ruling. error_scenarios and expected_relevance are the
+// literal statement of the ruling the generated XCTest also runs against the Swift, so the model
+// and the realization are judged by one oracle that neither computes.
+
+fn apply_step(errors: List<OperationError>, s: ScenarioStep) -> List<OperationError> {
+  match s {
+    StepRecord { operation: o, outcome: x } => record_outcome(errors: errors, operation: o, outcome: x)
+    StepEnter { phase: p } => enter_phase(errors: errors, phase: p)
+  }
+}
+
+fn run_scenario(s: ErrorScenario) -> List<String> {
+  shown_errors(errors: fold(s.steps, init: [], f: (acc, x) => apply_step(errors: acc, s: x)))
+}
+
+fn same_strings(a: List<String>, b: List<String>) -> Bool {
+  list_length(items: a) == list_length(items: b) && join(a, "\u{0}") == join(b, "\u{0}")
+}
+
+test fn every_scenario_shows_what_the_ruling_says() -> Bool {
+  fold(error_scenarios, init: true, f: (acc, s) => acc && same_strings(a: run_scenario(s: s), b: s.shown))
+}
+
+// The discriminating RED named by the work item, stated directly: a stale error after the same
+// operation's success is not shown, and the positive control with no later attempt shows it.
+test fn a_stale_error_after_its_operations_success_is_not_shown() -> Bool {
+  let failed = record_outcome(errors: [], operation: OpInboxRefresh, outcome: OperationFailed { message: "server refused 503" })
+  same_strings(a: shown_errors(errors: failed), b: ["server refused 503"])
+    && same_strings(a: shown_errors(errors: record_outcome(errors: failed, operation: OpInboxRefresh, outcome: OperationSucceeded)), b: [])
+    && same_strings(a: shown_errors(errors: record_outcome(errors: failed, operation: OpPushForward, outcome: OperationSucceeded)), b: ["server refused 503"])
+}
+
+test fn every_relevance_cell_matches_the_ruling() -> Bool {
+  fold(expected_relevance, init: true, f: (acc, r) =>
+    acc
+      && operation_relevant_in(o: r.operation, p: PhaseSignedOut) == expected_relevance_in(r: r, p: PhaseSignedOut)
+      && operation_relevant_in(o: r.operation, p: PhaseEnrolled) == expected_relevance_in(r: r, p: PhaseEnrolled)
+      && operation_relevant_in(o: r.operation, p: PhaseRevoked) == expected_relevance_in(r: r, p: PhaseRevoked))
+}
+
+// The ruling covers the whole closed population: a new operation owes expected_relevance a row.
+test fn the_relevance_ruling_names_every_operation_once() -> Bool {
+  list_length(items: expected_relevance) == list_length(items: app_operations())
+    && fold(app_operations(), init: true, f: (acc, o) => acc && list_length(items: filter(expected_relevance, r => (operation_name(o: r.operation) as String) == (operation_name(o: o) as String))) == 1)
+}

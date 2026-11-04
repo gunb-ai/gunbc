@@ -9,6 +9,8 @@ data empty_observation_narrow: RecurringFailureMode = RecurringFailureMode {
   rung: RungUnread { cause: NoRungStated },
 
   receipts: [
+    "SPECIMEN (gunbc#15209, the ambient-name-census kit): with the kit declared (ambient_name_census_standing_with_kit), the kit run refused both of its source roots (native_lane_source_roots_refused: the kit tree passed as a second dag root) and printed no kit_fixture binding row, yet the reader returned `ambient-name-census: held` with exit 0 -- main 895cb9cc50d3, run 40308189351: 0 kit_fixture rows, 2 duplicate-root refusals, held. The sibling label namespace-wave-binding-diff refused the same absence with exit 2, so the window was loud on one label and silent on the other. Repair in the same PR: a declared kit with no observed binding row refuses 2 (kit_unobserved, naming the kit root); RED is the patched reader over a tree whose kit cannot bind, and the positive control is the overlaid head observing every kit row.",
+
     "**empty-observation narrow** (the absorbing fallback's mirror: ⊥-as-answer conflated with ⊥-as-ignorance — an observation that could not express what changed rendered as the verdict \"nothing is affected\", so the run narrows to nothing instead of widening.",
 
     "Strictly worse than the widen §5 already forbids: a widen is merely expensive, a narrow is silently uncovered.",
@@ -33,7 +35,7 @@ data empty_observation_narrow: RecurringFailureMode = RecurringFailureMode {
 
     "RECOGNITION RULE: when a check answers clean, ask what POPULATION it ranged over and whether that is the population the question was about -- an analysis scoped to the wrong range is, from the caller's seat, indistinguishable from an analysis that does not exist.",
 
-    "NEXT-RUNG TRIGGER for this instance, named as the capability and not as an artifact: A CORPUS-WIDE NAMESPACE CENSUS OVER EVERY TYPE DECLARATION AND EVERY COPRODUCT ARM, sufficient to answer 'is this spelling already declared anywhere in the corpus' before a name is authored, rather than after emission.",
+    "NEXT-RUNG TRIGGER for this instance, named as the capability and not as an artifact: A NAME-COLLISION REFUSAL OVER TYPE DECLARATIONS AND COPRODUCT ARMS, sufficient to answer 'is this spelling already declared' for the name being authored, before emission rather than after. A corpus-wide census is not a prerequisite of this trigger; it is retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`), which does not establish corpus-wide coverage.",
 
     "ONE census over the one Node tree, not a second check beside the type-name one -- two checks over one namespace is the range split that produced this instance.",
 

@@ -1,5 +1,7 @@
 module v2.test.lens_identity_captured_navigation
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Required-floor semantic controls hand-construct the exact synthetic Node shape
@@ -21,11 +23,11 @@ fn synth_atom(id: Symbol) -> Node {
 }
 
 fn synth_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn synth_positional_edge(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn synth_conj(children: List<Edge>) -> Node {
