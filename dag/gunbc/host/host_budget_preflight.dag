@@ -111,7 +111,7 @@ fn admit_host_budget_probes(
     // source the authority calls a bound. Every arm of every match here is reachable -- the
     // authority's own observation carrier (HostBudgetObserved) is the winner's shape, so the
     // ruling never re-derives or re-validates what the fold already established.
-    match fold(probes, init: Absent as Optional<HostBudgetObservation>, f: first_bounding_observation) {
+    match fold(probes, init: Absent, f: first_bounding_observation) {
       Present { value: HostBudgetObserved { source: source, bytes: bytes } } =>
         PreflightAdmitted { source_label: host_budget_source_label(s: source) as String, bytes: bytes }
       Absent => PreflightNoBoundingBudget { probes: render_budget_probes(probes: probes) }
@@ -229,15 +229,12 @@ fn cgroup_ancestors(dir: String, mount: String) -> List<String> {
   if dir == mount {
     [mount] as List<String>
   } else {
-    concat([
-      [dir] as List<String>,
-      cgroup_ancestors(dir: cgroup_parent_dir(path: dir, mount: mount), mount: mount),
-    ])
+    concat([dir] as List<String>, cgroup_ancestors(dir: cgroup_parent_dir(path: dir, mount: mount), mount: mount))
   }
 }
 
 fn probe_cgroup_dirs(dirs: List<String>) -> List<BudgetProbe> {
-  concat(map(dirs, d => [probe_cgroup_max(cgroup_dir: d), probe_cgroup_high(cgroup_dir: d)] as List<BudgetProbe>))
+  fold(map(dirs, d => [probe_cgroup_max(cgroup_dir: d), probe_cgroup_high(cgroup_dir: d)] as List<BudgetProbe>), init: [] as List<BudgetProbe>, f: (acc, pair) => concat(acc, pair))
 }
 
 // THE STEP'S ENTRY. Reads only: /proc/self/cgroup, the two interface files per cgroup on each
@@ -248,10 +245,10 @@ fn admit_host_budget_declared() -> ProcessExit {
   let ceiling_override = actions_variable_trimmed(name: gunbc_typed_module_cache_max_entries_env_name as NonEmptyStr) != ""
   let membership = Filesystem.Read(path: proc_self_cgroup_path)
   let dirs = if membership.success {
-    concat(map(proc_self_cgroup_unified_hierarchy_paths(content: membership.content), p => cgroup_ancestors(
+    fold(map(proc_self_cgroup_unified_hierarchy_paths(content: membership.content), p => cgroup_ancestors(
       dir: concat(cgroup_v2_mount_point as String, p as String),
       mount: cgroup_v2_mount_point as String,
-    )))
+    )), init: [] as List<String>, f: (acc, chain) => concat(acc, chain))
   } else {
     [] as List<String>
   }
