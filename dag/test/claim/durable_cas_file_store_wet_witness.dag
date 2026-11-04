@@ -401,22 +401,25 @@ test fn a_census_of_a_never_created_store_is_answered_absent_by_real_execution()
 // mode 000 (a process that does not need permission) shows up as a LISTED answer rather than as a
 // failed assertion: a red on this row therefore means the setup broke, never that the absence
 // decision changed. Under the ENOENT-collapse mutant this row must stay green.
+// THE UNREADABLE CASE IS PLANTED AS A PATH THAT IS NOT A DIRECTORY, not as a permission bit: the host
+// answers not_a_directory, which is an admitted kind and is NOT not_found, so the census must refuse
+// and name the kind it saw. No mode bit is involved, so the row cannot pass or fail on whether a host
+// honors chmod 000. A Listed answer here would mean the listing channel reported contents for a
+// non-directory path -- a channel defect -- so that arm goes red rather than excusing itself.
 test fn a_census_of_an_unreadable_store_refuses_naming_the_kind_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let blocked = concat(root_path, "/blocked")
-  let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", blocked]).exit_code == 0
-  let locked = shell.Exec.RunArgv(program: "chmod", arguments: ["000", blocked]).exit_code == 0
+  let planted = Filesystem.WriteCreateNew(path: blocked, content: "a file where a store directory belongs")
   let reading = slot_keys(store: file_slot_store(root: blocked as NonEmptyStr))
   let probe = Filesystem.List(path: blocked)
-  let restored = shell.Exec.RunArgv(program: "chmod", arguments: ["700", blocked])
   let answered = match reading {
-    CasSlotKeysListingRefused { root: _, detail: d } => string_contains(d, "permission_denied")
-    CasSlotKeysListed { keys } => probe.success && list_length(keys) == 0
+    CasSlotKeysListingRefused { root: _, detail: d } => string_contains(d, "not_a_directory") && probe.error_kind == "not_a_directory"
+    CasSlotKeysListed { keys } => false
     CasSlotKeysAbsent { root: _ } => false
     CasSlotKeysSubjectRefused { root: _, cause: _ } => false
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  made && locked && answered && restored.exit_code == 0 && removed.success
+  planted.success && answered && removed.success
 }
 
 // R4 absent-changes-nothing: the census is a census, not an actor. This row deliberately does NOT
@@ -473,31 +476,29 @@ test fn an_admission_of_an_established_store_still_admits_it_by_real_execution()
   let root_path = fresh_root()
   let here = concat(root_path, "/established-store")
   let here_root = here as NonEmptyStr
-  let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", here]).exit_code == 0
+  let made = shell.Mkdir.NewOwnerOnly(path: here as FilePath).success
   let admitted = match listed_slot_store(member: "carry_source_store", root: here_root) {
     SlotStoreListed { root: r } => r == here_root
     SlotStoreAbsent { member: _, root: _ } => false
     SlotStoreRefused { detail: _ } => false
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  admitted && made.success && removed.success
+  admitted && made && removed.success
 }
 
-// The control the collapse mutant must NOT turn red: a store directory that EXISTS but cannot be read
-// is still a refusal, and the refusal names the kind it saw. Written as a disjunction so a host that
-// ignores mode 000 reads as LISTED -- a red here means the setup did not hold, never a swallowed kind.
+// The control the collapse mutants must NOT turn red: a store path that exists but cannot be listed as
+// a directory is still a REFUSAL at the admission surface, and the refusal names the kind it saw. Same
+// planting as the census control (a regular file at the store path), so no permission semantics.
 test fn an_admission_of_an_unreadable_store_refuses_naming_the_kind_by_real_execution() -> Bool {
   let root_path = fresh_root()
-  let sealed = concat(root_path, "/unreadable-store")
-  let sealed_root = sealed as NonEmptyStr
-  let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", sealed]).exit_code == 0
-  let locked = shell.Exec.RunArgv(program: "chmod", arguments: ["000", sealed]).exit_code == 0
-  let answer = match listed_slot_store(member: "carry_source_store", root: sealed_root) {
-    SlotStoreRefused { detail: d } => string_contains(d, "permission_denied")
+  let blocked = concat(root_path, "/blocked-store")
+  let blocked_root = blocked as NonEmptyStr
+  let planted = Filesystem.WriteCreateNew(path: blocked, content: "a file where a store directory belongs")
+  let answer = match listed_slot_store(member: "carry_source_store", root: blocked_root) {
+    SlotStoreRefused { detail: d } => string_contains(d, "not_a_directory")
     SlotStoreAbsent { member: _, root: _ } => false
-    SlotStoreListed { root: _ } => true
+    SlotStoreListed { root: _ } => false
   }
-  let restored = shell.Exec.RunArgv(program: "chmod", arguments: ["700", sealed])
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  answer && made && locked && restored.exit_code == 0 && removed.success
+  planted.success && answer && removed.success
 }

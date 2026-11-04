@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_session_attempt_slots_root { SessionAttemptSlotsSto
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
-  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_record_with_state, attempt_transition_wire, attempt_state_wire,
   compute_pre_launch_ceiling_seconds,
@@ -1410,6 +1410,12 @@ fn session_placement_slot_records(stores: SessionPlacementStores) -> SessionSlot
       }
     }
     AttemptSlotKeysRefused { detail: d } => SessionSlotRecordsRefused { detail: join(["the session slot store: ", d], "") }
+    // ABSENCE IS A CENSUS ANSWER, NOT A SETTLEMENT OR A RECORD. The census proved this store's own
+    // directory was never created; the honest answer is that NO slot record is claimed, reported as a
+    // refusal so the serve surface cannot render "no attempts" as though it had read an empty store.
+    // The constructor is the one this site already used for a listing failure, so nothing moves on an
+    // existing route -- only the named fact in the detail changes.
+    AttemptSlotKeysAbsent { store: _ } => SessionSlotRecordsRefused { detail: "the session slot store's own directory was never created; the census proves there is no attempt-slot key to read, and no record is claimed" }
   }
 }
 
@@ -1420,6 +1426,13 @@ fn session_placement_settle_pass_at(stores: SessionPlacementStores, host: String
   match attempt_slot_keys(store: stores.slots.slots) {
     AttemptSlotKeysListed { keys } => SessionSettlePassRan { settlements: map(keys, k => session_settle_one(stores: stores, host: host, key: k, lifecycle: lifecycle_of(k), now: now)) }
     AttemptSlotKeysRefused { detail: d } => SessionSettlePassRefused { detail: join(["the session slot store: ", d], "") }
+    // THE SETTLE PASS IS THE RELEASE ROUTE, SO A CENSUS ANSWER MUST NEVER ACTIVATE IT. A store whose
+    // directory was never created answers as a refusal here, exactly as an unreadable store did: the
+    // pass reports NOTHING SETTLED and says the store was absent. Reporting
+    // SessionSettlePassRan { settlements: [] } would record "I never looked" as "everything settled",
+    // which is hold_recovered_by_age_not_observed_holder_death on new substrate. Same constructor as
+    // the refused arm, so no existing route moves.
+    AttemptSlotKeysAbsent { store: _ } => SessionSettlePassRefused { detail: "the session slot store's own directory was never created; a census answer is never a settlement pass, so nothing is settled and nothing is released" }
   }
 }
 
