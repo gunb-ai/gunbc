@@ -1,6 +1,7 @@
 module gunbc.http_ingress
 
 import std.types { Int, List, String, Bool, NonEmptyStr, CommitSha }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration }
 import std.measure { ByteSize, byte_size_count, Millisecond, millisecond, millisecond_count }
 import std.algebra { Cons, Empty, list_push }
@@ -127,6 +128,14 @@ type HttpIngressAdmission
 fn http_ingress_limit_of(ms: Int) -> Millisecond? {
   if ms > 0 { Present { value: millisecond(count: ms) } } else { none }
 }
+
+// 🟡 feature:run-arg-measure-binding -- THE TWO BUDGETS CROSS THE ARGUMENT BOUNDARY AS BARE Int,
+// and only there. `gunbc run --arg` binds kernel String, Int and Bool and std.types NonEmptyStr and
+// refuses every other parameter type, so a Millisecond parameter cannot be bound from argv today;
+// http_ingress_limit_of converts each to std.measure Millisecond on entry (refusing a non-positive
+// one), and HttpIngressBinding carries only Millisecond. The listener's text encoding
+// (http_ingress_listener_of) is the same boundary for the same reason.
+data http_ingress_run_arg_boundary_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: `gunbc run --arg` binds a std.measure Measure parameter (and a closed variant such as HttpIngressListener) from its declared type, at which point http_ingress_binding takes cpu_limit and wall_limit as Millisecond and the listener as HttpIngressListener, and http_ingress_limit_of and the listener text codec are deleted. Owning lane: gunbc.plans.converged_ingress (the run-argument binder is the binding's realization boundary).")
 
 // THE ONE BINDING CONSTRUCTOR. A deployment's binding module calls it with the handler it serves
 // (an import of the handler's module is what puts the handler in the run's closure) and the per-host
