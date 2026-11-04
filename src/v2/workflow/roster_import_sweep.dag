@@ -430,6 +430,17 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       labels: [],
       head: RenameHead { to: "list_at_optional", positional: ["xs", "index"], appended: [] }
     },
+    // fold: the builtin (xs, init: A, f: fn(A, T) -> A) is std.algebra fold_list(xs, empty, cons), a left fold with
+    // cons(acc, elem) in the same accumulator order (T4 group A1, tidy-ant-251); only the labels differ. The declared slots
+    // name the TARGET's labels and the call's own init:/f: reach them through the row's label renames (#15758).
+    RosterHeadRow {
+      call: "fold",
+      key: "fold",
+      import_name: "fold_list",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [RosterLabelRename { from: "init", to: "empty" }, RosterLabelRename { from: "f", to: "cons" }],
+      head: RenameHead { to: "fold_list", positional: ["xs", "empty", "cons"], appended: [] }
+    },
     // sort_by -> std.algebra list_sort_by_key(xs, key, order) (S2). The ambient sort_by orders by the key's canonical order;
     // list_sort_by_key takes that order as a declared argument, and a key kind with no declared order has NO row. Two rows of
     // one call and home, told apart by their row key (a per-site OnlyOccurrences selection names the key kind's sites):
