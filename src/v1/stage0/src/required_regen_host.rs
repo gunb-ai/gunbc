@@ -4184,15 +4184,47 @@ fn regen_convergence_journal_path(workspace: &Path) -> PathBuf {
 fn current_convergence_checkpoint_subject(
     workspace: &Path,
 ) -> Result<RegenConvergenceCheckpointSubject, String> {
+    let (starting_commit, stage_plan_authority_digest) = checkpoint_subject_live_facts(workspace)?;
     Ok(RegenConvergenceCheckpointSubject {
-        starting_commit: git_head_sha(workspace)?,
+        starting_commit,
         source_authority_digest: authority_digest_from_sources(&super::regen_input_sources(
             workspace,
         )?)?,
-        stage_plan_authority_digest: path_digest(
-            &workspace.join("src/v2/workflow/regen_convergence_transaction.dag"),
-        )?,
+        stage_plan_authority_digest,
     })
+}
+
+const STAGE_PLAN_AUTHORITY_REL: &str = "src/v2/workflow/regen_convergence_transaction.dag";
+
+/// The checkpoint subject's two CHEAP facts, read live: the commit and the stage plan's digest. The
+/// producer reads them here, and so does every journal write and restore
+/// (`admit_subject_live_facts`), so the carried subject's cheap facts are re-observed at each
+/// checkpoint boundary rather than assumed. The expensive fact, the source closure's digest, is
+/// re-observed by every generation instead (`admit_generation_authority`).
+fn checkpoint_subject_live_facts(workspace: &Path) -> Result<(String, String), String> {
+    Ok((
+        git_head_sha(workspace)?,
+        path_digest(&workspace.join(STAGE_PLAN_AUTHORITY_REL))?,
+    ))
+}
+
+/// A journal write or restore under the carried subject first re-reads its cheap facts. A HEAD that
+/// moved, or a stage plan edited, during the round refuses: the carried subject no longer names the
+/// round, and journalling or restoring under it would checkpoint the wrong transaction.
+fn admit_subject_live_facts(
+    workspace: &Path,
+    subject: &RegenConvergenceCheckpointSubject,
+) -> Result<(), String> {
+    let (commit, plan) = checkpoint_subject_live_facts(workspace)?;
+    if commit == subject.starting_commit && plan == subject.stage_plan_authority_digest {
+        return Ok(());
+    }
+    Err(format!(
+        "CheckpointSubjectDriftedMidRound: at a checkpoint boundary the tree reads \
+         (commit={commit}, plan={plan}), but the round's checkpoint subject carries \
+         (commit={}, plan={}); the carried subject no longer names the round",
+        subject.starting_commit, subject.stage_plan_authority_digest
+    ))
 }
 
 fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String, String> {
@@ -4221,6 +4253,7 @@ fn restore_regen_convergence_journal_for_subject(
     if !manifest_path.is_file() {
         return Ok(Vec::new());
     }
+    admit_subject_live_facts(workspace, subject)?;
     let manifest: RegenConvergenceJournal = serde_json::from_slice(
         &fs::read(&manifest_path).map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
     )
@@ -4350,6 +4383,7 @@ fn journal_paths_for_subject(
     paths: &[(String, PathBuf)],
     subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<(), String> {
+    admit_subject_live_facts(workspace, subject)?;
     let root = regen_convergence_journal_path(workspace);
     fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
     let manifest_path = root.join("journal.json");
@@ -9205,6 +9239,7 @@ mod heal_round_one_base_mirror_tests {
             "// head .dag authority -- the repair this PR authored\n",
         )
         .unwrap();
+        write_fixture_stage_plan(&root);
         git(&["add", "-A"]);
         git(&["commit", "-qm", "head"]);
         (root, stage0, base_commit)
@@ -9215,10 +9250,12 @@ mod heal_round_one_base_mirror_tests {
     /// the identity formula has its own tests. `git` is left to the code under test, which is the
     /// only thing here that must read a real commit.
     fn fixture_subject(root: &Path) -> RegenConvergenceCheckpointSubject {
+        let (starting_commit, stage_plan_authority_digest) =
+            checkpoint_subject_live_facts(root).expect("fixture commit and stage plan");
         RegenConvergenceCheckpointSubject {
-            starting_commit: git_head_sha(root).expect("fixture head"),
+            starting_commit,
             source_authority_digest: "fixture-source-authority".to_string(),
-            stage_plan_authority_digest: "fixture-plan-authority".to_string(),
+            stage_plan_authority_digest,
         }
     }
 
@@ -10517,13 +10554,16 @@ mod regen_convergence_host_instrument_tests {
                 String::from_utf8_lossy(&output.stderr)
             );
         };
+        write_fixture_stage_plan(&root);
         git(&["init", "-q", "--initial-branch=main"]);
         git(&["add", "."]);
         git(&["commit", "-qm", "fixture"]);
+        let (starting_commit, stage_plan_authority_digest) =
+            checkpoint_subject_live_facts(&root).expect("fixture commit and stage plan");
         let subject = RegenConvergenceCheckpointSubject {
-            starting_commit: "fixture-head".to_string(),
+            starting_commit,
             source_authority_digest: "fixture-authority".to_string(),
-            stage_plan_authority_digest: "fixture-plan".to_string(),
+            stage_plan_authority_digest,
         };
         (root, stage0, candidate, subject)
     }
@@ -12914,9 +12954,98 @@ mod orchestrator_model_load_tests {
 /// THE ROUND'S CHECKPOINT SUBJECT IS ONE CARRIED VALUE: it crosses the re-exec in the handoff (and
 /// an old handoff without it refuses), every generation receipt is checked against it, and its
 /// child's answer refuses when absent, garbled or foreign.
+/// A fixture tree's stage plan: the checkpoint subject's cheap facts are read live at every journal
+/// boundary, so a fixture that journals needs a real plan file at the production path.
+#[cfg(test)]
+fn write_fixture_stage_plan(root: &Path) {
+    let plan = root.join(STAGE_PLAN_AUTHORITY_REL);
+    fs::create_dir_all(plan.parent().unwrap()).unwrap();
+    fs::write(&plan, "module v2.workflow.regen_convergence_transaction\n").unwrap();
+}
+
 #[cfg(test)]
 mod round_checkpoint_subject_tests {
     use super::*;
+
+    fn git_fixture(name: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("gunbc-live-facts-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        write_fixture_stage_plan(&root);
+        fs::write(root.join("file.rs"), "before\n").unwrap();
+        for args in [
+            vec!["init", "-q", "--initial-branch=main"],
+            vec!["add", "-A"],
+            vec![
+                "-c",
+                "user.email=f@f",
+                "-c",
+                "user.name=f",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        ] {
+            let out = Command::new("git")
+                .args(&args)
+                .current_dir(&root)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        root
+    }
+
+    fn live_subject(root: &Path) -> RegenConvergenceCheckpointSubject {
+        let (starting_commit, stage_plan_authority_digest) =
+            checkpoint_subject_live_facts(root).unwrap();
+        RegenConvergenceCheckpointSubject {
+            starting_commit,
+            source_authority_digest: "sha256:source".to_string(),
+            stage_plan_authority_digest,
+        }
+    }
+
+    /// ALL THREE CARRIED FACTS ARE RE-OBSERVED. The cheap two at every journal write and restore:
+    /// the live subject journals; a moved HEAD and an edited stage plan each refuse, at the write
+    /// and at the restore. (The source digest is the generation check, below.)
+    #[test]
+    fn a_moved_head_or_an_edited_stage_plan_refuses_at_journal_write_and_restore() {
+        let root = git_fixture("cheap");
+        let subject = live_subject(&root);
+        let entries = vec![("file.rs".to_string(), root.join("file.rs"))];
+        journal_paths_for_subject(&root, &entries, &subject).expect("the live subject journals");
+
+        let moved = RegenConvergenceCheckpointSubject {
+            starting_commit: "0000000000000000000000000000000000000000".to_string(),
+            ..subject.clone()
+        };
+        let edited = RegenConvergenceCheckpointSubject {
+            stage_plan_authority_digest: "sha256:another-plan".to_string(),
+            ..subject.clone()
+        };
+        for stale in [&moved, &edited] {
+            let write = journal_paths_for_subject(&root, &entries, stale).unwrap_err();
+            assert!(
+                write.starts_with("CheckpointSubjectDriftedMidRound: at a checkpoint boundary"),
+                "{write}"
+            );
+            let restore = restore_regen_convergence_journal_for_subject(&root, stale).unwrap_err();
+            assert!(
+                restore.starts_with("CheckpointSubjectDriftedMidRound: at a checkpoint boundary"),
+                "{restore}"
+            );
+        }
+        // Positive control: the live subject still restores its own journal.
+        restore_regen_convergence_journal_for_subject(&root, &subject)
+            .expect("the live subject restores");
+        let _ = fs::remove_dir_all(&root);
+    }
 
     fn subject(source: &str) -> RegenConvergenceCheckpointSubject {
         RegenConvergenceCheckpointSubject {
