@@ -12,7 +12,7 @@ import gunbc.auth.google_workspace_admin_convergence {
   workspace_identity_admin_obligations, workspace_admin_assess, WorkspaceIdentityBinding, BasicSignInOnly,
 }
 import gunbc.auth.google_workspace_login {
-  GoogleLoginEnvironmentTest, GoogleLoginEnvironmentProd, TrackerWebOauthClientBound, TrackerWebOauthClientUnbound,
+  GoogleLoginEnvironmentTest, GoogleLoginEnvironmentStage, TrackerWebOauthClientBound, TrackerWebOauthClientUnbound,
 }
 import gunbc.auth.oidc_deployment_config {
   oidc_secret_from_file_standing, OidcSecretFileMissing, OidcConfigFieldStringUnavailable, oidc_config_env_var,
@@ -94,16 +94,16 @@ test fn lab_serve_unit_refuses_without_an_observer_clock() -> Bool {
   }
 }
 
-test fn production_serve_unit_carries_no_oidc_env() -> Bool {
+test fn stage_srv1_live_serve_unit_carries_no_oidc_env() -> Bool {
   match tracker_web_oidc_serve_placement(instance_id: srv1_dashboard_live_id) {
     TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => true
     _ => false
   }
     && match tracker_web_instance_environment(instance_id: srv1_dashboard_live_id) {
-      Present { value: GoogleLoginEnvironmentProd } => true
+      Present { value: GoogleLoginEnvironmentStage } => true
       _ => false
     }
-    && match tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironmentProd) {
+    && match tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironmentStage) {
       TrackerWebOauthClientUnbound { environment: _, reason: _ } => true
       TrackerWebOauthClientBound { binding: _ } => false
     }

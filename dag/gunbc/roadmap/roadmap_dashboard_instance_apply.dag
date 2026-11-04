@@ -139,6 +139,17 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
   dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
   dashboard_git_worker_subtree_walk_depth,
+  // These three are CALLED by this file (in the subtree grant readback below) and declared here in
+  // gunbc.roadmap.roadmap_dashboard_instance, but were never listed in this import. They resolved
+  // only by proximity to some other importer of the module in the entry's closure --
+  // residual_class_names.bare_name_resolved_by_proximity_standing_in_for_resolution (gunbc#15247) --
+  // and the effect checker refuses such a callee with 'no established callee identity', the failing
+  // set varying by which entry pulled the module in. Note dashboard_git_subtree_readback_is_granted
+  // two lines up is imported and is NOT this one: a near name standing in for the real one is
+  // exactly how this residual hides. Pattern: gunbc#15753, gunbc#15755.
+  dashboard_git_subtree_readback_is_granted_under,
+  dashboard_git_worker_subtree_granted_directory_mode,
+  dashboard_git_worker_subtree_writes_files_in_place,
 }
 import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_device_login_command }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
