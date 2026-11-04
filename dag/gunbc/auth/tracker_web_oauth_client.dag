@@ -570,18 +570,7 @@ data tracker_web_test_owned_domain_frontier: FrontierRow = frontier_row_path(
   dissolution: tracker_web_test_owned_domain_dissolution,
 )
 
-data tracker_web_stage_secret_custody_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: a host_credential_custody_converge arm (with its fleet_secret_accessor_roster grant and fleet-converge workflow option) places the tracker-web STAGE client secret at tracker_web_stage_oauth_client_secret_host_path on srv1, sufficient for the srv1-live serve unit to start with the Stage oidc config. Until then the Stage secret is pinned (tracker_web_stage_oauth_client_secret_ref) but not delivered, and serve refuses on the absent readback first."
-)
-
-data tracker_web_stage_secret_custody_frontier: FrontierRow = frontier_row_path(
-  path: "/etc/gunbc-oidc/tracker-web-stage-client-secret",
-  reason: "custody delivery of the Stage client secret is an actuation route (a per-credential enum arm, accessor grant and generated workflow option), not a client-row field; it lands with the Stage readback",
-  dissolution: tracker_web_stage_secret_custody_dissolution,
-)
-
 data tracker_web_oauth_frontier_rows: List<FrontierRow> = [
-  tracker_web_stage_secret_custody_frontier,
   srv2_hand_started_oidc_unit_frontier,
   tracker_web_test_owned_domain_frontier,
 ]
