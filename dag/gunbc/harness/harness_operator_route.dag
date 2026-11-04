@@ -12,7 +12,7 @@ import extdeps.tools.openssl
 import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlPinnedPubkeyMismatch }
 import extdeps.vllm.server { vllm_route_models, vllm_route_chat_completions }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list, ninfer_authorization_header_line }
-import extdeps.pool.pool_front { PoolFrontCertificate, pool_front_certificate_is_pinned }
+import extdeps.http.header_dump { http_ascii_fold }
 import extdeps.tools.openssl { openssl_fingerprint_from_stdout }
 import gunbc.serving.router_dev_policy { router_dev_srv1_site }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnFabricRouter, harness_unit_model_id, PoolBudgetPolicy }
@@ -42,15 +42,32 @@ fn operator_router_origin() -> NonEmptyStr {
   join(["https://", router_dev_srv1_site().listen_address, ":", to_string(router_dev_srv1_site().listen_port)], "") as NonEmptyStr
 }
 
+// THE SERVER CERTIFICATE A ROUTE PINS, by the SHA-256 of its DER encoding (the `openssl x509 -fingerprint -sha256`
+// reading; the certificate structure itself is extdeps.standards.rfc_5280's, not re-modeled here). Only the
+// fingerprint is part of the pin decision: expiry and chain are enforced by curl (exit 60), never by this value.
+type PinnedServerCertificate {
+  sha256_fingerprint: NonEmptyStr
+}
+
+fn pinned_server_certificate_canonical(text: String) -> String {
+  http_ascii_fold(s: trim(s: text))
+}
+
+// WHETHER THE CERTIFICATE A HOST PRESENTED IS THE PINNED ONE. Total on any text: an unreadable or empty
+// fingerprint is a different certificate, never a pass.
+fn pinned_server_certificate_is_pinned(pinned: PinnedServerCertificate, presented: String) -> Bool {
+  let p = pinned_server_certificate_canonical(text: presented)
+  p != "" && p == pinned_server_certificate_canonical(text: pinned.sha256_fingerprint as String)
+}
+
 // THE ROUTER'S LISTENER CERTIFICATE (self-signed; `openssl x509 -fingerprint -sha256` of srv1:~/router/tls/cert.pem,
 // read 2026-11-04). The deployment's value, pinned here and enforced on every request and probe.
-data operator_router_certificate: PoolFrontCertificate = PoolFrontCertificate {
+data operator_router_certificate: PinnedServerCertificate = PinnedServerCertificate {
   sha256_fingerprint: "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52" as NonEmptyStr,
-  not_after: "2029-01-27" as NonEmptyStr,
 }
 
 // The certificate the selected route pins.
-data operator_pinned_certificate: PoolFrontCertificate = harness_operator_route.pinned_certificate
+data operator_pinned_certificate: PinnedServerCertificate = harness_operator_route.pinned_certificate
 
 fn operator_endpoint_origin() -> NonEmptyStr? {
   Present { value: harness_operator_route.origin }
@@ -92,7 +109,7 @@ type HarnessOperatorRoute {
   origin: NonEmptyStr
   models_path: NonEmptyStr
   chat_completions_path: NonEmptyStr
-  pinned_certificate: PoolFrontCertificate
+  pinned_certificate: PinnedServerCertificate
   group_wire: NonEmptyStr
   credential: OperatorCredentialFile
   certificate: OperatorCredentialFile
@@ -288,7 +305,7 @@ type OperatorCertificatePin
 fn operator_certificate_pin_decision(fingerprint_stdout: String) -> Bool {
   match openssl_fingerprint_from_stdout(stdout: fingerprint_stdout) {
     Absent => false
-    Present { value: f } => pool_front_certificate_is_pinned(pinned: operator_pinned_certificate, presented: f)
+    Present { value: f } => pinned_server_certificate_is_pinned(pinned: operator_pinned_certificate, presented: f)
   }
 }
 

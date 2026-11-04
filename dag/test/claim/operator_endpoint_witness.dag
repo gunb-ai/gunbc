@@ -261,7 +261,6 @@ test fn a_certificate_with_another_fingerprint_is_not_pinned() -> Bool {
 
 test fn the_pinned_certificate_is_the_routers_listener_certificate() -> Bool {
   (operator_pinned_certificate.sha256_fingerprint as String) == "1B:A2:8E:1C:CE:C3:5B:91:39:8F:63:17:8E:35:99:3D:9D:26:F0:A5:E6:35:D0:A7:45:07:FB:C5:6E:81:4C:52"
-    && (operator_pinned_certificate.not_after as String) == "2029-01-27"
     && (harness_operator_route.certificate.identifier as String) == (operator_route_certificate_file.identifier as String)
     && (harness_operator_route.certificate.relative_path as String) == (operator_route_certificate_file.relative_path as String)
 }
