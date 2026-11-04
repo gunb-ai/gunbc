@@ -1071,7 +1071,7 @@ fn serve_issue_assign_response_over(
   let observed_at = human_write_observed_at(security: request.security)
   if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
   else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
-    action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    action: ServeActionAssignIssue, security: request.security, authorization_policy: write_authorization_policy_for(deployment: instance.deployment),
     deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
     Permit => serve_issue_assign_permitted(instance: instance, plan: plan, request: request, node_id: node_id, observed_at: observed_at)
