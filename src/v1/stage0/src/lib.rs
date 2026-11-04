@@ -741,6 +741,7 @@ pub mod v1_tests_claim_escape_json_string_differential;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod v1_tests_claim_generic_identity_census;
 #[allow(
     unused_imports,
     unused_variables,
@@ -751,6 +752,7 @@ pub mod v1_tests_claim_escape_json_string_differential;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod v1_tests_claim_interpolation_hole_census;
 #[allow(
     unused_imports,
     unused_variables,
@@ -827,6 +829,7 @@ pub mod v1_tests_claim_reference_derived_disposition_census_witness_test;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod v1_tests_claim_shared_type_leaf_collision_census;
 #[allow(
     unused_imports,
     unused_variables,
