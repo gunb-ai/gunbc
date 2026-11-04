@@ -30,7 +30,7 @@ import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
 }
-import std.measure { ByteSize }
+import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
   materialization_store_frame_root,
@@ -277,6 +277,17 @@ type HostDashboardInstance {
   source_seed: DashboardSourceSeed
   admitted_revision: DashboardAdmittedRevisionSource
   toolchain: DashboardToolchain
+  // THE WORKER'S OWN MEMORY CEILING FOR THIS INSTANCE: the per-unit MemoryMax of the dispatched
+  // worker (roadmap_dispatch_actuator sets -p MemoryMax=byte_size_count(this)) AND, at the same
+  // figure, the per-seat reservation of the session pool (host_capacity 'the unit's ceiling is the
+  // reserved amount'). It was once derived from the CI runner slot (dispatch_worker_memory_ceiling
+  // = gunbc_runner_slot_desired().memory_max, 22 GiB) for EVERY instance -- sizing the agent session
+  // for a build it does not run. An instance that does not override keeps that ceiling; the srv1 lab
+  // overrides it to a stated POLICY figure (srv1_lab_dispatch_worker_memory_max, 8 GiB), because a
+  // worker's builds and tests belong in the compute pool, not its own cgroup. See the row
+  // gunbc.design_ruling.worker_session_memory_is_a_per_instance_policy_figure. Fail-closed: a worker
+  // that exceeds this is OOM-killed loudly (SIGKILL -> AttemptProcessSignaled -> the attempt records
+  // killed-by-signal, retained for inspection), never silently retried at a bigger number.
   dispatch_worker_memory_max: ByteSize
   // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (§3). It was
   // once a single shared constant (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent,
@@ -703,6 +714,25 @@ data belt_max_concurrent_default: Nat = 3
 // gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact and on srv1_lab_dashboard_instance -- not
 // comment arithmetic and not a hand-typed reader elsewhere.
 data srv1_lab_belt_max_concurrent: Nat = 6
+
+// THE SRV1 LAB'S WORKER (SESSION) MEMORY CEILING, AS A STATED POLICY FIGURE -- NOT the CI runner slot.
+// A worker's builds and tests belong in the compute pool (gunbc.compute ComputeBuildPool / its own units),
+// not inside its own cgroup; sizing the agent session at the 22 GiB runner slot (dispatch_worker_memory_ceiling,
+// the default every other row keeps) reserved 22 GiB per seat for a build the session does not run. The
+// operator set this to 8 GiB on 2026-11-04 ("lets try it and fix it if it breaks something"); the authority
+// is the dated row gunbc.design_ruling.worker_session_memory_is_a_per_instance_policy_figure, NOT arithmetic
+// authored beside this literal (contrast the note above dispatch_worker_memory_ceiling, which keeps the slot
+// derivation precisely because it IS an authority). The figure is a policy, not a measurement: it is sized
+// from the harness worker's MEASURED resting footprint (~6.7 GiB memory.current) with headroom for the agent's
+// own non-build working set. The 15.8 GiB peak is NOT the sizing basis -- that peak came from the agent running
+// builds/tests IN-CGROUP and leaves with the compute-routing change (quiet-dove-609), which this row depends on
+// landing first. DISSOLVE-ON: if a lab worker is OOM-killed at this ceiling, the operator re-raises it or moves
+// the workload out -- a worker killed here must surface as a loud OOM in its attempt (SIGKILL ->
+// AttemptProcessSignaled -> AttemptUnitFinished{exit_status: "9"}, retained; never a silent retry), which is
+// the contract the witness in the step-2 test file checks. 6 seats x 8 GiB = 48 GiB reserved, trivially inside
+// the ~245 GiB srv1 MemAvailable; memory no longer binds the belt width, so the belt stays at srv1_lab_belt_max_concurrent
+// and could rise toward the router's 8 (#15789) if the operator chooses.
+data srv1_lab_dispatch_worker_memory_max: ByteSize = gibibyte_to_byte_size(gibibyte(count: 8))
 
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,
@@ -1293,6 +1323,7 @@ fn isolated_dashboard_instance(
     worker: WorkerIsServiceUser,
     provision_parent_root: dashboard_home_provision_parent_root,
     belt_max_concurrent: belt_max_concurrent_default,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   )
 }
 
@@ -1314,6 +1345,7 @@ fn isolated_dashboard_instance_admitting(
   worker: WorkerIdentity,
   provision_parent_root: FilePath,
   belt_max_concurrent: Nat,
+  dispatch_worker_memory_max: ByteSize,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1356,7 +1388,7 @@ fn isolated_dashboard_instance_admitting(
     },
     admitted_revision: admitted_revision,
     toolchain: srv1_linux_toolchain,
-    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    dispatch_worker_memory_max: dispatch_worker_memory_max,
     belt_max_concurrent: belt_max_concurrent,
     directory_owner: linux_service_directory_owner(),
     worker: worker,
@@ -1392,14 +1424,21 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     // THE SRV1 LAB WIDENS TO 6. Operator ruling 2026-11-04, held as the row
     // gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact (concurrency is a per-instance fact read
     // through the instance; srv1 lab at 6, every other instance stays at 3). srv1 has 512 GiB, ~245 GiB
-    // MemAvailable observed 2026-11-04 08:10Z. 6 x the 22 GiB worker ceiling (dispatch_worker_memory_ceiling)
-    // = 132 GiB fits beside srv1-live (3 x 22 = 66 GiB) and srv1's compute build pool (2 x 22 = 44 GiB):
-    // 132 + 66 + 44 = 242 <= 245 GiB, a 3 GiB margin. 7 needs 264 > 245 and does not fit; the srv1 fabric
-    // router's route ceiling is 8 (gunb-ai/gunbc#15789), so 6 is within it. See srv1_lab_belt_max_concurrent
-    // for the same figure. NOTE the attempt-worker slice (live_deploy.slice_bounds) stays the operator's
-    // 2 x 22 GiB, so this belt admits 6 to LAUNCH while the resident transient-worker cgroup stays bounded by
-    // the operator's slice figure -- widening the slice is a separate operator decision (see the ruling).
+    // MemAvailable observed 2026-11-04 08:10Z. WITH THE LAB WORKER AT THE 8 GiB POLICY CEILING BELOW, the lab's
+    // 6 seats reserve 6 x 8 = 48 GiB beside srv1-live (3 x 22 = 66 GiB) and srv1's compute build pool (2 x 22 =
+    // 44 GiB): 48 + 66 + 44 = 158 <= 245 GiB, ~87 GiB margin -- memory no longer binds the belt width, so the
+    // cap on this number is the srv1 fabric router's route ceiling 8 (gunb-ai/gunbc#15789), not the host budget.
+    // BEFORE the worker ceiling was decoupled from the runner slot (this PR) the seat was 22 GiB and 6 x 22 = 132
+    // GiB left only a 3 GiB margin (132 + 66 + 44 = 242 <= 245), which is the arithmetic the belt was first set
+    // to 6 on. The 8 GiB seat is SAFE only once a worker's builds/tests run in the compute pool, not in its own
+    // cgroup (the 15.8 GiB in-cgroup build/test peak leaves with that change, gunb-ai/gunbc step-1 / quiet-dove-609);
+    // this row lands after it. See srv1_lab_dispatch_worker_memory_max for the ceiling and its dissolve-on. NOTE the
+    // attempt-worker slice (live_deploy.slice_bounds) stays the operator's 2 x 22 GiB -- widening it is a separate
+    // operator decision (see the ruling); the slice bounds resident workers, the belt bounds who may launch.
     belt_max_concurrent: srv1_lab_belt_max_concurrent,
+    // 8 GiB policy ceiling, operator 2026-11-04 (see srv1_lab_dispatch_worker_memory_max + its ruling row): a
+    // worker's builds/tests belong in the compute pool, not its own cgroup, so it no longer inherits the runner slot.
+    dispatch_worker_memory_max: srv1_lab_dispatch_worker_memory_max,
   )
 }
 

@@ -1,0 +1,86 @@
+module test.claim.roadmap.worker_session_memory_ceiling_witness
+
+// STEP 2 (worker/session memory ceiling as a per-instance policy figure). The authority is the row
+// gunbc.design_ruling.worker_session_memory_is_a_per_instance_policy_figure; the figure is the data
+// srv1_lab_dispatch_worker_memory_max. These witnesses are the machine side of that ruling; they are
+// RED if the ceiling is once again the shared runner-slot constant for every instance.
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { byte_size_count, kibibyte_count }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_lab_dashboard_instance, srv1_live_dashboard_instance,
+  srv1_lab_belt_max_concurrent, srv1_lab_dispatch_worker_memory_max, dispatch_worker_memory_ceiling,
+}
+import gunbc.roadmap.roadmap_session_placement { session_placement_pool }
+import gunbc.compute.host_capacity {
+  host_capacity_pool_slots, host_capacity_pool_appropriation, compute_memory_ceiling,
+}
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed, AttemptExitRecordFound,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  attempt_unit_from_exit_record, AttemptUnitFinished, AttemptUnitAbsent, AttemptUnitActive,
+  AttemptUnitUnreadable, AttemptUnitStartRecorded,
+}
+
+// THE LAB'S WORKER CEILING IS THE 8 GiB POLICY FIGURE, NOT THE RUNNER SLOT, WHILE srv1-live KEEPS THE SLOT.
+// A single shared constant (the old dispatch_worker_memory_ceiling for every row) makes the two lab
+// checks equal and fails the first clause; a second hand-authored constant (rather than the one field)
+// is caught by the equality to the single data row. srv1-live still inheriting the ceiling proves the
+// figure is genuinely PER-INSTANCE, not one new global that replaced the old one.
+test fn the_lab_worker_ceiling_is_the_policy_figure_not_the_runner_slot() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  // 8 GiB = 8 * 1024^3 bytes.
+  byte_size_count(b: lab.dispatch_worker_memory_max) == 8589934592
+    // it IS the one data row, not a literal authored beside it
+    && byte_size_count(b: lab.dispatch_worker_memory_max) == byte_size_count(b: srv1_lab_dispatch_worker_memory_max)
+    // and it is NOT the runner slot the old code reused for every instance
+    && byte_size_count(b: lab.dispatch_worker_memory_max) != byte_size_count(b: dispatch_worker_memory_ceiling)
+    // srv1-live keeps the runner slot (22 GiB = 23622320128 bytes): the ceiling is per-instance, not one new global
+    && byte_size_count(b: live.dispatch_worker_memory_max) == byte_size_count(b: dispatch_worker_memory_ceiling)
+}
+
+// THE UNIT CEILING IS THE RESERVED AMOUNT AND THE APPROPRIATION FOLLOWS IT, PER INSTANCE. compute_memory_ceiling
+// is floor(dispatch_worker_memory_max) in KiB -- the same figure the worker unit's -p MemoryMax carries and the
+// per-seat reservation of the pool; the appropriation is that per-seat amount x the instance's own slots. The
+// lab's 8 GiB x its 6 belt seats and srv1-live's 22 GiB x its 3 seats are different on both axes, so neither a
+// shared belt width nor a shared memory constant survives this.
+test fn the_lab_session_ceiling_and_appropriation_follow_the_per_instance_field() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  let lab_ceiling_kib = kibibyte_count(k: compute_memory_ceiling(instance: lab))
+  let live_ceiling_kib = kibibyte_count(k: compute_memory_ceiling(instance: live))
+  let lab_slots = host_capacity_pool_slots(pool: session_placement_pool(instance: lab))
+  let lab_approp_kib = kibibyte_count(k: host_capacity_pool_appropriation(instance: lab, pool: session_placement_pool(instance: lab)))
+  // 8 GiB in KiB and 22 GiB in KiB; the two differ, so the ceiling is per-instance.
+  lab_ceiling_kib == 8388608
+    && live_ceiling_kib == 23068672
+    && lab_ceiling_kib != live_ceiling_kib
+    // the lab's pool is its own belt width (6), and its appropriation is the per-instance ceiling x those slots.
+    && lab_slots == srv1_lab_belt_max_concurrent
+    && lab_approp_kib == lab_ceiling_kib * lab_slots
+}
+
+// A WORKER OOM KILL SURFACES LOUDLY, NOT AS A SILENT REQUEUE. The worker's own cgroup hitting its MemoryMax
+// is a SIGKILL; the exit spool decodes it as a signaled death (attempt_exit_entry_decode of a KILL entry), and
+// the actuator's read (attempt_unit_from_exit_record) answers AttemptUnitFinished carrying the signal number
+// "9" -- the same value systemd's ExecMainStatus carried -- RETAINED for inspection. It must not answer
+// AttemptUnitAbsent (the belt would then requeue it as an orphan with no verdict, a silent retry at a bigger
+// ceiling) nor AttemptUnitActive (a wedged unit). This is the operator's "fail loudly" condition, machine-checked.
+test fn a_lab_worker_oom_kill_surfaces_loudly_as_killed_by_signal_not_a_silent_requeue() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "n+k+worker+vendorpane+signal+killed+KILL") {
+    AttemptExitEntryDecoded { record } =>
+      match attempt_unit_from_exit_record(
+        unit: "n+k" as NonEmptyStr,
+        record: AttemptExitRecordFound { record: record },
+        start: AttemptUnitStartRecorded,
+      ) {
+        AttemptUnitFinished { exit_status } => exit_status == "9"
+        AttemptUnitAbsent => false
+        AttemptUnitActive => false
+        AttemptUnitUnreadable { reason: _ } => false
+      }
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}

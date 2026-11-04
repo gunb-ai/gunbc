@@ -20,7 +20,7 @@ import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance, belt_max_concurrent_default, srv1_lab_belt_max_concurrent }
-import gunbc.compute.host_capacity { host_capacity_pool_slots, host_capacity_pool_appropriation }
+import gunbc.compute.host_capacity { host_capacity_pool_slots, host_capacity_pool_appropriation, compute_memory_ceiling }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_unit_properties,
   AttemptUnitUnreadable, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished,
@@ -172,9 +172,14 @@ test fn the_session_pool_is_the_instance_belt_width_and_the_appropriation_follow
     && lab_slots == nat_to_int(n: srv1_lab_belt_max_concurrent)
     && live_slots != lab_slots
     && live_approp != lab_approp
-    // THE APPROPRIATION IS THE CEILING TIMES THE SAME PER-INSTANCE SLOTS: proportional to slots,
-    // confirming it derives from the instance figure rather than being authored beside it.
-    && lab_approp * live_slots == live_approp * lab_slots
+    // THE APPROPRIATION IS EACH INSTANCE'S OWN CEILING TIMES ITS OWN SLOTS. Before step 2 every row
+    // shared the runner-slot ceiling, so the appropriation was cross-instance proportional; now the
+    // per-seat ceiling is ITSELF per-instance (srv1 lab 8 GiB, srv1-live 22 GiB), so proportionality
+    // across instances is no longer the invariant -- each instance's appropriation must equal its own
+    // compute_memory_ceiling (= floor(dispatch_worker_memory_max)) times its own slots. This still
+    // proves the appropriation DERIVES from the instance figure rather than being authored beside it.
+    && lab_approp == nat_to_int(n: kibibyte_count(k: compute_memory_ceiling(instance: lab))) * lab_slots
+    && live_approp == nat_to_int(n: kibibyte_count(k: compute_memory_ceiling(instance: live))) * live_slots
 }
 
 // POSITIVE CONTROL AND INHABITANCE: the real encoder's record, released against the same grant and
