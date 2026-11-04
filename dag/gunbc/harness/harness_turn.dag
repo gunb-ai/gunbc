@@ -599,7 +599,7 @@ type HarnessTurnOutcome
   | TurnThinkingFormatInvalid { cause: String, steps_taken: Int }
   | TurnUsageUnavailable { cause: String, steps_taken: Int }
   | TurnSubmissionUndecodable { reason: String, steps_taken: Int }
-  | TurnStoppedBySupervision { verdict: String, detail: String, steps_taken: Int }
+  | TurnStoppedBySupervision { verdict: SupervisionStopVerdict, detail: String, steps_taken: Int }
   | TurnSupervisionUnavailable { cause: String, steps_taken: Int }
   | TurnHostedQuotaFull { wire: String, steps_taken: Int }
   | TurnHostedQuotaUnleasable { detail: String, steps_taken: Int }
@@ -676,7 +676,7 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
         "after ", to_string(value: n), " tool rounds: ", harness_submission_terminal_cause(reason: reason),
       ], "")
     TurnStoppedBySupervision { verdict: v, detail: d, steps_taken: n } =>
-      join(["after ", to_string(value: n), " tool rounds the alignment check returned ", v, " and the session stopped: ", d], "")
+      join(["after ", to_string(value: n), " tool rounds the alignment check returned ", supervision_stop_verdict_key(v: v), " and the session stopped: ", d], "")
     TurnSupervisionUnavailable { cause: c, steps_taken: n } =>
       join(["after ", to_string(value: n), " tool rounds the alignment check could not decide, so the session stopped rather than continue unsupervised: ", c], "")
     TurnHostedQuotaFull { wire: w, steps_taken: n } =>
@@ -2252,8 +2252,23 @@ fn harness_user_message_with_text_block(message: JsonValue, text: String) -> Jso
   }
 }
 
-fn harness_turn_stop_by_supervision(config: HarnessTurnConfig, verdict: String, detail: String, steps_taken: Int, events: List<String>) -> HarnessTurnOutcome {
-  match harness_write_events(config: config, events: concat(events, [harness_event_stopped_by_supervision(steps_taken: steps_taken, verdict: verdict, detail: detail)])) {
+// THE VERDICT THAT STOPPED A SESSION IS ONE OF THE TWO CLOSED VERDICT TYPES THE MODEL ALREADY DECLARES, never
+// their rendered text: the in-session check's AlignmentVerdict (a catastrophic misalignment stops without a
+// supervisor) or the convened supervisor's SupervisorVerdict (plan-defect, stuck). The key is rendered only
+// where text is written, in the event and the diagnostic.
+type SupervisionStopVerdict
+  = StoppedByAlignmentCheck { verdict: AlignmentVerdict }
+  | StoppedBySupervisor { verdict: SupervisorVerdict }
+
+fn supervision_stop_verdict_key(v: SupervisionStopVerdict) -> String {
+  match v {
+    StoppedByAlignmentCheck { verdict: a } => alignment_verdict_key(v: a)
+    StoppedBySupervisor { verdict: sv } => supervisor_verdict_route_key(verdict: sv)
+  }
+}
+
+fn harness_turn_stop_by_supervision(config: HarnessTurnConfig, verdict: SupervisionStopVerdict, detail: String, steps_taken: Int, events: List<String>) -> HarnessTurnOutcome {
+  match harness_write_events(config: config, events: concat(events, [harness_event_stopped_by_supervision(steps_taken: steps_taken, verdict: supervision_stop_verdict_key(v: verdict), detail: detail)])) {
     HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
     HarnessEventsWritten => TurnStoppedBySupervision { verdict: verdict, detail: detail, steps_taken: steps_taken }
   }
@@ -2321,9 +2336,9 @@ fn harness_pause_convene_supervisor(pause: HarnessSupervisionPause, check_verdic
             VerdictContinue { basis: _ } => harness_pause_continue(pause: pause, events: recorded)
             VerdictSteer { direction } => harness_pause_steer(pause: pause, direction: direction, events: recorded)
             VerdictPlanDefect { defect } =>
-              harness_turn_stop_by_supervision(config: pause.config, verdict: supervisor_verdict_route_key(verdict: verdict), detail: defect, steps_taken: pause.steps_taken, events: recorded)
+              harness_turn_stop_by_supervision(config: pause.config, verdict: StoppedBySupervisor { verdict: verdict }, detail: defect, steps_taken: pause.steps_taken, events: recorded)
             VerdictStuck { cause } =>
-              harness_turn_stop_by_supervision(config: pause.config, verdict: supervisor_verdict_route_key(verdict: verdict), detail: cause, steps_taken: pause.steps_taken, events: recorded)
+              harness_turn_stop_by_supervision(config: pause.config, verdict: StoppedBySupervisor { verdict: verdict }, detail: cause, steps_taken: pause.steps_taken, events: recorded)
           }
         }
       }
@@ -2338,7 +2353,7 @@ fn harness_pause_apply(pause: HarnessSupervisionPause, verdict: AlignmentVerdict
     ExtremelyMisaligned { direction: _ } => harness_pause_convene_supervisor(pause: pause, check_verdict: verdict, events: recorded)
     RoutedConflict { conflict: _ } => harness_pause_convene_supervisor(pause: pause, check_verdict: verdict, events: recorded)
     CatastrophicallyMisaligned { reason } =>
-      harness_turn_stop_by_supervision(config: pause.config, verdict: alignment_verdict_key(v: verdict), detail: reason, steps_taken: pause.steps_taken, events: recorded)
+      harness_turn_stop_by_supervision(config: pause.config, verdict: StoppedByAlignmentCheck { verdict: verdict }, detail: reason, steps_taken: pause.steps_taken, events: recorded)
   }
 }
 
