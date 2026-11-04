@@ -20,6 +20,7 @@ import std.durable_append_log {
   append_stream_readback,
   MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, SandboxWriter,
   AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused,
+  AppendWriteRefusal, WriterStandingUnknown,
   append_write_admission, append_host_create_admission,
   WriterExitObservation, WriterExitSeen, WriterExitUnseen, WriterExitedClean, append_window_completion,
 }
@@ -217,6 +218,19 @@ test fn a_host_only_member_refuses_the_sandbox() -> Bool {
 test fn an_unobserved_standing_admits_nobody() -> Bool {
   refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }))
     && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }))
+}
+
+// THE ORDERING IS PINNED BY REFUSAL NAME, not just by "refused" (90415 round 2, requirement (a)). Under
+// `HostOnly` the policy fold routes a host writer to `append_host_admission`, whose only refusal is a HELD
+// window -- so a fold that consulted POLICY BEFORE THE STANDING would ADMIT a host append whose standing was
+// never observed. This claim demands the refusal name the standing, and its accepted twin shows the host is
+// admitted the moment a standing IS observed, so the refusal is about the standing and not about host writes.
+test fn an_unobserved_standing_refuses_a_host_append_by_naming_the_standing() -> Bool {
+  match append_write_admission(policy: HostOnly {}, writer: HostWriter {}, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }) {
+    AppendWriteRefused { refusal: WriterStandingUnknown { cause: _ } } =>
+      admitted(append_write_admission(policy: HostOnly {}, writer: HostWriter {}, standing: WriterWindowReleased {}))
+    _ => false
+  }
 }
 
 // THE STANDING PARAMETER IS ABSENT FROM THE CREATE ADMISSION -- PROVEN AT COMPILE TIME, not by convention.
