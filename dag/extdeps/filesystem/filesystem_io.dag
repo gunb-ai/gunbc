@@ -589,7 +589,7 @@ fn filesystem_listing_absence(
 ) -> FilesystemListingAbsence {
   match admit_filesystem_failure_kind(observed: error_kind) {
     FilesystemFailureKindAdmitted { kind: FilesystemNotFound } => match admit_filesystem_directory_path(directory: directory) {
-      FilesystemDirectoryPathAdmitted { path: p } => FilesystemDirectoryListingAbsent { directory: p }
+      FilesystemDirectoryPathAdmitted { path: p } => FilesystemDirectoryListingUnreadable { directory: p, error: "MUTANT (collapse-ENOENT-at-the-seam): not_found answered unreadable", error_kind: "not_found" }
       FilesystemDirectoryPathRefused { directory: d, cause: _ } => FilesystemDirectoryListingUnreadable { directory: d, error: "the listing answered not_found, but this module does not admit that name as a directory path, so no claim is made about the subject", error_kind: error_kind }
     }
     FilesystemFailureKindAdmitted { kind: _ } => FilesystemDirectoryListingUnreadable { directory: directory, error: error, error_kind: error_kind }
