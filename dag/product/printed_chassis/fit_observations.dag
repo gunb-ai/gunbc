@@ -82,3 +82,17 @@ fn a2_row_fit_plate_fit_display() -> String {
   if x.fits_row {" The third plate fits the row (4 November 2026)"} else {" The third plate does not fit the row"},
   if x.rests_flat {"."} else {" but does not rest flat on the faces, so the tabs are removed and a deeper sleeve holds the plate."}],"")
 }
+
+// THE RECEIVED DELTA BFB1012M, read by the operator on 2026-11-04 with four units in hand. The intake is on one
+// face only, the face WITHOUT the label. The lug around the hole nearer the outlet is flush with the label face.
+// Held with the label toward the reader and the outlet pointing down, the outlet is at the RIGHT end of the
+// bottom edge. That hole's centre is 28 mm along the edge past the end of the outlet mouth and 18 mm up from
+// the outlet edge, which is the datasheet's hole (extdeps.fans.delta delta_bfb1012m_outlet_side_hole) to 0.1 mm.
+// Read by product.printed_chassis.blower_outlet_mount, which mounts the blower by that hole from the label face.
+type ReceivedBlowerProposition { intake_only_on_unlabelled_face: Bool, side_hole_lug_flush_with_label_face: Bool, outlet_at_right_with_label_toward_reader_and_outlet_down: Bool }
+data bfb1012m_received_reading: RecordedFact<ReceivedBlowerProposition> = RecordedFact {
+ id:"bfb1012m-received-reading-2026-11-04",value:ReceivedBlowerProposition {intake_only_on_unlabelled_face:true,side_hole_lug_flush_with_label_face:true,outlet_at_right_with_label_toward_reader_and_outlet_down:true},
+}
+data bfb1012m_received_reading_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/bfb1012m-received-reading-2026-11-04",activity:"caliper-reading-of-received-units",agent:"operator",
+}

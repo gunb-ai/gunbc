@@ -15,6 +15,7 @@ import gunbc.runner.runner_slot_actuation {
   SlotDrainPlan, DrainAlreadyMasked, DrainSteps, DrainWaitForJob, DrainRefused,
   slot_activation_plan, slot_activation_read_back_holds,
   slot_drain_plan, slot_drain_read_back_holds,
+  slot_drain_plan_under, MaskWhileRunning, NeverMaskARunningUnit,
   slot_actuation_reading_of,
   slot_activity_of_listing,
   slot_task_count_of_show,
@@ -111,6 +112,32 @@ test fn an_idle_slot_is_masked_then_stopped() -> Bool {
   steps_of_drain(p: slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle))
     == [systemctl_mask_argv(unit: slot_u), systemctl_stop_argv(unit: slot_u)]
     && slot_drain_read_back_holds(r: reading(load: "masked", file: "masked", active: "inactive"))
+}
+
+// NEVER MASK A RUNNING UNIT (the slot-tree rebuild's admission). `systemctl mask` reloads the manager and a
+// masked unit loads none of its drop-ins, so a unit still running when masked loses its cap drop-ins and
+// its slice mid-job (fleet-converge run 41861708547 on srv4, 2026-11-04). Under NeverMaskARunningUnit a
+// busy or stopping unit gets NO leg, and an idle one is STOPPED BEFORE it is masked, so the mask's reload
+// lands on an inactive unit. RED: drop the admission from slot_drain_plan_running and the busy plan
+// carries the mask, and the idle plan masks first.
+test fn never_mask_a_running_unit_leaves_a_busy_slot_untouched_and_stops_an_idle_one_before_masking() -> Bool {
+  let busy = slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, admission: NeverMaskARunningUnit)
+  let stopping = slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "deactivating"), worker: SlotIdle, admission: NeverMaskARunningUnit)
+  let idle = slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, admission: NeverMaskARunningUnit)
+  let stopped = slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "inactive"), worker: SlotIdle, admission: NeverMaskARunningUnit)
+  (match busy { DrainWaitForJob { mask: m } => m == [] _ => false })
+    && (match stopping { DrainWaitForStop { mask: m } => m == [] _ => false })
+    && steps_of_drain(p: idle) == [systemctl_stop_argv(unit: slot_u), systemctl_mask_argv(unit: slot_u)]
+    && steps_of_drain(p: stopped) == [systemctl_mask_argv(unit: slot_u)]
+}
+
+// THE CAP BRACKET'S ADMISSION IS UNCHANGED: MaskWhileRunning is what slot_drain_plan answers, mask first,
+// on a busy unit too. Its exposure is an open integration concern on the bracket, not changed here.
+test fn mask_while_running_is_the_unchanged_default() -> Bool {
+  (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker) { DrainWaitForJob { mask: m } => m == [systemctl_mask_argv(unit: slot_u)] _ => false })
+    && (match slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, admission: MaskWhileRunning) { DrainWaitForJob { mask: m } => m == [systemctl_mask_argv(unit: slot_u)] _ => false })
+    && steps_of_drain(p: slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, admission: MaskWhileRunning))
+      == [systemctl_mask_argv(unit: slot_u), systemctl_stop_argv(unit: slot_u)]
 }
 
 // IDEMPOTENT: masked and stopped, or absent, issues no leg; a masked slot whose job ended needs only
