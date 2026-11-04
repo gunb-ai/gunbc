@@ -46,6 +46,7 @@ import gunbc.systemd_unit_invocation_liveness {
 import std.durable_exclusive_hold { HolderObservedDead, HolderObservedLive, HolderLivenessUnobservable }
 import gunbc.compute.host_capacity {
   compute_seat_acquisition_at, SeatAcquisitionRead, SeatAcquisitionNotHeld, SeatAcquisitionRefused,
+  compute_seat_charge_returned, ComputeSeatCharge, SeatChargeReturned, compute_seat_charge_wire,
 }
 import extdeps.systemd {
   systemd_unit_name_wire, systemd_unit_name_refusal_detail, InvocationIDProperty,
@@ -1239,11 +1240,29 @@ fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, nod
 // releases names the generation it will close.
 type SessionSettleDecision
   = SettleTerminateAndRelease { record: AttemptRecord, generation: CasGeneration, attempt: SessionAttemptName, reason: String }
+  // A SLOT WHOSE CHARGE WAS ALREADY RETURNED IS CLOSED AS BOOKKEEPING, NOT RELEASED (operator ruling
+  // 2026-11-04, after the srv1 Oct-14 lease was released in the ledger while its slot sat under a root no
+  // pass enumerated). The ordinary close needs the holder's death, and the death is dated from the
+  // acquisition instant, which the folded pool stops carrying once the charge is back -- so a slot that
+  // becomes reachable afterwards can never satisfy recovery_trigger and would sit launching forever,
+  // listed to the serve as an attempt with no seat.
+  //
+  // THE CONDITION IS POSITIVE, NOT THE ABSENCE OF A HOLD. This arm fires only when the partition's own
+  // history shows the acquisition AND a return after it (gunbc.compute.host_capacity
+  // .compute_seat_charge_returned). Mere "the pool holds no term" is not enough: it is also the state of a
+  // slot whose acquisition has not been written yet, and retiring that would destroy the only record of an
+  // attempt that may be about to run. If the history cannot show the return, the slot is kept, with the
+  // charge reading named in the reason.
+  //
+  // IT NEVER CALLS compute_release_on. Nothing is being freed; the ledger already returned this charge. The
+  // detail says so and makes no holder-death claim -- the transition's whole content is "the record and the
+  // ledger no longer agree, and the ledger is right".
+  | SettleRetireUncharged { record: AttemptRecord, generation: CasGeneration, attempt: SessionAttemptName, returned_at: EpochSecs, release_reason: NonEmptyStr, ledger_generation: Nat, keep_reason: String }
   | SettleReleaseOnly { record: AttemptRecord, attempt: SessionAttemptName, reason: String }
   | SettleKeep { why: String, explain: Bool }
   | SettleDone { why: String }
 
-fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: UnitLifecycle, now: EpochSecs, release_settled: Bool) -> SessionSettleDecision {
+fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: UnitLifecycle, now: EpochSecs, release_settled: Bool, charge: ComputeSeatCharge) -> SessionSettleDecision {
   match slot {
     AttemptSlotAbsent => SettleDone { why: join(["no slot is held for ", key as String], "") }
     AttemptSlotUnreadable { detail } => SettleKeep { why: join(["the session slot for ", key as String, " is unreadable, and an unreadable slot is not an absent one, so its seat is kept: ", detail], ""), explain: true }
@@ -1258,8 +1277,25 @@ fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: 
             match rec.state {
               AttemptTerminal { verdict: _, detail: d } =>
                 if release_settled { SettleDone { why: "closed and released" } } else { SettleReleaseOnly { record: rec, attempt: name, reason: join(["the slot is closed (", d, ") and no settled release is recorded"], "") } }
+              // A RESERVED slot is inside its producer's own declared window; the producer is expected to
+              // act on it, and a charge returned under a reserved slot is a different defect whose remedy is
+              // not to retire the record. Left exactly as it was, on purpose.
               AttemptReserved => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
-              AttemptLaunching => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
+              // A LAUNCHING slot closes on the trigger, which needs the unit observed ended. When the trigger
+              // does not fire, the one remaining question with a real answer is whether this reference's
+              // charge is already back in the ledger; if the history positively says it is, the slot is
+              // retired as bookkeeping (SettleRetireUncharged) instead of being kept on a claim about a
+              // holder nobody can date any more.
+              AttemptLaunching =>
+                match session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now)) {
+                  SettleKeep { why: keep, explain: explain } =>
+                    match charge {
+                      SeatChargeReturned { returned_at: back, release_reason: why_returned, generation: lg, acquired_at: _, reference: _ } =>
+                        SettleRetireUncharged { record: rec, generation: g, attempt: name, returned_at: back, release_reason: why_returned, ledger_generation: lg, keep_reason: keep }
+                      other => SettleKeep { why: join([keep, "; and the ledger does not positively show this charge as returned: ", compute_seat_charge_wire(c: other)], ""), explain: explain }
+                    }
+                  other => other
+                }
             }
           }
         }
@@ -1281,6 +1317,10 @@ type SessionSettlement
   | SessionSettlementKept { unit: String, why: String }
   | SessionSettlementDone { unit: String, why: String }
   | SessionSettlementRefused { unit: String, detail: String }
+  // The slot was closed and NOTHING was released, because the charge was already back. Distinct from
+  // ReleaseAttempted on purpose: a count of releases that included this row would report capacity returned
+  // twice (the operator ruling 2026-11-04).
+  | SessionSettlementRetiredUncharged { unit: String, attempt: SessionAttemptName, detail: String }
 
 type SessionSettlePass
   = SessionSettlePassRan { settlements: List<SessionSettlement> }
@@ -1292,6 +1332,7 @@ fn session_settlement_wire(s: SessionSettlement) -> String {
     SessionSettlementKept { unit, why } => join([unit, ": kept (", why, ")"], "")
     SessionSettlementDone { unit, why } => join([unit, ": done (", why, ")"], "")
     SessionSettlementRefused { unit, detail } => join([unit, ": REFUSED (", detail, ")"], "")
+    SessionSettlementRetiredUncharged { unit, detail } => join([unit, ": retired uncharged (", detail, ")"], "")
   }
 }
 
@@ -1332,7 +1373,12 @@ fn session_release_settled_for_slot(stores: SessionPlacementStores, host: String
 
 fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmptyStr, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
   let slot = attempt_slot_read(store: stores.slots.slots, reference: key)
-  match session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot)) {
+  // THE CHARGE READING IS TAKEN ONCE PER KEY, beside the slot read and the lifecycle observation it
+  // conditions. It is a bounded read of one partition's own history (compute_partition_read_budget, the same
+  // ceiling the acquisition read uses), and it is the only way the pass can tell "never acquired" from
+  // "returned": the folded pool alone cannot, because a returned charge has no term to show.
+  let charge = compute_seat_charge_returned(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: key)
+  match session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot), charge: charge) {
     SettleDone { why } => SessionSettlementDone { unit: key as String, why: why }
     SettleKeep { why, explain } =>
       SessionSettlementKept { unit: key as String, why: if explain { session_settle_note(stores: stores, unit: key as String, why: why) } else { why } }
@@ -1344,6 +1390,18 @@ fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmpt
           SessionSettlementRefused { unit: key as String, detail: join(["the slot moved while settlement was deciding (expected ", e, ", found ", o, "); the observation is stale, so nothing is released"], "") }
         AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
         AttemptAdvanced { state: _, generation: _ } => session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
+      }
+    SettleRetireUncharged { record, generation, attempt: name, returned_at, release_reason, ledger_generation, keep_reason } =>
+      match attempt_terminate(store: stores.slots.slots, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join(["charge returned at ledger generation ", to_string(value: ledger_generation), " at ", to_string(value: returned_at), " (", release_reason as String, "); the slot is retired as bookkeeping: no release is issued and no holder-death claim is made. What would otherwise have kept it: ", keep_reason], "")) {
+        AttemptLostRace { expected: e, observed: o } =>
+          SessionSettlementRefused { unit: key as String, detail: join(["the slot moved while settlement was deciding (expected ", e, ", found ", o, "); the observation is stale, so nothing is retired"], "") }
+        AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
+        AttemptAdvanced { state: st, generation: g } =>
+          SessionSettlementRetiredUncharged {
+            unit: key as String,
+            attempt: name,
+            detail: join(["slot closed at generation ", to_string(value: cas_generation_count(g: g)), " (state ", attempt_state_wire(state: st), "); charge was already returned at ledger generation ", to_string(value: ledger_generation), ", so no release was issued"], ""),
+          }
       }
   }
 }

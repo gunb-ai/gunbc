@@ -7,7 +7,7 @@ import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain { PartitionId }
-import product.capacity.pool_events { SeatRequest, PoolReleased, pool_full_wire }
+import product.capacity.pool_events { SeatRequest, pool_full_wire, PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved }
 import std.resource_release_law { QuiescenceRequired }
 import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
@@ -22,7 +22,9 @@ import gunbc.fabric.fabric_event_log {
   PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
   SeatAcquisitionObservation, SeatAcquisitionObserved, SeatAcquisitionNoTerm, SeatAcquisitionAmbiguous,
   SeatAcquisitionUnobserved, SeatAcquisitionStoreRefused, fabric_seat_acquisition_of, event_log_refusal_wire,
+  PartitionReadOk, PartitionReadRefused, event_log_read_partition,
 }
+import product.capacity.event_chain { ChainEvent, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_generation }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, owned_directory_path }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
@@ -653,6 +655,92 @@ fn compute_seat_acquisition_at(store: FabricStorageBinding, partition: Partition
       SeatAcquisitionRefused { detail: join(["the pool carries ", to_string(value: c), " terms for ", r as String, "; which one governs this reference is not decided here"], "") }
     SeatAcquisitionUnobserved { step: st, reason: rs } => SeatAcquisitionRefused { detail: join(["the acquisition instant could not be read (", st, "): ", rs], "") }
     SeatAcquisitionStoreRefused { cause: c } => SeatAcquisitionRefused { detail: event_log_refusal_wire(cause: c) }
+  }
+}
+
+// ── WAS THIS REFERENCE'S CHARGE RETURNED, AND CAN THE HISTORY SAY SO? ──────────────────────────
+//
+// WHY THIS READ EXISTS. The settle pass closes a slot only when it can name the holder's death
+// (gunbc.compute.attempt_lifecycle.recovery_trigger requires an ended unit for a launching attempt), and the
+// holder's death is dated from the acquisition instant, which lives in the ledger's CURRENT terms
+// (compute_seat_acquisition_at above). Once a charge has been returned the instant is gone from the folded
+// pool, and a slot that becomes reachable afterwards -- carried in from a root a moved instance no longer
+// reads, say -- can never be closed: it is neither held nor closeable. This read answers the one question
+// that state turns on, POSITIVELY: does this partition's own history show the charge acquired and then
+// returned?
+//
+// THE HISTORY, NOT THE CURRENT POOL. The answer is taken from the chain in append order, so a reference that
+// was acquired, released, and acquired again is reported as still held: the release that matters is the one
+// that closed the acquisition that is STILL open. Answering from the current pool would answer a different
+// question ("is it held now") and would let a stale release in an old generation stand in for the current
+// one.
+//
+// NEVER-ACQUIRED IS ITS OWN ANSWER, and it is not "returned". A slot whose reference has no acquisition
+// event anywhere in the partition has had no charge to return; retiring it on the strength of an empty
+// history would destroy the only record of an attempt whose acquire had not been written yet. That case is
+// reported apart so the caller keeps the slot.
+//
+// ONE QUESTION OF THE SAME FOLD, NOT A SECOND AUTHORITY. This consumes the partition read and the chain walk
+// exactly as compute_seat_acquisition_at does; it adjudicates nothing about the pool, and it never writes.
+type ComputeSeatCharge
+  = SeatChargeReturned { reference: NonEmptyStr, acquired_at: EpochSecs, returned_at: EpochSecs, release_reason: NonEmptyStr, generation: Nat }
+  | SeatChargeStillHeld { reference: NonEmptyStr, acquired_at: EpochSecs }
+  | SeatChargeNeverAcquired { reference: NonEmptyStr }
+  | SeatChargeUnproven { detail: String }
+
+type SeatChargeScan { acquired_at: EpochSecs?, returned_at: EpochSecs?, release_reason: String? }
+
+fn seat_charge_scan_step(state: SeatChargeScan, event: ChainEvent<PoolEvent>, reference: NonEmptyStr) -> SeatChargeScan {
+  match event.payload {
+    PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
+      if (r as String) == (reference as String) { SeatChargeScan { acquired_at: Present { value: event.recorded_at }, returned_at: Absent, release_reason: Absent } } else { state }
+    PoolReleased { reference: r, reason: why } =>
+      if (r as String) == (reference as String) {
+        match state.acquired_at {
+          Present { value: at } => SeatChargeScan { acquired_at: Present { value: at }, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: why as String } }
+          Absent => state
+        }
+      } else { state }
+    PoolSettled { reference: r, actual: _ } =>
+      if (r as String) == (reference as String) { SeatChargeScan { acquired_at: state.acquired_at, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: "settled" } } } else { state }
+    PoolLapsed => SeatChargeScan { acquired_at: state.acquired_at, returned_at: Absent, release_reason: Absent }
+    PoolUpstreamObserved { remaining: _, term_seconds: _ } => state
+    PoolResetObserved { reset_at: _ } => SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }
+  }
+}
+
+fn compute_seat_charge_returned(store: FabricStorageBinding, partition: PartitionId, ceiling: Kibibyte, reference: NonEmptyStr) -> ComputeSeatCharge {
+  match event_log_read_partition(store: store, partition: partition, budget: compute_partition_read_budget) {
+    PartitionReadRefused { cause: c } => SeatChargeUnproven { detail: event_log_refusal_wire(cause: c) }
+    PartitionReadOk { head: _, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+          SeatChargeUnproven { detail: join(["the partition chain is missing event ", m as String, "; an incomplete history cannot prove a charge was returned"], "") }
+        ChainBudgetExhausted { at: a } =>
+          SeatChargeUnproven { detail: join(["the partition chain exceeded the read budget at ", a as String, "; the history was not read to its end"], "") }
+        ChainWalked { oldest_first: xs } =>
+          match fold(xs, init: SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }, f: fn(acc, event) { seat_charge_scan_step(state: acc, event: event, reference: reference) }) {
+            SeatChargeScan { acquired_at: Absent, returned_at: _, release_reason: _ } => SeatChargeNeverAcquired { reference: reference }
+            SeatChargeScan { acquired_at: Present { value: at }, returned_at: Absent, release_reason: _ } => SeatChargeStillHeld { reference: reference, acquired_at: at }
+            SeatChargeScan { acquired_at: Present { value: at }, returned_at: Present { value: back }, release_reason: why } =>
+              SeatChargeReturned {
+                reference: reference,
+                acquired_at: at,
+                returned_at: back,
+                release_reason: match why { Present { value: w } => w as NonEmptyStr  Absent => "not named" as NonEmptyStr },
+                generation: match chain_generation(walk: walk) { Present { value: g } => g  Absent => 0 },
+              }
+          }
+      }
+  }
+}
+
+fn compute_seat_charge_wire(c: ComputeSeatCharge) -> String {
+  match c {
+    SeatChargeReturned { reference: r, returned_at: back, generation: g, acquired_at: _, release_reason: _ } => join([r as String, ": charge returned at ", to_string(value: back), " (ledger generation ", to_string(value: g), ")"], "")
+    SeatChargeStillHeld { reference: r, acquired_at: _ } => join([r as String, ": charge still held"], "")
+    SeatChargeNeverAcquired { reference: r } => join([r as String, ": the partition holds no acquisition for it"], "")
+    SeatChargeUnproven { detail: d } => join(["the charge's fate could not be read: ", d], "")
   }
 }
 
