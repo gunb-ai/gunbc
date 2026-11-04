@@ -1,7 +1,7 @@
 module test.claim.live_deploy.serve_entry_verdict_witness
 
 import std.types { Bool, Int, List, String }
-import std.algebra { join, string_contains }
+import std.algebra { string_contains }
 import gunbc.live_deploy.pre_swap_admission {
   deployment_requires_plan_serve_entry_verdict,
   ServeEntryVerdictRecord,

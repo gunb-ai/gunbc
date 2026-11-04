@@ -500,6 +500,31 @@ fn live_deploy_serve_unit_file_over(
   )
 }
 
+// ONE SOURCE FOR THE SERVE ARGV TEXT: the arguments the serve unit binds, besides the binary
+// path and --release-revision, which the ExecStart weaves around these segments. Both the unit's
+// ExecStart and the plan serve-entry verdict's argument digest derive from these segments, so a
+// renamed, added or reordered flag moves the digest and the unit together -- the swap's identity
+// binding cannot drift from what the unit actually binds (DESIGN §3: one fact, one place).
+
+fn live_deploy_serve_argv_segments(service: DeploymentServiceConfig, function: NonEmptyStr, listener: String) -> List<String> {
+  [
+    " serve",
+    deployment_serve_source_root_flags_text(),
+    " --entry ",
+    service.serve_entry as String,
+    " --function ",
+    function as String,
+    listener,
+  ]
+}
+
+fn live_deploy_serve_budget_argv_segments(service: DeploymentServiceConfig) -> List<String> {
+  [
+    eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: service.serve_cpu_limit),
+    eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: service.serve_wall_limit),
+  ]
+}
+
 fn live_deploy_serve_unit_file_over_listener(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>,
   description: NonEmptyStr, function: NonEmptyStr, listener: String,
@@ -518,16 +543,13 @@ fn live_deploy_serve_unit_file_over_listener(
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), concat(oidc_env, [
-      ExecStart { command: join([
-        fixed_serve_binary_path(binary: svc.serve_binary),
-        " serve",
-        deployment_serve_source_root_flags_text(),
-        " --entry ", svc.serve_entry as String, " --function ", function as String,
-        listener,
-        " --release-revision ", release_revision_execstart_text(binding: revision),
-        eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
-        eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
-      ], "") as NonEmptyStr },
+      ExecStart { command: join(concat([fixed_serve_binary_path(binary: svc.serve_binary)], concat(
+        live_deploy_serve_argv_segments(service: svc, function: function, listener: listener),
+        concat(
+          [" --release-revision ", release_revision_execstart_text(binding: revision)],
+          live_deploy_serve_budget_argv_segments(service: svc),
+        ),
+      )), "") as NonEmptyStr },
       Restart { policy: "on-failure" as NonEmptyStr },
     ]))),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },

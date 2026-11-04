@@ -19,9 +19,9 @@ import gunbc.live_deploy.desired {
 }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots }
 import gunbc.live_deploy.emit {
-  deployment_serve_source_root_flags_text,
-  eval_budget_flag_text,
   live_deploy_serve_listener_fragment,
+  live_deploy_serve_argv_segments,
+  live_deploy_serve_budget_argv_segments,
 }
 import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.output_policy { OutcomeIsData }
@@ -457,24 +457,21 @@ type ServeEntryVerdictDecode
   = ServeEntryVerdictDecoded { record: ServeEntryVerdictRecord }
   | ServeEntryVerdictUndecoded { detail: String }
 
-// The serve argv the unit's ExecStart binds, as one text. Built from the same helpers the emit
-// uses for ExecStart (deployment_serve_source_root_flags_text, eval_budget_flag_text), so this
-// is the unit's argv digested, not a second spelling of it minus the launch directory, the
-// binary path, and --release-revision -- those are covered by the compiler digest and the
-// revision in the same record.
+// THE VERDICT'S ARGUMENT DIGEST TEXT: derived from the SAME segments the serve unit's ExecStart
+// weaves around the binary and --release-revision (gunbc.live_deploy.emit
+// live_deploy_serve_argv_segments / live_deploy_serve_budget_argv_segments). The identity binding
+// therefore cannot drift from the text the unit actually binds: renaming, adding or reordering a
+// serve flag moves the digest and the unit together, in one place (DESIGN §3).
 fn serve_entry_argv_identity_text(spec: DeploymentSpec) -> String {
   let svc = spec.service
-  join([
-    "serve",
-    deployment_serve_source_root_flags_text(),
-    " --entry ",
-    svc.serve_entry as String,
-    " --function ",
-    svc.serve_function as String,
-    live_deploy_serve_listener_fragment(svc: svc),
-    eval_budget_flag_text(flag: "--cpu-budget", limit: svc.serve_cpu_limit),
-    eval_budget_flag_text(flag: "--wall-budget", limit: svc.serve_wall_limit),
-  ], "")
+  join(concat(
+    live_deploy_serve_argv_segments(
+      service: svc,
+      function: svc.serve_function,
+      listener: live_deploy_serve_listener_fragment(svc: svc),
+    ),
+    live_deploy_serve_budget_argv_segments(service: svc),
+  ), "")
 }
 
 fn serve_entry_argv_digest_of_text(text: String) -> String {
