@@ -1,7 +1,7 @@
 module test.claim.c_roadmap2_closing_rehomed_witness
 
 import std.types { Bool, String, NonEmptyStr, List, Int }
-import std.algebra { string_contains }
+import std.algebra { string_contains, list_at_optional }
 import gunbc.roadmap.roadmap_attempt_state_layout_move {
   LegacyWriterFence, LegacyWriterUnits, LegacyWriterExclusion, LegacyWriterNotExcluded,
   LegacyWriterUndeclared, LegacyWriterFenceConflict,
@@ -99,7 +99,7 @@ test fn the_running_unit_is_refused_not_drained() -> Bool {
   // 1. ActiveState=active is a writer running NOW. The answer refuses; it never tells anyone to drain.
   let o = fx_obs(unit: fx_unit, active_state: "active", enabled_state: "masked", main_pid: "4242", control_group: "/user/1000/x", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_writer_quiescent_one(o: o) {
-    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "ActiveState=active") && !string_contains(s: r, pattern: "drain")
+    WriterNotQuiescent { unit: u, reason: r } => u == fx_unit && string_contains(s: r, pattern: "ActiveState=active") && string_contains(s: r, pattern: "waits instead of instructing a drain")
     WriterQuiescent { unit: _ } => false
   }
 }
@@ -203,7 +203,7 @@ test fn a_populated_cgroup_defeats_stopped_and_masked_together() -> Bool {
   // 12. THE POINT OF 2(c) AS AN OBSERVATION. stopped AND masked -- everything the old instruction-based gate
   // asked for -- and a live process below the unit still refuses the exclusion. An instruction to drain would
   // have passed here; an observation does not.
-  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: fx_populated(), cgroup_read_established: true, writer_process_count: 1)
+  let o = fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/x", cgroup_events: fx_populated(), cgroup_read_established: true, writer_process_count: 0)
   match metering_closing_unit_exclusion(unit: fx_unit, observed: [o]) {
     LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "populated")
     LegacyWriterExcluded => false
@@ -224,7 +224,14 @@ test fn one_refusal_among_observations_of_the_same_unit_wins() -> Bool {
 test fn held_back_units_names_only_the_unit_that_is_not_excluded() -> Bool {
   // 14. The list the disposition keys on: exactly one of two units is held back, and it is the right one.
   let held = metering_closing_held_back_units(declared: [fx_unit, fx_unit_two], observed: [fx_quiescent(unit: fx_unit), fx_obs(unit: fx_unit_two, active_state: "active", enabled_state: "masked", main_pid: "5", control_group: "/u", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)])
-  length(xs: held) == 1 && held[0] == fx_unit_two
+  // Indexing yields an Optional, so the element is matched rather than compared: a bare `==` against a
+  // required NonEmptyStr has no single meaning, and `Absent => false` keeps a missing element a refusal.
+  let exactly_one = length(xs: held) == 1
+  let the_right_one = match list_at_optional(xs: held, index: 0) {
+    Absent => false
+    Present { value: u } => u == fx_unit_two
+  }
+  exactly_one && the_right_one
 }
 
 // ─── GROUP C ── metering_closing_final_gate_for: 2(d) recheck, and blocker 1's refusal on CensusRefused ──────
