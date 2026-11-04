@@ -24,7 +24,7 @@ import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_ro
 import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
-import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
+import gunbc.live_deploy.serve_binary { AdmittedFixedServeBinary, serve_binary_path, fixed_serve_binary_path }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -481,7 +481,7 @@ fn live_deploy_serve_unit_emission_at(
 // THE LISTENER FRAGMENT OF THE SERVE COMMAND, one spelling shared by the emitted ExecStart and
 // the plan's serve-entry verdict identity (gunbc.live_deploy.pre_swap_admission), so the digest
 // covers the argv the unit really binds and not a hand-copied likeness of it.
-fn live_deploy_serve_listener_fragment(svc: DeploymentServiceConfig) -> String {
+fn live_deploy_serve_listener_fragment(svc: DeploymentServiceConfig<AdmittedFixedServeBinary>) -> String {
   join([" --host ", svc.listen.host, " --port ", to_string(svc.listen.port)], "")
 }
 
@@ -506,7 +506,7 @@ fn live_deploy_serve_unit_file_over(
 // renamed, added or reordered flag moves the digest and the unit together -- the swap's identity
 // binding cannot drift from what the unit actually binds (DESIGN §3: one fact, one place).
 
-fn live_deploy_serve_argv_segments(service: DeploymentServiceConfig, function: NonEmptyStr, listener: String) -> List<String> {
+fn live_deploy_serve_argv_segments(service: DeploymentServiceConfig<AdmittedFixedServeBinary>, function: NonEmptyStr, listener: String) -> List<String> {
   [
     " serve",
     deployment_serve_source_root_flags_text(),
@@ -518,7 +518,7 @@ fn live_deploy_serve_argv_segments(service: DeploymentServiceConfig, function: N
   ]
 }
 
-fn live_deploy_serve_budget_argv_segments(service: DeploymentServiceConfig) -> List<String> {
+fn live_deploy_serve_budget_argv_segments(service: DeploymentServiceConfig<AdmittedFixedServeBinary>) -> List<String> {
   [
     eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: service.serve_cpu_limit),
     eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: service.serve_wall_limit),
