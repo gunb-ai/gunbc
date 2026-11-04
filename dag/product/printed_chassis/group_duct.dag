@@ -9,8 +9,8 @@ import product.printed_chassis.assembly_geometry {
   ProfileVertex, block, part, mechanical_interface, prism, M5FanScrewIntoBlowerLug,
 }
 import product.printed_chassis.blower_outlet_mount {
-  OutletMount, outlet_mount_unfit, label_normal_y, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
-  socket_x_lo, socket_x_hi, opening_half_y, outlet_mount_note, blower_lug_arm_thickness, lug_screw_part,
+  OutletMount, EdgeAlongY, outlet_mount_unfit, run_for_label, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
+  socket_edge_lo, socket_edge_hi, opening_edge_lo, opening_edge_hi, opening_half_thickness, outlet_mount_note, label_side_stack, lug_screw_part, housing_box,
 }
 import extdeps.fans.delta { delta_bfb1012m_outlet }
 import product.printed_chassis.fit_observations { a2_row_fit_plate_fit_display }
@@ -84,7 +84,6 @@ type GroupFitPlateAdmission
   | GroupMemberFaceUnfit { instance: NonEmptyStr, reason: String }
   | GroupMemberConnectorNotClear { instance: NonEmptyStr, reason: String }
   | GroupDuctAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
-  | GroupMembersNotPaired { count: Int }
   | GroupBlowerUnfit { reason: String }
 
 fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
@@ -152,7 +151,6 @@ fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?, duct: Bool) ->
         let parts = group_fit_plate_parts(faces: faces, toward: 1)
         return GroupFitPlateAdmitted { parts: parts, interfaces: group_fit_plate_joints(cards: map(filter(parts, x => match x.kind { Purchased => true _ => false }), x => x.id), plate_id: "FIT-PLATE") }
       }
-      if length(list: faces) % 2 != 0 { return GroupMembersNotPaired { count: length(list: faces) } }
       match outlet_mount_unfit() { Present { value: r } => return GroupBlowerUnfit { reason: r } Absent => {} }
       match blower_duct_design_of(row: first.instance.card.row) {
         Absent => GroupBlowerUnfit { reason: "the card row states no slot count, so no blower design is derived for it" }
@@ -263,52 +261,47 @@ fn group_fit_plate_readme(p: GroupDuctPlan) -> String {
   join(["Group fit plate for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nThe card interface of the group duct alone: one plate over every member's end face and an outer sleeve around the row.\nPrint plate-down without support. Push it on: check that the plate rests flat on every face, that the sleeve holds it on, and that nothing along the outside of the row stops the sleeve short.\n", p.fit_record, "\n"], "")
 }
 
-// ═══ THE BLOWER STAGES: ONE DELTA BFB1012M PER PAIR OF CARDS ═══
+// ═══ THE BLOWER STAGE: ONE DELTA BFB1012M LYING FLAT, FEEDING THE WHOLE ROW ═══
 //
-// The operator's arrangement (2026-11-02: one piece over all four, two fans, one per pair; 2026-11-04: the Delta,
-// held by its outlet and one screw). In the duct's frame the cards run toward -Z from their end faces at Z = 0,
-// the plate lies on Z 0 to its thickness, and behind it each pair's plenum rises GROUP_PLENUM_LENGTH to the
-// outlet socket (product.printed_chassis.blower_outlet_mount), with the housing standing above it. The outlet edge
-// runs along the face toward the cards' TOP end, so the housing overhangs the row on that side, away from the
-// board. The plenum takes the pair's two fin openings at the plate and narrows to the outlet; the plate between
-// the two openings stays, so the air divides between the two cards.
+// The operator's arrangement (2026-11-04, after the first stage design was too tall for the A2 chassis: two
+// blowers standing behind the row overhung the cards' top edge by about 37 mm). The board lies flat and the cards
+// stand on it, so ONE blower lies flat behind the row at the top of the plate: its 33 mm thickness runs along
+// the cards' height, its outlet edge across the slots, and the whole mount -- socket walls, screw arm and screw
+// head -- stays at or below the cards' top edge. Its label face, carrying the arm, faces up; its intake faces
+// down toward the board, where the chassis has room. Its body hangs out behind the row above the board.
 //
-// THE FANS ARE SPREAD APART so each intake has free air: the intake is on the unlabelled face only, and every
-// blower's label face (and its screw arm) faces the same way, so a blower's intake faces its neighbour's arm.
-// The pitch is the pairs' own pitch or, where that is tighter, the housing, the arm and GROUP_BLOWER_INTAKE_GAP
-// of free air, whichever is larger; the plenums lean outward to reach it. 20 mm is a design allowance, not a
-// measured requirement: no flow through this duct has been observed.
-data group_plenum_length: Micrometer = micrometer(count: 25000)
-data group_blower_intake_gap: Micrometer = micrometer(count: 20000)
-
-type PairSpan { lo: Int, hi: Int }
-type PairAcc { index: Int, pending: Int, spans: List<PairSpan> }
-
-// Each consecutive pair's fin openings, across the slots.
-fn pair_spans(faces: List<GroupMemberFace>) -> List<PairSpan> {
-  let r = fold(faces, init: PairAcc { index: 0, pending: 0, spans: [] }, f: (acc, mf) =>
-    if acc.index % 2 == 0 { PairAcc { index: acc.index + 1, pending: opening_low_y(mf: mf), spans: acc.spans } }
-    else { PairAcc { index: acc.index + 1, pending: 0, spans: concat(acc.spans, [PairSpan { lo: acc.pending, hi: opening_low_y(mf: mf) + um(m: mf.face.window_depth) }]) } })
-  r.spans
-}
-
-type CentreAcc { index: Int, found: Int }
-
-fn span_centre(spans: List<PairSpan>, k: Int) -> Int {
-  let r = fold(spans, init: CentreAcc { index: 0, found: 0 }, f: (acc, sp) => CentreAcc { index: acc.index + 1, found: if acc.index == k { (sp.lo + sp.hi) / 2 } else { acc.found } })
-  r.found
-}
+// THE PLENUM narrows in two stages because the primitives here extrude a profile along one axis and cannot loft
+// two rectangles: first the height, from the four fin openings' span to the outlet's 29.3 mm, then the width,
+// from the openings' span across the slots to the outlet's 53.9 mm, centred on it. The outlet is centred on the
+// row's openings, so the housing overhangs the row on its corner's far side (toward the first card).
+//
+// THE AIR IS AN ESTIMATE, not a qualification (product.printed_chassis.group_cooling_plan says what that would
+// take). At the operator's ~37 W per card (the A2's lowest settable cap is 40 W, extdeps.gpu.nvidia_a2) the row
+// needs about 8 L/s through its fins for a 15 K air rise; the blower's free-air flow is 10.7 L/s and its
+// zero-flow pressure 186 Pa (extdeps.fans.delta delta_bfb1012m_rating). Whether the fins' impedance leaves it
+// there is read by running the cards capped and watching their temperatures.
+data group_plenum_height_taper: Micrometer = micrometer(count: 18000)
+data group_plenum_width_taper: Micrometer = micrometer(count: 12000)
 
 type BlowerStages { adds: List<Primitive>, cuts: List<Primitive>, envelopes: List<AssemblyPart>, screws: List<AssemblyPart>, joints: List<MechanicalInterface> }
 
-fn group_blower_pitch(spans: List<PairSpan>, b: BlowerDuctDesign) -> Int {
-  let half = housing_half(thickness: b.blower.thickness, tolerance: b.blower.thickness_tolerance)
-  let needed = um(m: group_blower_intake_gap) + 2 * half + um(m: b.socket_clearance) + um(m: blower_lug_arm_thickness)
-  let natural = if length(list: spans) < 2 { 0 } else { span_centre(spans: spans, k: 1) - span_centre(spans: spans, k: 0) }
-  if natural > needed { natural } else { needed }
+type FaceSpan { x_lo: Int, x_hi: Int, y_lo: Int, y_hi: Int, top: Int }
+
+// The four openings' joint span, and the faces' top end.
+fn openings_span(faces: List<GroupMemberFace>) -> FaceSpan {
+  fold(faces, init: FaceSpan { x_lo: 1000000000, x_hi: 0 - 1000000000, y_lo: 1000000000, y_hi: 0 - 1000000000, top: 0 - 1000000000 }, f: (acc, mf) => {
+    let ylo = opening_low_y(mf: mf)
+    let yhi = ylo + um(m: mf.face.window_depth)
+    let xb = opening_bottom_x(f: mf.face)
+    let xt = opening_top_x(f: mf.face)
+    let top = um(m: mf.face.face_length) / 2
+    FaceSpan { x_lo: if xb < acc.x_lo { xb } else { acc.x_lo }, x_hi: if xt > acc.x_hi { xt } else { acc.x_hi },
+      y_lo: if ylo < acc.y_lo { ylo } else { acc.y_lo }, y_hi: if yhi > acc.y_hi { yhi } else { acc.y_hi }, top: if top > acc.top { top } else { acc.top } }
+  })
 }
 
-type StageAcc { index: Int, out: BlowerStages }
+fn y_prism(outline: List<ProfileVertex>, x_lo: Int, x_hi: Int) -> Primitive { prism(outline: outline, axis: Axis3X, length: x_hi - x_lo, x: (x_lo + x_hi) / 2, y: 0, z: 0) }
+fn x_prism_along_y(outline: List<ProfileVertex>, y_lo: Int, y_hi: Int) -> Primitive { prism(outline: outline, axis: Axis3Y, length: y_hi - y_lo, x: 0, y: (y_lo + y_hi) / 2, z: 0) }
 
 fn group_blower_stages(faces: List<GroupMemberFace>, b: BlowerDuctDesign) -> BlowerStages {
   let policy = plug_and_flange_print_policy
@@ -316,44 +309,45 @@ fn group_blower_stages(faces: List<GroupMemberFace>, b: BlowerDuctDesign) -> Blo
   let w = um(m: policy.ring_exercised.wall)
   let c = um(m: b.socket_clearance)
   let half = housing_half(thickness: b.blower.thickness, tolerance: b.blower.thickness_tolerance)
-  let spans = pair_spans(faces: faces)
-  let n = length(list: spans)
-  let pitch = group_blower_pitch(spans: spans, b: b)
-  let mid = (span_centre(spans: spans, k: 0) + span_centre(spans: spans, k: n - 1)) / 2
-  // Every member is one card model with its face aligned along X (admission refuses otherwise), so any face gives it.
-  let wc = fold(faces, init: 0, f: (acc, mf) => (opening_top_x(f: mf.face) + opening_bottom_x(f: mf.face)) / 2)
-  let corner = wc - um(m: delta_bfb1012m_outlet.frame_along_edge) / 2
-  let mz = t + um(m: group_plenum_length)
-  let oh = opening_half_y()
-  let r = fold(spans, init: StageAcc { index: 0, out: BlowerStages { adds: [], cuts: [], envelopes: [], screws: [], joints: [] } }, f: (acc, sp) => {
-    let cy = mid + (2 * acc.index - (n - 1)) * pitch / 2
-    let m = OutletMount { corner_x: corner, run: 1, fan_y: cy, mouth_z: mz, body: 1 }
-    let sxl = socket_x_lo(m: m, clearance: b.socket_clearance, wall: policy.ring_exercised.wall)
-    let sxh = socket_x_hi(m: m, clearance: b.socket_clearance, wall: policy.ring_exercised.wall)
-    let so = half + c + w
-    let outer = prism(outline: [ProfileVertex { u: sp.lo - w, v: t - 500 }, ProfileVertex { u: sp.hi + w, v: t - 500 }, ProfileVertex { u: cy + so, v: mz }, ProfileVertex { u: cy - so, v: mz }], axis: Axis3X, length: sxh - sxl, x: (sxl + sxh) / 2, y: 0, z: 0)
-    let channel = prism(outline: [ProfileVertex { u: sp.lo, v: t }, ProfileVertex { u: sp.hi, v: t }, ProfileVertex { u: cy + oh, v: mz + 500 }, ProfileVertex { u: cy - oh, v: mz + 500 }], axis: Axis3X, length: um(m: delta_bfb1012m_outlet.opening_along_edge), x: wc, y: 0, z: 0)
-    let k = acc.index + 1
-    let envelope = part(id: join(["FAN-", to_string(value: k)], ""), name: join(["Delta BFB1012M radial blower envelope, pair ", to_string(value: k)], ""), kind: Purchased, scope: FixedFrame,
-      adds: [block(w: um(m: b.blower.housing_depth), h: 2 * half, d: um(m: b.blower.housing_length), x: corner + um(m: b.blower.housing_depth) / 2, y: cy, z: mz + um(m: b.blower.housing_length) / 2)],
-      cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 120000, plane: LayOnXY,
-      notes: "Bounding envelope only: the housing is a rounded scroll inside it. Outlet frame down in the socket, label face against the screw arm, intake on the other face.")
-    StageAcc { index: k, out: BlowerStages {
-      adds: concat(concat(acc.out.adds, [outer]), concat(outlet_socket_adds(m: m, half: half, clearance: b.socket_clearance, wall: policy.ring_exercised.wall, depth: b.socket_depth), lug_arm_adds(m: m, half: half, clearance: b.socket_clearance, wall: policy.ring_exercised.wall))),
-      cuts: concat(concat(acc.out.cuts, [channel]), concat(outlet_socket_cuts(m: m, half: half, clearance: b.socket_clearance, depth: b.socket_depth), lug_arm_cuts(m: m, half: half, clearance: b.socket_clearance))),
-      envelopes: concat(acc.out.envelopes, [envelope]),
-      screws: concat(acc.out.screws, [lug_screw_part(m: m, half: half, clearance: b.socket_clearance, id: join(["SCREW-", to_string(value: k)], ""))]),
-      joints: concat(acc.out.joints, [group_blower_joint(k: k)]),
-    } }
-  })
-  r.out
+  let sp = openings_span(faces: faces)
+  // The housing's label face sits one arm stack below the faces' top, so nothing stands above the cards.
+  let xc = sp.top - label_side_stack(clearance: b.socket_clearance) - half
+  let oh = opening_half_thickness()
+  let run = run_for_label(edge: EdgeAlongY, body: 1, toward: 1)
+  let wc = (sp.y_lo + sp.y_hi) / 2
+  let corner = wc - run * um(m: delta_bfb1012m_outlet.frame_along_edge) / 2
+  let z1 = t + um(m: group_plenum_height_taper)
+  let mz = z1 + um(m: group_plenum_width_taper)
+  let m = OutletMount { edge: EdgeAlongY, corner: corner, run: run, centre: xc, mouth_z: mz, body: 1 }
+  let oy_lo = opening_edge_lo(m: m)
+  let oy_hi = opening_edge_hi(m: m)
+  let sy_lo = socket_edge_lo(m: m, clearance: b.socket_clearance, wall: policy.ring_exercised.wall)
+  let sy_hi = socket_edge_hi(m: m, clearance: b.socket_clearance, wall: policy.ring_exercised.wall)
+  let so = half + c + w
+  // Stage 1, along Y: the height narrows from the openings to the outlet; the width stays the openings'.
+  let outer1 = x_prism_along_y(outline: [ProfileVertex { u: sp.x_lo - w, v: t - 500 }, ProfileVertex { u: sp.x_hi + w, v: t - 500 }, ProfileVertex { u: xc + oh + w, v: z1 }, ProfileVertex { u: xc - oh - w, v: z1 }], y_lo: sp.y_lo - w, y_hi: sp.y_hi + w)
+  let chan1 = x_prism_along_y(outline: [ProfileVertex { u: sp.x_lo, v: t }, ProfileVertex { u: sp.x_hi, v: t }, ProfileVertex { u: xc + oh, v: z1 + 500 }, ProfileVertex { u: xc - oh, v: z1 + 500 }], y_lo: sp.y_lo, y_hi: sp.y_hi)
+  // Stage 2, along X: the width narrows from the openings to the outlet, at the outlet's height.
+  let outer2 = y_prism(outline: [ProfileVertex { u: sp.y_lo - w, v: z1 }, ProfileVertex { u: sp.y_hi + w, v: z1 }, ProfileVertex { u: sy_hi, v: mz }, ProfileVertex { u: sy_lo, v: mz }], x_lo: xc - so, x_hi: xc + so)
+  let chan2 = y_prism(outline: [ProfileVertex { u: sp.y_lo, v: z1 }, ProfileVertex { u: sp.y_hi, v: z1 }, ProfileVertex { u: oy_hi, v: mz + 500 }, ProfileVertex { u: oy_lo, v: mz + 500 }], x_lo: xc - oh, x_hi: xc + oh)
+  let envelope = part(id: "FAN-1", name: "Delta BFB1012M radial blower envelope, lying flat behind the row", kind: Purchased, scope: FixedFrame,
+    adds: [housing_box(m: m, half: half, edge_length: b.blower.housing_depth, rise: b.blower.housing_length)],
+    cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 120000, plane: LayOnXY,
+    notes: "Bounding envelope only: the housing is a rounded scroll inside it. Outlet frame in the socket, label face up against the screw arm, intake facing down toward the board.")
+  BlowerStages {
+    adds: concat(concat([outer1, outer2], outlet_socket_adds(m: m, half: half, clearance: b.socket_clearance, wall: policy.ring_exercised.wall, depth: b.socket_depth)), lug_arm_adds(m: m, half: half, clearance: b.socket_clearance, wall: policy.ring_exercised.wall)),
+    cuts: concat(concat([chan1, chan2], outlet_socket_cuts(m: m, half: half, clearance: b.socket_clearance, depth: b.socket_depth)), lug_arm_cuts(m: m, half: half, clearance: b.socket_clearance)),
+    envelopes: [envelope],
+    screws: [lug_screw_part(m: m, half: half, clearance: b.socket_clearance, id: "SCREW-1")],
+    joints: [group_blower_joint(k: 1)],
+  }
 }
 
 fn group_duct_merge(plate: List<AssemblyPart>, stages: BlowerStages) -> List<AssemblyPart> {
   map(plate, x => if x.id == "FIT-PLATE" {
-    AssemblyPart { id: "DUCT", name: join(["Group duct: the fit plate and sleeve over ", to_string(value: length(list: stages.envelopes) * 2), " end faces, and a Delta BFB1012M socket per pair"], ""), kind: x.kind, scope: x.scope,
+    AssemblyPart { id: "DUCT", name: "Group duct: the fit plate and sleeve over the row's end faces, and one flat Delta BFB1012M socket feeding them all", kind: x.kind, scope: x.scope,
       adds: concat(x.adds, stages.adds), cuts: concat(x.cuts, stages.cuts), at: x.at, explode: x.explode, print_plane: x.print_plane,
-      notes: join(["Print sleeve-down (the plate's card side toward the bed) with supports: under the plate inside the sleeve, and under each screw arm where it runs past its socket. ", outlet_mount_note(), " Do it for each blower, then push the duct onto the row of card ends: the sleeve slides along the outside of the row and holds by friction."], "") }
+      notes: join(["Print sleeve-down (the plate's card side toward the bed) with supports: under the plate inside the sleeve, and under the screw arm where it runs past the socket. ", outlet_mount_note(), " Then push the duct onto the row of card ends: the sleeve slides along the outside of the row and holds by friction."], "") }
   } else { x })
 }
 
@@ -363,9 +357,9 @@ fn group_blower_joint(k: Int) -> MechanicalInterface {
 }
 
 fn group_duct_readme(p: GroupDuctPlan) -> String {
-  join(["Group duct for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nOne printed part, DUCT: the fit plate and its ", to_string(value: um(m: group_sleeve_depth) / 1000), " mm sleeve over the row's end faces, and behind it one plenum and outlet socket per pair of cards for a Delta BFB1012M, each with a screw arm.\n",
-    "Print sleeve-down with supports (under the plate inside the sleeve and under the screw arms). PETG.\n",
-    "Assembly: ", outlet_mount_note(), " Do it for each blower, then push the duct onto the card ends. The blowers' bodies stand behind the row and overhang it toward the cards' top end.\n",
-    "Check at the fit: the plate rests flat on every face and the sleeve holds; each blower seats in its socket without rocking and the screw reaches its lug; nothing behind or above the row touches a blower; each intake (the unlabelled face) has free air.\n",
+  join(["Group duct for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nOne printed part, DUCT: the fit plate and its ", to_string(value: um(m: group_sleeve_depth) / 1000), " mm sleeve over the row's end faces, and behind it a two-stage plenum to one outlet socket for a Delta BFB1012M lying flat, label face up under a screw arm.\n",
+    "Print sleeve-down with supports (under the plate inside the sleeve and under the screw arm). PETG.\n",
+    "Assembly: ", outlet_mount_note(), " Then push the duct onto the card ends. The blower lies flat behind the row with its top at or below the cards' top edge, its body over the board and its intake facing down.\n",
+    "Check at the fit: the plate rests flat on every face and the sleeve holds; the blower seats in its socket without rocking and the screw reaches its lug; nothing under the blower (the coin cell, headers) touches it or its plenum; the intake has free air below it.\n",
     p.fit_record, "\n"], "")
 }

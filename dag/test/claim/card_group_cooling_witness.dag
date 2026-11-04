@@ -221,15 +221,15 @@ test fn the_a2_row_fit_plate_is_the_plate_and_its_sleeve_alone() -> Bool {
   }
 }
 
-// THE REAL A2 ROW DUCT is one printed part -- the plate, its sleeve and a blower socket per pair -- with one
-// Delta blower and one lug screw for each of the two pairs, each screw a joint of its own.
-test fn the_a2_row_duct_carries_one_blower_and_screw_per_pair() -> Bool {
+// THE REAL A2 ROW DUCT is one printed part -- the plate, its sleeve, the plenum and one blower socket -- with
+// ONE Delta blower lying flat for the whole row and its one lug screw as a joint.
+test fn the_a2_row_duct_carries_one_flat_blower_and_its_screw() -> Bool {
   match admit_group_duct(p: a2_altra_row_plan) {
     GroupDuctAdmitted { parts: ps, interfaces: js } =>
       length(list: filter(ps, x => match x.kind { Printed => true _ => false })) == 1
-        && any(ps, x => x.id == "DUCT") && any(ps, x => x.id == "FAN-1") && any(ps, x => x.id == "FAN-2") && any(ps, x => x.id == "FAN-3") == false
-        && any(ps, x => x.id == "SCREW-1") && any(ps, x => x.id == "SCREW-2")
-        && length(list: filter(js, j => match j.fastener { M5FanScrewIntoBlowerLug => true _ => false })) == 2
+        && any(ps, x => x.id == "DUCT") && any(ps, x => x.id == "FAN-1") && any(ps, x => x.id == "FAN-2") == false
+        && any(ps, x => x.id == "SCREW-1") && any(ps, x => x.id == "SCREW-2") == false
+        && length(list: filter(js, j => match j.fastener { M5FanScrewIntoBlowerLug => true _ => false })) == 1
     _ => false
   }
 }
