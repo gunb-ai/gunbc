@@ -5684,6 +5684,19 @@ pub fn equality_presence_walk(inner: Rc<EqualityWalk>) -> Rc<EqualityWalk> {
     }
 }
 
+pub fn equality_optional_payload(n: Rc<Node>) -> Rc<Node> {
+    if ((n.return_cardinality.clone() == Cardinality::CardOptional)
+        || (n.name.clone() == "Optional".to_string()))
+    {
+        crate::v1_compiler_infer_types::extract_optional_inner_node(n.clone())
+    } else {
+        match n.children.clone().first().cloned() {
+            Some(inner) => inner.clone(),
+            std::option::Option::None => n.clone(),
+        }
+    }
+}
+
 pub fn equality_operand_walk(
     n: Rc<Node>,
     scope: Rc<InferScope>,
@@ -5705,13 +5718,19 @@ pub fn equality_operand_walk(
                 if (((peeled.return_cardinality.clone() == Cardinality::CardOptional)
                     || ((peeled.name.clone() == "Optional".to_string())
                         && ((peeled.children.clone().len() as i64) == 1)))
-                    || (((((peeled.children.clone().len() as i64) == 1)
+                    || ((((((peeled.children.clone().len() as i64) == 1)
                         && (peeled.connective.clone() != Connective::Conj))
                         && (peeled.connective.clone() != Connective::Disj))
+                        && (crate::v1_std_core::qualified_last_segment(
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                peeled.clone(),
+                            ),
+                        ) == "Optional".to_string()))
                         && node_is_std_optional(peeled.clone(), scope.clone())))
                 {
                     equality_presence_walk(equality_operand_walk(
-                        crate::v1_compiler_infer_types::extract_optional_inner_node(peeled.clone()),
+                        equality_optional_payload(peeled.clone()),
                         scope.clone(),
                         visited.clone(),
                         depth.clone(),
@@ -6212,15 +6231,19 @@ pub fn equality_argument_by_target(n: Rc<Node>, scope: Rc<InferScope>, depth: i6
                     if (((peeled.return_cardinality.clone() == Cardinality::CardOptional)
                         || ((peeled.name.clone() == "Optional".to_string())
                             && ((peeled.children.clone().len() as i64) == 1)))
-                        || (((((peeled.children.clone().len() as i64) == 1)
+                        || ((((((peeled.children.clone().len() as i64) == 1)
                             && (peeled.connective.clone() != Connective::Conj))
                             && (peeled.connective.clone() != Connective::Disj))
+                            && (crate::v1_std_core::qualified_last_segment(
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    peeled.clone(),
+                                ),
+                            ) == "Optional".to_string()))
                             && node_is_std_optional(peeled.clone(), scope.clone())))
                     {
                         equality_argument_by_target(
-                            crate::v1_compiler_infer_types::extract_optional_inner_node(
-                                peeled.clone(),
-                            ),
+                            equality_optional_payload(peeled.clone()),
                             scope.clone(),
                             v1_rt::int_add(depth.clone(), 1),
                         )
