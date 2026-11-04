@@ -68,6 +68,7 @@ fn instance_dedicated_at(root: String) -> HostDashboardInstance {
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
     admitted_revision: fleet_admitted_revision_source,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
     publication_base_branch: "main" as NonEmptyStr,
     worker: WorkerDedicatedAccount,
     provision_parent_root: dashboard_home_provision_parent_root,
