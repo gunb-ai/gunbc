@@ -36,7 +36,7 @@ if kind == "thrash":     # anon 0.9E + hot file 0.5E > E, anon alone below max: 
 if kind == "grow":       # anon grows to 1.6E: plain allocation overrun
     alloc(int(1.6 * E)); print("grow: SURVIVED (bad)", flush=True); touch(600, int(0.5 * E))
 PY
-ONLY=${ONLY:-ABCDEF}
+ONLY=${ONLY:-ABCDEFG}
 run_case() { # name highcfg oomd(0|unit|slice) fixture [cpuquota]
   case "$ONLY" in *"${1:0:1}"*) ;; *) return 0;; esac
   local shape=$1 high=$2 oomd=$3 fx=$4 cpuq=${5:-100%} unit="slotctl-$1-$4" slice=""
@@ -74,6 +74,7 @@ for fx in under grow thrash; do
   run_case B_nohigh    infinity 0 $fx   # MemoryHigh removed: kernel OOM only
   run_case C_cur_oomd  1950M unit $fx   # today's shape + oomd pressure kill on the unit
   run_case D_nohi_oomd infinity unit $fx
+  run_case G_high_eq_max 2G 0 $fx   # MemoryHigh == MemoryMax: does equal-high throttle before the kernel OOM?
   run_case E_slice_oomd 1950M slice $fx   # oomd on a parent slice, fixture a child unit
   [ "$fx" = thrash ] && run_case F_nocpuq 1950M unit $fx infinity   # rule out CPUQuota capping the stall   # no high + oomd pressure kill
 done
