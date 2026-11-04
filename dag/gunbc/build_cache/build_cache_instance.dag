@@ -7,6 +7,7 @@ import std.cache_identity { CacheInterfaceId }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
 import extdeps.cache.sccache { SccacheServerEndpoint, SccacheServerUnixSocket, sccache_local_id }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryEventCounters }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.host.host_layout {
   gunbc_managed_compile_pool_slice,
@@ -251,13 +252,15 @@ type CgroupMemoryLimits {
   memory_current: ByteSize
 }
 
-type CgroupMemoryEvents {
-  low: Nat
-  high: Nat
-  max: Nat
-  oom: Nat
-  oom_kill: Nat
-}
+// THE EVENTS COUNTERS ARE NOT RE-COINED HERE. The five fields this observation reads are five of
+// the entries the kernel's events files carry, and the authority for those files is
+// extdeps.linux.cgroup_v2_memory (CgroupMemoryEventCounters), which is where the two files are named
+// as interface files and where the five counters are named once. What that consolidation does NOT do
+// is recorded rather than glossed: this field is one record and does not say WHICH of the two files
+// it was read from, and the files differ exactly in hierarchy -- memory.events is hierarchical,
+// memory.events.local is not -- so a count read from a hierarchical file can still be charged to the
+// level that asked. Naming the source file on the observation is the next rung; this change does not
+// claim it.
 
 data endpoint_ownership_note: String = "ENDPOINT OWNERSHIP IS THE PRIMARY OBSERVATION; PROCESS NAME PLUS CGROUP IS NOT ENOUGH. The sccache binary is both client and server, so under RUSTC_WRAPPER every in-flight compile also runs a process named 'sccache' inside the cgroup of the runner that issued it. Those clients are HEALTHY and expected — srv1 carried three of them (ages 296s, 112s, 86s, under live slots 01/04/05) at the moment the receipt was taken — so a probe that selects sccache processes by name and reads a cgroup samples a client and reports the WRONG placement, and a probe that refuses on 'multiple sccache processes' produces a FALSE refusal in the ordinary case. The server is identified positively and uniquely as the process HOLDING THE LISTEN on the instance's configured endpoint. For the UDS shape the whole chain is non-mutating and needs no sccache invocation: the exact endpoint path in /proc/net/unix yields the listening socket inode, /proc/*/fd resolves that inode to one owning pid, and /proc/pid/\{exe,environ,cgroup,stat\} yields executable, principal, unit and cgroup. It depends on no pgrep, head -1, ss or lsof, and it refuses naturally when the path, the inode, or the owner is not exactly one."
 
@@ -309,7 +312,7 @@ type BuildCacheEndpointObservation
       principal: NonEmptyStr
       owner_context: EndpointOwnerContext
       memory_limits: CgroupMemoryLimits?
-      memory_events: CgroupMemoryEvents?
+      memory_events: CgroupMemoryEventCounters?
     }
   | EndpointOwnershipAmbiguous { instance: BuildCacheInstance, candidate_count: Nat }
   | EndpointObservationUnavailable {

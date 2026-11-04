@@ -32,7 +32,7 @@ import extdeps.github.actions_runner {
   actions_runner_base_dir,
   actions_runner_cache_dir,
   ActionsRunnerBinaryArtifact,
-  actions_runner_release_2_336_0,
+  actions_runner_release_2_338_2,
   actions_runner_base_dir_ensure_script,
   actions_runner_slot_extract_script,
   actions_runner_binary_artifact_for_arch,
@@ -893,7 +893,7 @@ fn runner_slot_converge_verdict(
 // architecture, so a slot rebuilt for a new role carries exactly what a newly added slot carries.
 fn fleet_runner_slot_artifact() -> ActionsRunnerBinaryArtifact? {
   actions_runner_binary_artifact_for_arch(
-    binary_release: actions_runner_release_2_336_0,
+    binary_release: actions_runner_release_2_338_2,
     arch: altra_max_m12830_catalog.architecture,
   )
 }
