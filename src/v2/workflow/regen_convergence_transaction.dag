@@ -1,6 +1,7 @@
 module v2.workflow.regen_convergence_transaction
 
 import std.types { Bool, Int, List, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
 
 // A convergence transaction promotes generated surfaces through buildable seed states. The three axes below are deliberately independent: being compiled into the seed does not make a surface a producer of the next generation, and sharing a crate partition does not prove that a compatibility cut is complete.
 type RegenGenerationRole
@@ -108,6 +109,12 @@ type RegenConvergenceRefusal
   | GenerationMadeNoProgress { generation_id: String }
   | GenerationCycleDetected { seed_digest: String, candidate_tree_digest: String }
   | GenerationBoundExceeded { bound: Int }
+  | GenerationStateRetainedByOrchestrator {
+      ordinal: Int
+      resident_at_first: ByteSize
+      resident_now: ByteSize
+      growth_bound: ByteSize
+    }
   | FinalRegenerationStillDrifts { surfaces: List<RegenSurfaceIdentity> }
   | FinalRustConsistencyInstrumentRefused { reason: String }
   | TransactionRestoreRefused { reason: String }
@@ -635,6 +642,8 @@ fn regen_convergence_refusal_detail(refusal: RegenConvergenceRefusal) -> String 
     GenerationCycleDetected { seed_digest: seed, candidate_tree_digest: tree } =>
       concat("GenerationCycleDetected seed_digest=", concat(seed, concat(" candidate_tree_digest=", tree)))
     GenerationBoundExceeded { bound: bound } => concat("GenerationBoundExceeded bound=", to_string(bound))
+    GenerationStateRetainedByOrchestrator { ordinal: ordinal, resident_at_first: first, resident_now: now, growth_bound: bound } =>
+      concat("GenerationStateRetainedByOrchestrator ordinal=", concat(to_string(ordinal), concat(" orchestrator_resident_bytes_at_first_generation=", concat(to_string(byte_size_count(b: first)), concat(" orchestrator_resident_bytes_now=", concat(to_string(byte_size_count(b: now)), concat(" growth_bound_bytes=", to_string(byte_size_count(b: bound)))))))))
     FinalRegenerationStillDrifts { surfaces: surfaces } =>
       concat("FinalRegenerationStillDrifts surfaces=[", concat(regen_surface_identity_text_list(rows: surfaces), "]"))
     FinalRustConsistencyInstrumentRefused { reason: reason } => concat("FinalRustConsistencyInstrumentRefused reason=", reason)
@@ -1093,6 +1102,78 @@ fn regen_admit_generation_progress(
     }
   } else {
     RegenGenerationProgressAdmitted
+  }
+}
+
+// ── GENERATION-STATE LIFETIME ISOLATION ─────────────────────────────────────────────────────────
+//
+// THE INVARIANT: AT MOST ONE GENERATION'S GENERATION-LOCAL STATE IS RESIDENT AT A TIME. The round
+// has two lifetimes. ORCHESTRATION state -- the surface roles, this model, the transaction's
+// admitted population and lineage -- lives as long as the round. GENERATION state -- the corpus the
+// emit loads, its resolve index, the emitted candidate -- lives as long as one generation. Every
+// generation, the first included, runs in its own process, and the next generation begins only
+// after that process has exited: process exit is the destructor for generation state, so no cache
+// has to be taught to shed itself, and a cache nobody knew about is shed too.
+//
+// THE DEFECT THIS STATES AWAY (gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal
+// carries the receipts). Generation 1 used to run INSIDE the orchestrator, so its corpus had round
+// lifetime while generation 2's had generation lifetime, and the two composed: on srv4 the
+// orchestrator still held 15.6 GB of slot memory when generation 2 began and the slot peaked at
+// 26.0 GB, which fit only because that slot had drifted to a 25 GiB memory.high; under the declared
+// 21 GiB (gunbc.runner.runner_slot_desired) the same round could not hold both.
+//
+// THE CHECK AT EVERY TRANSITION, so a future orchestration cache cannot grow into the same failure
+// unseen: before generation N begins, the orchestrator's resident set is compared with its resident
+// set when generation 1 began. Generation state retained in the orchestrator shows up as growth
+// across transitions; orchestration state is loaded before generation 1 and does not. The bound is
+// RELATIVE, not absolute, because the orchestrator's own footprint has not yet been read on its own
+// (it was always measured with generation 1 inside it); the first round that runs under this rule
+// prints it at every transition, and an absolute ceiling is that receipt's to set.
+// POLICY, RE-DERIVED FROM ITS FIRST RECEIPT (the 1 GiB this row first carried was set before any
+// orchestrator had been read on its own, and refused the first round that ran under it). gunbc run
+// 41707802631 (srv3-18, 2026-11-03, the first heal round on this driver): the orchestrator was
+// 10692333568 bytes resident when generation 0 began and 12602740736 when generation 1 began --
+// 1.9 GB of ORCHESTRATION growth (planning, candidate admission, install) across a transition whose
+// generation had already exited, while generation 0 itself added about 8.9 GB to its slot (13.67 GB
+// at its begin, 22.55 GB peak). Three GiB is about 1.6 times the measured orchestration growth and
+// about a third of one generation, so a retained generation still cannot hide under it. The same
+// receipt shows the orchestrator's OWN footprint, about 10.7 GB before any generation, is the larger
+// share of the slot; that is gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal's open
+// trigger, not this bound's. AND THE 1.9 GB THIS BOUND ADMITS IS NOT EXPLAINED BY IT: whether that
+// growth is demanded by the next transition or retained from the last is an open trigger on the
+// same row (a second reading, run 41709366312, srv3-05, +1.83 GB); retained growth is deleted at the
+// step that holds it, and this bound then falls.
+data regen_orchestrator_resident_growth_bound: ByteSize = byte_size(count: 3221225472)
+
+type RegenGenerationBeginAdmission
+  = RegenGenerationBeginAdmitted
+  | RegenGenerationBeginRefused { refusal: RegenConvergenceRefusal }
+
+fn regen_admit_generation_begin(
+  ordinal: Int,
+  resident_at_first: ByteSize,
+  resident_now: ByteSize
+) -> RegenGenerationBeginAdmission {
+  let first = byte_size_count(b: resident_at_first)
+  let now = byte_size_count(b: resident_now)
+  if now > first && now - first > byte_size_count(b: regen_orchestrator_resident_growth_bound) {
+    RegenGenerationBeginRefused {
+      refusal: GenerationStateRetainedByOrchestrator {
+        ordinal: ordinal,
+        resident_at_first: resident_at_first,
+        resident_now: resident_now,
+        growth_bound: regen_orchestrator_resident_growth_bound
+      }
+    }
+  } else {
+    RegenGenerationBeginAdmitted
+  }
+}
+
+fn regen_generation_begin_admission_label(admission: RegenGenerationBeginAdmission) -> String {
+  match admission {
+    RegenGenerationBeginAdmitted => "Admitted"
+    RegenGenerationBeginRefused { refusal: refusal } => concat("Refused: ", regen_convergence_refusal_detail(refusal: refusal))
   }
 }
 

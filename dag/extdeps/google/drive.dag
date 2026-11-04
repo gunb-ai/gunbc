@@ -1,4 +1,5 @@
 module extdeps.google.drive
+import std.types { Bearer }
 
 import std.types { NonEmptyStr, String, Int, List, Secret, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
