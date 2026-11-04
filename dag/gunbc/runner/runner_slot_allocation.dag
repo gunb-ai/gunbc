@@ -1446,10 +1446,13 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // the slot grain) is that oracle, and a MemoryHigh >= measured-subject-peak conjunct returns here
 // with that receipt as its input -- a declared frontier, never a number copied from the tree
 // (DESIGN section 5, the oracle rule).
+// THE THROTTLE-LINE CONJUNCT, 2026-11-04 (operator: an overrun must crash, not slow): MemoryHigh equals
+// MemoryMax. It used to require MemoryHigh one GiB BELOW the maximum, which is exactly the band in
+// which the kernel throttles and never kills (gunbc.runner.runner_slot_desired, the 2026-11-04 ruling
+// carries the control receipts). A row declaring a lower line would be a slot that crawls.
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
-  let gibibyte_bytes = 1073741824
-  (byte_size_count(b: per_slot.memory_high) + gibibyte_bytes == byte_size_count(b: per_slot.memory_max))
+  (byte_size_count(b: per_slot.memory_high) == byte_size_count(b: per_slot.memory_max))
     && (byte_size_count(b: per_slot.memory_swap_max) == 0)
     && all(
       gunbc_admitted_runner_slot_allocations(),
