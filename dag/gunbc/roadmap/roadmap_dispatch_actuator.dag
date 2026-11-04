@@ -1558,7 +1558,6 @@ fn dispatch_audit_unit_command(
   )
 }
 
-}
 
 // THE PROVIDER-EVENT PROJECTION OVER ONE EVENTS FILE. The current-attempt projection names the file
 // through the node's current pointer; a reader of a named attempt names it by the attempt's own key.
