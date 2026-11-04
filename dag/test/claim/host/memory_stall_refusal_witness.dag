@@ -8,6 +8,7 @@ import std.measure {
   Millisecond,
   millisecond,
   millisecond_count,
+  microsecond,
   basis_point_count,
   events_per_minute_count,
 }
@@ -25,7 +26,22 @@ import gunbc.host.memory_stall_refusal {
   memory_stall_major_fault_rate_threshold,
   memory_stall_verdict_window_minimum_wall,
   memory_stall_progress_cpu_share_floor,
+  SupervisedSubjectWindow,
+  SupervisedSubjectVerdict,
+  SupervisedSubjectProgressing,
+  SupervisedSubjectSilentWithoutEnvelopeEvidence,
+  SupervisedSubjectRefusedEnvelopeThrottle,
+  SupervisedSubjectRefusedPageThrash,
+  supervised_subject_verdict,
+  supervised_subject_verdict_refuses,
+  supervised_subject_refusal_text,
+  supervised_subject_no_progress_window_minimum_wall,
+  supervised_subject_envelope_pressure_full_share_floor,
+  SupervisedSlotReading,
+  supervised_subject_window_between,
+  supervised_subject_window_text,
 }
+import extdeps.linux.psi { PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -191,4 +207,175 @@ test fn only_the_refusal_carries_pressure_text() -> Bool {
       cache_evictions_in_window: 0,
       cache_readmissions_in_window: 0,
     })) == ""
+}
+
+// ── THE SUPERVISED SUBJECT (the observer outside the subject) ──────────────────────────────────
+//
+// The windows below are supplied at the verdict's interface. The real producer -- the heal round's
+// generation supervisor reading the slot's memory.stat, cpu.stat, memory.pressure and memory.events
+// -- is paired with an inhabitance claim on the host side (v1_compiler.required_regen_host tests),
+// because only a live cgroup can say what those files hold.
+
+// Fifteen minutes and one millisecond of silence, so every refusal below is past the window.
+fn silent_wall_ms() -> Int {
+  millisecond_count(m: supervised_subject_no_progress_window_minimum_wall) + 1
+}
+
+fn quiet_slot(wall_ms: Int) -> MemoryStallObservation {
+  MemoryStallObservation {
+    window_wall: millisecond(count: wall_ms),
+    major_faults_in_window: 0,
+    self_user_cpu_in_window: millisecond(count: 0),
+    cache_evictions_in_window: 0,
+    cache_readmissions_in_window: 0,
+  }
+}
+
+fn full_stall(share_bp: Int, wall_ms: Int) -> PsiStallInterval {
+  PsiStallMeasured {
+    stalled: microsecond(count: wall_ms * share_bp / 10),
+    window: microsecond(count: wall_ms * 1000),
+  }
+}
+
+// THE RED THIS ARM EXISTS FOR: a subject silent past the window while the slot's tasks lost most of
+// their wall to memory and the slot crossed memory.high. No fault-rate evidence at all -- the
+// page-thrash arm alone would hold this run to the step timeout, which is the srv3 heal ending.
+test fn RED_a_silent_subject_under_the_envelope_throttle_refuses() -> Bool {
+  let v = supervised_subject_verdict(w: SupervisedSubjectWindow {
+    since_progress: quiet_slot(wall_ms: silent_wall_ms()),
+    pressure: full_stall(share_bp: 8000, wall_ms: silent_wall_ms()),
+    envelope_events_in_window: 412,
+  })
+  supervised_subject_verdict_refuses(v: v)
+    && string_contains(s: supervised_subject_refusal_text(v: v), pattern: "MemoryStallRefusedEnvelopeThrottle")
+    && string_contains(s: supervised_subject_refusal_text(v: v), pattern: "80% of that wall")
+    && string_contains(s: supervised_subject_refusal_text(v: v), pattern: "412 time(s)")
+}
+
+// SEMANTIC PROGRESS OUTRANKS EVERY COUNTER: the same pressure one millisecond inside the window is
+// progressing, because a mark arrived recently enough. This is the arm that keeps a healthy run that
+// crosses memory.high and reclaims from ever being judged on its counters.
+test fn a_recent_progress_mark_admits_whatever_the_pressure() -> Bool {
+  let wall = millisecond_count(m: supervised_subject_no_progress_window_minimum_wall) - 1
+  match supervised_subject_verdict(w: SupervisedSubjectWindow {
+    since_progress: quiet_slot(wall_ms: wall),
+    pressure: full_stall(share_bp: 10000, wall_ms: wall),
+    envelope_events_in_window: 100000,
+  }) {
+    SupervisedSubjectProgressing { since_progress_wall: w, minimum_wall: _ } => millisecond_count(m: w) == wall
+    SupervisedSubjectSilentWithoutEnvelopeEvidence { since_progress_wall: _, pressure: _, envelope_events_in_window: _, page_thrash: _ } => false
+    SupervisedSubjectRefusedEnvelopeThrottle { since_progress_wall: _, pressure_full_share: _, pressure_full_share_floor: _, envelope_events_in_window: _ } => false
+    SupervisedSubjectRefusedPageThrash { since_progress_wall: _, page_thrash: _ } => false
+  }
+}
+
+// PRESSURE WITHOUT THE ENVELOPE, AND THE ENVELOPE WITHOUT PRESSURE, BOTH ADMIT. A high-event count is
+// a witness that the boundary was crossed, never by itself evidence of a stall; PSI with no envelope
+// event is pressure from something the slot contract does not own.
+test fn each_throttle_half_alone_admits() -> Bool {
+  let pressure_only = supervised_subject_verdict(w: SupervisedSubjectWindow {
+    since_progress: quiet_slot(wall_ms: silent_wall_ms()),
+    pressure: full_stall(share_bp: 9000, wall_ms: silent_wall_ms()),
+    envelope_events_in_window: 0,
+  })
+  let envelope_only = supervised_subject_verdict(w: SupervisedSubjectWindow {
+    since_progress: quiet_slot(wall_ms: silent_wall_ms()),
+    pressure: full_stall(share_bp: 100, wall_ms: silent_wall_ms()),
+    envelope_events_in_window: 5000,
+  })
+  !supervised_subject_verdict_refuses(v: pressure_only) && !supervised_subject_verdict_refuses(v: envelope_only)
+}
+
+// Tight at the declared floor: at the floor refuses, one basis point under admits.
+test fn the_throttle_arm_is_tight_at_its_floor() -> Bool {
+  let floor = basis_point_count(bp: supervised_subject_envelope_pressure_full_share_floor)
+  let at_floor = supervised_subject_verdict(w: SupervisedSubjectWindow {
+    since_progress: quiet_slot(wall_ms: silent_wall_ms()),
+    pressure: full_stall(share_bp: floor, wall_ms: silent_wall_ms()),
+    envelope_events_in_window: 1,
+  })
+  let under_floor = supervised_subject_verdict(w: SupervisedSubjectWindow {
+    since_progress: quiet_slot(wall_ms: silent_wall_ms()),
+    pressure: full_stall(share_bp: floor - 1, wall_ms: silent_wall_ms()),
+    envelope_events_in_window: 1,
+  })
+  supervised_subject_verdict_refuses(v: at_floor) && !supervised_subject_verdict_refuses(v: under_floor)
+}
+
+// WHERE PSI IS UNREADABLE the page-thrash arm still judges -- the verdict above, over the slot's
+// counters, not a second copy -- so a swapless host with no PSI files keeps the measured treadmill
+// refusal. And a silent slot with neither kind of evidence is admitted: a hang is the timeout's.
+test fn without_psi_the_page_thrash_arm_still_refuses_and_silence_alone_admits() -> Bool {
+  let unmeasured: PsiStallInterval = PsiStallUnmeasurable { cause: "memory.pressure is absent" }
+  let thrash = supervised_subject_verdict(w: SupervisedSubjectWindow {
+    since_progress: MemoryStallObservation {
+      window_wall: millisecond(count: silent_wall_ms()),
+      major_faults_in_window: silent_wall_ms() / 6,
+      self_user_cpu_in_window: millisecond(count: silent_wall_ms() / 50),
+      cache_evictions_in_window: 0,
+      cache_readmissions_in_window: 0,
+    },
+    pressure: unmeasured,
+    envelope_events_in_window: 0,
+  })
+  let silence = supervised_subject_verdict(w: SupervisedSubjectWindow {
+    since_progress: quiet_slot(wall_ms: silent_wall_ms() * 4),
+    pressure: unmeasured,
+    envelope_events_in_window: 0,
+  })
+  let thrash_refused = match thrash {
+    SupervisedSubjectRefusedPageThrash { since_progress_wall: _, page_thrash: _ } =>
+      string_contains(s: supervised_subject_refusal_text(v: thrash), pattern: "MemoryStallRefusedPageThrash")
+        && string_contains(s: supervised_subject_refusal_text(v: thrash), pattern: "pgmajfault")
+    SupervisedSubjectProgressing { since_progress_wall: _, minimum_wall: _ } => false
+    SupervisedSubjectSilentWithoutEnvelopeEvidence { since_progress_wall: _, pressure: _, envelope_events_in_window: _, page_thrash: _ } => false
+    SupervisedSubjectRefusedEnvelopeThrottle { since_progress_wall: _, pressure_full_share: _, pressure_full_share_floor: _, envelope_events_in_window: _ } => false
+  }
+  thrash_refused && !supervised_subject_verdict_refuses(v: silence) && supervised_subject_refusal_text(v: silence) == ""
+}
+
+// THE WINDOW IS BUILT FROM TWO HOST READINGS, here and nowhere else. Supplied as the files read: a
+// pressure body with a `full` line, and the counters a slot would carry. The window's deltas, the
+// PSI interval through extdeps.linux.psi, and its one-line rendering are all checked.
+fn slot_reading(faults: Int, cpu_ms: Int, events: Int, full_total_us: Int) -> SupervisedSlotReading {
+  SupervisedSlotReading {
+    major_faults: faults,
+    user_cpu: millisecond(count: cpu_ms),
+    envelope_events: events,
+    pressure_body: join([
+      "some avg10=0.00 avg60=0.00 avg300=0.00 total=", to_string(full_total_us + 5),
+      "\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=", to_string(full_total_us), "\n",
+    ], ""),
+  }
+}
+
+test fn the_window_between_two_readings_is_their_difference_and_reaches_the_verdict() -> Bool {
+  let wall = silent_wall_ms()
+  let w = supervised_subject_window_between(
+    base: slot_reading(faults: 100, cpu_ms: 2000, events: 7, full_total_us: 1000000),
+    now: slot_reading(faults: 160, cpu_ms: 2500, events: 419, full_total_us: 1000000 + wall * 800),
+    wall: millisecond(count: wall)
+  )
+  let text = supervised_subject_window_text(w: w)
+  string_contains(s: text, pattern: "psi_full_share_bp=8000")
+    && string_contains(s: text, pattern: "envelope_events_in_window=412")
+    && string_contains(s: text, pattern: "major_faults_in_window=60")
+    && string_contains(s: text, pattern: "user_cpu_ms_in_window=500")
+    && match supervised_subject_verdict(w: w) {
+      SupervisedSubjectRefusedEnvelopeThrottle { since_progress_wall: _, pressure_full_share: _, pressure_full_share_floor: _, envelope_events_in_window: 412 } => true
+      _ => false
+    }
+}
+
+// An absent memory.pressure file is supplied as the empty body: unmeasurable, never zero pressure;
+// a counter that went backwards is a reset, never a negative count.
+test fn an_absent_pressure_file_is_unmeasurable_and_a_reset_counter_is_zero() -> Bool {
+  let base = SupervisedSlotReading { major_faults: 500, user_cpu: millisecond(count: 9000), envelope_events: 50, pressure_body: "" }
+  let now = SupervisedSlotReading { major_faults: 10, user_cpu: millisecond(count: 100), envelope_events: 3, pressure_body: "" }
+  let text = supervised_subject_window_text(w: supervised_subject_window_between(base: base, now: now, wall: millisecond(count: 60000)))
+  string_contains(s: text, pattern: "psi_full_share_bp=unmeasurable(")
+    && string_contains(s: text, pattern: "envelope_events_in_window=0")
+    && string_contains(s: text, pattern: "major_faults_in_window=0")
+    && string_contains(s: text, pattern: "user_cpu_ms_in_window=0")
 }

@@ -448,6 +448,18 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
       head: RenameHead { to: "map_lookup", positional: ["m", "key"], appended: [] }, site_gated: false },
+    // get: the builtin (xs, index) answers the element at optional cardinality (interpreter list_get_at_optional, Rust
+    // bridge list_get_optional), the same contract as std.algebra list_at_optional, so the rename is a respell (T4 group A1,
+    // tidy-ant-251). A get on a Map is NOT this row: runs over get are occurrence-scoped to list sites.
+    RosterHeadRow {
+      call: "get",
+      key: "get",
+      import_name: "list_at_optional",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [],
+      head: RenameHead { to: "list_at_optional", positional: ["xs", "index"], appended: [] },
+      site_gated: false
+    },
     // sort_by -> std.algebra list_sort_by_key(xs, key, order) (S2). The ambient sort_by orders by the key's canonical order;
     // list_sort_by_key takes that order as a declared argument, and a key kind with no declared order has NO row. Three rows of
     // one call and home, told apart by their row key (a per-site OnlyOccurrences selection names the key kind's sites):
@@ -3129,7 +3141,11 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own",
     "occurrences-unknown-row-key-refuses",
     "occurrences-key-on-a-bound-site-refuses",
-    "occurrences-key-outside-the-paths-refuses"
+    "occurrences-key-outside-the-paths-refuses",
+    "occurrences-keyed-pipe-site-rewrites",
+    "occurrences-keyed-negated-pipe-site-rewrites",
+    "occurrences-keyed-chained-pipe-refuses-not-skips",
+    "occurrences-keyed-non-head-reference-refuses-arity"
   ]
 }
 
