@@ -1,7 +1,7 @@
 module extdeps.auth.jws
 
 import std.types { String, NonEmptyStr, Int, List }
-import std.integer { UInt8, QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
+import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import std.bytes { bytes_qualified_octets, utf8_encode_bytes }
 import std.encoding { base64_encode, UrlSafe }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -131,7 +131,7 @@ type JwsSigningKeyRef
   = HostKeyFile { path: NonEmptyStr }
 
 type JwsSignOutcome
-  = JwsSigned { signature: List<UInt8> }
+  = JwsSigned { signature: List<Int> }
   | JwsSignRefused { detail: String }
 
 // THE SIGNATURE IS OCTETS, NOT TEXT. A realization that hands back a printable rendering (hex,
@@ -151,7 +151,7 @@ type JwsSignOutcome
 //
 // WHAT STAYS DIFFERENT IS WHERE EACH IS OBSERVED, which is the single-authority point. The text
 // half is qualified once at std.bytes bytes_qualified_octets, where host bytes enter the corpus.
-// A signature does not pass through that seam -- it arrives here as a List<UInt8> directly from
+// A signature does not pass through that seam -- it arrives here as a List<Int> directly from
 // the signer -- so this is where it crosses, and this is where it is observed.
 //
 // RUNG: mitigatable at a declared boundary, and unlike the text half THIS RED IS AUTHORABLE
@@ -163,7 +163,7 @@ type JwsSerializationOutcome
   = JwsSerialized { jwt: JwtCompactSerialization }
   | JwsSignatureNotOctets { observed: Int }
 
-fn jws_compact_serialization(signing_input: NonEmptyStr, signature: List<UInt8>) -> JwsSerializationOutcome {
+fn jws_compact_serialization(signing_input: NonEmptyStr, signature: List<Int>) -> JwsSerializationOutcome {
   match uint8_octets_of_ints(values: signature) {
     QualifiedOctetsRefused { observed: o } => JwsSignatureNotOctets { observed: o }
     QualifiedOctetsReady { value: sealed } =>

@@ -590,11 +590,6 @@ data contiguous_loop_elementwise_float_kernel_contract: PrimitiveContract = {
 // v1.compiler.infer_method for dag/ compile scope (review 46064) — same parallel-enumeration debt,
 // not a new fork. Dissolve-on: fold builtin_function_registry construction from this list as the
 // single authority.
-// DRIFT IS NOW MEASURED, NOT PREDICTED: gunbc.primitive_egress.census_live reads the authority's
-// key set through the builtin_function_registry_keys compiler query and prints both set
-// differences (hand_roster_missing_registry_rows / hand_roster_rows_absent_from_registry) in every
-// census receipt (`gunbc test //gunbc/instruments:primitive-egress-census-v2`); the receipt, not
-// this note, says whether the list matches the key set.
 
 fn builtin_registry_surface_names() -> List<String> {
   [
@@ -735,8 +730,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "project_roadmap_acceptance_event_history_from_authority_text_host",
     "toolchain_home_interference_probe",
     "type_ref_hit_ne_bind_measure_active",
-    "builtin_function_registry_keys",
-    "compile_dag_primitive_call_edges",
     "compile_dag_operation_requires",
     "source_root_ingest_module_identities",
     "required_floor_nominal_subject_module_identities",
