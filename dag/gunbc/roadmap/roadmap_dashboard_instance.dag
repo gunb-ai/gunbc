@@ -24,6 +24,8 @@ import extdeps.git {
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
+import std.integer { nat_to_int }
+import gunbc.roadmap.belt_concurrency { srv1_lab_belt_max_concurrent_nat }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
 import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
@@ -278,6 +280,20 @@ type HostDashboardInstance {
   admitted_revision: DashboardAdmittedRevisionSource
   toolchain: DashboardToolchain
   dispatch_worker_memory_max: ByteSize
+  // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (§3). It was
+  // once a single shared constant (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent,
+  // 3) read by EVERY instance; it is now a per-instance row field so one host's lab can widen without
+  // widening its neighbours. Every reader of the old constant reads THROUGH this field: the belt's launch
+  // admission (the standing carries it -- gunbc.roadmap.roadmap_launch_admission launch_gate_capacity ->
+  // belt_free_slots_int), the timer's reconcile fold (belt_tick_launch_pass_observed -> belt_reconcile),
+  // the session-memory pool (roadmap_session_placement session_placement_pool), and thus the pool's
+  // appropriation (gunbc.compute.host_capacity host_capacity_pool_appropriation = dispatch_worker_memory_max
+  // x slots). The default for an instance that does not override is belt_max_concurrent_default below; the
+  // srv1 lab overrides to srv1_lab_belt_max_concurrent because 512 GiB of host and ~245 GiB MemAvailable
+  // (observed 2026-11-04 08:10Z) hold 6 x the 22 GiB worker ceiling (dispatch_worker_memory_ceiling) with
+  // margin beside srv1-live (3 x 22 GiB) and the compute build pool (compute_pool_slots x 22 GiB); 7 would
+  // need 264 GiB and does not fit. See srv1_lab_dashboard_instance for the arithmetic.
+  belt_max_concurrent: Int
   directory_owner: PosixOwnerNames
   // THE ACCOUNT A DISPATCHED WORKER UNIT RUNS AS. Equal to directory_owner is the STAGED form of a
   // replacement migration (DESIGN section 3, gap-intolerant boundary): the worker as the service user is
@@ -667,6 +683,24 @@ type DashboardToolchain {
 // and becomes one term in an allocation the fabric can express. Until then it is honest about being
 // a ceiling with no width beside it.
 data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memory_max
+
+// THE BELT CONCURRENT-WORKER CEILING, AS A PER-INSTANCE FACT. This is the ONE source of the number a
+// belt holds at once: the instance row's HostDashboardInstance.belt_max_concurrent reads either this
+// default or the srv1-lab override below, and every former reader of the shared constant
+// (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent, which now merely wraps this
+// default as a BeltCapacity) reads the instance field instead. It was 3 for EVERY instance; it is now a
+// per-instance fact so one host's lab can widen without widening its neighbours -- and the session-memory
+// pool slots and their appropriation, and the host's attempt-worker slice, all follow from this figure.
+// srv1_lab_belt_max_concurrent is the widest belt; see srv1_lab_dashboard_instance for why srv1 can hold it.
+data belt_max_concurrent_default: Int = 3
+
+// THE SRV1 LAB RUNS SIX WORKERS AT ONCE. The figure is the canonical Nat in gunbc.roadmap.belt_concurrency
+// srv1_lab_belt_max_concurrent_nat (a leaf both this module and the live-deploy slice bounds can read); the
+// Int here is DERIVED from it so the number has one source. The arithmetic that puts srv1 at 6 (512 GiB, ~245
+// GiB MemAvailable observed 2026-11-04 08:10Z: 6 x 22 GiB fits beside srv1-live 3 x 22 and the compute build
+// pool 2 x 22 = 242 <= 245 GiB; 7 needs 264 and does not fit; router ceiling 8) is recorded there and on
+// srv1_lab_dashboard_instance.
+data srv1_lab_belt_max_concurrent: Int = nat_to_int(n: srv1_lab_belt_max_concurrent_nat)
 
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,
@@ -1085,6 +1119,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: macbook_local_admitted_revision_source,
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: macbook_local_directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: MacbookLocal } },
@@ -1189,6 +1224,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: DurableHostVolume },
@@ -1254,6 +1290,7 @@ fn isolated_dashboard_instance(
     publication_base_branch: "main" as NonEmptyStr,
     worker: WorkerIsServiceUser,
     provision_parent_root: dashboard_home_provision_parent_root,
+    belt_max_concurrent: belt_max_concurrent_default,
   )
 }
 
@@ -1274,6 +1311,7 @@ fn isolated_dashboard_instance_admitting(
   publication_base_branch: NonEmptyStr,
   worker: WorkerIdentity,
   provision_parent_root: FilePath,
+  belt_max_concurrent: Int,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1317,6 +1355,7 @@ fn isolated_dashboard_instance_admitting(
     admitted_revision: admitted_revision,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent,
     directory_owner: linux_service_directory_owner(),
     worker: worker,
     materialization_store_root: none,
@@ -1348,6 +1387,12 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     publication_base_branch: srv1_lab_publication_base_branch,
     worker: WorkerDedicatedAccount,
     provision_parent_root: srv1_dashboard_lab_provision_parent,
+    // THE SRV1 LAB WIDENS TO 6. srv1 has 512 GiB, ~245 GiB MemAvailable observed 2026-11-04 08:10Z.
+    // 6 x the 22 GiB worker ceiling (dispatch_worker_memory_ceiling) = 132 GiB fits beside srv1-live
+    // (3 x 22 = 66 GiB) and srv1's compute build pool (2 x 22 = 44 GiB): 132 + 66 + 44 = 242 <= 245 GiB,
+    // a 3 GiB margin. 7 needs 264 > 245 and does not fit; the srv1 fabric router's route ceiling is 8
+    // (gunb-ai/gunbc#15789), so 6 is within it. See srv1_lab_belt_max_concurrent for the same figure.
+    belt_max_concurrent: srv1_lab_belt_max_concurrent,
   )
 }
 
@@ -1481,6 +1526,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: srv2_deploy_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: Srv2Deploy } },
@@ -1615,6 +1661,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     admitted_revision: fleet_admitted_revision_source,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: FrameJobWorkspace { frame: frame } },

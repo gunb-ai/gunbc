@@ -34,7 +34,6 @@ import gunbc.compute.work_class_grant {
   WorkClassAgentSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
 }
 import gunbc.compute.unit_bounds { UnitProcessBounds }
-import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import extdeps.linux.kernel_random { kernel_boot_id_path }
 import extdeps.linux.proc_stat { proc_stat_path }
@@ -139,11 +138,14 @@ data session_placement_schema: String = "gunbc.session-placement/v1"
 // carried as EpochSecs (SessionPlacementRecord.granted_at / expires_at), so they are not part of it.
 data session_placement_term_seconds: Nat = 14400
 
-// THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT, derived rather than chosen: the belt already
-// admits at most max_concurrent workers, so a pool of that many ceilings refuses only for memory the
-// machine lacks, never for a count launch admission did not impose.
-fn session_placement_pool() -> HostCapacityPool? {
-  match checked_int_to_nat(n: roadmap_belt_default_capacity.max_concurrent) {
+// THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT FOR THAT INSTANCE, derived from it rather than
+// chosen (and never a hand-written number -- DESIGN.md §4): the belt already admits at most the instance's
+// belt_max_concurrent workers, so a pool of that many ceilings refuses only for memory the machine lacks,
+// never for a count launch admission did not impose. Because slots come from the SAME per-instance figure,
+// the pool's appropriation (dispatch_worker_memory_max x slots, host_capacity_pool_appropriation) follows
+// automatically. srv1-live gets belt_max_concurrent_default slots; the srv1 lab gets srv1_lab_belt_max_concurrent.
+fn session_placement_pool(instance: HostDashboardInstance) -> HostCapacityPool? {
+  match checked_int_to_nat(n: instance.belt_max_concurrent) {
     Absent => none
     Present { value: slots } => Present { value: AgentSessionPool { slots: slots } }
   }
@@ -244,8 +246,8 @@ fn session_placement_records_dir(instance: HostDashboardInstance) -> String {
 }
 
 fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresResolution {
-  match session_placement_pool() {
-    Absent => SessionStoresUnresolved { detail: join(["the belt's max_concurrent ", to_string(value: roadmap_belt_default_capacity.max_concurrent), " is not a natural number, so the session pool has no size"], "") }
+  match session_placement_pool(instance: instance) {
+    Absent => SessionStoresUnresolved { detail: join(["the belt's max_concurrent ", to_string(value: instance.belt_max_concurrent), " is not a natural number, so the session pool has no size"], "") }
     Present { value: pool } =>
       match host_capacity_subject(instance: instance, pool: pool) {
         ComputeSubjectHostUnresolved { host } => SessionStoresUnresolved { detail: join(["no dashboard instance is declared for host ", host as String, ", so it has no session ledger"], "") }
@@ -312,7 +314,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
     SystemdUnitNameOverlong { length: n } =>
       SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) }
     SystemdUnitNameAdmitted { name } =>
-  match session_placement_pool() {
+  match session_placement_pool(instance: instance) {
     Absent => SessionPlacementRefused { detail: "the session pool has no size" }
     Present { value: pool } => {
       let class_grant = work_class_grant(class: WorkClassAgentSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))

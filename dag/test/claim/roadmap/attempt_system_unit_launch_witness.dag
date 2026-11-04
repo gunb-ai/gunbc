@@ -812,6 +812,7 @@ fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+    belt_max_concurrent: live.belt_max_concurrent,
     directory_owner: live.directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: live.materialization_store_root,

@@ -17,6 +17,7 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_session_is_owned }
+import gunbc.roadmap.roadmap_dashboard_instance { belt_max_concurrent_default }
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,
@@ -69,7 +70,15 @@ fn belt_free_slots_int(cap: BeltCapacity, occupied_count: Int) -> Int {
   if free < 0 { 0 } else { free }
 }
 
-data roadmap_belt_default_capacity: BeltCapacity = BeltCapacity { max_concurrent: 3 }
+// THE BELT'S DEFAULT CAPACITY -- now only a belt-shaped WRAPPER around the per-instance default, which
+// lives in gunbc.roadmap.roadmap_dashboard_instance belt_max_concurrent_default (one authority for the
+// number, §3). Belt functions take a BeltCapacity ARGUMENT; the production callers now build it FROM THE
+// INSTANCE (instance.belt_max_concurrent), not from this default -- see roadmap_belt_actuate
+// belt_run_once_in / belt_launch_host_standing_for_instance and roadmap_session_placement
+// session_placement_pool. This default remains the value an instance that does not override carries, and
+// the explicit cap a belt test passes when it wants the stock figure.
+data roadmap_belt_default_capacity: BeltCapacity =
+  BeltCapacity { max_concurrent: belt_max_concurrent_default }
 
 data roadmap_belt_production_spawn_mode: SpawnMode = ManualReady
 
