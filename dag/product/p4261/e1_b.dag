@@ -11,6 +11,9 @@ import std.measure {
 }
 import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_e1_b }
 import product.electrical.photograph { BytesNotInStore, InStore, PixelRegion }
+// The bodies that were sighted without a marking being read, generated from the atlas receipts beside
+// the script that wrote them: product.p4261.e1_body_sightings.
+import product.p4261.e1_body_sightings { BodySighting, e1_body_sightings }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.electronic_component.ti_tca9546a { tca9546a_pw }
 import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
@@ -2270,6 +2273,23 @@ fn e1_unlocated_frame(designator: NonEmptyStr, located: NonEmptyStr) -> Photogra
   }
 }
 
+// A sighting's frame, cited the way every other reading on this board cites a frame: by the digest the
+// atlas recorded, which the photograph store must hold. A sighting whose frame is not in the store is
+// refused by the generator that writes these rows rather than cited by a digest invented to look real.
+fn e1_body_citation(sighting: BodySighting) -> PhotographCitation {
+  InStore { content: Sha256Digest { hex: sighting.content }, region: sighting.region }
+}
+
+// One body row per sighting. No terminal names: a body seen from above tells us nothing about which pad
+// is which, and inventing names would be worse than none. The identification says only that a body of a
+// known kind stands in the cited region and no marking was read from it -- not what it is.
+data e1_body_seen_rows: List<InstalledComponent> = map(e1_body_sightings, s => InstalledComponent {
+  seen: seen_unordered(),
+  component: e1_component(local: s.designator),
+  terminals: [],
+  identification: BodySeenMarkingUnread { evidence: OperatorPhotograph { citation: e1_body_citation(sighting: s) } },
+})
+
 data e1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: e1_j20, designator: "J20", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
   DesignatorReading { specimen: e1_f300, designator: "F300", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
@@ -2563,7 +2583,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     PinHeader { designator: Present { value: "J620" }, rows: 2, columns: 5, pin_one_marked: true, evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
     EdgeReceptacle { marking: Present { value: "Amphenol / 1502" }, opening_widths: [micrometer(count: 7000), micrometer(count: 5000)], plug_fit: MicroUsbPlugFits, candidates: [UsbSuperSpeedMicroB], evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "one side is ~5mm and the other (micro usb) is ~7mm" } },
   ],
-  components: [
+  components: concat([
     InstalledComponent { seen: seen_unordered(), component: e1_j20, terminals: map(e1_j20_housing.positions, p => p.terminal), identification: MarkingUnresolved { marking: Absent, discriminator: "read the housing's molded marking; its caliper spans are recorded in j20_calipers" } },
     InstalledComponent { seen: seen_unordered(), component: e1_d2, terminals: names(ns: ["tab nearer J20", "tab farther from J20"]), identification: MarkingSharedByMakers { rows: e1_shared_tvs_rows, marking: MarkingReading { text: "5PGK / ZCN5U under a boxed maker logo that is not identified", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "D2 close-up sent in the session") } }},
     InstalledComponent { seen: seen_unordered(), component: e1_d5, terminals: names(ns: ["top tab", "bottom tab"]), identification: MarkingSharedByMakers { rows: e1_shared_tvs_rows, marking: MarkingReading { text: "5PGK / 2CN5U", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session, D5 in frame") } }},
@@ -2578,7 +2598,22 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { seen: seen_unordered(), component: e1_input_fet, terminals: names(ns: e1_fet_terminal_names), identification: MarkingUnresolved { marking: Absent, discriminator: "read its designator and top marking; the K1's input-stage MOSFETs read 017N10LF (IPB017N10N5LF), a lead for this one, not its identity" } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U522"), terminals: names(ns: ["1", "2", "3", "4", "5", "6", "7", "8"]), identification: IdentifiedByMarking { row: tmp275_dgk, marking: MarkingReading { text: "TI 31 / T275", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "U522 close-up sent in the session") } } },
     InstalledComponent { seen: seen_unordered(), component: e1_u1_p5, terminals: [], identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { text: "[N-style logo]28A025U?3 / LM5066I", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "d1187d9758c9fca2911fbbdec7ca326b835f686aa0fb81c1d9efb2baeba81eb6" as Sha256DigestHex }, frame: "2020_0112_042939_078.JPG", left: 679, top: 2590, width: 1731, height: 434) } } }},
-    InstalledComponent { seen: seen_unordered(), component: e1_q21, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } }},
+    // OPEN QUESTION, Q21_P5 AND Q22_P5 -- WHICH BODY CARRIES THE PRINT.
+    // What the bench recorded, 2026-10-19: "017N10LF / HAD228" read on both bodies of the stacked _P5
+    // input pair, from one photograph ("_P5 input-stage photograph, sent in the session") whose bytes are
+    // not in the photograph store, so neither reading can be checked against an image today.
+    // What the 2026-11-03 atlas pass recorded: the same print under the unread designator "?1_P5", with the
+    // note that it sits on the stacked pair; "0?7N10LF" read tentatively at Q21_P5; and in the Q22_P5
+    // region the silkscreen only -- "Label only... no separate part sits next to it in frame". That neither
+    // confirms nor contradicts the bench record: a different angle, on a body the pass could not resolve.
+    // So both rows keep IdentifiedByMarking and both positions keep their claim in
+    // extdeps.nvidia.p4261.population. What settles it: the operator stating whether they read that print
+    // on BOTH bodies on 2026-10-19, and which two bodies the drain/source probes touched; or a frame with
+    // the pair separated, or that upload re-supplied. If the print proves to sit on only one body, the
+    // consequence is not just this row: the input-switch BLOCKING finding and the protected-bus
+    // downstream-terminal read are both derived from these rows' typed roles, so the reading that cannot be
+    // placed takes those two findings with it.
+    InstalledComponent { seen: seen_unordered(), component: e1_q21, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
     InstalledComponent { seen: seen_unordered(), component: e1_q22, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q4_P5"), terminals: names(ns: ["single lead", "pair, lead nearer U1_P5", "pair, lead farther from U1_P5"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a SOT-23 beside Q21_P5 with a capacitor across two leads (see p4261_q4_temperature_diode_hypothesis)" } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D4_P5"), terminals: names(ns: ["one end", "other end"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking" } },
@@ -2776,10 +2811,17 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U4_2"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "?", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U4_2", located: "the atlas names no frame for this row") } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D17_5"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "?", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "88f340c86f07e2e7942fb8c273e7eec05156f67d3e8570a4598838d5ed47f45f" as Sha256DigestHex }, frame: "2020_0112_044006_107.JPG", left: 3190, top: 2410, width: 143, height: 260) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q1_5"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "703", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "88f340c86f07e2e7942fb8c273e7eec05156f67d3e8570a4598838d5ed47f45f" as Sha256DigestHex }, frame: "2020_0112_044006_107.JPG", left: 1490, top: 1205, width: 575, height: 260) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
-      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q3_5"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "BC4X", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "4fc5010698a4f51c8e99c77e77832e54dca1ffcb94694720fba19fcf6b6d6fc3" as Sha256DigestHex }, frame: "2020_0112_044133_109.JPG", left: 2675, top: 981, width: 318, height: 567) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },],
+      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q3_5"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "BC4X", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "4fc5010698a4f51c8e99c77e77832e54dca1ffcb94694720fba19fcf6b6d6fc3" as Sha256DigestHex }, frame: "2020_0112_044133_109.JPG", left: 2675, top: 981, width: 318, height: 567) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },], e1_body_seen_rows),
   measured: Present { value: e1_measured },
   input: Present { value: e1_input },
   unresolved: [
+    // Three positions the 2026-11-03 atlas pass left unsettled in a particular way, recorded rather than
+    // resolved: two have frames that disagree about whether a body is fitted, and one was sighted without
+    // the atlas being able to say what kind of thing it saw. None is written as fitted and none as empty,
+    // because the receipts do not say either, and the later sighting does not outrank the earlier one.
+    UnresolvedPart { designator: Present { value: "D1_P1" }, marking: Absent, obligation: "two atlas frames disagree and neither is overridden: p4261_e1b_top_A4-B4_U1_P1_U522_D4_P1_D1_P1_2026-11-02_45.jpg sights a small SOD-323-size outline with silk bars directly under the label and calls it too small to tell, while p4261_e1b_top_A4-A5_D1_P1_D5_P1_2026-11-03_sd080.JPG reads the two-pad footprint inside the white silk box as empty. Look at the pads under the label and say which frame reads it right; until then this footprint is neither fitted nor empty", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f6a462a3789850cae3c2594b20d60917a540cda314a1baa781869e91a21a6407" as Sha256DigestHex }, frame: "p4261_e1b_top_A4-A5_D1_P1_D5_P1_2026-11-03_sd080.JPG", left: 3190, top: 2081, width: 233, height: 404) } },
+    UnresolvedPart { designator: Present { value: "U3_P3" }, marking: Absent, obligation: "whose body the label names is unsettled: p4261_e1b_top_D1-D2_U1_TSW_U3_P3_U511_U520_2026-11-02_41.jpg reads the label unambiguously and says the only IC-like body nearby needs a closer look to be sure it belongs here, while p4261_e1b_top_C1-D1_D1_P3_U3_P3_2026-11-03_sd010.JPG records the nearest multi-pad outline as an unpopulated footprint. Name the fitted outline the label belongs to, or confirm the label stands over bare footprints", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "01b7fc69bbf0f04fbacf6548274c2d6356758f0c855691be2b585f53ed652a4c" as Sha256DigestHex }, frame: "p4261_e1b_top_C1-D1_D1_P3_U3_P3_2026-11-03_sd010.JPG", left: 3131, top: 2336, width: 494, height: 541) } },
+    UnresolvedPart { designator: Present { value: "U40" }, marking: Absent, obligation: "the atlas saw the position and could not say what kind of thing is there: p4261_e1b_top_A5-A6-B5-B6_U15_U48_U86_U90_2026-11-02_34.jpg records the label and notes the labelled part is not clearly visible, only passives nearby. It is therefore not among the bodies stated as fitted from a sighting, and nothing here says the footprint is empty either. A closer frame of the labelled part, at a zoom that shows its outline and any marking, closes it", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "15f6ba1a2ae5626a18b4d6f15a98f50b92881a056307e57f7be344867c8d5990" as Sha256DigestHex }, frame: "p4261_e1b_top_A5-A6-B5-B6_U15_U48_U86_U90_2026-11-02_34.jpg", left: 1808, top: 1119, width: 48, height: 25) } },
     UnresolvedPart { designator: Absent, marking: Present { value: "P617A / 01 14 / 226" }, obligation: "an 8-pin MSOP left of the VCI mark, read at the photograph's resolution: maker and function unresolved", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
     UnresolvedPart { designator: Present { value: "U1_P1" }, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor, designator read 2026-10-19: its marking is not legible; its _P5 twin U1_P5 is an LM5066I, a lead for this one, not its identity", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
     UnresolvedPart { designator: Absent, marking: Present { value: "HA..." }, obligation: "a part below D5, partly in frame: read its marking", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },

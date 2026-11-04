@@ -1064,6 +1064,7 @@ fn sensor_trace_text(c: InstalledComponent) -> List<String> {
     ResistanceCodeRead { milliohms: _, marking: _ } => []
     MarkingUnresolved { marking: _, discriminator: _ } => []
     FootprintUnpopulated { evidence: _ } => []
+    BodySeenMarkingUnread { evidence: _ } => []
   }
 }
 
