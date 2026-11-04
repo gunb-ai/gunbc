@@ -50,7 +50,7 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, substitute_type_slots, substitute_type_slots_scoped, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
+  TypeEnv, TypeBinding, substitute_type_slots, substitute_type_slots_scoped, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, lookup_binding_by_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority, TypeRefMeasureBinding, TypeRefMeasureBound, TypeRefMeasureDisagreesWithProduction, TypeRefMeasureUnbound,
   width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
