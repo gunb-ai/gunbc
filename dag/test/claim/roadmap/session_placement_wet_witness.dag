@@ -1482,12 +1482,17 @@ test fn a_replaced_root_that_was_never_created_is_proven_absent_to_census_and_ca
 // This is the state a real lease reached on 2026-11-04: the ledger's own release ran while the slot sat
 // under a root no pass enumerates, which removed the acquisition instant the holder-death evidence reads
 // (session_holder_evidence refuses when compute_seat_acquisition_at finds no term), so the ordinary close
-// can never fire for it. The settle pass now answers that state with SettleRetireUncharged: the slot is
-// taken terminal at the generation READ FROM THE SLOT, no compute_release_on call is made (there is nothing
-// left to return, and a second release would be a claim about a charge the ledger already closed), and the
-// detail makes no holder-death claim. The second pass settles nothing, so the route is idempotent.
-test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkeeping_and_not_released_again() -> Bool {
-  let dir = fresh_dir(tag: "retire-uncharged")
+// can never fire for it. The settle pass answers that state with SettleRetireUncharged: the slot is taken
+// terminal at the generation READ FROM THE SLOT, no compute_release_on call is made (there is nothing left
+// to return, and a second release would be a claim about a charge the ledger already closed), and the
+// detail makes no holder-death claim. Three rows, so a red one names which half broke: the reading, the
+// retirement, and the pass afterwards.
+fn retire_fixture_charge(stores: SessionPlacementStores) -> ComputeSeatCharge {
+  compute_seat_charge_returned(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
+}
+
+test fn a_charge_returned_before_any_pass_reached_the_slot_is_read_from_the_partitions_own_history() -> Bool {
+  let dir = fresh_dir(tag: "charge-returned-read")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
@@ -1501,31 +1506,102 @@ test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkee
   }
   let charge = match stores {
     Absent => SeatChargeUnproven { detail: "no fixture stores" }
-    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
-  }
-  let first = match stores {
-    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
-    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
-  }
-  let again = match stores {
-    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
-    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+    Present { value: s } => retire_fixture_charge(stores: s)
   }
   charged && opened && released
     // the ledger release did NOT touch the slot: it is still the launching record no pass could reach
     && slot_is_launching(dir: dir)
     && (match charge {
-      SeatChargeReturned { reference: r, acquired_at: a, returned_at: b, release_reason: _, generation: g } =>
-        (r == unit_a()) && (b > a) && (cas_generation_count(g: g) > 0)
+      SeatChargeReturned { reference: r, acquired_at: a, returned_at: b, release_reason: why_returned, generation: g } =>
+        // The return is at or after the acquisition: the fixture's release lands in the same clock second as
+        // its acquire, and a row that demanded a strictly later second would be asserting the fixture's
+        // scheduling, not anything the product promised. WHAT makes this positive evidence is that the
+        // history carries an acquisition AND a release naming this reference, with that release's own reason.
+        (r == unit_a()) && (b >= a) && (cas_generation_count(g: g) > 0)
+          && string_contains(s: why_returned, pattern: "witness: the ledger release")
       _ => false
     })
+}
+
+test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkeeping_and_not_released_again() -> Bool {
+  let dir = fresh_dir(tag: "retire-uncharged")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
+  let released = match stores {
+    Absent => false
+    Present { value: s } =>
+      match session_settle_release(stores: s, host: host, unit: unit_a() as NonEmptyStr, attempt: SessionAttemptName { node_id: node_a, attempt_key: key_a }, reason: "witness: the ledger release that ran while the slot was unreachable") {
+        SessionSettlementReleaseAttempted { unit: u, freed: freed, detail: _ } => ((u == unit_a()) && ledger_returned(Present { value: freed }))
+        _ => false
+      }
+  }
+  let before = match stores {
+    Absent => 0
+    Present { value: s } => cas_generation_count(g: match retire_fixture_charge(stores: s) { SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => g  _ => 0 })
+  }
+  let first = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  let after = match stores {
+    Absent => 0
+    Present { value: s } => cas_generation_count(g: match retire_fixture_charge(stores: s) { SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => g  _ => 0 })
+  }
+  charged && opened && released && slot_is_launching(dir: dir) && (before > 0)
     && (match first {
       SessionSettlementRetiredUncharged { unit: u, attempt: _, detail: d } =>
         (u == unit_a()) && string_contains(s: d, pattern: "no release is issued") && string_contains(s: d, pattern: "no holder-death claim")
       _ => false
     })
     && slot_is_terminal(dir: dir)
-    && done_settlement(again)
+    // NOTHING WAS WRITTEN TO THE LEDGER: the retirement closed the slot and stopped. Had it released again,
+    // the partition would carry another event and this generation would have moved.
+    && (after == before)
+}
+
+// THE PASS AFTER THE RETIREMENT OWES NOTHING. The retired slot is terminal and NO settled-release record
+// was ever written for it, which is exactly the state the pre-existing terminal arm read as "we still owe a
+// release" -- it would have called compute_release_on for a charge the ledger closed, and for this reference
+// the acquisition instant is gone, so that call could not even be fenced on it. The terminal arm now reads
+// the same charge reading: returned means Done, with the missing release record named as the residue.
+test fn a_slot_already_retired_as_bookkeeping_reports_done_and_owes_no_second_release() -> Bool {
+  let dir = fresh_dir(tag: "retire-then-done")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
+  let released = match stores {
+    Absent => false
+    Present { value: s } =>
+      match session_settle_release(stores: s, host: host, unit: unit_a() as NonEmptyStr, attempt: SessionAttemptName { node_id: node_a, attempt_key: key_a }, reason: "witness: the ledger release that ran while the slot was unreachable") {
+        SessionSettlementReleaseAttempted { unit: u, freed: freed, detail: _ } => ((u == unit_a()) && ledger_returned(Present { value: freed }))
+        _ => false
+      }
+  }
+  let first = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  let before = match stores {
+    Absent => 0
+    Present { value: s } => cas_generation_count(g: match retire_fixture_charge(stores: s) { SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => g  _ => 0 })
+  }
+  let again = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  let after = match stores {
+    Absent => 0
+    Present { value: s } => cas_generation_count(g: match retire_fixture_charge(stores: s) { SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => g  _ => 0 })
+  }
+  charged && opened && released
+    && (match first { SessionSettlementRetiredUncharged { unit: u, attempt: _, detail: _ } => (u == unit_a())  _ => false })
+    && slot_is_terminal(dir: dir)
+    && (match again {
+      SessionSettlementDone { unit: u, why: w } => (u == unit_a()) && string_contains(s: w, pattern: "no second release is issued")
+      _ => false
+    })
+    && (before > 0) && (after == before)
 }
 
 // THE CONTROL THAT KEEPS THE RETIREMENT FROM BEING A CLEANUP SWEEP. A slot whose acquisition the ledger has

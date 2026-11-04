@@ -1276,7 +1276,25 @@ fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: 
           } else {
             match rec.state {
               AttemptTerminal { verdict: _, detail: d } =>
-                if release_settled { SettleDone { why: "closed and released" } } else { SettleReleaseOnly { record: rec, attempt: name, reason: join(["the slot is closed (", d, ") and no settled release is recorded"], "") } }
+                if release_settled {
+                  SettleDone { why: "closed and released" }
+                } else {
+                  // A CLOSED SLOT WITH NO SETTLED-RELEASE RECORD HAS TWO CAUSES, AND THE LEDGER TELLS THEM
+                  // APART. The arm that was here before assumed the second one: the seat is still out and the
+                  // pass owes a release. But a slot can be closed while its charge is already back -- that is
+                  // the state a real lease was put into on 2026-11-04, when a release ran by reference while
+                  // the slot sat under a root no pass enumerates. The partition's own history then shows
+                  // acquire-then-return, and a release issued here would return a charge the ledger already
+                  // closed (and for such a reference the acquisition instant is gone, so compute_release_on
+                  // could not even be fenced on it). The pass answers Done and SAYS the release record is
+                  // missing, which is the honest residue; it never calls compute_release_on a second time.
+                  // When the history does NOT positively show the return, the old arm stands unchanged.
+                  match charge {
+                    SeatChargeReturned { returned_at: back, release_reason: why_returned, reference: _ } =>
+                      SettleDone { why: join(["closed, and its charge is already back in the ledger (returned at ", to_string(value: back), ", by: ", why_returned, ") while the settled-release record for this slot is missing; there is nothing left to settle and no second release is issued"], "") }
+                    other => SettleReleaseOnly { record: rec, attempt: name, reason: join(["the slot is closed (", d, ") and no settled release is recorded"], "") }
+                  }
+                }
               // A RESERVED slot is inside its producer's own declared window; the producer is expected to
               // act on it, and a charge returned under a reserved slot is a different defect whose remedy is
               // not to retire the record. Left exactly as it was, on purpose.
