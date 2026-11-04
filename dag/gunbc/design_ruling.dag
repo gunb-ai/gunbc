@@ -28,6 +28,13 @@ type DesignRuling {
   provenance: String
 }
 
+data printer_start_hold_lifted_2026_11_04: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_hold_lifted_2026_11_04"),
+  decided: "2026-11-04",
+  section: "6",
+  provenance: "Operator, relayed by wise-tern-646 to witty-tern-466 on 2026-11-04: the 2026-10-21 standing hold on printer starts (do not touch /var/lib/gunbc/printer-starts) is LIFTED. It is released through the modeled route, the fleet-converge printer mode's hold-release-request operation (gunbc.fleet.printer_execution_hold printer_hold_release_request), which files the operator card and releases nothing by hand. The same day's two PETG prints were started out of band (a hand-run prepare_request_plate and a hand-written MQTT publish after a pasted token); that path is not the modeled route and is superseded by print_converge, whose start now takes its AMS tray from gunbc.fleet.printer_ams_loading select_ams_tray.",
+}
+
 data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
   decided: "2026-10-28",
@@ -606,9 +613,20 @@ data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
   provenance: "Operator ruling relayed by wise-bat-528 on 2026-10-28, answering this repository's report that the shoulder's floor lies over the 8-pin band: 'Don't require cutting the latch -- make the flat-on-end duct ACCOMMODATE the plugged 8-pin + its 3 mm latch (e.g. a notch/relief in the shroud around the connector band, or a standoff that lifts the blower clear of the plugged plug within the 70 mm rear bound -- your call, derived not guessed)'. What was built, and how it was derived rather than chosen: the stack behind the end spends two wall plates (2 * 2 = 4 mm) before the housing pocket, and the latch must be assumed to reach 4 mm (3 mm read by eye on 2026-10-27 plus this repository's 1 mm width on a by-eye figure of a small feature), so the floor and the latch meet flush at zero clearance -- a relief cut is needed on these readings even though the latch is small. product.printed_chassis.gpu_duct plane_on_end_connector_relief therefore removes the floor across the connector's own keep-out footprint, so the plugged header and its latch sit in a cleared window and nothing has to be cut. The alternative the ruling offered -- a standoff -- was computed and NOT built, because at the readings on file the lift needed is zero millimetres; the same arithmetic gives the home its limit, which is plane_on_end_max_admissible_protrusion at 36.5 mm (floor 4 mm + the 32.5 mm the declared 70 mm bound leaves after the 37.5 mm stack), beyond which relief cannot help and the home refuses. What this ruling does NOT establish: how far the plugged cable body itself protrudes before it bends, which has never been read (the operator offered exactly that measurement: 'i can measure whatever you want'). It is the one reading that could still refuse this home, and the fit print plugged is the instrument that catches it.",
 }
 
+// belt concurrency becomes a per-instance fact read through the instance; the srv1 lab widened to 6, all
+// others kept at 3; and the attempt-worker slice is deliberately NOT widened by it (stays the operator's
+// 2 x 22 GiB, msg_57614325) because widening that charge onto the srv1 CI fleet is the operator's to decide.
+data belt_concurrency_is_a_per_instance_fact: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "belt_concurrency_is_a_per_instance_fact"),
+  decided: "2026-11-04",
+  section: "3",
+  provenance: "Operator direction 2026-11-04, relayed through session loyal-deer-449 (deploy/dispatch): the srv1 lab instance srv1-lab-codex-feedback-v0 runs more workers at once. Belt concurrency stops being one shared constant (roadmap_belt.roadmap_belt_default_capacity.max_concurrent) and becomes a per-instance fact read THROUGH the instance row (HostDashboardInstance.belt_max_concurrent) -- the single authority (DESIGN §3) every reader goes through: the belt's launch admission (roadmap_belt_actuate.belt_capacity_of_instance and its belt_tick_launch_pass_observed/belt_launch_host_standing_for_instance sites), session_placement_pool, and the session-memory pool appropriation (host_capacity_pool_appropriation = dispatch_worker_memory_max x slots). The srv1 lab is widened to 6; every other instance stays at 3. The reason for 6: srv1 has 512 GiB total, about 245 GiB MemAvailable observed 2026-11-04 08:10Z, and 6 x the 22 GiB worker ceiling fits beside srv1-live (belt 3) and srv1's compute build pool within that headroom -- the next size (7) does not; and the srv1 fabric router's route ceiling is 8 (gunb-ai/gunbc#15789), so 6 sits within the model route's bound. The attempt-worker slice (live_deploy.slice_bounds.attempt_worker_slice_charged_slots) is deliberately NOT widened here: it stays the operator's 2026-10-15 figure of 2 x 22 GiB (escalation msg_57614325, 'stack this 2 x 22 GiB ... srv1 CI width 7 to 5'), so the lab's concurrent RESIDENT transient workers remain bounded by that operator-sized slice even though the belt admits 6 to launch. Widening the slice grows served_deployment_slice_allowance and lowers the derived srv1 CI runner width -- moving deferred cost onto the srv1 CI fleet (DESIGN §5 externalization), which needs an operator ruling, not an author's arithmetic. Separately the operator ruled the worker/session ceiling is mis-sized: 'workers should NOT get a build-sized allocation. Builds and tests go to remote/compute; a worker gets a much smaller memory allocation, if any.' dispatch_worker_memory_max is today the CI runner slot (gunbc_runner_slot_desired().memory_max, 22 GiB) reused as the agent-session lease and its unit MemoryMax, although the capacity model already partitions builds into the ComputeBuildPool sibling. A harness worker was observed at ~750 MB against its 22 GiB MemoryMax (srv1 is HOST_CLOSED, so no agent-session peak is recorded yet -- none is fabricated). Decoupling the worker/session ceiling from the runner slot, and re-deriving the belt width from the router ceiling once memory stops binding, is a STACKED change, not this one.",
+}
+
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    belt_concurrency_is_a_per_instance_fact,
     bad_process_is_worse_than_no_process,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,
@@ -680,6 +698,7 @@ fn design_rulings() -> List<DesignRuling> {
     one_serving_context_cap,
     installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
+    printer_start_hold_lifted_2026_11_04,
   ]
 }
 

@@ -1264,7 +1264,7 @@ test fn a_foreign_masked_stopped_unit_does_not_block_the_first_cap_write() -> Bo
 fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -> BracketRun<RunnerHostCapPhase> {
   bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
     cap_phase_after_drain_over(
-      subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [] },
+      subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [], slot_trees: [] },
       context: context, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
       // What the drain certified: one typed record per admitted idle listener, the shape the bracket's own
       // verdict carries. The flow controls below assert this reaches the receipt.
