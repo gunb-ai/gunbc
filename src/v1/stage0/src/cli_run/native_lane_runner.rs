@@ -593,11 +593,25 @@ fn prepare_emitted_compiler_for_entry(
         }
     }
     eprintln!("v2-native-route: emitting {entry} (seed, in-process)");
-    let run = super::compile_entry_emission(
-        source_roots,
-        entry,
-        true,
-        crate::v1_compiler_artifact::RenderTarget::Rust,
+    // THE EMISSION OWNS ITS INDEX, BECAUSE NOTHING IN THIS PROCESS READS THE POOL AFTER IT.
+    // `compile_entry_emission` routes through `IndexResidency::SharedProcessPool`, whose index
+    // lives in the thread's shared memo and so SURVIVES `drop(run)` below: the trim then reclaims
+    // only freed arena and the whole-tree index stays live under the cargo build. Measured on
+    // v2-bootstrap run 41884608125 (srv4-13): rss_kb_before=10960804, trim_reclaimed_kb=1844232,
+    // rss_kb_after=9116572, slot memory.peak 15.3 GB with the build stacked on that 9.1 GB. A
+    // lane process prepares exactly one entry and every later control runs the EMITTED binary,
+    // so `OwnedByThisCompile` -- the residency for "a pool compiled once and read by nothing
+    // after", as required_regen_host's fixture compile uses it -- costs no second index, and the
+    // drop below releases it. The receipt line after the drop is the measurement.
+    let run = super::compile_emission_over(
+        &super::CompileRequest {
+            subject: super::CompileSubject::Entry(entry.to_string()),
+            root_demand: super::RootDemandDeclaration::default(),
+            source_roots: source_roots.to_vec(),
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        },
+        super::IndexResidency::OwnedByThisCompile,
     );
     match &run.disposition {
         super::CompileDisposition::Completed { .. } => {}
