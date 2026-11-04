@@ -1,7 +1,7 @@
 module test.claim.live_deploy.serve_entry_verdict_witness
 
 import std.types { Bool, Int, List, String }
-import std.algebra { join }
+import std.algebra { join, string_contains }
 import gunbc.live_deploy.pre_swap_admission {
   ServeEntryVerdictRecord,
   ServeEntryVerdictAdmitted,
@@ -111,24 +111,6 @@ fn string_has_prefix(text: String, prefix: String) -> Bool {
   text.length() >= prefix.length() && text.substring(start: 0, end: prefix.length()) == prefix
 }
 
-fn contains_at(text: String, needle: String, index: Int, limit: Int) -> Bool {
-  if index + needle.length() > limit {
-    false
-  } else if text.substring(start: index, end: index + needle.length()) == needle {
-    true
-  } else {
-    contains_at(text: text, needle: needle, index: index + 1, limit: limit)
-  }
-}
-
-fn string_contains(text: String, needle: String) -> Bool {
-  if needle.length() > text.length() {
-    false
-  } else {
-    contains_at(text: text, needle: needle, index: 0, limit: text.length())
-  }
-}
-
 // ───────────────────────────── encode / decode round-trips ─────────────────────────────
 
 test fn witness_round_trip_admitted() -> Bool {
@@ -143,7 +125,7 @@ test fn witness_round_trip_blocked_keeps_blocking_and_diagnostics() -> Bool {
     ServeEntryVerdictDecoded { record } =>
       match record {
         ServeEntryVerdictBlocked { blocking: blocking, diagnostics_text: text, source_revision: revision, entry: _, argv_digest: _, compiler_bin_sha256_hex: _ } =>
-          blocking == 3 && string_contains(text: text, needle: "type error at roadmap_serve.dag:1") && revision == fixture_revision
+          blocking == 3 && string_contains(s: text, pattern: "type error at roadmap_serve.dag:1") && revision == fixture_revision
         _ => false
       }
     ServeEntryVerdictUndecoded { detail: _ } => false
@@ -283,7 +265,7 @@ test fn witness_blocked_foreign_binary_is_mismatch_not_blocked() -> Bool {
 test fn witness_blocked_matching_identity_carries_diagnostics() -> Bool {
   match admit_with(record: fixture_blocked()) {
     ConsumedCompileBlocked { blocking: blocking, diagnostics_text: text } =>
-      blocking == 3 && string_contains(text: text, needle: "unresolved import x")
+      blocking == 3 && string_contains(s: text, pattern: "unresolved import x")
     _ => false
   }
 }
@@ -301,14 +283,14 @@ test fn witness_absent_maps_to_named_unobserved_no_cold_resolve() -> Bool {
   let verdict = serve_entry_verdict_as_compile_verdict(consumption: ConsumedAbsent { detail: "could not read /tmp/x: no such file" })
   compile_verdict_tag(verdict: verdict) == "unobserved"
     && string_has_prefix(text: compile_verdict_detail(verdict: verdict), prefix: "the plan run published no serve-entry verdict")
-    && string_contains(text: compile_verdict_detail(verdict: verdict), needle: "refusing without a cold resolve")
+    && string_contains(s: compile_verdict_detail(verdict: verdict), pattern: "refusing without a cold resolve")
 }
 
 test fn witness_mismatch_maps_to_named_unobserved_no_fallback() -> Bool {
   let verdict = serve_entry_verdict_as_compile_verdict(consumption: ConsumedIdentityMismatch { field: "entry", expected: "e", seen: "other" })
   compile_verdict_tag(verdict: verdict) == "unobserved"
     && string_has_prefix(text: compile_verdict_detail(verdict: verdict), prefix: "plan serve-entry verdict identity mismatch on entry")
-    && string_contains(text: compile_verdict_detail(verdict: verdict), needle: "no cold resolve fallback")
+    && string_contains(s: compile_verdict_detail(verdict: verdict), pattern: "no cold resolve fallback")
 }
 
 test fn witness_blocked_projection_stays_blocked() -> Bool {
@@ -325,12 +307,12 @@ test fn witness_admitted_projection_stays_admitted() -> Bool {
 
 test fn witness_argv_identity_binds_the_real_serve_entry() -> Bool {
   let spec = selected_deployment_spec(row: srv1_production_desired_deployment())
-  string_contains(text: serve_entry_argv_identity_text(spec: spec), needle: spec.service.serve_entry as String)
+  string_contains(s: serve_entry_argv_identity_text(spec: spec), pattern: spec.service.serve_entry as String)
 }
 
 test fn witness_argv_identity_binds_port_and_budgets() -> Bool {
   let text = serve_entry_argv_identity_text(spec: selected_deployment_spec(row: srv1_production_desired_deployment()))
-  string_contains(text: text, needle: " --entry ") && string_contains(text: text, needle: " --port ")
+  string_contains(s: text, pattern: " --entry ") && string_contains(s: text, pattern: " --port ")
 }
 
 test fn witness_argv_digest_is_deterministic_and_text_sensitive() -> Bool {
