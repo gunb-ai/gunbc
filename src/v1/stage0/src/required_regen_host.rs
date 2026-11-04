@@ -3459,8 +3459,13 @@ struct RegenConvergenceJournal {
     entries: Vec<RegenConvergenceJournalEntry>,
 }
 
-#[derive(Debug, Clone)]
-struct RegenConvergenceCheckpointSubject {
+/// What a convergence checkpoint is about: the commit, the stage0 input closure's authority digest,
+/// and the stage plan's. ONE value per round (`round_subject` in `run_regen_round_cost`): produced
+/// once by the checkpoint-subject child, carried across the re-exec in `SeedHandoff`, and passed to
+/// every journal write and restore of the round.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegenConvergenceCheckpointSubject {
     starting_commit: String,
     source_authority_digest: String,
     stage_plan_authority_digest: String,
@@ -4173,6 +4178,9 @@ fn regen_convergence_journal_path(workspace: &Path) -> PathBuf {
     workspace.join(REGEN_CONVERGENCE_JOURNAL_REL)
 }
 
+/// THE ONE PRODUCER of a round's checkpoint subject. Its source digest is taken over the stage0 input
+/// closure (`regen_input_sources`), which builds the whole-tree `build_multi_entry_index`, so only the
+/// checkpoint-subject child calls it (`run_checkpoint_subject`); the orchestrator consumes the value.
 fn current_convergence_checkpoint_subject(
     workspace: &Path,
 ) -> Result<RegenConvergenceCheckpointSubject, String> {
@@ -4197,11 +4205,6 @@ fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String
     ))
     .map_err(|e| format!("encode convergence checkpoint identity: {e}"))?;
     Ok(bytes_digest(&bytes))
-}
-
-fn restore_regen_convergence_journal(workspace: &Path) -> Result<usize, String> {
-    let subject = current_convergence_checkpoint_subject(workspace)?;
-    restore_regen_convergence_journal_for_subject(workspace, &subject).map(|paths| paths.len())
 }
 
 /// Return every journalled path to the byte recorded before the round, and report WHICH were put
@@ -4834,6 +4837,10 @@ struct SeedHandoff {
     cost: SeedBuildCost,
     source: String,
     built_exe: String,
+    /// The round's checkpoint subject if the image that owns the round established one (a
+    /// base-mirror round always has). Encoded explicitly as present or absent: a handoff without
+    /// the field is `HandoffUndecodable`, never a cue to recompute.
+    round_subject: Option<RegenConvergenceCheckpointSubject>,
 }
 
 /// Why the seed handoff refuses. Standing: runtime mitigation (guarantee-ladder rung 1) -- a
@@ -4931,8 +4938,15 @@ impl SeedHandoff {
             .cost
             .cpu_ms
             .map_or("unreadable".to_string(), |c| c.to_string());
+        let subject = match &self.round_subject {
+            Some(s) => format!(
+                "subject=present;subject_commit={};subject_source={};subject_plan={}",
+                s.starting_commit, s.source_authority_digest, s.stage_plan_authority_digest
+            ),
+            None => "subject=absent".to_string(),
+        };
         format!(
-            "crates={};wall_ms={};cpu_ms={};source={};built_exe={}",
+            "crates={};wall_ms={};cpu_ms={};source={};built_exe={};{subject}",
             self.cost.compiled_crates, self.cost.wall_ms, cpu, self.source, self.built_exe
         )
     }
@@ -4958,6 +4972,18 @@ impl SeedHandoff {
         };
         let source = field("source")?;
         let built_exe = field("built_exe")?;
+        let round_subject = match field("subject")?.as_str() {
+            "present" => Some(RegenConvergenceCheckpointSubject {
+                starting_commit: field("subject_commit")?,
+                source_authority_digest: field("subject_source")?,
+                stage_plan_authority_digest: field("subject_plan")?,
+            }),
+            "absent" => None,
+            _ => return Err(bad()),
+        };
+        if it.next().is_some() {
+            return Err(bad());
+        }
         Ok(SeedHandoff {
             cost: SeedBuildCost {
                 compiled_crates,
@@ -4966,6 +4992,7 @@ impl SeedHandoff {
             },
             source,
             built_exe,
+            round_subject,
         })
     }
 
@@ -4986,6 +5013,7 @@ fn decide_seed_handoff(
     exe_after: &str,
     source: &str,
     cost: &SeedBuildCost,
+    round_subject: Option<&RegenConvergenceCheckpointSubject>,
 ) -> Result<SeedHandoffDecision, SeedHandoffRefusal> {
     if let Some(h) = incoming {
         if h.source != source {
@@ -5015,6 +5043,7 @@ fn decide_seed_handoff(
         cost: cost.clone(),
         source: source.to_string(),
         built_exe: exe_after.to_string(),
+        round_subject: round_subject.cloned(),
     }))
 }
 
@@ -5745,59 +5774,92 @@ pub fn run_partition_move_explanation(
         Ok(false) => PartitionMoveExplanationReceipt::Unexplained { schema },
         Err(reason) => PartitionMoveExplanationReceipt::Refused { schema, reason },
     };
-    let path = workspace.join(receipt_rel);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
-    }
-    fs::write(
-        &path,
-        serde_json::to_vec(&receipt).map_err(|e| format!("encode {}: {e}", path.display()))?,
-    )
-    .map_err(|e| format!("write {}: {e}", path.display()))?;
+    write_child_answer(&workspace, receipt_rel, &receipt)?;
     Ok(receipt)
 }
 
-/// The orchestrator's side: run the decision as a child of THIS image (`/proc/self/exe`, so it is
-/// exactly the orchestrator's own code even after a stage build replaced the executable on disk),
-/// under the same liveness supervisor as a generation, and read its answer. A missing, stale or
-/// unparseable receipt refuses.
+/// The orchestrator's side of the partition-move decision: one `answer_in_child` call.
 fn partition_move_explanation_child(
     workspace: &Path,
     source_roots: &[String],
     liveness: &SupervisedSubjectModel,
 ) -> Result<PartitionMoveExplanationReceipt, String> {
-    let receipt_path = workspace.join(PARTITION_MOVE_EXPLANATION_RECEIPT_REL);
+    let mut mode = vec!["--regen-partition-move-explanation".to_string()];
+    for root in source_roots {
+        mode.push("--source-root".to_string());
+        mode.push(root.clone());
+    }
+    answer_in_child(
+        workspace,
+        &mode,
+        PARTITION_MOVE_EXPLANATION_RECEIPT_REL,
+        liveness,
+    )
+}
+
+/// ONE TYPED ANSWER HANDED ACROSS A PROCESS BOUNDARY by a child of this image. The answer's type is
+/// its only definition (a host carrier, encoded and decoded here and nowhere else), and its schema
+/// names the version both ends must agree on.
+trait ChildAnswer: Serialize + serde::de::DeserializeOwned {
+    /// The schema the child writes and the readback demands.
+    const SCHEMA: &'static str;
+    /// The question's name, used in the supervisor's heartbeat and in every refusal.
+    const SUBJECT: &'static str;
+    fn schema(&self) -> &str;
+}
+
+impl ChildAnswer for PartitionMoveExplanationReceipt {
+    const SCHEMA: &'static str = PARTITION_MOVE_EXPLANATION_SCHEMA;
+    const SUBJECT: &'static str = "partition-move explanation";
+    fn schema(&self) -> &str {
+        match self {
+            Self::Explained { schema }
+            | Self::Unexplained { schema }
+            | Self::Refused { schema, .. } => schema,
+        }
+    }
+}
+
+/// THE ONE ROUTE BY WHICH THE ORCHESTRATOR ASKS A QUESTION WHOSE WORK IT MUST NOT HOLD (a
+/// whole-corpus index, today): run it in a child of THIS image (`/proc/self/exe`, so the child is
+/// exactly the orchestrator's own code even after a stage build replaced the executable on disk),
+/// under the same liveness supervisor as a generation, and read back its one typed answer. Process
+/// exit is the destructor for the child's work. A prior answer is retired first, and a missing,
+/// unparseable or other-schema answer refuses, so nothing is ever inferred from an exit code or a
+/// stale file.
+fn answer_in_child<R: ChildAnswer>(
+    workspace: &Path,
+    mode_argv: &[String],
+    receipt_rel: &str,
+    liveness: &SupervisedSubjectModel,
+) -> Result<R, String> {
+    let subject = R::SUBJECT;
+    let receipt_path = workspace.join(receipt_rel);
     if receipt_path.exists() {
         fs::remove_file(&receipt_path).map_err(|e| {
             format!(
-                "refusal: cannot retire a prior partition-move explanation {}: {e}",
+                "refusal: cannot retire a prior {subject} answer {}: {e}",
                 receipt_path.display()
             )
         })?;
     }
-    let mut argv = vec![
-        "--regen-partition-move-explanation".to_string(),
-        "--regen-receipt".to_string(),
-        PARTITION_MOVE_EXPLANATION_RECEIPT_REL.to_string(),
-    ];
-    for root in source_roots {
-        argv.push("--source-root".to_string());
-        argv.push(root.clone());
-    }
-    report_cgroup_memory_diagnostic("parent.begin partition-move-explanation");
+    let mut argv = mode_argv.to_vec();
+    argv.push("--regen-receipt".to_string());
+    argv.push(receipt_rel.to_string());
+    report_cgroup_memory_diagnostic(&format!("parent.begin {subject}"));
     let run = spawn_rebuilt_seed_regen_child(
         Path::new("/proc/self/exe"),
         &argv,
         rebuilt_seed_regen_child_output_policy(),
         workspace,
         GenerationSupervision::SlotStallVerdict {
-            subject: "partition-move explanation".to_string(),
+            subject: subject.to_string(),
             model: liveness,
         },
     );
-    report_cgroup_memory_diagnostic("parent.end partition-move-explanation");
+    report_cgroup_memory_diagnostic(&format!("parent.end {subject}"));
     let run = run?;
-    read_partition_move_explanation(&receipt_path).map_err(|reason| {
+    read_child_answer::<R>(&receipt_path).map_err(|reason| {
         format!(
             "{reason}; status={} stderr_tail={}{}",
             run.status,
@@ -5807,29 +5869,168 @@ fn partition_move_explanation_child(
     })
 }
 
-/// Read the child's answer back: an absent, unparseable or other-schema receipt refuses, so the
-/// orchestrator never infers an answer from an exit code or a stale file.
-fn read_partition_move_explanation(path: &Path) -> Result<PartitionMoveExplanationReceipt, String> {
+/// The child's side: write its one answer, whatever it is, so the orchestrator always reads one.
+fn write_child_answer<R: ChildAnswer>(
+    workspace: &Path,
+    receipt_rel: &str,
+    answer: &R,
+) -> Result<(), String> {
+    let path = workspace.join(receipt_rel);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(
+        &path,
+        serde_json::to_vec(answer).map_err(|e| format!("encode {}: {e}", path.display()))?,
+    )
+    .map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+/// Read a child's answer back: an absent, unparseable or other-schema answer refuses.
+fn read_child_answer<R: ChildAnswer>(path: &Path) -> Result<R, String> {
+    let subject = R::SUBJECT;
     let bytes = fs::read(path).map_err(|e| {
         format!(
-            "refusal: the partition-move explanation child wrote no answer at {}: {e}",
+            "refusal: the {subject} child wrote no answer at {}: {e}",
             path.display()
         )
     })?;
-    let receipt: PartitionMoveExplanationReceipt = serde_json::from_slice(&bytes)
+    let answer: R = serde_json::from_slice(&bytes)
         .map_err(|e| format!("refusal: parse {}: {e}", path.display()))?;
-    let schema = match &receipt {
-        PartitionMoveExplanationReceipt::Explained { schema }
-        | PartitionMoveExplanationReceipt::Unexplained { schema }
-        | PartitionMoveExplanationReceipt::Refused { schema, .. } => schema,
-    };
-    if schema != PARTITION_MOVE_EXPLANATION_SCHEMA {
+    if answer.schema() != R::SCHEMA {
         return Err(format!(
-            "refusal: the partition-move explanation answered in {schema}, not \
-             {PARTITION_MOVE_EXPLANATION_SCHEMA}"
+            "refusal: the {subject} answered in {}, not {}",
+            answer.schema(),
+            R::SCHEMA
         ));
     }
+    Ok(answer)
+}
+
+/// THE ROUND'S CHECKPOINT SUBJECT, AS THE ONE ANSWER ITS CHILD HANDS BACK
+/// (`claim_executor --regen-checkpoint-subject`). Two arms: the subject, or the reason it could not
+/// be produced, which is not a subject.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(tag = "answer", deny_unknown_fields)]
+pub enum CheckpointSubjectReceipt {
+    #[serde(rename = "answered")]
+    Answered {
+        schema: String,
+        subject: RegenConvergenceCheckpointSubject,
+    },
+    #[serde(rename = "refused")]
+    Refused { schema: String, reason: String },
+}
+
+const CHECKPOINT_SUBJECT_SCHEMA: &str = "gunbc.regen_checkpoint_subject.v1";
+const CHECKPOINT_SUBJECT_RECEIPT_REL: &str = "target/stage0-regen-checkpoint-subject.json";
+
+impl ChildAnswer for CheckpointSubjectReceipt {
+    const SCHEMA: &'static str = CHECKPOINT_SUBJECT_SCHEMA;
+    const SUBJECT: &'static str = "checkpoint subject";
+    fn schema(&self) -> &str {
+        match self {
+            Self::Answered { schema, .. } | Self::Refused { schema, .. } => schema,
+        }
+    }
+}
+
+/// The child's entry (`claim_executor --regen-checkpoint-subject`): produce the round's checkpoint
+/// subject with the whole-tree index resident in THIS process, write it, and exit.
+pub fn run_checkpoint_subject(receipt_rel: &str) -> Result<CheckpointSubjectReceipt, String> {
+    let workspace = workspace_root();
+    let schema = CHECKPOINT_SUBJECT_SCHEMA.to_string();
+    let receipt = match current_convergence_checkpoint_subject(&workspace) {
+        Ok(subject) => CheckpointSubjectReceipt::Answered { schema, subject },
+        Err(reason) => CheckpointSubjectReceipt::Refused { schema, reason },
+    };
+    write_child_answer(&workspace, receipt_rel, &receipt)?;
     Ok(receipt)
+}
+
+/// The orchestrator's side: the round's checkpoint subject, from its child.
+fn checkpoint_subject_child(
+    workspace: &Path,
+    liveness: &SupervisedSubjectModel,
+) -> Result<RegenConvergenceCheckpointSubject, String> {
+    match answer_in_child::<CheckpointSubjectReceipt>(
+        workspace,
+        &["--regen-checkpoint-subject".to_string()],
+        CHECKPOINT_SUBJECT_RECEIPT_REL,
+        liveness,
+    )? {
+        CheckpointSubjectReceipt::Answered { subject, .. } => Ok(subject),
+        CheckpointSubjectReceipt::Refused { reason, .. } => {
+            Err(format!("CheckpointSubjectRefused: {reason}"))
+        }
+    }
+}
+
+/// THE ROUND SUBJECT'S ONE PRODUCTION: if the slot is empty, ask `produce` once (the child) and
+/// keep the answer; if it holds a value (established earlier in this image, or carried across the
+/// re-exec), return it and produce nothing. `latest_generation` is the generation current at the
+/// moment of a late establishment, whose own reading of the closure must agree with the produced
+/// subject.
+fn establish_round_subject<'s>(
+    slot: &'s mut Option<RegenConvergenceCheckpointSubject>,
+    latest_generation: Option<(usize, &str)>,
+    produce: impl FnOnce() -> Result<RegenConvergenceCheckpointSubject, String>,
+) -> Result<&'s RegenConvergenceCheckpointSubject, String> {
+    if slot.is_none() {
+        let produced = produce()?;
+        if let Some((ordinal, observed)) = latest_generation {
+            admit_generation_authority(&produced, ordinal, observed)?;
+        }
+        *slot = Some(produced);
+    }
+    slot.as_ref()
+        .ok_or_else(|| "refusal: the round subject was not established".to_string())
+}
+
+fn regen_convergence_journal_exists(workspace: &Path) -> bool {
+    regen_convergence_journal_path(workspace)
+        .join("journal.json")
+        .is_file()
+}
+
+/// THE ROUND'S ROLLBACK. A journal never exists without the round's subject: every journal write
+/// is preceded by `establish_round_subject`. So no journal restores nothing, and a journal with no
+/// established subject is a refusal, never a cue to produce one at teardown.
+fn restore_round_journal(
+    workspace: &Path,
+    established: Option<&RegenConvergenceCheckpointSubject>,
+) -> Result<Vec<String>, String> {
+    match established {
+        Some(subject) => restore_regen_convergence_journal_for_subject(workspace, subject),
+        None if !regen_convergence_journal_exists(workspace) => Ok(Vec::new()),
+        None => Err(
+            "CheckpointJournalWithoutRoundSubject: a convergence journal exists but this round \
+             established no checkpoint subject; it was not written by this round, and the round \
+             refuses rather than restore under a subject it did not produce"
+                .to_string(),
+        ),
+    }
+}
+
+/// THE CARRIED SUBJECT IS CHECKED, NOT ASSUMED. Every generation loads the stage0 input closure
+/// itself and reports its authority digest, so each one is a free reading of the fact the round
+/// carries. A difference means the closure changed during the round (a `.dag` edit, or a rebuilt
+/// seed that computes the closure differently) and the carried subject no longer names it, so the
+/// round refuses rather than journal or restore under a stale subject.
+fn admit_generation_authority(
+    round_subject: &RegenConvergenceCheckpointSubject,
+    ordinal: usize,
+    observed: &str,
+) -> Result<(), String> {
+    if observed == round_subject.source_authority_digest {
+        return Ok(());
+    }
+    Err(format!(
+        "CheckpointSubjectDriftedMidRound: generation {ordinal} read the stage0 input closure as \
+         {observed}, but the round's checkpoint subject carries {}; the carried subject no longer \
+         names the round's sources",
+        round_subject.source_authority_digest
+    ))
 }
 
 /// The whole-compiler rebuild the partition-generation class requires: the closure is NOT shown
@@ -5910,22 +6111,24 @@ fn boundary_drift_from_producer_report(stdout: &[u8]) -> Option<Vec<String>> {
 
 /// Install the rebuilt producer's boundary output: journal the files first (the one rollback),
 /// then let the built seed write them.
-fn install_built_seed_boundary(workspace: &Path, drifted: &[String]) -> Result<(), String> {
-    let journal_path = regen_convergence_journal_path(workspace).join("journal.json");
-    let journal: RegenConvergenceJournal = serde_json::from_slice(
-        &fs::read(&journal_path).map_err(|e| format!("read {}: {e}", journal_path.display()))?,
-    )
-    .map_err(|e| format!("parse {}: {e}", journal_path.display()))?;
-    let subject = RegenConvergenceCheckpointSubject {
-        starting_commit: journal.starting_commit,
-        source_authority_digest: journal.source_authority_digest,
-        stage_plan_authority_digest: journal.stage_plan_authority_digest,
-    };
+/// Install the built seed's boundary files, journalled under the round's established subject (a
+/// boundary install always follows a stage install, which established it; the journal write refuses
+/// if the journal on disk names another subject).
+fn install_built_seed_boundary(
+    workspace: &Path,
+    drifted: &[String],
+    subject: Option<&RegenConvergenceCheckpointSubject>,
+) -> Result<(), String> {
+    let subject = subject.ok_or_else(|| {
+        "CheckpointJournalWithoutRoundSubject: a boundary install was asked to journal before any \
+         stage install established the round's checkpoint subject"
+            .to_string()
+    })?;
     let entries = drifted
         .iter()
         .map(|path| (path.clone(), workspace.join(path)))
         .collect::<Vec<_>>();
-    journal_paths_for_subject(workspace, &entries, &subject)?;
+    journal_paths_for_subject(workspace, &entries, subject)?;
     let on_disk = current_exe_on_disk()?;
     let status = Command::new(&on_disk)
         .args(["--emit-partition-crates", "--write"])
@@ -6063,6 +6266,7 @@ fn run_built_seed_regen(
     admitted_executable_digest: &str,
     ordinal: usize,
     liveness: &SupervisedSubjectModel,
+    round_subject: Option<&RegenConvergenceCheckpointSubject>,
 ) -> Result<FirstGenerationConvergenceObservation, String> {
     let receipt_path = workspace.join(receipt_rel);
     if receipt_path.exists() {
@@ -6132,7 +6336,15 @@ fn run_built_seed_regen(
     let receipt = read_first_generation_receipt(&receipt_path);
     report_cgroup_memory_diagnostic("parent.readback");
     match receipt {
-        Ok(value) => Ok(value),
+        Ok(value) => {
+            // Checked against the carried subject whenever one is established; a subject
+            // established later is checked against the generation current at that moment
+            // (`establish_round_subject`).
+            if let Some(subject) = round_subject {
+                admit_generation_authority(subject, ordinal, &value.authority_digest)?;
+            }
+            Ok(value)
+        }
         Err(reason) => Err(format!(
             "{reason}; {}",
             rebuilt_seed_regen_failed_refusal(&run)
@@ -7369,8 +7581,8 @@ fn install_convergence_stage(
     dependency_closure_id: &str,
     whole_compiler: bool,
     liveness: &SupervisedSubjectModel,
+    subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<(RegenConvergenceStageReceipt, bool), String> {
-    let subject = current_convergence_checkpoint_subject(workspace)?;
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
@@ -8079,6 +8291,23 @@ pub fn run_regen_round_cost(
     // observations.
     let handoff_in = SeedHandoff::from_env().map_err(|cause| cause.to_string())?;
 
+    // THE ROUND'S CHECKPOINT SUBJECT: AT MOST ONE PRODUCER PER ROUND, INVOKED AT THE FIRST DEMAND,
+    // THEN CARRIED (`establish_round_subject`). The demands are a journal to restore at startup, the
+    // base-mirror bootstrap's journal, and the first install; a round that never journals never
+    // produces it, and a journal never exists without it (`restore_round_journal`). Every journal
+    // write and restore below is about this one value; the stage0 input closure it digests does not change
+    // during a round (installs and the base snapshot write `.rs`, never `.dag`), and every
+    // generation receipt checks that (`admit_generation_authority`). It used to be recomputed at
+    // each restore, in each image, and at each install stage, and each recompute built the
+    // whole-tree index in THIS process (run 41899288377: 7.57 GB resident at generation 0). Now the
+    // image that owns the round asks a child for it, so the index lives and dies there, and the
+    // re-exec'd image takes the carried value. The liveness model supervises that child, so it is
+    // loaded first.
+    let liveness_model = SupervisedSubjectModel::load(source_roots)?;
+    let mut round_subject: Option<RegenConvergenceCheckpointSubject> = handoff_in
+        .as_ref()
+        .and_then(|carried| carried.round_subject.clone());
+
     // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
     // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
     // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
@@ -8097,7 +8326,12 @@ pub fn run_regen_round_cost(
         // restore here would replace the very bytes the child was exec'd to report on, and the
         // build below would compile something its parent never compiled. Every other round keeps
         // the behaviour main has always had, including the recovery of an interrupted round.
-        restore_regen_convergence_journal(&workspace)?;
+        if regen_convergence_journal_exists(&workspace) {
+            let subject = establish_round_subject(&mut round_subject, None, || {
+                checkpoint_subject_child(&workspace, &liveness_model)
+            })?;
+            restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        }
     }
 
     // THE SUBJECT IS READ AFTER THE RESTORE, which is what that comment has always claimed and
@@ -8128,11 +8362,7 @@ pub fn run_regen_round_cost(
     // teardown returns them under it; `restore_regen_convergence_journal_for_subject` REFUSES on a
     // subject mismatch, so a second read at teardown time would turn any mid-round drift into a new
     // refusal instead of a rollback. One read, both ends.
-    let round_subject = if base_mirror {
-        Some(current_convergence_checkpoint_subject(&workspace)?)
-    } else {
-        None
-    };
+    // That one read is `round_subject`, above: one producer per round, carried across the re-exec.
     let base_bootstrap = if base_mirror && handoff_in.is_none() {
         v1_rt::trace_mark("round.base_mirror_bootstrap.begin".to_string());
         // The ref is read HERE, from the environment, and passed as a value: a branch name is
@@ -8140,13 +8370,11 @@ pub fn run_regen_round_cost(
         // containing `${{`, so the ref never reaches argv. The subject is the one the install path
         // reads later, so the journal this bootstrap creates is the journal the round restores.
         let base_commit_env = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
-        let restored = bootstrap_round_one_from_base_mirror(
-            &workspace,
-            base_commit_env.as_deref(),
-            round_subject
-                .as_ref()
-                .expect("the base-mirror round read its subject"),
-        )?;
+        let subject = establish_round_subject(&mut round_subject, None, || {
+            checkpoint_subject_child(&workspace, &liveness_model)
+        })?;
+        let restored =
+            bootstrap_round_one_from_base_mirror(&workspace, base_commit_env.as_deref(), subject)?;
         v1_rt::trace_mark("round.base_mirror_bootstrap.done".to_string());
         // THE RECEIPT NAMES ITS SOURCE (sleek-owl-397, RFM #14963): the commit, the population size,
         // and the whole-crate scope, so a reader can tell WHICH bytes the round compiled and can
@@ -8196,6 +8424,7 @@ pub fn run_regen_round_cost(
         &exe_after,
         &source_identity,
         &seed_build_cost,
+        round_subject.as_ref(),
     )
     .map_err(|cause| cause.to_string())?
     {
@@ -8248,9 +8477,9 @@ pub fn run_regen_round_cost(
     // not survive the round. The child reaches here with the parent's journal still on disk (the
     // child restores nothing at startup, and only the end of a round deletes it), so one call
     // unwinds what the parent seeded.
-    let base_rewritten_mirrors: Vec<String> = if let Some(subject) = round_subject.as_ref() {
+    let base_rewritten_mirrors: Vec<String> = if base_mirror {
         v1_rt::trace_mark("round.base_snapshot_revert.begin".to_string());
-        let rewritten = restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        let rewritten = restore_round_journal(&workspace, round_subject.as_ref())?;
         let reverted = rewritten.len();
         v1_rt::trace_mark("round.base_snapshot_revert.done".to_string());
         // THE RECEIPT NAMES WHAT IT PUT BACK, so a reader can tell a round that returned the head's
@@ -8298,7 +8527,6 @@ pub fn run_regen_round_cost(
     // below -- is loaded BEFORE generation 0, so the orchestrator's footprint at generation 0 is
     // the baseline every later transition is held to.
     let convergence_model = RegenConvergenceModel::load(source_roots)?;
-    let liveness_model = SupervisedSubjectModel::load(source_roots)?;
     let initial_seed_digest = current_exe_digest()?;
     let orchestrator_resident_at_first = admit_generation_begin(&convergence_model, 0, None)?;
     v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
@@ -8312,6 +8540,7 @@ pub fn run_regen_round_cost(
         &initial_seed_digest,
         0,
         &liveness_model,
+        round_subject.as_ref(),
     );
     report_cgroup_memory_diagnostic("parent.end generation=0");
     v1_rt::trace_mark("round.built_seed_regen.done".to_string());
@@ -8353,7 +8582,7 @@ pub fn run_regen_round_cost(
             let boundary_drift = match built_seed_boundary_drift(&workspace) {
                 Ok(paths) => paths,
                 Err(failure) => {
-                    restore_regen_convergence_journal(&workspace)?;
+                    restore_round_journal(&workspace, round_subject.as_ref())?;
                     return Err(format!("{failure}; checkpoint restored"));
                 }
             };
@@ -8365,7 +8594,7 @@ pub fn run_regen_round_cost(
                  rebuilt producer {boundary_drift:?}"
             ));
             if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
-                restore_regen_convergence_journal(&workspace)?;
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "RegenConvergenceBoundExceeded: boundary files did not converge within the \
                      declared bound (regen_convergence_max_generations) at generation \
@@ -8373,13 +8602,14 @@ pub fn run_regen_round_cost(
                     round_records.join("; ")
                 ));
             }
-            let rebuilt = install_built_seed_boundary(&workspace, &boundary_drift)
-                .and_then(|()| seed_cargo_build(&workspace, "round.rebuild_from_boundary"))
-                .and_then(|_| next_pass_executable_digest(&workspace));
+            let rebuilt =
+                install_built_seed_boundary(&workspace, &boundary_drift, round_subject.as_ref())
+                    .and_then(|()| seed_cargo_build(&workspace, "round.rebuild_from_boundary"))
+                    .and_then(|_| next_pass_executable_digest(&workspace));
             match rebuilt {
                 Ok(digest) => current_seed_digest = digest,
                 Err(failure) => {
-                    restore_regen_convergence_journal(&workspace)?;
+                    restore_round_journal(&workspace, round_subject.as_ref())?;
                     return Err(format!(
                         "boundary stage refused; checkpoint restored: {failure}"
                     ));
@@ -8391,7 +8621,7 @@ pub fn run_regen_round_cost(
                 generation_ordinal,
                 Some(orchestrator_resident_at_first),
             ) {
-                restore_regen_convergence_journal(&workspace)?;
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "next generation refused; checkpoint restored: {failure}"
                 ));
@@ -8405,6 +8635,7 @@ pub fn run_regen_round_cost(
                 &current_seed_digest,
                 generation_ordinal,
                 &liveness_model,
+                round_subject.as_ref(),
             ) {
                 Ok(next) => {
                     candidate_digest = next.manifest.candidate_tree_digest.clone();
@@ -8414,7 +8645,7 @@ pub fn run_regen_round_cost(
                     candidate_manifest = next.manifest;
                 }
                 Err(failure) => {
-                    restore_regen_convergence_journal(&workspace)?;
+                    restore_round_journal(&workspace, round_subject.as_ref())?;
                     return Err(format!(
                         "next generation refused; checkpoint restored: {failure}"
                     ));
@@ -8426,7 +8657,7 @@ pub fn run_regen_round_cost(
             "generation {generation_ordinal}: first_generation_equal=false drifted={drifted:?}"
         ));
         if regen_convergence_bound_exceeded(source_roots, generation_ordinal)? {
-            restore_regen_convergence_journal(&workspace)?;
+            restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "RegenConvergenceBoundExceeded: no fixed point within the declared bound \
                  (regen_convergence_max_generations) at generation {generation_ordinal}; checkpoint restored; nothing is published -- {}",
@@ -8484,7 +8715,7 @@ pub fn run_regen_round_cost(
             })
             .collect::<Vec<_>>();
         if install_set.is_empty() {
-            restore_regen_convergence_journal(&workspace)?;
+            restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "generation made no progress with drift {drifted:?}"
             ));
@@ -8514,7 +8745,7 @@ pub fn run_regen_round_cost(
             match built_seed_boundary_drift(&workspace) {
                 Ok(paths) => paths,
                 Err(failure) => {
-                    restore_regen_convergence_journal(&workspace)?;
+                    restore_round_journal(&workspace, round_subject.as_ref())?;
                     return Err(format!("{failure}; checkpoint restored"));
                 }
             }
@@ -8527,14 +8758,25 @@ pub fn run_regen_round_cost(
                 "generation {generation_ordinal}: boundary drift under the post-install producer \
                  {stage_boundary:?} installs with the pending mirrors"
             ));
-            if let Err(failure) = install_built_seed_boundary(&workspace, &stage_boundary) {
-                restore_regen_convergence_journal(&workspace)?;
+            if let Err(failure) =
+                install_built_seed_boundary(&workspace, &stage_boundary, round_subject.as_ref())
+            {
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "boundary install refused; checkpoint restored: {failure}"
                 ));
             }
         }
         let drifted_entering_stage = drifted.clone();
+        // THE FIRST INSTALL IS A DEMAND: the stage journals what it overwrites, under the round's
+        // subject. Produced here if nothing demanded it earlier, and checked against this
+        // generation's own reading of the closure.
+        let subject = establish_round_subject(
+            &mut round_subject,
+            Some((generation_ordinal, &authority_digest)),
+            || checkpoint_subject_child(&workspace, &liveness_model),
+        )?
+        .clone();
         v1_rt::trace_mark("round.install.begin".to_string());
         let stage_result = install_convergence_stage(
             &convergence_model,
@@ -8555,6 +8797,7 @@ pub fn run_regen_round_cost(
             &dependency_closure_id,
             stage_whole_compiler,
             &liveness_model,
+            &subject,
         );
         v1_rt::trace_mark("round.install.done".to_string());
         let mut stage = match stage_result {
@@ -8563,7 +8806,7 @@ pub fn run_regen_round_cost(
                 stage
             }
             Err(failure) => {
-                restore_regen_convergence_journal(&workspace)?;
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "stage seed build refused; checkpoint restored: {failure}"
                 ));
@@ -8578,7 +8821,7 @@ pub fn run_regen_round_cost(
             generation_ordinal,
             Some(orchestrator_resident_at_first),
         ) {
-            restore_regen_convergence_journal(&workspace)?;
+            restore_round_journal(&workspace, round_subject.as_ref())?;
             return Err(format!(
                 "next generation refused; checkpoint restored: {failure}"
             ));
@@ -8594,6 +8837,7 @@ pub fn run_regen_round_cost(
             &current_seed_digest,
             generation_ordinal,
             &liveness_model,
+            round_subject.as_ref(),
         );
         report_cgroup_memory_diagnostic(&format!("parent.end generation={generation_ordinal}"));
         v1_rt::trace_mark("round.built_seed_regen.done".to_string());
@@ -8638,7 +8882,7 @@ pub fn run_regen_round_cost(
                 candidate_manifest = next.manifest;
             }
             Err(failure) => {
-                restore_regen_convergence_journal(&workspace)?;
+                restore_round_journal(&workspace, round_subject.as_ref())?;
                 return Err(format!(
                     "next generation refused; checkpoint restored: {failure}"
                 ));
@@ -9814,6 +10058,14 @@ mod heal_round_one_base_mirror_tests {
 mod regen_round_cost_tests {
     use super::*;
 
+    fn handoff_subject() -> RegenConvergenceCheckpointSubject {
+        RegenConvergenceCheckpointSubject {
+            starting_commit: "c0ffee".to_string(),
+            source_authority_digest: "sha256:source".to_string(),
+            stage_plan_authority_digest: "sha256:plan".to_string(),
+        }
+    }
+
     fn cost(crates: u64, wall: u64, cpu: Option<u64>) -> SeedBuildCost {
         SeedBuildCost {
             compiled_crates: crates,
@@ -9919,12 +10171,22 @@ mod regen_round_cost_tests {
             "an edited untracked file changes the identity"
         );
         let c = cost(1, 1, None);
-        let carry = match decide_seed_handoff(None, "a", "b", &with_new, &c).unwrap() {
-            SeedHandoffDecision::ReExec(h) => h,
-            SeedHandoffDecision::Proceed => panic!(),
-        };
+        let carry =
+            match decide_seed_handoff(None, "a", "b", &with_new, &c, Some(&handoff_subject()))
+                .unwrap()
+            {
+                SeedHandoffDecision::ReExec(h) => h,
+                SeedHandoffDecision::Proceed => panic!(),
+            };
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &edited_id, &c),
+            decide_seed_handoff(
+                Some(&carry),
+                "b",
+                "b",
+                &edited_id,
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
     }
@@ -9943,16 +10205,32 @@ mod regen_round_cost_tests {
         let id_two = compose_source_identity("H", b"d", &mut two);
         let id_one = compose_source_identity("H", b"d", &mut one);
         assert_ne!(id_two, id_one);
-        let carry = match decide_seed_handoff(None, "a", "b", &id_two, &c).unwrap() {
+        let carry = match decide_seed_handoff(None, "a", "b", &id_two, &c, Some(&handoff_subject()))
+            .unwrap()
+        {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!(),
         };
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &id_one, &c),
+            decide_seed_handoff(
+                Some(&carry),
+                "b",
+                "b",
+                &id_one,
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &id_two, &c),
+            decide_seed_handoff(
+                Some(&carry),
+                "b",
+                "b",
+                &id_two,
+                &c,
+                Some(&handoff_subject())
+            ),
             Ok(SeedHandoffDecision::Proceed)
         ));
     }
@@ -9986,7 +10264,9 @@ mod regen_round_cost_tests {
     fn exec_target_admission_compares_with_the_build_output_and_never_overwrites() {
         let c = cost(1, 1, None);
         // production decision: build output B is what the carry names
-        let carry = match decide_seed_handoff(None, "old", "B", "S", &c).unwrap() {
+        let carry = match decide_seed_handoff(None, "old", "B", "S", &c, Some(&handoff_subject()))
+            .unwrap()
+        {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!(),
         };
@@ -10001,7 +10281,7 @@ mod regen_round_cost_tests {
         assert_eq!(admitted, carry);
         // and the receiver still proceeds on the admitted carry
         assert!(matches!(
-            decide_seed_handoff(Some(&admitted), "B", "B", "S", &c),
+            decide_seed_handoff(Some(&admitted), "B", "B", "S", &c, Some(&handoff_subject())),
             Ok(SeedHandoffDecision::Proceed)
         ));
     }
@@ -10025,6 +10305,7 @@ mod regen_round_cost_tests {
             cost: c.clone(),
             source: "S".into(),
             built_exe: built.clone(),
+            round_subject: Some(handoff_subject()),
         };
         // rewrite the same inode, then put B back at the installed path
         let mut rewritten = fs::OpenOptions::new().write(true).open(&path).unwrap();
@@ -10037,17 +10318,38 @@ mod regen_round_cost_tests {
         );
         // receiver: running image C, installed path B again -> the old path-reopen said Proceed
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &running, &built, "S", &c),
+            decide_seed_handoff(
+                Some(&carry),
+                &running,
+                &built,
+                "S",
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
         ));
         // installed/running mismatch with the carried artifact running
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &built, &running, "S", &c),
+            decide_seed_handoff(
+                Some(&carry),
+                &built,
+                &running,
+                "S",
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
         ));
         // same artifact everywhere proceeds
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &built, &built, "S", &c),
+            decide_seed_handoff(
+                Some(&carry),
+                &built,
+                &built,
+                "S",
+                &c,
+                Some(&handoff_subject())
+            ),
             Ok(SeedHandoffDecision::Proceed)
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -10056,33 +10358,41 @@ mod regen_round_cost_tests {
     #[test]
     fn handoff_decisions_are_typed_and_round_trip() {
         let c = cost(4, 5, Some(6));
-        let carry = match decide_seed_handoff(None, "a", "b", "T", &c).unwrap() {
-            SeedHandoffDecision::ReExec(h) => h,
-            SeedHandoffDecision::Proceed => panic!("replaced exe must hand off"),
-        };
+        let carry =
+            match decide_seed_handoff(None, "a", "b", "T", &c, Some(&handoff_subject())).unwrap() {
+                SeedHandoffDecision::ReExec(h) => h,
+                SeedHandoffDecision::Proceed => panic!("replaced exe must hand off"),
+            };
         assert_eq!(carry.built_exe, "b", "the carry names the built artifact");
         assert_eq!(SeedHandoff::decode(&carry.encode()).unwrap(), carry);
         assert!(matches!(
-            decide_seed_handoff(None, "a", "a", "T", &c),
+            decide_seed_handoff(None, "a", "a", "T", &c, Some(&handoff_subject())),
             Ok(SeedHandoffDecision::Proceed)
         ));
         // positive: the re-exec'd image is the built artifact, same source, build is a no-op
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", "T", &c),
+            decide_seed_handoff(Some(&carry), "b", "b", "T", &c, Some(&handoff_subject())),
             Ok(SeedHandoffDecision::Proceed)
         ));
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "c", "T", &c),
+            decide_seed_handoff(Some(&carry), "b", "c", "T", &c, Some(&handoff_subject())),
             Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
         ));
         // same commit, different uncommitted source
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", "T-other-diff", &c),
+            decide_seed_handoff(
+                Some(&carry),
+                "b",
+                "b",
+                "T-other-diff",
+                &c,
+                Some(&handoff_subject())
+            ),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
         // wrong artifact: running image is not the one the first image built
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "z", "z", "T", &c),
+            decide_seed_handoff(Some(&carry), "z", "z", "T", &c, Some(&handoff_subject())),
             Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
         ));
         assert!(matches!(
@@ -12136,7 +12446,10 @@ mod partition_move_explanation_tests {
         ] {
             let path = scratch("roundtrip");
             fs::write(&path, serde_json::to_vec(&answer).unwrap()).unwrap();
-            assert_eq!(read_partition_move_explanation(&path).unwrap(), answer);
+            assert_eq!(
+                read_child_answer::<PartitionMoveExplanationReceipt>(&path).unwrap(),
+                answer
+            );
         }
     }
 
@@ -12145,11 +12458,11 @@ mod partition_move_explanation_tests {
     fn an_absent_garbled_or_foreign_answer_refuses() {
         let path = scratch("refusals");
         let _ = fs::remove_file(&path);
-        assert!(read_partition_move_explanation(&path)
+        assert!(read_child_answer::<PartitionMoveExplanationReceipt>(&path)
             .unwrap_err()
             .contains("wrote no answer"));
         fs::write(&path, b"{\"answer\":\"maybe\"}").unwrap();
-        assert!(read_partition_move_explanation(&path)
+        assert!(read_child_answer::<PartitionMoveExplanationReceipt>(&path)
             .unwrap_err()
             .contains("refusal: parse"));
         fs::write(
@@ -12160,7 +12473,7 @@ mod partition_move_explanation_tests {
             .unwrap(),
         )
         .unwrap();
-        assert!(read_partition_move_explanation(&path)
+        assert!(read_child_answer::<PartitionMoveExplanationReceipt>(&path)
             .unwrap_err()
             .contains("not gunbc.regen_partition_move_explanation.v1"));
     }
@@ -12179,7 +12492,10 @@ mod partition_move_explanation_tests {
             .collect();
         let answered = run_partition_move_explanation(&rel, &roots).unwrap();
         let path = workspace_root().join(&rel);
-        assert_eq!(read_partition_move_explanation(&path).unwrap(), answered);
+        assert_eq!(
+            read_child_answer::<PartitionMoveExplanationReceipt>(&path).unwrap(),
+            answered
+        );
         let _ = fs::remove_file(&path);
     }
 }
@@ -12241,10 +12557,61 @@ mod orchestrator_model_load_tests {
         assert_ne!(canonical_occurrences(a), canonical_occurrences(unshared));
     }
 
+    fn carried_subject() -> RegenConvergenceCheckpointSubject {
+        RegenConvergenceCheckpointSubject {
+            starting_commit: "c0ffee".to_string(),
+            source_authority_digest: "sha256:source".to_string(),
+            stage_plan_authority_digest: "sha256:plan".to_string(),
+        }
+    }
+
+    /// EVERYTHING THE ORCHESTRATOR DOES IN-PROCESS BEFORE GENERATION 0, in production order
+    /// (`run_regen_round_cost`): the liveness model, the round subject, the convergence model, the
+    /// round-cost decider, then the generation-begin admission. None of it may start a whole-pool
+    /// index build on this thread. The previous version of this replay listed only the model loads
+    /// and missed the checkpoint subject, which run 41899288377 then measured in production (7.57
+    /// GB at generation 0). The subject child itself needs the real `claim_executor` and runs in
+    /// the heal round; here the ask is counted, and both images' routes are driven.
     #[test]
-    fn the_orchestrators_model_loads_build_no_shared_index() {
+    fn nothing_the_orchestrator_does_before_generation_0_builds_a_whole_pool_index() {
         let roots = roots();
+        let builds_before = super::super::entry_resolve::whole_pool_index_builds_on_this_thread();
         let _liveness = SupervisedSubjectModel::load(&roots).expect("liveness model");
+        // The image that owns a base-mirror round establishes the subject (the child, counted)...
+        let mut owned_slot = None;
+        let mut asks = 0;
+        let owned = establish_round_subject(&mut owned_slot, None, || {
+            asks += 1;
+            Ok(carried_subject())
+        })
+        .unwrap()
+        .clone();
+        let _ = establish_round_subject(&mut owned_slot, None, || {
+            panic!("an established subject is never produced again")
+        })
+        .unwrap();
+        assert_eq!(
+            asks, 1,
+            "the owning image produces the subject exactly once"
+        );
+        // ...and the re-exec'd image takes the carried value and asks nobody.
+        let carry = SeedHandoff {
+            cost: SeedBuildCost {
+                compiled_crates: 1,
+                wall_ms: 1,
+                cpu_ms: None,
+            },
+            source: "S".to_string(),
+            built_exe: "B".to_string(),
+            round_subject: Some(owned.clone()),
+        };
+        let mut reexecd_slot = SeedHandoff::decode(&carry.encode()).unwrap().round_subject;
+        let reexecd = establish_round_subject(&mut reexecd_slot, None, || {
+            panic!("the re-exec'd image must not produce the subject again")
+        })
+        .unwrap()
+        .clone();
+        assert_eq!(reexecd, owned);
         let convergence = RegenConvergenceModel::load(&roots).expect("convergence model");
         let entry = round_cost_entry(&roots).unwrap();
         let _decider = resolve_orchestrator_model(&roots, &entry).expect("round-cost decider");
@@ -12254,9 +12621,43 @@ mod orchestrator_model_load_tests {
             Ok(())
         );
         assert_eq!(
+            super::super::entry_resolve::whole_pool_index_builds_on_this_thread() - builds_before,
+            0,
+            "something the orchestrator does before generation 0 built a whole-pool index"
+        );
+        assert_eq!(
             super::super::entry_resolve::shared_index_residency_control(),
             Ok(0),
             "an orchestrator model load built the whole-tree shared index"
+        );
+    }
+
+    /// RED for the discriminator, on the SUBJECT PRODUCER'S OWN ROUTE: `regen_input_sources`, which
+    /// the checkpoint subject's digest calls unconditionally, is seen as a whole-pool build -- here
+    /// over a one-module fixture root, because the real corpus costs about 7.5 GB.
+    #[test]
+    fn the_subject_producers_closure_build_is_seen_by_the_counter() {
+        let root = workspace_root().join(format!(
+            "target/gunbc-subject-producer-red-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("probe")).unwrap();
+        fs::write(
+            root.join("probe/fixture.dag"),
+            "module probe.fixture\n\nimport std.types { Int }\n\ndata fixture_value: Int = 1\n",
+        )
+        .unwrap();
+        let before = super::super::entry_resolve::whole_pool_index_builds_on_this_thread();
+        let sources = super::super::regen_input_sources_over_roots(
+            &root,
+            &[root.to_string_lossy().into_owned()],
+        );
+        let builds = super::super::entry_resolve::whole_pool_index_builds_on_this_thread() - before;
+        let _ = fs::remove_dir_all(&root);
+        assert!(sources.is_ok(), "the fixture closure resolves: {sources:?}");
+        assert!(
+            builds >= 1,
+            "the counter did not see the subject producer's whole-pool build"
         );
     }
 
@@ -12275,13 +12676,16 @@ mod orchestrator_model_load_tests {
         )
         .unwrap();
         let fixture_roots = vec![root.to_string_lossy().into_owned()];
+        let before = super::super::entry_resolve::whole_pool_index_builds_on_this_thread();
         let _ = super::super::entry_resolve::try_process_shared_index(&fixture_roots);
+        let builds = super::super::entry_resolve::whole_pool_index_builds_on_this_thread() - before;
         let resident = super::super::entry_resolve::shared_index_residency_control();
         let _ = fs::remove_dir_all(&root);
         assert!(
             matches!(resident, Ok(n) if n >= 1),
             "the residency read did not see a shared-index build: {resident:?}"
         );
+        assert!(builds >= 1, "the counter did not see a shared-index build");
     }
 
     /// EQUIVALENCE, PER SITE: the demand-acquired route and the shared-index route resolve each
@@ -12504,5 +12908,208 @@ mod orchestrator_model_load_tests {
             t.elapsed(),
             rss()
         );
+    }
+}
+
+/// THE ROUND'S CHECKPOINT SUBJECT IS ONE CARRIED VALUE: it crosses the re-exec in the handoff (and
+/// an old handoff without it refuses), every generation receipt is checked against it, and its
+/// child's answer refuses when absent, garbled or foreign.
+#[cfg(test)]
+mod round_checkpoint_subject_tests {
+    use super::*;
+
+    fn subject(source: &str) -> RegenConvergenceCheckpointSubject {
+        RegenConvergenceCheckpointSubject {
+            starting_commit: "c0ffee".to_string(),
+            source_authority_digest: source.to_string(),
+            stage_plan_authority_digest: "sha256:plan".to_string(),
+        }
+    }
+
+    fn handoff() -> SeedHandoff {
+        SeedHandoff {
+            cost: SeedBuildCost {
+                compiled_crates: 3,
+                wall_ms: 4,
+                cpu_ms: Some(5),
+            },
+            source: "T".to_string(),
+            built_exe: "B".to_string(),
+            round_subject: Some(subject("sha256:source")),
+        }
+    }
+
+    #[test]
+    fn the_handoff_carries_the_subject_or_its_absence_and_round_trips() {
+        let carry = handoff();
+        assert_eq!(SeedHandoff::decode(&carry.encode()).unwrap(), carry);
+        let none = SeedHandoff {
+            round_subject: None,
+            ..handoff()
+        };
+        assert_eq!(SeedHandoff::decode(&none.encode()).unwrap(), none);
+    }
+
+    /// AT MOST ONE PRODUCTION, AT THE FIRST DEMAND: a round that never demands it produces nothing;
+    /// a late establishment is checked against the generation current at that moment.
+    #[test]
+    fn the_subject_is_produced_once_at_first_demand_and_checked_when_late() {
+        let mut slot = None;
+        assert!(slot.is_none(), "nothing is produced before a demand");
+        let mut asks = 0;
+        let produced = establish_round_subject(&mut slot, Some((2, "sha256:source")), || {
+            asks += 1;
+            Ok(subject("sha256:source"))
+        })
+        .unwrap()
+        .clone();
+        assert_eq!(produced, subject("sha256:source"));
+        let again = establish_round_subject(&mut slot, Some((3, "sha256:source")), || {
+            asks += 1;
+            Ok(subject("sha256:other"))
+        })
+        .unwrap()
+        .clone();
+        assert_eq!((asks, again), (1, produced));
+        // RED: produced late, disagreeing with the current generation's reading.
+        let mut late = None;
+        let refused = establish_round_subject(&mut late, Some((2, "sha256:edited")), || {
+            Ok(subject("sha256:source"))
+        })
+        .unwrap_err();
+        assert!(
+            refused.starts_with("CheckpointSubjectDriftedMidRound: generation 2 "),
+            "{refused}"
+        );
+        assert!(late.is_none(), "a refused production establishes nothing");
+    }
+
+    /// No journal restores nothing without a subject; a journal with no established subject refuses.
+    #[test]
+    fn a_journal_without_an_established_subject_refuses_at_restore() {
+        let root = std::env::temp_dir().join(format!("gunbc-round-journal-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        assert_eq!(restore_round_journal(&root, None), Ok(Vec::new()));
+        let journal = regen_convergence_journal_path(&root);
+        fs::create_dir_all(&journal).unwrap();
+        fs::write(journal.join("journal.json"), b"{}").unwrap();
+        let refused = restore_round_journal(&root, None).unwrap_err();
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            refused.starts_with("CheckpointJournalWithoutRoundSubject"),
+            "{refused}"
+        );
+    }
+
+    /// RED: a handoff in the previous encoding (no subject) refuses at decode, and so does one with
+    /// a trailing field; neither is read as a cue to recompute.
+    #[test]
+    fn a_handoff_without_the_subject_refuses() {
+        let old = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B";
+        assert!(matches!(
+            SeedHandoff::decode(old),
+            Err(SeedHandoffRefusal::HandoffUndecodable { .. })
+        ));
+        let truncated = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B;subject=present";
+        assert!(matches!(
+            SeedHandoff::decode(truncated),
+            Err(SeedHandoffRefusal::HandoffUndecodable { .. })
+        ));
+        let extra = format!("{};extra=1", handoff().encode());
+        assert!(matches!(
+            SeedHandoff::decode(&extra),
+            Err(SeedHandoffRefusal::HandoffUndecodable { .. })
+        ));
+    }
+
+    /// The check runs for EVERY generation (one call site, inside `run_built_seed_regen`): equal
+    /// digests admit at any ordinal, and a drifted digest refuses at generation 0 and at a later one.
+    #[test]
+    fn every_generation_receipt_is_checked_against_the_carried_subject() {
+        let carried = subject("sha256:source");
+        for ordinal in [0usize, 1, 3] {
+            assert_eq!(
+                admit_generation_authority(&carried, ordinal, "sha256:source"),
+                Ok(())
+            );
+        }
+        for ordinal in [0usize, 3] {
+            let refused =
+                admit_generation_authority(&carried, ordinal, "sha256:edited").unwrap_err();
+            assert!(
+                refused.starts_with("CheckpointSubjectDriftedMidRound: generation ")
+                    && refused.contains(&format!("generation {ordinal} "))
+                    && refused.contains("sha256:edited")
+                    && refused.contains("sha256:source"),
+                "{refused}"
+            );
+        }
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-checkpoint-subject-{name}-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir.join("answer.json")
+    }
+
+    #[test]
+    fn the_subject_answer_round_trips_and_its_refusal_stays_distinct() {
+        let schema = CHECKPOINT_SUBJECT_SCHEMA.to_string();
+        for answer in [
+            CheckpointSubjectReceipt::Answered {
+                schema: schema.clone(),
+                subject: subject("sha256:source"),
+            },
+            CheckpointSubjectReceipt::Refused {
+                schema: schema.clone(),
+                reason: "corpus unreadable".to_string(),
+            },
+        ] {
+            let path = scratch("roundtrip");
+            fs::write(&path, serde_json::to_vec(&answer).unwrap()).unwrap();
+            assert_eq!(
+                read_child_answer::<CheckpointSubjectReceipt>(&path).unwrap(),
+                answer
+            );
+        }
+    }
+
+    /// RED: no answer, an unparseable answer, an answer missing a subject field, and an answer in
+    /// another schema all refuse.
+    #[test]
+    fn an_absent_garbled_partial_or_foreign_subject_answer_refuses() {
+        let path = scratch("refusals");
+        let _ = fs::remove_file(&path);
+        assert!(read_child_answer::<CheckpointSubjectReceipt>(&path)
+            .unwrap_err()
+            .contains("checkpoint subject child wrote no answer"));
+        fs::write(&path, b"{\"answer\":\"maybe\"}").unwrap();
+        assert!(read_child_answer::<CheckpointSubjectReceipt>(&path)
+            .unwrap_err()
+            .contains("refusal: parse"));
+        fs::write(
+            &path,
+            br#"{"answer":"answered","schema":"gunbc.regen_checkpoint_subject.v1","subject":{"starting_commit":"c","source_authority_digest":"s"}}"#,
+        )
+        .unwrap();
+        assert!(read_child_answer::<CheckpointSubjectReceipt>(&path)
+            .unwrap_err()
+            .contains("refusal: parse"));
+        fs::write(
+            &path,
+            serde_json::to_vec(&CheckpointSubjectReceipt::Answered {
+                schema: "gunbc.regen_checkpoint_subject.v0".to_string(),
+                subject: subject("sha256:source"),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(read_child_answer::<CheckpointSubjectReceipt>(&path)
+            .unwrap_err()
+            .contains("not gunbc.regen_checkpoint_subject.v1"));
     }
 }
