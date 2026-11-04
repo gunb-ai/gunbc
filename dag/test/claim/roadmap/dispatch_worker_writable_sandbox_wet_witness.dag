@@ -1,9 +1,13 @@
 module test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
+// THE EQUALITY CLAIM LIVES IN THE MODULE THAT OWNS THE RENDERING; the handed set itself is built by the
+// confinement module below, from the plan's own fields.
+import gunbc.roadmap.dispatch_worker_handed_set { dispatch_worker_path_settings_are_the_set }
 import gunbc.roadmap.dispatch_worker_unit_confinement {
+  dispatch_worker_handed_set,
   dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worktree_path_for_instance,
-  dispatch_worker_credstore_path, DispatchWorkerUnitPlan,
+  dispatch_worker_credstore_path, DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
 }
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.measure { kibibyte }
@@ -25,9 +29,20 @@ import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_option_words_refused_cause_detail,
 }
-// The property arms and the list separator the unit fold uses, read from the ONE module that owns
-// them, so the containment check below matches the same spelling the fold emits rather than a copy.
-import extdeps.systemd { ReadWritePathsProperty, systemd_path_list_separator }
+// The property arms the unit fold uses, read from the ONE module that owns them, so the checks below
+// name the same settings the fold emits rather than copying a spelling.
+import extdeps.systemd {
+  ReadWritePathsProperty,
+  systemd_service_unit_name, systemd_unit_name_wire,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
+  User,
+}
+// Retirement, by exact unit name, through the module that owns systemctl's argv: root now creates
+// transient units on the system manager, so a claim that launched one must also put it away.
+import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_reset_failed_argv, systemctl_list_all_service_units_command }
+// THE HOST'S OWN ANSWER FOR WHO OWNS THE CLAIM ROOT, so the elevated root side can refuse a
+// principal that was minted rather than read.
+import extdeps.tools.coreutils_stat { coreutils_stat_path_ownership, PathOwnershipObserved, PathOwnershipUnobservable }
 // ELEVATION, from the module that owns it (extdeps/sudo/elevation.dag: "ELEVATION IS PART OF THE
 // OPERATION"): the root side of the launcher is a sudo'd invocation of the production CLI, never a
 // hand-spelled "sudo " prefix inside a string.
@@ -45,12 +60,13 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
+  dashboard_instance_worker_user,
 }
 // THE SUPPLIED-ROOT FIXTURE (PR #15627). Every claim in this file builds its lab row
 // through it, so no claim's effects land under the live lab root the srv1 row points at.
 import test.claim.roadmap.witness_supplied_instance {
   WitnessSuppliedPrincipal, is_under, witness_scratch_prefix,
-  witness_supplied_instance, witness_principal_from_texts, witness_uid_command,
+  witness_supplied_instance, witness_principal_from_texts, witness_claim_leaf, witness_uid_command,
   witness_gid_command, witness_group_name_command, witness_effective_user_command,
   witness_supplied_root_is_refused, witness_supplied_roots_are_off_the_live_host,
   witness_refused_instance, witness_unnameable_principal,
@@ -59,7 +75,7 @@ import test.claim.roadmap.witness_supplied_instance {
 }
 import extdeps.tools.stat { stat_mode_command }
 import extdeps.tools.gnu_coreutils {
-  mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command,
+  mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, tee_append_command,
   install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, cp_command, cp_recursive_command, pwd_command,
   printenv_value_command,
@@ -73,6 +89,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_plan_from_facts, attempt_system_unit_systemd_run_command,
   attempt_system_unit_properties, attempt_system_unit_launch_named_argument,
   attempt_system_unit_request_path,
+  attempt_unit_entry_outcome, AttemptUnitEntrySkipped, AttemptUnitEntryHandled, AttemptUnitEntryUnmovable,
   attempt_system_unit_enqueue_start, attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
   AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied, AttemptSystemUnitEnqueueRefused,
   attempt_system_unit_claim_entry,
@@ -482,56 +499,381 @@ fn wet_root_launcher_is_available() -> Bool {
   shell.Exec.RunArgv(program: probe.program.invocation as String, arguments: probe.arguments).exit_code == 0
 }
 
-// WHICH CONJUNCT FAILED, printed where a CI log can show it. A claim that returns only `false` is
+// WHICH CONJUNCT FAILED, recorded where a CI log can show it. A claim that returns only `false` is
 // unreadable from a terminal: on srv2 four launcher legs took ~245 s each and then reported
 // `test -e ... exit 1`, which reads as a sandbox verdict when what happened was that no answer ever
 // arrived. Each conjunct now names its own stage through a child process, so the log distinguishes
 // no-exit-observed from sudo-allowed from write-landed.
+// THE TRAIL IS A FILE, NOT STDOUT. shell.Exec.RunArgv CAPTURES the child's stdout (that is how wet_out
+// reads a command's answer), so a printf from inside a claim reaches nowhere a human sees -- which is
+// exactly how srv2 run 15794e lost four launcher legs to an unreadable `test -e ... exit 1`. So the
+// trail is appended, one line per stage, to a fixture-prefixed file the runner cats after the batch:
+// `grep FAILED /tmp/gunbc-sandbox-witness-stages.log` names the conjunct that failed. Stage strings carry
+// the claim's own labels (unit_key, entry name), which is what makes the shared file readable.
+data wet_stage_trail: NonEmptyStr = "/tmp/gunbc-sandbox-witness-stages.log" as NonEmptyStr
+
 fn wet_stage(stage: String, ok: Bool) -> Bool {
-  let note = join(["[witness-stage] ", stage, if ok { " ok" } else { " FAILED" }], "")
-  let _ = shell.Exec.RunArgv(program: "/usr/bin/printf", arguments: ["%s\n", note])
+  let note = join([stage, if ok { " ok" } else { " FAILED" }], "")
+  let trail = wet_stage_trail as String
+  let dir = mkdir_parents_command(path: "/tmp")
+  let _ = shell.Exec.RunArgv(program: dir.program.invocation as String, arguments: dir.arguments)
+  let append = tee_append_command(path: trail)
+  let _ = shell.Exec.RunArgvStdin(
+    program: append.program.invocation as String,
+    arguments: append.arguments,
+    stdin_payload: join([note, "\n"], ""),
+  )
   ok
 }
 
 // EVERY WRITABLE PATH THE UNIT IS HANDED MUST SIT IN THE ROOT THIS CLAIM MADE — manager condition on
 // the route change: "assert every ReadWritePaths= and the working directory are under the claim root
 // before launching, and refuse otherwise". is_under is the fixture's own containment rule, so this
-// assertion and the guard that admitted the row agree by construction. The ReadWritePaths= wire is
-// split on systemd_path_list_separator, the SAME symbol the fold joined it with, rather than a
-// literal space.
-fn wet_plan_reaches_only_the_root(properties: List<SystemdRunProperty>, plan: DispatchWorkerUnitPlan, root: NonEmptyStr) -> Bool {
+// assertion and the guard that admitted the row agree by construction -- and the fourth arm is
+// production's own equality claim about the unit's path settings, so nothing here re-implements the
+// rendering of a writable set.
+fn wet_plan_reaches_only_the_root(instance: HostDashboardInstance, properties: List<SystemdRunProperty>, plan: DispatchWorkerUnitPlan, root: NonEmptyStr) -> Bool {
   is_under(text: plan.working_directory, root: root as String)
     && is_under(text: plan.attempt_worktree, root: root as String)
     && is_under(text: plan.stdout_path, root: root as String)
     && is_under(text: plan.stderr_path, root: root as String)
-    && wet_read_write_paths_under_root(properties: properties, root: root)
+    && wet_unit_renders_the_handed_set(instance: instance, plan: plan, properties: properties)
 }
 
-// The ReadWritePaths= setting is counted, not assumed: exactly one must be present and every path in
-// it must sit under the root. A missing setting REFUSES rather than passing vacuously over an empty
-// list, because the production fold always emits it (dispatch_worker_unit_confinement.dag:319) — its
-// absence means the row handed to this claim is not the row that fold saw.
-fn wet_read_write_paths_under_root(properties: List<SystemdRunProperty>, root: NonEmptyStr) -> Bool {
-  let read_write_wires = fold(
+// THE UNIT'S PATH SETTINGS ARE EXACTLY PRODUCTION'S RENDERING OF THIS PLAN'S HANDED SET -- the gate's
+// writable-path arm, rather than a count of `ReadWritePaths=` settings of my own devising.
+// `dispatch_worker_path_settings_are_the_set` (gunbc/roadmap/dispatch_worker_handed_set.dag:206) is
+// production's own equality claim: the path-carrying settings of a property list are exactly
+// `dispatch_worker_set_path_settings` over the handed set built from this plan's fields. A raw path
+// setting added beside the set, or a set entry the unit does not render, makes the two lists differ --
+// which a count could not catch, because a count is satisfied by a fold that rendered a DIFFERENT list.
+// The two negative probes in wet_gate_refuses_ambiguous_writable_paths attack THIS arm.
+fn wet_unit_renders_the_handed_set(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, properties: List<SystemdRunProperty>) -> Bool {
+  let set = dispatch_worker_handed_set(
+    instance: instance,
+    working_directory: plan.working_directory,
+    attempt_worktree: plan.attempt_worktree,
+    stdout_path: plan.stdout_path,
+    stderr_path: plan.stderr_path,
+  )
+  dispatch_worker_path_settings_are_the_set(properties: properties, set: set, exit_hook: plan.exit_hook)
+}
+
+// THE PRE-LAUNCH ASSERTION, REACHABLE WITHOUT A LAUNCH. Three things have to hold before a unit is put
+// on a manager, and all three come out of production's own derivation: every path the unit is handed
+// sits in the root this claim made (wet_plan_reaches_only_the_root), the unit runs as the supplied row's
+// own worker identity (User= from dashboard_instance_worker_user, the value
+// attempt_system_unit_start_facts_for_request derives at attempt_system_unit_launch.dag:238), and the
+// unit name carries this claim's mktemp leaf, so it cannot be a production attempt unit. The gate
+// returns a plain Bool and never touches a manager, which is what makes it controllable: a BROKEN
+// mutant of any conjunct goes red on a host with no systemd and no sudo, so a vacuous gate cannot hide
+// behind the claims that need them. wet_worker_unit_start calls THIS, not a copy of it.
+// THE PLAN, THROUGH PRODUCTION'S CHAIN AND NOBODY ELSE'S: request, facts, admission, plan
+// (attempt_system_unit_launch.dag:213, :251, :296). The gate and its belt both need the plan itself, so
+// it is derived here, once; a refusal prints which step refused and returns Absent.
+fn wet_plan_for(instance: HostDashboardInstance, unit_key: String, inner: List<String>, root: NonEmptyStr) -> DispatchWorkerUnitPlan? {
+  let request = AttemptSystemUnitStartRequest {
+    node_id: wet_probe_node as String,
+    attempt_key: wet_attempt_key(root: root, label: unit_key),
+    granted: kibibyte(count: 65536),
+    inner_argv: inner,
+    nonce: wet_run_nonce(),
+  }
+  match attempt_system_unit_start_facts_for_request(instance: instance, request: request) {
+    AttemptSystemUnitStartUnderivable { reason: reason } => {
+      let _ = wet_stage(stage: join(["plan-derivation-refused:", reason], ""), ok: false)
+      Absent
+    }
+    AttemptSystemUnitStartDerived { facts: facts } => match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
+      AttemptSystemUnitRefused { reason: reason } => {
+        let _ = wet_stage(stage: join(["plan-admission-refused:", reason], ""), ok: false)
+        Absent
+      }
+      AttemptSystemUnitAdmitted { unit: unit, facts: facts } => Present { value: attempt_system_unit_plan_from_facts(facts: facts, unit: unit) }
+    }
+  }
+}
+
+// THE PROPERTY SET, FROM THE SAME FOLD THE LAUNCH USES (attempt_system_unit_launch.dag:313). The two
+// inputs besides the plan are the ones production's own facts carried: the request's grant, and the
+// row's worker identity. So the list read here is the list that would have gone to the manager.
+fn wet_properties_for(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<SystemdRunProperty> {
+  attempt_system_unit_properties(
+    instance: instance,
+    plan: plan,
+    granted: kibibyte(count: 65536),
+    user: dashboard_instance_worker_user(instance: instance),
+  )
+}
+
+// THE THREE CHECKS, IN ONE PLACE: nothing goes on a manager unless every path the unit is handed sits
+// in the root this claim made, the unit runs as the row's own worker identity, and the unit name carries
+// this claim's mktemp leaf.
+fn wet_plan_passes_the_gate(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, unit_key: String, root: NonEmptyStr) -> Bool {
+  let properties = wet_properties_for(instance: instance, plan: plan)
+  wet_plan_reaches_only_the_root(instance: instance, properties: properties, plan: plan, root: root)
+    && wet_unit_runs_as_the_supplied_rows_worker(properties: properties, instance: instance)
+    && wet_unit_name_carries_the_claim_leaf(root: root, label: unit_key)
+}
+
+// THE GATE, AS THE LAUNCH CALLS IT. Absent means production itself refused to derive a plan, and
+// wet_plan_for has already printed which step refused.
+fn wet_plan_contained_for(instance: HostDashboardInstance, unit_key: String, inner: List<String>, root: NonEmptyStr) -> Bool {
+  match wet_plan_for(instance: instance, unit_key: unit_key, inner: inner, root: root) {
+    Absent => false
+    Present { value: plan } => wet_plan_passes_the_gate(instance: instance, plan: plan, unit_key: unit_key, root: root)
+  }
+}
+
+// THE GATE, AS A CLAIM CALLS IT: the same three checks plus NEGATIVE probes. Every plan this file can
+// derive from its own row IS contained, so a gate replaced by `true` would sail through every positive
+// arm -- an assertion nobody can falsify is not an assertion, and on a host that cannot launch there is
+// no other way to reach it. So the claim hands the gate a plan that belongs to somebody else and a
+// property list that is not the one production folded, and requires both to be refused.
+fn wet_gate_proves_itself(
+  instance: HostDashboardInstance,
+  unit_key: String,
+  inner: List<String>,
+  root: NonEmptyStr,
+  foreign_root: NonEmptyStr,
+) -> Bool {
+  match wet_plan_for(instance: instance, unit_key: unit_key, inner: inner, root: root) {
+    Absent => false
+    Present { value: plan } => wet_plan_passes_the_gate(instance: instance, plan: plan, unit_key: unit_key, root: root)
+      && wet_gate_refuses_a_foreign_plan(root: root, foreign_root: foreign_root)
+      && wet_gate_refuses_ambiguous_writable_paths(plan: plan, instance: instance, root: root)
+  }
+}
+
+// A PLAN FROM ANOTHER CLAIM'S ROOT, REJECTED AGAINST THIS ONE. Same production chain, different row, so
+// nothing here is a hand-written path: if the is_under arms were vacuous, this probe is what says so.
+fn wet_gate_refuses_a_foreign_plan(root: NonEmptyStr, foreign_root: NonEmptyStr) -> Bool {
+  let foreign = wet_supplied_lab_instance(scratch_parent: foreign_root)
+  match wet_plan_for(
+    instance: foreign,
+    unit_key: "foreign",
+    inner: launcher_touch_inner_argv(instance: foreign, path: join([foreign_root as String, "/foreign-touch"], "")),
+    root: foreign_root,
+  ) {
+    Absent => wet_stage(stage: "foreign-plan-is-underivable", ok: false)
+    Present { value: plan } => wet_stage(
+      stage: "gate-refuses-a-plan-from-another-claim-root",
+      ok: !wet_plan_reaches_only_the_root(
+        instance: foreign,
+        properties: wet_properties_for(instance: foreign, plan: plan),
+        plan: plan,
+        root: root,
+      ),
+    )
+  }
+}
+
+// TWO PROBES ON THE WRITABLE-PATHS ARM, each killing a different deletion. The fold that builds
+// ReadWritePaths= (dispatch_worker_unit_confinement.dag:319) always emits exactly one setting, so the
+// arm's content is that exactly-one: (a) with the setting removed the gate must refuse rather than pass
+// vacuously over an empty word list, and (b) with it declared twice the gate must refuse rather than
+// accept an ambiguous fold. Deleting `list_length(items: read_write_wires) == 1` kills probe (b);
+// deleting `list_length(items: words) > 0` kills probe (a). Both words are under the root in both
+// probes, so nothing but the arm can decide them.
+fn wet_gate_refuses_ambiguous_writable_paths(plan: DispatchWorkerUnitPlan, instance: HostDashboardInstance, root: NonEmptyStr) -> Bool {
+  let all = wet_properties_for(instance: instance, plan: plan)
+  let without = fold(
+    all,
+    init: [],
+    f: (acc, p) => match p {
+      NamedUnitSetting { property: ReadWritePathsProperty, value: _ } => acc
+      _ => concat(acc, [p])
+    },
+  )
+  let twice = fold(
+    all,
+    init: [],
+    f: (acc, p) => match p {
+      NamedUnitSetting { property: ReadWritePathsProperty, value: v } => concat(concat(acc, [p]), [NamedUnitSetting { property: ReadWritePathsProperty, value: v }])
+      _ => concat(acc, [p])
+    },
+  )
+  wet_stage(
+    stage: "gate-refuses-a-plan-with-no-writable-paths-declared",
+    ok: !wet_plan_reaches_only_the_root(instance: instance, properties: without, plan: plan, root: root),
+  )
+    && wet_stage(
+      stage: "gate-refuses-a-plan-declaring-writable-paths-twice",
+      ok: !wet_plan_reaches_only_the_root(instance: instance, properties: twice, plan: plan, root: root),
+    )
+}
+
+// WHICH IDENTITY THE MANAGER WAS TOLD TO RUN THE UNIT AS, read back out of the property set through
+// the variant production folds it with (User, attempt_system_unit_launch.dag:285) and compared with the
+// row's own worker identity. Not a second copy of production's admission -- that guard
+// (attempt_system_unit_start_admitted) already refuses a User= that is not
+// dashboard_instance_worker_user -- this is the readback showing the supplied SERVICE-USER row reaches
+// the manager as the invoking user, which is the population the RFM row declares covered.
+fn wet_unit_runs_as_the_supplied_rows_worker(properties: List<SystemdRunProperty>, instance: HostDashboardInstance) -> Bool {
+  let worker = dashboard_instance_worker_user(instance: instance) as String
+  let users = fold(
     properties,
     init: [],
     f: (acc, p) => match p {
-      NamedUnitSetting { property: ReadWritePathsProperty, value: v } => concat(acc, [v as String])
+      NamedUnitSetting { property: User, value: v } => concat(acc, [v as String])
       _ => acc
     },
   )
-  let words = fold(
-    read_write_wires,
-    init: [],
-    f: (acc, wire) => fold(
-      split(s: wire, delimiter: systemd_path_list_separator),
-      init: acc,
-      f: (inner, word) => concat(inner, [word]),
-    ),
+  list_length(items: users) == 1
+    && fold(users, init: true, f: (ok, u) => ok && (u == worker))
+}
+
+// THE NAME IS THIS CLAIM'S, NOT A PRODUCTION ATTEMPT'S. path_basename of the root is mktemp's own
+// suffix, six characters the host chose, so requiring it inside the unit name is what makes a probe
+// unable to collide with, or mask, a real attempt unit -- and it is per-run: two runs of this file
+// cannot name the same unit either.
+fn wet_unit_name_carries_the_claim_leaf(root: NonEmptyStr, label: String) -> Bool {
+  match wet_unit_name_for(root: root, label: label) {
+    Absent => wet_stage(stage: join(["unit-name-refused:", label], ""), ok: false)
+    Present { value: name } => wet_stage(
+      stage: join(["unit-name:", name as String], ""),
+      ok: match witness_claim_leaf(path: root as String) {
+        Absent => wet_stage(stage: "claim-root-has-no-leaf", ok: false)
+        Present { value: leaf } => string_contains(s: name as String, pattern: leaf),
+      },
+    )
+  }
+}
+
+// THE CLAIM'S OWN LEAF, INSIDE THE UNIT NAME (manager condition of 2026-11-04). Production names the
+// unit itself -- systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id, attempt_key)) --
+// and a witness must not name a unit behind that derivation, so what the claim contributes is the
+// ATTEMPT KEY: it carries the mktemp leaf of the root this claim made. Two runs of the same probe
+// therefore cannot collide with each other (the leaf is mktemp's random suffix), and no production
+// attempt unit can ever be named this, because no production attempt key is a /tmp scratch leaf.
+// Production's naming, its character policy and its 255-character bound all still decide the result.
+fn wet_attempt_key(root: NonEmptyStr, label: String) -> String {
+  match witness_claim_leaf(path: root as String) {
+    // A root with no final segment is not a claim root at all. Returning the empty string hands the
+    // claim to production's own guard (path_segment_is_safe refuses an empty segment, and
+    // wet_unit_name_for below then yields Absent), so this cannot quietly name a unit anyway.
+    Absent => ""
+    Present { value: leaf } => join([leaf, "-", label], "")
+  }
+}
+
+// The exact name production would have derived for this claim's (node_id, attempt_key), read back
+// through the SAME production symbols -- the one used to retire a unit by name, never to name one.
+fn wet_unit_name_for(root: NonEmptyStr, label: String) -> NonEmptyStr? {
+  match systemd_service_unit_name(
+    stem: dispatch_attempt_unit_stem(node_id: wet_probe_node as String, attempt_key: wet_attempt_key(root: root, label: label)),
+  ) {
+    SystemdUnitNameAdmitted { name: name } => Present { value: systemd_unit_name_wire(name: name) }
+    SystemdUnitNameStemEmpty => Absent
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => Absent
+    SystemdUnitNameOverlong { length: _ } => Absent
+  }
+}
+
+// RETIREMENT, BY EXACT NAME. Root now creates units on the SYSTEM manager, where they outlive the
+// process that asked for them unless someone takes them down: `systemd-run` without --collect leaves a
+// failed transient unit in `systemctl list-units --all`. Every launch therefore stops and
+// resets-failed the unit it created, and the claim is RED if the unit is still listed afterwards --
+// stern checks `systemctl list-units --all | grep gunbc` after the run, and a probe that leaked a
+// unit would be indistinguishable from a host that still has one.
+fn wet_retire_unit(root: NonEmptyStr, label: String) -> Bool {
+  match wet_unit_name_for(root: root, label: label) {
+    Absent => wet_stage(stage: join(["unit-name-underivable:", label], ""), ok: false)
+    Present { value: unit } => {
+      let stop = sudo_elevate_command(command: systemctl_stop_argv(unit: unit))
+      let _ = shell.Exec.RunArgv(program: stop.program.invocation as String, arguments: stop.arguments)
+      let reset = sudo_elevate_command(command: systemctl_reset_failed_argv(unit: unit))
+      let _ = shell.Exec.RunArgv(program: reset.program.invocation as String, arguments: reset.arguments)
+      wet_stage(
+        stage: join(["unit-retired:", unit as String], ""),
+        ok: wet_unit_is_gone(unit: unit),
+      )
+    }
+  }
+}
+
+// THE READBACK IS THE HOST'S OWN UNIT LIST, not the exit code of the command that removed it: a
+// stop/reset pair can exit 0 and still leave the name listed, which is the state that matters.
+fn wet_unit_is_gone(unit: NonEmptyStr) -> Bool {
+  let listing = wet_out(command: systemctl_list_all_service_units_command())
+  !string_contains(s: listing, pattern: unit as String)
+}
+
+// Root writes into the claim's tree (the claimed/answer files are created by the elevated root side),
+// so removing it sometimes needs the same elevation the writing needed.
+fn wet_rm_elevated(root: NonEmptyStr) -> Bool {
+  let rm = sudo_elevate_command(command: ["/bin/rm", "-rf", root as String])
+  shell.Exec.RunArgv(program: rm.program.invocation as String, arguments: rm.arguments).exit_code == 0
+}
+
+// One call for every launch claim's tail: the verdict is bound first, the root is then removed (by the
+// claim, or elevated when a root process wrote into it), and the removal is reported as its own stage
+// so leftover scratch stays visible without being able to flip the verdict.
+fn wet_launch_claim_verdict(verdict: Bool, root: NonEmptyStr) -> Bool {
+  wet_stage_of(
+    stage: "claim-root-removed-is-housekeeping-not-verdict",
+    ok: wet_clean_claim_root(root: root as String) || wet_rm_elevated(root: root),
+    value: verdict,
   )
-  list_length(items: read_write_wires) == 1
-    && list_length(items: words) > 0
-    && fold(words, init: true, f: (ok, word) => ok && is_under(text: word, root: root as String))
+}
+
+// THE ROOT SIDE, AS A SERVED FUNCTION THE CLAIM CAN ELEVATE. Production's root side is the attempt-unit
+// drain .service (ExecStart = attempt_system_unit_launch_cli, gunbc/live_deploy/emit.dag:956), and it is
+// NOT drivable from a supplied root: attempt_system_unit_drain_pass (:1134) recovers the instance row
+// with attempt_system_unit_instance_for_root -> dashboard_instance_for_instance_root
+// (gunbc/roadmap/roadmap_dashboard_instance.dag:958-966), which filters the STATIC builtin roster
+// public_builtin_dashboard_instances(), and its argv builder reads the served binary from
+// attempt_system_unit_launcher_helpers_root = "/opt/gunbc/attempt-system-unit-helpers" (:93). Both are
+// live-root bindings -- the exact class of binding this PR exists to remove -- so a claim that ran the
+// production drain CLI would wait forever for an answer, which is what srv2 run 15794e measured.
+// What IS drivable is production's own PER-ENTRY root side: attempt_unit_entry_outcome
+// (attempt_system_unit_launch.dag:1119) takes the row as a PARAMETER, then runs production's claim
+// entry, its symlink refusal, the derivation, the admission, the plan, the command builder, the
+// RunTransient transport (extdeps/systemd/systemd_run.dag:525: ["systemd-run", ...], the system
+// manager) and the answer write-back. So this function supplies only the two things the roster and the
+// helper root would have supplied -- the row, built by the fixture from the claim's own root, and the
+// binary, the planted serve binary -- and calls production's per-entry function. The distance that
+// leaves is named in the PR body and in the RFM row.
+//
+// THE PRINCIPAL IS VERIFIED, NOT TRUSTED. A root process asking `id -u` gets 0, and a unit with
+// User=root is not the service-user shape any claim here establishes. So the caller hands over the
+// host-said principal it read as the unprivileged claim, and this function refuses unless the claim
+// root directory's OWN ownership says the same thing (coreutils_stat_path_ownership, whose own comment
+// records that it never defaults a missing field to 0). A caller cannot mint a principal it does not
+// already own the directory as, and witness_principal_from_texts refuses uid 0 outright.
+fn wet_root_side_cli(
+  root: String,
+  entry: String,
+  uid: String,
+  gid: String,
+  user: String,
+  group: String,
+) -> ProcessExit {
+  match witness_principal_from_texts(uid_text: uid, gid_text: gid, user_text: user, group_text: group) {
+    Absent => exit_failure(reason: "the principal named by the claim is not one the host can confirm as uid/gid/user/group")
+    Present { value: who } => match coreutils_stat_path_ownership(path: root as NonEmptyStr) {
+      PathOwnershipUnobservable { path: _, reason: reason } => exit_failure(reason: join(["the claim root's ownership could not be read: ", reason], ""))
+      PathOwnershipObserved { path: _, ownership: ownership, owner_name: owner_name, group_name: group_name } =>
+        if owner_name != who.user || group_name != who.group || ownership.uid != who.uid || ownership.gid != who.gid {
+          exit_failure(reason: "the claim root is not owned by the principal the claim named")
+        } else {
+          let inst = witness_supplied_instance(
+            scratch_parent: root as NonEmptyStr,
+            repo: join([root, "/source"], "") as FilePath,
+            principal: who,
+          )
+          match attempt_unit_entry_outcome(
+            instance_root: inst.instance_root as String,
+            instance: Present { value: inst },
+            entry: entry,
+          ) {
+            AttemptUnitEntrySkipped => exit_failure(reason: "the request entry had already been claimed when the root side reached it")
+            AttemptUnitEntryUnmovable { entry: _, step: _, cause: cause } => exit_failure(reason: join(["the request entry could not leave the queue: ", cause], ""))
+            AttemptUnitEntryHandled { handled: _ } => ExitSuccess
+          }
+        }
+    }
+  }
 }
 
 // THE ONE ROOT-SIDE START THIS WITNESS PERFORMS. Both routes — the direct sandbox leg and the
@@ -545,7 +887,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
   } else {
     let request = AttemptSystemUnitStartRequest {
       node_id: wet_probe_node as String,
-      attempt_key: unit_key,
+      attempt_key: wet_attempt_key(root: root, label: unit_key),
       granted: kibibyte(count: 65536),
       inner_argv: inner,
       nonce: wet_run_nonce(),
@@ -556,15 +898,24 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
         AttemptSystemUnitRefused { reason: reason } => WetRootLaunchRefused { cause: join(["production admission refused the start facts: ", reason], "") }
         AttemptSystemUnitAdmitted { unit: unit, facts: facts } => {
           let plan = attempt_system_unit_plan_from_facts(facts: facts, unit: unit)
-          let properties = attempt_system_unit_properties(instance: instance, plan: plan, granted: facts.granted, user: facts.user)
-          if !wet_stage(stage: "plan-reaches-only-the-claim-root", ok: wet_plan_reaches_only_the_root(properties: properties, plan: plan, root: root)) {
-            WetRootLaunchRefused { cause: "the production plan reaches outside the supplied root" }
+          // NOTHING GOES ON A MANAGER UNTIL THE PRE-LAUNCH ASSERTION PASSES, and the assertion is the
+          // same function the control claim runs on any host -- so what this gate refuses is testable
+          // where every reader can test it, not only on the host that can launch. It re-derives
+          // through the same production symbols rather than trusting the values about to be launched;
+          // the derivation is pure and lives in exactly one place.
+          if !wet_plan_contained_for(instance: instance, unit_key: unit_key, inner: inner, root: root) {
+            WetRootLaunchRefused { cause: "the production plan reaches outside the supplied root, or the unit does not carry this claim's own name and worker identity" }
           } else {
             match attempt_system_unit_systemd_run_command(instance: instance, plan: plan, granted: facts.granted, user: facts.user) {
               SystemdRunCommandRefused { cause: cause } => WetRootLaunchRefused { cause: join(["systemd-run option words refused: ", systemd_run_option_words_refused_cause_detail(cause: cause)], "") }
               SystemdRunCommandReady { command: command } => {
                 let elevated = sudo_elevate_command(command: concat([command.program.invocation as String], command.arguments))
-                WetRootLaunchRan { exit_code: shell.Exec.RunArgv(program: elevated.program.invocation as String, arguments: elevated.arguments).exit_code }
+                let code = shell.Exec.RunArgv(program: elevated.program.invocation as String, arguments: elevated.arguments).exit_code
+                // The unit has run by now; its effect is on disk and its ExecStopPost record is
+                // written, so retiring it here cannot take the evidence away -- and it means no claim
+                // can end with a live unit, whichever conjunct fails after this point.
+                let _ = wet_retire_unit(root: root, label: unit_key)
+                WetRootLaunchRan { exit_code: code }
               }
             }
           }
@@ -584,7 +935,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
 // argument through production's own admission (attempt_system_unit_launch_named_argument), and the
 // elevation through the sudo module. After it, the queue's answer files — written by a root process —
 // are handed back to the claim's own principal so the unprivileged read-backs and cleanup still work.
-fn wet_root_drain_elevated(instance: HostDashboardInstance, root: NonEmptyStr, unit_key: String) -> Bool {
+fn wet_root_drain_elevated(instance: HostDashboardInstance, root: NonEmptyStr, unit_key: String, entry_name: String) -> Bool {
   if !wet_stage(stage: join(["root-launcher-available:", unit_key], ""), ok: wet_root_launcher_is_available()) {
     false
   } else if !wet_stage(
@@ -593,9 +944,22 @@ fn wet_root_drain_elevated(instance: HostDashboardInstance, root: NonEmptyStr, u
   ) {
     false
   } else {
-    let argument = attempt_system_unit_launch_named_argument(instance_root: root as String)
-    match argument {
-      NamedArgumentAdmitted { argument: argument } => {
+    let principal = wet_principal()
+    let arguments = [
+      admit_named_argument(name: "root", value: root as String),
+      admit_named_argument(name: "entry", value: entry_name as String),
+      admit_named_argument(name: "uid", value: to_string(value: principal.uid)),
+      admit_named_argument(name: "gid", value: to_string(value: principal.gid)),
+      admit_named_argument(name: "user", value: principal.user as String),
+      admit_named_argument(name: "group", value: principal.group as String),
+    ]
+    let words = fold(arguments, init: [], f: (acc, a) => match a {
+      NamedArgumentAdmitted { argument: argument } => concat(acc, map(named_argument_words(argument: argument), w => invocation_word_bare(w: w)))
+      _ => acc
+    })
+    // Six arguments, two words each (name + value), with no embedded separator: anything else is a
+    // value the word policy had to quote, and this route cannot carry it.
+    if list_length(items: words) == 12 {
         let command = gunbc_entry_run_argv(
           workspace_root: instance.repo_root,
           binary: instance.serve_binary,
@@ -603,16 +967,13 @@ fn wet_root_drain_elevated(instance: HostDashboardInstance, root: NonEmptyStr, u
             join([instance.repo_root as String, "/dag"], "") as NonEmptyStr,
             join([instance.repo_root as String, "/src/v2"], "") as NonEmptyStr,
           ],
-          entry: join([instance.repo_root as String, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
-          function: attempt_system_unit_launch_function as NonEmptyStr,
+          entry: wet_witness_entry(instance: instance) as NonEmptyStr,
+          function: "wet_root_side_cli" as NonEmptyStr,
         )
-        let words = concat(
-          command.arguments,
-          map(named_argument_words(argument: argument), w => invocation_word_bare(w: w)),
-        )
-        let elevated = sudo_elevate_command(command: concat([command.program.invocation as String], words))
+        // gunbc_entry_run_argv hands back the WHOLE argv (binary first, then the workspace env prefix),
+        // so the named arguments are appended to it and the whole list is what gets elevated.
+        let elevated = sudo_elevate_command(command: concat(map(command, w => w as String), words))
         let ran = shell.Exec.RunArgv(program: elevated.program.invocation as String, arguments: elevated.arguments).exit_code == 0
-        let principal = wet_principal()
         let back = sudo_elevate_command(
           command: [
             "/usr/bin/chown", "-R",
@@ -622,8 +983,8 @@ fn wet_root_drain_elevated(instance: HostDashboardInstance, root: NonEmptyStr, u
         )
         let returned = shell.Exec.RunArgv(program: back.program.invocation as String, arguments: back.arguments).exit_code == 0
         wet_stage(stage: join(["elevated-drain-ran:", unit_key], ""), ok: ran) && wet_stage(stage: join(["root-owned-files-returned:", unit_key], ""), ok: returned)
-      }
-      _ => wet_stage(stage: join(["instance-root-argument-refused:", unit_key], ""), ok: false)
+    } else {
+      wet_stage(stage: join(["root-side-arguments-refused:", unit_key], ""), ok: false)
     }
   }
 }
@@ -635,7 +996,13 @@ fn sandbox_touch(instance: HostDashboardInstance, unit: NonEmptyStr, path: Strin
   match wet_worker_unit_start(
     instance: instance,
     unit_key: unit as String,
-    inner: ["/usr/bin/touch", "--", path],
+    // THE GUEST COMMAND IS A SERVED FUNCTION, NOT A BARE PROGRAM. production's own admission refuses an
+    // ExecStart whose first word is not the instance's gunbc binary
+    // (attempt_system_unit_launch.dag:272-276, "ExecStart program is not the instance gunbc binary"), so
+    // the sandboxed touch runs `sandbox_touch_cli` through the served CLI, exactly as the launcher legs
+    // run their guests. A bare /usr/bin/touch here would not be a sandbox verdict at all -- the plan
+    // would never be admitted, which is what the containment control claim now catches on any host.
+    inner: launcher_touch_inner_argv(instance: instance, path: path),
     root: root,
   ) {
     WetRootLaunchRefused { cause: _ } => SandboxTouchUnrunnable
@@ -765,7 +1132,7 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
   let root = wet_claim_root(tag: "deployed-writes" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let attempt = probe_attempt_dir(instance: inst)
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_confined_tree(instance: inst)
     && prepare_probe_attempt(instance: inst)
     && worker_shape_runs_an_allowed_touch(instance: inst, root: root)
@@ -799,7 +1166,10 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
       unit: "gunbc-writable-probe-hook.service" as NonEmptyStr,
       path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
     )
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
@@ -814,7 +1184,7 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
   let scratch = probe_worker_dir(instance: inst)
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
   let log_probe = join([scratch, "/.gunbc-worker-write-probe"], "")
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && prepare_probe_attempt(instance: inst)
     && sandbox_touch_wrote(
       instance: inst,
@@ -829,7 +1199,10 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
       path: log_probe,
     )
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe]).exit_code == 0
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 fn sandbox_touch_cli(path: String) -> ProcessExit {
@@ -994,7 +1367,7 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
   // the supplied row, so the tree has to be planted for the leg to reach the policy at all.
   let root = wet_claim_root(tag: "launcher-refused" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && prepare_probe_attempt(instance: inst)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
@@ -1010,7 +1383,10 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
       unit_key: "hooks",
       path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
     )
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 // THE LAUNCHER DERIVES THE WORKTREE, LOG DIRECTORY AND EXIT HOOK from the attempt identity (review
@@ -1044,7 +1420,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
     Present { value: _ } => {
       let request = AttemptSystemUnitStartRequest {
         node_id: wet_probe_node as String,
-        attempt_key: launcher_probe_key(unit_key: unit_key),
+        attempt_key: wet_attempt_key(root: root, label: launcher_probe_key(unit_key: unit_key)),
         granted: kibibyte(count: 65536),
         inner_argv: inner,
         nonce: wet_run_nonce(),
@@ -1075,7 +1451,8 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
             // queue, and the leg used to sit out its full 240 s and then report a missing marker as
             // if it were a sandbox verdict. The claim now performs the same root side itself, and
             // each conjunct reports which one failed.
-            if wet_root_drain_elevated(instance: instance, root: root, unit_key: unit_key)
+            if wet_root_drain_elevated(instance: instance, root: root, unit_key: unit_key, entry_name: entry)
+              && wet_stage(stage: join(["unit-retired:", unit_key], ""), ok: wet_retire_unit(root: root, label: launcher_probe_key(unit_key: unit_key)))
               && wet_stage(
                 stage: join(["answer-arrived:", unit_key], ""),
                 ok: wet_drain_started(instance_root: instance.instance_root as String, entry: entry, request_body: body),
@@ -1134,7 +1511,7 @@ test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
   // install as its subject, and the tree it could have touched afterwards was the served one.
   let root = wet_claim_root(tag: "sudo-true" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && prepare_probe_attempt(instance: inst)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
@@ -1142,7 +1519,10 @@ test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
       SandboxTouchUnrunnable => false
       SandboxTouchRan { exit_code } => exit_code != 0
     }
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
@@ -1152,7 +1532,7 @@ test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
   let root = wet_claim_root(tag: "sudo-touch" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let escaped_target = join([path_parent_directory(path: inst.serve_binary as String), "/x"], "")
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && prepare_probe_attempt(instance: inst)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
@@ -1161,7 +1541,10 @@ test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
       existed_before: wet_path_exists(path: escaped_target),
       path: escaped_target,
     )
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed() -> Bool {
@@ -1175,14 +1558,17 @@ test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_a
   let objects = join([inst.repo_root as String, "/.git/objects/.gunbc-worker-write-probe"], "")
   let probe = join([launcher_probe_worktree(instance: inst, unit_key: "wt"), "/.gunbc-launcher-write-probe"], "")
   let log_probe = join([launcher_probe_worker_dir(instance: inst, unit_key: "log"), "/.gunbc-launcher-log-probe"], "")
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
-    && launcher_wrote(instance: inst, unit_key: \"wt\", path: probe, root: root)
-    && launcher_wrote(instance: inst, unit_key: \"log\", path: log_probe, root: root)
-    && launcher_wrote(instance: inst, unit_key: \"objects\", path: objects, root: root)
+    && launcher_wrote(instance: inst, unit_key: "wt", path: probe, root: root)
+    && launcher_wrote(instance: inst, unit_key: "log", path: log_probe, root: root)
+    && launcher_wrote(instance: inst, unit_key: "objects", path: objects, root: root)
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe, objects]).exit_code == 0
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 fn exit_success_cli() -> ProcessExit {
@@ -1234,7 +1620,7 @@ test fn a_launched_unit_exit_record_names_the_expanded_invocation_and_result() -
   // record written into the live lab is an effect, not an observation.
   let root = wet_claim_root(tag: "exit-record" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
     && match launcher_inner_start(
@@ -1250,7 +1636,10 @@ test fn a_launched_unit_exit_record_names_the_expanded_invocation_and_result() -
           Present { value: name } => launcher_exit_record_is_expanded(name: name)
         }
     }
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 // THE ROOT-EXEC SHAPE IS REFUSED ON THE REAL PATH (review 80324). Before the launcher derived the exit
@@ -1279,7 +1668,7 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
     join(launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []), "\u{1f}"),
     wet_run_nonce(),
   ], "\n")
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
     && launcher_marker_absent()
@@ -1296,7 +1685,8 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
       body: wide,
     ) {
       AttemptSystemUnitEnqueued { entry: entry, body: body } =>
-        wet_root_drain_elevated(instance: inst, root: root, unit_key: "roothook")
+        wet_root_drain_elevated(instance: inst, root: root, unit_key: "roothook", entry_name: entry)
+          && wet_stage(stage: "unit-retired:roothook", ok: wet_retire_unit(root: root, label: launcher_probe_key(unit_key: "roothook")))
           && wet_stage(
             stage: "answer-arrived:roothook",
             ok: wet_drain_answer_arrives(instance_root: inst.instance_root as String, entry: entry, request_body: body),
@@ -1305,7 +1695,10 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
       AttemptSystemUnitEnqueueOccupied { entry: _ } => false
       AttemptSystemUnitEnqueueRefused { detail: _ } => false
     }
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 // THE ROOT SIDE RUNS WHEN THE REQUEST DIRECTORY FILLS (the drain .path unit starts the system
@@ -1717,17 +2110,20 @@ test fn writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_co
   let unit_key = "gitptr"
   let wt = launcher_probe_worktree(instance: inst, unit_key: unit_key)
   let pointers = dispatch_worker_git_pointer_files(instance: inst, attempt_worktree: wt)
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_confined_tree(instance: inst)
     && wet_plant_guest_runtime(instance: inst)
     && prepare_launcher_linked_worktree(instance: inst, unit_key: unit_key)
-    && launcher_write_refused(instance: inst, unit_key: \"gitfile\", path: pointers.gitfile, root: root)
-    && launcher_write_refused(instance: inst, unit_key: \"commondir\", path: pointers.commondir, root: root)
+    && launcher_write_refused(instance: inst, unit_key: "gitfile", path: pointers.gitfile, root: root)
+    && launcher_write_refused(instance: inst, unit_key: "commondir", path: pointers.commondir, root: root)
     && match launcher_worktree_commit(instance: inst, unit_key: unit_key, root: root) {
       SandboxTouchUnrunnable => false
       SandboxTouchRan { exit_code } => exit_code == 0
     }
-    && wet_clean_claim_root(root: root)
+  // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
+  // launched unit leaves root-owned files in this tree, so removal may need the same
+  // elevation and it is a named stage of its own -- stern checks the host afterwards.
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 test fn belt_commit_refuses_a_planted_commondir_without_running_git() -> Bool {
@@ -1915,6 +2311,45 @@ fn wet_run_nonce() -> String {
 // They are scheduled, so they run in the wet lane, and they are readbacks over accessors, so removing
 // the derivation that supplies each path takes the matching claim red.
 
+// CONTROL, RUNNABLE WHEREVER THE BATCH RUNS (no systemd, no sudo, no second principal). The route
+// change of 2026-11-04 put a pre-launch assertion between a supplied row and a unit on the SYSTEM
+// manager: paths in the root, the row's own worker identity in User=, and this claim's mktemp leaf in
+// the unit name. An assertion that can only be exercised by launching is not falsifiable where most
+// readers run this file, so this claim derives the same plan through the same production symbols and
+// asserts on it WITHOUT starting anything. With wet_plan_reaches_only_the_root replaced by true, with
+// the ReadWritePaths= presence arm removed, or with the claim leaf dropped from the attempt key, THIS
+// claim goes red here -- the control the nine launch claims cannot have on a host that cannot launch.
+test fn the_supplied_plan_reaches_only_the_claim_root() -> Bool {
+  let root = wet_claim_root(tag: "plan-containment" as NonEmptyStr)
+  // THE ROOT THE NEGATIVE PROBES LAUNCH FROM: a second, separate claim root, so the gate is shown to
+  // reject a plan that belongs to somebody else rather than to a hand-written path.
+  let foreign = wet_claim_root(tag: "plan-containment-foreign" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
+    && wet_plant_confined_tree(instance: inst)
+    && wet_plant_guest_runtime(instance: inst)
+    // The inner argv is the shape a real start carries; it is never run here, and it is built from
+    // accessors over the supplied row so a deletion of the real derivation is felt, not papered over.
+    && wet_gate_proves_itself(
+      instance: inst,
+      unit_key: "containment",
+      inner: launcher_touch_inner_argv(instance: inst, path: join([root as String, "/containment-touch"], "")),
+      root: root,
+      foreign_root: foreign,
+    )
+    // The worktree the plan is built from is named outright too: an emptied plan cannot leave the
+    // gate vacuously true, which is the same argument the spool control makes about an empty fold.
+    && is_under(text: dashboard_instance_dispatch_worktree_root(instance: inst) as String, root: root)
+  wet_launch_claim_verdict(
+    verdict: wet_stage_of(
+      stage: "foreign-claim-root-removed-is-housekeeping-not-verdict",
+      ok: wet_clean_claim_root(root: foreign),
+      value: verdict,
+    ),
+    root: root,
+  )
+}
+
 test fn the_supplied_root_carries_the_attempt_unit_spool_tree() -> Bool {
   // srv2, cause (A): the drain writes each request as
   // <instance_root>/attempt-unit-spool/requests-staging/<key>.staging, and with a bare supplied root the
@@ -1923,6 +2358,19 @@ test fn the_supplied_root_carries_the_attempt_unit_spool_tree() -> Bool {
   let root = wet_claim_root(tag: "spool" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let dirs = wet_attempt_unit_spool_dirs(instance_root: inst.instance_root as String)
+  // THE BODY IS THE SHAPE THE LAUNCHER PARSES (start-wait, node, key, user, repo, worktree, streams,
+  // grant, hook, inner argv, nonce), built from the supplied row like the wide-request claim builds
+  // its own. What this control tests is the write into requests-staging, so the body only has to be a
+  // body; it is not handed to a unit here.
+  let body = join([
+    "start-wait", wet_probe_node as String, launcher_probe_key(unit_key: "spool-control"),
+    inst.directory_owner.user as String, inst.repo_root as String,
+    launcher_probe_worktree(instance: inst, unit_key: "spool-control"), join([root as String, "/spool-control.out"], ""),
+    join([root as String, "/spool-control.err"], ""),
+    "65536", join(["+", root as String, "/spool-control.hook"], ""),
+    join(launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []), "\u{1f}"),
+    wet_run_nonce(),
+  ], "\n")
   wet_claim_is_confined(instance: inst, root: root)
     // Every entry is under the claim's own root, AND the staging directory the srv2 unit could not
     // create is named outright -- a fold over an empty list would be vacuously true, so the fault path
@@ -1947,11 +2395,7 @@ test fn the_supplied_root_carries_the_attempt_unit_spool_tree() -> Bool {
       instance_root: inst.instance_root as String,
       node_id: wet_probe_node as String,
       attempt_key: launcher_probe_key(unit_key: "spool-control"),
-      body: wet_word_request(
-        node_id: wet_probe_node as String,
-        attempt_key: launcher_probe_key(unit_key: "spool-control"),
-        argv_word: "x",
-      ),
+      body: body,
     ) {
       AttemptSystemUnitEnqueued { entry: entry, body: _ } =>
         wet_path_exists(path: attempt_system_unit_request_path(instance_root: inst.instance_root as String, entry: entry))

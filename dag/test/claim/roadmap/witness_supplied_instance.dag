@@ -9,7 +9,7 @@ import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.posix.identity { PosixOwnerNames }
-import extdeps.tools.gnu_coreutils { mktemp_directory_command, whoami_command }
+import extdeps.tools.gnu_coreutils { mktemp_directory_command, whoami_command, basename_command }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -86,6 +86,25 @@ data witness_scratch_prefix: NonEmptyStr = "/tmp" as NonEmptyStr
 // to create the directory unless the template ends in at least three of them, and a refused mktemp is the
 // fixture's `Absent` arm — a witness with no root declines, it does not fall back to a fixed path.
 data witness_scratch_leaf_template: NonEmptyStr = "gunbc-wet-witness-XXXXXX" as NonEmptyStr
+
+// THE CLAIM'S OWN LEAF, AS THE HOST NAMED IT. `mktemp -d` chose it, so nobody writing a claim can guess
+// or reuse it -- which is why it is the token a probe puts inside a systemd unit name: two runs of the
+// same claim cannot name the same unit, and no production attempt key can look like this. It is NOT a
+// fourth copy of a `path_basename` helper (gunbc/live_deploy/member_observe.dag:163,
+// gunbc/url_file_acquisition.dag:69, gunbc/gitignore_emit.dag:177 each carry one for path RENDERING,
+// where an empty input or a trailing separator is a thing to tolerate); a witness leaf is a host-chosen
+// name that must exist, so an unnameable leaf is returned as Absent and the claim that asked for it
+// refuses.
+fn witness_claim_leaf(path: String) -> String? {
+  let leaf = wet_out(command: basename_command(path: path))
+  // THE REFUSALS ARE THE POINT: an empty read, or the root itself (`basename /` prints `/`), is not a
+  // leaf, and a claim that cannot name its own leaf must not go on to name a systemd unit.
+  if leaf == "" || leaf == "/" || string_contains(s: leaf, pattern: "/") {
+    Absent
+  } else {
+    Present { value: leaf }
+  }
+}
 
 fn witness_scratch_template() -> String {
   join([witness_scratch_prefix as String, "/", witness_scratch_leaf_template as String], "")

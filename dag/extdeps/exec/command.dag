@@ -243,6 +243,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "whoami_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "pwd_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printenv_value_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "basename_command"),
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_passwd_command"),
     // getent shadow <login>: the same read-only identity-database lookup as its sibling above, on a
     // different database, admitted for the same reason -- it names a database the utility resolves itself and
