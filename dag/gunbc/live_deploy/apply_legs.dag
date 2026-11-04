@@ -760,6 +760,7 @@ fn deploy_apply_attempt_launcher_plan(spec: DeploymentSpec, revision: ReleaseRev
 // the install arm runs, so verify and install cannot disagree about what "installed" means). This
 // turns the lab's 127-falling-five-hours drain -- a drain unit enabled while nothing had installed
 // its snapshot -- into one refused apply step that names the missing path.
+
 data AttemptHelperClosure {
   instance: HostDashboardInstance
   verify: DeployApplyLeg

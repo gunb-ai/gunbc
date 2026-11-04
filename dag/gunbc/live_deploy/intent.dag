@@ -19,6 +19,7 @@ import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 // exactly when a slice reads them -- S1 consumes the instance and the revision, so S1 declares the
 // instance and the revision. An unreader field is a dangling declaration wearing a load-bearing
 // name, and the seed's refusal is the least of its problems.
+
 data DeploymentIntent {
   instance_id: String
   revision: ReleaseRevisionBinding
