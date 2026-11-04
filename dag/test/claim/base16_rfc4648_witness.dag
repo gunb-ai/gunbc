@@ -2,7 +2,7 @@ module test.claim.base16_rfc4648_witness
 
 import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
 import extdeps.numeric.base16 {
-  base16_encode_lower, base16_decode_lower,
+  base16_encode_lower, base16_decode_lower, base16_decode_any,
   base16_is_lower_digit_code_point, base16_is_digit_code_point, base16_lower_digit_value_at,
 }
 import extdeps.git.object_store { git_sha1_object_id, git_object_id_raw_octets }
@@ -200,5 +200,17 @@ test fn mercurial_node_identity_routes_through_base16() -> Bool {
       mercurial_node_id_octets(node: node) == asymmetric_node_octets
         && mercurial_node_id_text(node: node) == asymmetric_node_hex
     _ => false
+  }
+}
+
+// THE TWO DECODERS DIFFER IN CASE POLICY AND NOTHING ELSE: the same lowercase text yields the same octets
+// from both, because the lowercase one IS the either-case walk plus the alphabet's membership test.
+test fn the_lowercase_decoder_is_the_either_case_walk_plus_the_case_check() -> Bool {
+  match base16_decode_lower(hex: "00ff8a21bb07") {
+    Absent => false
+    Present { value: lower } => match base16_decode_any(hex: "00ff8a21bb07") {
+      Absent => false
+      Present { value: either } => qualified_octet_members(q: lower) == qualified_octet_members(q: either)
+    }
   }
 }

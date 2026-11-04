@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_attempt_history_evidence_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptEnvironmentAdmission, AttemptSpawnFailure, AttemptWorkerEvents, attempt_state_current_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptEnvironmentAdmission, AttemptSpawnFailure, AttemptWorkerEvents, attempt_state_current_text , attempt_log_current_text }
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.host_layout { srv1_host_layout }
@@ -57,7 +57,7 @@ test fn a_historical_attempt_never_reads_through_the_current_projection() -> Boo
   let p = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k1)
   let nid = node as RoadmapNodeId
   p.admission != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptEnvironmentAdmission)
-    && p.events != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptWorkerEvents)
+    && p.events != attempt_log_current_text(instance: instance(), node_id: nid, member: AttemptWorkerEvents)
     && p.spawn_failure != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptSpawnFailure)
     && !p.admission.contains("-current")
 }

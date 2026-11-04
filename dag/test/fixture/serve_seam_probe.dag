@@ -1,6 +1,7 @@
 module test.fixture.serve_seam_probe
 
-import extdeps.http.server { ServeWireResponse }
+import extdeps.http.server { ServeWireResponse, ServeRequestHeader }
+import std.types { List }
 import std.types { String, Int }
 
 data serve_seam_probe_note: String = "The minimal 3-arg serve-seam probe (parent review note 3, 2026-07-20): proves the host accept-loop's run_in_context_with_args call path — three named String args in, one ServeWireResponse record out — independently of the full roadmap handler graph. The echo body discriminates that the args actually crossed the seam (a fabricated fixed response could not contain the request's method/path/body)."
@@ -27,5 +28,17 @@ fn serve_budget_breach_probe(method: String, path: String, body: String, release
     status: 200,
     content_type_label: "text/plain; charset=utf-8",
     body: join(["burned method=", method, " path=", path, " body=", body, " rev=", release_revision, " value=", to_string(serve_budget_burn(n: 200000000))], ""),
+  }
+}
+
+// THE ATTESTED-PEER AND HEADER ARM OF THE SAME PROBE. Declares `peer_user`, which only a unix-socket
+// listener attests (gunbc.http_ingress refuses it behind TCP at startup), and `request_headers`, the
+// request's fields with lowercased names. The body echoes both so a fabricated response could not
+// pass.
+fn serve_seam_peer_probe(method: String, peer_user: String, request_headers: List<ServeRequestHeader>) -> ServeWireResponse {
+  ServeWireResponse { headers: [],
+    status: 200,
+    content_type_label: "text/plain; charset=utf-8",
+    body: join(["peer=", peer_user, " method=", method, " headers=", join(request_headers |> map(h => concat(h.name, concat("=", h.value))), ";")], ""),
   }
 }

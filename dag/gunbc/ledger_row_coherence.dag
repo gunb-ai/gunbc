@@ -11,7 +11,8 @@ import gunbc.generated_artifact {
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact,
-  FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact,
+  FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact,
+  InstrumentRegistryGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
 }
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
@@ -140,6 +141,9 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     ReleaseLocusSeedConstantsGeneratedRsArtifact => []
     FileTransportRealizationGeneratedRsArtifact => []
     NativeRouteSeedBoundaryGeneratedRsArtifact => []
+    InstrumentRegistryGeneratedRsArtifact => []
+    // No ledger rows: the instrument table carries no identity-bearing declaration,
+    // and its coherence claim is the roster join, recorded as a recurring failure mode.
     Fci1BoundedExecutionContextArtifact => []
     CouponCadQueryProgramArtifact => []
     WholeCorpusCompileMeasuredRootDemandsArtifact => []

@@ -8,7 +8,7 @@ import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, UefiAr
 import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiPxe }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.uri { Uri, Https, Tftp }
-import extdeps.toolchain.types { Aarch64 }
+import extdeps.toolchain.types { Aarch64, Architecture }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaLocator, TransferHttps, UnderManager }
 import extdeps.bmc.virtual_media { RedfishVirtualMediaParams, ConfigfsGadgetParams }
 import extdeps.bmc.access_profile { SurfaceRedfishVirtualMedia, RedfishRoute, BmcBootControlRouteObservation, ProfileFromExternalAuthority }
@@ -340,6 +340,41 @@ fn configfs_plan_without_qualification() -> BootDeliveryPlan {
       evidence_manifest: [],
       selected: SelectedFromConfigfsQualification { qualified_by: [] },
       considered: [],
+    },
+  }
+}
+
+// A hand-built solution whose boot_control contradicts its delivery (PXE delivery, removable-media control):
+// the shape admission refuses and a consumer that skipped admission would arm.
+data incoherent_pxe_solution: BootDeliverySolution = BootDeliveryPlanned {
+  plan: BootDeliveryPlan {
+    target: pxe_plan.target,
+    artifact: pxe_plan.artifact,
+    delivery: pxe_plan.delivery,
+    boot_control: BootFromRemovableMedia,
+    boot_control_route: pxe_plan.boot_control_route,
+    eligibility: pxe_plan.eligibility,
+  }
+}
+
+// The removable-media plan for an artifact built for `architecture`: the seed's plan/target architecture join
+// is exercised by pairing this with a target of the same (positive) or another (RED) architecture.
+fn removable_media_solution_for(architecture: Architecture) -> BootDeliverySolution {
+  BootDeliveryPlanned {
+    plan: BootDeliveryPlan {
+      target: removable_media_plan.target,
+      artifact: BootArtifact {
+        purpose: intake_artifact.purpose,
+        architecture: architecture,
+        digest: intake_artifact.digest,
+        format: intake_artifact.format,
+        entrypoint: intake_artifact.entrypoint,
+        build_identity: intake_artifact.build_identity,
+      },
+      delivery: removable_media_plan.delivery,
+      boot_control: removable_media_plan.boot_control,
+      boot_control_route: removable_media_plan.boot_control_route,
+      eligibility: removable_media_plan.eligibility,
     },
   }
 }

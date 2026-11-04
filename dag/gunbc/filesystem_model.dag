@@ -1,7 +1,7 @@
 module gunbc.filesystem_model
 
 import std.types { Bool, List, String }
-import std.algebra { list_snoc_item }
+import std.algebra { list_append, list_snoc_item }
 import std.measure { second, ByteSize, byte_size }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.operation_argv { OperationRef, BoundOperationInvocation }
@@ -113,7 +113,7 @@ fn fs_without_file(fs: ModeledFilesystem, path: String) -> ModeledFilesystem {
 }
 
 fn fs_refusing_reads_of(fs: ModeledFilesystem, path: String) -> ModeledFilesystem {
-  ModeledFilesystem { directories: fs.directories, files: fs.files, refused_reads: list_append(fs.refused_reads, path), stats: fs.stats }
+  ModeledFilesystem { directories: fs.directories, files: fs.files, refused_reads: list_snoc_item(xs: fs.refused_reads, item: path), stats: fs.stats }
 }
 
 type ModeledFileWrite {
@@ -174,7 +174,7 @@ fn fs_list(fs: ModeledFilesystem, path: String) -> FileExchangeObservation {
 }
 
 fn concat_lists(a: List<String>, b: List<String>) -> List<String> {
-  fold(b, init: a, f: fn(acc, x) { list_append(acc, x) })
+  list_append(left: a, right: b)
 }
 
 // THE BINDINGS, through a lens into the scenario state, so any scenario world can embed a filesystem
@@ -296,7 +296,7 @@ data shell_mkdir_parents_operation: OperationRef = OperationRef { path: "dag/ext
 fn fs_ancestors(path: String) -> List<String> {
   let parts = filter(split(s: path, delimiter: "/"), w => w != "")
   fold(parts, init: [], f: fn(acc, part) {
-    list_append(acc, match acc.last() { Present { value: prev } => concat(concat(prev, "/"), part)  Absent => concat("/", part) })
+    list_snoc_item(xs: acc, item: match acc.last() { Present { value: prev } => concat(concat(prev, "/"), part)  Absent => concat("/", part) })
   })
 }
 
@@ -306,7 +306,7 @@ fn fs_make_parents(fs: ModeledFilesystem, path: String) -> ModeledFileWrite {
   match blocked.first() {
     Present { value: b } => ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotDirectory, message: concat("mkdir: cannot create directory: Not a directory: ", b)) }
     Absent => ModeledFileWrite {
-      fs: ModeledFilesystem { directories: fold(chain, init: fs.directories, f: fn(acc, d) { if any_string(xs: acc, x: d) { acc } else { list_append(acc, d) } }), files: fs.files, refused_reads: fs.refused_reads, stats: fs.stats },
+      fs: ModeledFilesystem { directories: fold(chain, init: fs.directories, f: fn(acc, d) { if any_string(xs: acc, x: d) { acc } else { list_snoc_item(xs: acc, item: d) } }), files: fs.files, refused_reads: fs.refused_reads, stats: fs.stats },
       observation: FileOperationSucceeded { byte_count: byte_size(count: 0), content: "" },
     }
   }

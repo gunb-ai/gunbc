@@ -1,6 +1,6 @@
 module gunbc.fleet.mtcollins_firmware_converge
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import std.decl_ref { decl_ref }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.realization_reconcile { Applied, classify_reconciled, EffectConverged, EffectNotConverged }

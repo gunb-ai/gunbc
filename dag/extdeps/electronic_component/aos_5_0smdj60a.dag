@@ -35,7 +35,7 @@ data aos_tvs_5_0smdj60a: ElectronicComponentRow = ElectronicComponentRow {
   vendor: alpha_and_omega_semiconductor,
   ordering_code: "5.0SMDJ60A",
   package: "DO-214AB",
-  top_marking: "5PGK",
+  top_marking: Present { value: "5PGK" },
   specification: TvsDiodeSpec { tvs: TvsSpecification {
     polarity: Unidirectional,
     reverse_standoff: volt(count: 60),
