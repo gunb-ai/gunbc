@@ -7,9 +7,10 @@ module test.claim.extdeps.openai_text_completion_wire_witness
 // through the checked constructor `openai_text_completion_object`, which yields Present for the documented
 // constant and Absent for everything else (DESIGN section 4, gunbc.design_ruling
 // where_refinements_retire_for_checked_constructors; the shape is extdeps.languages.json.grammar's
-// JsonNumberLexeme). These rows EXECUTE that constructor -- its other consumer is a decoder that does not
-// exist yet (S3 of `gunbc.plans.fabric_serving_router`) -- so a constant that drifted, or a constructor
-// that stopped refusing, has a red row to answer.
+// JsonNumberLexeme). Two of the rows EXECUTE that constructor -- its other consumer is a decoder that does
+// not exist yet (S3 of `gunbc.plans.fabric_serving_router`) -- so a constant that drifted, or a constructor
+// that stopped refusing, has a red row to answer. The third row checks the shape of the frontier rows this
+// module declares instead of executing the constructor; why it is a row at all is written under its name.
 //
 // Each row says, in the words below its name, the mutation that turns it red, and every row has a
 // counterpart to the OTHER side: a set that only ever returns true is indistinguishable from a
@@ -19,9 +20,11 @@ module test.claim.extdeps.openai_text_completion_wire_witness
 // `expected item declaration` for it in a .dag), and the claim harness collects these by declaration.
 
 import std.optional { Absent, Present }
+import std.roster_frontier { frontier_rows_well_formed }
 import extdeps.llm.openai {
   openai_text_completion_object,
-  openai_chat_completion_chunk_object_wire
+  openai_chat_completion_chunk_object_wire,
+  openai_text_completion_wire_frontier_rows
 }
 
 // 1 when the string builds a carrier, 0 when the constructor refuses it.
@@ -51,4 +54,20 @@ test fn the_documented_object_value_builds_the_carrier() -> Bool {
 test fn another_endpoints_object_value_is_refused() -> Bool {
   if builds_a_carrier(value: "chat.completion") == 0
     && builds_a_carrier(value: openai_chat_completion_chunk_object_wire) == 0 { true } else { false }
+}
+
+// THE FRONTIER ROWS THIS MODULE DECLARES ARE CHECKED, NOT TRUSTED. The four rows are DATA, and data can be
+// wrong without anything noticing: a row that loses its reason, its dissolution, or either half of its
+// subject's declaration ref still compiles. All four here carry an unbound dissolution naming the S3
+// capability of `gunbc.plans.fabric_serving_router` that would consume the record the row tracks, so the
+// claim is that they still say so. std.roster_frontier's frontier_rows_well_formed asks each row for a
+// non-empty reason, a dissolution that names its trigger or describes itself, and a subject with both a
+// module path and a decl name. The route is the one the chat-completions sibling witness takes, and the
+// same reason applies: the repo-wide roster fold that used to read such lists (gunbc.census_closure_frontier,
+// retired by #15531 at aac228c337f3) is gone, so the check sits where the data is.
+// RED WHEN: one of the four rows loses its reason text, an unbound dissolution loses its description, or a
+// subject loses the module path or the decl name -- which is exactly the silent decay a declared frontier
+// undergoes while nobody reads it.
+test fn the_declared_frontier_rows_are_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: openai_text_completion_wire_frontier_rows)
 }
