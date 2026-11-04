@@ -270,7 +270,7 @@ fn cas_expectation_admits<T>(
   match readable {
     CasReadableAbsent => match expected {
       ExpectSlotAbsent => true
-      ExpectSlotGeneration { generation: _ } => false
+      ExpectSlotGeneration { generation: _ } => true
     }
     CasReadablePresent { version: v } => match expected {
       ExpectSlotAbsent => false
