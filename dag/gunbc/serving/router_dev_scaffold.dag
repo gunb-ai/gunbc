@@ -1,9 +1,7 @@
 module gunbc.serving.router_dev_scaffold
 
-import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THE SRV1 DEV DEPLOYMENT'S TRACKED DEBT. Authority (DESIGN section 5: operator approval outside the diff):
 // the operator's decision of 2026-10-25, option B, to serve the pool from the S1 OpenResty proxy on srv1
@@ -21,7 +19,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 //   - forwarding without a permit: admission is the client key and the cap, no front-door seat permit.
 // Also against the S1 contract that the proxy holds no policy (plan gunbc.plans.fabric_serving_router).
 // Dissolves when the S3 callout service (gunbc.serving.serving_router) lands and the dev site's proxy is
-// re-rendered from gunbc.serving.router_proxy_config. Trigger: router_dev_frontier_rows below.
+// re-rendered from gunbc.serving.router_proxy_config.
 data router_dev_policy_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -107,35 +105,3 @@ data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
   }
 }
 
-// THE FIVE DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
-// declaration that does not exist yet, so gunbc.census_closure_frontier (where these rows are enrolled)
-// reports each as pending until its replacement lands. The S3 trigger names the plan's callout module
-// (plan gunbc.plans.fabric_serving_router S3, gunbc.serving.serving_router) and a declaration only that
-// service will carry, not a generic entry-point name.
-data router_dev_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
-    reason: "Router policy in the proxy (row 1): key check, stickiness, active-turn caps, model routing and tallies decided in OpenResty Lua (router_dev_init_lines, router_dev_access_lines, router_dev_models_lines, router_dev_stats_lines, router_dev_header_lines, router_dev_log_lines, all rendered by router_dev_config).",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.serving_router", decl_name: "serving_router_authz_callout"))
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_srv1_write_config"),
-    reason: "Hand-run deploy (row 2): the operator account renders, writes state and starts the container on srv1.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party_upstreams"),
-    reason: "Hand-maintained upstream list (row 3): literal first-party rows and the ctrl rented-pool overflow gateway.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment", decl_name: "rented_cohort_enrollments_from_allocations"))
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_location"),
-    reason: "Pins as one trust bundle (row 4): verification checks membership in the pinned set, not each upstream's own pin.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "self_signed"),
-    reason: "Hand-written shell in the falsifier's container commands (row 5): mkdir, openssl and exec openresty joined as an sh -c and-list.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.languages.bash.grammar", decl_name: "bash_and_list_production"))
-  ),
-]

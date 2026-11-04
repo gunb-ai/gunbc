@@ -139,7 +139,7 @@ fn order_route(body: String, receipt: DeviceCryptoHandlerReceipt) -> ServeWireRe
   }
 }
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha, receipt: DeviceCryptoHandlerReceipt) -> ServeWireResponse {
   if method != "POST" { crypto_response(status: 405, body: "the verifier answers POST only\n") }
   else if path == device_crypto_signature_path { signature_route(body: body, receipt: receipt) }
   else if path == device_crypto_attestation_path { attestation_route(body: body, receipt: receipt) }

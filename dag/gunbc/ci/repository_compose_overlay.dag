@@ -1,6 +1,8 @@
 module gunbc.ci.repository_compose_overlay
 
-import std.types { NonEmptyStr, String, List }
+import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
 import gunbc.ci.repository_ci_profile { PublicSeed, OverlayIngest }
 import std.dissolution { DissolutionCondition, dissolution_description }
 import v2.std.node { Node }
@@ -13,6 +15,11 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var,
   bash_build_word_concat_from_nodes,
   bash_build_word_cmdsubst,
+  bash_assign_name,
+  bash_var_reads,
+  bash_word_literal_texts,
+  bash_built_by,
+  bash_positional_atom,
   bash_build_assign,
   bash_build_or_else
 }
@@ -88,6 +95,16 @@ fn var_word(name: String) -> Node { bash_build_word_var(name: name) }
 fn path_under(name: String, tail: String) -> Node {
   bash_build_word_concat_from_nodes(parts: [var_word(name: name), word(text: concat("/", tail))])
 }
+
+// EVERY PATH A COMPOSITION CREATES OR READS INSIDE THE COMPOSED TREE hangs directly off COMPOSE. COMPOSE
+// IS the composed directory, not its parent: the same statement list assigns it as the directory
+// `git worktree add --detach` creates and then `cd`s into it, so the run's working directory is COMPOSE
+// and its `--source-root` arguments are read relative to COMPOSE. A tail that repeated the compose
+// directory name between COMPOSE and what was created wrote the overlay one level below where the run
+// looked for it, and the seal step died in source-root resolution: the copy was there, the read was not.
+// Both compose siblings build their paths through here, so the rule has one home and the doubled form is
+// not something a caller can spell by accident.
+fn under_compose(tail: String) -> Node { path_under(name: "COMPOSE", tail: tail) }
 
 fn command(words: List<Node>) -> Node { bash_build_command_with_words(words: words) }
 
@@ -234,17 +251,17 @@ fn compose_preamble_statements(seed: PublicSeed, c: ComposeSpec) -> List<Node> {
             word(text: "git"), word(text: "worktree"), word(text: "add"), word(text: "--detach"),
             var_word(name: "COMPOSE"), word(text: "HEAD")
           ]),
-          command(words: [word(text: "mkdir"), word(text: "-p"), path_under(name: "COMPOSE", tail: c.overlay_dir_name)]),
+          command(words: [word(text: "mkdir"), word(text: "-p"), under_compose(tail: c.overlay_dir_name)]),
           command(words: [
             word(text: "cp"), word(text: "-a"),
             bash_build_word_concat_from_nodes(parts: [c.overlay_source, word(text: "/dag")]),
-            path_under(name: "COMPOSE", tail: concat(concat(c.overlay_dir_name, "/"), "dag"))
+            under_compose(tail: concat(concat(c.overlay_dir_name, "/"), "dag"))
           ])
         ],
         concat(
           map(xs: c.links, f: link => command(words: [
             word(text: "ln"), word(text: "-sfn"), link.target,
-            path_under(name: "COMPOSE", tail: link.name)
+            under_compose(tail: link.name)
           ])),
           concat(
             [command(words: [word(text: "cd"), var_word(name: "COMPOSE")])],
@@ -336,17 +353,25 @@ fn head_tree_compose_statements(
   head_link_name: NonEmptyStr,
   compose_dir_name: NonEmptyStr
 ) -> List<Node> {
+  // ONE STEP, ONE ORDER. The step opens with `set -euo pipefail`, so a word that expands
+  // `$RUNNER_TMP_ROOT` BEFORE `runner_tmp_root_stmts` declares it aborts the script at that line with
+  // bash's own "unbound variable" -- which is exactly how this step failed in the field: the mirror's
+  // regenerate-and-seal step died at its line 6 with `RUNNER_TMP_ROOT: unbound variable`, so the heal
+  // publisher's input was never produced. That step runs only on pull_request events
+  // (`if: "!cancelled() && github.event_name == 'pull_request'"`), which is why a green push lane never
+  // showed it. The assignment is therefore emitted AFTER the declaration, and
+  // test.claim.compose_variable_order_witness keeps it that way for every builder in this module.
   concat(
     [
       set_strict_stmt(),
       command_words(rest: ["cd", seed.checkout_path as String]),
       seed_gunbc_assign_stmt(seed: seed),
-      private_root_assign_stmt(),
-      bash_build_assign(name: "HEAD_TREE", value: path_under(name: "RUNNER_TMP_ROOT", tail: head_tree_dir_name as String))
+      private_root_assign_stmt()
     ],
     concat(
       runner_tmp_root_stmts(fallback: overlay.compose_root_env_default),
       [
+        bash_build_assign(name: "HEAD_TREE", value: path_under(name: "RUNNER_TMP_ROOT", tail: head_tree_dir_name as String)),
         command(words: [
           word(text: "git"), word(text: "-C"), var_word(name: "PRIVATE_ROOT"), word(text: "fetch"),
           word(text: "--no-tags"), word(text: "--depth=1"), word(text: "origin"), var_word(name: "HEAD_SHA")
@@ -370,15 +395,15 @@ fn head_tree_compose_statements(
         ]),
         command(words: [
           word(text: "mkdir"), word(text: "-p"),
-          path_under(name: "COMPOSE", tail: concat(concat(compose_dir_name as String, "/"), overlay.overlay_dir_name as String))
+          under_compose(tail: overlay.overlay_dir_name as String)
         ]),
         command(words: [
           word(text: "cp"), word(text: "-a"), path_under(name: "HEAD_TREE", tail: "dag"),
-          path_under(name: "COMPOSE", tail: concat(concat(compose_dir_name as String, "/"), concat(overlay.overlay_dir_name as String, "/dag")))
+          under_compose(tail: concat(overlay.overlay_dir_name as String, "/dag"))
         ]),
         command(words: [
           word(text: "ln"), word(text: "-sfn"), var_word(name: "HEAD_TREE"),
-          path_under(name: "COMPOSE", tail: concat(concat(compose_dir_name as String, "/"), head_link_name as String))
+          under_compose(tail: head_link_name as String)
         ]),
         command(words: [word(text: "cd"), var_word(name: "COMPOSE")]),
         unset_may_be_absent(name: "GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
@@ -413,4 +438,438 @@ fn only_at_a_pull_request() -> String {
 
 fn seal_ran_and_repo_alive() -> String {
   "!cancelled() && github.event_name == 'pull_request' && steps.heal_seal.outcome == 'success'"
+}
+
+// ── THE ORDERING LAW OF A COMPOSED STEP ──────────────────────────────────────────────────────
+// A composed step is a SCRIPT, run under `set -euo pipefail`: a word that expands a variable the step has
+// not assigned YET does not evaluate to nothing, it aborts the script at that line. So the order of
+// statements inside one step is load-bearing, and the one fact each builder states (where the scratch root
+// is, where the head tree is, where the composition is) can be stated in the wrong place. This is the
+// general shape of the field failure recorded on `head_tree_compose_statements`: a hoisted assignment read
+// `$RUNNER_TMP_ROOT` before `runner_tmp_root_stmts` declared it.
+//
+// THE LAW. A step may read a variable only if (a) a STRICTLY EARLIER statement in the same step assigned
+// it, or (b) it is an external input: a runner name, a shell-provided name, or a name the step's own `env:`
+// mapping declares (the caller passes those, read off the same row that emits the mapping -- `SealEnvBinding`,
+// not a restatement). Anything else a step reads is a defect. An assignment and a read of that name in the
+// SAME statement is a defect and not a pass: the shell expands the right-hand side before the assignment
+// takes effect, which is exactly the shape that died in the field.
+//
+// THE LAW READS THE STATEMENTS, NOT THEIR RENDERING. The builders return `List<Node>`, and the grammar
+// itself answers what a statement is and what a subtree expands -- `v2.extdeps.languages.bash_build`'s read
+// side, which is the module that owns these productions. An earlier version of this rule split the rendered
+// script on newlines and walked characters looking for `NAME=`; it had to ADMIT blind spots (a
+// `>> "$GITHUB_ENV"` export counted as an assignment, quoting was invisible), it needed `-1` to mean
+// "absent", and it could be satisfied by bytes no builder ever produced. Over Nodes there is no such gap: an
+// assignment is the node `bash_build_assign` built, a read is a variable word the grammar made, so the only
+// thing the rule can see is what the emitter actually ships. Rendering stays the emitter's business --
+// `bash_emit_stmts` is not in this law's path, and a renderer change cannot make an unordered step look
+// ordered or the reverse.
+type ComposeOrderingDefect {
+  name: String
+  read_index: Int
+  assigned_index: Optional<Int>
+}
+
+// The inputs the runner hands every step, as data. Deliberately narrow: `RUNNER_TMP_ROOT` is NOT here,
+// because a scratch root is the step's own to declare -- that is the name the field failure turned on.
+data compose_runner_input_prefixes: List<String> = ["GITHUB_"]
+data compose_runner_input_names: List<String> = ["RUNNER_TEMP"]
+
+// Names the shell provides before the first statement runs -- a DIFFERENT provider from the runner's, so a
+// different row: a runner name can be overridden by a workflow's `env:`, `PWD` cannot, and one list mixing
+// the two makes "who is expected to have set this" unreadable. `seed_gunbc_assign_stmt` reads `$PWD` for
+// exactly this reason, so without this row the law reports a name no step may legitimately assign.
+data compose_shell_input_names: List<String> = ["PWD"]
+
+fn compose_ordering_listed(names: List<String>, name: String, i: Int) -> Bool {
+  if i >= count(names) {
+    false
+  } else if text_at(xs: names, i: i) == name {
+    true
+  } else {
+    compose_ordering_listed(names: names, name: name, i: i + 1)
+  }
+}
+
+fn compose_ordering_prefix_at(names: List<String>, name: String, i: Int) -> Bool {
+  if i >= count(names) {
+    false
+  } else if starts_with(s: name, prefix: text_at(xs: names, i: i)) {
+    true
+  } else {
+    compose_ordering_prefix_at(names: names, name: name, i: i + 1)
+  }
+}
+
+// Is `name` somebody else's to provide? Three providers, each its own row above, and a caller's `inputs`
+// are APPENDED to them -- so a caller can excuse its own declared `env:` keys but cannot widen the law by
+// forgetting a provider or renaming a runner one.
+fn compose_ordering_is_input(inputs: List<String>, name: String) -> Bool {
+  if compose_ordering_listed(names: compose_runner_input_names, name: name, i: 0) {
+    true
+  } else if compose_ordering_listed(names: compose_shell_input_names, name: name, i: 0) {
+    true
+  } else if compose_ordering_prefix_at(names: compose_runner_input_prefixes, name: name, i: 0) {
+    true
+  } else {
+    compose_ordering_listed(names: inputs, name: name, i: 0)
+  }
+}
+
+// A statement list is read by position, through this module's own helper: Absent beyond the end.
+fn compose_statement_at(xs: List<Node>, i: Int) -> Optional<Node> {
+  match xs.skip(n: i).first() {
+    Present { value: v } => Present { value: v }
+    Absent => Absent
+  }
+}
+
+// The names one statement expands, in document order, duplicates kept so the first read is identifiable.
+// These readers take the `Optional` a position lookup returns, so a caller never unwraps by hand and an
+// out-of-range index yields "reads nothing" rather than a panic-shaped call.
+fn compose_statement_reads(step: Optional<Node>) -> List<String> {
+  match step {
+    Present { value: s } => bash_var_reads(n: s, acc: [])
+    Absent => []
+  }
+}
+
+// The name a statement binds, when it is an assignment at all.
+fn compose_assigned_name(step: Optional<Node>) -> Optional<String> {
+  match step {
+    Present { value: s } => bash_assign_name(n: s)
+    Absent => Absent
+  }
+}
+
+// The first statement that assigns `name`, 1-based, or Absent when the step never assigns it. Absent
+// rather than a sentinel number: a `-1` read as a position is how a rule ends up telling "assigned later"
+// from "never assigned" by arithmetic instead of by type.
+fn compose_first_assignment_index(steps: List<Node>, name: String, i: Int) -> Optional<Int> {
+  if i >= count(steps) {
+    Absent
+  } else {
+    match compose_assigned_name(step: compose_statement_at(xs: steps, i: i)) {
+      Present { value: bound } =>
+        if bound == name { Present { value: i + 1 } } else { compose_first_assignment_index(steps: steps, name: name, i: i + 1) }
+      Absent => compose_first_assignment_index(steps: steps, name: name, i: i + 1)
+    }
+  }
+}
+
+// One statement's defects, given what EARLIER statements had assigned. Read position is 1-based so a
+// report points at a statement a reader can count to.
+fn compose_statement_defects(
+  steps: List<Node>,
+  i: Int,
+  assigned: List<String>,
+  inputs: List<String>
+) -> List<ComposeOrderingDefect> {
+  compose_read_defects(
+    steps: steps,
+    reads: compose_statement_reads(step: compose_statement_at(xs: steps, i: i)),
+    k: 0,
+    read_at: i + 1,
+    assigned: assigned,
+    inputs: inputs,
+    acc: []
+  )
+}
+
+fn compose_read_defects(
+  steps: List<Node>,
+  reads: List<String>,
+  k: Int,
+  read_at: Int,
+  assigned: List<String>,
+  inputs: List<String>,
+  acc: List<ComposeOrderingDefect>
+) -> List<ComposeOrderingDefect> {
+  if k >= count(reads) {
+    acc
+  } else if compose_ordering_is_input(inputs: inputs, name: text_at(xs: reads, i: k)) {
+    compose_read_defects(
+      steps: steps, reads: reads, k: k + 1, read_at: read_at, assigned: assigned, inputs: inputs, acc: acc
+    )
+  } else if compose_ordering_listed(names: assigned, name: text_at(xs: reads, i: k), i: 0) {
+    compose_read_defects(
+      steps: steps, reads: reads, k: k + 1, read_at: read_at, assigned: assigned, inputs: inputs, acc: acc
+    )
+  } else {
+    concat(
+      acc,
+      [
+        ComposeOrderingDefect {
+          name: text_at(xs: reads, i: k)
+          read_index: read_at
+          assigned_index: compose_first_assignment_index(steps: steps, name: text_at(xs: reads, i: k), i: 0)
+        }
+      ]
+    )
+  }
+}
+
+// A statement that assigns extends what later statements may read; any other statement leaves it as it was.
+fn compose_assigned_after(assigned: List<String>, step: Node) -> List<String> {
+  match bash_assign_name(n: step) {
+    Present { value: name } => concat(assigned, [name])
+    Absent => assigned
+  }
+}
+
+// THE RULE. `inputs` are the step's own `env:` mapping keys, read off the row that emits them; the runner's
+// names and the shell's are added here, so no caller can narrow the law.
+fn compose_step_ordering_defects(steps: List<Node>, inputs: List<String>) -> List<ComposeOrderingDefect> {
+  compose_defects_at(steps: steps, i: 0, assigned: [], inputs: inputs, acc: [])
+}
+
+fn compose_defects_at(
+  steps: List<Node>,
+  i: Int,
+  assigned: List<String>,
+  inputs: List<String>,
+  acc: List<ComposeOrderingDefect>
+) -> List<ComposeOrderingDefect> {
+  if i >= count(steps) {
+    acc
+  } else {
+    match compose_statement_at(xs: steps, i: i) {
+      Absent => acc
+      Present { value: step } =>
+        compose_defects_at(
+          steps: steps,
+          i: i + 1,
+          assigned: compose_assigned_after(assigned: assigned, step: step),
+          inputs: inputs,
+          acc: concat(acc, compose_statement_defects(steps: steps, i: i, assigned: assigned, inputs: inputs))
+        )
+    }
+  }
+}
+
+// A composed step opens with the strict-mode command `set -euo pipefail`, spelled by `set_strict_stmt`.
+// `bash_emit_stmts` supplies `set -e` itself, so the EMITTED script opens with the two-line strict prefix
+// while the statement list opens with this command. A step that does not open with it was not built by
+// this family in the order the law is stated for, and the rule says so instead of quietly sweeping
+// something else. Read through the grammar, so a `set` with other options is not this statement.
+fn compose_statement_is_strict(step: Optional<Node>) -> Bool {
+  match step {
+    Present { value: n } =>
+      bash_built_by(n: n, production: ^bash_production_fold_command)
+        && bash_positional_atom(n: n, i: 0) == Present { value: "set" }
+        && bash_positional_atom(n: n, i: 1) == Present { value: "-euo" }
+        && bash_positional_atom(n: n, i: 2) == Present { value: "pipefail" }
+    Absent => false
+  }
+}
+
+// Whether any statement in the step expands a variable at all.
+fn compose_any_read(steps: List<Node>, i: Int) -> Bool {
+  if i >= count(steps) {
+    false
+  } else if count(compose_statement_reads(step: compose_statement_at(xs: steps, i: i))) > 0 {
+    true
+  } else {
+    compose_any_read(steps: steps, i: i + 1)
+  }
+}
+
+// A step the rule may be asked about at all. An empty statement list means the caller built nothing, and
+// answering "no defects" about nothing is a pass earned by vacuity; so is a step that reads no variable,
+// and so is a step this family did not build in the order the law is stated for. Each of those is reported
+// as a defect of its own by the witness rather than passed over -- the anti-vacuity control for the
+// sweeper, stated once here so no caller can forget it.
+fn compose_step_is_swept(steps: List<Node>) -> Bool {
+  compose_statement_is_strict(step: compose_statement_at(xs: steps, i: 0))
+    && compose_any_read(steps: steps, i: 0)
+}
+
+// ── THE PATH LAW OF A COMPOSED STEP ─────────────────────────────────────────────────────────
+//
+// THE OTHER LAW OVER THE SAME STATEMENTS: WHAT MAY HANG OFF COMPOSE. COMPOSE names the composed directory
+// ITSELF -- the same statement list assigns it, `git worktree add --detach` creates it, `cd` enters it, and
+// the run reads its `--source-root` arguments relative to it. A path that repeats the compose directory
+// between COMPOSE and what it names therefore aims one level BELOW where the run looks. The seal step that
+// did exactly that created its overlay where nothing would read it and died in source-root resolution with
+// the copy present and the read empty: a step whose own text looked right and whose composition was not.
+// The directory name is not written into this check -- it is read off the statement that assigns COMPOSE,
+// so the law travels with the row that supplies the name and no caller can narrow it by passing another.
+type ComposePathDefect {
+  step_index: Int
+  compose_dir_literal: String
+  literal: String
+}
+
+// Whether any statement in the list expands COMPOSE at all: the non-vacuity half of the path law, read
+// through the grammar rather than by counting paths.
+fn compose_step_reads_compose(steps: List<Node>, i: Int) -> Bool {
+  if i >= count(steps) {
+    false
+  } else if compose_ordering_listed(names: compose_statement_reads(step: compose_statement_at(xs: steps, i: i)), name: "COMPOSE", i: 0) {
+    true
+  } else {
+    compose_step_reads_compose(steps: steps, i: i + 1)
+  }
+}
+
+// The literal the COMPOSE assignment carries -- `/<composed directory>`, the tail `path_under` hangs off
+// the scratch root. Absent means the step never assigns COMPOSE, or assigns it in a shape with no literal
+// for the name; `compose_step_reads_compose` tells those apart from a step that does not compose at all,
+// and the witness reports each instead of letting either pass.
+fn compose_composed_dir_literal(steps: List<Node>, i: Int) -> Optional<String> {
+  if i >= count(steps) {
+    Absent
+  } else {
+    match compose_assigned_name(step: compose_statement_at(xs: steps, i: i)) {
+      Present { value: name } =>
+        if name == "COMPOSE" {
+          Present { value: text_at(xs: bash_word_literal_texts(n: compose_statement_required(steps: steps, i: i), acc: []), i: 0) }
+        } else {
+          compose_composed_dir_literal(steps: steps, i: i + 1)
+        }
+      Absent => compose_composed_dir_literal(steps: steps, i: i + 1)
+    }
+  }
+}
+
+// This module's own total read of a position: the callers above have already established the index is in
+// range, and an out-of-range read is a builder bug, not a state the law may name. "" keeps it total.
+fn compose_statement_required(steps: List<Node>, i: Int) -> Node {
+  match compose_statement_at(xs: steps, i: i) {
+    Present { value: s } => s
+    Absent => bash_build_word_lit(text: "")
+  }
+}
+
+fn compose_statement_path_defects(
+  step: Node,
+  step_index: Int,
+  compose_dir_literal: String,
+  i: Int
+) -> List<ComposePathDefect> {
+  match compose_statement_literal_at(step: step, i: i) {
+    Absent => []
+    Present { value: literal } =>
+      if literal == compose_dir_literal {
+        compose_statement_path_defects(
+          step: step,
+          step_index: step_index,
+          compose_dir_literal: compose_dir_literal,
+          i: i + 1
+        )
+      } else if string_contains(
+        s: concat(literal, "/"),
+        pattern: concat(compose_dir_literal, "/")
+      ) {
+        // SEGMENT-BOUNDED, not a bare substring. Both sides gain a trailing slash before the test, so the
+        // composed name has to appear as a whole path segment to count as a repeat. A sibling directory
+        // whose name merely BEGINS with the composed name is a different directory, and reporting it would
+        // make the law cry wolf on a step that composes correctly. The equality branch above stays: the
+        // statement that ASSIGNS COMPOSE names the directory, it does not repeat it.
+        concat(
+          [
+            ComposePathDefect {
+              step_index: step_index
+              compose_dir_literal: compose_dir_literal
+              literal: literal
+            }
+          ],
+          compose_statement_path_defects(
+            step: step,
+            step_index: step_index,
+            compose_dir_literal: compose_dir_literal,
+            i: i + 1
+          )
+        )
+      } else {
+        compose_statement_path_defects(
+          step: step,
+          step_index: step_index,
+          compose_dir_literal: compose_dir_literal,
+          i: i + 1
+        )
+      }
+  }
+}
+
+// One statement's literals by position, through the grammar's read side: this module's own total read of a
+// list position, Absent beyond the end, so the scanner above stops by itself.
+fn compose_statement_literal_at(step: Node, i: Int) -> Optional<String> {
+  match bash_word_literal_texts(n: step, acc: []).skip(n: i).first() {
+    Present { value: v } => Present { value: v }
+    Absent => Absent
+  }
+}
+
+// THE RULE, for one step's statement list. A statement that does not expand COMPOSE is not this law's
+// subject; `compose_step_reads_compose` says whether any of them did.
+fn compose_step_path_defects(steps: List<Node>) -> List<ComposePathDefect> {
+  match compose_composed_dir_literal(steps: steps, i: 0) {
+    Absent => []
+    Present { value: compose_dir_literal } =>
+      if compose_dir_literal == "" {
+        []
+      } else if compose_dir_literal == "/" {
+        []
+      } else {
+        compose_step_path_defects_at(
+          steps: steps,
+          i: 0,
+          compose_dir_literal: compose_dir_literal,
+          acc: []
+        )
+      }
+  }
+}
+
+fn compose_step_path_defects_at(
+  steps: List<Node>,
+  i: Int,
+  compose_dir_literal: String,
+  acc: List<ComposePathDefect>
+) -> List<ComposePathDefect> {
+  if i >= count(steps) {
+    acc
+  } else if compose_ordering_listed(
+    names: compose_statement_reads(step: compose_statement_at(xs: steps, i: i)),
+    name: "COMPOSE",
+    i: 0
+  ) {
+    // Concatenate AND continue. Stopping at the first statement that expands COMPOSE would be a sweep in
+    // name only: in every real composed step that first statement is the clean
+    // `git worktree add --detach $COMPOSE HEAD`, so the mkdir, cp and ln that follow -- the ones that can
+    // actually land a path below the read -- would never be looked at, and the law would stay green on a
+    // step that was broken.
+    compose_step_path_defects_at(
+      steps: steps,
+      i: i + 1,
+      compose_dir_literal: compose_dir_literal,
+      acc: concat(
+        acc,
+        compose_statement_path_defects(
+          step: compose_statement_required(steps: steps, i: i),
+          step_index: i + 1,
+          compose_dir_literal: compose_dir_literal,
+          i: 0
+        )
+      )
+    )
+  } else {
+    compose_step_path_defects_at(
+      steps: steps,
+      i: i + 1,
+      compose_dir_literal: compose_dir_literal,
+      acc: acc
+    )
+  }
+}
+
+// The corpus idiom, defined per module (a module reads a list by position through its own helper, so
+// resolution has an established callee): "" beyond the end, which the scanners above treat as "no name".
+fn text_at(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
 }
