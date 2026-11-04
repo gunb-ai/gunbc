@@ -214,7 +214,7 @@ import v1.compiler.infer_types {
   child_type_node, emit_map_has,
   node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection,
   type_is_ordered_element_run,
-  is_product_type, is_coproduct_type, is_unit_like
+  is_product_type, is_coproduct_type, is_unit_like, is_fully_resolved
 }
 import v1.compiler.infer_method {
   infer_builtin_call_type
@@ -12490,10 +12490,12 @@ fn rust_type_argument_witness_pair_lists(basis_children: List<Node>, site_childr
 //
 // THREE STATES ARE REFUSED, EACH LOUDLY, AT THE SITE. (1) A declared callee whose declaration
 // emission cannot reach. (2) A declared parameter the plan does not pin -- no witness, or witnesses
-// that render differently. (3) A witness that is not fully resolved, by the structural checker this
-// file already owns: an `im::HashMap<String, _>` inside a turbofish is a hole for rustc to fill,
-// which is the defect this rule exists to close. In every case the emitted program carries the
-// refusal; it never degrades into the shape that was refused.
+// that render differently. (3) A witness the seed's own resolution check refuses:
+// `v1.compiler.infer_types` `is_fully_resolved`, the same walk the checker asks before it commits a
+// type (13 call sites in `v1.compiler.infer`, e.g. the fold accumulator at its line 10401), asked with
+// the `source_indices` this function already carries. An `im::HashMap<String, _>` inside a turbofish is
+// a hole for rustc to fill, which is the defect this rule exists to close. In every case the emitted
+// program carries the refusal; it never degrades into the shape that was refused.
 fn rust_call_type_argument_annotation(
   callee_declaration: Node?,
   plan: List<ResolvedCallFormal>,
@@ -12537,7 +12539,7 @@ fn rust_type_argument_refusal_message(witnesses: List<CallTypeArgumentWitness>, 
     Present { value: spelling } =>
       if !all(spellings, other => other == spelling) {
         concat(concat(prefix, " names two different type arguments for "), name)
-      } else if !all(for_name, w => rust_type_node_is_fully_resolved(node: w.witness)) {
+      } else if !all(for_name, w => is_fully_resolved(n: w.witness, source_indices: source_indices)) {
         concat(concat(concat(prefix, " leaves the type argument for "), name), " unresolved")
       } else {
         ""
@@ -12555,29 +12557,22 @@ fn rust_type_argument_spelling(witnesses: List<CallTypeArgumentWitness>, name: S
   }
 }
 
-// IS THIS TYPE FULLY RESOLVED? Read off the NODE, not off the rendering -- DESIGN.md §4: "in a closed
-// system a heuristic is never necessary: the richer source always exists or can be written". Whether an
-// inferred type still has an unresolved variable is a structural fact about the tree the checker built:
-// the outer node can be `Resolved` while a type argument below it is still a `TypeVariable`, and that is
-// exactly what the seed rebuild of run 41299024017 showed, where the emitted annotation came out
-// `im::HashMap<_, _>` against an initializer of `Rc<im::HashMap<_, bool>>` in the `std.types` mirror. An
-// annotation with a hole pins nothing -- rustc unifies the hole with the initializer instead, so the
-// statement meant to hand over the type arguments becomes a constraint it cannot satisfy.
-//
-// Testing the rendered text instead would have been a second, weaker reading of one fact, and a false
-// one: it misses `(_, i64)`, `Fn(_) -> i64` and `Vec<(i64, _)>`, and it silently tracks whatever spacing
-// or path style `render_node_type` happens to use. A self-recursive node is refused rather than walked,
-// so the check terminates: its carrier is spelled by the alias, which is a case this rule does not need.
-fn rust_type_node_is_fully_resolved(node: Node) -> Bool {
-  if node.is_self_recursive {
-    false
-  } else {
-    match node.inferred {
-      Present { value: Resolved { node: inner } } => rust_type_node_is_fully_resolved(node: inner) && all(node.children, child => rust_type_node_is_fully_resolved(node: child)),
-      _ => false
-    }
-  }
-}
+// WHY THE RESOLUTION QUESTION IS ASKED OF THE SEED AND NOT OF A LOCAL WALK. An earlier revision of this
+// rule carried its own recursive read of `inferred` and `children`. review 90858 found it for what it
+// was: a second check for a fact the seed already owns (DESIGN section 3, "Minimization holds only if
+// each fact lives in exactly one place") -- and reading `v1.compiler.infer_types`
+// `type_resolution_verdict` showed the local walk was also WEAKER: it read an `Arrow` as resolved
+// without asking its parameter types, and took a container at its spelling without its arity or
+// `authored_container_spelling_verdict`, so it could have handed this rule a witness with a hole in it,
+// which is the defect the refusal exists to stop. Asking the verdict instead means whatever the emitter
+// refuses is exactly what inference refused. ONE LIMITATION, STATED: `v1.compiler.infer` line 8757
+// records that an unapplied generic accumulator expansion reads as fully resolved to this check, which
+// it guards there with `fold_accumulator_is_unapplied_generic`; a callee type argument spelled as such
+// an expansion would pass here, and if rustc ever refuses one the repair belongs at `is_fully_resolved`,
+// not in a second walk beside it. Whether rendered text may be trusted instead was settled by run
+// 41299024017, where the emitted annotation was `im::HashMap<_, _>` against an initializer of
+// `Rc<im::HashMap<_, bool>>`: a text test misses `(_, i64)`, `Fn(_) -> i64` and `Vec<(i64, _)>`, and
+// tracks whatever spacing the renderer happens to use. The richer source is the checker's verdict.
 
 fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), function_name)
