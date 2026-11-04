@@ -3090,7 +3090,7 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "renamed-labels-are-the-declared-slots", fail: roster_head_expect_in(rows: [roster_relabel_fixture_row()], name: "renamed-labels-are-the-declared-slots", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", to: "fold_list", out: "Int", labeled: "xs: xs, empty: 0, cons: fn(a, x) { a + x }", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "renamed-labels-unlabelled-extra-slot-refuses-arity", fail: roster_head_expect_refusal_in(rows: [roster_relabel_fixture_row()], name: "renamed-labels-unlabelled-extra-slot-refuses-arity", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }, 1", out: "Int", want: "rename-call-arity call=fold", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "renamed-labels-unmapped-label-refuses", fail: roster_head_expect_refusal_in(rows: [roster_relabel_partial_fixture_row()], name: "renamed-labels-unmapped-label-refuses", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", out: "Int", want: "rename-call-named-argument call=fold", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "renamed-labels-duplicate-from-refuses", fail: roster_head_expect_refusal_in(rows: [roster_relabel_duplicate_from_fixture_row()], name: "renamed-labels-duplicate-from-refuses", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", out: "Int", want: "row-label-renames-duplicate row=fold/duplicate-from from=init", prepared: prepared, lex: lex))
+    roster_control_verdict(name: "renamed-labels-duplicate-from-refuses", fail: roster_head_expect_refusal_in(rows: [roster_relabel_duplicate_from_fixture_row()], name: "renamed-labels-duplicate-from-refuses", call: "fold", sig: "xs: List<Int>", arg: "xs, init: 0, f: fn(a, x) { a + x }", out: "Int", want: "row-label-renames-duplicate row=fold from=init", prepared: prepared, lex: lex))
   ]
 }
 
@@ -3360,9 +3360,11 @@ fn roster_relabel_partial_fixture_row() -> RosterHeadRow {
   RosterHeadRow { call: "fold", key: "fold", import_name: "fold_list", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [RosterLabelRename { from: "init", to: "empty" }], head: RenameHead { to: "fold_list", positional: ["xs", "empty", "cons"], appended: [] } }
 }
 
-// A row whose label renames name `init` twice: which rename applies is undecided, so the sweep must refuse, located.
+// A row whose label renames name `init` twice: which rename applies is undecided, so the sweep must refuse, located. Its
+// key is the call, like the other fixture rows: roster_head_outcome_in selects the row by call, so any other key would
+// refuse occurrence-key-unmatched before the duplicate check is reached (receipt ctl-dupfrom at 25273ebf).
 fn roster_relabel_duplicate_from_fixture_row() -> RosterHeadRow {
-  RosterHeadRow { call: "fold", key: "fold/duplicate-from", import_name: "fold_list", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [RosterLabelRename { from: "init", to: "empty" }, RosterLabelRename { from: "init", to: "seed" }, RosterLabelRename { from: "f", to: "cons" }], head: RenameHead { to: "fold_list", positional: ["xs", "empty", "cons"], appended: [] } }
+  RosterHeadRow { call: "fold", key: "fold", import_name: "fold_list", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [RosterLabelRename { from: "init", to: "empty" }, RosterLabelRename { from: "init", to: "seed" }, RosterLabelRename { from: "f", to: "cons" }], head: RenameHead { to: "fold_list", positional: ["xs", "empty", "cons"], appended: [] } }
 }
 
 fn roster_relabel_fixture_row() -> RosterHeadRow {
