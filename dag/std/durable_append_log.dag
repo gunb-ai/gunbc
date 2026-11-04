@@ -227,7 +227,8 @@ type AppendWriteAdmission
   = AppendWriteAdmitted
   | AppendWriteRefused { refusal: AppendWriteRefusal }
 
-// WHO MAY APPEND, in one fold over (policy, writer, append intent, window standing). Existence is NOT an
+// WHO MAY APPEND, in one fold over (policy, writer, window standing) -- and over nothing else: there is no
+// intent argument to fold, so no arm of this function can speak about a create. Existence is NOT an
 // input here: it is the fact the CREATE route judges (append_host_create_admission), and reading it here too
 // only created another place where a create could be answered. Every sandbox append needs the window held BY
 // THAT PRINCIPAL; a held window refuses every other writer including the host. Nothing here frees a window:
