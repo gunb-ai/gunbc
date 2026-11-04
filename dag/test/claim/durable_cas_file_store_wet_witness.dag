@@ -3,7 +3,8 @@ module test.claim.durable_cas_file_store_wet_witness
 import std.integer { int_to_decimal_string }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { Bool, Int, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String, list_length }
+import std.algebra { string_contains }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set {
   CasAttempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_attempt,
@@ -14,7 +15,7 @@ import std.durable_compare_and_set {
   cas_generation_count,
 }
 import std.checked_arithmetic { int_inclusive_max }
-import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
+import gunbc.durable_cas_file_store { slot_keys, file_slot_store, CasSlotKeysListed, CasSlotKeysAbsent, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
 
 // Wet controls for the file-backed CAS provider. Hermetic mint and classification
 // live in test.claim.durable_cas_file_store_witness. This file reaches the host.
@@ -353,4 +354,102 @@ test fn a_window_narrower_than_two_is_not_admitted() -> Bool {
     CasGenerationWindowTooNarrow { k: k } => k == 1
     CasGenerationWindowAdmitted { window: _ } => false
   }
+}
+
+// THE CENSUS OF A SLOT DIRECTORY, BY REAL EXECUTION -- three answers, and the third is the reason
+// the reading arm exists. Every row here reads through the sealed store surface that consumers use
+// (slot_keys on a file_slot_store), never through a root string, and each match names all four arms
+// explicitly: a census row with a default arm could not tell a reviewer which answer it expected.
+//
+// R1 listed-empty: an ESTABLISHED store with no slots is Listed with no keys. Under every mutant of
+// the absence decision this row must stay green -- it is the row that would go red if absence were
+// being reported as an empty listing.
+test fn a_census_of_an_established_empty_store_lists_no_keys_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let answered = match slot_keys(store: file_slot_store(root: root_path as NonEmptyStr)) {
+    CasSlotKeysListed { keys } => list_length(keys) == 0
+    CasSlotKeysAbsent { root: _ } => false
+    CasSlotKeysListingRefused { root: _, detail: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  answered && removed.success
+}
+
+// R2 declared-but-absent -- THE DISCRIMINATING ROW. A store root that was never created is answered
+// ABSENT, with the store the answer is about, because ENOENT is a fact about the subject and a lease
+// whose slots live in a store that no longer exists needs this proof in order to migrate. The mutant
+// that collapses not_found into "unreadable" must turn THIS row red and leave R1, R3 and R4 green;
+// without that asymmetry the third arm is decoration.
+test fn a_census_of_a_never_created_store_is_answered_absent_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let missing = concat(root_path, "/never-created")
+  let missing_root = missing as NonEmptyStr
+  let answered = match slot_keys(store: file_slot_store(root: missing_root)) {
+    CasSlotKeysAbsent { root: r } => r == missing_root
+    CasSlotKeysListed { keys: _ } => false
+    CasSlotKeysListingRefused { root: _, detail: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  answered && removed.success
+}
+
+// R3 unreadable: a store root that exists but cannot be read is refused, and the refusal names the
+// kind it observed instead of flattening into the same answer as absence. The setup is asserted
+// separately from the claim, and the row is written as a disjunction so that a host which ignores
+// mode 000 (a process that does not need permission) shows up as a LISTED answer rather than as a
+// failed assertion: a red on this row therefore means the setup broke, never that the absence
+// decision changed. Under the ENOENT-collapse mutant this row must stay green.
+test fn a_census_of_an_unreadable_store_refuses_naming_the_kind_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let blocked = concat(root_path, "/blocked")
+  let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", blocked]).exit_code == 0
+  let locked = shell.Exec.RunArgv(program: "chmod", arguments: ["000", blocked]).exit_code == 0
+  let reading = slot_keys(store: file_slot_store(root: blocked as NonEmptyStr))
+  let probe = Filesystem.List(path: blocked)
+  let restored = shell.Exec.RunArgv(program: "chmod", arguments: ["700", blocked])
+  let answered = match reading {
+    CasSlotKeysListingRefused { root: _, detail: d } => string_contains(d, "permission_denied")
+    CasSlotKeysListed { keys } => probe.success && list_length(keys) == 0
+    CasSlotKeysAbsent { root: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  made && locked && answered && restored.exit_code == 0 && removed.success
+}
+
+// R4 absent-changes-nothing: the census is a census, not an actor. Asking it about a store that is
+// not there creates nothing, and asking twice does not change the answer or the file system -- the
+// directory is still absent afterwards, with the host still answering not_found. This is the row
+// that keeps "absence is a census answer, never a release trigger" from becoming words only: a
+// future pass that minted on absence, or freed a charge on it, has to pass through this shape.
+test fn an_absent_census_creates_nothing_and_leaves_the_answer_unchanged_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let missing = concat(root_path, "/never-created")
+  let missing_root = missing as NonEmptyStr
+  let first = match slot_keys(store: file_slot_store(root: missing_root)) {
+    CasSlotKeysAbsent { root: r } => r == missing_root
+    CasSlotKeysListed { keys: _ } => false
+    CasSlotKeysListingRefused { root: _, detail: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let second = slot_keys(store: file_slot_store(root: missing_root))
+  let still_absent = match slot_keys(store: file_slot_store(root: missing_root)) {
+    CasSlotKeysAbsent { root: r } => r == missing_root
+    CasSlotKeysListed { keys: _ } => false
+    CasSlotKeysListingRefused { root: _, detail: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  let host_still_says_not_found = match Filesystem.List(path: missing) {
+    listing => (!listing.success) && listing.error_kind == "not_found"
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  let unchanged = match second {
+    CasSlotKeysAbsent { root: r } => r == missing_root
+    CasSlotKeysListed { keys: _ } => false
+    CasSlotKeysListingRefused { root: _, detail: _ } => false
+    CasSlotKeysSubjectRefused { root: _, cause: _ } => false
+  }
+  first && unchanged && host_still_says_not_found && removed.success
 }
