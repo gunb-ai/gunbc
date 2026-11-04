@@ -2140,6 +2140,9 @@ fn roster_arg_is_named(arg: Node) -> Bool {
 // THE ROW'S LABEL RENAMES ARE A FUNCTION OF `from` (DESIGN 5): they are read through std.keyed_roster keyed_roster_build, so
 // two renames of one `from` refuse, located by row key and label, instead of a lookup silently picking one. The ceiling is
 // the keyed-roster construction wall (std.keyed_roster), after which the row field is that carrier and this arm dissolves.
+// The label pass and the slot check each build this roster (the slot check once per named argument). That rebuild is
+// consolidated into ONE build when the validated roster becomes the row's first-class carrier (the same trigger), never as
+// a cache before it (DESIGN 2: a cache may not excuse authored duplication; ruling relayed by tidy-ant-251, #15842).
 fn roster_row_label_renames_built(row: RosterHeadRow) -> KeyedRosterBuild<String, String> {
   keyed_roster_build(incomings: list_map(xs: row.labels, f: fn(r) { KeyedRow { row_key: r.from, value: r.to } }), key_eq: fn(a, b) { a == b })
 }
