@@ -2583,6 +2583,10 @@ fn dashboard_bootstrap_only_ops(
       DashboardMoveAttemptStateEntries { row: _, fence: _ } => false
       DashboardAssertLegacyWriterExcluded { fence: _ } => false
       DashboardAssertMeteringClosingWriterExcluded { fence: _, attempt_state_root: _ } => false
+      // The final recheck is likewise not a bootstrap step: it re-observes the writer and re-runs the
+      // closing-marker census, and the credential-free bootstrap neither runs the obligation nor reads
+      // the census. Named explicitly, as the arm above, so a new op cannot slip in by accident.
+      DashboardAssertMeteringClosingCutoverFinal { fence: _, attempt_state_root: _ } => false
     })
 }
 

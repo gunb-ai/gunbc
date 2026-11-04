@@ -3461,6 +3461,11 @@ fn dashboard_instance_provision_op_row(
         detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
       }
     DashboardAssertMeteringClosingWriterExcluded { fence: _, attempt_state_root: root } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "assert-metering-closing-writer-excluded" as NonEmptyStr,
+        target: root as String,
+        detail: "closing-marker cutover gate: the metering obligation unit is observed stopped and masked, and the plain metering-roster-closing census over the instance's attempt-state tree is 0, before the build that takes the closing hold may run that obligation",
+      }
     DashboardAssertMeteringClosingCutoverFinal { fence: _, attempt_state_root: root } =>
       DashboardInstanceProvisionPlanRow {
         kind: "assert-metering-closing-cutover-final-recheck" as NonEmptyStr,

@@ -19,9 +19,11 @@ import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, Lega
 import gunbc.roadmap.roadmap_belt_obligation { MeteringObligation, belt_instance_obligation_unit_name, belt_attempt_obligation_unit_name }
 import gunbc.roadmap.roadmap_metering_closing_cutover {
   MeteringClosingWriterObservation, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
+  MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
   metering_closing_legacy_marker_name, metering_closing_activation_step,
   metering_closing_unit_exclusion, metering_closing_cutover_disposition,
 }
+import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
 
 // THE CLOSING-MARKER CUTOVER BOUNDARY, EXECUTED (blocker 1 of stern-ram-763's review of #15574, and review 89888's
 // two findings on it). The roster closing marker changed shape -- a plain metering-roster-closing entry became the
@@ -44,8 +46,22 @@ fn fx_unit(i: HostDashboardInstance) -> NonEmptyStr {
   belt_instance_obligation_unit_name(instance_id: i.instance_id as String, kind: MeteringObligation)
 }
 
+// The observation as the apply route's own producer builds it, with the four fields blocker 2(c) added.
+// Only active_state and enabled_state vary between the claims below, so the cgroup answer and the pid are
+// pinned to the QUIESCENT baseline here: main pid 0, an established read of cgroup.events saying nothing
+// is populated, and no process in the unit's cgroup. A claim that wanted to test the process axis would
+// have to vary them, and none of these do.
 fn fx_observed(unit: NonEmptyStr, active: String, enabled: String) -> List<MeteringClosingWriterObservation> {
-  [MeteringClosingWriterObservation { unit: unit, active_state: active, enabled_state: enabled }]
+  [MeteringClosingWriterObservation {
+    unit: unit,
+    active_state: active,
+    enabled_state: enabled,
+    main_pid: "0",
+    control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service",
+    cgroup_events: CgroupEventsDecoded { populated: false },
+    cgroup_read_established: true,
+    writer_process_count: 0,
+  }]
 }
 
 // A fixture instance under /tmp, in the shape the apply route's own wet witnesses build one.
@@ -105,7 +121,7 @@ test fn only_the_instances_with_a_systemd_writer_declare_a_closing_fence() -> Bo
 test fn an_unobserved_writer_unit_is_not_excluded() -> Bool {
   let i = srv1_lab_dashboard_instance()
   let unrelated = fx_observed(unit: "gunbc-some-other-instance-metering.service" as NonEmptyStr, active: "inactive", enabled: "masked")
-  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: unrelated, legacy_markers_observed: 0) {
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: unrelated, census: CensusCounted { count: 0 }) {
     MeteringClosingActivationRequired { units: units, step: _ } =>
       length(xs: units) == 1 && any(units, u => (u as String) == (fx_unit(i: i) as String))
     MeteringClosingNoop { reason: _ } => false
@@ -130,7 +146,7 @@ test fn a_stopped_unit_that_is_not_masked_is_not_excluded_naming_the_unit() -> B
 test fn a_writer_that_is_not_excluded_gives_an_activation_step_naming_it() -> Bool {
   let i = srv1_lab_dashboard_instance()
   let u = fx_unit(i: i)
-  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: u, active: "inactive", enabled: "enabled"), legacy_markers_observed: 0) {
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: u, active: "inactive", enabled: "enabled"), census: CensusCounted { count: 0 }) {
     MeteringClosingActivationRequired { units: units, step: step } =>
       length(xs: units) == 1
         && any(units, x => (x as String) == (u as String))
@@ -145,7 +161,7 @@ test fn a_writer_that_is_not_excluded_gives_an_activation_step_naming_it() -> Bo
 // that was censused.
 test fn an_excluded_writer_and_no_legacy_marker_is_a_noop() -> Bool {
   let i = srv1_lab_dashboard_instance()
-  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "failed", enabled: "masked"), legacy_markers_observed: 0) {
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "failed", enabled: "masked"), census: CensusCounted { count: 0 }) {
     MeteringClosingNoop { reason: r } =>
       string_contains(s: r, pattern: srv1_dashboard_lab_id as String) && string_contains(s: r, pattern: "metering-roster-closing")
     MeteringClosingActivationRequired { units: _, step: _ } => false
@@ -157,7 +173,7 @@ test fn an_excluded_writer_and_no_legacy_marker_is_a_noop() -> Bool {
 // refusal case, and deciding what happens to them is an operator call, not something the cutover may do silently.
 test fn plain_closing_markers_still_on_the_host_refuse_even_with_the_writer_excluded() -> Bool {
   let i = srv1_lab_dashboard_instance()
-  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), legacy_markers_observed: 3) {
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusCounted { count: 3 }) {
     MeteringClosingCutoverRefused { cause: c } => string_contains(s: c, pattern: "3") && string_contains(s: c, pattern: "metering-roster-closing")
     MeteringClosingNoop { reason: _ } => false
     MeteringClosingActivationRequired { units: _, step: _ } => false
@@ -168,7 +184,7 @@ test fn plain_closing_markers_still_on_the_host_refuse_even_with_the_writer_excl
 // from the absence of a row: it refuses, naming the instance and the marker name at stake. (The PLAN adds no gate
 // op for such an instance -- claim 2 pins which instances those are -- but anything that asks gets a refusal.)
 test fn an_undeclared_fence_refuses_when_it_is_asked() -> Bool {
-  match metering_closing_cutover_disposition(fence: LegacyWriterUndeclared, instance_id: "c-roadmap2-unfenced-instance" as NonEmptyStr, observed: fx_observed(unit: "gunbc-unrelated.service" as NonEmptyStr, active: "inactive", enabled: "masked"), legacy_markers_observed: 0) {
+  match metering_closing_cutover_disposition(fence: LegacyWriterUndeclared, instance_id: "c-roadmap2-unfenced-instance" as NonEmptyStr, observed: fx_observed(unit: "gunbc-unrelated.service" as NonEmptyStr, active: "inactive", enabled: "masked"), census: CensusCounted { count: 0 }) {
     MeteringClosingCutoverRefused { cause: c } =>
       string_contains(s: c, pattern: "c-roadmap2-unfenced-instance") && string_contains(s: c, pattern: "metering-roster-closing")
     MeteringClosingNoop { reason: _ } => false
@@ -257,4 +273,33 @@ test fn the_apply_gate_refuses_while_a_plain_closing_marker_remains_on_the_host(
     temp_verify_repo: "/unused-verify" as FilePath,
   )
   planted && !r.success && string_contains(s: r.stderr, pattern: "1 plain metering-roster-closing entries")
+}
+
+// 15. A CENSUS THAT COULD NOT BE ESTABLISHED REFUSES, IT DOES NOT COUNT AS ZERO (blocker 1 of stern-ram-763's
+// side-chat review of #15574). Before the fix a failed `ls -1R` and a failed presence check both landed on the
+// same arm as "0 markers", so the gate opened on the very failure that means "we do not know". The census is a
+// sum with a refusal case now, and the refusal is what this claim drives: writer fully excluded, census refused
+// -- the disposition must refuse, and name what it could not establish.
+test fn a_census_that_could_not_be_established_refuses_the_gate() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusRefused { cause: "the recursive listing of the attempt-state tree refused: permission denied" })
+    MeteringClosingCutoverRefused { cause: c } =>
+      string_contains(s: c, pattern: "census could not be established") && string_contains(s: c, pattern: "permission denied")
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
+}
+
+// 16. AND AN ESTABLISHED ABSENCE IS NOT THE SAME THING AS A REFUSAL. The census walked the tree and found no
+// plain closing marker: that is the answer, not a failure to answer, and the gate must close on it. Paired with
+// claim 15 so the two cannot be collapsed into one arm again -- if AbsentEstablished were folded into the refusal
+// this claim goes red, and if the refusal were folded into the count claim 15 goes red.
+test fn an_established_absence_closes_the_gate_a_refusal_cannot() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusAbsentEstablished)
+    MeteringClosingNoop { reason: r } =>
+      string_contains(s: r, pattern: srv1_dashboard_lab_id as String) && string_contains(s: r, pattern: "metering-roster-closing")
+    MeteringClosingCutoverRefused { cause: _ } => false
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
 }

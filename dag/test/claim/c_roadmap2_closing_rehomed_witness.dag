@@ -313,3 +313,23 @@ test fn the_gate_refuses_when_one_of_two_declared_units_is_live() -> Bool {
     MeteringClosingFinalGatePassed { reason: _ } => false
   }
 }
+
+// 24. A REFUSAL IS NOT OVERWRITTEN BY A LATER QUIESCENT ROW OF THE SAME UNIT. The unit's state is read from
+// several places (systemd's answer and the kernel's own cgroup.events), so one unit can appear twice, and the
+// fold that collapses them must let the refusal win. This is the claim that makes the fold's refusal arm
+// load-bearing: with the arm collapsed to a quiescent answer -- the BROKEN mutant stern-ram-763's blocker 2(c)
+// asks for -- the SECOND row here wins, the unit reads as quiescent, the gate closes, and this claim goes red.
+// The refusal is placed FIRST on purpose: a fold that keeps the LAST value passes a claim that only ever has
+// one row, and passes this one too unless the order is pinned.
+test fn a_later_quiescent_row_of_the_same_unit_does_not_erase_a_refusal() -> Bool {
+  match metering_closing_final_gate_for(fence: fx_fence(units: [fx_unit]), instance_id: "srv2probe" as NonEmptyStr, observed: [
+    // The kernel says the unit still has a process attached.
+    fx_obs(unit: fx_unit, active_state: "inactive", enabled_state: "masked", main_pid: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: true }, cgroup_read_established: true, writer_process_count: 0),
+    // And a second reading of the same unit says it is idle.
+    fx_quiescent(unit: fx_unit),
+  ], census: CensusAbsentEstablished)
+    MeteringClosingFinalGateRefused { cause: c } =>
+      string_contains(s: c, pattern: "populated") && string_contains(s: c, pattern: fx_unit as String)
+    MeteringClosingFinalGatePassed { reason: _ } => false
+  }
+}
