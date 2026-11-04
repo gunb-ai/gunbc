@@ -6,7 +6,7 @@ import std.measure { Micrometer, micrometer, micrometer_count }
 import std.euclidean_geometry { Axis3X, Axis3Y }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, FixedFrame, LayOnXY, FrictionFitSleeve, Proposed,
-  ProfileVertex, block, part, mechanical_interface, prism, M5FanScrewIntoBlowerLug,
+  ProfileVertex, block, part, mechanical_interface, prism, M5FanScrewIntoBlowerLug, Clearance,
 }
 import product.printed_chassis.blower_outlet_mount {
   OutletMount, EdgeAlongY, outlet_mount_unfit, run_for_label, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
@@ -21,7 +21,7 @@ import product.printed_chassis.card_end_interface {
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading }
 import product.printed_chassis.gpu_duct { card_envelope_of, BlowerDuctDesign, blower_duct_design_of }
 import product.printed_chassis.card_installation {
-  CardInstallation, InstalledCard, CardGroup, group_members, Partition, Partitioned, PartitionRefused, PartitionRefusal, partition_by_sizes,
+  CardInstallation, InstalledCard, CardGroup, CardInstance, InBoardSlot, SlotNotRecorded, group_members, Partition, Partitioned, PartitionRefused, PartitionRefusal, partition_by_sizes,
   group_contiguity, group_contiguity_text, card_separation, a2_altra_installation,
 }
 
@@ -53,10 +53,14 @@ import product.printed_chassis.card_installation {
 
 // fit_record is what earlier prints of this plan's parts showed (product.printed_chassis.fit_observations),
 // carried into the readme so the next print says what it answers.
-type GroupDuctPlan { id: NonEmptyStr, installation: CardInstallation, sizes: List<Int>, group: Int, fit_record: String }
+// face_bottom_above_board is the height of the members' end faces' bottom edge above the board's top face: the
+// datum that places the board's lane obstacles (extdeps.boards.types SlotLaneObstacle) in the duct's frame. A
+// plan that has not read it cannot have its blower stage checked against them, and refuses one.
+type GroupDuctPlan { id: NonEmptyStr, installation: CardInstallation, sizes: List<Int>, group: Int, fit_record: String, face_bottom_above_board: Micrometer? }
 
 // The four A2s as one group (operator, 2026-11-02: one piece over all four, served by two fans, one per pair).
-data a2_altra_row_plan: GroupDuctPlan = GroupDuctPlan { id: "a2-altra-row", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: a2_row_fit_plate_fit_display() }
+// The A2s' end faces' bottom edge stands 15.2 mm above the board (operator, caliper, 2026-11-04).
+data a2_altra_row_plan: GroupDuctPlan = GroupDuctPlan { id: "a2-altra-row", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: a2_row_fit_plate_fit_display(), face_bottom_above_board: Present { value: micrometer(count: 15200) } }
 
 data group_duct_plans: List<GroupDuctPlan> = [a2_altra_row_plan]
 
@@ -155,10 +159,14 @@ fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?, duct: Bool) ->
       match blower_duct_design_of(row: first.instance.card.row) {
         Absent => GroupBlowerUnfit { reason: "the card row states no slot count, so no blower design is derived for it" }
         Present { value: b } => {
+          let keepouts = match group_board_keepouts(first: first, faces: faces, above: p.face_bottom_above_board) {
+            BoardKeepoutsUnread { reason: r } => return GroupBlowerUnfit { reason: r }
+            BoardKeepoutsRead { parts: ks } => ks
+          }
           let plate = group_fit_plate_parts(faces: faces, toward: 0 - 1)
           let cards = map(filter(plate, x => match x.kind { Purchased => true _ => false }), x => x.id)
           let stages = group_blower_stages(faces: faces, b: b)
-          GroupDuctAdmitted { parts: concat(concat(group_duct_merge(plate: plate, stages: stages), stages.envelopes), stages.screws), interfaces: concat(group_fit_plate_joints(cards: cards, plate_id: "DUCT"), stages.joints) }
+          GroupDuctAdmitted { parts: concat(concat(concat(group_duct_merge(plate: plate, stages: stages), stages.envelopes), stages.screws), keepouts), interfaces: concat(group_fit_plate_joints(cards: cards, plate_id: "DUCT"), stages.joints) }
         }
       }
     }
@@ -362,4 +370,46 @@ fn group_duct_readme(p: GroupDuctPlan) -> String {
     "Assembly: ", outlet_mount_note(), " Then push the duct onto the card ends. The blower lies flat behind the row with its top at or below the cards' top edge, its body over the board and its intake facing down.\n",
     "Check at the fit: the plate rests flat on every face and the sleeve holds; the blower seats in its socket without rocking and the screw reaches its lug; nothing under the blower (the coin cell, headers) touches it or its plenum; the intake has free air below it.\n",
     p.fit_record, "\n"], "")
+}
+
+// ═══ THE BOARD'S LANE OBSTACLES, AS KEEP-OUTS IN THE DUCT'S FRAME ═══
+//
+// Everything the board model says stands proud in a slot lane past the cards' ends (extdeps.boards.types
+// SlotLaneObstacle; the Altra's coin cell is the first, operator 2026-11-04, read after a blower design that did
+// not know it was there) becomes a Clearance part the CAD check refuses any printed part to enter. The lane is
+// placed by the same separation the cards are (card_installation card_separation, from the group's first card
+// to a card of the same model in the obstacle's slot), so an obstacle in a lane no member occupies is still
+// placed; the depth is its distance from the bracket plane less the card's length.
+type BoardKeepouts = BoardKeepoutsRead { parts: List<AssemblyPart> } | BoardKeepoutsUnread { reason: String }
+
+fn group_board_keepouts(first: InstalledCard, faces: List<GroupMemberFace>, above: Micrometer?) -> BoardKeepouts {
+  let obstacles = match first.slot { InBoardSlot { board: b, designator: _ } => b.lane_obstacles SlotNotRecorded { read_obligation: _ } => [] }
+  if length(list: obstacles) == 0 { return BoardKeepoutsRead { parts: [] } }
+  match above {
+    Absent => BoardKeepoutsUnread { reason: "the board under this row carries lane obstacles (the coin cell), and the plan has not read how high the cards' end faces stand above the board, so the blower stage cannot be checked against them" }
+    Present { value: h } => {
+      let f = fold(faces, init: 0, f: (acc, mf) => um(m: mf.face.face_length) / 2)
+      let th = fold(faces, init: 0, f: (acc, mf) => um(m: mf.face.face_thickness))
+      let len = fold(faces, init: 0, f: (acc, mf) => um(m: mf.length))
+      let board_x = 0 - f - um(m: h)
+      BoardKeepoutsRead { parts: fold(obstacles, init: [], f: (acc, o) => {
+        let lane = match first.slot {
+          InBoardSlot { board: b, designator: _ } => card_separation(from: first, to: InstalledCard { instance: first.instance, slot: InBoardSlot { board: b, designator: o.slot } })
+          SlotNotRecorded { read_obligation: _ } => Absent
+        }
+        match lane {
+          Absent => acc
+          Present { value: s } => {
+            let e = um(m: o.half_extent)
+            let y = um(m: s.across) + th / 2
+            let z = um(m: o.depth_from_bracket_plane) - len
+            concat(acc, [part(id: join(["KEEPOUT-", o.slot as String], ""), name: join(["Board keep-out: ", o.label as String, " in ", o.slot as String, "'s lane"], ""), kind: Clearance, scope: FixedFrame,
+              adds: [block(w: um(m: o.height_above_board), h: 2 * e, d: 2 * e, x: board_x + um(m: o.height_above_board) / 2, y: y, z: z)],
+              cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, plane: LayOnXY,
+              notes: "Keep-out only: no printed part may enter it.")])
+          }
+        }
+      }) }
+    }
+  }
 }

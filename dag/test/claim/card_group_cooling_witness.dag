@@ -151,7 +151,7 @@ test fn a_group_total_does_not_qualify_a_starved_card() -> Bool {
 // w_the_a2_row_fit_plate_selects_through_the_same_function.
 
 fn supplied_plan(cards: List<InstalledCard>) -> GroupDuctPlan {
-  GroupDuctPlan { id: "supplied", installation: installation(cards: cards), sizes: [length(list: cards)], group: 0, fit_record: "supplied" }
+  GroupDuctPlan { id: "supplied", installation: installation(cards: cards), sizes: [length(list: cards)], group: 0, fit_record: "supplied", face_bottom_above_board: Absent }
 }
 
 fn selects(p: GroupDuctPlan) -> Bool {

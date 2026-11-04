@@ -263,7 +263,7 @@ fn group_ready(root: PrintedAssemblyRoot, parts: List<AssemblyPart>, joints: Lis
         root: root,
         parts: parts,
         interfaces: joints,
-        required_keepouts: [],
+        required_keepouts: map(filter(parts, p => match p.kind { Clearance => true Printed => false Purchased => false Metal => false }), p => p.id),
         assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
         package: printed_assembly_root_wire(root: root),
         schema: duct_review_schema as String,
