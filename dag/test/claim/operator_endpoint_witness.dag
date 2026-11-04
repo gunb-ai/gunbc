@@ -141,9 +141,9 @@ test fn handed_credentials_are_read_from_the_managers_directory_and_a_home_only_
   (file.identifier as String) == (operator_route_credential_file.identifier as String)
     && (file.relative_path as String) == (operator_route_credential_file.relative_path as String)
     && custody_path_text(path: operator_custody_file_path(custody: handed, file: file))
-      == "/run/credentials/gunbc-attempt-n-k.service/gunbc-router-client-key"
+      == "/run/credentials/gunbc-attempt-n-k.service/gunbc-gpu-pod-api-key"
     && custody_path_text(path: operator_custody_file_path(custody: home, file: file))
-      == "/home/svc/.config/gunbc-router/client.key"
+      == "/home/svc/.config/gunbc-gpu-pod/api-key"
     && custody_path_text(path: operator_custody_file_path(custody: OperatorCredentialUnlocated, file: file)) == ""
     && custody_text(custody: operator_credential_custody_of(credentials_directory: Present { value: "/run/c" }, home: Present { value: "/home/svc" })) == "handed:/run/c"
     && custody_text(custody: operator_credential_custody_of(credentials_directory: Present { value: "" }, home: Present { value: "/home/svc" })) == "unlocated"
