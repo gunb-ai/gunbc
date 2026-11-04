@@ -22,8 +22,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_admitted_revision_source, WorkerIsServiceUser,
 }
 import gunbc.roadmap.roadmap_attempt_state_store {
-  AttemptStateProvision, AttemptDirectoryRoot, AttemptDirectoryWorker, AttemptDirectoryReview, AttemptDirectorySupervisor,
-  AttemptWorkerEvents, AttemptSupervisorEvents, AttemptAuditEvents, AttemptSupervisorLog,
+  AttemptStateProvision, AttemptDirectoryRoot, AttemptDirectoryWorker, AttemptDirectoryReview,
+  AttemptWorkerEvents, AttemptAuditEvents, AttemptAuditLog,
   attempt_state_provision, attempt_state_provision_directory, attempt_log_provision_path,
   attempt_append_log_store_open, attempt_append_log_member_slot, AttemptAppendLogReading, AttemptAppendLogReady, AttemptAppendLogUnready, AttemptAppendLogLegacyRefused,
 }
@@ -108,7 +108,7 @@ test fn an_absent_member_directory_is_typed_absent_ready_not_unready() -> Bool {
   let root = fresh_root()
   let inst = instance_service_at(root: root)
   let built = build_attempt_tree(instance: inst, with_events: true)
-  let ok = match attempt_append_log_store_open(instance: inst, node: "wet-node", attempt_key: "wet-key", member: AttemptSupervisorEvents { turn: 100 }) {
+  let ok = match attempt_append_log_store_open(instance: inst, node: "wet-node", attempt_key: "wet-key", member: AttemptAuditEvents { head_sha: "h" }) {
     AttemptAppendLogReady { store: _ } => built
     AttemptAppendLogUnready { detail: _ } => false
     AttemptAppendLogLegacyRefused { cause: _ } => false
@@ -130,8 +130,8 @@ test fn a_middle_census_member_is_found_not_only_the_first() -> Bool {
 }
 
 test fn the_last_census_member_is_found_not_only_the_first() -> Bool {
-  attempt_append_log_member_slot(member: AttemptSupervisorLog).member
-    == ("supervisor-stdout.log" as NonEmptyStr)
+  attempt_append_log_member_slot(member: AttemptAuditLog).member
+    == ("auditor-stdout.log" as NonEmptyStr)
 }
 
 // OLD-BYTES READBACK (Done item): a provider-events.jsonl that ALREADY EXISTS on the host (written by the

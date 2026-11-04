@@ -60,7 +60,6 @@ fn attempt_state_directory_segment(directory: AttemptStateDirectory) -> String {
 type AttemptStateMember
   = AttemptKeyRecord
   | AttemptProcessFingerprint
-  | AttemptContinuationTurn
   | AttemptAlignmentBinding
   | AttemptEnvironmentAdmission
   | AttemptLaunchIdentity
@@ -159,7 +158,6 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
     AttemptAuditRequestScratch => AttemptDirectoryAudit
     AttemptKeyRecord => AttemptDirectoryRoot
     AttemptProcessFingerprint => AttemptDirectoryRoot
-    AttemptContinuationTurn => AttemptDirectoryRoot
     AttemptAlignmentBinding => AttemptDirectoryRoot
     AttemptEnvironmentAdmission => AttemptDirectoryRoot
     AttemptLaunchIdentity => AttemptDirectoryRoot
@@ -179,7 +177,6 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
   match member {
     AttemptKeyRecord => "attempt-key"
     AttemptProcessFingerprint => "process-fingerprint"
-    AttemptContinuationTurn => "continuation-turn"
     AttemptAlignmentBinding => "alignment-binding.json"
     AttemptEnvironmentAdmission => "environment-admission.json"
     AttemptLaunchIdentity => "launch-identity.json"
