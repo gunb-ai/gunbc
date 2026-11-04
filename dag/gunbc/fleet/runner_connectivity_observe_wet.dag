@@ -1,0 +1,75 @@
+module gunbc.fleet.runner_connectivity_observe_wet
+
+import std.types { String, NonEmptyStr, Secret, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.decl_ref { decl_ref }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.pagination { github_max_page_size }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.access_token_source { select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
+import gunbc.auth.github_apps { gunbai_ci_declared_installation_id }
+import gunbc.github_effect_perform {
+  ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token,
+  ControllerKeyStaged, ControllerKeyNotStaged, stage_controller_app_key, remove_staged_controller_key,
+}
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_report_via_rest }
+import gunbc.fleet.fleet_runner_connectivity {
+  OrganizationRunnerRosterEvidence, github_organization_ref, local_runner_slot_incarnations,
+  observe_slot_registrations, slot_registration_observation_wire,
+}
+
+// OBSERVE ONLY. This entry reads the organization roster over the typed REST route under the run's federated
+// identity and records, per committed slot, how many live and dead JIT registrations the roster joins to it. It
+// mutates nothing, is bound to no timer and no CI job, and its consumer is PR 2's restart leg (the runner
+// connectivity reconcile), which reads this receipt's observation before deciding any restart. The per-slot
+// MainPID leg is read by the ObserveRunnerLocalState realization over FleetSsh, not here.
+data runner_connectivity_observe_receipt_path: String = "artifacts/runner-connectivity-observe-receipt.txt"
+
+// THE PURE PART: one line per committed slot, and the same lines for a refused roster (every slot UNOBSERVED).
+fn runner_connectivity_observation_lines(roster: OrganizationRunnerRosterEvidence) -> List<String> {
+  map(local_runner_slot_incarnations(), inc => slot_registration_observation_wire(o: observe_slot_registrations(slot: inc.slot, roster: roster)))
+}
+
+fn runner_connectivity_observe_wet() -> ProcessExit
+  uses net: Network
+{
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause } => exit_failure(reason: concat("runner connectivity observe: ", cause as String))
+    AccessTokenSourceSelected { source: _ } => {
+      let wif = actions_variable_trimmed(name: "WIF_ACCESS_TOKEN")
+      let temp = actions_variable_trimmed(name: "RUNNER_TEMP")
+      if wif == "" || temp == "" {
+        exit_failure(reason: "runner connectivity observe: the run's federation token or RUNNER_TEMP is unset")
+      } else {
+        observe_under_staged_key(wif: wif as Secret, key_path: join([temp, "/runner-connectivity-observe.pem"], "") as NonEmptyStr)
+      }
+    }
+  }
+}
+
+// THE KEY IS REMOVED ON EVERY ARM, as in the lost-boot sweep; the token reads the roster and nothing else.
+fn observe_under_staged_key(wif: Secret, key_path: NonEmptyStr) -> ProcessExit
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.fleet.runner_connectivity_observe_wet", decl_name: "runner_connectivity_observe_wet")]
+{
+  match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
+    ControllerKeyNotStaged { cause } => exit_failure(reason: cause)
+    ControllerKeyStaged { key } => {
+      let exit = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
+        ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "runner connectivity observe: the installation token was not minted")
+        ControllerTokenMinted { token } => {
+          let organization = github_organization_ref()
+          let report = organization_runner_roster_report_via_rest(org: organization.login, page_size: github_max_page_size, token: token.token)
+          let kept = Filesystem.Write(path: runner_connectivity_observe_receipt_path, content: concat(join(runner_connectivity_observation_lines(roster: report.evidence), "\n"), "\n"))
+          if kept.success { ExitSuccess } else { exit_failure(reason: concat("runner connectivity observe: receipt write refused: ", kept.error)) }
+        }
+      }
+      match remove_staged_controller_key(key_path: key_path) {
+        Present { value: cause } => exit_failure(reason: cause)
+        Absent => exit
+      }
+    }
+  }
+}

@@ -11,6 +11,7 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdent
 import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess }
 import gunbc.runner.runner_incarnation { parse_jit_registration_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.runner_connectivity_observe_wet { runner_connectivity_observation_lines }
 import gunbc.fleet.fleet_runner_connectivity {
   incident_2026_08_06_roster_fixture,
   runner_slot_connectivity_verdict,
@@ -526,4 +527,11 @@ test fn a_partial_or_unavailable_roster_never_observes_a_zero() -> Bool {
   srv4_01_registrations_unobserved(roster: RosterObservedPartial { observed_on: "2026-11-04" as NonEmptyStr, registrations: jit_other_slot_rows, observed_count: 100, authority_total: 233 })
     && srv4_01_registrations_unobserved(roster: RosterReadUnavailable { reason: "no token" })
     && !slot_registration_observation_settled(o: observe_slot_registrations(slot: srv4_01_slot, roster: RosterReadUnavailable { reason: "no token" }))
+}
+
+// The wet entry's pure half: with the roster unreadable (the arm it records when no admitted token source minted),
+// every committed slot's line is UNOBSERVED, so the receipt can never carry a zero it did not read.
+test fn the_wet_entrys_lines_for_an_unavailable_roster_are_unobserved_per_slot() -> Bool {
+  runner_connectivity_observation_lines(roster: RosterReadUnavailable { reason: "no token" })
+    == map(local_runner_slot_incarnations(), inc => slot_registration_observation_wire(o: SlotRegistrationsUnobserved { slot: inc.slot, reason: "roster unavailable: no token" }))
 }
