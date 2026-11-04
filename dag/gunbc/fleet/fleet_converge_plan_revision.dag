@@ -370,11 +370,11 @@ fn admit_run_pointer_step(pointer_env: String, artifact_name: String) -> Process
 }
 
 fn admit_plan_run_pointer() -> ProcessExit {
-  admit_run_pointer_step(pointer_env: fleet_converge_plan_pointer_env_name, artifact_name: fleet_converge_plan_artifact_name)
+  admit_run_pointer_step(pointer_env: fleet_converge_plan_pointer_env_name, artifact_name: gunbc_fleet_converge_plan_artifact_name)
 }
 
 fn admit_apply_run_pointer() -> ProcessExit {
-  admit_run_pointer_step(pointer_env: fleet_converge_apply_pointer_env_name, artifact_name: fleet_converge_apply_receipt_artifact_name)
+  admit_run_pointer_step(pointer_env: fleet_converge_apply_pointer_env_name, artifact_name: gunbc_fleet_converge_apply_receipt_artifact_name)
 }
 
 // ============================================================================

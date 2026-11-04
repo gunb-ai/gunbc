@@ -808,7 +808,7 @@ fn dashboard_receipt_assert_verdict_text(verdict: DashboardReceiptAssertVerdict)
 
 // ONE DOCUMENT, THREE VERDICTS: apply receipt, transaction refusal, or unreadable -- with BOTH
 // decoders' reasons when unreadable, because which decoder refused says which writer broke.
-data DashboardReceiptDocument
+type DashboardReceiptDocument
   = ReceiptDocumentApply { name: String }
   | ReceiptDocumentRefusal { name: String }
   | ReceiptDocumentUnreadable { name: String, reason: String }
