@@ -1,0 +1,146 @@
+module product.printed_chassis.blower_outlet_mount
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import std.euclidean_geometry { Axis3Y }
+import product.printed_chassis.assembly_geometry { Primitive, AssemblyPart, Metal, FixedFrame, LayOnXY, block, round, part }
+import product.printed_chassis.fit_observations { bfb1012m_received_reading }
+import extdeps.fans.types { RadialBlowerOutlet, RadialBlowerMountingHole }
+import extdeps.fans.delta { delta_bfb1012m_outlet, delta_bfb1012m_outlet_side_hole }
+
+// ═══ HOW A PRINTED PART HOLDS THE DELTA BFB1012M: A SOCKET ON ITS OUTLET AND ONE SCREW IN ITS LUG ═══
+//
+// One mount for every duct that carries the blower (operator, 2026-11-04): the socket takes only the outlet's
+// frame (extdeps.fans.delta delta_bfb1012m_outlet, 57.9 mm along the edge), not the whole housing edge, and the
+// blower is retained by ONE screw through an arm on the label face into the lug of the hole nearer the outlet
+// (delta_bfb1012m_outlet_side_hole). The arm can lie flat on the label face because that lug is flush with it,
+// and the label face may face a wall or a card because the intake is on the other face only; both are the
+// operator's readings of a received unit (product.printed_chassis.fit_observations bfb1012m_received_reading),
+// and a reading that says otherwise refuses the mount (outlet_mount_unfit).
+//
+// THE SCREW is the operator's M5 x 10 fan screw (head 5.66 mm across, 1.09 mm high). It is driven from the arm's
+// outer face and cuts its own thread: the arm's hole is the lug's own 4.5 mm, the size the screw is made to
+// tap, so it holds in the arm and in the lug. It retains the blower against backing out of the socket; it is
+// not a clamp.
+//
+// PLACEMENT, in the caller's part frame: the outlet edge lies along X and runs from its corner at `corner_x` in
+// the direction `run` (+1 or -1); the housing's thickness is centred on `fan_y`; the outlet mouth lies in the
+// plane Z = `mouth_z` and the housing body rises from it in the direction `body` (+1 or -1). Which way the
+// label face points then follows from the blower's handedness (label_normal_y), not from the caller.
+type OutletMount { corner_x: Int, run: Int, fan_y: Int, mouth_z: Int, body: Int }
+
+data blower_lug_screw_length: Micrometer = micrometer(count: 10000)
+data blower_lug_screw_head_height: Micrometer = micrometer(count: 1090)
+// The arm: thick enough to carry the screw's thread, and reaching this far past the hole centre each way.
+data blower_lug_arm_thickness: Micrometer = micrometer(count: 4000)
+data blower_lug_arm_margin: Micrometer = micrometer(count: 6000)
+// The boss under the hole closes the socket clearance, so the arm bears on the lug.
+data blower_lug_boss_diameter: Micrometer = micrometer(count: 11000)
+data blower_lug_hole_diameter: Micrometer = micrometer(count: 4500)
+
+fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
+
+fn lo(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+fn hi(a: Int, b: Int) -> Int { if a < b { b } else { a } }
+
+// A box between two corners given in any order.
+fn span_block(x_a: Int, x_b: Int, y_a: Int, y_b: Int, z_a: Int, z_b: Int) -> Primitive {
+  block(w: hi(a: x_a, b: x_b) - lo(a: x_a, b: x_b), h: hi(a: y_a, b: y_b) - lo(a: y_a, b: y_b), d: hi(a: z_a, b: z_b) - lo(a: z_a, b: z_b),
+    x: (x_a + x_b) / 2, y: (y_a + y_b) / 2, z: (z_a + z_b) / 2)
+}
+
+// The reading this mount rests on, refused when it does not hold.
+fn outlet_mount_unfit() -> String? {
+  let r = bfb1012m_received_reading.value
+  if r.side_hole_lug_flush_with_label_face == false { return Present { value: "the blower's lug is not read flush with its label face, so an arm on that face does not reach it" } }
+  if r.intake_only_on_unlabelled_face == false { return Present { value: "the blower's intake is not read to be on the unlabelled face only, so its label face may not face a wall" } }
+  Absent
+}
+
+// The Y direction the label face points, +1 or -1. Held label toward the reader with the outlet down, the
+// outlet is at the reader's right: the right is the corner side (-run along X), up is the body (+body along Z),
+// and the face toward the reader is right x up.
+fn label_normal_y(m: OutletMount) -> Int {
+  if bfb1012m_received_reading.value.outlet_at_right_with_label_toward_reader_and_outlet_down { m.run * m.body } else { 0 - m.run * m.body }
+}
+
+// The housing's thickness, at its tolerance, as the socket receives it.
+fn housing_half(thickness: Micrometer, tolerance: Micrometer) -> Int { (um(m: thickness) + um(m: tolerance)) / 2 }
+
+fn frame_end_x(m: OutletMount) -> Int { m.corner_x + m.run * um(m: delta_bfb1012m_outlet.frame_along_edge) }
+
+// The outlet opening along X: centred in the frame, whose two end walls the drawing gives as equal.
+fn opening_x_lo(m: OutletMount) -> Int {
+  let f = um(m: delta_bfb1012m_outlet.frame_along_edge)
+  let o = um(m: delta_bfb1012m_outlet.opening_along_edge)
+  lo(a: m.corner_x + m.run * (f - o) / 2, b: m.corner_x + m.run * (f + o) / 2)
+}
+fn opening_x_hi(m: OutletMount) -> Int { opening_x_lo(m: m) + um(m: delta_bfb1012m_outlet.opening_along_edge) }
+fn opening_half_y() -> Int { um(m: delta_bfb1012m_outlet.opening_across_thickness) / 2 }
+
+// The socket's outer extent along X, for a caller that builds the duct body around it.
+fn socket_x_lo(m: OutletMount, clearance: Micrometer, wall: Micrometer) -> Int { lo(a: m.corner_x, b: frame_end_x(m: m)) - um(m: clearance) - um(m: wall) }
+fn socket_x_hi(m: OutletMount, clearance: Micrometer, wall: Micrometer) -> Int { hi(a: m.corner_x, b: frame_end_x(m: m)) + um(m: clearance) + um(m: wall) }
+
+fn outlet_socket_adds(m: OutletMount, half: Int, clearance: Micrometer, wall: Micrometer, depth: Micrometer) -> List<Primitive> {
+  let o = half + um(m: clearance) + um(m: wall)
+  [span_block(x_a: socket_x_lo(m: m, clearance: clearance, wall: wall), x_b: socket_x_hi(m: m, clearance: clearance, wall: wall), y_a: m.fan_y - o, y_b: m.fan_y + o, z_a: m.mouth_z, z_b: m.mouth_z + m.body * um(m: depth))]
+}
+
+// The cavity the outlet frame enters, open past the rim. The floor below it is the caller's: whatever it
+// leaves around the opening is the ledge the outlet's end walls rest on.
+fn outlet_socket_cuts(m: OutletMount, half: Int, clearance: Micrometer, depth: Micrometer) -> List<Primitive> {
+  let c = um(m: clearance)
+  [span_block(x_a: lo(a: m.corner_x, b: frame_end_x(m: m)) - c, x_b: hi(a: m.corner_x, b: frame_end_x(m: m)) + c, y_a: m.fan_y - half - c, y_b: m.fan_y + half + c, z_a: m.mouth_z, z_b: m.mouth_z + m.body * (um(m: depth) + 1000))]
+}
+
+fn hole_x(m: OutletMount) -> Int { m.corner_x + m.run * um(m: delta_bfb1012m_outlet_side_hole.from_outlet_corner) }
+fn hole_z(m: OutletMount) -> Int { m.mouth_z + m.body * um(m: delta_bfb1012m_outlet_side_hole.from_outlet_edge) }
+
+// The arm's faces along Y: inner at the socket's clearance off the label face, outer one arm thickness beyond.
+fn arm_inner_y(m: OutletMount, half: Int, clearance: Micrometer) -> Int { m.fan_y + label_normal_y(m: m) * (half + um(m: clearance)) }
+fn arm_outer_y(m: OutletMount, half: Int, clearance: Micrometer) -> Int { arm_inner_y(m: m, half: half, clearance: clearance) + label_normal_y(m: m) * um(m: blower_lug_arm_thickness) }
+
+// How far the arm and the screw head stand beyond the socket's outer wall on the label side: what a caller
+// with something on that side (a card) must leave room for.
+fn lug_arm_protrusion(wall: Micrometer) -> Int { um(m: blower_lug_arm_thickness) - um(m: wall) + um(m: blower_lug_screw_head_height) }
+
+// How much of the screw enters the lug: its length less the arm and the boss.
+fn lug_screw_engagement(clearance: Micrometer) -> Int { um(m: blower_lug_screw_length) - um(m: blower_lug_arm_thickness) - um(m: clearance) }
+
+// The arm runs from the socket's corner end, past the frame, to the hole, flat on the label face.
+fn lug_arm_adds(m: OutletMount, half: Int, clearance: Micrometer, wall: Micrometer) -> List<Primitive> {
+  let margin = um(m: blower_lug_arm_margin)
+  let x_start = m.corner_x - m.run * (um(m: clearance) + um(m: wall))
+  let yi = arm_inner_y(m: m, half: half, clearance: clearance)
+  let n = label_normal_y(m: m)
+  let c = um(m: clearance)
+  [
+    span_block(x_a: x_start, x_b: hole_x(m: m) + m.run * margin, y_a: yi, y_b: arm_outer_y(m: m, half: half, clearance: clearance), z_a: m.mouth_z, z_b: hole_z(m: m) + m.body * margin),
+    round(diameter: um(m: blower_lug_boss_diameter), length: c, axis: Axis3Y, x: hole_x(m: m), y: yi - n * c / 2, z: hole_z(m: m)),
+  ]
+}
+
+fn lug_arm_cuts(m: OutletMount, half: Int, clearance: Micrometer) -> List<Primitive> {
+  let yi = arm_inner_y(m: m, half: half, clearance: clearance)
+  let yo = arm_outer_y(m: m, half: half, clearance: clearance)
+  [round(diameter: um(m: blower_lug_hole_diameter), length: um(m: blower_lug_arm_thickness) + um(m: clearance) + 2000, axis: Axis3Y, x: hole_x(m: m), y: (yi + yo) / 2, z: hole_z(m: m))]
+}
+
+// THE SCREW, as the part that mates the arm's hole: its core is the hole it taps, and it runs from the arm's
+// outer face through the arm and the boss into the lug.
+fn lug_screw_part(m: OutletMount, half: Int, clearance: Micrometer, id: String) -> AssemblyPart {
+  let n = label_normal_y(m: m)
+  let yo = arm_outer_y(m: m, half: half, clearance: clearance)
+  let l = um(m: blower_lug_screw_length)
+  part(id: id, name: "M5 x 10 fan screw, self-tapping into the blower's lug", kind: Metal, scope: FixedFrame,
+    adds: [round(diameter: um(m: blower_lug_hole_diameter), length: l, axis: Axis3Y, x: hole_x(m: m), y: yo - n * l / 2, z: hole_z(m: m))],
+    cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: n * 30000, ez: 0, plane: LayOnXY,
+    notes: "Purchased hardware: the operator's M5 x 10 fan screw (head 5.66 mm across, 1.09 mm high), shown at the core of the hole it taps.")
+}
+
+fn outlet_mount_note() -> String {
+  join(["Push the blower's outlet into the socket, label face against the arm, then drive one M5 x 10 fan screw through the arm's hole into the blower's lug (the hole ",
+    to_string(value: um(m: delta_bfb1012m_outlet_side_hole.from_outlet_edge) / 1000), " mm up from the outlet). It cuts its own thread; stop when the head seats."], "")
+}
