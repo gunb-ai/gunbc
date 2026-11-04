@@ -99,7 +99,8 @@ import extdeps.systemd {
   SystemdUnitProperty, MainPID, ControlGroup,
 }
 import extdeps.systemd.systemctl {
-  systemctl_user_show_properties_argv, systemctl_show_property_value,
+  systemctl_user_closing_active_args, systemctl_user_closing_enabled_args, systemctl_user_closing_show_args,
+  systemctl_show_property_value,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
@@ -1204,10 +1205,10 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
 // that a loaded unit with no install symlink prints `static` and still exits 0, so only the printed word is
 // evidence, and the word is turned into a SystemdUnitFileState here.
 fn dashboard_metering_closing_writer_observation(instance: HostDashboardInstance, ctl: NonEmptyStr, unit: NonEmptyStr) -> MeteringClosingWriterObservation {
-  let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["--user", "is-active", unit as String])
-  let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["--user", "is-enabled", unit as String])
+  let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_closing_active_args(unit: unit))
+  let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_closing_enabled_args(unit: unit))
   // ONE `show` for both properties, with the selector spelled by the systemctl module that owns it.
-  let show = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_show_properties_argv(unit: unit, properties: [MainPID, ControlGroup]))
+  let show = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_closing_show_args(unit: unit))
   let main_pid_text = match systemctl_show_property_value(text: show.stdout, key: "MainPID") {
     Present { value: v } => v
     Absent => ""

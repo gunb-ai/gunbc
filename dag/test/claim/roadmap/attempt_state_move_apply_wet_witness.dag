@@ -10,7 +10,6 @@ import std.types { String, FilePath, NonEmptyStr, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import test.fixture.systemd_fence_stub { systemctl_fence_stub_write, systemctl_stub_quiescent_answers, SystemctlStubAnswers }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -71,12 +70,10 @@ fn plant(i: HostDashboardInstance) -> Bool {
 // fence asks from two marker files beside it, so a test chooses what the host "says" by what it plants. The
 // real transport reaches /usr/bin/systemctl; the stand-in exercises the same argv through the same target.
 fn fence_stub(i: HostDashboardInstance, active: String, enabled: String) -> LegacyWriterFence {
-  // ONE stand-in for `systemctl`, shared with c_roadmap2_closing_cutover_witness (review 90677 / DESIGN §6b:
-  // both witnesses used to concatenate their own and had drifted). The verbs it answers come from
-  // extdeps.systemd.systemctl's own verb authorities; this producer execs `<ctl> is-active <unit>` and
-  // `<ctl> is-enabled <unit>` (no --user), and the shared stub matches the verb against ANY argument, so the
-  // shape difference between the two producers is not something either witness has to encode.
-  LegacyWriterUnits { systemctl: systemctl_fence_stub_write(dir: parent_of(i: i), name_tag: join([active, "-", enabled], ""), answers: systemctl_stub_quiescent_answers(active: active, enabled: enabled)) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr, "legacy-dispatcher-two.service" as NonEmptyStr] }
+  let stub = join([parent_of(i: i), "/../fence-systemctl-", active, "-", enabled], "")
+  let body = join(["#!/bin/sh\ncase \"$1\" in is-active) echo ", active, "; exit 3;; is-enabled) echo ", enabled, "; exit 0;; esac\nexit 1\n"], "")
+  let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
+  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr, "legacy-dispatcher-two.service" as NonEmptyStr] }
 }
 
 fn excluded_fence(i: HostDashboardInstance) -> LegacyWriterFence {
@@ -361,10 +358,11 @@ test fn a_noop_move_does_not_need_the_fence() -> Bool {
 // reads active (the old unit restarted mid-cutover) while is-enabled keeps reading masked. The call count lives in a
 // file beside the stub, so the answer depends on when the move asks, not on which unit it asks about.
 fn flipping_fence(i: HostDashboardInstance, quiet_calls: Int) -> LegacyWriterFence {
-  // Same shared stand-in (review 90677 / §6b), flip variant: the first `quiet_calls` is-active questions
-  // read `inactive`, every later one reads `active`; the tally file is derived from the stub's own path
-  // inside the fixture. is-active exits 3 and is-enabled answers masked, as before.
-  LegacyWriterUnits { systemctl: systemctl_fence_stub_write(dir: parent_of(i: i), name_tag: join(["flip-", to_string(value: quiet_calls)], ""), answers: SystemctlStubAnswers { active_answer: "inactive", active_exit: 3, enabled_answer: "masked", enabled_exit: 0, show_lines: [], show_exit: 0, flip_after: quiet_calls, active_late_answer: "active" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr] }
+  let stub = join([parent_of(i: i), "/../fence-systemctl-flip-", to_string(value: quiet_calls)], "")
+  let count = join([stub, ".n"], "")
+  let body = join(["#!/bin/sh\nn=$(cat ", count, " 2>/dev/null || echo 0)\ncase \"$1\" in is-active) n=$((n+1)); echo $n > ", count, "; if [ $n -gt ", to_string(value: quiet_calls), " ]; then echo active; else echo inactive; fi; exit 3;; is-enabled) echo masked; exit 0;; esac\nexit 1\n"], "")
+  let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
+  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr] }
 }
 
 // ARM 15, BROKEN: the exclusion is lifted MID-CUTOVER. The start check (call 1) and the first entry's boundary
