@@ -3,7 +3,8 @@ module extdeps.memory.samsung
 import std.measure { ByteSize, byte_size, bit_width }
 import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, DualDiePackage, ThreeDimensionalStacked }
 import extdeps.vendor.samsung { samsung }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CelsiusLimit, LimitUnstated }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.cited_temperature { CelsiusLimit, LimitUnstated }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 

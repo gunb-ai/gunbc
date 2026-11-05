@@ -45,7 +45,8 @@ import std.measure {
   Micrometer, micrometer, ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count,
   Watt, watt, Millimeter, millimeter, Celsius, Ampere, Volt, volt,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, TranscribedUncited, CelsiusLimit, LimitUnstated }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, TranscribedUncited }
+import extdeps.cited_temperature { CelsiusLimit, LimitUnstated }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }

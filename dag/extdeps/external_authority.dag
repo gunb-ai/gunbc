@@ -2,7 +2,6 @@ module extdeps.external_authority
 import std.optional { Absent, Present }
 
 import std.types { NonEmptyStr, List }
-import std.measure { Celsius }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
@@ -43,22 +42,6 @@ type CitedFigureStanding
   = CitedToAuthority { authority: ExternalAuthority }
   | TranscribedUncited { read_obligation: NonEmptyStr }
   | ObservedByReceipt { observed: ObservedReceipt }
-
-// A COMPONENT TEMPERATURE LIMIT IS ONE SHAPE, whatever the component (a DIMM band edge, a regulator
-// ceiling, a CPU junction figure): a Celsius figure carrying its standing, or an honest statement that the
-// documentation has not been read for it. LimitUnstated carries NO number, because inventing one to fill
-// the field is the cautionary specimen of DESIGN 4d (a typed bet consumed as a wall); it names what would
-// ground it. Consumers: the declared P5 decision subject of gunbc.plans.host_thermal_operating_point
-// (hard constraints) and the B5 guard, which today reads Absent for DimmChannel and VoltageRegulator in
-// gunbc.machine_intake.megarac_fan_thermal_guard megarac_guard_component_ceiling.
-type CitedCelsiusFigure {
-  value: Celsius
-  standing: CitedFigureStanding
-}
-
-type CelsiusLimit
-  = LimitStated { figure: CitedCelsiusFigure }
-  | LimitUnstated { read_obligation: NonEmptyStr }
 
 fn observed_receipt(receipt: DeclarationRef) -> ObservedReceipt
   admit_callers: [
