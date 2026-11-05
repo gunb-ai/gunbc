@@ -9,13 +9,17 @@ import extdeps.github.actions { Job, Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
-import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied, ApprovalExpired }
+import std.measure { second_count, minute_count }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_inheritance, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
   microvm_controller_install_root_scopes, srv1_root_write_scope,
   srv1_root_mutation_request, srv1_root_mutation_escalation_id, srv1_root_mutation_after_gate,
   srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect, srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_receipt_path,
   srv1_root_mutation_mode_env,
+  srv1_root_mutation_poll_cadence, srv1_root_mutation_poll_window, srv1_root_mutation_poll_tick_budget,
+  srv1_root_mutation_expiry_overrun_ticks, srv1_root_mutation_prelude_allowance,
+  srv1_root_mutation_step_margin, srv1_root_mutation_approval_step_timeout_minutes,
 }
 import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
 import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
@@ -65,14 +69,17 @@ test fn the_generator_delegates_the_family_wire_and_job_names() -> Bool {
 }
 
 // THE RED THE RULING ASKED FOR: the retirement tells the operator it IS destructive and names what it
-// takes off the host -- the account, the config directory, the state root and the binary. A sentence
+// takes off the host -- the account, the group the account leaves behind, the config directory, the
+// state root and the binary. A sentence
 // that stops at "writes under /etc and /usr/local" over an uninstall is the defect this closes
 // (DESIGN section 5: no plausible output is fabricated, and the flag is the one thing the approver
-// reads about risk).
+// reads about risk). The group is named here because a deletion the approver was never told about is
+// the same defect in the other direction.
 test fn the_retirement_declares_itself_destructive_and_names_every_removal() -> Bool {
   let retire = fixture_selected_request(mode: ApprovalNtfyRetire, attempt: "1", plan_hash: "plan-a")
   retire.destructive
     && string_contains(s: retire.purpose as String, pattern: "gunbc-ntfy ACCOUNT")
+    && string_contains(s: retire.purpose as String, pattern: "gunbc-ntfy GROUP")
     && string_contains(s: retire.purpose as String, pattern: "/etc/gunbc-ntfy")
     && string_contains(s: retire.purpose as String, pattern: "/var/lib/gunbc-ntfy")
     && string_contains(s: retire.purpose as String, pattern: "/usr/local/bin/ntfy")
@@ -366,4 +373,50 @@ test fn the_controller_install_holds_the_fleet_key_only_after_its_approval() -> 
     else { at }
   })
   reached == 4
+}
+
+// ── The wait ends on the model's own verdict, not on the runner's clock ────────────────────────
+//
+// Run 41972155901 is the witness in the wild: the operator never tapped, the poll was still polling at
+// the runner's 32-minute step limit, and the step was KILLED two minutes before the approval's own
+// expires_at (09:14:12Z + 30 min = 09:44:12Z; killed 09:42:04Z). Nothing mutated -- the actuation step
+// was skipped -- but the run died with a runner timeout where the model had a typed thing to say, and
+// the receipt was never written. These claims are what makes that shape unwriteable again: the gate
+// must name the expiry itself, the polls must reach past the deadline, and the runner's patience must
+// be strictly longer than the model's worst case.
+
+test fn the_unanswered_window_refuses_with_the_expiry_the_model_knows() -> Bool {
+  let deploy = fixture_request(mode: DashboardDeploy, attempt: "1")
+  match approval_gate_from_poll(poll: PollExpired, request: deploy, observed_at: "2026-10-26T12:31:00Z") {
+    // THE CAUSE IS NAMED, not merely "some refusal": a run that ends on a spent tick budget reports
+    // ApprovalPending (approval_gate's PollBudgetExhausted arm), and an unreadable clock reports
+    // ApprovalStoreUnreadable. Reading an expiry as either would send an operator who never answered
+    // back through the wrong remedy.
+    GateRefused { cause: ApprovalExpired } => true
+    GateRefused { cause: _ } => false
+    GateAdmitted { authorization: _ } => false
+  }
+}
+
+// THE TICKETS OUTLIVE THE WINDOW THEY POLL. If the budget ran out first, the fold would report a spent
+// budget instead of the expiry it is holding, which is the confusion this module's own comments forbid
+// ("a run that stops on budget is not an expired window"). One full cadence strictly past expires_at is
+// the minimum: it is what guarantees a clock read at or after the deadline.
+test fn the_poll_budget_outlives_the_window_it_polls() -> Bool {
+  (second_count(s: srv1_root_mutation_poll_cadence) as Int) * srv1_root_mutation_poll_tick_budget()
+    > second_count(s: srv1_root_mutation_poll_window) + second_count(s: srv1_root_mutation_poll_cadence)
+    && srv1_root_mutation_expiry_overrun_ticks > 0
+}
+
+// THE RUNNER IS PATIENT LONGER THAN THE MODEL IS. The step timeout must clear the model's own worst
+// case -- prelude, window, overrun -- and still leave the stated margin: a runner kill would mean the
+// model failed to end its own wait, and that is a defect to fix rather than a number to raise. The
+// 32-minute limit that killed 41972155901 is the counterexample these numbers are built against.
+test fn the_step_timeout_clears_the_models_worst_case_by_the_stated_margin() -> Bool {
+  let timeout_secs = (minute_count(m: srv1_root_mutation_approval_step_timeout_minutes()) as Int) * 60
+  let model_worst_case = second_count(s: srv1_root_mutation_prelude_allowance) as Int
+    + second_count(s: srv1_root_mutation_poll_window) as Int
+    + (second_count(s: srv1_root_mutation_poll_cadence) as Int) * srv1_root_mutation_expiry_overrun_ticks
+  timeout_secs >= model_worst_case + (second_count(s: srv1_root_mutation_step_margin) as Int)
+    && model_worst_case > 32 * 60
 }

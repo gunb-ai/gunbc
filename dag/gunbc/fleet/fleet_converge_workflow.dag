@@ -4879,7 +4879,7 @@ data fleet_converge_approval_ntfy_retire_step_if: String = fleet_converge_srv1_r
 
 fn fleet_converge_approval_ntfy_retire_step() -> Step {
   RunStep {
-    name: Present { value: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean" },
+    name: Present { value: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the group the account leaves behind, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean" },
     id: Present { value: "approval_ntfy_retire" },
     run: gunbc_ci_approval_ntfy_retire_invoke(),
     shell: none,

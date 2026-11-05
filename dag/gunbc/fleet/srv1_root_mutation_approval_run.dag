@@ -110,16 +110,42 @@ fn srv1_root_mutation_select_value_env(index: Int) -> String {
 }
 
 data srv1_root_mutation_poll_cadence: Second = second(count: 15)
-data srv1_root_mutation_poll_tick_budget: Int = 120
+// THE OPERATOR'S DECISION WINDOW, stated ONCE. The same value is what the run puts in the filing as
+// expires_at (approval_expires_at at the submit below) and what the poll's fold compares the clock
+// against, so a longer window here lengthens the wait and the deadline TOGETHER -- instead of letting a
+// tick count silently decide when the operator's chance runs out.
+data srv1_root_mutation_poll_window: Second = second(count: 1800)
+// POLLS HELD IN RESERVE BEYOND THE DEADLINE, so the wait always ends on the model's OWN verdict. The
+// fold (gunbc.auth.approval_gate approval_poll_step) ends a poll with the typed ApprovalExpired the
+// first time it reads the clock at or after expires_at; if the tick budget ran out first, the poll
+// never reaches that verdict. Run 41972155901 is the case in point: its runner killed the step two
+// minutes BEFORE the deadline, so neither the fold nor the receipt ever spoke. Four ticks -- one
+// cadence -- guarantees a read after expiry without letting a broker that keeps answering "pending"
+// extend the run past its own window.
+data srv1_root_mutation_expiry_overrun_ticks: Int = 4
 data srv1_root_mutation_submit_timeout: Second = second(count: 30)
-data srv1_root_mutation_prelude_allowance: Second = second(count: 120)
+// WHAT THE STEP SPENDS BEFORE IT STARTS POLLING: argv rendering, key material, the MAC-signed submit.
+// MEASURED at 240 s on run 41972155901 (gate step created 09:10:04Z, the POST landed 09:14:12Z). The
+// allowance it replaces was 120 s -- a guess, and the guess is precisely what let the runner outrank
+// the model, because the step timeout is built from this number.
+data srv1_root_mutation_prelude_allowance: Second = second(count: 300)
+// WHAT THE RUNNER IS TOLD TO WAIT BEYOND the model's own worst case, stated rather than implicit. The
+// step timeout clears prelude + window + overrun + this margin: a runner kill here would mean the model
+// failed to end its own wait, which is a defect to fix and NOT a timeout to raise.
+data srv1_root_mutation_step_margin: Second = second(count: 180)
 
 fn srv1_root_mutation_approval_window() -> Second {
-  second(count: srv1_root_mutation_poll_tick_budget * (second_count(s: srv1_root_mutation_poll_cadence) as Int))
+  srv1_root_mutation_poll_window
+}
+
+// TICKETS ARE DERIVED FROM THE WINDOW, never counted off independently: window/cadence covers the whole
+// window and the overrun covers the deadline read itself.
+fn srv1_root_mutation_poll_tick_budget() -> Int {
+  (second_count(s: srv1_root_mutation_poll_window) / (second_count(s: srv1_root_mutation_poll_cadence) as Int)) + srv1_root_mutation_expiry_overrun_ticks
 }
 
 fn srv1_root_mutation_approval_step_timeout_minutes() -> Minute {
-  let secs = second_count(s: srv1_root_mutation_prelude_allowance) + second_count(s: srv1_root_mutation_approval_window())
+  let secs = second_count(s: srv1_root_mutation_prelude_allowance) + second_count(s: srv1_root_mutation_approval_window()) + ((second_count(s: srv1_root_mutation_poll_cadence) as Int) * srv1_root_mutation_expiry_overrun_ticks) + second_count(s: srv1_root_mutation_step_margin)
   minute(count: (secs + 59) / 60)
 }
 
@@ -141,6 +167,10 @@ data srv1_root_removal_action: AuthorizedAction = "remove" as AuthorizedAction
 data srv1_root_service_stop_action: AuthorizedAction = "stop" as AuthorizedAction
 data srv1_root_service_disable_action: AuthorizedAction = "disable" as AuthorizedAction
 data srv1_root_account_remove_action: AuthorizedAction = "remove-account" as AuthorizedAction
+// The group the account left behind is removed by its own program under its own action word, not folded
+// into "remove-account": one authority per removed member, so an approval that granted account removal
+// cannot be read as having granted the removal of a group database entry.
+data srv1_root_group_remove_action: AuthorizedAction = "remove-group" as AuthorizedAction
 data srv1_root_serve_route_off_action: AuthorizedAction = "serve-route-off" as AuthorizedAction
 
 fn srv1_root_write_scope(path: List<String>) -> AuthorizationScope {
@@ -188,11 +218,16 @@ data srv1_root_serve_route_removal_scope: AuthorizationScope = AuthorizationScop
   verb: Execute, resource: filesystem_position(path: ["usr", "bin", "tailscale"]), action: srv1_root_serve_route_off_action,
 }
 
+data srv1_root_group_removal_scope: AuthorizationScope = AuthorizationScope {
+  verb: Execute, resource: filesystem_position(path: ["usr", "sbin", "groupdel"]), action: srv1_root_group_remove_action,
+}
+
 // THE SCOPES THE ntfy RETIREMENT EXERCISES, read off the legs it runs
 // (gunbc.fleet.approval_ntfy_retirement ntfy_retire_legs): stop and disable the unit by name, remove
-// its file, reload the daemon, remove the account, remove its two trees, remove the hand-installed
-// binary, and take the front-door route off tailscale. The four removal scopes name EACH PATH THE
-// RETIREMENT REMOVES, not the directory around it: an operator approving a removal on the phone is
+// its file, reload the daemon, remove the account, remove the group the account leaves behind, remove
+// its two trees, remove the hand-installed binary, and take the front-door route off tailscale. The four
+// removal scopes name EACH PATH THE RETIREMENT REMOVES, not the directory around it: an operator
+// approving a removal on the phone is
 // approving the named path, and "/usr/local/bin" would have been an approval to remove anything in
 // /usr/local/bin -- including the runner's own binaries. The literals here and the roster there are
 // two spellings of one fact, so gunbc.test.claim.approval_ntfy_retirement_witness
@@ -206,7 +241,7 @@ data approval_ntfy_retire_root_scopes: List<AuthorizationScope> = [
   srv1_root_removal_scope_at(path: "/etc/gunbc-ntfy"),
   srv1_root_removal_scope_at(path: "/var/lib/gunbc-ntfy"),
   srv1_root_removal_scope_at(path: "/usr/local/bin/ntfy"),
-  srv1_root_account_removal_scope, srv1_root_serve_route_removal_scope,
+  srv1_root_account_removal_scope, srv1_root_group_removal_scope, srv1_root_serve_route_removal_scope,
 ]
 
 data srv1_root_mutation_approved_scopes: List<AuthorizationScope> = concat([
@@ -342,7 +377,7 @@ fn srv1_root_mutation_file_and_wait(request: AuthorizationRequest<Srv1RootMutati
         ApprovalFiled => srv1_root_mutation_after_gate(
           gate: approval_gate_from_outcome(
             outcome: approval_poll_ticks(
-              remaining: srv1_root_mutation_poll_tick_budget,
+              remaining: srv1_root_mutation_poll_tick_budget(),
               cadence: srv1_root_mutation_poll_cadence,
               escalation_id: request.escalation_id,
               expires_at: expires,
