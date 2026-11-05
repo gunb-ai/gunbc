@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.a_row_label_rename_names_one_from_twice
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_row_label_rename_names_one_from_twice: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_row_label_rename_names_one_from_twice" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of a RosterHeadRow carrying its label renames as a validated keyed-roster carrier whose success arm is reachable only through std.keyed_roster keyed_roster_build (feature:keyed-roster-construction-wall), so the row is built once and both the label pass and the slot check read that one build" } },
+
+  receipts: [
+    "INVALID STATE: a v2.workflow.roster_import_sweep RosterHeadRow whose `labels` name one `from` twice (e.g. init -> empty and init -> seed). HARM, as found: the label lookup folded the renames and silently kept the last match, so which target label a call's `init:` reached was decided by row order, not by the row (DESIGN section 5, a fabricated default). Found below the ladder: nothing refused it.",
+
+    "CURRENT RUNG, mechanically preventive (gunbc#15842, landed at c950bb10): the renames are read through std.keyed_roster keyed_roster_build in both the label pass (roster_row_label_edits) and the slot check (roster_named_arg_slot_refusal), and a duplicate `from` refuses typed and located as RefusalRowLabelRenamesDuplicate { row, from }. The RED is the enrolled head control renamed-labels-duplicate-from-refuses; receipt wise-moth-707-ctl-dupfrom2 showed it HELD unmutated and failing with a different cause (rename-call-named-argument) when the roster was built without its duplicate check, with the nine other head controls HELD in both arms. The invalid row stays WRITABLE: safety depends on the sweep executing the build.",
+
+    "CEILING AND NEXT TRIGGER: structurally impossible once the row's labels field is the validated keyed-roster carrier (the corpus-wide feature:keyed-roster-construction-wall named by std.keyed_roster). ON THAT TRIGGER, TWO THINGS DISSOLVE TOGETHER: roster_row_label_renames_built's arm becomes the carrier's own construction, and the current rebuild, once in the label pass and once PER NAMED ARGUMENT in the slot check (review 90768), consolidates into the single build the carrier holds. That rebuild is NOT to be cached before the trigger (DESIGN section 2: a cache may not excuse authored duplication; ruling relayed by tidy-ant-251 on #15842).",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_row_label_renames_built"),
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_named_arg_slot_refusal"),
+    decl_ref(module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_relabel_duplicate_from_fixture_row"),
+  ],
+}
