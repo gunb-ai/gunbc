@@ -23,7 +23,7 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 // maps an arm to its parts lives in printable_assembly_selection, so this module stays importable
 // by the roots themselves.
 //
-// CassetteRackReview is the full r06 rack the review site displays (product.printed_chassis.
+// CassetteRackReview is the full rack (product.printed_chassis.cassette cassette_revision) the review site displays (product.printed_chassis.
 // cassette_review all_parts). It was already a distinct selection -- a different part set from the
 // residential print assembly -- reached implicitly through review_realization main. Naming it keeps
 // the two from being confused for one another.

@@ -21,6 +21,11 @@ import extdeps.fans.arctic { arctic_p8_mounting_pattern }
 // Nominal board lengths come from the board authority; design allowances below are proposals.
 // No measured board thickness, standoff thread, PSU rating or thermal result is invented.
 fn um(m:Micrometer) -> Int { micrometer_count(m: m) as Int }
+// THE CASSETTE'S REVISION, stated once. r07 is the first revision to carry the board seat (posts with
+// locating nubs) and the socket-backplate window; the review package's revision field and readme both
+// read this, so the package cannot name one revision in one field and another in the next (review
+// 5789347012). r06's result stays the historical print record (fit_observations cassette_r06_print).
+data cassette_revision: String = "07"
 data printed_configuration_layout:CassetteLayout=current_layout()
 data board_w: Micrometer = printed_configuration_layout.board_width
 data board_d: Micrometer = printed_configuration_layout.board_depth
