@@ -2448,7 +2448,7 @@ fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, pr
 }
 
 fn belt_spawn_minted_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String) -> BeltSpawnKey {
-  match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+  match belt_dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
     DispatchAttemptIdentityRefused { detail } => BeltSpawnKeyRefused { detail: detail }
     DispatchAttemptMinted { attempt_key: minted_key, ordinal: _ } => BeltSpawnKeyOf { attempt_key: minted_key }
   }
