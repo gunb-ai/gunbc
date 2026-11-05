@@ -286,11 +286,11 @@ data close_body_no_csrf: String = "key=op-serve-close-1&repo=briansrls/gunbc&pr=
 
 // ── THE CLOCK DERIVES THE DAY ────────────────────────────────────────────────────────────────────
 
-data clock_zero: EpochSecs = 0 as EpochSecs
+data clock_zero: EpochSecs = 0
 
-data clock_newest: EpochSecs = 1791676800 as EpochSecs
+data clock_newest: EpochSecs = 1791676800
 
-data clock_mid: EpochSecs = 1760227200 as EpochSecs
+data clock_mid: EpochSecs = 1760227200
 
 test fn the_close_derives_the_civil_utc_day_from_the_clock() -> Bool {
   let d0 = roadmap_operator_date_from_epoch_secs(secs: clock_zero)
@@ -694,18 +694,20 @@ test fn the_close_route_refuses_anonymously_and_without_the_token() -> Bool {
   e1 && e2
 }
 
-test fn the_close_route_names_an_unknown_node_and_fails_closed_on_github() -> Bool {
+test fn the_close_route_names_an_unknown_node_before_github_can_answer() -> Bool {
   let unknown = serve_issue_close_response_over(
     instance: srv2_preview_dashboard_instance(), plan: fn() { plan_with_nodes(["operator-node"]) },
     request: close_request_as_operator(body: close_body_ready, node_id: "not-a-node"), params: node_param("not-a-node"), read: fn(_repo, n) { merged_readback(n) })
   let e1 = claim("the unknown node is named: " + unknown.body, unknown.status == 404)
-  // The roster for a pull this repository does not have cannot be read as merged — the route
-  // answers fail-closed (the manager's third condition), never a silent accept.
+  // An empty lane is no review standing either — and it outranks the GitHub question: the node is
+  // refused as unknown even while a (failed) readback was attempted. The unreadable-GitHub refusal
+  // itself, for a node that DOES stand ready for review, is witnessed by
+  // an_unreadable_github_refuses_the_close_fail_closed at the gate.
   let github_down = serve_issue_close_response_over(
     instance: srv2_preview_dashboard_instance(), plan: fn() { plan_with_nodes(["operator-node"]) },
     request: close_request_as_operator(body: close_body_ready, node_id: "operator-node"), params: node_param("operator-node"), read: fn(_repo, _n) { PrReadbackUnavailable { cause: "witness: github unavailable" as NonEmptyStr } })
-  let e2 = claim("an unreadable GitHub refuses the close fail-closed: " + github_down.body,
-    github_down.status == 502 && string_contains(s: github_down.body, pattern: "could not be read"))
+  let e2 = claim("the empty lane refuses as unknown before any GitHub reading counts: " + github_down.body,
+    github_down.status == 404 && string_contains(s: github_down.body, pattern: "unknown node"))
   e1 && e2
 }
 
