@@ -2,8 +2,9 @@ module v2.std.exact_structural_equality_zip_fold_predicate
 
 import std.nat { Nat, Succ, Zero }
 import std.types { List }
-import std.algebra { length, list_snoc_item, zip_map }
-import v2.std.node { Edge, Node, node_equal_ignoring_provenance, well_formed }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { contains, length, list_snoc_item, zip_map }
+import v2.std.node { Edge, Node, Symbol, node_equal_ignoring_provenance, well_formed }
 
 // WHY THE EXACT STRUCTURAL COMPARISON REFUSED IS PART OF THE ANSWER. This predicate is what
 // v2.std.find_witness folds, and a Bool answered five different questions with one word: a malformed
@@ -36,6 +37,12 @@ type ExactStructuralComparison
   | ComparisonRootsDiffer { argument_ordinal_path: List<Nat> }
   | ComparisonArgumentCountDiffers { source_arity: Int, candidate_arity: Int, argument_ordinal_path: List<Nat> }
   | ComparisonArgumentsDiffer { argument_ordinal_path: List<Nat> }
+  // A TYPE VARIABLE IS NOT A ROOT. Answering "the roots differ" about `K` against `Int` refuses a type the
+  // relation holds no instance for, in the one decision, for the wrong reason (keen-heron-809's ruling B on
+  // this PR). The scan keeps looking past this arm: a DECIDED disagreement anywhere in the pair wins, and
+  // this arm is the answer only when nothing decided -- "a disagreeing sibling beats an undecided one",
+  // stated inside the decision rather than in each caller. Two occurrences of the SAME binder are equal by
+  // node identity and never reach here; distinct binders, and a variable against a concrete type, do.
 
 // WHERE IN THE CANDIDATE THE ANSWER WAS DECIDED, on the three arms that answer the inhabitance question.
 // The path runs from the pair this comparison was asked about down to the pair the arm was decided at,
@@ -51,7 +58,8 @@ type ExactStructuralComparison
 // has no face that zips a list with its positions, and minting one was refused (tidy-ant-251), so the
 // counter is carried in the accumulator from std.nat's own constructors.
 type ExactStructuralScan {
-  verdict: ExactStructuralComparison
+  decided: Optional<ExactStructuralComparison>
+  undecided: Optional<ExactStructuralComparison>
   ordinal: Nat
 }
 
@@ -73,7 +81,10 @@ fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bo
 fn exact_structural_comparison(
   source_facts: Node,
   algebra: Node,
-  candidate: Node
+  candidate: Node,
+  // the type variables in scope at the judgment: an identity in this list is a variable, not a root, and
+  // a pair carrying one is undecided at that position instead of a refusal
+  type_variables: List<Symbol>
 ) -> ExactStructuralComparison {
   if !well_formed(n: source_facts) {
     ComparisonSourceFactsMalformed
@@ -84,7 +95,18 @@ fn exact_structural_comparison(
   } else if !exact_structural_equality_zip_fold(source_facts: algebra, candidate: source_facts) {
     ComparisonAlgebraNotTheSourceFacts
   } else {
-    exact_structural_shape(source_facts: source_facts, candidate: candidate, argument_ordinal_path: [])
+    exact_structural_shape(source_facts: source_facts, candidate: candidate, argument_ordinal_path: [], type_variables: type_variables)
+  }
+}
+
+// A node whose own root is one of the scoped variables: an Atom type node whose identity is a binder. The
+// identity test is the corpus's own (`TypeNode { connective: Atom { identity: id } }`, the same shape
+// inhabitance_node_mentions_type_variable reads); this one does not walk the subtree, because a variable
+// DEEP inside a pair must not decide the outer position -- the descent has to reach it and name its path.
+fn exact_structural_root_is_type_variable(node: Node, type_variables: List<Symbol>) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => contains(xs: type_variables, item: id, eq: fn(x, y) { x == y })
+    _ => false
   }
 }
 
@@ -101,10 +123,15 @@ fn exact_structural_comparison(
 fn exact_structural_shape(
   source_facts: Node,
   candidate: Node,
-  argument_ordinal_path: List<Nat>
+  argument_ordinal_path: List<Nat>,
+  type_variables: List<Symbol>
 ) -> ExactStructuralComparison {
   if source_facts.kind != candidate.kind {
-    ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
+    if exact_structural_root_is_type_variable(node: source_facts, type_variables: type_variables) || exact_structural_root_is_type_variable(node: candidate, type_variables: type_variables) {
+      ComparisonUndecidedTypeVariable { argument_ordinal_path: argument_ordinal_path }
+    } else {
+      ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
+    }
   } else if count(source_facts.children) != count(candidate.children) {
     ComparisonArgumentCountDiffers {
       source_arity: count(source_facts.children),
@@ -118,22 +145,36 @@ fn exact_structural_shape(
         b: candidate.children,
         f: fn(source_edge, candidate_edge) { ExactStructuralChildPair { source: source_edge, candidate: candidate_edge } }
       ),
-      init: ExactStructuralScan { verdict: ComparisonHolds, ordinal: Zero },
+      init: ExactStructuralScan { decided: optional_absent(), undecided: optional_absent(), ordinal: Zero },
       f: fn(acc, pair) {
-        match acc.verdict {
-          ComparisonHolds => ExactStructuralScan {
-            verdict: exact_structural_child_pair(
-              pair: pair,
-              // the path grows at the tail as the descent goes deeper, which is what outermost-first means
-              argument_ordinal_path: list_snoc_item(xs: argument_ordinal_path, item: acc.ordinal)
-            ),
-            ordinal: Succ { prev: acc.ordinal }
+        // the path grows at the tail as the descent goes deeper, which is what outermost-first means
+        let at = list_snoc_item(xs: argument_ordinal_path, item: acc.ordinal)
+        match acc.decided {
+          // a decided disagreement is already held: the remaining pairs are walked only to advance the ordinal
+          Present { value: held } => ExactStructuralScan { decided: optional_present(value: held), undecided: acc.undecided, ordinal: Succ { prev: acc.ordinal } }
+          Absent => match exact_structural_child_pair(pair: pair, argument_ordinal_path: at, type_variables: type_variables) {
+            ComparisonHolds => ExactStructuralScan { decided: acc.decided, undecided: acc.undecided, ordinal: Succ { prev: acc.ordinal } }
+            ComparisonUndecidedTypeVariable { argument_ordinal_path: _ } => ExactStructuralScan {
+              decided: optional_absent(),
+              // the FIRST undecided position is the one kept: it is the outermost place the relation runs out
+              undecided: match acc.undecided {
+                Present { value: _ } => acc.undecided
+                Absent => optional_present(value: ComparisonUndecidedTypeVariable { argument_ordinal_path: at })
+              },
+              ordinal: Succ { prev: acc.ordinal }
+            }
+            decided => ExactStructuralScan { decided: optional_present(value: decided), undecided: acc.undecided, ordinal: Succ { prev: acc.ordinal } }
           }
-          _ => ExactStructuralScan { verdict: acc.verdict, ordinal: Succ { prev: acc.ordinal } }
         }
       }
     )
-    scan.verdict
+    match scan.decided {
+      Present { value: decided } => decided
+      Absent => match scan.undecided {
+        Present { value: undecided } => undecided
+        Absent => ComparisonHolds
+      }
+    }
   }
 }
 
@@ -143,7 +184,8 @@ fn exact_structural_shape(
 // arm reported is the one the targets decide -- the innermost mechanism, not the outer symptom.
 fn exact_structural_child_pair(
   pair: ExactStructuralChildPair,
-  argument_ordinal_path: List<Nat>
+  argument_ordinal_path: List<Nat>,
+  type_variables: List<Symbol>
 ) -> ExactStructuralComparison {
   if pair.source.label != pair.candidate.label {
     ComparisonArgumentsDiffer { argument_ordinal_path: argument_ordinal_path }
@@ -151,7 +193,7 @@ fn exact_structural_child_pair(
     ComparisonHolds
   } else {
     // the algebra of a nested pair is its own source facts, the same identity the entry check enforces
-    exact_structural_shape(source_facts: pair.source.target, candidate: pair.candidate.target, argument_ordinal_path: argument_ordinal_path)
+    exact_structural_shape(source_facts: pair.source.target, candidate: pair.candidate.target, argument_ordinal_path: argument_ordinal_path, type_variables: type_variables)
   }
 }
 
@@ -160,7 +202,7 @@ fn exact_structural_equality_zip_fold_preservation_holds(
   candidate: Node,
   algebra: Node,
 ) -> Bool {
-  match exact_structural_comparison(source_facts: source_facts, algebra: algebra, candidate: candidate) {
+  match exact_structural_comparison(source_facts: source_facts, algebra: algebra, candidate: candidate, type_variables: []) {
     ComparisonHolds => true
     _ => false
   }

@@ -770,7 +770,7 @@ fn declared_type_inhabitance_refusal_decision(
   find_witness_reason: Symbol
 ) -> InhabitanceStructuralDecision {
   if find_witness_reason == ^find_witness_reason_no_candidate {
-    inhabitance_structural_decision(comparison: exact_structural_comparison(source_facts: obligation.produced, algebra: obligation.produced, candidate: obligation.declared))
+    inhabitance_structural_decision(comparison: exact_structural_comparison(source_facts: obligation.produced, algebra: obligation.produced, candidate: obligation.declared, type_variables: obligation.type_variables))
   } else {
     InhabitanceStructuralDecision { refusal_class: RefusalWitnessSearchDecision, reason: find_witness_reason, argument_ordinal_path: [] }
   }
@@ -848,6 +848,13 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
       InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_argument_count_differs, argument_ordinal_path: argument_ordinal_path }
     ComparisonArgumentsDiffer { argument_ordinal_path: argument_ordinal_path } =>
       InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_arguments_differ, argument_ordinal_path: argument_ordinal_path }
+    // The comparison ran out at a position it holds no instance for. The relation answers Undecidable for
+    // that today through its own variable check; this arm is the same fact coming out of the ONE decision,
+    // and #15903 turns that check into a consumer of it (its separate fold over the argument list is the
+    // same rule twice, which keen-heron-809 ruled a fork to delete). Classed as could-not-run because that
+    // is exactly what happened: no pair at that position could be compared.
+    ComparisonUndecidedTypeVariable { argument_ordinal_path: argument_ordinal_path } =>
+      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_pair_undecided_type_variable, argument_ordinal_path: argument_ordinal_path }
   }
 }
 
