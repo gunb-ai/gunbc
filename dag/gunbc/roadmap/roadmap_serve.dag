@@ -1296,11 +1296,10 @@ fn roadmap_plan_node_ticket(proj: RoadmapAuthorityProjection, node_id: String) -
 // verify/review/re-delivery), and it satisfies NO dependency: dependents stay blocked and the daily
 // page names them blocked-by-retired. The refusals are exactly the named ones — unknown node,
 // already terminal (closed or retired), unauthenticated, stale revision — plus event-log integrity
-// (a refused history read answers 503; the route never appends blind). The lab lineage-retire route's
-// "only a ContinuationEnded lineage" admission does not gate this route — and that route itself is
-// deleted by the dispatch-convergence ruling (CONTINUE / START FRESH supersede it): the operator's
-// standing is NODE-level, and terminality is a belt-internal consequence, never an operator-facing
-// lineage state.
+// (a refused history read answers 503; the route never appends blind). No lineage-state
+// precondition gates this route, in either direction: the operator's standing is NODE-level and
+// terminality is a belt-internal consequence, never an operator-facing lineage state — the whole
+// authority for this route is gunbc.design_ruling.operator_may_arbitrarily_retire_any_work_item.
 fn serve_issue_retire_response_over(
   instance: HostDashboardInstance,
   plan: fn() -> RoadmapAuthorityProjection,

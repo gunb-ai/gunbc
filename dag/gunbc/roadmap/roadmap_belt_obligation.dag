@@ -176,12 +176,6 @@ fn belt_provider_terminal(provider: ProviderExecutionState) -> Bool {
 // evidence, so it is the ONE derivation behind both the event chain (after an obligation runs, its
 // attempt is re-observed and this says what is next) and the anti-entropy discovery (which applies it
 // to every observed attempt).
-// THE ONE TERMINALITY RULE, read at the obligation question (operator ruling 2026-11-04): a
-// CLOSED or RETIRED node's lineage is terminal — no verify/review/re-delivery obligation spawns for
-// it, for any kind, whatever its segments say. The caller supplies the fact
-// (roadmap_belt_actuate reads it from the merged acceptance history and the event log's retirement
-// standing, and FAILS CLOSED when either is unreadable); this module stays a pure function of its
-// inputs, so every consumer asks the same question and none can forget the rule.
 // THE ONE TERMINALITY RULE lives in exactly one place:
 // gunbc.roadmap.roadmap_node_terminality.belt_node_lineage_terminal_read, consulted by the actuate
 // seam BEFORE these pure functions are called (the seam refuses on unreadable — fail closed). These

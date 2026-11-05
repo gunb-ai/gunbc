@@ -117,14 +117,13 @@ type RoadmapEventKind
   | Progress { note: NonEmptyStr }
   | Blocked { reason: NonEmptyStr }
   | HandedBack { reason: NonEmptyStr }
-  // THE OPERATOR'S RETIREMENT (operator ruling 2026-11-04: "I should be allowed to arbitrarily
-  // retire any work item"). Any node, any state, no PR and no lineage precondition: the author —
-  // the authenticated operator principal — ends the work item, and the record says exactly that
-  // ("retired by <principal>"). It is NOT acceptance: no receipt, no dependents satisfied. A
-  // retired node's lineage is terminal — the belt's obligation question (roadmap_belt_obligation)
-  // reads this standing and launches nothing further. The lab's lineage-retire route (row 9) keeps
-  // its record but its "only a ContinuationEnded lineage" admission does not survive here: one
-  // rule, this one, retires anything.
+  // THE OPERATOR'S RETIREMENT. Any node, any state, no PR and no lineage precondition: the
+  // author — the authenticated operator principal — ends the work item, and the record says
+  // exactly that ("retired by <principal>"). It is NOT acceptance: no receipt, no dependents
+  // satisfied. A retired node's lineage is terminal — the belt's obligation question
+  // (roadmap_belt_obligation) reads this standing and launches nothing further. The authority is
+  // gunbc.design_ruling.operator_may_arbitrarily_retire_any_work_item, and it carries no lineage
+  // precondition: no lineage shape is ever demanded of the operator here.
   | Retired { reason: NonEmptyStr }
   | ReceiptReferenced { obligation: NonEmptyStr, address: NonEmptyStr, verdict: NonEmptyStr }
   | CommentCreated { comment: NonEmptyStr, body: NonEmptyStr, visibility: NonEmptyStr, parent_comment: NonEmptyStr? }
@@ -661,9 +660,18 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
 // Is this standing the operator's retirement? The one question the belt's obligation rule and the
 // retire route's terminality refusal both ask; named once here so both ask the same thing.
 fn roadmap_standing_is_retired(standing: RoadmapNodeStanding) -> Bool {
+  // Every standing named: an arm added to RoadmapNodeStanding must be decided HERE, not swallowed
+  // by a wildcard into "open" — which would keep the belt spawning work for it in silence (§5).
   match standing {
     NodeRetired { by: _, reason: _ } => true
-    _ => false
+    NodeOpen => false
+    NodeClaimed { by: _, since: _ } => false
+    NodeInProgress { by: _, last_note: _ } => false
+    NodeBlocked { by: _, reason: _ } => false
+    NodeHandedBack { by: _, reason: _ } => false
+    NodeReadyForReview { by: _, pr: _, head: _ } => false
+    NodeForked { heads: _ } => false
+    NodeHistoryIncomplete { missing_parents: _ } => false
   }
 }
 
