@@ -8,7 +8,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, diagnostics_has_reason }
 import v2.std.node { Symbol, Node, Edge, Positional, TypeNode, Instantiation, NotADeclaration, node_synthetic }
 import v2.std.inhabitance { DeclaredTypeObligation, InhabitanceRefused, InhabitanceUndecidable, Inhabits, declared_type_inhabitance, position_declared_return }
 import v2.extdeps.languages.dag { dag_type_atom_node }
@@ -25,7 +25,6 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   RcfInferAccepted,
   RcfInferRefused,
   RcfResolveRefused,
-  rcf_refusal,
   rcf_verdict,
   rcf_read_in
 }
@@ -49,10 +48,14 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 // Pair<T, Int> produced, which must REFUSE; the POSITIVE CONTROL is Pair<T, Int> declared against
 // Pair<T, Int> produced, which must be ACCEPTED (Inhabits) -- main left it UndecidableGenericFormal. A
 // genuinely unreadable position beside agreeing siblings -- Pair<List<T>, Int> at Pair<List<Bool>, Int> --
-// STAYS undecided, never refusing for the wrong reason. THE SOURCE-ROUTE CLAIMS are controls that refuse
-// BEFORE the change too: infer_judge_generic_formal instantiates per position (infer_match_generic_formal)
-// ahead of the pair judgment, so a call-site specimen is the sibling that already judges per position, not
-// the discriminator.
+// STAYS undecided, never refusing for the wrong reason. THE SOURCE-ROUTE CLAIMS are CONTROLS: they refuse on
+// BOTH heads (the base already carries #15868's structural reasons, so a sibling mismatch refuses regardless of
+// this change -- they are not the discriminator). They assert the refusal THROUGH the structural reason the
+// Diagnostic actually carries: application_argument_does_not_inhabit_diagnostic sets its reason to the
+// find_witness reason, so a disagreeing sibling refuses with ^inhabitance_structural_arguments_differ (the
+// argument ordinal is the locus; the argument-ordinal position slot is asserted once #15868 carries that
+// accessor). A separate _is_not_accepted claim per subject pins that the call is refused at ALL, so a
+// wrong-reason refusal is never confused with an ACCEPT.
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -93,10 +96,30 @@ fn skp_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-fn skp_refused_at_the_argument(subject: String) -> Bool {
-  match rcf_refusal(resolved: skp_resolve_subject(subject: subject), reason: ^application_argument_does_not_inhabit) {
-    Absent => false
-    Present { value: _ } => true
+// WHY THE OLD FILTER FAILED. application_argument_does_not_inhabit_diagnostic (v2.std.inhabitance) sets the
+// refusal Diagnostic's `reason` to the FIND_WITNESS reason -- the structural decision -- NOT to a symbol named
+// application_argument_does_not_inhabit. So a claim filtering rcf_refusal on ^application_argument_does_not_inhabit
+// matched NOTHING on base or head (both carry #15868's structural reasons). The refusal is asserted by the reason
+// the Diagnostic actually carries: ^inhabitance_structural_arguments_differ for a disagreeing sibling.
+
+// (1) The refusal must carry the structural reason the manager mandated. True iff refused WITH
+// ^inhabitance_structural_arguments_differ.
+fn skp_call_arg_refuses_with_arguments_differ(subject: String) -> Bool {
+  match rcf_verdict(resolved: skp_resolve_subject(subject: subject)) {
+    RcfInferRefused { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_structural_arguments_differ)
+    RcfInferAccepted { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// (2) Independent of WHICH reason: the call must be refused at ALL (any fatal). A refusal with the wrong reason
+// keeps this true while (1) is false; only a genuine ACCEPT makes it false. (1)+(2) together separate
+// refused-with-arguments_differ / refused-for-another-reason / accepted.
+fn skp_call_arg_is_not_accepted(subject: String) -> Bool {
+  match rcf_verdict(resolved: skp_resolve_subject(subject: subject)) {
+    RcfInferRefused { diagnostics: _ } => true
+    RcfResolveRefused => true
+    RcfInferAccepted { diagnostics: _ } => false
   }
 }
 
@@ -108,16 +131,28 @@ fn skp_accepted(subject: String) -> Bool {
   }
 }
 
-test fn skp_call_argument_with_a_nested_variable_beside_a_concrete_mismatch_refuses_holds() -> Bool {
-  skp_refused_at_the_argument(subject: "gunbc.skp_nested_var_red")
+test fn skp_call_argument_with_a_nested_variable_beside_a_concrete_mismatch_refuses_with_arguments_differ() -> Bool {
+  skp_call_arg_refuses_with_arguments_differ(subject: "gunbc.skp_nested_var_red")
 }
 
-test fn skp_call_argument_with_a_nested_concrete_mismatch_beside_a_variable_refuses_holds() -> Bool {
-  skp_refused_at_the_argument(subject: "gunbc.skp_nested_sibling_red")
+test fn skp_call_argument_with_a_nested_concrete_mismatch_beside_a_variable_refuses_with_arguments_differ() -> Bool {
+  skp_call_arg_refuses_with_arguments_differ(subject: "gunbc.skp_nested_sibling_red")
 }
 
-test fn skp_call_argument_with_a_variable_beside_a_concrete_mismatch_refuses_holds() -> Bool {
-  skp_refused_at_the_argument(subject: "gunbc.skp_red")
+test fn skp_call_argument_with_a_variable_beside_a_concrete_mismatch_refuses_with_arguments_differ() -> Bool {
+  skp_call_arg_refuses_with_arguments_differ(subject: "gunbc.skp_red")
+}
+
+test fn skp_call_argument_with_a_nested_variable_beside_a_concrete_mismatch_is_not_accepted() -> Bool {
+  skp_call_arg_is_not_accepted(subject: "gunbc.skp_nested_var_red")
+}
+
+test fn skp_call_argument_with_a_nested_concrete_mismatch_beside_a_variable_is_not_accepted() -> Bool {
+  skp_call_arg_is_not_accepted(subject: "gunbc.skp_nested_sibling_red")
+}
+
+test fn skp_call_argument_with_a_variable_beside_a_concrete_mismatch_is_not_accepted() -> Bool {
+  skp_call_arg_is_not_accepted(subject: "gunbc.skp_red")
 }
 
 test fn skp_call_argument_with_a_variable_and_agreeing_siblings_is_accepted_holds() -> Bool {
