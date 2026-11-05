@@ -565,6 +565,19 @@ fn executor_privileged_writable_parent_refusal(
 // same path); an admitted target additionally carries executor_privileged_writable_parent_refusal, and when
 // that fires the target's row is DROPPED (no sudoers grant for an install under a caller-writable parent) and
 // the refusal withholds the whole artifact (runner_host_sudoers_body_guard).
+// THE PARENT RULING OVER A WHOLE TARGET POPULATION (host scope). The fold below applies the ruling to one
+// plan's targets, but a host's sudoers is the UNION of several plans' rows (runner_host_grants
+// runner_host_privileged_operations merges the host-wide plan and the printer-state plan); a group-writable
+// parent declared by one plan with a privileged install beneath it declared by another plan is the SAME
+// escalation, and a per-plan fold cannot see it. This maps the ruling across every target the host renders,
+// so the caller (runner_host_grants runner_host_provisioning_plan_refusals) can run the check over the whole
+// row set at once -- the same set that is rendered, so what is granted is what is checked.
+fn executor_privileged_writable_parent_refusals(
+  targets: List<OwnedDirectoryTarget>,
+) -> List<OwnedDirectoryPlanRefusal> {
+  flat_map(targets, t => executor_privileged_writable_parent_refusal(targets: targets, t: t))
+}
+
 fn executor_privileged_owned_directory_plan_entry(
   targets: List<OwnedDirectoryTarget>,
   acc: ExecutorPrivilegedProvisioningPlan,

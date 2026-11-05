@@ -36,6 +36,19 @@ data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 // The refusal that enforces this invariant is gunbc.executor_privileged_operation
 // executor_privileged_writable_parent_refusal: a privileged install -d whose parent is another declared
 // target whose group can write is refused by the model, so the projection stops granting it.
+//
+// DEPLOY ORDERING (quick-newt-573 review, msg_eb68902c gap 2). The live parent is still gunbc-fleet 2770 on
+// srv1 and the re-own to root:root 0755 is a CROSS-USER change -- neither group_adoption posture adopts a
+// directory under a different USER (owned_directory_present_owner_is_foreign), so the executor will NOT
+// silently claim it; the re-own is an OPERATOR action (the host change this item deliberately leaves to the
+// operator). The model cannot gate the sudoers file on a live readback (it is declarative), so the guarantee
+// is a deploy rule that MUST hold: the parent re-own (`install -d -o root -g root -m 0755
+// /var/lib/gunbc/printer-starts` and a readback of root:root 0755) lands and reads back BEFORE any sudoers
+// carrying a grant beneath it is installed, and the deploy refuses if it has not. The re-own itself is safe:
+// it is an install -d run as root on printer-starts, whose own parent /var/lib/gunbc is already root:root
+// 0755 (host_state_tree_root). printer_state_directories lists the parent FIRST so the installer reaches it
+// before any member, so a host that converges the whole ordered set leaves no window; a PARTIAL apply that
+// installs members without the parent re-owning first is the case the deploy rule refuses.
 type PrinterStartsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
 
 data printer_starts: PrinterStartsDeclaration = PrinterStartsDeclaration {
