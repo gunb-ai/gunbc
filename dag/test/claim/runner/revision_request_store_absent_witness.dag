@@ -1,0 +1,48 @@
+module test.claim.runner.revision_request_store_absent_witness
+
+import extdeps.shell
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.error_primitives { Result, Ok, Err }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.auth.request_api_key_store { request_api_key_store, request_api_key_store_path }
+import gunbc.runner.runner_revision_request_context { revision_request_context, revision_request_store_path }
+
+// A store whose own directory was never created is ABSENT, not empty and not unreadable: each
+// admission refuses with the absence named at the store's own member and root, and the same tree
+// admits once that directory exists (the positive control in each claim).
+fn names_absent_store(answer: String, member: String, root: NonEmptyStr) -> Bool {
+  answer.contains(join(["the ", member, " store's own directory was never created at ", root as String], ""))
+}
+
+test fn an_absent_api_key_store_refuses_as_absent_until_its_directory_exists() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-absent-keys.XXXXXX").path
+  if dir == "" { return false }
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  let root = request_api_key_store_path(tree: tree)
+  let absent = match request_api_key_store(tree: tree) {
+    Err { value: why } => names_absent_store(answer: why, member: "revision-request-api-keys", root: root)
+    Ok { value: _ } => false
+  }
+  let context_absent = match revision_request_context(tree: tree) {
+    Err { value: why } => names_absent_store(answer: why, member: "revision-request-api-keys", root: root)
+    Ok { value: _ } => false
+  }
+  let made = shell.Mkdir.Parents(path: root as String as FilePath).success
+  let admitted = match request_api_key_store(tree: tree) { Ok { value: _ } => true Err { value: _ } => false }
+  absent && context_absent && made && admitted
+}
+
+test fn an_absent_request_store_refuses_the_context_as_absent_until_its_directory_exists() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-absent-requests.XXXXXX").path
+  if dir == "" { return false }
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  let keys = shell.Mkdir.Parents(path: request_api_key_store_path(tree: tree) as String as FilePath).success
+  let root = revision_request_store_path(tree: tree)
+  let absent = match revision_request_context(tree: tree) {
+    Err { value: why } => names_absent_store(answer: why, member: "revision-job/requests", root: root)
+    Ok { value: _ } => false
+  }
+  let made = shell.Mkdir.Parents(path: root as String as FilePath).success
+  let admitted = match revision_request_context(tree: tree) { Ok { value: _ } => true Err { value: _ } => false }
+  keys && absent && made && admitted
+}
