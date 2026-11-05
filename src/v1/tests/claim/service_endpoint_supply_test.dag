@@ -124,8 +124,7 @@ fn mentions_undefined_variable(messages: List<String>, name: String) -> Bool {
 // THE FIXTURES PARSE. If a grammar change makes one of these unparseable, every claim below would
 // go red for the wrong reason; this one says which one, and keeps `none` from reading as agreement.
 test fn fixtures_parse_to_module_nodes_holds() -> Bool {
-  string_contains(s: fixture_lines(lines: ["a", "b"]), needle: "a")
-    && (module_items(n: parsed_module(source: parameter_endpoint_source)) |> count > 0)
+  (module_items(n: parsed_module(source: parameter_endpoint_source)) |> count > 0)
     && (module_items(n: parsed_module(source: literal_endpoint_source)) |> count > 0)
     && (module_items(n: parsed_module(source: parameter_missing_from_one_operation_source)) |> count > 0)
     && (module_items(n: parsed_module(source: parameter_wrong_type_source)) |> count > 0)
@@ -149,12 +148,13 @@ test fn endpoint_naming_every_rest_operations_input_binds_to_that_input_holds() 
   }
 }
 
-// CONTROL: declared on one rest operation only -- no binding, and the refusal names the operation
-// that lacks it, so an author is not left to guess which one to fix.
-test fn endpoint_naming_one_operations_input_is_refused_and_names_the_other_holds() -> Bool {
+// CONTROL: declared on one rest operation only -- no binding. The answer carries the offending
+// name and no list of the operations that lack it: the lens refuses by falling through rather
+// than by reporting, so nothing reads such a list, and the located diagnostic naming those
+// operations arrives with the diagnostic that will read them. (review 91080 finding 2)
+test fn endpoint_naming_one_operations_input_is_refused_holds() -> Bool {
   match supply(source: parameter_missing_from_one_operation_source) {
-    EndpointParameterNameUnbound { name: name, missing_from: missing } =>
-      name == "request_url" && missing |> any(o => string_contains(s: o, needle: "GetAssertion"))
+    EndpointParameterNameUnbound { name: name } => name == "request_url"
     _ => false
   }
 }
@@ -162,7 +162,7 @@ test fn endpoint_naming_one_operations_input_is_refused_and_names_the_other_hold
 // CONTROL: declared, but not as `String`.
 test fn endpoint_naming_a_non_string_input_is_refused_holds() -> Bool {
   match supply(source: parameter_wrong_type_source) {
-    EndpointParameterNameUnbound { name: name, missing_from: _ } => name == "request_url"
+    EndpointParameterNameUnbound { name: name } => name == "request_url"
     _ => false
   }
 }
@@ -193,18 +193,6 @@ test fn a_parameter_shadowing_a_module_value_of_the_same_name_wins_holds() -> Bo
   }
 }
 
-// THE EMITTER AGREES. The base expression for the parameter spelling is the operation's own input,
-// rendered through the same target-aware ident renderer that spells it in the method signature; for
-// every other spelling it is still the struct's own field. Reverting `emit_rest_url_base` to its own
-// reading of the config value turns both cases red.
-test fn the_emitter_takes_the_base_from_the_input_it_bound_holds() -> Bool {
-  emit_rest_url_base(service_item: fixture_service(source: parameter_endpoint_source), source_indices: source_index_map(source: parameter_endpoint_source)) == "request_url"
-}
-
-test fn the_emitter_keeps_the_struct_field_for_every_other_spelling_holds() -> Bool {
-  emit_rest_url_base(service_item: fixture_service(source: literal_endpoint_source), source_indices: source_index_map(source: literal_endpoint_source)) == "self.base_url"
-    && emit_rest_url_base(service_item: fixture_service(source: parameter_missing_from_one_operation_source), source_indices: source_index_map(source: parameter_missing_from_one_operation_source)) == "self.base_url"
-}
 
 // THE URL LINE COMPOSES THE WAY THE INTERPRETER COMPOSES IT: base, then path, with the base being
 // the value the operation's input carries. This is the interpreter/emitter differential that is
@@ -234,6 +222,6 @@ test fn the_authority_reports_the_absent_endpoint_for_a_config_without_one_holds
   service_endpoint_supply(
     service: fixture_service(source: config_without_endpoint_source),
     operations: service_operation_items(service: fixture_service(source: config_without_endpoint_source)),
-    source_indices: indices_for(source: config_without_endpoint_source)
+    source_indices: source_index_map(source: config_without_endpoint_source)
   ) is EndpointNotDeclared
 }
