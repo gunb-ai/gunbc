@@ -1,0 +1,16 @@
+module test.claim.extdeps.microchip_zl40294_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import extdeps.electronic_component.microchip_zl40294 { zl40294ldg6 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The ZL40294 row publishes DS20006768B's marking-section string through the public row symbol, and the
+// bare part number is not that string (a near-miss that drops the finish and traceability lines refuses).
+test fn the_zl40294_row_publishes_the_datasheet_marking_line() -> Bool {
+  match zl40294ldg6.top_marking {
+    Present { value: m } => ((m as String) == "ZL40294 / X X e3 / YYWWNNN") && ((m as String) != "ZL40294")
+    Absent => false
+  }
+}
