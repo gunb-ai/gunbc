@@ -579,13 +579,13 @@ fn dashboard_ensure_serve_binary(
 }
 
 // THE LAB SERVE BINARY IS BUILT IN PLACE FROM THE ADMITTED REVISION (gunbc.live_deploy.serve_binary_build):
-// convergence has already reset repo_root to instance.dispatch_base_ref, HEAD must equal that revision before
+// convergence has already reset repo_root to dashboard_instance_converged_ref (admitted_revision.ref_name), HEAD must equal that revision before
 // and after the build, and the install is stage + keep-previous + one rename with a digest and --version readback.
 fn dashboard_build_serve_binary_in_place(instance: HostDashboardInstance, path: FilePath) -> DashboardExecResult {
   let admitted = dashboard_target_exec(
     instance: instance,
     program: "/usr/bin/git" as FilePath,
-    args: shape_git_rev_parse_argv(repo: instance.repo_root, target: instance.dispatch_base_ref as GitRef),
+    args: shape_git_rev_parse_argv(repo: instance.repo_root, target: dashboard_instance_converged_ref(instance: instance) as GitRef),
   )
   if !admitted.success {
     admitted
