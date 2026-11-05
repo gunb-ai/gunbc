@@ -123,6 +123,10 @@ data megarac_ui_cd_row_marker_token: NonEmptyStr = "media_type" as NonEmptyStr
 data megarac_ui_status_branch_window_octets: ByteSize = byte_size(count: 4096)
 
 data megarac_ui_asset_path_suffix: NonEmptyStr = ".js" as NonEmptyStr
+// Printed on every row whose path bytes appear, so the row states the rule under which they appear
+// rather than leaving a reader to infer it from the guard: the path came from the committed page, it
+// carries no query or fragment, and every octet of it is inside the published character set below.
+data megarac_ui_path_publication_policy: NonEmptyStr = "from-committed-page,no-query-or-fragment,ascii-letter-digit-dot-slash-dash-underscore" as NonEmptyStr
 
 // ---------------------------------------------------------------------------------------------
 // PATH ADMISSION. The asset path arrives as data because it is a fact about the box read from the
@@ -459,6 +463,10 @@ type MegaRacUiStatusExcerpt
 type MegaRacUiStatusExcerptRefusal
   = AssetReleaseNotTheReadRelease { served: String, read: String }
   | AssetHttpNotOkay { http_status: Int }
+  // A 200 whose transport broke mid-body is a PARTIAL asset: the status said everything and the bytes
+  // did not arrive. Kept apart from AssetHttpNotOkay because the finding is about the transport, not
+  // about a status the controller answered.
+  | AssetTransportIncomplete { http_status: Int }
   | StatusBranchNotForMediaRows { property_name_present: Bool }
   | AssetNotFetchedPathRefused
   | StatusLabelTableNamesNoZero { feeding_site_offset: ByteSize }
@@ -508,10 +516,17 @@ fn megarac_ui_status_excerpt_of_asset(
   asset_path: NonEmptyStr,
   served_release: NonEmptyStr,
   read_release: NonEmptyStr,
-  http_status: Int
+  http_status: Int,
+  transport_ok: Bool
 ) -> MegaRacUiStatusExcerpt {
   if served_release != read_release {
     ExcerptRefused { cause: AssetReleaseNotTheReadRelease { served: served_release, read: read_release } }
+  } else if !transport_ok {
+    // Status is what the controller SAID; transport_ok is whether the body arrived. A read that answers
+    // 200 and then breaks has a partial body, and a partial asset is not evidence about a mapping: the
+    // excerpt can sit intact inside a body cut off after it, which no check on the excerpt itself can
+    // see. So the transport gates the extraction before a single byte of the asset is read.
+    ExcerptRefused { cause: AssetTransportIncomplete { http_status: http_status } }
   } else if http_status != 200 {
     ExcerptRefused { cause: AssetHttpNotOkay { http_status: http_status } }
   } else {
@@ -829,6 +844,10 @@ fn ui_body_before_write_out(stdout: String) -> String {
 type MegaRacUiPageReading {
   path: NonEmptyStr
   http_status: Int
+  // Whether the body arrived whole. Selection requires it: the page is where the asset references come
+  // from, so a truncated page silently loses references, and "this page named no script" would then be
+  // read as a fact about the controller when it is a fact about the connection.
+  transport_ok: Bool
   why: NonEmptyStr
   asset_refs: List<NonEmptyStr>
 }
@@ -840,6 +859,7 @@ fn ui_page_reading_of(candidate: MegaRacUiPageCandidate, response: MegaRacUiHttp
   MegaRacUiPageReading {
     path: candidate.path,
     http_status: response.http_status,
+    transport_ok: response.transport_ok,
     why: candidate.why,
     asset_refs: ui_asset_refs_of_page(response.body),
   }
@@ -872,9 +892,30 @@ fn ui_page_line(reading: MegaRacUiPageReading) -> NonEmptyStr {
 }
 
 fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
-  let path_detail = match attempt.path_refusal {
-    Absent => ""
-    Present { value: cause } => join(["not fetched, path refused: ", ui_asset_path_refusal_text(cause)], "")
+  // ASKING AND PUBLISHING ARE TWO DIFFERENT PERMISSIONS. The shape guard decides what we may request;
+  // this decides what the receipt prints. A committed page can name a reference that carries a session
+  // value -- `src="/ui/app.js?session_token=SECRET"` -- and the guard refuses it, but a refusal that
+  // prints the reference prints the secret into an evidence file, twice: once in the row's own subject
+  // and once in the refusal sentence. So a refused path publishes its category, its length and its
+  // sha256, all three still checkable against the page bytes without reproducing them; an admitted path
+  // publishes its bytes only inside the character set the policy names, and a path outside that set is
+  // still fetched and still reported -- by length and digest instead of by bytes.
+  let path_octets = ui_octets_of(attempt.path)
+  let subject = match attempt.path_refusal {
+    Present { value: cause } => join([
+      "asset_refused category=", ui_asset_path_refusal_category(cause),
+      " ref_length=", megarac_ui_count_text(count(path_octets)),
+      " ref_sha256=", sha256_hex_of_text(text: attempt.path),
+    ], "")
+    Absent => if ui_octets_are_publishable_path_octets(path_octets, 0) {
+      join(["asset ", attempt.path, " path_policy=", megarac_ui_path_publication_policy], "")
+    } else {
+      join([
+        "asset_path_withheld reason=outside_the_published_path_charset",
+        " ref_length=", megarac_ui_count_text(count(path_octets)),
+        " ref_sha256=", sha256_hex_of_text(text: attempt.path),
+      ], "")
+    }
   }
   let detail = match attempt.excerpt {
     ExcerptFound {
@@ -902,7 +943,7 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
     ], "")
     ExcerptRefused { cause: cause } => join(["refused: ", megarac_ui_refusal_text(cause)], "")
   }
-  join(["asset ", attempt.path, " status=", megarac_ui_status_text(attempt.http_status), " ", path_detail, detail], "") as NonEmptyStr
+  join([subject, " status=", megarac_ui_status_text(attempt.http_status), " ", detail], "") as NonEmptyStr
 }
 
 fn megarac_ui_digest_text(digest: Sha256Digest) -> String {
@@ -917,17 +958,42 @@ fn megarac_ui_count_text(n: Int) -> String {
   to_string(value: n)
 }
 
-fn ui_asset_path_refusal_text(cause: MegaRacUiAssetPathRefusal) -> NonEmptyStr {
+// WHY THERE IS NO SENTENCE ANY MORE, ONLY A CATEGORY. Every arm of this refusal used to name the
+// rejected reference in prose, which is exactly how a session value reaches the receipt: the thing we
+// refused to fetch is the thing we then published. The category is the finding; the bytes stay in the
+// refusal record, where the row can measure and hash them, and never on the line.
+fn ui_asset_path_refusal_category(cause: MegaRacUiAssetPathRefusal) -> NonEmptyStr {
   join([
     match cause {
-      AssetPathDoesNotStartAtWebRoot { path: p } => join(["", p, " does not start at the web root"], "")
-      AssetPathCarriesParentTraversal { path: p } => join(["", p, " walks outside the web root with .."], "")
-      AssetPathCarriesQueryOrFragment { path: p } => join(["", p, " carries a query or fragment, which is not a path the page named"], "")
-      AssetPathCarriesSchemeOrAuthority { path: p } => join(["", p, " carries a colon or a double slash: an origin belongs to the interface, not to a page"], "")
-      AssetPathIsNotJavaScript { path: p } => join(["", p, " is not the served JavaScript this observation is scoped to"], "")
-      AssetPathNotFromTheCommittedPage { path: p } => join(["", p, " is not among the paths the committed page bytes named; a path nobody read is not fetched"], "")
+      AssetPathDoesNotStartAtWebRoot { path: _ } => "not_at_web_root"
+      AssetPathCarriesParentTraversal { path: _ } => "parent_traversal"
+      AssetPathCarriesQueryOrFragment { path: _ } => "query_or_fragment"
+      AssetPathCarriesSchemeOrAuthority { path: _ } => "scheme_or_authority"
+      AssetPathIsNotJavaScript { path: _ } => "not_javascript"
+      AssetPathNotFromTheCommittedPage { path: _ } => "not_from_committed_page"
     },
   ], "") as NonEmptyStr
+}
+
+// The published character set: ASCII letters, digits, and `.`, `/`, `-`, `_`. Everything the vendor's
+// own script references are built from, and nothing that can carry a credential assignment, a query, or
+// whitespace. This is a PUBLICATION bound, not an admission bound: a path outside it is still fetched
+// when the page named it and the guard admits its shape, and the finding is still recorded, under its
+// length and digest. Turning it into a fetch refusal would cost a second read of the controller to learn
+// a fact the first receipt could have printed, which is the mistake this module already refused once.
+fn ui_octet_is_publishable_path_octet(code: Int) -> Bool {
+  (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code == 46 || code == 47 || code == 45 || code == 95
+}
+
+fn ui_octets_are_publishable_path_octets(octets: List<Int>, at: Int) -> Bool {
+  if at >= count(octets) {
+    true
+  } else {
+    match octets |> get(at) {
+      null => true
+      code => ui_octet_is_publishable_path_octet(code) && ui_octets_are_publishable_path_octets(octets, at + 1)
+    }
+  }
 }
 
 fn megarac_ui_refusal_text(cause: MegaRacUiStatusExcerptRefusal) -> NonEmptyStr {
@@ -935,6 +1001,7 @@ fn megarac_ui_refusal_text(cause: MegaRacUiStatusExcerptRefusal) -> NonEmptyStr 
     match cause {
       AssetReleaseNotTheReadRelease { served: served, read: read } => join(["the asset was served by ", served, " but the row was read on ", read, "; a label from another release is not this row's label"], "")
       AssetHttpNotOkay { http_status: s } => join(["the controller answered the asset with status ", megarac_ui_count_text(s), ", not 200"], "")
+      AssetTransportIncomplete { http_status: s } => join(["the transport broke after the controller answered ", megarac_ui_count_text(s), "; the body is partial, so no mapping in it is quoted"], "")
       StatusBranchNotForMediaRows { property_name_present: present } => if present {
         join(["the asset names ", megarac_ui_status_property_name, " but never reads it as a member of a row; the mapping was not quoted because the reading was not found, not because it is absent"], "")
       } else {
@@ -989,6 +1056,7 @@ fn ui_try_one_asset(
         served_release: served_release,
         read_release: read_release,
         http_status: http.http_status,
+        transport_ok: http.transport_ok,
       )
       MegaRacUiAssetAttempt {
         path: admitted_path as String,
@@ -1045,7 +1113,7 @@ fn ui_first_page_reading(readings: List<MegaRacUiPageReading>, at: Int) -> MegaR
   } else {
     match readings |> get(at) {
       null => Absent
-      reading => if reading.http_status == 200 && count(reading.asset_refs) > 0 {
+      reading => if reading.transport_ok && reading.http_status == 200 && count(reading.asset_refs) > 0 {
         Present { value: reading }
       } else {
         ui_first_page_reading(readings: readings, at: at + 1)

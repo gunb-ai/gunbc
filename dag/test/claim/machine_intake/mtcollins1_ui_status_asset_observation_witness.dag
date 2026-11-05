@@ -32,6 +32,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   AssetPathDoesNotStartAtWebRoot,
   AssetPathIsNotJavaScript,
   AssetPathNotFromTheCommittedPage,
+  AssetTransportIncomplete,
   CdRowMarkerAbsent,
   ExcerptCarriesNonAsciiOctet,
   ExcerptFound,
@@ -49,6 +50,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_cd_row_marker_token, megarac_ui_status_feeding_token, megarac_ui_count_text,
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
+  ui_asset_path_shape_refusal,
   ui_asset_refs_of_page,
   ui_refusal_receipt_text,
   ui_octets_index_of,
@@ -118,6 +120,7 @@ fn witness_extract(asset: String) -> MegaRacUiStatusExcerpt {
     served_release: witness_release(),
     read_release: witness_release(),
     http_status: 200,
+    transport_ok: true,
   )
 }
 
@@ -188,9 +191,16 @@ fn witness_ref_at(refs: List<NonEmptyStr>, at: Int) -> String {
 }
 
 fn witness_page(path: NonEmptyStr, status: Int, body: String) -> MegaRacUiPageReading {
+  witness_page_transport(path: path, status: status, body: body, transport_ok: true)
+}
+
+// The same fixture with the transport stated, because one claim below is exactly about a page that
+// answered 200 and whose body never arrived whole.
+fn witness_page_transport(path: NonEmptyStr, status: Int, body: String, transport_ok: Bool) -> MegaRacUiPageReading {
   MegaRacUiPageReading {
     path: path,
     http_status: status,
+    transport_ok: transport_ok,
     why: "witness fixture page" as NonEmptyStr,
     asset_refs: ui_asset_refs_of_page(page_text: body),
   }
@@ -453,6 +463,7 @@ test fn w_a_label_from_another_release_is_not_this_rows_label() -> Bool {
     served_release: "0.32" as NonEmptyStr,
     read_release: witness_release(),
     http_status: 200,
+    transport_ok: true,
   ) {
     ExcerptRefused { cause: cause } => true
     ExcerptFound {
@@ -470,6 +481,7 @@ test fn w_a_non_200_asset_refuses_before_any_label_is_read() -> Bool {
     served_release: witness_release(),
     read_release: witness_release(),
     http_status: 401,
+    transport_ok: true,
   ) {
     ExcerptRefused { cause: cause } => match cause {
       AssetHttpNotOkay { http_status: status } => status == 401
@@ -853,6 +865,7 @@ test fn w_a_refused_excerpt_prints_no_window_bytes() -> Bool {
     served_release: "0.32" as NonEmptyStr,
     read_release: witness_release(),
     http_status: 200,
+    transport_ok: true,
   ) {
     ExcerptRefused { cause: cause } => {
       match ui_octets_index_of(
@@ -1001,6 +1014,7 @@ test fn w_a_non_ascii_octet_refuses_before_any_window_is_printed() -> Bool {
     served_release: witness_release(),
     read_release: witness_release(),
     http_status: 200,
+    transport_ok: true,
   ) {
     ExcerptFound {
       asset_path: _, served_release: _, read_release: _, asset_sha256: _,
@@ -1079,4 +1093,128 @@ test fn w_the_marker_sits_between_the_status_read_and_the_zero_key() -> Bool {
       label_text: _, feeding_site_offset: feeding, zero_key_offset: zero,
     } => byte_size_count(b: feeding) < byte_size_count(b: marker_at) && byte_size_count(b: marker_at) < byte_size_count(b: zero) && byte_size_count(b: ctx_start) == byte_size_count(b: feeding) && byte_size_count(b: ctx_len) == byte_size_count(b: zero) - byte_size_count(b: feeding) && byte_size_count(b: marker_at) == byte_size_count(b: ctx_start) + byte_size_count(b: gap) && token == megarac_ui_cd_row_marker_token
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THE RECEIPT MAY SAY ABOUT A PATH, AND WHAT A 200 IS EVIDENCE OF
+// ---------------------------------------------------------------------------------------------
+
+// A page can name a reference that carries a session value. The shape guard refuses the request, and
+// the row must still be useful: it says WHICH guard fired, and it lets a reader tie the row back to the
+// page bytes by length and digest. What it must not do is reprint the rejected reference, because the
+// reference is where the secret was. The digest check below is what makes the withheld handle real: the
+// row carries sha256(path), so anyone holding the page bytes can confirm which reference this row
+// refused without the receipt ever holding the bytes.
+test fn w_a_refused_reference_publishes_its_category_and_digest_never_its_bytes() -> Bool {
+  let secret_path = concat("/ui/source.min.js?session_token=", witness_injected_credential)
+  match ui_asset_path_shape_refusal(secret_path) {
+    Absent => false
+    Present { value: cause } => {
+      let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+        path: secret_path,
+        path_refusal: Present { value: cause },
+        http_status: 0,
+        excerpt: ExcerptRefused { cause: AssetNotFetchedPathRefused },
+      })
+      !string_contains(s: line, pattern: "aB3xQ7pZr0") &&
+        !string_contains(s: line, pattern: "session_token") &&
+        string_contains(s: line, pattern: "query_or_fragment") &&
+        string_contains(s: line, pattern: "ref_length=") &&
+        string_contains(s: line, pattern: sha256_hex_of_text(text: secret_path))
+    }
+  }
+}
+
+// The other half of the same separation: a path the guard ADMITS -- no query character, ends in .js, so
+// its shape is fine -- can still carry a credential assignment in a path segment. Admission and
+// publication are different permissions, so this row is withheld by the published character set while
+// the fetch still happens: the finding is recorded, the bytes are not. The guard's own verdict is
+// asserted first, so if someone later narrows the guard this claim goes red for the wrong reason and
+// says so: the point here is publication, not admission.
+test fn w_an_admitted_path_carrying_a_credential_shape_is_recorded_without_its_bytes() -> Bool {
+  let risky_path = concat(concat("/ui/session_token=", witness_injected_credential), ".js")
+  match ui_asset_path_shape_refusal(risky_path) {
+    Present { value: _ } => false
+    Absent => {
+      let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+        path: risky_path,
+        path_refusal: none,
+        http_status: 200,
+        excerpt: ExcerptRefused { cause: StatusBranchNotForMediaRows { property_name_present: false } },
+      })
+      !string_contains(s: line, pattern: "aB3xQ7pZr0") &&
+        string_contains(s: line, pattern: "asset_path_withheld") &&
+        string_contains(s: line, pattern: "ref_sha256=") &&
+        string_contains(s: line, pattern: sha256_hex_of_text(text: risky_path))
+    }
+  }
+}
+
+// A path inside the published set appears in full, and the row names the rule it appeared under instead
+// of leaving a reader to reconstruct it from the guard.
+test fn w_an_admitted_publishable_path_is_printed_with_the_policy_it_was_printed_under() -> Bool {
+  let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+    path: witness_asset_path(),
+    path_refusal: none,
+    http_status: 200,
+    excerpt: ExcerptRefused { cause: StatusBranchNotForMediaRows { property_name_present: false } },
+  })
+  match ui_octets_index_of(ui_octets_of(line), ui_octets_of("asset /ui/")) {
+    Absent => false
+    Present { value: at } => at == 0 &&
+      string_contains(s: line, pattern: "path_policy=") &&
+      string_contains(s: line, pattern: "no-query-or-fragment")
+  }
+}
+
+// A 200 is what the controller SAID. transport_ok is whether the body arrived. The same bytes under the
+// two transports must give opposite verdicts, which is why both halves are in one claim: if the success
+// half stops succeeding, the refusal below is not about the transport.
+test fn w_a_status_200_over_a_broken_transport_is_not_evidence() -> Bool {
+  let asset = witness_asset(head: "", gap: 0)
+  let whole = match megarac_ui_status_excerpt_of_asset(
+    asset_text: asset,
+    asset_path: witness_asset_path(),
+    served_release: witness_release(),
+    read_release: witness_release(),
+    http_status: 200,
+    transport_ok: true,
+  ) {
+    ExcerptRefused { cause: _ } => false
+    outcome => true
+  }
+  match megarac_ui_status_excerpt_of_asset(
+    asset_text: asset,
+    asset_path: witness_asset_path(),
+    served_release: witness_release(),
+    read_release: witness_release(),
+    http_status: 200,
+    transport_ok: false,
+  ) {
+    ExcerptRefused { cause: cause } => match cause {
+      AssetTransportIncomplete { http_status: status } => status == 200 && whole
+      another_cause => false
+    }
+    outcome => false
+  }
+}
+
+// The page reading is where the asset references come from, so a truncated page is worse than a
+// truncated asset: it silently loses references, and "this page named no script" would be read as a
+// fact about the controller. The fixture is a 200 that named exactly one script, so the only thing
+// distinguishing the two rows is the transport.
+test fn w_a_page_read_over_a_broken_transport_is_never_the_evidence_page() -> Bool {
+  let body = "<script src=\"/ui/source.min.js\"></script>"
+  let broken = witness_page_transport(path: "/index.html" as NonEmptyStr, status: 200, body: body, transport_ok: false)
+  let sound = witness_page(path: "/secondary.html" as NonEmptyStr, status: 200, body: body)
+  let fixture_is_a_200_with_references = broken.http_status == 200 && !broken.transport_ok && count(broken.asset_refs) == 1
+  let picks_the_sound_page = match ui_first_page_reading(readings: [broken, sound], at: 0) {
+    Absent => false
+    Present { value: page } => page.path == "/secondary.html" as NonEmptyStr && page.transport_ok && count(page.asset_refs) == 1
+  }
+  let no_evidence_page_when_only_the_broken_one_arrived = match ui_first_page_reading(readings: [broken], at: 0) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  fixture_is_a_200_with_references && picks_the_sound_page && no_evidence_page_when_only_the_broken_one_arrived
 }

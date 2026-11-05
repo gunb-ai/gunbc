@@ -3507,6 +3507,12 @@ fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
 // be a second door to the same box for the same purpose.
 data fleet_converge_mtcollins1_ui_status_asset_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
 
+// The upload's own condition, named instead of inlined so the policy is a declaration a reader can
+// find: the mode still gates it, and `always()` is what keeps the upload alive when the step it reports
+// on failed. The parentheses are not decoration -- `always() && a || b` does not mean what the comment
+// above it says.
+data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = concat("always() && (", concat(fleet_converge_mtcollins1_ui_status_asset_observe_step_if, ")"))
+
 fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Step {
   RunStep {
     name: Present { value: "Mt. Collins vendor UI status mapping: fetch the virtual-media page and the scripts it names, commit the status-0 branch with its offsets (reads only)" },
@@ -3526,9 +3532,12 @@ fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Step {
   }
 }
 
-// THE RECEIPT IS UPLOADED WHATEVER THE STEP DID. A refused or fallen probe's receipt is the record of
-// which pages it tried, what each answered and why the excerpt was not admitted - the sibling fan
-// upload's rule, and the one that makes a negative run auditable rather than merely absent.
+// THE RECEIPT IS UPLOADED WHATEVER THE STEP DID, and `always()` is what makes that sentence true:
+// a step whose condition is only the mode is SKIPPED when an earlier step failed, so the mode condition
+// alone uploads the receipt on success and discards it on the run that needed it. A refused or fallen
+// probe's receipt is the record of which pages it tried, what each answered and why the excerpt was not
+// admitted -- the host-reset upload beside it states the same rule, and it is the one that makes a
+// negative run auditable rather than merely absent.
 fn fleet_converge_mtcollins1_ui_status_asset_observe_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload Mt. Collins vendor UI status mapping observation" },
@@ -3541,7 +3550,7 @@ fn fleet_converge_mtcollins1_ui_status_asset_observe_receipt_upload_step() -> St
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
     env: none,
-    if_condition: Present { value: fleet_converge_mtcollins1_ui_status_asset_observe_step_if },
+    if_condition: Present { value: fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
