@@ -1,6 +1,6 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
-import std.algebra { list_at_optional }
+import std.algebra { list_at_optional, length }
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.integer { Int }
@@ -115,9 +115,6 @@ fn symbol_list_prepend(item: Symbol, xs: List<Symbol>) -> List<Symbol> {
   Cons { head: item, tail: xs }
 }
 
-fn symbol_list_length(xs: List<Symbol>) -> Int {
-  fold(xs, init: 0, f: fn(acc, s) { acc + 1 })
-}
 
 fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
   let here = match v2.std.grammar.node_atom_identity_optional(node: n) {
@@ -203,7 +200,7 @@ fn arg_value_mentions(arg_capture: Node) -> List<Symbol> {
 
 fn port_reading(arg_capture: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
   let mentions = arg_value_mentions(arg_capture: arg_capture)
-  let idents = symbol_list_length(xs: mentions)
+  let idents = length(xs: mentions)
   if idents == 0 {
     v2.lens.complexity_accumulator_copy.PortPureLiteral
   } else {
@@ -312,7 +309,7 @@ fn let_resolution(
         Absent => LetUndecided
         Present { value: rhs } =>
           let mentions = collect_value_identifiers(n: rhs)
-          let idents = symbol_list_length(xs: mentions)
+          let idents = length(xs: mentions)
           if idents == 0 {
             LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding { name: binder, fact: v2.lens.complexity_accumulator_copy.BindsFresh } }
           } else {
@@ -600,7 +597,7 @@ fn lowered_callee_path_optional(head: Node) -> Optional<v2.std.qualified_name.Qu
 
 fn lowered_arg_port_reading(arg: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
   let mentions = collect_value_identifiers(n: arg)
-  let idents = symbol_list_length(xs: mentions)
+  let idents = length(xs: mentions)
   if idents == 0 {
     v2.lens.complexity_accumulator_copy.PortPureLiteral
   } else {
