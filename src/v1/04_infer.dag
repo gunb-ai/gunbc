@@ -12157,7 +12157,11 @@ fn probe3_call_site_emissions(method_name: String, recv_typed: Node, recv_rt: No
 }
 
 fn probe7_record_branch(carrier: Node, carrier_name: String, structural: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
-  if carrier_name != "FreeSemigroup" { [] }
+  let arg0_name = match carrier.children |> first {
+    Present { value: c } => authored_name_at(source_indices: env.source_indices, node: c)
+    Absent => ""
+  }
+  if carrier_name != "FreeSemigroup" || arg0_name != "UnavailableProviderDemand" { [] }
   else {
     let si = env.source_indices
     let conn = match carrier.connective {
