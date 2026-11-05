@@ -182,7 +182,10 @@ fn instance_obligation_run_bound(kind: BeltInstanceObligationKind) -> Second {
 // The attempt unit's outer safety net: the ceiling's worth of the slowest recorded entry, derived from the
 // same rows, so changing a sample or the ceiling moves it (no second copy).
 fn verify_unit_outer_run_bound() -> Second {
-  let slowest = fold(verify_entry_compile_samples, init: second_count(s: second(count: 0)), f: (acc, s) => if second_count(s: s.seconds) > acc { second_count(s: s.seconds) } else { acc })
+  let slowest = match verify_slowest_sample(samples: verify_entry_compile_samples) {
+    Present { value: v } => second_count(s: v.seconds)
+    Absent => 0
+  }
   let total = slowest * verify_entries_ceiling
   second(count: total + total * verify_run_headroom_percent / 100 + second_count(s: verify_run_slack))
 }

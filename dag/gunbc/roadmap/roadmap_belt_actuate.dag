@@ -9312,8 +9312,8 @@ fn belt_verify_provisional_note(contract: WorkItemExecutionContract) -> String {
 }
 
 // THE VERIFICATION BOUND IS CHECKED BEFORE ANY RUN STARTS. The node's entries are known here, inside the unit, so
-// an entry count past the declared ceiling, or an entry with no recorded compile sample, is a typed refusal
-// instead of a run the unit's outer bound would kill (gunbc.live_deploy.belt_cadence verify_run_bound_for).
+// an entry count past the declared ceiling, or no recorded compile sample at all, is a typed refusal instead of
+// a run (an unsampled entry beside recorded ones runs provisionally and the receipt names the bet) the unit's outer bound would kill (gunbc.live_deploy.belt_cadence verify_run_bound_for).
 fn belt_run_validation_operations(
   instance: HostDashboardInstance,
   subject: VerificationSubject,
