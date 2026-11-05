@@ -345,11 +345,12 @@ test fn the_settler_releases_a_bound_terminal_hold_and_keeps_everything_else() -
   }
   release_only && done && misbound && waiting && retired && terminated && alive_kept
 }
-// WHO OWNS A HELD SLOT IS A DECLARED SUM, NOT A LUCKY PARSE (review 87553): the three planted
-// slots -- a reviewer's, a worker's, and one whose identity names neither -- each answer with
-// their own arm. The third is the discriminating one: under a Bool predicate "not a reviewer"
-// fell into the worker pass, where the lenient worker parser would reinterpret it; here it has
-// an arm of its own, and the pass that sees it keeps the hold instead of guessing.
+// WHO OWNS A HELD SLOT IS A DECLARED SUM, NOT A LUCKY PARSE (review 87553): the four planted
+// slots -- a reviewer's, a worker's, one whose identity names neither, and one the two parsers
+// AGREE ON -- each answer with their own arm. The third is the discriminating one: under a Bool
+// predicate "not a reviewer" fell into the worker pass, where the lenient worker parser would
+// reinterpret it; the fourth is the doubly-parseable shape that no mint may produce (both lanes'
+// mint guards refuse it) and that neither pass may settle on a guess.
 test fn a_reviewer_slot_is_recognised_by_the_pass_that_owns_it() -> Bool {
   let bound = session_reviewer_attempt_record(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a, unit: review_unit(node_id: rnode, attempt_key: rattempt, criterion_key: crit_a), granted: kibibyte(count: 8388608), now: 1000)
   let reviewer_slot = AttemptSlotHeld { record: bound, generation: cas_generation_first() }
@@ -365,6 +366,20 @@ test fn a_reviewer_slot_is_recognised_by_the_pass_that_owns_it() -> Bool {
     owner: DispatchOwned { node_id: rnode, attempt_key: rattempt },
   }
   let stranger_slot = AttemptSlotHeld { record: stranger_record, generation: cas_generation_first() }
+  // THE DOUBLY-PARSEABLE IDENTITY (the review's adversarial shape): a worker minted on node
+  // "a:b:reviewer" with key "c" reads as the reviewer four-segment shape "a","b",role,"c" AND as
+  // the worker shape node "a:b:reviewer", key "c". Neither parser may win; the slot is nobody's.
+  let ambiguous_record = AttemptRecord {
+    identity: "a:b:reviewer:c",
+    reference: "gunbc-attempt-a-ambig",
+    unit: "gunbc-attempt-a-ambig",
+    granted: kibibyte(count: 1024),
+    opened_at: 1000,
+    launch_deadline: 1000 + compute_pre_launch_ceiling_seconds,
+    state: AttemptReserved,
+    owner: DispatchOwned { node_id: rnode, attempt_key: rattempt },
+  }
+  let ambiguous_slot = AttemptSlotHeld { record: ambiguous_record, generation: cas_generation_first() }
   match session_slot_ownership(slot: reviewer_slot) {
     SlotOwnershipReviewer { name } =>
       match session_slot_ownership(slot: worker_slot) {
@@ -372,6 +387,10 @@ test fn a_reviewer_slot_is_recognised_by_the_pass_that_owns_it() -> Bool {
           match session_slot_ownership(slot: stranger_slot) {
             SlotOwnershipUnrecognized { identity } =>
               name.criterion_key == crit_a && attempt.attempt_key == rattempt && identity == "srv1w-feedfacefeedface"
+                && match session_slot_ownership(slot: ambiguous_slot) {
+                     SlotOwnershipUnrecognized { identity: amb } => amb == "a:b:reviewer:c"
+                     _ => false
+                   }
             _ => false
           }
         _ => false
