@@ -286,11 +286,19 @@ data close_body_no_csrf: String = "key=op-serve-close-1&repo=briansrls/gunbc&pr=
 
 // ── THE CLOCK DERIVES THE DAY ────────────────────────────────────────────────────────────────────
 
+data clock_zero: EpochSecs = { value: 0 }
+
+data clock_newest: EpochSecs = { value: 1791676800 }
+
+data clock_mid: EpochSecs = { value: 1760227200 }
+
+data clock_before_epoch: EpochSecs = { value: -86400 }
+
 test fn the_close_derives_the_civil_utc_day_from_the_clock() -> Bool {
-  let d0 = roadmap_operator_date_from_epoch_secs(secs: 0)
-  let d1 = roadmap_operator_date_from_epoch_secs(secs: 1791676800)
-  let d2 = roadmap_operator_date_from_epoch_secs(secs: 1760227200)
-  let dn = roadmap_operator_date_from_epoch_secs(secs: -86400)
+  let d0 = roadmap_operator_date_from_epoch_secs(secs: clock_zero)
+  let d1 = roadmap_operator_date_from_epoch_secs(secs: clock_newest)
+  let d2 = roadmap_operator_date_from_epoch_secs(secs: clock_mid)
+  let dn = roadmap_operator_date_from_epoch_secs(secs: clock_before_epoch)
   let e0 = claim("epoch zero is 1970-01-01", d0.year == 1970 && d0.month == 1 && d0.day == 1
     && (roadmap_operator_render_civil_date(date: d0) as String) == "1970-01-01")
   let e1 = claim("the newest seed day reads back exactly", (roadmap_operator_render_civil_date(date: d1) as String) == "2026-10-11")
