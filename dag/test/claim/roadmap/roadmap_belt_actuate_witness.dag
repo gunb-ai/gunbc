@@ -267,6 +267,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_addressing }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, DispatchWorkerFirst, DispatchWorkerContinuedFrom, dispatch_worker_run_start_ref, DispatchSpawnReady, DispatchSpawnRefused }
+import extdeps.languages.json.emit { json_string }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance, srv2_preview_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
