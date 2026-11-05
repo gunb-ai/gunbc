@@ -46,6 +46,7 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   megarac_ui_excerpt_checkable_against_asset,
   megarac_ui_refusal_text,
   megarac_ui_status_branch_window_octets,
+  megarac_ui_cd_row_marker_token, megarac_ui_status_feeding_token, megarac_ui_count_text,
   megarac_ui_status_excerpt_of_asset,
   ui_asset_path_admission,
   ui_asset_refs_of_page,
@@ -751,6 +752,11 @@ test fn w_the_printed_window_decodes_back_to_the_fetched_octets() -> Bool {
                 excerpt_sha256: window_digest,
                 excerpt_byte_offset: byte_size(count: 34),
                 excerpt_byte_length: byte_size(count: 36),
+                marker_token: megarac_ui_cd_row_marker_token,
+                marker_offset: byte_size(count: 18),
+                marker_gap: byte_size(count: 12),
+                context_start: byte_size(count: 6),
+                context_length: byte_size(count: 40),
                 excerpt_text: window,
                 excerpt_octets: window_bytes,
                 label_text: "Stopped" as NonEmptyStr,
@@ -800,6 +806,11 @@ test fn w_the_decoded_window_rehashes_to_the_digest_on_the_same_line() -> Bool {
                 excerpt_sha256: window_digest,
                 excerpt_byte_offset: byte_size(count: 34),
                 excerpt_byte_length: byte_size(count: 36),
+                marker_token: megarac_ui_cd_row_marker_token,
+                marker_offset: byte_size(count: 18),
+                marker_gap: byte_size(count: 12),
+                context_start: byte_size(count: 6),
+                context_length: byte_size(count: 40),
                 excerpt_text: window,
                 excerpt_octets: window_bytes,
                 label_text: "Stopped" as NonEmptyStr,
@@ -1010,5 +1021,62 @@ test fn w_a_non_ascii_octet_refuses_before_any_window_is_printed() -> Bool {
         Present { value: _ } => false
       }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ARITHMETIC THE RECEIPT PRINTS IS THE ARITHMETIC THE MODULE LOCATED. PR-E judges row identity
+// from these numbers after the job has ended and the asset is out of reach, so they must be the
+// located positions -- re-derived here without using the module's own bookkeeping -- and they must
+// order correctly: status read, then the media-row marker, then the zero key.
+// ---------------------------------------------------------------------------------------------
+
+test fn w_the_printed_marker_values_are_the_located_ones() -> Bool {
+  let asset = witness_asset(head: "/*", gap: 0)
+  let asset_octets = ui_octets_of(asset)
+  let found = witness_extract(asset)
+  match ui_octets_index_of(hay: asset_octets, needle: ui_octets_of(megarac_ui_status_feeding_token)) {
+    Absent => false
+    Present { value: feeding } => match found {
+      ExcerptRefused { cause: _ } => false
+      ExcerptFound {
+        asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+        excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+        marker_token: token, marker_offset: marker_at, marker_gap: gap,
+        context_start: ctx_start, context_length: ctx_len,
+        label_text: _, feeding_site_offset: _, zero_key_offset: zero,
+      } => {
+        // Locate the marker the way a reader would, straight off the asset bytes: from the status read
+        // to the zero key. Nothing here reuses the receipt's own arithmetic.
+        let zero_at = byte_size_count(b: zero)
+        let located = match ui_octets_index_of(hay: ui_octets_slice(octets: asset_octets, at: feeding, n: zero_at - feeding), needle: ui_octets_of(megarac_ui_cd_row_marker_token)) {
+          Absent => false
+          Present { value: at } => byte_size_count(b: marker_at) == feeding + at && byte_size_count(b: gap) == at && byte_size_count(b: ctx_start) == feeding && byte_size_count(b: ctx_len) == zero_at - feeding
+        }
+        let printed = string_contains(s: ui_asset_line(attempt: MegaRacUiAssetAttempt {
+          path: witness_asset_path(),
+          path_refusal: none,
+          http_status: 200,
+          excerpt: found,
+        }) as String, pattern: join([" marker_token=", megarac_ui_cd_row_marker_token as String, " marker_offset=", megarac_ui_count_text(byte_size_count(b: marker_at)), " marker_gap=", megarac_ui_count_text(byte_size_count(b: gap)), " context_start=", megarac_ui_count_text(byte_size_count(b: ctx_start)), " context_length=", megarac_ui_count_text(byte_size_count(b: ctx_len))], ""))
+        token == megarac_ui_cd_row_marker_token && located && printed
+      }
+    }
+  }
+}
+
+// The search origin, the marker, and the key in that order -- and the gap is measured from the
+// origin, which on an admitted asset IS the status read. If a future change let the marker be found
+// somewhere else, this goes red rather than quietly re-defining what marker_gap means.
+test fn w_the_marker_sits_between_the_status_read_and_the_zero_key() -> Bool {
+  match witness_found(head: "/*", gap: 0) {
+    ExcerptRefused { cause: _ } => false
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      marker_token: token, marker_offset: marker_at, marker_gap: gap,
+      context_start: ctx_start, context_length: ctx_len,
+      label_text: _, feeding_site_offset: feeding, zero_key_offset: zero,
+    } => byte_size_count(b: feeding) < byte_size_count(b: marker_at) && byte_size_count(b: marker_at) < byte_size_count(b: zero) && byte_size_count(b: ctx_start) == byte_size_count(b: feeding) && byte_size_count(b: ctx_len) == byte_size_count(b: zero) - byte_size_count(b: feeding) && byte_size_count(b: marker_at) == byte_size_count(b: ctx_start) + byte_size_count(b: gap) && token == megarac_ui_cd_row_marker_token
   }
 }

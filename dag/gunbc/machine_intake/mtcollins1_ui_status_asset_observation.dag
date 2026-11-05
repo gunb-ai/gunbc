@@ -438,6 +438,18 @@ type MegaRacUiStatusExcerpt
       // and the encoder over it is total. review 90945 asked for exactly this -- construction, not a
       // validation that prints a plausible hex string anyway.
       excerpt_octets: QualifiedOctets
+      // The media-row marker as a POSITION, not just a yes/no. The marker literal is an authored
+      // constant (megarac_ui_cd_row_marker_token), never a fetched slice, so publishing it carries no
+      // session value; the offsets say where it was found. Together with feeding_site_offset and
+      // zero_key_offset this is the arithmetic PR-E needs to judge row identity against a real
+      // reading instead of against an authored guess, and it survives the job that printed it.
+      // marker_gap is measured from context_start, the search origin: on any admitted asset the origin
+      // IS the feeding site, which is claimed, not assumed.
+      marker_token: NonEmptyStr
+      marker_offset: ByteSize
+      marker_gap: ByteSize
+      context_start: ByteSize
+      context_length: ByteSize
       label_text: NonEmptyStr
       feeding_site_offset: ByteSize
       zero_key_offset: ByteSize
@@ -683,15 +695,17 @@ fn megarac_ui_window_receipt(
   let context_length = zero_key - context_start
   let context_octets = ui_octets_slice(asset_octets, context_start, context_length)
   let marker = ui_octets_of(megarac_ui_cd_row_marker_token)
+  // Located once, then carried: the position is the evidence, and a boolean check throws it away.
+  let marker_found = ui_octets_index_of(hay: context_octets, needle: marker)
   if window_length <= 0 || label_after > count(asset_octets) {
     ExcerptRefused { cause: WindowOutsideAsset { window_start: byte_size(count: window_start), label_after: byte_size(count: label_after), asset_length: byte_size(count: count(asset_octets)) } }
   } else if gap > byte_size_count(b: megarac_ui_status_branch_window_octets) || gap < 0 {
     ExcerptRefused { cause: StatusBranchTooFarApart { gap: byte_size(count: gap), bound: megarac_ui_status_branch_window_octets } }
   } else if !ui_octets_are_ascii(octets: window_octets) {
     ExcerptRefused { cause: ExcerptCarriesNonAsciiOctet { window_start: byte_size(count: window_start) } }
-  } else if (match ui_octets_index_of(context_octets, marker) { Present { value: _ } => false Absent => true }) {
-    ExcerptRefused { cause: CdRowMarkerAbsent { context_start: byte_size(count: context_start), context_length: byte_size(count: context_length) } }
-  } else {
+  } else match marker_found {
+    Absent => ExcerptRefused { cause: CdRowMarkerAbsent { context_start: byte_size(count: context_start), context_length: byte_size(count: context_length) } }
+    Present { value: marker_index } => {
     let window_text = ui_octets_text(window_octets)
     let label_text = ui_octets_text(label_octets)
     match sha256_hex_digest(sha256_hex_of_text(window_text)) {
@@ -707,6 +721,11 @@ fn megarac_ui_window_receipt(
         excerpt_byte_length: byte_size(count: window_length),
         excerpt_text: window_text as NonEmptyStr,
         excerpt_octets: window_bytes,
+        marker_token: megarac_ui_cd_row_marker_token,
+        marker_offset: byte_size(count: context_start + marker_index),
+        marker_gap: byte_size(count: marker_index),
+        context_start: byte_size(count: context_start),
+        context_length: byte_size(count: context_length),
         label_text: label_text as NonEmptyStr,
         feeding_site_offset: byte_size(count: feeding_site),
         zero_key_offset: byte_size(count: zero_key),
@@ -716,6 +735,7 @@ fn megarac_ui_window_receipt(
         // because the conversion is checked, not assumed -- that is what makes the encoder's totality
         // over QualifiedOctets worth anything.
         QualifiedOctetsRefused { observed: observed } => ExcerptRefused { cause: ExcerptOctetOutsideByteRange { observed: observed, window_start: byte_size(count: window_start) } }
+      }
       }
     }
   }
@@ -858,7 +878,7 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
     ExcerptFound {
       asset_path: _, served_release: served, read_release: _, asset_sha256: asset_sha256,
       excerpt_sha256: excerpt_sha256, excerpt_byte_offset: offset, excerpt_byte_length: length,
-      excerpt_text: window_text, excerpt_octets: window_bytes, label_text: label, feeding_site_offset: feeding_site, zero_key_offset: zero_key,
+      excerpt_text: window_text, excerpt_octets: window_bytes, marker_token: marker_token, marker_offset: marker_offset, marker_gap: marker_gap, context_start: context_start, context_length: context_length, label_text: label, feeding_site_offset: feeding_site, zero_key_offset: zero_key,
     } => join([
       "EXCERPT release=", served as String,
       " asset_sha256=", megarac_ui_digest_text(asset_sha256),
@@ -868,6 +888,14 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
       " label=", label as String,
       " feeding_site=", megarac_ui_count_text(byte_size_count(feeding_site)),
       " zero_key=", megarac_ui_count_text(byte_size_count(zero_key)),
+      // The media-row marker, located. The token is an authored constant, never a fetched slice, and the
+      // rest are numbers: publishing these adds no vendor bytes, only the arithmetic of where the marker
+      // sat relative to the status read and the zero key.
+      " marker_token=", marker_token as String,
+      " marker_offset=", megarac_ui_count_text(byte_size_count(marker_offset)),
+      " marker_gap=", megarac_ui_count_text(byte_size_count(marker_gap)),
+      " context_start=", megarac_ui_count_text(byte_size_count(context_start)),
+      " context_length=", megarac_ui_count_text(byte_size_count(context_length)),
       " window_hex=", base16_encode_lower(octets: window_bytes),
     ], "")
     ExcerptRefused { cause: cause } => join(["refused: ", megarac_ui_refusal_text(cause)], "")
