@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # lively-tern-72 slot-watchdog fixture. Usage: lt72_watchdog_fixture.sh <mode> <gunbc-bin> <checkout> [envelope=2G] [seconds=420] [memory.high=envelope; "infinity" for the drift-peak shape]
+# modes: gateonly = livelock + gate, then NO verb and NO Listener (observer-effect discriminator; sampler only)
 # modes: livelockedge = livelock but fills until current is within 256 KiB of max (64 KiB steps)
 # modes: livelock  (run-4 shape: anon to the cap, then CPU-bound text refaulting)      EXPECT: verb kills job tree, exit!=0 receipt; Worker gone, Listener alive, memory.current ~ listener baseline
 #        cpusteady (anon 60% of cap, 100% user CPU)                                   EXPECT: LIVES to the deadline
@@ -19,7 +20,7 @@ sync; for F in "$OUT"/bin/py-job "$OUT"/lib/*; do [ -f "$F" ] && python3 -c 'imp
 ls -l "$OUT/bin" "$OUT/lib" >"$OUT/copies.txt"
 CAPB=$(numfmt --from=iec "$ENV"); UNIT=lt72-slot-$MODE-$$
 case $MODE in
-livelock|livelockedge) PY='
+livelock|livelockedge|gateonly) PY='
 import os,json,re,ast
 cap=int(os.environ["CAP"]); EDGE=os.environ["EDGE"]=="1"
 cg="/sys/fs/cgroup"+open("/proc/self/cgroup").read().split("::")[1].strip()
@@ -83,7 +84,7 @@ sleep 3
     sleep 5
   done ) & SAMP=$!
 # PRECONDITION (livelock only): the stall must be established before the verb starts, else a non-livelock reads as "watchdog did nothing"
-if [ "$MODE" = livelock ] || [ "$MODE" = livelockedge ]; then
+if [ "$MODE" = livelock ] || [ "$MODE" = livelockedge ] || [ "$MODE" = gateonly ]; then
   evsum() { awk '$1=="high"||$1=="max"{s+=$2} END{print s}' "$CG/memory.events"; }
   E0=$(evsum); U0=$(awk '/user_usec/{print $2}' "$CG/cpu.stat"); sleep 20
   E1=$(evsum); U1=$(awk '/user_usec/{print $2}' "$CG/cpu.stat")
@@ -92,7 +93,7 @@ if [ "$MODE" = livelock ] || [ "$MODE" = livelockedge ]; then
     echo "livelock not established" | tee -a "$OUT/precondition.txt"; collect_log; tail -n 5 "$OUT/job.log" 2>&1 | tee -a "$OUT/precondition.txt"; kill $SAMP 2>/dev/null; systemctl --user stop "$UNIT"; exit 3
   fi
 fi
-if [ "$MODE" != livelock ] && [ "$MODE" != livelockedge ]; then
+if [ "$MODE" != livelock ] && [ "$MODE" != livelockedge ] && [ "$MODE" != gateonly ]; then
 # LIVELOCK MODES RUN WITHOUT A LISTENER (a second resident ends the stall: measured 2026-11-05); the Listener-sparing path is tested by the controls, which join one.
 # the Listener joins the ESTABLISHED slot cgroup now (same user, delegated subtree); its pid comes from $!
 "$OUT/bin/Runner.Listener" 100000 & LPID=$!; echo "$LPID" >"$OUT/listener.pid"
@@ -100,8 +101,14 @@ echo "$LPID" >"$CG/cgroup.procs" || { echo "listener join refused" | tee -a "$OU
 echo "listener pid $LPID joined; rss_kb=$(awk '/VmRSS/{print $2}' /proc/$LPID/status) procs=$(wc -l <"$CG/cgroup.procs") current=$(cat $CG/memory.current)" >>"$OUT/cgroup.txt"
 fi
 # the verb under test, with a hard stop at $SECS (fixture, not production)
+if [ "$MODE" = gateonly ]; then
+  # OBSERVER-EFFECT DISCRIMINATOR: the gate passed, now NO verb and NO Listener; only the sampler (and this sleep) observe the slot.
+  # If events stay high and user_usec stays low through $SECS the verb's start broke the stall; if it breaks anyway the stall is self-limiting.
+  sleep "$SECS"; echo "verb_rc=NA(gateonly)" >"$OUT/verdict.txt"
+else
 /usr/bin/time -v -o "$OUT/verb.time" timeout "$SECS" ${SUDO:-} "$BIN" slot-watchdog --slot-cgroup "$CG" --source-root "$CHK/dag" --source-root "$CHK/src/v2" >"$OUT/verb.out" 2>&1
 echo "verb_rc=$?" >"$OUT/verdict.txt"
+fi
 sleep 3
 { echo "listener_alive_after=$(kill -0 "$LPID" 2>/dev/null && echo 1 || echo 0)"; echo "procs_after=$(wc -l <"$CG/cgroup.procs" 2>/dev/null)"; echo "current_after=$(cat $CG/memory.current 2>/dev/null)"; } >>"$OUT/verdict.txt"
 grep -E 'Maximum resident' "$OUT/verb.time" >>"$OUT/verdict.txt"; collect_log; { echo "--- job.log (head/tail) ---"; head -n 2 "$OUT/job.log"; tail -n 3 "$OUT/job.log"; } >>"$OUT/verdict.txt" 2>&1
