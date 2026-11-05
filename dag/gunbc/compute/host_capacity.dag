@@ -844,8 +844,14 @@ type SiblingCommittedStanding
   | SiblingCommittedUnreadable { detail: String }
 
 fn reviewer_siblings_committed(store: FabricStorageBinding, ledgers: List<ComputeCapacityLedger>, available: Kibibyte, now: EpochSecs) -> SiblingCommittedStanding {
+  reviewer_siblings_committed_from(store: store, ledgers: ledgers, available: available, now: now, acc: kibibyte(count: 0))
+}
+
+// Tail-position accumulator form: the effectful read recurses only in tail position, so the Rust
+// realization lowers it to a loop (#15871). The first unreadable sibling ends the walk.
+fn reviewer_siblings_committed_from(store: FabricStorageBinding, ledgers: List<ComputeCapacityLedger>, available: Kibibyte, now: EpochSecs, acc: Kibibyte) -> SiblingCommittedStanding {
   match ledgers {
-    Empty {} => SiblingCommittedTotal { total: kibibyte(count: 0) }
+    Empty {} => SiblingCommittedTotal { total: acc }
     Cons { head: l, tail: rest } =>
       let s = l.subject
       match fabric_seat_committed(
@@ -854,10 +860,7 @@ fn reviewer_siblings_committed(store: FabricStorageBinding, ledgers: List<Comput
         at: now, budget: compute_partition_read_budget,
       ) {
         SeatCommitted { committed: c, generation: _ } =>
-          match reviewer_siblings_committed(store: store, ledgers: rest, available: available, now: now) {
-            SiblingCommittedTotal { total: acc } => SiblingCommittedTotal { total: kibibyte(count: kibibyte_count(k: c) + kibibyte_count(k: acc)) }
-            SiblingCommittedUnreadable { detail: w } => SiblingCommittedUnreadable { detail: w }
-          }
+          reviewer_siblings_committed_from(store: store, ledgers: rest, available: available, now: now, acc: kibibyte(count: kibibyte_count(k: c) + kibibyte_count(k: acc)))
         SeatCommittedUnobserved { step: st, reason: r } => SiblingCommittedUnreadable { detail: join(["the ", s.partition as String, " standing is unreadable (", st, ": ", r, ")"], "") }
         SeatCommittedStoreRefused { cause: c } => SiblingCommittedUnreadable { detail: join(["the ", s.partition as String, " store refused the read: ", event_log_refusal_wire(c)], "") }
       }
