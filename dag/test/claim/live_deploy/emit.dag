@@ -115,7 +115,7 @@ import extdeps.systemd.unit_file {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { deployment_directory_demands }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary, AdmittedFixedServeBinary, HostSeedInstall, SeedBuiltAtRevision }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary, AdmittedFixedServeBinary, SeedBuiltAtRevision, SourceUndeclared }
 import test.claim.live_deploy.serve_binary_spec_fixture { spec_with_serve_binary }
 import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
 import gunbc.membership_reconcile { EffectRemove }
@@ -1115,7 +1115,7 @@ test fn the_serve_binary_collision_clause_reads_the_path_not_the_provenance() ->
   let twin_forced = spec_with_serve_binary(
     base: srv1_twin_spec(),
     binary: admit_fixed_serve_path(path: shared as NonEmptyStr,
-      source: SeedBuiltAtRevision))
+      source: SourceUndeclared { reason: "collision-pair fixture: a declared built binary no lane records" }))
   match live.service.serve_binary {
     AdmittedFixedServeBinary { path: live_path, source: live_source } =>
       match twin_forced.service.serve_binary {

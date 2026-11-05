@@ -1555,7 +1555,6 @@ fn deployment_spec_for(
     service: deployment_service_config(
       instance: instance,
       names: names,
-      source: source,
     ),
     approval_broker: approval_broker_service_config(
       instance: instance,

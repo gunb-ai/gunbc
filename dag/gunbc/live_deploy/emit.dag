@@ -474,8 +474,10 @@ type LiveDeployServeUnitEmission
   | LiveDeployServeUnitGrammarRefused { binary_path: NonEmptyStr, reason: NonEmptyStr }
 
 // THE ONE PLACE THE SEED CLI GRAMMAR IS JUSTIFIED for the serve unit. Both seed arms render the
-// same words (host seed install, or a seed build staged at an admitted revision by
-// gunbc.live_deploy.serve_binary_build); a third grammar arrives as a new arm HERE, not as a
+// same words -- a build of THIS repository: an in-place seed build by the build lane, or the
+// cargo release output of the instance's own checkout staged under its apply workdir (the source
+// is DERIVED from the instance fact by serve_source_from_instance, never hand-picked); a third
+// grammar arrives as a new arm HERE, not as a
 // runtime path compare against the host_layout seed path (DESIGN section 4d: path equality is a
 // proxy -- an in-place seed build lives elsewhere and speaks the same CLI).
 type LiveDeployServeGrammarVerdict
