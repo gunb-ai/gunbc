@@ -214,10 +214,13 @@ test fn a_candidate_never_became_an_identification() -> Bool {
 test fn a_printed_frequency_is_not_an_identification() -> Bool {
   any(component_rows("Y1"), c => match c.identification {
     // Rev 6: a reading that yielded nothing renders as "no glyphs read ...", which cannot contain the
-    // figure, so the reporting function answers this without a branch on an optional text that no longer
-    // exists. The figure has to have been TRANSCRIBED to appear here at all.
-    MarkingUnresolved { marking: m, discriminator: _ } =>
-      (marking_text(r: m)).contains("27.000")
+    // figure. `MarkingUnresolved` carries its reading as OPTIONAL -- that arm means a body named in the
+    // session that nobody read -- so the branch here is about whether anything was transcribed at all:
+    // no reading, no figure. The figure has to have been TRANSCRIBED to appear in this test.
+    MarkingUnresolved { marking, discriminator: _ } => match marking {
+      Present { value: m } => (marking_text(r: m)).contains("27.000")
+      Absent => false
+    }
     _ => false
   })
     && !identified_as("Y1", "anything")
