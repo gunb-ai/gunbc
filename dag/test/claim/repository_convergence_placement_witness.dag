@@ -44,9 +44,11 @@ import extdeps.git.partial_clone {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_converged_ref,
   fleet_admitted_revision_source, srv1_lab_admitted_revision_source,
   srv1_dashboard_lab_id, dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown,
   public_builtin_dashboard_instances, HostDashboardInstance,
+  DashboardSeededByConvergence, DashboardExistingRepo, DashboardGitBundle,
 }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name,
@@ -1022,7 +1024,12 @@ test fn an_unknown_instance_id_resolves_to_no_base_ref() -> Bool {
 test fn the_lab_row_serves_and_forks_from_the_ref_convergence_advances() -> Bool {
   match dashboard_instance_for_id(instance_id: srv1_dashboard_lab_id as String) {
     DashboardInstanceForId { instance } =>
-      (instance.source_anchor_ref as String) == (srv1_lab_admitted_revision_source.ref_name as String)
+      (match instance.source_seed {
+        DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } =>
+          (dashboard_instance_converged_ref(instance: instance) as String) == (srv1_lab_admitted_revision_source.ref_name as String)
+        DashboardExistingRepo { anchor_ref: _ } => false
+        DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _, history_remote: _ } => false
+      })
         && (instance.dispatch_base_ref as String) == (srv1_lab_admitted_revision_source.ref_name as String)
         && (instance.admitted_revision.ref_name as String) == (srv1_lab_admitted_revision_source.ref_name as String)
     DashboardInstanceIdUnknown { instance_id: _ } => false

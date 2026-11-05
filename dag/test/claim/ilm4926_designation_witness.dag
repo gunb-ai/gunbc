@@ -1,7 +1,7 @@
 module test.claim.ilm4926_designation_witness
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.algebra { length }
 import extdeps.vendor.lotes { lotes }
 import extdeps.cpu_attachment.ilm4926 {
   lotes_part_attestations,
@@ -77,7 +77,7 @@ test fn w_ilm4926_is_carried_as_a_designator() -> Bool {
 // count of mentions: two Ampere datasheets are one publisher saying it twice.
 test fn w_the_designation_is_attested_by_independent_publishers() -> Bool {
   attestation_count() == 3
-    && list_length(items: ilm4926_attestations) == 3
+    && length(xs: ilm4926_attestations) == 3
     && attested_by_ampere_datasheets()
     && attested_by_ocp_specification()
     && attested_by_independent_publishers()
@@ -87,9 +87,9 @@ test fn w_each_attestation_carries_its_own_authority_and_wording() -> Bool {
   let ampere_max = attestations_from_authority(authority: extdeps_external_authority_anchor)
   let ampere_classic = attestations_from_authority(authority: altra_classic_datasheet_authority)
   let ocp = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
-  list_length(items: ampere_max) == 1
-    && list_length(items: ampere_classic) == 1
-    && list_length(items: ocp) == 1
+  length(xs: ampere_max) == 1
+    && length(xs: ampere_classic) == 1
+    && length(xs: ocp) == 1
     && match ampere_max.first() {
          Present { value: e } => e.wording == "device seated in ILM4926 socket"
          Absent => false
@@ -122,8 +122,8 @@ test fn w_red_a_concrete_referent_would_resolve_the_question() -> Bool {
 test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
   let ampere_only = attestations_from_authority(authority: extdeps_external_authority_anchor)
   let ocp_only = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
-  list_length(items: ampere_only) != list_length(items: ilm4926_attestations)
-    && list_length(items: ocp_only) != list_length(items: ilm4926_attestations)
+  length(xs: ampere_only) != length(xs: ilm4926_attestations)
+    && length(xs: ocp_only) != length(xs: ilm4926_attestations)
 }
 
 // THE FOUR BOARD-DESIGN AXES ARE UNRESOLVED SUMS, NOT NONEMPTY STRINGS — read by
@@ -365,7 +365,7 @@ test fn w_the_gated_route_is_retained_beside_the_public_one() -> Bool {
 // the publisher route the module cites as authority -- if a later edit collapsed the held copy
 // into the citation, the last conjunct goes red.
 test fn w_two_held_copies_are_recorded_beside_the_vendor_route() -> Bool {
-  list_length(items: azifa072_held_copies) == 2
+  length(xs: azifa072_held_copies) == 2
     && azifa072_drawing_held_copy.received_on == azifa072_step_held_copy.received_on
     && azifa072_drawing_held_copy.file_name != azifa072_step_held_copy.file_name
     && azifa072_drawing_held_copy.locator != azifa072_drawing_authority

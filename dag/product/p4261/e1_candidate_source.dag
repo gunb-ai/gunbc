@@ -1,0 +1,65 @@
+module product.p4261.e1_candidate_source
+
+import std.nat { Nat }
+
+// One arm per candidate designator of the 2026-11-03 E1 atlas pass. The candidates
+// themselves -- what the pass said about each -- are in
+// `product.p4261.e1_position_receipts`; this module says only WHAT a board row can
+// point at.
+//
+// A board row for a part whose printed designator could not be transcribed cites one
+// of these arms (`product.p4261.carrier.UnresolvedPart`). The citation is by arm, not
+// by a string that happens to match: rename or delete a candidate and every row that
+// pointed at it stops RESOLVING, which the compiler reports instead of a witness
+// having to discover it. `p4261_atlas_pass_witness` still counts the rows -- that one
+// candidate is cited by exactly one board row is a fact about the board and no type
+// can say it -- but it never has to identify a candidate first.
+//
+// Generated with the rows, from the same run of
+// docs/plans/2026-11-03-p4261-e1-atlas/scripts/gen_e1_position_receipts_dag.py, from
+// docs/plans/2026-11-03-p4261-e1-atlas/normalized_inventory.json on
+// p4261/e1-atlas-handoff at 262917f. Do not hand-edit; regenerate.
+
+type E1CandidateSource =
+  | C3_F1 { }  // the merged inventory recorded standing 'final-pass critic' with its designator_read colu...
+  | J141 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+  | Q12 { }  // the atlas's final pass reads this bottom-side label as Q12_P2 read upside down without i...
+  | Q1_P1 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+  | Q3_3 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+  | Q4_4 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+  | Q6_P1 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+  | U108 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+  | U138 { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+  | U1_INV { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+  | U1_TNW { }  // the merged inventory recorded standing 'uncertain' and designator_read 'partial', which...
+
+// THE JOIN. There is no nominal comparison in this compiler to call: `a = b` does
+// not type over two values of a sum (`error: type mismatch: expected
+// 'Coproduct(Bool)', got 'Coproduct(Cand)'`, measured 2026-11-05), and a value of a
+// parametric type cannot be written at all, so the alternative -- a carrier generic
+// over the candidate type -- is closed for the board rows themselves. What the
+// witnesses join on is this total projection: one arm, one ordinal, minted in the
+// same loop that mints the arms, so the two cannot disagree and an arm without an
+// ordinal does not compile. Two candidates come out equal only if this generator
+// emitted one arm twice, which the arm-collision refusal in main prevents. No text
+// is compared anywhere in the join; the earlier version of it compared a string a
+// reader could retype, and that was the defect this replaced.
+fn candidate_ordinal(source: E1CandidateSource) -> Nat {
+  match source {
+    C3_F1 { } => 0
+    J141 { } => 1
+    Q12 { } => 2
+    Q1_P1 { } => 3
+    Q3_3 { } => 4
+    Q4_4 { } => 5
+    Q6_P1 { } => 6
+    U108 { } => 7
+    U138 { } => 8
+    U1_INV { } => 9
+    U1_TNW { } => 10
+  }
+}
+
+fn same_candidate(a: E1CandidateSource, b: E1CandidateSource) -> Bool {
+  candidate_ordinal(source: a) == candidate_ordinal(source: b)
+}

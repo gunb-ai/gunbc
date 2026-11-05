@@ -1027,15 +1027,15 @@ fn unlisted_variant_use_diagnostics(scope: InferScope, name: String, span: Sourc
 }
 
 // THE ONE PREDICATE deciding whether a declared field OBLIGATES a construction: a field
-// whose type is not optional and which carries no default body must be supplied. Both
-// the literal path (infer_record_lit_structural) and the bare-name path below read it,
-// so the two spellings of a construction cannot disagree about which fields are owed.
+// that carries no default body must be supplied, whatever its cardinality. An optional
+// field is owed too: omitting it is an implicit wrap into Absent, which the authoring
+// policy refuses (gunbc.design_ruling explicit_present_is_the_authoring_policy), and `T?`
+// is the canonical Optional application, so `Int?` and `Optional<Int>` owe the same thing
+// (gunbc.design_ruling optional_sugar_is_declaration_bound). Both the literal path
+// (infer_record_lit_structural) and the bare-name path below read it, so the two spellings
+// of a construction cannot disagree about which fields are owed.
 fn declared_field_is_required(sf: Node) -> Bool {
-  let sf_type = match sf.inferred {
-    Present { value: Resolved { node: rt } } => rt
-    _ => field_node_type_expr(n: sf)
-  }
-  sf_type.return_cardinality != CardOptional && sf.body == none
+  sf.body == none
 }
 
 // A BARE VARIANT NAME IN EXPRESSION POSITION IS A CONSTRUCTION SUPPLYING ZERO FIELDS. When

@@ -1,6 +1,6 @@
 module product.cable_plant_assessment
 
-import std.types { Bool, List, NonEmptyStr, list_length }
+import std.types { Bool, List, NonEmptyStr }
 import std.error_primitives { Never }
 import std.nat { Nat }
 import extdeps.ethernet.link_mode { LinkMode }
@@ -21,6 +21,7 @@ import std.goal_assessment {
   assess_by_deviations_and_unknowns,
   GoalAssessmentRefused,
 }
+import std.algebra { length }
 // THE INSTALLED CABLE PLANT AS A CONVERGENCE SUBJECT.
 //
 // `product.cable_order_admission` refuses a cable whose per-leg coding is undeclared BEFORE money
@@ -273,7 +274,7 @@ fn cable_plant_agreement_receipt(
   observed: CablePlantObserved,
 ) -> CablePlantReceipt {
   CablePlantReceipt {
-    legs_read: list_length(items: observed.legs),
+    legs_read: length(xs: observed.legs),
     conditional: plant_conditional_outcomes(goal: goal, observed: observed),
   }
 }

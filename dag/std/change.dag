@@ -1,7 +1,7 @@
 module std.change
 
-import std.types { List, Bool, list_length }
-import std.algebra { Monoid, Cons }
+import std.types { List, Bool }
+import std.algebra { Monoid, Cons, length }
 import std.keyed_row { KeyedRow, keyed_row_find }
 import std.optional { Present, Absent }
 
@@ -529,11 +529,11 @@ fn keyed_invert_patch<K, V>(patch: KeyedPatch<K, V>) -> KeyedPatch<K, V> {
 }
 
 fn keyed_patch_hunk_count<K, V>(patch: KeyedPatch<K, V>) -> Int {
-  list_length(items: patch.hunks)
+  length(xs: patch.hunks)
 }
 
 fn keyed_three_way_entry_count<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Int {
-  list_length(items: patch.entries)
+  length(xs: patch.entries)
 }
 
 fn keyed_diff_hunks_equal<K, V>(
@@ -583,7 +583,7 @@ fn keyed_patches_equal<K, V>(
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> Bool {
-  list_length(items: left.hunks) == list_length(items: right.hunks)
+  length(xs: left.hunks) == length(xs: right.hunks)
     && fold(left.hunks, init: true, f: fn(ok, hunk) {
       ok && keyed_patch_contains_hunk(patch: right, hunk: hunk, key_eq: key_eq, value_eq: value_eq)
     })

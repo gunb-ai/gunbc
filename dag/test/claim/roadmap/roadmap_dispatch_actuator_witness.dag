@@ -17,8 +17,8 @@ import extdeps.systemd {
 }
 import extdeps.exec.command { argv_words }
 
-import std.algebra { fold_list }
-import std.types { GitRef, List, list_length }
+import std.algebra { fold_list, length }
+import std.types { GitRef, List }
 import std.filesystem { path_parent_directory }
 import extdeps.tools.gnu_coreutils { coreutils_directory_mode_operand }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
@@ -1037,7 +1037,7 @@ test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scra
   let writable = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid))
   let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
   let setgid_traverse = declared_directory_mode(m: DirectoryOwnerAllGroupTraverseSetgid)
-  list_length(items: argvs) == 3
+  length(xs: argvs) == 3
     && any(argvs, a => any(a.args, w => w == attempt_dir) && any(a.args, w => w == traverse) && !any(a.args, w => w == scratch))
     && any(argvs, a => any(a.args, w => w == scratch) && any(a.args, w => w == writable) && !any(a.args, w => w == attempt_dir))
     && any(argvs, a => any(a.args, w => w == wire_dir) && any(a.args, w => w == writable))
@@ -1089,7 +1089,7 @@ test fn the_service_user_worker_prepare_stays_one_owner_only_install() -> Bool {
   let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryRoot)
   let scratch = path_parent_directory(path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog))
   let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
-  list_length(items: argvs) == 1
+  length(xs: argvs) == 1
     && all_owner_only_with(argvs: argvs, owner_only: owner_only, attempt_dir: attempt_dir, scratch: scratch)
 }
 
