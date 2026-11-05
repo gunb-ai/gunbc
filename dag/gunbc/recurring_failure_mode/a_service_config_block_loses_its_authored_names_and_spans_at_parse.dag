@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.a_service_config_block_loses_its_authored_names_and_spans_at_parse
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 // The class: a declaration's authored child block is dropped at parse and reappears
@@ -31,6 +32,7 @@ data a_service_config_block_loses_its_authored_names_and_spans_at_parse: Recurri
     DeclarationRef { module_path: "v1.std.core", decl_name: "service_config_field_property_name", field: WholeDeclaration },
     DeclarationRef { module_path: "v1.compiler.parse", decl_name: "parse_service_item", field: WholeDeclaration },
     DeclarationRef { module_path: "v1.compiler.infer", decl_name: "infer_service_config_properties", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_service", decl_name: "service_endpoint_answer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1.compiler.infer_service", decl_name: "service_endpoint_supply", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.service_endpoint_supply_module_resolve", decl_name: "the_parameter_bound_endpoint_is_still_the_authored_variable_holds", field: WholeDeclaration },
   ]

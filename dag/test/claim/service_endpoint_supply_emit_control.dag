@@ -30,7 +30,9 @@ import std.types { String }
 import test.claim.service_endpoint_supply_fixtures {
   emitted_literal_endpoint_source,
   emitted_parameter_endpoint_source,
-  emitted_module_data_endpoint_source
+  emitted_module_data_endpoint_source,
+  imported_endpoint_source,
+  unimported_name_endpoint_source
 }
 
 
