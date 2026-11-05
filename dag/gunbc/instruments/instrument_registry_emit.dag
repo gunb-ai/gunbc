@@ -113,9 +113,6 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     BareReferenceChannelOutcomeProducer => "TargetProducer::BareReferenceChannelOutcome"
     SelfHostBehavioralEquivalenceProducer => "TargetProducer::SelfHostBehavioralEquivalence"
     SelfHostFrontierProducer => "TargetProducer::SelfHostFrontier"
-    GenericIdentityCensusProducer => "TargetProducer::GenericIdentityCensus"
-    InterpolationHoleCensusProducer => "TargetProducer::InterpolationHoleCensus"
-    SharedTypeLeafCollisionCensusProducer => "TargetProducer::SharedTypeLeafCollisionCensus"
     CardinalityRealizationProducer => "TargetProducer::CardinalityRealization"
     RegenRoundCostProducer => "TargetProducer::RegenRoundCost"
     NativeClaimProgramProducer { entry, deadline } => concat(

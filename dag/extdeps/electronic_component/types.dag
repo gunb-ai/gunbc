@@ -3,7 +3,7 @@ module extdeps.electronic_component.types
 import std.logic { Bool }
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { Volt, Millivolt, Milliampere, Micrometer, Ampere, Hertz }
+import std.measure { Volt, Millivolt, Milliampere, Micrometer, Ampere }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -172,10 +172,10 @@ type HotSwapControllerSpecification {
 // BST by the row and not by the reader. The switch node is the pin the inductor hangs on; the
 // bootstrap pin is the high-side driver's floating supply, joined to the switch node outside the part
 // through a capacitor (and often a series resistor); power-good is an open drain that needs an
-// external pull-up, which is why it reads as a resistance to some rail. On-resistances are the
-// datasheet's typical milliohm figures (no shared Ohm measure exists in std.measure, which carries
-// resistance only per length; a Nat of milliohms is this roster's existing convention for a marked
-// resistance code).
+// external pull-up, which is why it reads as a resistance to some rail. Switching frequency and the
+// on-resistances are not modeled: no consumer reads them. The first consumer re-adds them, shaping
+// frequency as fixed or programmable (a programmable part has no single figure) and the on-resistances
+// as optional where the document states none.
 type RegulatorPinRole
   = RegulatorSupplyInput
   | SwitchNode
@@ -185,6 +185,22 @@ type RegulatorPinRole
   | SoftStartProgram
   | FeedbackInput
   | PowerGoodOpenDrain
+  // The arms below are named as the datasheets name each pin's function. FAN65004C/D Rev. 3 Table 2
+  // (page 5): NC, LG, MODE, ILIM, COMP, RT, SYNC, VCC, PVCC, EXTBIAS, HVBIAS, VINMON (current sense positive pin), PH, PGND.
+  // MPQ8633A Rev. 1.1 pin table (page 11): CS, MODE, TRK/REF, RGND, VCC, PGND.
+  | PowerGround
+  | RegulatorNoConnection
+  | LowSideGateDrive
+  | RegulatorModeSelect
+  | CurrentLimitSet
+  | CompensationOutput
+  | FrequencySet
+  | SynchronizationPort
+  | BiasSupply
+  | BootstrapSwitchReturn
+  | CurrentSense
+  | TrackingReference
+  | RemoteSenseGround
 
 type RegulatorPin {
   number: Nat
@@ -196,9 +212,6 @@ type SwitchingRegulatorSpecification {
   pins: List<RegulatorPin>
   input: MillivoltRange
   continuous_output_current: Ampere
-  switching_frequency: Hertz
-  high_side_on_resistance_milliohm: Nat
-  low_side_on_resistance_milliohm: Nat
 }
 
 type ConnectorOrientation

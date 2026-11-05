@@ -500,6 +500,46 @@ data cas_fold_claims_have_no_executing_witness: IntegrationConcern = Integration
   },
 }
 
+data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConcern {
+  identity: "broker_status_decision_is_unreceipted",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read"),
+    requirement: "an operator decision acted on by a non-operator runner job is the broker's MAC-receipted store record, verifiable by the runner with a verify-only key half, not a bare loopback status response",
+    standing: RequirementUnestablished { decided_by: "approval_store_receipt_mac_key_secret_ref is not yet minted, and a verifier holding the current single key could also mint receipts, so a verify-only half must exist first" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
+      decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
+    ],
+  },
+  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the printer hold release and for the bed-clear approval, which both read that route at the same trust.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "b79423bb29e6b7a2804dc0bd0d3db629eb5688f4",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing") }],
+      },
+      account: "The printer job runs as the plain CI runner and cannot read the operator-only approval store, so the printer hold release reads the decision through the broker's unauthenticated loopback status route, the same route and trust as the converge's bed-clear approval. The MAC-receipted store route exists but its key is unminted.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
+        control: Absent,
+        statement: "a hold releases only on an approved decision over this exact hold and generation; Denied, Expired, Pending and mismatched intent refuse",
+      },
+    ],
+    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for both the printer hold and bed-clear consumers"),
+  },
+}
+
+
 data typed_argv_allowlist_refuses_a_modeled_format_constant: IntegrationConcern = IntegrationConcern {
   identity: "typed_argv_allowlist_refuses_a_modeled_format_constant",
   kind: SuspectedCapabilityGap {
@@ -534,8 +574,71 @@ data lab_stat_format_refusal: SightingEvidence = CitesArtifact {
   sha256: Sha256Digest { hex: "253cedfce9673503494475953815c7ba199dfcb9fd6f71d202fb8abbf4871d21" as Sha256DigestHex },
 }
 
-data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant]
+// THE SECOND LOCAL COPY OF ONE RULE, SIGHTED BY THE Mt. COLLINS UI ASSET OBSERVER (DESIGN section 6b:
+// "the trigger is the second local implementation of one rule"). Verified at 9230f9d0893486a2d3812d2669b1cc120aa67add
+// with `git grep -nE "fn [a-z_]*(index_of|starts_with|ends_with|match_at)\\(" -- dag`: nine declarations answer two
+// questions -- where does a needle first occur in a haystack, and does this sequence end with that one.
+// The list is a candidate inventory from that grep, not a complete census of the tree.
+data byte_sequence_search_reimplemented_per_module: IntegrationConcern = IntegrationConcern {
+  identity: "byte_sequence_search_reimplemented_per_module",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
+      second: decl_ref(module_path: "gunbc.instruments.known_red_derivation", decl_name: "known_red_index_of"),
+      rest: [
+        decl_ref(module_path: "extdeps.version.semver", decl_name: "semver_index_of"),
+        decl_ref(module_path: "gunbc.instruments.emit_copy_qualification_transport", decl_name: "path_ends_with"),
+        decl_ref(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "ends_with_segment"),
+        decl_ref(module_path: "extdeps.languages.json.grammar", decl_name: "json_text_starts_with_at"),
+        decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_match_at"),
+        decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_starts_with"),
+        decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_string_ends_with"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
+    tail: [
+      decl_ref(module_path: "gunbc.instruments.known_red_derivation", decl_name: "known_red_index_of"),
+      decl_ref(module_path: "extdeps.version.semver", decl_name: "semver_index_of"),
+      decl_ref(module_path: "gunbc.instruments.emit_copy_qualification_transport", decl_name: "path_ends_with"),
+      decl_ref(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "ends_with_segment"),
+      decl_ref(module_path: "extdeps.languages.json.grammar", decl_name: "json_text_starts_with_at"),
+      decl_ref(module_path: "std.bytes", decl_name: "bytes_octets"),
+      decl_ref(module_path: "std.algebra", decl_name: "string_contains"),
+    ],
+  },
+  question: "Where does one octet-sequence search live, and which local copies migrate to it? std.bytes today carries octet constructors and no search; std.algebra's string_contains answers whether text contains text and reports no offset, so nothing in std is a home a caller can already use. The candidates: does one rule cover octets and text, or does an octet search and a text search stay two rules with two homes?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "9230f9d0893486a2d3812d2669b1cc120aa67add",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.known_red_derivation", decl_name: "known_red_index_of") }],
+      },
+      account: "PR 15724's reviewer ran the grep above at the PR head and counted a sixth local copy of the same two rules. The new copies exist because the observation walks a fetched JavaScript asset by BYTE OFFSET -- the offset and length it commits must be offsets into the asset's octets, so a text-level contains test cannot produce the evidence -- and std offers no octet-level index or suffix primitive. The copies are not generalizing because no std home exists to generalize INTO: adding one here means choosing std.bytes' shape for six call sites in five modules, three of which are read by other lanes' sweeps.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved { question: "std.bytes (which holds octet constructors, no search) or std.algebra beside string_contains (whose needle is text, not octets)? The two questions decide each other: an octet search placed in std.algebra would duplicate string_contains, and one placed in std.bytes leaves text callers with a second rule." },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
+        control: Present { value: decl_ref(module_path: "test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness", decl_name: "w_an_asset_that_never_reads_the_rows_status_has_nothing_to_quote") },
+        statement: "no match is an ABSENT optional, never a zero offset, and every caller distinguishes the two by matching the optional rather than comparing it to none -- the PR's evidence gate failed open exactly once when a no-match reading was inverted, so a shared helper must carry Absent through unchanged and a migration is only done when a no-match input still refuses",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
+        control: Present { value: decl_ref(module_path: "test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness", decl_name: "w_the_excerpt_is_not_checkable_when_the_offset_moves_by_one") },
+        statement: "the offset it reports is an index into OCTETS, not into characters or UTF-16 units, because the committed excerpt records are byte offsets and byte lengths within the asset",
+      },
+    ],
+    next: climbs_when(capability: "a shared octet-sequence index/starts-with/ends-with rule exists in std with a home chosen above, and one existing caller outside this PR is migrated to it and its witness stays green -- the first migration proves the shape fits a call site the author does not own; the remaining copies then follow, and the leaf copies are deleted in the same change that migrates them"),
+  },
+}
 
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module]
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
 }
