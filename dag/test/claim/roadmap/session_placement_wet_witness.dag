@@ -1503,7 +1503,7 @@ test fn a_replaced_root_that_was_never_created_is_proven_absent_to_census_and_ca
 // detail makes no holder-death claim. Three rows, so a red one names which half broke: the reading, the
 // retirement, and the pass afterwards.
 fn retire_fixture_charge(stores: SessionPlacementStores) -> ComputeSeatCharge {
-  compute_seat_charge_returned(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
+  compute_seat_charge_returned(store: stores.store, partition: stores.partition, reference: unit_a())
 }
 
 // The partition's generation as a plain count, so a row can ask whether the pass WROTE anything: a release
@@ -1650,7 +1650,7 @@ test fn a_slot_whose_charge_was_never_acquired_is_kept_and_not_retired() -> Bool
   let seeded = launched_without_a_ledger_seat(dir: dir)
   let charge = match stores {
     Absent => SeatChargeUnproven { detail: "no fixture stores" }
-    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
+    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, reference: unit_a())
   }
   let settled = match stores {
     Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
@@ -1666,6 +1666,47 @@ test fn a_slot_whose_charge_was_never_acquired_is_kept_and_not_retired() -> Bool
     && !slot_is_terminal(dir: dir)
 }
 
+// A CHARGE CAN BE BACK WHILE THE HOLDER IS STILL OBSERVABLY ALIVE, and that is a DIFFERENT defect from the
+// 2026-10-28 lease. The settlement must not treat the two alike: closing the slot of a holder the manager
+// reports alive would burn the only handle on that seat and leave a ledger line as the only trace of it. So
+// the charge reading is consulted only where the holder cannot be dated at all (UnitLifecycleUnknown); a
+// live holder is kept, with the keep naming what is actually wrong -- a release issued while the holder
+// lived. This row is the guard on that boundary: it is the one shape where a returned charge must NOT
+// retire anything.
+test fn a_launching_slot_whose_holder_is_observed_alive_is_kept_even_though_the_ledger_already_returned_its_charge() -> Bool {
+  let dir = fresh_dir(tag: "alive-holder-charge-returned")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 1000))
+  let released = match stores {
+    Absent => false
+    Present { value: v } => ledger_returned(r: compute_release_on(
+      store: v.store,
+      partition: v.partition,
+      appropriation: fixture_appropriation,
+      reference: unit_a() as NonEmptyStr,
+      reason: "returned by hand while the holder was still up",
+    ))
+  }
+  let charge_back = match stores {
+    Absent => false
+    Present { value: v } => match compute_seat_charge_returned(store: v.store, partition: v.partition, reference: unit_a()) {
+      SeatChargeReturned { reference: _, acquired_at: _, returned_at: _, release_reason: _, generation: _ } => true
+      _ => false
+    }
+  }
+  let s = match stores {
+    Absent => SessionSettlementRefused { unit: "", detail: "the fixture store never came up" }
+    Present { value: v } => settlement_of(p: session_placement_settle_pass_at(stores: v, host: host, lifecycle_of: lifecycle_running, now: 99999))
+  }
+  let keep_text = match s { SessionSettlementKept { why: w } => w  _ => "" }
+  charged && opened && released && charge_back
+    && slot_is_launching(dir: dir)
+    && kept(s: s)
+    && string_contains(s: keep_text, pattern: "observed alive")
+    && !slot_is_terminal(dir: dir)
+}
+
 // THE ORDINARY CLOSE STILL OWNS THE ORDINARY CASE. A slot whose charge is STILL HELD is closed by
 // terminate-and-release on the holder's death, never by the retirement: the charge reading says held, the
 // settlement is ReleaseAttempted, the ledger shows the charge returned by that release, and the slot is
@@ -1678,7 +1719,7 @@ test fn a_slot_whose_charge_is_still_held_is_closed_by_the_ordinary_terminate_an
   let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
   let charge = match stores {
     Absent => SeatChargeUnproven { detail: "no fixture stores" }
-    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, ceiling: session_ledger_fold_ceiling, reference: unit_a())
+    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, reference: unit_a())
   }
   let settled = match stores {
     Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }

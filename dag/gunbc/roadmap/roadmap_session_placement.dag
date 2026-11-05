@@ -1257,7 +1257,7 @@ type SessionSettleDecision
   // IT NEVER CALLS compute_release_on. Nothing is being freed; the ledger already returned this charge. The
   // detail says so and makes no holder-death claim -- the transition's whole content is "the record and the
   // ledger no longer agree, and the ledger is right".
-  | SettleRetireUncharged { record: AttemptRecord, generation: CasGeneration, attempt: SessionAttemptName, returned_at: EpochSecs, release_reason: NonEmptyStr, ledger_generation: Nat, keep_reason: String }
+  | SettleRetireUncharged { record: AttemptRecord, generation: CasGeneration, attempt: SessionAttemptName, returned_at: EpochSecs, release_reason: NonEmptyStr, ledger_generation: Nat, trigger_reading: String }
   | SettleReleaseOnly { record: AttemptRecord, attempt: SessionAttemptName, reason: String }
   | SettleKeep { why: String, explain: Bool }
   | SettleDone { why: String }
@@ -1299,35 +1299,35 @@ fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: 
               // act on it, and a charge returned under a reserved slot is a different defect whose remedy is
               // not to retire the record. Left exactly as it was, on purpose.
               AttemptReserved => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
-              // A LAUNCHING slot closes on the trigger, which needs the unit observed ended. When the trigger
-              // does not fire, the one remaining question with a real answer is whether this reference's
-              // charge is already back in the ledger; if the history positively says it is, the slot is
-              // retired as bookkeeping (SettleRetireUncharged) instead of being kept on a claim about a
-              // holder nobody can date any more.
-              // A Launching slot closes on the trigger, and the trigger needs the unit OBSERVED ended. When
-              // it does not fire there are two keeps, and they are not the same question:
-              //   UnitStillRunning  -- the holder is observed ALIVE. A charge the ledger already returned
-              //     under a live holder is a different defect (a release issued while the holder lived), and
-              //     closing this slot would burn the only handle on that seat. Never retired here.
-              //   UnitLifecycleUnknown -- nothing can date the holder any more: that is the state the
-              //     2026-10-28 lease was left in. The one question with a real answer is whether this
-              //     reference's charge is already back in the ledger's own history. If it positively is, the
-              //     slot is retired as bookkeeping instead of kept forever on an unanswerable claim.
+              // A LAUNCHING SLOT IS DECIDED BY TWO INDEPENDENT READINGS, AND THE LEDGER'S OWN HISTORY IS
+              // ASKED FIRST: whether this reference's charge is already back in the capacity partition
+              // (compute_seat_charge_returned, reading that partition's own history), and whether the holder
+              // can be observed (lifecycle, and through it the recovery trigger).
+              //   A charge that is ALREADY BACK, under a holder that is not observed alive, means the lease is
+              //     home. The slot is retired as bookkeeping and NO release is issued: a second
+              //     compute_release_on would set up a second authority over one appropriation, and for these
+              //     references the acquisition instant is no longer in the ledger at all, so a release could
+              //     not even be fenced on it. That is the shape the 2026-10-28 lease was left in, and the
+              //     state the release by hand on 2026-11-04 produced for the 2026-10-14 one.
+              //   UnitStillRunning is exempt, always. A charge returned under a holder the manager reports
+              //     running is a different defect -- the release was issued while the holder lived -- and
+              //     closing that slot would burn the only handle on the seat. The keep names that instead.
+              //   Charge held, never acquired, or unproven: the ordinary trigger, unchanged, with the charge
+              //     reading appended to whatever keep it returns.
               AttemptLaunching =>
-                match session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now)) {
-                  SettleKeep { why: keep, explain: explain } =>
-                    match lifecycle {
-                      UnitStillRunning { detail: live } =>
-                        SettleKeep { why: join([keep, "; and the holder is observed alive (", live, "), so a charge the ledger already returned is a different defect: the release was issued while the holder lived, and closing this slot would drop the only handle on its seat"], ""), explain: true }
-                      UnitLifecycleUnknown { detail: _ } =>
-                        match charge {
-                          SeatChargeReturned { returned_at: back, release_reason: why_returned, generation: lg, acquired_at: _, reference: _ } =>
-                            SettleRetireUncharged { record: rec, generation: g, attempt: name, returned_at: back, release_reason: why_returned, ledger_generation: lg, keep_reason: keep }
-                          other => SettleKeep { why: join([keep, "; and the ledger does not positively show this charge as returned: ", compute_seat_charge_wire(c: other)], ""), explain: explain }
+                match lifecycle {
+                  UnitStillRunning { detail: live } =>
+                    SettleKeep { why: join(["the unit still reports itself running (", live, "), so the recovery trigger does not fire; and because the holder is OBSERVED ALIVE, a charge the ledger already returned is a different defect: the release was issued while the holder lived, and closing this slot would drop the only handle on its seat"], ""), explain: true }
+                  _ =>
+                    match charge {
+                      SeatChargeReturned { returned_at: back, release_reason: why_returned, generation: lg, acquired_at: _, reference: _ } =>
+                        SettleRetireUncharged { record: rec, generation: g, attempt: name, returned_at: back, release_reason: why_returned, ledger_generation: lg, trigger_reading: recovery_trigger_wire(t: recovery_trigger(record: rec, lifecycle: lifecycle, now: now)) }
+                      other =>
+                        match session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now)) {
+                          SettleKeep { why: keep, explain: explain } => SettleKeep { why: join([keep, "; and the ledger does not positively show this charge as returned: ", compute_seat_charge_wire(c: other)], ""), explain: explain }
+                          _ => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
                         }
-                      _ => SettleKeep { why: keep, explain: explain }
                     }
-                  other => other
                 }
             }
           }
@@ -1424,8 +1424,8 @@ fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmpt
         AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
         AttemptAdvanced { state: _, generation: _ } => session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
       }
-    SettleRetireUncharged { record, generation, attempt: name, returned_at, release_reason, ledger_generation, keep_reason } =>
-      match attempt_terminate(store: stores.slots.slots, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join(["charge returned at ledger generation ", to_string(value: ledger_generation), " at ", to_string(value: returned_at), " (", release_reason as String, "); the slot is retired as bookkeeping: no release is issued and no holder-death claim is made. What would otherwise have kept it: ", keep_reason], "")) {
+    SettleRetireUncharged { record, generation, attempt: name, returned_at, release_reason, ledger_generation, trigger_reading } =>
+      match attempt_terminate(store: stores.slots.slots, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join(["charge returned at ledger generation ", to_string(value: ledger_generation), " at ", to_string(value: returned_at), " (", release_reason as String, "); the slot is retired as bookkeeping: no release is issued and no holder-death claim is made. What would otherwise have kept it: ", trigger_reading], "")) {
         AttemptLostRace { expected: e, observed: o } =>
           SessionSettlementRefused { unit: key as String, detail: join(["the slot moved while settlement was deciding (expected ", e, ", found ", o, "); the observation is stale, so nothing is retired"], "") }
         AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
