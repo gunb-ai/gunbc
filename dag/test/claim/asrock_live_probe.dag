@@ -1,6 +1,7 @@
 module test.claim.asrock_live_probe
 
-import std.types { NonEmptyStr, String, Bool, list_length }
+import std.types { NonEmptyStr, String, Bool }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.boards.asrock_rack {
   asrock_srv3_live_bmc_host,
@@ -56,7 +57,7 @@ test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool {
 }
 
 test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
-  list_length(items: asrock_srv3_live_readonly_probe_rows) == 7
+  length(xs: asrock_srv3_live_readonly_probe_rows) == 7
     && live_probe_confirms_nbd_proxy_vm_slot_ws_present()
     && live_probe_confirms_nbd_slot_ws_absent()
     && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
