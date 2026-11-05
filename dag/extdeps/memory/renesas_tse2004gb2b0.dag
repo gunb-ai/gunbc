@@ -4,7 +4,7 @@ import std.measure { celsius, celsius_delta }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedToAuthority }
 import extdeps.cited_field { RowField, FromCitedFigure }
-import extdeps.memory.jedec { DimmSensorAccuracy }
+import extdeps.memory.jedec { DimmSensorAccuracy, DimmSensorModel }
 import extdeps.uri { Uri, Https }
 
 // The Renesas TSE2004GB2B0 DIMM temperature sensor with SPD hub, a part compliant to the JEDEC TSE2004av
@@ -20,7 +20,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.memory.renesas_tse2004gb2b0",
-      decl_name: "tse2004gb2b0_active_range_accuracy",
+      decl_name: "tse2004gb2b0",
       field: WholeDeclaration
     }
   },
@@ -30,11 +30,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // Datasheet read 2026-11-05: typical +-0.5 C and maximum +-1.0 C over the 75-95 C active range (the range
 // that brackets the DDR4 85 C and 95 C band edges); +-2.0 C maximum over 40-125 C; +-3.0 C maximum over
-// -40-125 C. Only the 75-95 C row is modeled, the one the band margin needs. THIS IS A FACT ABOUT THIS PART:
-// whether it is the sensor fitted to a given module is that module's row (extdeps.memory.samsung).
-// Consumer: declared frontier, the P5 margin derivation, usable only once a module's fitted sensor is read
-// to be this part (trigger: P5 landing and that read).
-data tse2004gb2b0_active_range_accuracy: RowField<DimmSensorAccuracy> = FromCitedFigure {
-  value: DimmSensorAccuracy { max_error: celsius_delta(1), range_low: celsius(75), range_high: celsius(95) },
-  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+// -40-125 C. Only the 75-95 C row is modeled, the one the band margin needs. THIS IS A FACT ABOUT THIS
+// MODEL: a module that fits it references this declaration (see extdeps.memory.samsung).
+// Consumer: declared frontier, the P5 margin derivation, usable only once a module is shown to fit this
+// model (trigger: P5 landing and that fitted-sensor fact).
+data tse2004gb2b0: DimmSensorModel = DimmSensorModel {
+  manufacturer: "Renesas Electronics",
+  part: "TSE2004GB2B0",
+  active_range_accuracy: FromCitedFigure {
+    value: DimmSensorAccuracy { max_error: celsius_delta(1), range_low: celsius(75), range_high: celsius(95) },
+    standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+  },
 }

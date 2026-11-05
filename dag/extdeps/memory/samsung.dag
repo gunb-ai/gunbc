@@ -1,7 +1,6 @@
 module extdeps.memory.samsung
 
 import std.measure { ByteSize, byte_size, bit_width, Celsius, CelsiusDelta }
-import std.types { NonEmptyStr }
 import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, DualDiePackage, ThreeDimensionalStacked }
 import extdeps.vendor.samsung { samsung }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -117,20 +116,25 @@ data m393a8g40d40_crb0q_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 8,
 }
 
-// PART-SPECIFIC TEMPERATURE FACTS of the srv3/srv4 incident part, each NeedsReading: no Samsung datasheet for
-// M393A8G40D40-CRB0Q was reachable (see above), so nothing here is assumed equal to the JEDEC bands in
-// extdeps.memory.jedec (themselves uncited). Consumer: declared frontier, the P5 decision subject and its
-// margin derivation (trigger: P5 landing).
+// PART-SPECIFIC TEMPERATURE FACTS the SAMSUNG PUBLICATION states for this registered 3DS module, each
+// NeedsReading: no Samsung datasheet for M393A8G40D40-CRB0Q was reachable (see above), and nothing here is
+// assumed equal to the JEDEC bands in extdeps.memory.jedec (themselves uncited). These are vendor assertions
+// about the SKU only. What an installed unit shows (its SPD-reported sensor, a thermocouple case-to-sensor
+// sweep) is an observation of one physical module and belongs downstream as a receipt keyed to that module
+// or host assembly, never in this upstream module; P5 selects the applicable source.
+// Consumer: declared frontier, the P5 decision subject and its margin derivation (trigger: P5 landing).
 data m393a8g40d40_crb0q_tcase_limit: RowField<Celsius> = NeedsReading {
   read_obligation: "Read Samsung's module datasheet or product-selection guide for M393A8G40D40-CRB0Q: its maximum operating TCASE and whether the extended (85-95 C, doubled refresh) range is supported."
 }
 
-data m393a8g40d40_crb0q_fitted_sensor: RowField<NonEmptyStr> = NeedsReading {
-  read_obligation: "Identify the temperature-sensor/SPD-hub part fitted to M393A8G40D40-CRB0Q (read the module's SPD, JEDEC 21-C, or the Samsung datasheet); only then can a sensor part's accuracy row (e.g. extdeps.memory.renesas_tse2004gb2b0) be applied to this module."
+// The sensor model the Samsung publication says is fitted, as a symbolic reference to an upstream sensor
+// model declaration (e.g. extdeps.memory.renesas_tse2004gb2b0 tse2004gb2b0), never a part-name string.
+data m393a8g40d40_crb0q_fitted_sensor: RowField<DeclarationRef> = NeedsReading {
+  read_obligation: "Read Samsung's module datasheet for the temperature-sensor/SPD-hub model it states for M393A8G40D40-CRB0Q, and reference that model's declaration."
 }
 
-// The DRAM case temperature the JEDEC bands are stated on is not the module sensor's reading: the offset
-// between the two is its own unmodeled fact, and the P5 margin must not treat sensor accuracy alone as the gap.
+// The DRAM case temperature the JEDEC bands are stated on is not the module sensor's reading, so the
+// P5 margin must not treat sensor accuracy alone as the gap.
 data m393a8g40d40_crb0q_case_to_sensor_offset: RowField<CelsiusDelta> = NeedsReading {
-  read_obligation: "Find the DRAM-case-to-on-board-sensor temperature offset for this LRDIMM (module datasheet, or a measurement with a case thermocouple on the incident part); no source for it is held."
+  read_obligation: "Read Samsung's module datasheet or thermal application note for the stated DRAM-case-to-on-board-sensor offset of M393A8G40D40-CRB0Q; no source is held."
 }

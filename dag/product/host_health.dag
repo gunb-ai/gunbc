@@ -511,7 +511,7 @@ fn judge_temperature(expectation: TemperatureExpectation, windows: List<Temperat
             }
             FromCitedFigure { value: limit_value, standing: standing } => match standing {
               // Only a figure cited to its authority is a wall (DESIGN 4d). A transcribed-uncited figure is a
-              // bet, and an observed one is this repository's measurement, not a vendor-grade limit: neither
+              // bet, and an observed one is this repository's measurement (a past maximum is not the component grade's critical temperature): neither
               // yields a divergence or a green, and a new standing variant must be decided here.
               TranscribedUncited { read_obligation: _ } => SignalVerdict {
                 deviations: bmc,

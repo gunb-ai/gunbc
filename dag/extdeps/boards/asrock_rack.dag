@@ -1192,10 +1192,18 @@ data asrock_altrad8ud_operating_ambient_max: Celsius = celsius(count: 35)
 // this header, which is a station design fact rather than a board one.
 data asrock_altrad8ud_psu_smbus_header_pin_count: Nat = 5
 
-// VOLTAGE-REGULATOR TEMPERATURE LIMIT of the ALTRAD8UD board (the CPU0_SOC_VRDTemp / CPU0_DIMMVRDTemp
-// sensors). The board manual held here (v1.20) states no regulator ceiling, so none is authored.
+// VOLTAGE-REGULATOR TEMPERATURE LIMITS of the ALTRAD8UD board: two independently limited components, so two
+// rows (the CPU0_SOC_VRDTemp and CPU0_DIMMVRDTemp sensors read different regulators whose controllers and
+// power stages may publish different junction limits). The board manual held here (v1.20) states no
+// regulator ceiling, so none is authored. A single conservative threshold for a shared guard role is a
+// downstream policy derivation (B5), not a board fact. Once the parts are identified the limits move to
+// their vendors' own authorities and these rows reference them.
 // Consumer: declared frontier, the P5 hard constraints and the B5 guard, whose VoltageRegulator ceiling in
 // gunbc.machine_intake.megarac_fan_thermal_guard is Absent today (trigger: P5 landing).
-data asrock_altrad8ud_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
-  read_obligation: "Read the VRM controller and power-stage datasheets for the ALTRAD8UD-1L2T SoC and DIMM regulators (identify the parts from the board's BOM or ASRock Rack support) for their maximum junction temperature, and relate it to the CPU0_SOC_VRDTemp and CPU0_DIMMVRDTemp sensor locations; the manual v1.20 gives no regulator limit."
+data asrock_altrad8ud_soc_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
+  read_obligation: "Identify the SoC-rail VRM controller and power stages of the ALTRAD8UD-1L2T (board BOM or ASRock Rack support) and read their datasheets for maximum junction temperature, relating it to the CPU0_SOC_VRDTemp sensor location; manual v1.20 gives no regulator limit."
+}
+
+data asrock_altrad8ud_dimm_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
+  read_obligation: "Identify the DIMM-rail VRM controller and power stages of the ALTRAD8UD-1L2T (board BOM or ASRock Rack support) and read their datasheets for maximum junction temperature, relating it to the CPU0_DIMMVRDTemp sensor location; manual v1.20 gives no regulator limit."
 }

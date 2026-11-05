@@ -102,6 +102,15 @@ type DimmSensorAccuracy {
   range_high: Celsius
 }
 
+// A sensor MODEL's identity is a declaration, never a part-name string: an upstream module declares one row of
+// this shape (its ExternalModelScope subject), and a module that fits that sensor references the declaration
+// symbolically. The accuracy is an attribute of that exact model.
+type DimmSensorModel {
+  manufacturer: NonEmptyStr
+  part: NonEmptyStr
+  active_range_accuracy: RowField<DimmSensorAccuracy>
+}
+
 data tse2004av_class_accuracy_requirement: RowField<DimmSensorAccuracy> = NeedsReading {
   read_obligation: "Read the JEDEC TSE2004av temperature-sensor device specification (JC-42.4; name the revision and its accuracy table) for the accuracy class a compliant DIMM sensor must meet over 75-95 C. No JEDEC document is held; the Renesas TSE2004GB2B0 datasheet is a compliant part's own figure, not the class requirement."
 }

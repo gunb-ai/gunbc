@@ -350,6 +350,21 @@ test fn an_unestablished_limit_is_never_green_and_a_cited_one_diverges_above_it(
   never_green && exceeded
 }
 
+fn is_limit_unestablished_indeterminate(goal: HostHealthGoal, observed: HostHealthObserved) -> Bool {
+  match assess_host_health(goal: goal, observed: observed) {
+    GoalIndeterminate { known_deviations: _, unknowns } => any(non_empty_to_list(unknowns), u => match u { ThermalLimitUnestablished { sensor } => sensor == "TEMP_SOC" _ => false })
+    _ => false
+  }
+}
+
+fn carries_limit_exceeded(goal: HostHealthGoal, observed: HostHealthObserved) -> Bool {
+  match assess_host_health(goal: goal, observed: observed) {
+    GoalIndeterminate { known_deviations, unknowns: _ } => any(known_deviations, d => match d { TemperatureLimitExceeded { sensor: _, maximum: _, critical: _ } => true _ => false })
+    GoalDiverged { deviations } => any(non_empty_to_list(deviations), d => match d { TemperatureLimitExceeded { sensor: _, maximum: _, critical: _ } => true _ => false })
+    _ => false
+  }
+}
+
 test fn an_uncited_limit_is_neither_a_wall_nor_a_green() -> Bool {
   let goal = host_health_goal(
     host: operator_host_srv2,
@@ -358,13 +373,12 @@ test fn an_uncited_limit_is_neither_a_wall_nor_a_green() -> Bool {
     baseline: NoPriorBaseline,
   )
   let cool = srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: srv2_soc_ok)
-  let unknown_when_cool = any(unknowns_of(goal: goal, observed: cool), u => match u { ThermalLimitUnestablished { sensor } => sensor == "TEMP_SOC" _ => false })
   let hot = srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: [temps(host: operator_host_srv2, sensor: "TEMP_SOC", samples: [present(c: 106)])])
-  let no_wall = match assess_host_health(goal: goal, observed: hot) {
-    GoalDiverged { deviations } => any(non_empty_to_list(deviations), d => match d { TemperatureLimitExceeded { sensor: _, maximum: _, critical: _ } => true _ => false }) == false
-    _ => true
-  }
-  unknown_when_cool && no_wall
+  let cool_unknown = is_limit_unestablished_indeterminate(goal: goal, observed: cool)
+  let hot_unknown = is_limit_unestablished_indeterminate(goal: goal, observed: hot)
+  let cool_clear = carries_limit_exceeded(goal: goal, observed: cool) == false
+  let hot_clear = carries_limit_exceeded(goal: goal, observed: hot) == false
+  cool_unknown && hot_unknown && cool_clear && hot_clear
 }
 
 test fn one_unreachable_host_prevents_fleet_green_without_hiding_the_others() -> Bool {
