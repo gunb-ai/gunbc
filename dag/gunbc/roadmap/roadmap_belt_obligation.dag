@@ -182,26 +182,22 @@ fn belt_provider_terminal(provider: ProviderExecutionState) -> Bool {
 // (roadmap_belt_actuate reads it from the merged acceptance history and the event log's retirement
 // standing, and FAILS CLOSED when either is unreadable); this module stays a pure function of its
 // inputs, so every consumer asks the same question and none can forget the rule.
-// node_terminal: THE ONE RULE (operator ruling 2026-11-04, manager condition): a CLOSED or RETIRED
-// node's lineage is terminal and owes nothing. Callers that can observe the node must pass the
-// terminality read (gunbc.roadmap.roadmap_node_terminality.belt_node_lineage_terminal_read); the default
-// models an ordinary OPEN attempt for the pure-logic rows, and is fail-open only for that pure
-// logic — no production spawn path skips the read (the actuate seam refuses on unreadable).
-fn belt_attempt_outstanding(provider: ProviderExecutionState, segments: List<WorkflowSegment>, node_terminal: Bool = false) -> List<BeltAttemptObligationKind> {
-  if node_terminal { [] }
-  else { belt_attempt_obligation_order |> filter(kind => belt_attempt_obligation_outstanding(kind: kind, provider: provider, segments: segments, node_terminal: false)) }
+// THE ONE TERMINALITY RULE lives in exactly one place:
+// gunbc.roadmap.roadmap_node_terminality.belt_node_lineage_terminal_read, consulted by the actuate
+// seam BEFORE these pure functions are called (the seam refuses on unreadable — fail closed). These
+// functions are a pure function of provider state and segments; a parameter here would be a second
+// door to the same fact, and doors drift (DESIGN §3). A terminal lineage never reaches them.
+fn belt_attempt_outstanding(provider: ProviderExecutionState, segments: List<WorkflowSegment>) -> List<BeltAttemptObligationKind> {
+  belt_attempt_obligation_order |> filter(kind => belt_attempt_obligation_outstanding(kind: kind, provider: provider, segments: segments))
 }
 
-// The terminal rule applies per kind too: a closed node owes nothing. See belt_attempt_outstanding.
-fn belt_attempt_obligation_outstanding(kind: BeltAttemptObligationKind, provider: ProviderExecutionState, segments: List<WorkflowSegment>, node_terminal: Bool = false) -> Bool {
-  if node_terminal { false }
-  else { match kind {
+fn belt_attempt_obligation_outstanding(kind: BeltAttemptObligationKind, provider: ProviderExecutionState, segments: List<WorkflowSegment>) -> Bool {
+  match kind {
     CaptureObligation => belt_provider_terminal(provider: provider) && belt_segment_unsettled(segments: segments, kind: SubmissionWorkflowSegment)
     VerifyObligation => belt_segment_complete(segments: segments, kind: SubmissionWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: VerificationWorkflowSegment)
     ReviewObligation => belt_segment_complete(segments: segments, kind: VerificationWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: ReviewWorkflowSegment)
     AuditObligation => belt_segment_complete(segments: segments, kind: VerificationWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: GoalAuditWorkflowSegment)
     PublishObligation => belt_segment_complete(segments: segments, kind: ReviewWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: PublicationWorkflowSegment)
-  }
   }
 }
 

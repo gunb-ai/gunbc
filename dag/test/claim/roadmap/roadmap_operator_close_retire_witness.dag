@@ -45,6 +45,10 @@ import test.claim.fabric.fabric_storage_fixture {
     FabricWetScenarioUnready,    fabric_wet_scenario,
     FabricWetScenarioReady,    fabric_wet_scenario,}
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageBindingRefused }
+import extdeps.shell
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
+import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, IssueCommandSubject, issue_command_apply }
+import gunbc.fabric.fabric_event_log { EventAppended }
 import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, fabric_storage_slots }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.auth.request_authentication {
@@ -596,11 +600,40 @@ test fn a_terminal_lineage_owes_nothing_and_an_open_one_owes_the_unsettled_revie
     WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified" },
     WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "no review yet" },
   ]
-  let open = belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments, node_terminal: false)
-  let terminal = belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments, node_terminal: true)
-  let e1 = claim("an unsettled review segment owes review while the lineage is open", count(open) > 0)
-  let e2 = claim("a terminal lineage owes nothing — one rule, not a second retire path", count(terminal) == 0)
-  e1 && e2
+  // Pure lane: outstanding is a function of provider state and segments ONLY. The terminality rule
+  // has no door here (review 90921): the one read is belt_node_lineage_terminal_read, consulted by
+  // the actuate seam before these functions run, and it fails closed on unreadable.
+  let open = belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments)
+  claim("an unsettled review segment owes review while the lineage is open", count(open) > 0)
+}
+
+// The retired half of the one rule, exercised through the real write law (issue_command_apply, the
+// route's own writer) so the read and the write share no fixture: a retired node's lineage reads
+// terminal to the belt, and the read is the ONLY place terminality is decided for the obligation lane.
+test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  if !directory.success { claim("the temp dir for the retired-belt row could not be made", false) }
+  else {
+    let instance = fabric_fixture_instance(root: directory.path as String)
+    let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+    let author = "briansrls" as NonEmptyStr
+    match issue_command_apply(layout: layout,
+      command: RetireNode { subject: IssueCommandSubject {
+        node: "node-retired-belt" as NonEmptyStr as RoadmapNodeId,
+        author: EventPrincipalAuthenticated { ref: author },
+        operation: "op-retired-belt" as NonEmptyStr,
+        expected: none },
+        reason: "ended by the operator" as NonEmptyStr },
+      recorded_at: "2026-11-04T08:00:00Z") {
+      EventAppended { id: _ } =>
+        match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt") {
+          LineageTerminal { why: w } => claim("the retired node reads terminal, and the read names retirement", string_contains(s: w, pattern: "retired"))
+          LineageOpen => claim("a retired node read open to the belt", false)
+          LineageTerminalUnreadable { reason: r } => claim("the retired lane read unreadable: " + (r as String), false)
+        }
+      _ => claim("the retire write law refused the seed event for the belt row", false)
+    }
+  }
 }
 
 // ── THE RETIREMENT FOLD: ANY STANDING, HONEST, FINAL ─────────────────────────────────────────────

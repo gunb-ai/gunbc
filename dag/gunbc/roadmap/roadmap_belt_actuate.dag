@@ -14781,7 +14781,7 @@ fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String
   let folded = fold(belt_attempt_obligation_order, init: BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: [] }, f: fn(acc, kind) {
     match acc.read {
       BeltAttemptProgressFound { progress } =>
-        if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments, node_terminal: false) {
+        if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments) {
           let step = belt_attempt_obligation_step(instance: instance, progress: progress, kind: kind)
           BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: concat(acc.steps, [step]) }
         } else {
@@ -15062,7 +15062,7 @@ type BeltDiscovery
 // attempt whose terminality is UNREADABLE is not owed either — what cannot be proven owed is not
 // enqueued (the next discovery retries it). The caller supplies the fact; this stays a pure filter.
 fn belt_discovery_owed(attempts: List<WorkflowAttemptProgress>, node_terminal_of: fn(WorkflowAttemptProgress) -> Bool) -> List<WorkflowAttemptProgress> {
-  attempts |> filter(p => !node_terminal_of(p) && count(belt_attempt_outstanding(provider: p.provider, segments: p.segments, node_terminal: false)) > 0)
+  attempts |> filter(p => !node_terminal_of(p) && count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0)
 }
 
 fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery {
