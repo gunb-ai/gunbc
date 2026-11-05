@@ -124,9 +124,11 @@ data router_dev_uncapped_inflight_shell_scaffold: Disposition = Scaffold {
 // 7. RELOCATION HANDOFF SEMANTICS IN PROXY LUA, bound to router_dev_relocate_lines, the /router/relocate
 // control; its access-phase check (router_dev_relocation_access_lines), log-phase commit
 // (router_dev_relocation_log_lines) and init replay of handoffs.json (in router_dev_init_lines) are the same
-// debt. The handoff rules -- the pending handoff is the one authoritative record, the revision advances once
-// on commit, a pending record with no later done record is repopulated as unreconciled after a restart --
-// are modeled in gunbc.serving.serving_relocation (HandoffPhase, reconcile_after_restart) and realized here
+// debt. The handoff rules -- one handoff per conversation (claimed with an atomic shared-dict add), the
+// pending handoff is the one authoritative record, one reconstruction dispatch per handoff (attempt_dispatch;
+// a later turn is refused, not re-sent), the revision advances once on commit and only at the handoff's
+// revision, a pending record with no later done record is repopulated as unreconciled after a restart --
+// are modeled in gunbc.serving.serving_relocation (HandoffPhase, attempt_dispatch, reconcile_after_restart) and realized here
 // by hand as Lua strings. The realization ships uncommissioned: /router/relocate refuses until a relocation
 // token is placed. Dissolves when the S3 callout service (gunbc.serving.serving_router) realizes relocation
 // with its durable handoff on caller_backlog's rebinding spine (plan gunbc.plans.fabric_serving_router, R

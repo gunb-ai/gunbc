@@ -828,13 +828,18 @@ fn router_dev_relocate_lines(state_dir: String) -> List<String> {
     "local want = tonumber(intent.revision)",
     "if want == nil then return refuse(400, 'invalid_request_error', 'intent revision is not a number') end",
     "if want ~= cur then return refuse(409, 'invalid_request_error', 'stale placement revision: intent names ' .. tostring(intent.revision) .. ', current is ' .. tostring(cur)) end",
-    // Idempotency: one outstanding handoff per conversation. A duplicate move command sees the existing
-    // handoff and is refused rather than starting a second one.
-    "if state:get('handoff:' .. session) then return refuse(409, 'invalid_request_error', 'a handoff is already pending for this conversation') end",
+    // Idempotency: one outstanding handoff per conversation, claimed ATOMICALLY. ngx.shared.DICT:add inserts
+    // only when the key is absent, across workers, so of two concurrent move commands exactly one claims the
+    // handoff and the other is refused; neither overwrites the other's destination.
     // Record the handoff (dict, survives HUP) and the durable fact (file, survives restart). The dict
     // entry is the live record; the file only says a handoff was pending.
     "local rec = cjson.encode(\{dest = intent.destination, revision = want, method = intent.method, allowance = a, reconciled = true})",
-    "state:set('handoff:' .. session, rec)",
+    "local claimed, claim_err = state:add('handoff:' .. session, rec)",
+    "if not claimed then",
+    "  if claim_err == 'exists' then return refuse(409, 'invalid_request_error', 'a handoff is already pending for this conversation') end",
+    "  return refuse(500, 'invalid_request_error', 'handoff record not stored: ' .. tostring(claim_err))",
+    "end",
+    // The durable line is written only by the command that won the claim.
     "local f = io.open(dir .. '/handoffs.json', 'a') if f then f:write(cjson.encode(\{session = session, dest = intent.destination, revision = want}) .. '\\n') f:close() end",
     "ngx.header['Content-Type'] = 'application/json'",
     "ngx.say(cjson.encode(\{relocated = session, to = intent.destination, revision = want, method = 'reconstruct', retained_state_evacuated = false}))",
@@ -860,7 +865,16 @@ fn router_dev_relocation_access_lines() -> List<String> {
     "  if not dest or not available(dest) then return refuse(429, 'rate_limit_error', 'a handoff is pending and its destination is not available; the turn is not sent to either other side') end",
     "  local out, effort = forwarded(dest)",
     "  if not out then return unspliceable() end",
-    "  if not begin_turn(dest) then return refuse(429, 'rate_limit_error', 'handoff destination at its active-turn cap') end",
+    // ONE reconstruction dispatch per handoff (serving_relocation attempt_dispatch): the first turn claims it
+    // atomically; while it is recorded, another turn is the recovered recorded attempt and is NOT sent again,
+    // to the destination or anywhere else. A dispatch that never commits leaves the conversation in this
+    // explicit refused (interrupted) state for the operator, never a second send.
+    "  local sent, sent_err = state:add('handoff_dispatch:' .. session, ho.revision)",
+    "  if not sent then",
+    "    if sent_err == 'exists' then ngx.header['Retry-After'] = '2' return refuse(409, 'invalid_request_error', 'this conversation is mid-handoff and its one reconstruction dispatch is already recorded; the turn is not sent again') end",
+    "    return refuse(500, 'invalid_request_error', 'handoff dispatch not recorded: ' .. tostring(sent_err))",
+    "  end",
+    "  if not begin_turn(dest) then state:delete('handoff_dispatch:' .. session) return refuse(429, 'rate_limit_error', 'handoff destination at its active-turn cap') end",
     // Mark the turn as the handoff's reconstruction dispatch, so the log phase commits on success.
     "  ngx.ctx.relocation = ho",
     "  ngx.ctx.relocation_dest = dest",
@@ -876,16 +890,22 @@ fn router_dev_relocation_access_lines() -> List<String> {
 // pending (the next request retries the destination); it never falls back to the source.
 fn router_dev_relocation_log_lines() -> List<String> {
   [
+    // The log phase's other lines never load cjson; the durable done record needs it.
+    "local cjson = require('cjson.safe')",
     "if ngx.ctx.relocation and ngx.status >= 200 and ngx.status < 300 then",
     "  local ho = ngx.ctx.relocation",
     "  local session = ngx.ctx.relocation_session",
     "  local dir = state:get('relocate:dir')",
     "  if session and dir then",
-    // Advance the revision exactly once (idempotent against a retried decision), rebind to the
-    // destination, and retire the handoff. The source reservation is retired through its own record.
+    // Advance the revision exactly once: only the one reconstruction dispatch reaches here (the access
+    // phase's atomic claim), and it commits only while the stored revision is still the handoff's. Then
+    // rebind to the destination and retire the handoff and its dispatch claim.
+    "    local cur = tonumber(state:get('rev:' .. session) or '0')",
+    "    if cur ~= ho.revision then ngx.log(ngx.ERR, 'relocation commit refused: revision ', tostring(cur), ' is not the handoff revision ', tostring(ho.revision)) return end",
     "    state:incr('rev:' .. session, 1, 0)",
     "    state:set('session:' .. session, ngx.ctx.relocation_dest.name, " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
     "    state:delete('handoff:' .. session)",
+    "    state:delete('handoff_dispatch:' .. session)",
     // Mark the handoff done in the durable file, so a later restart does not resurrect a committed handoff.
     "    local df = io.open(dir .. '/handoffs.json', 'a') if df then df:write(cjson.encode(\{session = session, done = true}) .. '\\n') df:close() end",
     "  end",
