@@ -405,13 +405,6 @@ fn supervised_subject_reclaim_livelock(w: SupervisedSubjectWindow) -> Supervised
 }
 
 fn supervised_subject_verdict(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict {
-  match supervised_subject_reclaim_livelock(w: w) {
-    Present { value: livelock } => livelock
-    Absent => supervised_subject_verdict_without_livelock(w: w)
-  }
-}
-
-fn supervised_subject_verdict_without_livelock(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict {
   let wall = supervised_subject_window_wall(w: w)
   if millisecond_count(m: wall) < millisecond_count(m: supervised_subject_no_progress_window_minimum_wall) {
     SupervisedSubjectProgressing { since_progress_wall: wall, minimum_wall: supervised_subject_no_progress_window_minimum_wall }
@@ -602,5 +595,16 @@ fn supervised_subject_window_text(w: SupervisedSubjectWindow) -> String {
           " user_cpu_ms_in_window=", to_string(millisecond_count(m: cpu)),
         ], "")
     }
+  }
+}
+
+// THE SLOT WATCHDOG'S ENTRY: the same verdict type, the livelock arm consulted first. A slot has no
+// progress marks, so its window is a sliding baseline (gunbc_runner_slot_watchdog_window_minimum_wall),
+// not a since-progress average; the regen supervisor's supervised_subject_verdict keeps its contract
+// that a recent progress mark admits whatever the pressure.
+fn supervised_slot_verdict(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict {
+  match supervised_subject_reclaim_livelock(w: w) {
+    Present { value: livelock } => livelock
+    Absent => supervised_subject_verdict(w: w)
   }
 }

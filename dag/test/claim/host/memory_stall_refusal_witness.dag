@@ -34,6 +34,7 @@ import gunbc.host.memory_stall_refusal {
   SupervisedSubjectRefusedPageThrash,
   SupervisedSubjectRefusedReclaimLivelock,
   supervised_subject_verdict,
+  supervised_slot_verdict,
   supervised_subject_verdict_refuses,
   supervised_subject_refusal_text,
   supervised_subject_no_progress_window_minimum_wall,
@@ -402,19 +403,19 @@ fn livelock_window(wall_ms: Int, events: Int, user_cpu_ms: Int) -> SupervisedSub
 }
 
 test fn RED_a_slot_pinned_at_its_envelope_with_no_user_cpu_refuses_as_a_livelock() -> Bool {
-  let v = supervised_subject_verdict(w: livelock_window(wall_ms: 120000, events: 20000, user_cpu_ms: 1000))
+  let v = supervised_slot_verdict(w: livelock_window(wall_ms: 120000, events: 20000, user_cpu_ms: 1000))
   supervised_subject_verdict_refuses(v: v)
     && string_contains(s: supervised_subject_refusal_text(v: v), pattern: "MemoryStallRefusedReclaimLivelock")
 }
 
 test fn a_cpu_heavy_steady_job_at_the_same_event_rate_lives() -> Bool {
-  !supervised_subject_verdict_refuses(v: supervised_subject_verdict(w: livelock_window(wall_ms: 120000, events: 20000, user_cpu_ms: 100000)))
+  !supervised_subject_verdict_refuses(v: supervised_slot_verdict(w: livelock_window(wall_ms: 120000, events: 20000, user_cpu_ms: 100000)))
 }
 
 test fn a_short_allocation_burst_below_the_window_minimum_lives() -> Bool {
-  !supervised_subject_verdict_refuses(v: supervised_subject_verdict(w: livelock_window(wall_ms: 20000, events: 50000, user_cpu_ms: 0)))
+  !supervised_subject_verdict_refuses(v: supervised_slot_verdict(w: livelock_window(wall_ms: 20000, events: 50000, user_cpu_ms: 0)))
 }
 
 test fn few_envelope_events_with_idle_cpu_is_a_sleeping_job_not_a_livelock() -> Bool {
-  !supervised_subject_verdict_refuses(v: supervised_subject_verdict(w: livelock_window(wall_ms: 120000, events: 3, user_cpu_ms: 0)))
+  !supervised_subject_verdict_refuses(v: supervised_slot_verdict(w: livelock_window(wall_ms: 120000, events: 3, user_cpu_ms: 0)))
 }
