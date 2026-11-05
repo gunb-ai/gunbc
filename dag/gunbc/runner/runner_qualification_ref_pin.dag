@@ -9,6 +9,7 @@ import extdeps.transports.rest {
   RestRefusal, RestExchangeRefusal, RestExchangeStatusRefused,
   RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
 }
+import gunbc.runner.runner_qualification_group { qualification_branch_prefix, qualification_workflow_path, qualification_selected_workflow, qualification_selected_workflow_prefix, qualification_runner_group_name }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, RunnerGroupListDecoded, RunnerGroupListDecodeRefused }
@@ -58,28 +59,6 @@ import extdeps.git { git_ref_component_admitted }
 // (contents:write for the ref; organization self-hosted-runners write for the group). No workflow
 // fires on creating the branch: see test.claim.runner.runner_qualification_ref_pin_witness.
 
-data qualification_branch_prefix: NonEmptyStr = "qualification/"
-
-// THE QUALIFICATION WORKFLOW IS THE GENERATED FLEET-CONVERGE WORKFLOW, and the group selects it at
-// the pin branch. These live here, beside the group write that consumes them; the dispatch module
-// (gunbc.runner.runner_qualification_dispatch) imports them.
-fn qualification_workflow_path() -> NonEmptyStr {
-  artifact_path(a: FleetConvergeYamlArtifact) as NonEmptyStr
-}
-
-// The selected-workflow spelling a restricted runner group carries (owner/repo/path@ref), the same
-// form gunbc.runner.runner_group_restriction_observation microvm_shakedown_selected_workflow derives.
-fn qualification_selected_workflow(branch: NonEmptyStr) -> NonEmptyStr {
-  join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", branch as String], "") as NonEmptyStr
-}
-
-// THE GROUP'S RESTRICTION CLASS: the qualification workflow at refs/heads/qualification/ and at most one
-// branch below it. Created as the bare prefix, which no branch can match, so the group admits nothing until
-// an attempt pins it (gunbc.runner.runner_group_restriction_ensure qualification_runner_group_subject).
-fn qualification_selected_workflow_prefix() -> NonEmptyStr {
-  qualification_selected_workflow(branch: qualification_branch_prefix)
-}
-data qualification_runner_group_name: NonEmptyStr = "runner-qualification"
 
 // ── THE BRANCH NAME ─────────────────────────────────────────────────────────────────────────────
 
