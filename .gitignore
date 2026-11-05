@@ -239,6 +239,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/durable-work-handoff.md
 /docs/plans/source-layout-authority.md
 /docs/plans/physical-machine-boot-program.md
+/docs/plans/host-trust-provisioned-install-key.md
 /docs/plans/gunb-ai-projection-inventory.md
 /docs/plans/p4-home-serving-power-semantics.md
 /docs/plans/ntfy-deployment-gate-approval.md

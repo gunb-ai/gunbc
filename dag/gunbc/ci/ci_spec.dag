@@ -830,6 +830,15 @@ data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = Gunb
   function: "assert_dashboard_deploy_receipts",
 }
 
+// THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.pre_swap_admission): the plan job compiles the
+// prod-role serve entry once, with the release pair the run itself built, and publishes the verdict
+// beside the plan receipt; the swap transaction consumes it by identity instead of paying the cold
+// resolve again (prod gap 1, failure b).
+data gunbc_ci_record_plan_serve_entry_verdict_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/pre_swap_admission.dag",
+  function: "record_plan_serve_entry_compile_verdict",
+}
+
 data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/org_actions_inspection.dag",
   function: "org_actions_inspect_wet",
@@ -1576,6 +1585,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_admit_apply_run_pointer_target,
     gunbc_ci_admit_dashboard_deploy_inputs_target,
     gunbc_ci_assert_dashboard_deploy_receipts_target,
+    gunbc_ci_record_plan_serve_entry_verdict_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
@@ -2561,6 +2571,16 @@ fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_assert_dashboard_deploy_receipts_target.entry,
     function: gunbc_ci_assert_dashboard_deploy_receipts_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_record_plan_serve_entry_verdict_target.entry,
+    function: gunbc_ci_record_plan_serve_entry_verdict_target.function,
     claim_run: false,
     receipt_rel: none
   )
