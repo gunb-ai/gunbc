@@ -556,8 +556,6 @@ fn self_host_frontier_binding() -> TargetBinding {
   TargetBinding { target: self_host_frontier_label() producer: SelfHostFrontierProducer {} }
 }
 
-}
-
 // THE CARDINALITY REALIZATION STANDING (v2.test.claim.cardinality_realization_coverage). The host runs
 // the seed Rust emit over each specimen entry and the native v2 CLI over each specimen module, hands
 // typed outcome records to cardinality_realization_standing, and prints what it returns. Run by label
@@ -637,8 +635,6 @@ fn required_lane_resolution_census_target() -> BuildTarget {
 
 fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
-}
-
 }
 
 fn cardinality_realization_binding() -> TargetBinding {
