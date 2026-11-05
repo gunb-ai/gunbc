@@ -357,7 +357,20 @@ fn session_attempt_record(node_id: String, attempt_key: String, unit: NonEmptySt
   }
 }
 
+// THE MINT GUARD, WORKER SIDE. ':' is the segment boundary of every lane identity and the unit
+// validator admits it, so the lane refuses it at the door: a worker identity whose node or key
+// carries a boundary can also read as the reviewer four-segment shape, and session_slot_ownership
+// would then keep the hold unowned forever. A refusal here names the field; the caller's hold is
+// never opened.
 fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionPlacementAcquisition {
+  if !session_identity_field_speakable(field: node_id) || !session_identity_field_speakable(field: attempt_key) {
+    SessionPlacementRefused { detail: "a worker slot identity field carries ':', the segment boundary of every lane identity: node ids and attempt keys are colon-free, so the two lanes' parsers cannot accept one identity" }
+  } else {
+    session_placement_acquire_admitted(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key)
+  }
+}
+
+fn session_placement_acquire_admitted(instance: HostDashboardInstance, stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionPlacementAcquisition {
   match session_unit(node_id: node_id, attempt_key: attempt_key) {
     SystemdUnitNameStemEmpty =>
       SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) }
@@ -1554,7 +1567,18 @@ fn session_slot_ownership(slot: AttemptSlotReading) -> SessionSlotOwnership {
     AttemptSlotUnreadable { detail } => SlotOwnershipUnreadable { detail: detail }
     AttemptSlotHeld { record: rec, generation: _ } =>
       match session_reviewer_name_of(identity: rec.identity) {
-        Present { value: name } => SlotOwnershipReviewer { name: name }
+        Present { value: name } =>
+          // AN IDENTITY BOTH PARSERS ACCEPT BELONGS TO NEITHER. The worker's parser merges a
+          // colon-bearing node (its last segment is all it needs), so a worker minted on node
+          // "a:b:reviewer" with key "c" reads as the reviewer four-segment shape "a","b",role,"c".
+          // Releasing it as a reviewer hold would free a worker's reservation blind; keeping it
+          // as a worker's would let the reviewer pass never find its own. Neither pass may act
+          // on a guess, so the doubly-parseable identity is kept UNRECOGNIZED for a human --
+          // and the mint guards below refuse such an identity at the door.
+          match session_attempt_name_of(identity: rec.identity) {
+            Present { value: _ } => SlotOwnershipUnrecognized { identity: rec.identity }
+            Absent => SlotOwnershipReviewer { name: name }
+          }
         Absent =>
           match session_attempt_name_of(identity: rec.identity) {
             Present { value: attempt } => SlotOwnershipWorker { attempt: attempt }
@@ -1825,8 +1849,10 @@ fn session_reviewer_placement_key(attempt_key: String, criterion_key: String) ->
 
 // THE REVIEWER'S SLOT IDENTITY: node, attempt, ROLE, criterion. The worker's two-segment identity
 // is unchanged by this -- the role segment is what makes the two roles of one attempt readable as
-// different things, and the parser below accepts ONLY the four-segment shape, so a worker identity
-// never parses as a reviewer and the reverse likewise.
+// different things. The parser accepts ONLY the four-segment shape with colon-free fields, and the
+// mint guards refuse a worker identity whose node or key carries the ':' boundary; an identity that
+// still reaches the store doubly-parseable belongs to neither lane (session_slot_ownership keeps it
+// unrecognized rather than letting either pass act on a guess).
 fn session_reviewer_identity(node_id: String, attempt_key: String, criterion_key: String) -> String {
   join([node_id, ":", attempt_key, ":", session_reviewer_role, ":", criterion_key], "")
 }
@@ -1837,15 +1863,19 @@ type SessionReviewerName {
   criterion_key: String
 }
 
-// THE FOUR-SEGMENT IDENTITY, parsed strictly. Each carried field must itself contain no ':': the
-// three of them are admitted into systemd unit names and the identity must round-trip, so a field
-// carrying a segment boundary is REFUSED (absent), never merged -- the worker's parser may merge a
-// colon-bearing node because its last segment is all it needs, but a reviewer's criterion and role
-// segments must be exactly themselves for two passes to divide slots between the roles correctly.
-fn session_reviewer_field_speakable(field: String) -> Bool {
+// THE IDENTITY FIELDS CARRY NO ':'. Shared by both lanes' mint guards and the reviewer parser:
+// ':' is the segment boundary of every lane identity, so a field carrying it makes the identity
+// ambiguous -- see session_slot_ownership. The unit-name validator ADMITS ':' (systemd allows it),
+// so admission is not enough and the lanes refuse the boundary themselves, at the door.
+fn session_identity_field_speakable(field: String) -> Bool {
   count(field.split(delimiter: ":")) == 1
 }
 
+// THE FOUR-SEGMENT IDENTITY, parsed strictly. Each carried field must itself contain no ':': the
+// three of them are admitted into systemd unit names and the identity must round-trip, so a field
+// carrying a segment boundary is REFUSED (absent), never merged -- the worker's parser may merge a
+// colon-bearing node because its last segment is all it needs, so an identity that BOTH parsers
+// accept is kept unowned by session_slot_ownership rather than guessed.
 fn session_reviewer_name_of(identity: String) -> SessionReviewerName? {
   let parts: List<String> = identity.split(delimiter: ":")
   let node = match first(parts) { Present { value: v } => v Absent => "" }
@@ -1853,9 +1883,9 @@ fn session_reviewer_name_of(identity: String) -> SessionReviewerName? {
   let role = match first(skip(parts, 2)) { Present { value: v } => v Absent => "" }
   let crit = match first(skip(parts, 3)) { Present { value: v } => v Absent => "" }
   if count(parts) != 4 || role != session_reviewer_role
-    || !session_reviewer_field_speakable(field: node)
-    || !session_reviewer_field_speakable(field: key)
-    || !session_reviewer_field_speakable(field: crit) {
+    || !session_identity_field_speakable(field: node)
+    || !session_identity_field_speakable(field: key)
+    || !session_identity_field_speakable(field: crit) {
     none
   } else {
     Present { value: SessionReviewerName { node_id: node, attempt_key: key, criterion_key: crit } }
@@ -2151,7 +2181,27 @@ fn session_reviewer_answer_after_open(stores: SessionPlacementStores, record: At
 // reviewers this head may run at once (its criteria count) and agent_slots how many workers the
 // belt runs -- both are needed because the slice leg charges the SUM of the partitions that land
 // in the shared parent, and a pool cannot bound its own share without knowing the others.
+// THE MINT GUARD, REVIEWER SIDE. Same boundary rule as the worker lane: node, attempt and
+// criterion must each carry no ':', or the identity is ambiguous between the lanes and the slot
+// would be kept unowned forever. Refused at the door, before any hold is opened or charged.
 fn session_reviewer_placement_acquire(
+  instance: HostDashboardInstance,
+  stores: SessionPlacementStores,
+  node_id: String,
+  attempt_key: String,
+  criterion_key: String,
+  reviewer_slots: Nat,
+) -> SessionReviewerAcquisition {
+  if !session_identity_field_speakable(field: node_id)
+    || !session_identity_field_speakable(field: attempt_key)
+    || !session_identity_field_speakable(field: criterion_key) {
+    SessionReviewerPlacementRefused { detail: "a reviewer slot identity field carries ':', the segment boundary of every lane identity: node ids, attempt keys and criterion keys are colon-free, so the two lanes' parsers cannot accept one identity" }
+  } else {
+    session_reviewer_placement_acquire_admitted(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, reviewer_slots: reviewer_slots)
+  }
+}
+
+fn session_reviewer_placement_acquire_admitted(
   instance: HostDashboardInstance,
   stores: SessionPlacementStores,
   node_id: String,
