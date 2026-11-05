@@ -1021,14 +1021,20 @@ fn wet_rm_elevated(root: NonEmptyStr) -> Bool {
   }
 }
 
-// One call for every launch claim's tail: the verdict is bound first, the claim root is then taken
-// away, and A ROOT LEFT BEHIND REDDENS THE CLAIM. The cleanup is not decorative and it is not silent.
-// srv2 (stern, 2026-11-04, at fa64a4b9) found twenty /tmp/gunbc-sandbox-* roots still present after
-// the run while the witness's own stage line called the removal "housekeeping-not-verdict" and read
-// ok: the removal had been ATTEMPTED and had not SUCCEEDED, and nothing read the outcome back. A
-// claim that stops mid-way must not be able to hand its scratch tree to the next run, and
-// "cleanup runs whatever the verdict said" is only honest if a failed cleanup is visible in the
-// verdict rather than in a log line nobody compares against.
+// One call at the tail of EVERY claim that owns a root -- launch claims and the four fixture claims
+// alike; the name once said "launch" and stopped being true the moment the fixture claims needed it
+// too. The verdict is bound first, the claim root is then taken away, and A ROOT LEFT BEHIND REDDENS
+// THE CLAIM. The cleanup is not decorative and it is not silent. Two measured failures, both of which
+// this call closes. (1) srv2 (stern, 2026-11-04, at fa64a4b9) found twenty /tmp/gunbc-sandbox-* roots
+// still present after the run while the witness's own stage line called the removal
+// "housekeeping-not-verdict" and read ok: the removal had been ATTEMPTED and had not SUCCEEDED, and
+// nothing read the outcome back. (2) This file's own BROKEN run: four claims ended their `&&` chain
+// with `&& wet_clean_claim_root(root: root)`, so a leg that failed earlier short-circuited PAST the
+// removal and left /tmp/gunbc-sandbox-belt-commondir-... (empty, contents never written because the
+// chain had already stopped) on disk while its verdict was FAIL. Short-circuiting is why removal can
+// never be a conjunct: it must run whether or not the verdict is already false, and its readback must
+// still be able to make the claim red. "Cleanup runs whatever the verdict said" is only honest if a
+// failed cleanup is visible in the verdict rather than in a log line nobody compares against.
 //
 // Order: the claim's own removal first; the elevated one when that fails, because a root-side leg
 // wrote its files as root and the claim's own principal cannot unlink them; then a one-second settle
@@ -1039,7 +1045,7 @@ fn wet_rm_elevated(root: NonEmptyStr) -> Bool {
 // keep separate stage names, so "the sandbox let the write through" and "the probe left a directory
 // in /tmp" remain two faults with two remedies; the returned value carries both, so neither can be
 // reported as a pass on its own.
-fn wet_launch_claim_verdict(verdict: Bool, root: NonEmptyStr) -> Bool {
+fn wet_claim_verdict_with_root_readback(verdict: Bool, root: NonEmptyStr) -> Bool {
   let removed_by_claim = wet_clean_claim_root(root: root as String)
   let removed_after_elevation = removed_by_claim || wet_rm_elevated(root: root)
   let removed_after_settle =
@@ -1377,7 +1383,7 @@ test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
     && wet_retire_user_unit(root: root, label: "inhabit-eacces")
   let writable = unsandboxed_sibling_write_ok(root: root, label: "inhabit-ok", path: "/tmp/gunbc-control-inhabitance-target")
     && wet_retire_user_unit(root: root, label: "inhabit-ok")
-  wet_launch_claim_verdict(
+  wet_claim_verdict_with_root_readback(
     verdict: principal_is_not_root && enoent && eacces && writable,
     root: root,
   )
@@ -1450,7 +1456,7 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
@@ -1483,7 +1489,7 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 fn sandbox_touch_cli(path: String) -> ProcessExit {
@@ -1638,7 +1644,7 @@ test fn the_planted_guest_inputs_reach_the_paths_the_row_derives() -> Bool {
   // verdict is computed and bound first so a plant fault is never confused with a scratch fault; the
   // removal then runs with the elevated retry and settles, and its readback is a conjunct of what the
   // claim returns -- leftover scratch is a real defect, not a log line.
-  wet_launch_claim_verdict(verdict: planted, root: root)
+  wet_claim_verdict_with_root_readback(verdict: planted, root: root)
 }
 
 
@@ -1666,7 +1672,7 @@ test fn the_planted_serve_binary_is_the_image_the_operator_named() -> Bool {
       stage: "served-image-answers-the-route",
       ok: wet_served_image_answers_the_route(instance: inst),
     )
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Bool {
@@ -1696,7 +1702,7 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 // THE LAUNCHER DERIVES THE WORKTREE, LOG DIRECTORY AND EXIT HOOK from the attempt identity (review
@@ -1841,7 +1847,7 @@ test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
@@ -1863,7 +1869,7 @@ test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed() -> Bool {
@@ -1887,7 +1893,7 @@ test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_a
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 fn exit_success_cli() -> ProcessExit {
@@ -1958,7 +1964,7 @@ test fn a_launched_unit_exit_record_names_the_expanded_invocation_and_result() -
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 // THE ROOT-EXEC SHAPE IS REFUSED ON THE REAL PATH (review 80324). Before the launcher derived the exit
@@ -2017,7 +2023,7 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 // THE ROOT SIDE RUNS WHEN THE REQUEST DIRECTORY FILLS (the drain .path unit starts the system
@@ -2444,7 +2450,7 @@ test fn writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_co
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
   // launched unit leaves root-owned files in this tree, so removal may need the same
   // elevation and it is a named stage of its own -- stern checks the host afterwards.
-  wet_launch_claim_verdict(verdict: verdict, root: root)
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 test fn belt_commit_refuses_a_planted_commondir_without_running_git() -> Bool {
@@ -2461,7 +2467,7 @@ test fn belt_commit_refuses_a_planted_commondir_without_running_git() -> Bool {
   let wt = join([root, "/wt"], "")
   let pointers = dispatch_worker_git_pointer_files(instance: inst, attempt_worktree: wt)
   let expected_git_dir = dispatch_attempt_private_git_dir(instance: inst, attempt_worktree: wt)
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && shell.Mkdir.Parents(path: path_parent_directory(path: pointers.gitfile) as FilePath).success
     && shell.Mkdir.Parents(path: path_parent_directory(path: pointers.commondir) as FilePath).success
     && Filesystem.Write(path: pointers.gitfile, content: join(["gitdir: ", expected_git_dir, "\n"], "")).success
@@ -2471,7 +2477,12 @@ test fn belt_commit_refuses_a_planted_commondir_without_running_git() -> Bool {
       ExecOk { stdout: _ } => false
       ExecFailed { program: _, exit_code: _, stderr: _ } => false
     }
-    && wet_clean_claim_root(root: root)
+  // CLEANUP IS NOT A CONJUNCT. The srv2 run left twenty claim roots because a leg that fails
+  // before the end of an `&&` chain never reaches a removal sitting at the end of it; the same
+  // defect showed up in this file's own BROKEN run, where a claim that was already FAIL left
+  // /tmp/gunbc-sandbox-belt-commondir-... on disk. The verdict is bound first, then the root is
+  // taken away, and a root still on disk reddens the claim.
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 // THE ATTEMPT-UNIT DRAIN'S LINE STOP. The drain's .path unit is a level on requests/, so every entry a pass
@@ -2661,7 +2672,7 @@ test fn the_supplied_plan_reaches_only_the_claim_root() -> Bool {
     // The worktree the plan is built from is named outright too: an emptied plan cannot leave the
     // gate vacuously true, which is the same argument the spool control makes about an empty fold.
     && is_under(text: dashboard_instance_dispatch_worktree_root(instance: inst) as String, root: root)
-  wet_launch_claim_verdict(
+  wet_claim_verdict_with_root_readback(
     verdict: wet_stage_of(
       stage: "foreign-claim-root-removed-is-housekeeping-not-verdict",
       ok: wet_clean_claim_root(root: foreign),
@@ -2692,7 +2703,7 @@ test fn the_supplied_root_carries_the_attempt_unit_spool_tree() -> Bool {
     join(launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []), "\u{1f}"),
     wet_run_nonce(),
   ], "\n")
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     // Every entry is under the claim's own root, AND the staging directory the srv2 unit could not
     // create is named outright -- a fold over an empty list would be vacuously true, so the fault path
     // itself is a conjunct and cannot be dropped by emptying the accessor list.
@@ -2723,7 +2734,12 @@ test fn the_supplied_root_carries_the_attempt_unit_spool_tree() -> Bool {
       AttemptSystemUnitEnqueueOccupied { entry: _ } => false
       AttemptSystemUnitEnqueueRefused { detail: _ } => false
     }
-    && wet_clean_claim_root(root: root)
+  // CLEANUP IS NOT A CONJUNCT. The srv2 run left twenty claim roots because a leg that fails
+  // before the end of an `&&` chain never reaches a removal sitting at the end of it; the same
+  // defect showed up in this file's own BROKEN run, where a claim that was already FAIL left
+  // /tmp/gunbc-sandbox-spool-... on disk. The verdict is bound first, then the root is
+  // taken away, and a root still on disk reddens the claim.
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 test fn the_supplied_source_is_a_real_repository() -> Bool {
@@ -2735,12 +2751,17 @@ test fn the_supplied_source_is_a_real_repository() -> Bool {
   let root = wet_claim_root(tag: "gitrepo" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let repo = inst.repo_root as String
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_guest_sources(instance: inst)
     && wet_path_exists(path: join([repo, "/.git"], ""))
     && wet_ok(command: git_rev_parse_tree_command(repository_dir: repo, revision: "HEAD" as NonEmptyStr))
     && wet_out(command: git_rev_parse_tree_command(repository_dir: repo, revision: "HEAD" as NonEmptyStr)) != ""
-    && wet_clean_claim_root(root: root)
+  // CLEANUP IS NOT A CONJUNCT. The srv2 run left twenty claim roots because a leg that fails
+  // before the end of an `&&` chain never reaches a removal sitting at the end of it; the same
+  // defect showed up in this file's own BROKEN run, where a claim that was already FAIL left
+  // /tmp/gunbc-sandbox-gitrepo-... on disk. The verdict is bound first, then the root is
+  // taken away, and a root still on disk reddens the claim.
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused() -> Bool {
@@ -2756,7 +2777,7 @@ test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is
   let source = witness_supplied_credential_source(instance: inst, file: operator_route_credential_file) as String
   let lab = srv1_lab_dashboard_instance()
   let lab_source = witness_supplied_credential_source(instance: lab, file: operator_route_credential_file) as String
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_confined_tree(instance: inst)
     && is_under(text: source, root: root)
     && wet_path_exists(path: source)
@@ -2773,5 +2794,10 @@ test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is
     && starts_with(s: dispatch_worker_credstore_path(instance: lab, file: operator_route_credential_file) as String, prefix: "/etc/credstore/")
     && !is_under(text: lab_source, root: root)
     && !witness_supplied_credential_is_confined(scratch_parent: root, instance: lab)
-    && wet_clean_claim_root(root: root)
+  // CLEANUP IS NOT A CONJUNCT. The srv2 run left twenty claim roots because a leg that fails
+  // before the end of an `&&` chain never reaches a removal sitting at the end of it; the same
+  // defect showed up in this file's own BROKEN run, where a claim that was already FAIL left
+  // /tmp/gunbc-sandbox-credential-... on disk. The verdict is bound first, then the root is
+  // taken away, and a root still on disk reddens the claim.
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
