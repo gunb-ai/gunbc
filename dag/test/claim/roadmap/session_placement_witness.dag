@@ -243,7 +243,7 @@ test fn a_record_or_release_from_another_attempt_or_fence_is_refused() -> Bool {
 fn releases(d: SessionSettleDecision) -> Bool {
   match d {
     // A retirement as bookkeeping issues no release -- that is the whole point of it.
-    SettleRetireUncharged { record: _, generation: _, attempt: _, returned_at: _, release_reason: _, ledger_generation: _, trigger_reading: _ } => false
+    SettleRetireUncharged { record: _, generation: _, attempt: _, returned_at: _, by: _, ledger_generation: _, trigger_reading: _ } => false
     SettleTerminateAndRelease { record: _, generation: _, attempt: _, reason: _ } => true
     SettleReleaseOnly { record: _, attempt: _, reason: _ } => true
     SettleKeep { why: _, explain: _ } => false

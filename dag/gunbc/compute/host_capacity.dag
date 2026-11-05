@@ -684,12 +684,33 @@ fn compute_seat_acquisition_at(store: FabricStorageBinding, partition: Partition
 // ONE QUESTION OF THE SAME FOLD, NOT A SECOND AUTHORITY. This consumes the partition read and the chain walk
 // exactly as compute_seat_acquisition_at does; it adjudicates nothing about the pool, and it never writes.
 type ComputeSeatCharge
-  = SeatChargeReturned { reference: NonEmptyStr, acquired_at: EpochSecs, returned_at: EpochSecs, release_reason: NonEmptyStr, generation: Nat }
+  = SeatChargeReturned { reference: NonEmptyStr, acquired_at: EpochSecs, returned_at: EpochSecs, by: ChargeReturnCause, generation: Nat }
   | SeatChargeStillHeld { reference: NonEmptyStr, acquired_at: EpochSecs }
   | SeatChargeNeverAcquired { reference: NonEmptyStr }
   | SeatChargeUnproven { detail: String }
 
-type SeatChargeScan { acquired_at: EpochSecs?, returned_at: EpochSecs?, release_reason: String? }
+// WHAT CLOSED THE CHARGE IS A FACT ABOUT THE LEDGER, NOT A STRING SOMEONE CHOSE.
+// gunbc.product.capacity.pool_events has exactly two ways a held charge stops being held: a release, which
+// carries its reason, and a settlement, which carries the settled amount instead. Naming those as arms is what
+// makes "a return with no reason" UNWRITABLE rather than merely unreachable.
+type ChargeReturnCause
+  = ReturnedByRelease { reason: NonEmptyStr }
+  | ReturnedBySettlement { actual: Int? }
+
+// THE SCAN IS A SUM, NOT A RECORD OF THREE OPTIONALS. The record shape - acquired_at?, returned_at?,
+// release_reason? - stood in for three states while permitting others the model rules out: a return with no
+// cause, a cause with no return. The tell that the shape was wrong was that answering it required inventing a
+// string for a case that cannot happen, which DESIGN 5 forbids ("no plausible output is fabricated") and
+// answers more strongly by construction: the unmakeable states get no constructor.
+//   ScanOpen                     the acquisition is in the window and nothing has closed it
+//   ScanReturned                 it closed, with the ledger row that closed it
+//   ScanReturnedUnacquired       the ledger shows the close and does not show the open (a settlement naming a
+//                                reference this history never shows acquired) - kept distinct, because the
+//                                reading must not claim an acquisition it did not see
+type SeatChargeScan
+  = ScanOpen { acquired_at: EpochSecs }
+  | ScanReturned { acquired_at: EpochSecs, returned_at: EpochSecs, by: ChargeReturnCause }
+  | ScanReturnedUnacquired { returned_at: EpochSecs, by: ChargeReturnCause }
 
 // ONE STEP FOR EVERY REFERENCE AT ONCE. DESIGN 2: when several demands share a least common ancestor in
 // state, carry, rewire or SHARE the first value. The settle pass needs this answer for every listed slot, and
@@ -697,33 +718,43 @@ type SeatChargeScan { acquired_at: EpochSecs?, returned_at: EpochSecs?, release_
 // fixes a proven cost-shape defect regardless of how small the realized numbers are today. So the fold carries
 // a map from reference to scan, keyed by the reference each event itself names.
 //
-// The arm-by-arm meaning is the ledger's own, unchanged from the reading this one replaces: an acquisition
-// opens the scan, a release or a settlement closes it, a lapse clears it. The lapse arm clears the WHOLE map,
-// which is what a lapse does to a pool: it clears every hold, so from that event forward the partition holds no
-// acquisition for any reference (SeatChargeNeverAcquired says "the partition holds no acquisition for it",
-// which is the true statement about the history after a lapse and not a claim that none was ever written; and
-// the settle decision treats that answer exactly as it treats a still-held or unproven one - the ordinary
-// trigger, never a retirement - so nothing is retired on the strength of a lapse).
+// A lapse clears the whole map, which is what a lapse does to a pool: it clears every hold, so from that event
+// forward the partition holds no acquisition for any reference (SeatChargeNeverAcquired says "the partition
+// holds no acquisition for it", which is the true statement about the history after a lapse and not a claim
+// that none was ever written; the settle decision treats that answer exactly as it treats a still-held or
+// unproven one - the ordinary trigger, never a retirement - so nothing is retired on the strength of a lapse).
 fn seat_charge_scan_cleared() -> Map<String, SeatChargeScan> { empty_map() }
 
 fn seat_charge_scan_all_step(state: Map<String, SeatChargeScan>, wrapped: ChainEnvelope<PoolEvent>) -> Map<String, SeatChargeScan> {
   let event = wrapped.event
   match event.payload {
     PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
-      map_insert(m: state, key: r as String, value: SeatChargeScan { acquired_at: Present { value: event.recorded_at }, returned_at: Absent, release_reason: Absent })
+      map_insert(m: state, key: r as String, value: ScanOpen { acquired_at: event.recorded_at })
     PoolReleased { reference: r, reason: why } =>
       match map_lookup(m: state, key: r as String) {
-        Present { value: s } =>
-          match s.acquired_at {
-            Present { value: at } => map_insert(m: state, key: r as String, value: SeatChargeScan { acquired_at: Present { value: at }, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: why as String } })
-            Absent => state
-          }
         Absent => state
+        Present { value: s } =>
+          match s {
+            ScanOpen { acquired_at: at } =>
+              map_insert(m: state, key: r as String, value: ScanReturned { acquired_at: at, returned_at: event.recorded_at, by: ReturnedByRelease { reason: why } })
+            // A release naming a reference this scan has already closed is the ledger repeating a fact, not a
+            // second closing of the charge: the first close keeps its own cause.
+            _ => state
+          }
       }
-    PoolSettled { reference: r, actual: _ } =>
+    PoolSettled { reference: r, actual: actual } =>
       match map_lookup(m: state, key: r as String) {
-        Present { value: s } => map_insert(m: state, key: r as String, value: SeatChargeScan { acquired_at: s.acquired_at, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: "settled" } })
-        Absent => map_insert(m: state, key: r as String, value: SeatChargeScan { acquired_at: Absent, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: "settled" } })
+        Absent =>
+          // The settlement row is in the ledger and the acquisition is not, so the scan records the close
+          // without inventing the open. seat_charge_of_scan answers that state as not-acquired, which is the
+          // answer the pass can act on - no release can be fenced on an instant the history does not contain.
+          map_insert(m: state, key: r as String, value: ScanReturnedUnacquired { returned_at: event.recorded_at, by: ReturnedBySettlement { actual: actual } })
+        Present { value: s } =>
+          match s {
+            ScanOpen { acquired_at: at } =>
+              map_insert(m: state, key: r as String, value: ScanReturned { acquired_at: at, returned_at: event.recorded_at, by: ReturnedBySettlement { actual: actual } })
+            _ => state
+          }
       }
     PoolLapsed => seat_charge_scan_cleared()
     PoolUpstreamObserved { remaining: _, term_seconds: _ } => state
@@ -778,18 +809,15 @@ fn seat_charge_of_scan(reading: SeatChargeReading, reference: NonEmptyStr) -> Co
         Absent => SeatChargeNeverAcquired { reference: reference }
         Present { value: scan } =>
           match scan {
-            SeatChargeScan { acquired_at: Absent, returned_at: _, release_reason: _ } => SeatChargeNeverAcquired { reference: reference }
-            SeatChargeScan { acquired_at: Present { value: at }, returned_at: Absent, release_reason: _ } => SeatChargeStillHeld { reference: reference, acquired_at: at }
-            SeatChargeScan { acquired_at: Present { value: at }, returned_at: Present { value: back }, release_reason: why } =>
-              SeatChargeReturned {
-                reference: reference, acquired_at: at, returned_at: back,
-                // Every step that can set a return also names it: gunbc.product.capacity.pool_events PoolReleased
-                // carries reason: NonEmptyStr, and seat_charge_scan_all_step writes "settled" for PoolSettled. So
-                // the Absent arm cannot be reached from a real history; it stands only because the coproduct
-                // demands it, and it is named here rather than left to read as a fallback that fires.
-                release_reason: match why { Present { value: w } => w as NonEmptyStr  Absent => "not named" as NonEmptyStr },
-                generation: generation,
-              }
+            ScanOpen { acquired_at: at } => SeatChargeStillHeld { reference: reference, acquired_at: at }
+            ScanReturned { acquired_at: at, returned_at: back, by: cause } =>
+              SeatChargeReturned { reference: reference, acquired_at: at, returned_at: back, by: cause, generation: generation }
+            ScanReturnedUnacquired { returned_at: _, by: _ } =>
+              // The ledger shows this reference closed and never shows it opened. Nothing can be released
+              // against it (a release is fenced on an acquisition instant the history does not contain), so the
+              // answer the pass can act on is the one it gives when nothing was acquired - while the scan still
+              // holds the two situations apart, so no reader is told an acquisition was seen when it was not.
+              SeatChargeNeverAcquired { reference: reference }
           }
       }
   }
@@ -802,9 +830,22 @@ fn compute_seat_charge_returned(store: FabricStorageBinding, partition: Partitio
   seat_charge_of_scan(reading: compute_seat_charge_scans(store: store, partition: partition), reference: reference)
 }
 
+// HOW A CLOSED CHARGE'S CAUSE IS WRITTEN DOWN. A display function, not a decision: the cause reached here is
+// the ledger's own row, and the only choice made is how to say it.
+fn charge_return_cause_wire(c: ChargeReturnCause) -> String {
+  match c {
+    ReturnedByRelease { reason: why } => join(["released by: ", why as String], "")
+    ReturnedBySettlement { actual: a } =>
+      match a {
+        Present { value: v } => join(["closed by a settlement row of ", to_string(value: v), " KiB"], "")
+        Absent => "closed by a settlement row that carried no amount"
+      }
+  }
+}
+
 fn compute_seat_charge_wire(c: ComputeSeatCharge) -> String {
   match c {
-    SeatChargeReturned { reference: r, returned_at: back, generation: g, acquired_at: _, release_reason: _ } => join([r as String, ": charge returned at ", to_string(value: back), " (ledger generation ", to_string(value: g), ")"], "")
+    SeatChargeReturned { reference: r, returned_at: back, generation: g, acquired_at: _, by: cause } => join([r as String, ": charge returned at ", to_string(value: back), " (ledger generation ", to_string(value: g), ", ", charge_return_cause_wire(c: cause), ")"], "")
     SeatChargeStillHeld { reference: r, acquired_at: _ } => join([r as String, ": charge still held"], "")
     SeatChargeNeverAcquired { reference: r } => join([r as String, ": the partition holds no acquisition for it"], "")
     SeatChargeUnproven { detail: d } => join(["the charge's fate could not be read: ", d], "")

@@ -44,7 +44,7 @@ import gunbc.compute.host_capacity { compute_capacity_directories, ComputeCapaci
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, host_capacity_subject_in, AgentSessionPool, compute_reserve_against, compute_capacity_store, compute_release_on,
   compute_seat_acquisition_at, SeatAcquisitionRead, SeatAcquisitionNotHeld, SeatAcquisitionRefused,
-  compute_seat_charge_returned, ComputeSeatCharge, SeatChargeReturned, SeatChargeStillHeld, SeatChargeNeverAcquired, SeatChargeUnproven,
+  compute_seat_charge_returned, ComputeSeatCharge, SeatChargeReturned, SeatChargeStillHeld, SeatChargeNeverAcquired, SeatChargeUnproven, ReturnedByRelease,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
 }
@@ -1512,7 +1512,7 @@ fn retire_fixture_charge(stores: SessionPlacementStores) -> ComputeSeatCharge {
 // is a reason to fail the row, not to pass it.
 fn retire_fixture_generation(stores: SessionPlacementStores) -> Int {
   match retire_fixture_charge(stores: stores) {
-    SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, release_reason: _ } => cas_generation_count(g: g)
+    SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, by: _ } => cas_generation_count(g: g)
     _ => 0
   }
 }
@@ -1540,7 +1540,7 @@ test fn a_charge_returned_before_any_pass_reached_the_slot_is_read_from_the_part
     // the ledger release did NOT touch the slot: it is still the launching record no pass could reach
     && slot_is_launching(dir: dir)
     && (match charge {
-      SeatChargeReturned { reference: r, acquired_at: a, returned_at: b, release_reason: why_returned, generation: g } =>
+      SeatChargeReturned { reference: r, acquired_at: a, returned_at: b, by: ReturnedByRelease { reason: _ }, generation: g } =>
         // The return is at or after the acquisition: the fixture's release lands in the same clock second as
         // its acquire, and a row that demanded a strictly later second would be asserting the fixture's
         // scheduling, not anything the product promised. WHAT makes this positive evidence is that the
@@ -1695,7 +1695,7 @@ test fn a_launching_slot_whose_holder_is_observed_alive_is_kept_even_though_the_
   let charge_back = match stores {
     Absent => false
     Present { value: v } => match compute_seat_charge_returned(store: v.store, partition: v.partition, reference: unit_a()) {
-      SeatChargeReturned { reference: _, acquired_at: _, returned_at: _, release_reason: _, generation: _ } => true
+      SeatChargeReturned { reference: _, acquired_at: _, returned_at: _, by: _, generation: _ } => true
       _ => false
     }
   }
