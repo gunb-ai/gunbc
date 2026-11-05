@@ -12,6 +12,7 @@ import gunbc.instruments.multi_module_compile_fixture {
   fixture_source,
   compile_fixture,
   fixture_blocking_rows,
+  fixture_has_class,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -71,12 +72,18 @@ fn completed_clean(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-// A refusal counts only when the compiler judged a formed subject; an instrument refusal is not a verdict.
-fn compile_refused(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+// A REFUSAL COUNTS ONLY WHEN IT IS THE EXPECTED CLASS, over a BLOCKING row. Accepting any blocking row let a
+// probe refused for an unrelated reason (a fixture typo, an unresolved import) pass (merry-fox-82 on b7cf93fb).
+// The class names are the v1 diagnostic roster's (src/v1/04_infer.dag): DeclaredTypeNotInhabited for a value
+// that does not inhabit its declared parameter type, FieldNotFound for a read of a field the type lacks.
+// They are read from that roster, not from an execution; if a probe comes back refused under another class
+// the test goes red and names nothing wrong with the claim, only with this pin.
+fn refused_with_class(outcome: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
   match outcome {
-    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+    FixtureCompileRefused { module_count: _, diagnostics: ds, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: fixture_blocking_rows(rows: ds), wanted: wanted)
     FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: ds, source_digest: _, compiler_digest: _ } =>
-      (fixture_blocking_rows(rows: ds) |> count) > 0
+      fixture_has_class(rows: fixture_blocking_rows(rows: ds), wanted: wanted)
     FixtureInstrumentRefused { cause: _ } => false
   }
 }
@@ -92,10 +99,10 @@ test fn the_excerpt_type_reads_its_own_field() -> Bool {
 // PROBE (a). Red-by-design: expected REFUSED. If this test fails, the verdict is FixtureCompileCompleted and
 // the separation is not a refused path.
 test fn the_excerpt_datum_is_refused_where_the_attestation_is_required() -> Bool {
-  compile_refused(with_entry(entry_excerpt_to_consumer))
+  refused_with_class(with_entry(entry_excerpt_to_consumer), "DeclaredTypeNotInhabited")
 }
 
 // PROBE (b). Expected REFUSED: the excerpt type has no state_label.
 test fn the_excerpt_type_cannot_be_read_as_an_attestation() -> Bool {
-  compile_refused(with_entry(entry_excerpt_reads_state_label))
+  refused_with_class(with_entry(entry_excerpt_reads_state_label), "FieldNotFound")
 }
