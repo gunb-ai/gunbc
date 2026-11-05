@@ -110,6 +110,7 @@ type ServeBinaryBuildVerdict
   | ServeBinaryRefusedHeadDriftBefore { found: String }
   | ServeBinaryRefusedBuildFailed
   | ServeBinaryRefusedHeadDriftAfter { found: String }
+  | ServeBinaryRefusedDigestUnread
   | ServeBinaryRefusedInstalledDigestDiffers
   | ServeBinaryRefusedVersionDoesNotNameRevision { version_text: String }
 
@@ -128,9 +129,21 @@ fn serve_binary_pre_install_verdict(build: ServeBinaryBuild, head_before: String
 }
 
 // After the install: the installed bytes are the built bytes, and the binary names the admitted revision.
-fn serve_binary_post_install_verdict(build: ServeBinaryBuild, built_sha256: String, installed_sha256: String, version_text: String) -> ServeBinaryBuildVerdict {
-  if trim(s: built_sha256) != trim(s: installed_sha256) {
+// An empty digest is a failed read, never a value: two failed reads must not count as agreeing.
+fn serve_binary_digest_verdict(built_sha256: String, installed_sha256: String) -> ServeBinaryBuildVerdict {
+  if trim(s: built_sha256) == "" || trim(s: installed_sha256) == "" {
+    ServeBinaryRefusedDigestUnread
+  } else if trim(s: built_sha256) != trim(s: installed_sha256) {
     ServeBinaryRefusedInstalledDigestDiffers
+  } else {
+    ServeBinaryReadyToInstall
+  }
+}
+
+fn serve_binary_post_install_verdict(build: ServeBinaryBuild, built_sha256: String, installed_sha256: String, version_text: String) -> ServeBinaryBuildVerdict {
+  let digest = serve_binary_digest_verdict(built_sha256: built_sha256, installed_sha256: installed_sha256)
+  if digest != ServeBinaryReadyToInstall {
+    digest
   } else if !string_contains(s: version_text, pattern: build.revision)
     || string_contains(s: version_text, pattern: join([build.revision, "-dirty"], "")) {
     ServeBinaryRefusedVersionDoesNotNameRevision { version_text: version_text }
@@ -146,6 +159,7 @@ fn serve_binary_refusal_detail(verdict: ServeBinaryBuildVerdict) -> String {
     ServeBinaryRefusedHeadDriftBefore { found } => join(["serve build refused: HEAD ", found, " is not the admitted revision before the build"], "")
     ServeBinaryRefusedBuildFailed => "serve build refused: the build failed; the previously installed binary is untouched"
     ServeBinaryRefusedHeadDriftAfter { found } => join(["serve build refused: HEAD moved to ", found, " during the build"], "")
+    ServeBinaryRefusedDigestUnread => "serve build refused: a sha256 read failed, so the built and installed binaries cannot be compared"
     ServeBinaryRefusedInstalledDigestDiffers => "serve build refused: the installed binary's digest differs from the built one"
     ServeBinaryRefusedVersionDoesNotNameRevision { version_text } => join(["serve build refused: --version does not name the admitted revision: ", version_text], "")
   }

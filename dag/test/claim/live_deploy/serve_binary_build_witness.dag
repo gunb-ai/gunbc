@@ -4,7 +4,7 @@ import std.types { List, String }
 import gunbc.live_deploy.serve_binary_build {
   ServeBinaryBuild, BuildFromGitCheckout, BuildFromMaterializedTree, ServeBinaryBuildVerdict,
   ServeBinaryReadyToInstall, ServeBinaryBuilt, ServeBinaryRefusedHeadDriftBefore, ServeBinaryRefusedBuildFailed,
-  ServeBinaryRefusedHeadDriftAfter, ServeBinaryRefusedInstalledDigestDiffers,
+  ServeBinaryRefusedHeadDriftAfter, ServeBinaryRefusedInstalledDigestDiffers, ServeBinaryRefusedDigestUnread,
   ServeBinaryRefusedVersionDoesNotNameRevision,
   serve_binary_pre_install_verdict, serve_binary_post_install_verdict, serve_binary_build_argv, serve_binary_rename_argv,
 }
@@ -54,4 +54,12 @@ test fn a_sourceless_tree_must_name_its_identity_and_a_checkout_must_not() -> Bo
 
 test fn the_install_is_one_rename_onto_the_destination() -> Bool {
   serve_binary_rename_argv(build: fixture_build()) == ["-f", "/i/bin/gunbc.new", "/i/bin/gunbc"]
+}
+
+test fn two_unread_digests_refuse_instead_of_agreeing() -> Bool {
+  match serve_binary_post_install_verdict(build: fixture_build(), built_sha256: "", installed_sha256: "", version_text: "abc123") { ServeBinaryRefusedDigestUnread => true _ => false }
+}
+
+test fn one_unread_digest_refuses() -> Bool {
+  match serve_binary_post_install_verdict(build: fixture_build(), built_sha256: "s1", installed_sha256: "  ", version_text: "abc123") { ServeBinaryRefusedDigestUnread => true _ => false }
 }
