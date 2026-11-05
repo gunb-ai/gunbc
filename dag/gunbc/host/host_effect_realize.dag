@@ -6733,10 +6733,6 @@ fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyS
   )
 }
 
-fn tree_metadata_list_contains(lines: List<String>, line: String) -> Bool {
-  fold(lines, init: false, f: (acc, x) => acc || x == line)
-}
-
 // THE FIRST DISAGREEMENT between the expected and the installed tree, named, or Absent. Missing
 // entries are named first -- they are the silently-dropped-kind defect this read exists to catch --
 // then extras. Paths are unique on both sides (one filesystem, one entry each), so set agreement on
@@ -6747,7 +6743,7 @@ fn tree_metadata_list_contains(lines: List<String>, line: String) -> Bool {
 fn tree_metadata_disagreement(expected: List<TreeMetadataEntry>, observed: List<TreeMetadataEntry>) -> Optional<String> {
   let expected_lines = list_map(xs: sort_tree_metadata(entries: expected), f: e => tree_metadata_entry_line(entry: e))
   let observed_lines = list_map(xs: sort_tree_metadata(entries: observed), f: e => tree_metadata_entry_line(entry: e))
-  tree_metadata_merge_disagreement(expected: expected_lines, observed: observed_lines, i: 0, j: 0)
+  tree_metadata_merge_disagreement(expected: expected_lines, observed: observed_lines)
 }
 
 fn tree_metadata_merge_disagreement(expected: List<String>, observed: List<String>) -> Optional<String> {

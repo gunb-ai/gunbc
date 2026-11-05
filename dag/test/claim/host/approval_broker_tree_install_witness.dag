@@ -33,7 +33,6 @@ import gunbc.host.host_effect_realize {
   tree_metadata_lines,
   tree_installed_expectation,
   tree_metadata_disagreement,
-  tree_metadata_list_contains,
   tree_directory_targets,
   tree_symlink_entries,
   tree_receipt_body,
@@ -272,11 +271,8 @@ test fn the_expectation_fixes_kind_target_shared_mode_and_deploy_owner() -> Bool
     TreeMetadataEntry { path: "dag/lib", kind: TreeDirectory, mode: "600", owner: "briansrls", group: "staff" },
   ]
   let expected = tree_installed_expectation(entries: sources, owner: deploy_owner)
-  let expected_lines = list_map(xs: expected, f: e => tree_metadata_entry_line(entry: e))
-  count(expected_lines) == 3
-    && tree_metadata_list_contains(lines: expected_lines, line: "dag/gunbc/x.dag|f|644|gunbc|gunbc")
-    && tree_metadata_list_contains(lines: expected_lines, line: "dag/link|l|777|gunbc|gunbc|../bin/gunbc")
-    && tree_metadata_list_contains(lines: expected_lines, line: "dag/lib|d|755|gunbc|gunbc")
+  tree_metadata_lines(entries: expected) == join(["dag/gunbc/x.dag|f|644|gunbc|gunbc", "\n", "dag/lib|d|755|gunbc|gunbc", "\n", "dag/link|l|777|gunbc|gunbc|../bin/gunbc", "\n"], "")
+    && disagreement_absent(expected: expected, observed: sources)
 }
 
 test fn metadata_lines_are_sorted_and_stable_across_emissions() -> Bool {
@@ -360,7 +356,7 @@ test fn directory_targets_include_link_and_directory_parents_once_sorted() -> Bo
   ]
   tree_directory_targets(files: files, metadata: entries) == ["gunbc", "gunbc/bin", "gunbc/lib"]
     && count(tree_symlink_entries(entries: entries)) == 1
-    && tree_metadata_list_contains(lines: list_map(xs: tree_symlink_entries(entries: entries), f: e => tree_metadata_entry_line(entry: e)), line: "gunbc/bin/gunbc|l|777|gunbc|gunbc|../bin/gunbc")
+    && tree_metadata_lines(entries: tree_symlink_entries(entries: entries)) == "gunbc/bin/gunbc|l|777|gunbc|gunbc|../bin/gunbc\n"
 }
 
 test fn the_link_rows_spell_cp_no_dereference_then_chown_no_dereference() -> Bool {
