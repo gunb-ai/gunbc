@@ -245,6 +245,7 @@ test fn a_claim_held_by_a_live_unit_is_not_reclaimed() -> Bool {
 }
 
 data obligation_exit: String = "wet-node+feedfacefeedface+obligation+0123456789abcdef0123456789abcdef+timeout+killed+TERM"
+data settled_obligation_exit: String = "wet-node+feedfacefeedface+obligation+0123456789abcdef0123456789abcdef+success+exited+0"
 
 // RED (b) -- THE CLAIMANT IS KILLED BY ITS OWN RuntimeMaxSec. The unit's stop hook (the production
 // attempt_exit_hook for AttemptObligationRole) records an `obligation` entry while the unit is still
@@ -275,13 +276,26 @@ test fn a_claimant_killed_at_its_run_bound_is_rescued_by_its_stop_hook_entry() -
 // enqueues no unit and the exits stop there.
 test fn a_settled_runs_hook_entry_is_consumed_and_starts_nothing() -> Bool {
   let root = fresh_spool(tag: "orphan-settled")
-  let hook = record(root: root, name: obligation_exit)
+  let hook = record(root: root, name: settled_obligation_exit)
   let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let quiet = match drained {
     BeltExitDrained { entries, launch } => count(entries) == 0 && launch == none
     BeltExitDrainRefused { reason: _ } => false
   }
-  hook && quiet && count(names_at(root: root, stage: AttemptExitInbox)) == 0 && names_at(root: root, stage: AttemptExitDone) == [obligation_exit]
+  hook && quiet && count(names_at(root: root, stage: AttemptExitInbox)) == 0 && names_at(root: root, stage: AttemptExitDone) == [settled_obligation_exit]
+}
+
+// A KILLED OBLIGATION'S END OBSERVATION OWES THE SEAT PASS: the consumed entry (unit observed gone, result timeout)
+// launches, so the discharge pass visits the seat the obligation held. No age: a live unit consumes nothing.
+test fn a_killed_obligations_consumed_exit_owes_the_launch() -> Bool {
+  let root = fresh_spool(tag: "orphan-killed")
+  let hook = record(root: root, name: obligation_exit)
+  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
+  let owed = match drained {
+    BeltExitDrained { entries, launch } => count(entries) == 1 && launch != none
+    BeltExitDrainRefused { reason: _ } => false
+  }
+  hook && owed && names_at(root: root, stage: AttemptExitDone) == [obligation_exit]
 }
 
 // ── CLAIM FIRST (a move the drain's principal cannot make leaves no effect to repeat) ───────────────
