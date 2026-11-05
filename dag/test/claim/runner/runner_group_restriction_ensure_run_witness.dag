@@ -1,0 +1,72 @@
+module gunbc.test.claim.runner.runner_group_restriction_ensure_run_witness
+
+// THE RUNNER-GROUP APPROVAL'S TWO WAIT FACTS, PINNED. Added on the review of gunbc#15901 (review
+// 91180), which found this module holding a second local copy of the approval wait: the operator's
+// ruling of 2026-11-05 ("the approval window must not lapse in 30 minutes") lives in
+// gunbc.auth.approval_gate approval_request_window, and a runner-group request that expired on its
+// own arithmetic would lapse exactly like the retirement request that was killed two minutes early
+// on run 41972155901. The filing now reads the row; the step's wait stays local because four groups
+// waited for in one step cannot fit one job — and that constraint is a CHECKED fact here, not a
+// paragraph, so raising the wait without restructuring the run goes red.
+
+import std.types { Bool }
+import std.measure { second_count, minute_count }
+import std.test { claim_true, claim_equals }
+import gunbc.auth.approval_gate { approval_request_window, approval_expires_at }
+import std.time { Timestamp }
+import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
+import gunbc.runner.runner_group_restriction_ensure_run {
+  microvm_runner_group_approval_request_window, microvm_runner_group_poll_wait,
+  microvm_runner_group_step_timeout_minutes, microvm_runner_group_poll_tick_budget,
+  microvm_runner_group_poll_cadence,
+}
+import gunbc.fleet.fleet_workflow_steps { gunbc_ci_fleet_job_backstop_timeout_minutes }
+import extdeps.github.actions { max_job_timeout_minutes }
+
+@Test
+fn the_filed_runner_group_request_is_decidable_for_the_models_row() -> Bool {
+  let same_value = claim_equals(
+    actual: second_count(s: microvm_runner_group_approval_request_window()),
+    expected: second_count(s: approval_request_window),
+    what: "a runner-group request's decidability is the model's row, not the step's wait"
+  )
+  let requested = Timestamp { epoch_seconds: 1_770_000_000 }
+  // The instant the filing would stamp, through the module's own accessor and through the row: they
+  // are the same moment, so no group can be waited on past a request that has already lapsed.
+  let same_moment = claim_equals(
+    actual: approval_expires_at(issued: requested, window: microvm_runner_group_approval_request_window()).epoch_seconds,
+    expected: approval_expires_at(issued: requested, window: approval_request_window).epoch_seconds,
+    what: "the filed expiry comes from the one window row"
+  )
+  // And the wait a dispatch actually sits through is the SEPARATE, shorter fact, still positive and
+  // still the thing the tick budget counts.
+  let wait_is_its_own_shorter_fact = claim_true(
+    condition: second_count(s: microvm_runner_group_poll_wait()) > 0
+      && second_count(s: microvm_runner_group_poll_wait()) < second_count(s: approval_request_window)
+      && second_count(s: microvm_runner_group_poll_wait())
+        == microvm_runner_group_poll_tick_budget * second_count(s: microvm_runner_group_poll_cadence),
+    what: "one dispatch's wait is a positive step-budget fact, shorter than the row, and equal to ticks x cadence"
+  )
+  same_value && same_moment && wait_is_its_own_shorter_fact
+}
+
+@Test
+fn the_runner_group_step_timeout_stays_inside_both_bounds() -> Bool {
+  let minutes = minute_count(microvm_runner_group_step_timeout_minutes())
+  let ceiling_ok = claim_true(
+    condition: minutes <= max_job_timeout_minutes,
+    what: "the runner-group ensure step fits the platform ceiling (extdeps.github.actions.max_job_timeout_minutes)"
+  )
+  // The step belongs to the fleet-converge job, whose own backstop is derived from that job's step
+  // list; a step longer than the job that carries it can never deliver its verdict, which is the
+  // same class of failure that killed the retirement's gate step at the runner level.
+  let job_ok = claim_true(
+    condition: minutes <= gunbc_ci_fleet_job_backstop_timeout_minutes(),
+    what: "the runner-group ensure step fits the fleet-converge job's own backstop"
+  )
+  let roster_ok = claim_true(
+    condition: count(restricted_runner_groups()) > 0,
+    what: "the bound is computed over a non-empty group roster, not a vacuous zero"
+  )
+  ceiling_ok && job_ok && roster_ok
+}

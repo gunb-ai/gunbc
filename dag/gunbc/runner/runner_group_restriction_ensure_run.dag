@@ -19,7 +19,7 @@ import gunbc.fleet.org_actions_inspection { read_org_runner_groups, org_admin_to
 import gunbc.auth.approval_gate {
   ApprovalGate, GateAdmitted, GateRefused, approval_refusal_text,
   approval_instant_now, approval_expires_at, approval_poll_ticks, approval_gate_from_outcome,
-  approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
+  approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused, approval_request_window,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
@@ -69,7 +69,54 @@ data microvm_runner_group_submit_timeout: Second = second(count: 30)
 data microvm_runner_group_prelude_allowance: Second = second(count: 120)
 data microvm_runner_group_effect_allowance: Second = second(count: 120)
 
-fn microvm_runner_group_approval_window() -> Second {
+// THIS WAIT IS DELIBERATELY SHORTER THAN THE MODEL'S APPROVAL WINDOW, AND THAT IS A DIVERGENCE
+// WITH A STATED REASON, NOT AN OVERSIGHT (DESIGN §3b; raised by the review of gunbc#15901, review
+// 91180, which found this row as the second local implementation of the wait).
+//
+// THE ROW SAYS FOUR HOURS. gunbc.auth.approval_gate approval_request_window is how long a filed
+// request stays decidable, set there on the operator's ruling of 2026-11-05 ("the approval window
+// must not lapse in 30 minutes") so a human can reach the phone. gunbc.fleet
+// .srv1_root_mutation_approval_run reads that row and derives its whole wait from it. This module
+// cannot: the request is filed per GROUP, and restricted_runner_groups() has four, waited for one
+// after another in ONE step of ONE job. Honouring four hours here needs 4 x (240 min + the effect)
+// + the prelude = 970 minutes: more than twice extdeps.github.actions max_job_timeout_minutes, and
+// nine times the bound that job's own backstop models (gunbc.fleet.fleet_workflow_steps
+// gunbc_ci_fleet_job_backstop_timeout_minutes, whose comment derives its 105-minute worst case from
+// the step list this step belongs to). Either way the workflow would be emitted with a step that
+// cannot run. The claim the_runner_group_step_timeout_stays_inside_both_bounds pins exactly that,
+// comparing against both of those rows rather than a copy of their numbers: it is green at this wait
+// and goes red for anyone who raises it toward the shared row without the restructuring below.
+//
+// WHAT THE TWO FACTS ARE NOW, APART (they were one number before this change, which is what the
+// review was pointing at):
+//   * HOW LONG THE REQUEST IS DECIDABLE is microvm_runner_group_approval_request_window(), which
+//     READS the model's row and nothing else. A request filed here is therefore alive for the full
+//     four hours, like every other approval.
+//   * HOW LONG ONE DISPATCH WAITS for the tap is microvm_runner_group_poll_wait(), a step-budget
+//     fact of this module. Stopping at it leaves a live, still-approvable request the next dispatch
+//     can be admitted by — the property this module already argues for itself two paragraphs up
+//     ("A RERUN NEEDS NO CLAIM SLOT, because the effect's own readback is its idempotence").
+// The one rough edge left is the WORDING of the refusal at the end of the wait: it arrives as the
+// gate's ApprovalExpired, which is true of the wait and false of the request. The follow-up below
+// replaces it with a typed cause that says so.
+//
+// THE FOLLOW-UP, NAMED (§4b): make that argument load-bearing instead of incidental — stop the
+// poll at the run's remaining job budget and refuse with a typed cause naming the still-open
+// escalation ("still decidable, continue on the next dispatch"), so this module can consume
+// approval_request_window directly with no 970-minute step; or fan the roster out to one dispatch
+// per group. Owner: whoever next touches the runner-group lane; this is not a ntfy-retirement task.
+//
+// THE PRELUDE ALLOWANCE next to it (120 s, unmeasured) is part of the same criticism: the 240 s
+// measured for the srv1 root-mutation prelude on run 41972155901 belongs to a DIFFERENT step's
+// prelude, so raising this one to match would be a guess dressed as a measurement. It should be
+// MEASURED the same way — read the step's first and last log timestamps of one real dispatch — and
+// set from the measurement, in the same change as the resumption work above.
+fn microvm_runner_group_approval_request_window() -> Second {
+  approval_request_window
+}
+
+// ONE DISPATCH'S WAIT, not an approval property: the step bound below is built from it, per group.
+fn microvm_runner_group_poll_wait() -> Second {
   second(count: microvm_runner_group_poll_tick_budget * (second_count(s: microvm_runner_group_poll_cadence) as Int))
 }
 
@@ -77,7 +124,7 @@ fn microvm_runner_group_approval_window() -> Second {
 // one window and one effect per group rather than one for the run.
 fn microvm_runner_group_step_timeout_minutes() -> Minute {
   let secs = second_count(s: microvm_runner_group_prelude_allowance)
-    + count(restricted_runner_groups()) * (second_count(s: microvm_runner_group_approval_window())
+    + count(restricted_runner_groups()) * (second_count(s: microvm_runner_group_poll_wait())
       + second_count(s: microvm_runner_group_effect_allowance))
   minute(count: (secs + 59) / 60)
 }
@@ -212,7 +259,8 @@ fn microvm_runner_group_file_and_create(group: RunnerGroupCreateSubject, escalat
   match approval_instant_now() {
     Absent => failed(reason: "microvm runner group: clock unreadable; cannot mint an approval window; nothing filed")
     Present { value: issued } => {
-      let expires = approval_expires_at(issued: issued, window: microvm_runner_group_approval_window())
+      // The request's own decidability comes from the model's row, not from this step's wait.
+      let expires = approval_expires_at(issued: issued, window: microvm_runner_group_approval_request_window())
       match approval_file_stored_request(
         stored: stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires),
         body_file_name: microvm_runner_group_submit_body_file_name,
