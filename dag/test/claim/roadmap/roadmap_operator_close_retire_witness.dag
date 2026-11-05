@@ -617,11 +617,10 @@ test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
   else {
     let instance = fabric_fixture_instance(root: directory.path as String)
     let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-    let author = "briansrls" as NonEmptyStr
     match issue_command_apply(layout: layout,
       command: RetireNode { subject: IssueCommandSubject {
         node: "node-retired-belt" as NonEmptyStr as RoadmapNodeId,
-        author: EventPrincipalAuthenticated { ref: author },
+        author: opr_principal(),
         operation: "op-retired-belt" as NonEmptyStr,
         expected: none },
         reason: "ended by the operator" as NonEmptyStr },
