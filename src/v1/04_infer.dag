@@ -10070,6 +10070,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let resolved_base = base_expansion.resolved
       let resolved_base_diags = base_expansion.diagnostics
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
+      if scope.caller_decl_name == "generated_provider_unavailable_diagnostics" {
+        InferResult {
+          typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: "PROBE3", span: span),
+          emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(
+            message: concat("PROBE3 field=", field_name,
+              " base_var=", match base_expr.expr_data { ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base_expr, source_indices: scope.type_env.source_indices)  _ => "non-var" },
+              " base_typed.inferred=", probe3_inferred_kind(i: base_typed.inferred, source_indices: scope.type_env.source_indices),
+              " base_rt=", probe3_node_shape(n: base_rt, source_indices: scope.type_env.source_indices),
+              " deferred=", match is_deferred_field_access_base(n: base_rt, env: scope.type_env) { true => "yes" false => "no" },
+              " expansion=", probe3_node_shape(n: resolved_base, source_indices: scope.type_env.source_indices),
+              " expansion_diags=", to_string(resolved_base_diags |> count)),
+            span: span,
+            module_name: scope.module_name
+          )])
+        }
+      } else
       if resolved_base_is_error {
         InferResult {
           typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: "error type cascade", span: span),
@@ -12131,6 +12147,30 @@ fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: St
   } else {
     expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, seen: seen)
   }
+}
+
+fn probe3_inferred_kind(i: InferredNode?, source_indices: Map<String, NewlineIndex>) -> String {
+  match i {
+    Present { value: Resolved { node: r } } => concat("Resolved(", probe3_node_shape(n: r, source_indices: source_indices), ")")
+    Present { value: CompilerError { message: m, span: _ } } => concat("CompilerError(", m, ")")
+    Present { value: TypeVariable { id: v } } => concat("TypeVariable(", v, ")")
+    Present { value: Divergent } => "Divergent"
+    Absent => "Absent"
+  }
+}
+
+fn probe3_node_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let first_kind = match n.children |> first {
+    Present { value: c } => match c.inferred {
+      Present { value: TypeVariable { id: v } } => concat("TypeVariable(", v, ")")
+      Present { value: CompilerError { message: _, span: _ } } => "CompilerError"
+      Present { value: Resolved { node: _ } } => "Resolved"
+      Present { value: Divergent } => "Divergent"
+      Absent => "none"
+    }
+    Absent => "nochild"
+  }
+  concat("name=", authored_name_at(source_indices: source_indices, node: n), " nchildren=", to_string(n.children |> count), " nparams=", to_string(n.params |> count), " child0.inferred=", first_kind)
 }
 
 fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
