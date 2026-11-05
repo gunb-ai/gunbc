@@ -3,24 +3,21 @@ module test.claim.fleet.fleet_identity_demand_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
+import std.algebra { string_contains }
 import gunbc.fleet.fleet_converge_workflow {
-  fleet_converge_job, fleet_converge_workflow_modes,
-  fleet_converge_mode_fleet_identity_demand, FleetIdentityConsumed, FleetIdentityNotConsumed,
-  fleet_converge_fleet_identity_modes, fleet_converge_fleet_identity_consumer_step_if,
-  fleet_converge_fleet_identity_step_if, fleet_converge_fleet_ssh_key_modes, fleet_converge_mode_step_if,
+  fleet_converge_job, fleet_converge_fleet_identity_auth_condition, fleet_converge_fleet_identity_reader_candidates,
+  fleet_identity_readers, fleet_identity_mint_condition, fleet_identity_reader_mint_condition, step_reads_fleet_identity,
+  fleet_converge_mode_step_if, fleet_converge_fleet_ssh_key_step_if,
   FleetConvergeWorkflowMode, HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart,
   MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve,
   FabricWriterIdentityObserve, BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild,
-  RevisionJobImageBuild, HetznerCloudServerRead, FullHostPlan, OrgActionsObserve, R2MintPreflight,
+  RevisionJobImageBuild, FullHostPlan, OrgActionsObserve, R2MintPreflight,
 }
 import extdeps.github.actions { Step, RunStep, UsesStep }
-import extdeps.languages.yaml.types { YamlString }
+import extdeps.languages.yaml.types { kv, yaml_string }
+import gunbc.action_use_admission { upload_artifact_action }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-// The one expression every fleet-identity consumer reads (gunbc.fleet.fleet_workflow_steps names the
-// step `wif_auth` so every consumer's env reads it).
-data fleet_identity_token_expression: String = "${{ steps.wif_auth.outputs.access_token }}"
 
 fn step_id_of(s: Step) -> String {
   match s {
@@ -36,72 +33,76 @@ fn step_if_of(s: Step) -> String {
   }
 }
 
-fn step_reads_fleet_identity_token(s: Step) -> Bool {
-  match s {
-    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match e {
-        Present { value: kvs } => any(kvs, x => match x.value { YamlString { value: v } => v == fleet_identity_token_expression  _ => false })
-        Absent => false
-      }
-    UsesStep { name: _, id: _, uses: _, with: _, env: e, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match e {
-        Present { value: kvs } => any(kvs, x => match x.value { YamlString { value: v } => v == fleet_identity_token_expression  _ => false })
-        Absent => false
-      }
-  }
+fn run_step(run: String, condition: String) -> Step {
+  RunStep { name: Present { value: "fixture" }, id: none, run: run, shell: none, env: none, working_directory: none, if_condition: Present { value: condition }, continue_on_error: none, timeout_minutes: none }
 }
 
-fn fleet_auth_steps() -> List<Step> {
-  filter(fleet_converge_job().steps, s => step_id_of(s: s) == "wif_auth")
+fn uses_step_with(value: String, condition: String) -> Step {
+  UsesStep { name: Present { value: "fixture" }, id: none, uses: upload_artifact_action, with: Present { value: [kv(key: "token", value: yaml_string(s: value))] }, env: none, if_condition: Present { value: condition }, continue_on_error: none, timeout_minutes: none }
 }
 
-data not_consumed_modes: List<FleetConvergeWorkflowMode> = [
+data compound_condition: String = "github.event.inputs.mode == 'plan' && github.ref == 'refs/heads/main'"
+
+// FIXTURES OF THE DERIVATION ITSELF. A reader is found in any field of its emitted YAML, not by one
+// spelling: the token read in a `run:` script and in a `with:` input both count, under a compound
+// condition. RED: a derivation that scanned only `env` (the shape every reader happens to have today)
+// finds neither, and the mint would not cover them.
+test fn a_reader_in_run_or_with_under_a_compound_condition_widens_the_mint() -> Bool {
+  let in_run = run_step(run: "curl -H \"Authorization: Bearer ${{ steps.wif_auth.outputs.access_token }}\" https://example.invalid", condition: compound_condition)
+  let in_with = uses_step_with(value: "${{ steps['wif_auth'].outputs.access_token }}", condition: fleet_converge_mode_step_if(mode: OrgActionsObserve))
+  let other = run_step(run: "echo ${{ steps.wif_auth_hetzner_cloud_control.outputs.access_token }}", condition: fleet_converge_mode_step_if(mode: HostMemoryObserve))
+  step_reads_fleet_identity(step: in_run)
+    && step_reads_fleet_identity(step: in_with)
+    && !step_reads_fleet_identity(step: other)
+    && fleet_identity_mint_condition(readers: fleet_identity_readers(candidates: [in_run, other, in_with]))
+      == concat(concat(concat("(", compound_condition), ") || ("), concat(fleet_converge_mode_step_if(mode: OrgActionsObserve), ")"))
+}
+
+// A condition the mint cannot decide before the reader runs (another step's outcome, a status
+// function) or no condition at all contributes `true`: the mint over-approximates rather than strand
+// the reader. No reader at all never mints.
+test fn an_undecidable_reader_condition_mints_and_no_reader_never_does() -> Bool {
+  let late = run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "steps.release_bins.outcome == 'success'")
+  let status = run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "failure() && github.event.inputs.mode == 'plan'")
+  fleet_identity_reader_mint_condition(step: late) == "true"
+    && fleet_identity_reader_mint_condition(step: status) == "true"
+    && fleet_identity_mint_condition(readers: []) == "false"
+}
+
+// THE REAL JOB. The emitted mint is the derivation over the job's own post-mint steps, nothing beside
+// it, and every reader's condition is one of its disjuncts.
+test fn the_emitted_auth_step_is_the_reader_derivation() -> Bool {
+  let auth = filter(fleet_converge_job().steps, s => step_id_of(s: s) == "wif_auth")
+  let readers = fleet_identity_readers(candidates: fleet_converge_fleet_identity_reader_candidates())
+  auth.length() == 1
+    && readers.length() > 0
+    && match auth.first() {
+      Present { value: s } => step_if_of(s: s) == fleet_converge_fleet_identity_auth_condition()
+      Absent => false
+    }
+    && all(readers, r => string_contains(s: fleet_converge_fleet_identity_auth_condition(), pattern: concat(concat("(", fleet_identity_reader_mint_condition(step: r)), ")")))
+}
+
+// THE FLEET KEY READS THE IDENTITY, so every key-consuming mode keeps the mint (RED: dropping the key
+// step from the candidates would strand it). Own-step readers keep it too.
+test fn the_fleet_key_and_own_step_readers_keep_the_mint() -> Bool {
+  let auth = fleet_converge_fleet_identity_auth_condition()
+  string_contains(s: auth, pattern: concat(concat("(", fleet_converge_fleet_ssh_key_step_if), ")"))
+    && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: FullHostPlan))
+    && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: OrgActionsObserve))
+    && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: R2MintPreflight))
+}
+
+data no_reader_modes: List<FleetConvergeWorkflowMode> = [
   HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart, MtCollins1CensusQemuHostObserve,
   MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve,
   BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild,
-  HetznerCloudServerRead,
 ]
 
-// THE DIAGNOSTIC THAT PROMPTED THIS: a host_memory_observe dispatch must not mint the fleet token. RED
-// if its arm is Consumed, or if the mode reaches the derived consumer roster by any other route.
-test fn host_memory_observe_does_not_mint_the_fleet_identity() -> Bool {
-  fleet_converge_mode_fleet_identity_demand(mode: HostMemoryObserve) == FleetIdentityNotConsumed
-    && !fleet_converge_fleet_identity_modes.contains(HostMemoryObserve)
-}
-
-// EVERY EVIDENCED NON-CONSUMER is off the roster, and nothing else is: the roster is exactly the
-// modes minus these twelve, so a thirteenth arm moved to NotConsumed without evidence goes red here.
-test fn the_twelve_evidenced_non_consumers_and_only_they_are_off_the_roster() -> Bool {
-  all(not_consumed_modes, m => !fleet_converge_fleet_identity_modes.contains(m))
-    && fleet_converge_fleet_identity_modes.length() + not_consumed_modes.length() == fleet_converge_workflow_modes.length()
-}
-
-// CONSUMERS KEEP THE MINT: the fleet key materialization reads the token to fetch the key, so every
-// key-consuming mode is a fleet-identity consumer (RED: any key mode declared NotConsumed would strand
-// the key step). A mode whose own step reads it (org_actions_observe, r2_mint_preflight) keeps it too.
-test fn every_fleet_key_mode_and_the_own_step_readers_keep_the_mint() -> Bool {
-  all(fleet_converge_fleet_ssh_key_modes, m => fleet_converge_fleet_identity_modes.contains(m))
-    && fleet_converge_fleet_identity_modes.contains(FullHostPlan)
-    && fleet_converge_fleet_identity_modes.contains(OrgActionsObserve)
-    && fleet_converge_fleet_identity_modes.contains(R2MintPreflight)
-}
-
-// NO TOKEN READER IS GATED ON A NOT-CONSUMED MODE ALONE: a step that reads the token and runs for
-// exactly one mode must run for a consuming one. This is the step-side half of the join; it reads
-// the job the workflow is emitted from, not a copy.
-test fn no_single_mode_token_reader_is_gated_on_a_non_consumer() -> Bool {
-  let readers = filter(fleet_converge_job().steps, s => step_reads_fleet_identity_token(s: s))
-  readers.length() > 0
-    && all(readers, s => all(not_consumed_modes, m => step_if_of(s: s) != fleet_converge_mode_step_if(mode: m)))
-}
-
-// THE EMITTED STEP IS THE DERIVATION: exactly one fleet auth step in the job, and its condition is
-// the run-scoped exclusion conjoined with the consumer roster, nothing hand-written beside it.
-test fn the_emitted_auth_step_is_gated_on_the_consumer_roster() -> Bool {
-  let auth = fleet_auth_steps()
-  auth.length() == 1
-    && match auth.first() {
-      Present { value: s } => step_if_of(s: s) == concat(concat(fleet_converge_fleet_identity_step_if, " && ("), concat(fleet_converge_fleet_identity_consumer_step_if, ")"))
-      Absent => false
-    }
+// MODES WITH NO READER DO NOT APPEAR IN THE MINT. host_memory_observe is the diagnostic that prompted
+// this. The check reads the clause in a disjunction of readers' conditions; a reader gated on one of
+// these modes, in any field, puts its clause there and turns this red.
+test fn modes_with_no_reader_do_not_reach_the_mint() -> Bool {
+  let auth = fleet_converge_fleet_identity_auth_condition()
+  all(no_reader_modes, m => !string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: m)))
 }

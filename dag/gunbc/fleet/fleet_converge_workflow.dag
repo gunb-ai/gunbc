@@ -66,7 +66,7 @@ import gunbc.auth.access_token_source { workload_identity_token_env }
 import std.measure { Second, minute_count, second_count }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name, runner_host_closure_resolve_budget }
 
-import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv, YamlValue, YamlString, YamlSequence, YamlMapping }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, Schedule, Push, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
@@ -116,7 +116,8 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import std.algebra { list_map, length }
+import std.algebra { list_map, length, string_contains }
+import std.list { distinct_by_key }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -290,7 +291,7 @@ import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run
 
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml, step_yaml }
 import std.types { NonEmptyStr, List, String, Int, Bool, Duration }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
@@ -973,136 +974,77 @@ data fleet_converge_fleet_ssh_key_modes: List<FleetConvergeWorkflowMode> = filte
 
 data fleet_converge_fleet_ssh_key_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_fleet_ssh_key_modes)
 
-// WHICH MODES CONSUME THE FLEET IDENTITY TOKEN is declared per mode, exhaustively, for the same
-// reason the fleet key is: the credential prelude's `wif_auth` step mints an access token for the
-// fleet-cloud-convergence service account, and a mode whose enabled steps never read
-// `steps.wif_auth.outputs.access_token` must not hold that token (DESIGN section 3c: a dependency
-// is admitted by its consumer; a privileged credential minted for nothing is the dangling red at
-// run time). Before this declaration the step ran for every mode outside the run-scoped rows and
-// three image/allocation modes, so a read-only diagnostic such as host_memory_observe minted the
-// token and discarded it (the effect review of 2026-11-05 at main f08a6ae4e44, ruled on by the
-// fleet admin: no dispatch while that mint stays enabled).
+
+// THE FLEET IDENTITY IS MINTED EXACTLY WHEN A STEP THAT READS IT CAN RUN. The credential prelude's
+// `wif_auth` step mints an access token for the fleet-cloud-convergence service account; a dispatch
+// whose enabled steps never read `steps.wif_auth.outputs` must not hold it (DESIGN section 3c: a
+// dependency is admitted by its consumer). The consumer is not declared per mode -- a per-mode table
+// would be a second authority beside the steps, and could only say "examined" or "kept for now" --
+// it is READ from the job: every step after the mint whose emitted YAML (run, with, env, if, in any
+// key or nested value) references the step's outputs is a reader, and the mint's condition is the
+// disjunction of the readers' own conditions. A reader added in any position, under any compound
+// condition, widens the mint by construction; a mode with no reader cannot reach it.
 //
-// THE EVIDENCE FOR THE NOT-CONSUMED ARMS, and its scope. Every job- and step-level `if` of the
-// emitted fleet-converge.yml at f08a6ae4e44 was evaluated for each dispatchable mode, and the
-// fleet-converge job's enabled steps were read for any reference to the token. Twelve modes have
-// none: the three image/allocation modes and hetzner_cloud_server_read (each already excluded, the
-// last signing in through its own granted account), and eight that minted it unused --
-// host_memory_observe, microvm_slot_reserve, microvm_slot_start,
-// mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge,
-// workspace_transcript_rate_observe, fabric_writer_identity_observe and boot_medium_reader_probe.
-// None of their enabled steps calls gcloud or a googleapis endpoint either, and the auth action
-// writes no credentials file here (create_credentials_file: false), so nothing can pick the token
-// up implicitly. Every other arm answers Consumed: either an enabled step reads the token (the
-// fleet key materialization reads it to fetch the key, and 27 modes' own steps read it), or the
-// mode was not examined here (the spark modes and the srv1 root mutations, whose jobs do not run
-// this prelude). That is the status quo, not a finding that they need it. The two errors are not
-// symmetric: a NotConsumed arm on a consuming mode strands that step without a token, and it
-// fails loudly at its first secret read, while a Consumed arm on a non-consuming mode only keeps
-// the unused mint this declaration exists to remove. So an arm moves to NotConsumed only on
-// evidence.
-type FleetIdentityDemand = FleetIdentityConsumed | FleetIdentityNotConsumed
+// A reader's condition is evaluated at the MINT, before the reader runs, so a condition that reads
+// what only exists later -- another step's outcome or output, or the job status functions success(),
+// failure() and cancelled(), which at the mint describe the steps before it -- cannot be decided
+// there. Such a reader contributes `true`: the mint over-approximates rather than strand a reader
+// whose condition would have held (DESIGN section 5: an over-approximation computed as the answer,
+// stated). An absent condition is `true` for the same reason. At f08a6ae4e44 none of the 35 readers
+// is of either kind.
+data fleet_identity_output_reference: String = "steps.wif_auth.outputs"
 
-fn fleet_converge_mode_fleet_identity_demand(mode: FleetConvergeWorkflowMode) -> FleetIdentityDemand {
-  match mode {
-    OrgActionsObserve => FleetIdentityConsumed
-    OrgRunnerRosterObserve => FleetIdentityConsumed
-    AppKeyVersionVerify => FleetIdentityConsumed
-    R2BucketEnsure => FleetIdentityConsumed
-    R2BucketAdminMint => FleetIdentityConsumed
-    R2WorkspaceObjectReadMint => FleetIdentityConsumed
-    R2WorkspaceObjectWriteMint => FleetIdentityConsumed
-    R2CacheObjectReadMint => FleetIdentityConsumed
-    HetznerCloudServerRead => FleetIdentityNotConsumed
-    ExportHostReaderConverge => FleetIdentityConsumed
-    BootMediumReaderProbe => FleetIdentityNotConsumed
-    FleetKeypairMint => FleetIdentityConsumed
-    FlexPass => FleetIdentityConsumed
-    FlexTemplateEnsure => FleetIdentityConsumed
-    BranchRunGrant => FleetIdentityConsumed
-    QualificationFloor => FleetIdentityConsumed
-    QualificationAttempt => FleetIdentityConsumed
-    R2CacheObjectWriteMint => FleetIdentityConsumed
-    R2ConditionalPutRaceProbe => FleetIdentityConsumed
-    WorkspaceSourcePack => FleetIdentityConsumed
-    WorkspaceCheckpointMeasure => FleetIdentityConsumed
-    WorkspaceCheckpointRestore => FleetIdentityConsumed
-    WorkspaceTranscriptRateObserve => FleetIdentityNotConsumed
-    FullHostPlan => FleetIdentityConsumed
-    LaunchEnvironmentPlan => FleetIdentityConsumed
-    AllocationStorePlan => FleetIdentityConsumed
-    WorkspaceCommissioningPlan => FleetIdentityConsumed
-    WorkspaceAllocationPlan => FleetIdentityNotConsumed
-    WorkspaceImageBuild => FleetIdentityNotConsumed
-    RevisionJobImageBuild => FleetIdentityNotConsumed
-    FleetApply => FleetIdentityConsumed
-    AppControlPlaneObserve => FleetIdentityConsumed
-    MicrovmHostConverge => FleetIdentityConsumed
-    MicrovmNetworkObserve => FleetIdentityConsumed
-    MicrovmNetworkApply => FleetIdentityConsumed
-    GuestImageObserve => FleetIdentityConsumed
-    GuestImageConverge => FleetIdentityConsumed
-    MicrovmBootProbe => FleetIdentityConsumed
-    SparkGrants => FleetIdentityConsumed
-    SparkBootstrap => FleetIdentityConsumed
-    SparkServingApply => FleetIdentityConsumed
-    SparkNativeServingApply => FleetIdentityConsumed
-    SparkRuntimeImageProbe => FleetIdentityConsumed
-    SparkWirelessLinkConverge => FleetIdentityConsumed
-    SparkGrantsObserve => FleetIdentityConsumed
-    Srv1RootMutation(mode) => FleetIdentityConsumed
-    MicrovmSlotReserve => FleetIdentityNotConsumed
-    MicrovmSlotStart => FleetIdentityNotConsumed
-    RlmLaunchDeploymentReceipt => FleetIdentityConsumed
-    HostResetReturn => FleetIdentityConsumed
-    RunnerHostFileObserve => FleetIdentityConsumed
-    HostMemoryObserve => FleetIdentityNotConsumed
-    RunnerHostFileConverge => FleetIdentityConsumed
-    HostPrimaryNetworkObserve => FleetIdentityConsumed
-    HostPrimaryNetworkConverge => FleetIdentityConsumed
-    BoardFunctionConverge => FleetIdentityConsumed
-    RunnerHostWithdraw => FleetIdentityConsumed
-    RunnerHostRestore => FleetIdentityConsumed
-    SitePxeEdgeObserve => FleetIdentityConsumed
-    SitePxeEdgeConverge => FleetIdentityConsumed
-    RunnerPasswordSessionToolConverge => FleetIdentityConsumed
-    RunnerBrowserToolchainConverge => FleetIdentityConsumed
-    RunnerUserSessionConverge => FleetIdentityConsumed
-    RunnerGpuContainerToolchainConverge => FleetIdentityConsumed
-    HostCredentialCustodyConverge => FleetIdentityConsumed
-    R2MintPreflight => FleetIdentityConsumed
-    R2ObjectWriteMint => FleetIdentityConsumed
-    ApprovalKeyringConverge => FleetIdentityConsumed
-    MtCollins1Boot => FleetIdentityConsumed
-    MtCollins1FanObserve => FleetIdentityConsumed
-    MtCollins1KvmObserverObserve => FleetIdentityConsumed
-    FabricWriterIdentityObserve => FleetIdentityNotConsumed
-    MtCollins1CensusImagePublish => FleetIdentityConsumed
-    MtCollins1RunnerImagePublish => FleetIdentityConsumed
-    MtCollins1CensusMemberReadback => FleetIdentityConsumed
-    MtCollins1CensusQemuHostObserve => FleetIdentityNotConsumed
-    MtCollins1CensusQemuToolchainConverge => FleetIdentityNotConsumed
-    MicrovmRunnerGroupEnsure => FleetIdentityConsumed
-    ServiceRunnerLostBootSweep => FleetIdentityConsumed
-    ServiceRunnerLostBootSweepDryRun => FleetIdentityConsumed
-    GcpIamConverge => FleetIdentityConsumed
-    NamecheapObserve => FleetIdentityConsumed
-    ReviewSheetConverge => FleetIdentityConsumed
-    ArrivalConverge => FleetIdentityConsumed
-    PrinterWorkflow => FleetIdentityConsumed
+data fleet_identity_output_reference_bracketed: String = "steps['wif_auth'].outputs"
+
+fn yaml_value_mentions(v: YamlValue, pattern: String) -> Bool {
+  match v {
+    YamlString { value: t } => string_contains(s: t, pattern: pattern)
+    YamlSequence { elements: els } => any(els, e => yaml_value_mentions(v: e, pattern: pattern))
+    YamlMapping { entries: ents } => any(ents, e => string_contains(s: e.key, pattern: pattern) || yaml_value_mentions(v: e.value, pattern: pattern))
+    _ => false
   }
 }
 
-fn fleet_identity_demand_consumed(d: FleetIdentityDemand) -> Bool {
-  match d {
-    FleetIdentityConsumed => true
-    FleetIdentityNotConsumed => false
+fn step_reads_fleet_identity(step: Step) -> Bool {
+  let y = step_yaml(step: step)
+  yaml_value_mentions(v: y, pattern: fleet_identity_output_reference)
+    || yaml_value_mentions(v: y, pattern: fleet_identity_output_reference_bracketed)
+}
+
+fn step_condition_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
   }
 }
 
-data fleet_converge_fleet_identity_modes: List<FleetConvergeWorkflowMode> = filter(fleet_converge_workflow_modes, m => fleet_identity_demand_consumed(d: fleet_converge_mode_fleet_identity_demand(mode: m)))
+fn condition_decidable_at_the_mint(c: String) -> Bool {
+  c != ""
+    && !string_contains(s: c, pattern: "steps.")
+    && !string_contains(s: c, pattern: "steps[")
+    && !string_contains(s: c, pattern: "success()")
+    && !string_contains(s: c, pattern: "failure()")
+    && !string_contains(s: c, pattern: "cancelled()")
+}
 
-data fleet_converge_fleet_identity_consumer_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_fleet_identity_modes)
+fn fleet_identity_reader_mint_condition(step: Step) -> String {
+  let c = step_condition_text(step: step)
+  if condition_decidable_at_the_mint(c: c) { c } else { "true" }
+}
+
+fn fleet_identity_readers(candidates: List<Step>) -> List<Step> {
+  filter(candidates, s => step_reads_fleet_identity(step: s))
+}
+
+// The mint's own condition, from the readers: their distinct conditions, each parenthesized, joined
+// by `||`; no reader is `false`, so a job with no reader never mints.
+fn fleet_identity_mint_condition(readers: List<Step>) -> String {
+  let conditions = distinct_by_key(xs: map(readers, s => fleet_identity_reader_mint_condition(step: s)), key: c => c)
+  match conditions.first() {
+    Absent => "false"
+    Present { value: _ } => join(map(conditions, c => concat(concat("(", c), ")")), " || ")
+  }
+}
 
 data fleet_converge_spark_target_modes: List<FleetConvergeWorkflowMode> = [
   SparkGrants,
@@ -5747,21 +5689,45 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
     [
       ci_release_bins_download_step(),
       ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-      fleet_converge_fleet_identity_auth_step(if_condition: concat(concat(fleet_converge_fleet_identity_step_if, " && ("), concat(fleet_converge_fleet_identity_consumer_step_if, ")"))),
+      fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_fleet_identity_auth_condition()),
     ],
-    concat(
-      fleet_converge_granted_account_auth_steps(),
-      [ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if })],
-    ),
+    fleet_converge_post_mint_credential_steps(),
   )
+}
+
+// The credential steps after the mint: the granted-account sign-ins, then the fleet key, which reads
+// the fleet identity to fetch the key.
+fn fleet_converge_post_mint_credential_steps() -> List<Step> {
+  concat(
+    fleet_converge_granted_account_auth_steps(),
+    [ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if })],
+  )
+}
+
+// Every step of the job that runs after the mint and may read it.
+fn fleet_converge_fleet_identity_reader_candidates() -> List<Step> {
+  concat(fleet_converge_post_mint_credential_steps(), fleet_converge_job_work_steps())
+}
+
+// The run-scoped exclusion (a granted-account mode never mints the fleet identity) conjoined with the
+// readers' conditions.
+fn fleet_converge_fleet_identity_auth_condition() -> String {
+  join([fleet_converge_fleet_identity_step_if, " && (", fleet_identity_mint_condition(readers: fleet_identity_readers(candidates: fleet_converge_fleet_identity_reader_candidates())), ")"], "")
 }
 
 fn fleet_converge_job() -> Job {
   fleet_converge_job_with_steps(steps: concat(
-      concat(
-        fleet_converge_consumer_prelude_steps(),
-        fleet_converge_credential_prelude_steps()
-      ),
+    concat(
+      fleet_converge_consumer_prelude_steps(),
+      fleet_converge_credential_prelude_steps()
+    ),
+    fleet_converge_job_work_steps()
+  ))
+}
+
+// THE JOB'S WORK, after the credential prelude: its own producer so the mint can read its readers
+// from it without reading itself.
+fn fleet_converge_job_work_steps() -> List<Step> {
       [
         fleet_converge_plan_step(),
         fleet_converge_launch_environment_plan_step(),
@@ -5904,7 +5870,6 @@ fn fleet_converge_job() -> Job {
         fleet_converge_site_pxe_edge_receipt_upload_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
-    ))
 }
 
 // The shared job envelope owns selection and credentials independently of its step producers.
