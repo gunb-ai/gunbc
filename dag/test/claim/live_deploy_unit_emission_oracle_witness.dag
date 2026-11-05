@@ -1,6 +1,6 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import gunbc.live_deploy.serve_binary { fixed_serve_binary_path, AdmittedFixedServeBinary, admit_fixed_serve_path, AdmittedServeBinarySource, HostSeedInstall, SeedBuiltAtRevision, SourceUndeclared }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path, admit_fixed_serve_path, AdmittedServeBinarySource, HostSeedInstall, SeedBuiltAtRevision, SourceUndeclared }
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port, Int }
 import std.optional { Present, Absent }
 import gunbc.auth.approval_device_crypto_client { device_crypto_readback_expectation }
@@ -58,6 +58,7 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import test.claim.live_deploy.serve_binary_spec_fixture { spec_with_serve_binary }
 import gunbc.live_deploy.repository_convergence_placement {
   convergence_unit_doc,
   convergence_unit_start_timeout,
@@ -1139,30 +1140,10 @@ test fn the_readback_expectation_is_the_gates_own_requirement_and_a_refused_gate
 // install and an in-place seed build at an admitted revision both do; an undeclared admission
 // refuses TYPED, naming the path and the missing provenance -- never a unit that would die at
 // restart (DESIGN section 5: the unjustified state is refused, not assumed).
-fn spec_with_serve_binary(binary: AdmittedFixedServeBinary) -> DeploymentSpec {
-  let base = live_spec()
-  match base {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
-      match svc {
-        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
-          provider_state_root: ps, instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
-          DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories,
-            role_singletons: base.role_singletons,
-            service: DeploymentServiceConfig {
-              unit_name: u, serve_binary: binary, serve_entry: se, serve_function: f,
-              provider_state_root: ps, instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
-              listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall,
-            }
-          }
-      }
-  }
-}
 
 test fn an_undeclared_serve_binary_source_refuses_the_serve_unit_typed() -> Bool {
   let emitted = live_deploy_serve_unit_emission(
-    spec: spec_with_serve_binary(binary: admit_fixed_serve_path(
+    spec: spec_with_serve_binary(base: live_spec(), binary: admit_fixed_serve_path(
       path: "/opt/gunbc/bin/not-known-to-be-the-seed" as NonEmptyStr,
       source: SourceUndeclared { reason: "witness fixture: the lane did not declare what this binary is" })),
     revision: live_revision(), now_epoch: claim_oidc_now_for(spec: live_spec()))
@@ -1176,7 +1157,7 @@ test fn an_undeclared_serve_binary_source_refuses_the_serve_unit_typed() -> Bool
 
 test fn an_in_place_built_serve_binary_emits_the_same_grammar_at_its_own_path() -> Bool {
   let built_path = "/opt/gunbc/builds/7c0ffee5a5/gunbc" as NonEmptyStr
-  let spec = spec_with_serve_binary(binary: admit_fixed_serve_path(
+  let spec = spec_with_serve_binary(base: live_spec(), binary: admit_fixed_serve_path(
     path: built_path, source: SeedBuiltAtRevision { revision: "7c0ffee5a5" as NonEmptyStr }))
   let emitted = live_deploy_serve_unit_emission(
     spec: spec, revision: live_revision(), now_epoch: claim_oidc_now_for(spec: spec))
@@ -1193,7 +1174,7 @@ test fn an_in_place_built_serve_binary_emits_the_same_grammar_at_its_own_path() 
 
 test fn the_host_seed_admission_still_emits_and_the_refusal_is_not_a_blanket() -> Bool {
   let emitted = live_deploy_serve_unit_emission(
-    spec: spec_with_serve_binary(binary: admit_fixed_serve_path(
+    spec: spec_with_serve_binary(base: live_spec(), binary: admit_fixed_serve_path(
       path: "/opt/gunbc/bin/gunbc" as NonEmptyStr, source: HostSeedInstall)),
     revision: live_revision(), now_epoch: claim_oidc_now_for(spec: live_spec()))
   match emitted {
@@ -1208,7 +1189,7 @@ test fn the_host_seed_admission_still_emits_and_the_refusal_is_not_a_blanket() -
 // __GUNBC_*_REFUSED__ discipline the OIDC readback refusal already keeps (DESIGN section 5).
 test fn the_grammar_refusal_poisons_the_unit_doc_route() -> Bool {
   let doc = emit_systemd_unit_doc(
-    spec: spec_with_serve_binary(binary: admit_fixed_serve_path(
+    spec: spec_with_serve_binary(base: live_spec(), binary: admit_fixed_serve_path(
       path: "/opt/gunbc/unknown-build/gunbc" as NonEmptyStr,
       source: SourceUndeclared { reason: "no recorded lane" })),
     revision: live_revision(), now_epoch: claim_oidc_now_for(spec: live_spec()))

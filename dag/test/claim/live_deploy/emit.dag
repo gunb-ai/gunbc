@@ -71,7 +71,7 @@ import gunbc.live_deploy.spec {
   deployment_publication_path_unit_name,
   deployment_publication_service_unit_name,
 }
-import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec, srv2_deploy_desired_deployment }
+import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec, srv2_deploy_desired_deployment, spec_same_host_surface_collision, spec_owned_identities }
 import gunbc.live_deploy.lab_host_plan { LabPlanRefused, LabSandbox }
 import gunbc.host.host_software_surface { UserManagerSandboxEnforcementUnobserved }
 import gunbc.host.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
@@ -115,7 +115,8 @@ import extdeps.systemd.unit_file {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { deployment_directory_demands }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary, HostSeedInstall }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary, AdmittedFixedServeBinary, HostSeedInstall, SeedBuiltAtRevision }
+import test.claim.live_deploy.serve_binary_spec_fixture { spec_with_serve_binary }
 import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
 import gunbc.membership_reconcile { EffectRemove }
 import gunbc.live_deploy.retract_legs {
@@ -545,7 +546,7 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: twin))
     && !(live.service.unit_name == twin.service.unit_name)
     && !(live.service.repo_root == twin.service.repo_root)
-    && !(live.service.serve_binary == twin.service.serve_binary)
+    && !(fixed_serve_binary_path(binary: live.service.serve_binary) == fixed_serve_binary_path(binary: twin.service.serve_binary))
     && count(live_instance_scoped) > 0
     && all(live_scoped_paths, h => any(live_paths, l => l == h))
     && all(twin_scoped_paths, h => any(twin_paths, t => t == h))
@@ -1103,4 +1104,42 @@ test fn the_checked_constructor_admits_only_inert_absolute_paths() -> Bool {
       Present { value: _ } => false
       Absent => true
     }
+}
+
+// The collision law is PATH-based since #15942 spelled provenance onto the admitted binary:
+// two deployments driving ONE binary path collide whatever their provenance arms say (the arms
+// are judged by the grammar gate, not the collision gate). RED test: break the path compare in
+// spec_same_host_surface_collision and the first claim goes red.
+test fn the_serve_binary_collision_clause_reads_the_path_not_the_provenance() -> Bool {
+  let live = deployment_spec_srv1()
+  let shared = fixed_serve_binary_path(binary: live.service.serve_binary)
+  let twin_forced = spec_with_serve_binary(
+    base: srv1_twin_spec(),
+    binary: admit_fixed_serve_path(path: shared as NonEmptyStr,
+      source: SeedBuiltAtRevision { revision: "6c0d0ee22a7004333df9188f616cc86965113707" as NonEmptyStr }))
+  match live.service.serve_binary {
+    AdmittedFixedServeBinary { path: live_path, source: live_source } =>
+      match twin_forced.service.serve_binary {
+        AdmittedFixedServeBinary { path: twin_path, source: twin_source } =>
+          live_path == twin_path
+            && !(live_source == twin_source)
+            && spec_same_host_surface_collision(
+              a: live, b: twin_forced,
+              a_owned: spec_owned_identities(spec: live), b_owned: spec_owned_identities(spec: twin_forced))
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// CONTROL (discriminating the control): the untouched lab twin -- different path, different
+// provenance -- does NOT collide, so the claim above cannot be satisfied by a law that always
+// says true.
+test fn the_untouched_lab_twin_collides_with_nothing_under_the_law() -> Bool {
+  let live = deployment_spec_srv1()
+  let twin = srv1_twin_spec()
+  !(fixed_serve_binary_path(binary: live.service.serve_binary) == fixed_serve_binary_path(binary: twin.service.serve_binary))
+    && !(spec_same_host_surface_collision(
+      a: live, b: twin,
+      a_owned: spec_owned_identities(spec: live), b_owned: spec_owned_identities(spec: twin)))
 }
