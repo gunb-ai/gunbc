@@ -103,7 +103,7 @@ fn apply_declared_install(plan: OwnedDirectoryInstallPlan) -> Bool {
 test fn witness_the_matching_prior_reowns_and_reads_back_the_declared_identity() -> Bool {
   match scratch_directory() {
     Absent => false
-    Present { value: root } =>
+    Present { value: root } => {
       let path = concat(root, "/printer-starts")
       if !plant_directory(path: path, mode_operand: "02770") { false } else {
         let live = observe_path(path: path as FilePath)
@@ -122,6 +122,7 @@ test fn witness_the_matching_prior_reowns_and_reads_back_the_declared_identity()
           EnsureInaccessible { reason: _ } => false
         }
       }
+    }
   }
 }
 
@@ -132,12 +133,12 @@ test fn witness_the_matching_prior_reowns_and_reads_back_the_declared_identity()
 test fn witness_a_prior_that_differs_in_group_refuses_and_nothing_is_applied() -> Bool {
   match scratch_directory() {
     Absent => false
-    Present { value: root } =>
+    Present { value: root } => {
       let path = concat(root, "/printer-starts")
       if !plant_directory(path: path, mode_operand: "02770") { false } else {
         let live = observe_path(path: path as FilePath)
         match live {
-          EnsureObserved { evidence } =>
+          EnsureObserved { evidence } => {
             let foreign_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: evidence.owner.user, group: "gunbc-fleet-reown-witness-absent" as NonEmptyStr), mode: evidence.mode }
             match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerOnly), prior: foreign_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
               PrinterStartsParentReowned { path: _, before: _, after: _ } => false
@@ -145,10 +146,12 @@ test fn witness_a_prior_that_differs_in_group_refuses_and_nothing_is_applied() -
                 (at == path) && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
               PrinterStartsParentReownRefused { path: _, cause: _ } => false
             }
+          }
           EnsureAbsent { reason: _ } => false
           EnsureInaccessible { reason: _ } => false
         }
       }
+    }
   }
 }
 
@@ -159,21 +162,23 @@ test fn witness_a_prior_that_differs_in_group_refuses_and_nothing_is_applied() -
 test fn witness_a_prior_that_differs_in_mode_refuses_although_the_live_mode_is_already_the_target() -> Bool {
   match scratch_directory() {
     Absent => false
-    Present { value: root } =>
+    Present { value: root } => {
       let path = concat(root, "/printer-starts")
       if !plant_directory(path: path, mode_operand: "00755") { false } else {
         match observe_path(path: path as FilePath) {
-          EnsureObserved { evidence } =>
+          EnsureObserved { evidence } => {
             let prior_at_another_mode = OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
             match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: prior_at_another_mode, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
               PrinterStartsParentReowned { path: _, before: _, after: _ } => false
               PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "755"], "|")
               PrinterStartsParentReownRefused { path: _, cause: _ } => false
             }
+          }
           EnsureAbsent { reason: _ } => false
           EnsureInaccessible { reason: _ } => false
         }
       }
+    }
   }
 }
 
@@ -184,7 +189,7 @@ test fn witness_a_prior_that_differs_in_mode_refuses_although_the_live_mode_is_a
 test fn witness_a_symlink_at_the_path_refuses_and_what_it_points_at_is_left_alone() -> Bool {
   match scratch_directory() {
     Absent => false
-    Present { value: root } =>
+    Present { value: root } => {
       let held = concat(root, "/what-the-link-names")
       let path = concat(root, "/printer-starts")
       if !plant_directory(path: held, mode_operand: "02770") { false } else {
@@ -201,6 +206,7 @@ test fn witness_a_symlink_at_the_path_refuses_and_what_it_points_at_is_left_alon
           }
         }
       }
+    }
   }
 }
 
@@ -210,7 +216,7 @@ test fn witness_a_symlink_at_the_path_refuses_and_what_it_points_at_is_left_alon
 test fn witness_an_unreadable_state_refuses() -> Bool {
   match scratch_directory() {
     Absent => false
-    Present { value: root } =>
+    Present { value: root } => {
       let dangling = concat(root, "/parent-that-is-a-broken-link")
       if shell.Exec.RunArgv(program: "ln", arguments: ["-s", concat(root, "/nowhere-exists"), dangling]).exit_code != 0 { false } else {
         let path = concat(dangling, "/printer-starts")
@@ -221,6 +227,7 @@ test fn witness_an_unreadable_state_refuses() -> Bool {
           PrinterStartsParentReownRefused { path: _, cause: _ } => false
         }
       }
+    }
   }
 }
 
@@ -232,7 +239,7 @@ test fn witness_an_unreadable_state_refuses() -> Bool {
 test fn witness_a_missing_directory_refuses_rather_than_creates() -> Bool {
   match scratch_directory() {
     Absent => false
-    Present { value: root } =>
+    Present { value: root } => {
       let path = concat(root, "/printer-starts")
       let absent_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: observing_login(), group: observing_login()), mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
       match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: observing_login(), group: observing_login()), mode: DirectoryOwnerAllEveryoneTraverse), prior: absent_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
@@ -240,6 +247,7 @@ test fn witness_a_missing_directory_refuses_rather_than_creates() -> Bool {
         PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: path) == "absent"
         PrinterStartsParentReownRefused { path: _, cause: _ } => false
       }
+    }
   }
 }
 
