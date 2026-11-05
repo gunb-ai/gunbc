@@ -13,8 +13,7 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
-  NotADeclaration,
-  NodeOccurrence
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -58,8 +57,8 @@ test fn nested_product_claim_holds() -> Bool {
   match cost_lens(n: nested_product_input) {
     Holds { value: actual } =>
       actual == ProductCost {
-        lhs: LinearCost { variable: SizeVariable { source: NodeOccurrence { node: nested_product_input_measure } } },
-        rhs: LinearCost { variable: SizeVariable { source: NodeOccurrence { node: nested_product_inner_measure } } }
+        lhs: LinearCost { variable: SizeVariable { source: nested_product_input_measure } },
+        rhs: LinearCost { variable: SizeVariable { source: nested_product_inner_measure } }
       }
     _ => false
   }
