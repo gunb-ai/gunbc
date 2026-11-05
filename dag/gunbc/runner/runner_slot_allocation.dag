@@ -1,7 +1,7 @@
 module gunbc.runner.runner_slot_allocation
 
 import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
-import std.types { Int, String, List, Bool }
+import std.types { Int, String, List, Bool, NonEmptyStr }
 import std.algebra { take_prefix }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -115,6 +115,37 @@ fn srv1_deploy_slot() -> RunnerSlotIdentity {
 }
 
 data deploy_slot_identities: List<RunnerSlotIdentity> = [srv1_deploy_slot()]
+
+// A TRANSITIONAL CI SLOT IS A DECLARED OVER-ADMISSION, NOT A WIDTH THE ENVELOPE ADMITS. At the 25 GiB
+// slot (#15850) srv1's envelope admits two authored microVM slots and the deploy slot srv1-02, and no
+// CI slot. srv1-01, a CI slot in group gunbai, is the only srv1 runner that has served the
+// srv1-pinned fleet-converge jobs: 16 of 16 in the 60 completed runs read 2026-11-05. srv1-02 is not
+// in service: masked after the 2026-10-30 crash loop, recorded at
+// gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names. So the
+// operator ruled option (a): keep srv1-01 until the deploy slot serves (2026-11-05, relayed by
+// merry-fox-82 msg_07ba9a54 and keen-otter-392). The row is charged ON TOP of the memory-admitted
+// width. srv1's charged envelope after the two authored microVM slots is 47.85 GiB (the derivation in
+// test.claim.runner.runner_slot_allocation_witness: 145.85 GiB less 52 shakedown and 46 revision-job),
+// so two 25 GiB fleet slots over-admit it by ~2.15 GiB of srv1's unreserved headroom. That is the cost
+// the ruling accepted. Keeping the
+// slot preserves an OBSERVED route, not guaranteed scheduling: srv1-01 is a shared CI slot.
+type TransitionalCiSlot {
+  identity: RunnerSlotIdentity
+  ruling: NonEmptyStr
+  exit_when: NonEmptyStr
+}
+
+data transitional_ci_slots: List<TransitionalCiSlot> = [
+  TransitionalCiSlot {
+    identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
+    ruling: "operator 2026-11-05, option (a): keep one srv1 CI slot (srv1-01) until the deploy slot srv1-02 is in service (merry-fox-82 msg_07ba9a54)" as NonEmptyStr,
+    exit_when: "all of: srv1-02's three deploy_slot_tenancy walls read back CURRENT (admission, isolation, confidentiality); a srv1-pinned fleet-converge job observed assigned to and completed on srv1-02; operator sign-off. Then delete this row and the next converge withdraws srv1-01" as NonEmptyStr,
+  },
+]
+
+fn host_transitional_ci_slot_count(host: HostIdentity) -> Int {
+  filter(transitional_ci_slots, t => (t.identity.host as String) == (host as String)).length()
+}
 
 data authored_microvm_slots: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot(), srv1_revision_job_slot()]
 
@@ -943,7 +974,7 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
 }
 
 fn derived_runner_slots_of(f: HostWidthFacts, by_cpu: Int) -> Int {
-  let by_memory = memory_admitted_width_of(f: f)
+  let by_memory = memory_admitted_width_of(f: f) + host_transitional_ci_slot_count(host: f.host)
   let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
   match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
