@@ -1,6 +1,6 @@
 module test.claim.fleet.srv1_root_mutation_approval_witness
 
-import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.types { Bool, Int, NonEmptyStr, String, List, Timestamp }
 import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -9,18 +9,20 @@ import extdeps.github.actions { Job, Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
-import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied, ApprovalExpired }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied, ApprovalExpired, approval_request_window, approval_expires_at }
 import std.measure { second_count, minute_count }
 import std.integer { nat_to_int }
+import extdeps.github.actions { max_job_timeout_minutes }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_inheritance, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
   microvm_controller_install_root_scopes, srv1_root_write_scope,
   srv1_root_mutation_request, srv1_root_mutation_escalation_id, srv1_root_mutation_after_gate,
   srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect, srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_receipt_path,
   srv1_root_mutation_mode_env,
-  srv1_root_mutation_poll_cadence, srv1_root_mutation_poll_window, srv1_root_mutation_poll_tick_budget,
+  srv1_root_mutation_poll_cadence, srv1_root_mutation_poll_tick_budget,
   srv1_root_mutation_expiry_overrun_ticks, srv1_root_mutation_prelude_allowance,
   srv1_root_mutation_step_margin, srv1_root_mutation_approval_step_timeout_minutes,
+  srv1_root_mutation_approval_window,
 }
 import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
 import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
@@ -405,7 +407,7 @@ test fn the_unanswered_window_refuses_with_the_expiry_the_model_knows() -> Bool 
 // the minimum: it is what guarantees a clock read at or after the deadline.
 test fn the_poll_budget_outlives_the_window_it_polls() -> Bool {
   nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence)) * srv1_root_mutation_poll_tick_budget()
-    > nat_to_int(n: second_count(s: srv1_root_mutation_poll_window)) + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
+    > nat_to_int(n: second_count(s: srv1_root_mutation_approval_window())) + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
     && srv1_root_mutation_expiry_overrun_ticks > 0
 }
 
@@ -416,8 +418,25 @@ test fn the_poll_budget_outlives_the_window_it_polls() -> Bool {
 test fn the_step_timeout_clears_the_models_worst_case_by_the_stated_margin() -> Bool {
   let timeout_secs = nat_to_int(n: minute_count(m: srv1_root_mutation_approval_step_timeout_minutes())) * 60
   let model_worst_case = nat_to_int(n: second_count(s: srv1_root_mutation_prelude_allowance))
-    + nat_to_int(n: second_count(s: srv1_root_mutation_poll_window))
+    + nat_to_int(n: second_count(s: srv1_root_mutation_approval_window()))
     + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence)) * srv1_root_mutation_expiry_overrun_ticks
   timeout_secs >= model_worst_case + nat_to_int(n: second_count(s: srv1_root_mutation_step_margin))
     && model_worst_case > 32 * 60
+}
+
+// ONE ROW, TWO READERS. The instant this run stamps into the filing as expires_at and the bound the
+// gate's own wait is measured against come off the SAME row in the approval model
+// (gunbc.auth.approval_gate approval_request_window). Before this, the window was a literal in the run
+// module and the broker's stamp was a separate read of it, which is exactly how run 41972155901 ended up
+// with a runner killing its step two minutes before the deadline it had itself declared: two readers,
+// two numbers. The claim fails the moment anyone gives one side its own value -- including by "temporarily"
+// hardening a literal here or in the run module.
+test fn the_filing_and_the_gate_wait_read_one_window_row() -> Bool {
+  let issued = "2026-10-26T12:00:00Z" as Timestamp
+  srv1_root_mutation_approval_window() == approval_request_window
+    && approval_expires_at(issued: issued, window: srv1_root_mutation_approval_window())
+      == approval_expires_at(issued: issued, window: approval_request_window)
+    && nat_to_int(n: second_count(s: srv1_root_mutation_approval_window())) > 0
+    && nat_to_int(n: minute_count(m: srv1_root_mutation_approval_step_timeout_minutes())) * 60
+      < max_job_timeout_minutes * 60
 }
