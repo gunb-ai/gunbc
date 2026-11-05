@@ -1,0 +1,39 @@
+module gunbc.runner.runner_revision_request_placement
+
+import std.types { Port, Timestamp }
+import extdeps.tailscale.serve {
+  tailscale_serve_status_listener_standing, ServeListenerUnoccupied,
+  ServeListenerOccupied, ServeListenerStatusUnreadable,
+}
+import gunbc.auth.tailnet_serve_readback {
+  TailnetServeReadback, TailnetServeReadbackTaken, TailnetServeReadbackUntaken,
+  tailnet_serve_readback_is_fresh,
+}
+
+// Lane owner approved srv1 placement on 2026-10-30. This is a dedicated root
+// mount, not an additional path on the dashboard or fabric listener. Its live
+// availability remains unqualified until the queued srv1 readback is retained.
+data revision_request_https_port: Port = 10001
+
+type RevisionRequestListenerAdmission
+  = RevisionRequestListenerAvailable
+  | RevisionRequestListenerCollision
+  | RevisionRequestListenerReadbackUnavailable
+  | RevisionRequestListenerReadbackStale
+
+fn revision_request_listener_admit(readback: TailnetServeReadback,
+  decided_at: Timestamp) -> RevisionRequestListenerAdmission {
+  match readback {
+    TailnetServeReadbackUntaken { gap: _ } => RevisionRequestListenerReadbackUnavailable
+    TailnetServeReadbackTaken { status_json: status, observed_at: observed } =>
+      if !tailnet_serve_readback_is_fresh(observed_at: observed, decided_at: decided_at) {
+        RevisionRequestListenerReadbackStale
+      } else {
+        match tailscale_serve_status_listener_standing(status_json: status, port: revision_request_https_port) {
+          ServeListenerUnoccupied => RevisionRequestListenerAvailable
+          ServeListenerOccupied => RevisionRequestListenerCollision
+          ServeListenerStatusUnreadable => RevisionRequestListenerReadbackUnavailable
+        }
+      }
+  }
+}

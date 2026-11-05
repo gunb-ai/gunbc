@@ -12,11 +12,8 @@ module gunbc.machine_intake.bmc_recovery_route_frontier
 // Both were previously stated only in `//` text, which is what two reviews called out under DESIGN
 // §3c ("consumed by a named later change (a declared frontier, with its trigger)") and §4c ("an
 // annotation is never evidence that a machine claim holds"). A frontier row is the carrier those
-// sections name, and it is read by a fold: gunbc.dissolution_census folds
-// gunbc.census_closure_frontier.census_closure_frontier_rows(), and a row whose bound trigger
-// APPEARS is reported as fired, which makes that fold refuse. So the deferral cannot quietly outlive
-// the work it defers: adding the missing consumer or the missing pairing control turns the census red
-// until the row is deleted. Prose has no such teeth, which is the whole argument for this module.
+// sections name, and it is typed data. The roster fold that once read it (gunbc.dissolution_census over
+// gunbc.census_closure_frontier) was retired, so nothing now reports a fired trigger; the row records the deferral.
 //
 // Both triggers are named by DeclarationRef, and both name declarations that DO NOT EXIST. That is
 // deliberate: the ref is the contract for what has to be added, and std.dissolution reports a

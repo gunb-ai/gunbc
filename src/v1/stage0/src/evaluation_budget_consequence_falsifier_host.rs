@@ -335,9 +335,19 @@ fn file_digest(path: &Path) -> Result<String, String> {
 const AUTHORITY_REL: &str = "dag/std/evaluation_budget.dag";
 const GENERATED_REL: &str = "src/v1/stage0/src/evaluation_budget_consequence_generated.rs";
 const GATE_ENTRY: &str = "dag/gunbc/instruments/generated_artifact_gate.dag";
-const BREACH_FIXTURE: &str = "dag/test/fixture/serve_seam_probe.dag";
+// The handler is served through its deployment binding (gunbc.http_ingress): `gunbc run` evaluates
+// the binding constructor and realizes the binding it answers.
+const BREACH_BINDING_ENTRY: &str = "dag/test/fixture/serve_seam_ingress.dag";
+const BREACH_BINDING_FUNCTION: &str = "serve_seam_ingress";
+const BREACH_HANDLER_MODULE: &str = "test.fixture.serve_seam_probe";
 const BREACH_FUNCTION: &str = "serve_budget_breach_probe";
+// The armed entry a refusal names is the handler's module-qualified identity
+// (gunbc.http_ingress http_ingress_handler_identity).
+const BREACH_ENTRY: &str = "test.fixture.serve_seam_probe.serve_budget_breach_probe";
 const CPU_LIMIT_MS: u64 = 50;
+// A binding's budgets are both positive by construction. The wall bound is set far past the CPU one
+// so the CPU clock is the one that crosses.
+const WALL_LIMIT_MS: u64 = 600_000;
 
 fn observe(mut command: Command, budget: Duration) -> CommandObservation {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -714,7 +724,7 @@ enum ServeReadiness {
     },
 }
 
-/// The announcement `gunbc serve` prints once it has bound. Every field is pinned except the port,
+/// The announcement the ingress realization (`gunbc run` on a binding) prints once it has bound. Every field is pinned except the port,
 /// which is what the OS chose and what this instrument is trying to learn -- so matching the line
 /// establishes that the listener belongs to the contract THIS run armed, and not merely that
 /// something is listening somewhere.
@@ -788,7 +798,7 @@ fn await_serve_ready(
         let stderr = err.snapshot();
         if let Some(line) = stderr
             .lines()
-            .find(|line| line.starts_with("gunbc serve listening on"))
+            .find(|line| line.starts_with("http-ingress listening on"))
         {
             let port = match announced_port(line, prefix, suffix) {
                 Some(port) => port,
@@ -1652,23 +1662,25 @@ fn serve_and_judge(
     let mut command = Command::new(gunbc);
     command
         .args([
-            "serve",
+            "run",
             "--source-root",
             "dag",
             "--source-root",
             "src/v2",
             "--entry",
-            BREACH_FIXTURE,
+            BREACH_BINDING_ENTRY,
             "--function",
-            BREACH_FUNCTION,
-            "--release-revision",
-            head,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "0",
-            "--eval-budget-cpu-ms",
-            &CPU_LIMIT_MS.to_string(),
+            BREACH_BINDING_FUNCTION,
+            "--arg",
+            &format!("handler={BREACH_FUNCTION}"),
+            "--arg",
+            "listener=tcp:127.0.0.1:0",
+            "--arg",
+            &format!("release_revision={head}"),
+            "--arg",
+            &format!("cpu_limit_ms={CPU_LIMIT_MS}"),
+            "--arg",
+            &format!("wall_limit_ms={WALL_LIMIT_MS}"),
         ])
         .current_dir(worktree)
         .stdout(Stdio::piped())
@@ -1689,9 +1701,11 @@ fn serve_and_judge(
     // Every character of the announcement is pinned except the port. Matching it is what binds the
     // listener to the contract THIS run armed -- entry, release revision and both budget arms --
     // rather than establishing only that something, somewhere, is listening.
-    let announce_prefix = "gunbc serve listening on 127.0.0.1:";
+    // The limits are the fixture contract's (gunbc.native_serve head, body and read-timeout rows)
+    // and are pinned for the same reason the rest of the line is.
+    let announce_prefix = "http-ingress listening on 127.0.0.1:";
     let announce_suffix = format!(
-        " -> {BREACH_FUNCTION}() release_revision={head} eval_budget_cpu_ms={CPU_LIMIT_MS} eval_budget_wall_ms=unset"
+        " -> {BREACH_HANDLER_MODULE}.{BREACH_FUNCTION}() release_revision={head} head_limit_bytes=16384 body_limit_bytes=1048576 read_timeout_ms=10000 eval_budget_cpu_ms={CPU_LIMIT_MS} eval_budget_wall_ms={WALL_LIMIT_MS}"
     );
 
     let ready_budget = Duration::from_secs(900);
@@ -1873,7 +1887,7 @@ fn serve_and_judge(
                 Some(format!("moved occurrences {moved_occurrences}"))
             } else if former_occurrences != 0 {
                 Some(format!("former occurrences {former_occurrences}"))
-            } else if entry != BREACH_FUNCTION {
+            } else if entry != BREACH_ENTRY {
                 Some(format!("entry {entry}"))
             } else if clock != "thread_cpu" {
                 Some(format!("clock {clock}"))
@@ -1894,7 +1908,7 @@ fn serve_and_judge(
                     serve_stdout: serve_stdout.clone(),
                     serve_stderr: serve_stderr.clone(),
                     expectation: format!(
-                        "500, content-type=application/json; charset=utf-8, code={moved_value}, moved=1, former=0, entry={BREACH_FUNCTION}, clock=thread_cpu, limit_ms={CPU_LIMIT_MS}, elapsed_ns>{}, and a serve diagnostic agreeing with the body",
+                        "500, content-type=application/json; charset=utf-8, code={moved_value}, moved=1, former=0, entry={BREACH_ENTRY}, clock=thread_cpu, limit_ms={CPU_LIMIT_MS}, elapsed_ns>{}, and a serve diagnostic agreeing with the body",
                         u128::from(CPU_LIMIT_MS) * 1_000_000
                     ),
                     observed,

@@ -1,6 +1,7 @@
 module test.claim.operation_realization_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, list_length, NonEmptyStr, String }
+import std.algebra { list_append }
 import std.optional { Absent, Present }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.content_hash { sha256_digest_wire_form }
@@ -962,7 +963,7 @@ fn unit_sdr_record(sensor_type: String, name: String, number: String, status: St
 }
 
 fn fan_round_surface(temps: List<BmcSdrRecord>, fans: List<BmcSdrRecord>) -> BmcWorld {
-  bmc_with_record_surfaces(world: bmc_world(power: BmcPowerOn), surfaces: BmcRecordSurfaces {
+  bmc_with_record_surfaces(world: bmc_world(power: BmcPowerOn), surfaces: BmcRecordSurfaces { mc_info: none, sol_configuration: none, ethernet_interface: none, boot_options: none,
     manager_date_time: none,
     log_services: none,
     account_events: none,

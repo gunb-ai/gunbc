@@ -17382,8 +17382,8 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
 // The invariant that makes plain subtraction safe: the cursor only advances by L inside an arm whose
 // condition proved `len - cursor >= L`, so `cursor <= len` always holds.
 //
-// v2's own emission makes this decision nowhere yet: the debt is the row for `rust_simple_method_specs`
-// in `gunbc.resolver_cost_frontier` `resolver_cost_frontier_rows`.
+// v2's own emission makes this decision nowhere yet: the debt is the unimplemented
+// `rust_simple_method_specs`; its frontier ledger was retired.
 type CursorTail {
   name: String
   depth: Int
@@ -20795,12 +20795,12 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
   let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if effectful {
     concat(
-      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
+      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
       "                Ok(response) => response,", "\n",
       "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
       "            \};", "\n")
   } else {
-    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
+    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision", startup_arg, ");\n")
   }
   // Order of the serve main: a startup entry realizes its first worker (which runs the startup fold) BEFORE the bind, so a
   // refusing self-check never becomes reachable; a driver with no startup keeps the original bind-then-realize order.
@@ -20844,7 +20844,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count", if startup { ", second_count" } else { "" }, "\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement,", effect_failed_import, " native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
-      "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
+      "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route, native_serve_authorization,", "\n",
       "    native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,", "\n",
       "    native_serve_start, NativeServeAdmission, NativeServeContract, NativeServeFrame, NativeServeOutgoing,", "\n",
       "    NativeServeRoute, NativeServeStart,", "\n",
@@ -20922,6 +20922,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    path: String,", "\n",
       "    body: String,", "\n",
       "    tailscale_identity: String,", "\n",
+      "    authorization: String,", "\n",
       "    release_revision: String,", "\n",
       "\}", "\n",
       "\n",
@@ -21020,6 +21021,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            path: head.target.clone(),", "\n",
       "            body,", "\n",
       "            tailscale_identity: head.tailscale_identity.clone(),", "\n",
+      "            authorization: native_serve_authorization(head.clone()),", "\n",
       "            release_revision: contract.release_revision.clone(),", "\n",
       "        \}),", "\n",
       "    \}", "\n",
@@ -21274,7 +21276,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_census_residual_rows,", "\n",
       "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,", "\n",
       "    native_census_cause_group_rows, native_census_closure_index, native_census_roots_ranked,", "\n",
-      "    native_census_verb_output, NativeCensusVerbWord, native_self_host_frontier_output,", "\n",
+      "    native_self_host_frontier_output,", "\n",
       "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest, native_lane_census_scoped_ingest,", "\n",
       "    NativeCensusScope, NativeCensusScoped,", "\n",
       "    census_module_obligation_rows, census_scoped_run_record, census_comparable_record, census_comparable_diff,", "\n",
@@ -21636,23 +21638,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    );", "\n",
       "\}", "\n",
       "\n",
-      "// THE NATIVE CENSUS VERBS (the words of `gunbc.native_census_verb`): ONE run function.", "\n",
-      "// v2.compiler.source_root_eval native_census_verb_output decides every line and the exit from the verb", "\n",
-      "// word; this function only reads the ingest, prints and exits.", "\n",
-      "fn run_census_verb(verb: &NativeCensusVerbWord, source_roots: &[String]) \{", "\n",
-      "    if source_roots.is_empty() \{", "\n",
-      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
-      "        std::process::exit(2);", "\n",
-      "    \}", "\n",
-      "    let reads = read_census_ingest(source_roots);", "\n",
-      "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
-      "    let output = native_census_verb_output(verb.clone(), ingest);", "\n",
-      "    for line in output.lines.iter() \{", "\n",
-      "        println!(\"{}\", line);", "\n",
-      "    \}", "\n",
-      "    std::process::exit(output.exit as i32);", "\n",
-      "\}", "\n",
-      "", "\n",
       "// THE SELF-HOST FRONTIER MODE (v2.compiler.source_root_eval native_self_host_frontier_output).", "\n",
       "// The fold decides every line and the exit -- 0 held, 1 an Unclassified file or a stale row, 2 no", "\n",
       "// observation -- and this function only reads the three operand files, prints and exits.", "\n",
@@ -22629,7 +22614,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensus \{ .. \} => run_census(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusResolve \{ .. \} => run_census_resolve(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
-      "                NativeDriverVerb::NativeDriverCensusVerb \{ verb, .. \} => run_census_verb(verb, &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, subjects_rest, against, .. \} => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverSelfHostFrontier \{ manifest_path, verdict_path, observed_path \} => run_self_host_frontier(manifest_path, verdict_path, observed_path),", "\n",
       "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
