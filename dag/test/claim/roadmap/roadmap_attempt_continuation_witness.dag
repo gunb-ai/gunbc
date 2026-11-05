@@ -175,8 +175,10 @@ test fn a_stopped_segment_is_a_refusal_not_a_fallback() -> Bool {
 
 // The unbounded worker explanation is bounded and the truncation is marked.
 test fn worker_explanation_is_bounded() -> Bool {
-  let long_detail = "block-block-block-block-block-block-block-block"
-  let blocked = pri(capture: capture_for(submission: WorkerSubmission { readiness: SubmissionBlocked, explanation: concat(concat(long_detail, long_detail), concat(long_detail, long_detail)), limitations: "" }), verification: none, review: none, goal_audit: none)
+  let seed = "block-block-block-block-block-block-block-block-block-"
+  let a4 = concat(concat(seed, seed), concat(seed, seed))
+  let long_detail = concat(concat(a4, a4), concat(a4, a4))
+  let blocked = pri(capture: capture_for(submission: WorkerSubmission { readiness: SubmissionBlocked, explanation: long_detail, limitations: "" }), verification: none, review: none, goal_audit: none)
   match continuation_plan(obs: Present { value: blocked }) {
     NextAttempt { reason, from_branch: _ } => reason.contains(" ...") && string_length(s: reason) < 1400
     _ => false
