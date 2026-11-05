@@ -3,8 +3,8 @@ module gunbc.instrument_targets
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
 import gunbc.native_serve_probe_plan {
-  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit,
-  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_deadline_exit,
+  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit, NativeServeUnixSocket,
+  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_deadline_exit, native_serve_declares_unix_socket,
 }
 import gunbc.target_binding {
   TargetBinding,
@@ -405,6 +405,29 @@ fn native_serve_startup_overrun_binding() -> TargetBinding {
     producer: NativeServeProgramProducer {
       entry: native_serve_startup_overrun_entry()
       probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_overrun_probe.dag" phases: [NativeServeRefusedLaunch] }
+    }
+  }
+}
+
+// THE UNIX-SOCKET PEER CONTROL (gunbc.plans.converged_ingress M2b): a handler declaring the kernel-attested
+// peer_user, served natively on a unix socket at a path the host chooses, must answer every connection with the
+// account the host process runs as, never a value the request carries; the same binary launched on TCP must refuse
+// before it binds, because a TCP listener attests no peer. `gunbc test //gunbc/instruments:native-serve-unix`. Run by
+// name, not a merge gate.
+fn native_serve_unix_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-unix" } }
+}
+
+fn native_serve_unix_entry() -> String {
+  "dag/gunbc/instruments/native_serve_unix_fixture.dag"
+}
+
+fn native_serve_unix_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_unix_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_unix_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_unix_probe.dag" phases: [NativeServeUnixSocket, NativeServeRefusedLaunch] }
     }
   }
 }
@@ -1252,7 +1275,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 
@@ -1598,5 +1621,12 @@ fn native_serve_probe_runs_deadline_exit(entry: String) -> Bool {
   match native_serve_probe_for_entry(entry: entry) {
     Absent => false
     Present { value: p } => native_serve_declares_deadline_exit(probe: p)
+  }
+}
+
+fn native_serve_probe_runs_unix_socket(entry: String) -> Bool {
+  match native_serve_probe_for_entry(entry: entry) {
+    Absent => false
+    Present { value: p } => native_serve_declares_unix_socket(probe: p)
   }
 }

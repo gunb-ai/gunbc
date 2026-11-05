@@ -4003,11 +4003,14 @@ pub struct NativeServeProgramRun {
     pub deadline_announcements: Vec<String>,
     pub deadline_responses: Vec<String>,
     pub deadline_exit_statuses: Vec<Option<i32>>,
+    /// The account the host's own effective uid resolves to, when the subject was served on a unix
+    /// socket: the peer the kernel must attest for every connection the host made. Empty otherwise.
+    pub unix_peer_account: String,
     pub stderr: String,
 }
 
 /// WHICH PHASES A RUN PERFORMS, as the binding row declares them (`gunbc.native_serve_probe_plan`
-/// `NativeServePhase`). The host reads the three answers off the row and holds no per-binding
+/// `NativeServePhase`). The host reads the four answers off the row and holds no per-binding
 /// branch: a phase that is not declared is not run, and its observation reaches the reader as the
 /// absent value (no announcement, port -1, empty lists).
 #[derive(Clone, Copy)]
@@ -4015,11 +4018,15 @@ pub struct NativeServePhases {
     pub peer_instance: bool,
     pub refused_launch: bool,
     pub deadline_exit: bool,
+    pub unix_socket: bool,
 }
 
-/// The launches a run performs, each an argv the reader rendered.
+/// The launches a run performs, each an argv the reader rendered. Under the unix-socket phase the
+/// subject's argv names the socket path the host chose (`unix_socket_path`), and every request is
+/// exchanged over that socket.
 pub struct NativeServeLaunches {
     pub subject: Vec<String>,
+    pub unix_socket_path: Option<String>,
     pub refused: Vec<Vec<String>>,
     pub deadline: Vec<Vec<String>>,
 }
@@ -4064,13 +4071,26 @@ fn native_serve_refused_launch(
 
 /// One request written to a fresh connection, and every byte the service sent before closing it.
 fn native_serve_exchange(address: &str, request: &str) -> String {
-    use std::io::{Read, Write};
-    let mut stream = match std::net::TcpStream::connect(address) {
-        Ok(stream) => stream,
-        Err(cause) => return format!("connect failed: {cause}"),
-    };
-    let _ = stream.set_read_timeout(Some(NATIVE_SERVE_DEADLINE));
-    let _ = stream.set_write_timeout(Some(NATIVE_SERVE_DEADLINE));
+    match std::net::TcpStream::connect(address) {
+        Ok(stream) => native_serve_exchange_on(stream, request),
+        Err(cause) => format!("connect failed: {cause}"),
+    }
+}
+
+/// The same exchange over the unix socket at `path`, the host's own process being the peer the
+/// service's kernel attests.
+fn native_serve_unix_exchange(path: &str, request: &str) -> String {
+    match std::os::unix::net::UnixStream::connect(path) {
+        Ok(stream) => native_serve_exchange_on(stream, request),
+        Err(cause) => format!("connect failed: {cause}"),
+    }
+}
+
+fn native_serve_exchange_on<S: std::io::Read + std::io::Write + NativeServeTimeouts>(
+    mut stream: S,
+    request: &str,
+) -> String {
+    stream.bound(NATIVE_SERVE_DEADLINE);
     if let Err(cause) = stream.write_all(request.as_bytes()) {
         return format!("write failed: {cause}");
     }
@@ -4079,6 +4099,44 @@ fn native_serve_exchange(address: &str, request: &str) -> String {
         return format!("read failed after {} bytes: {cause}", bytes.len());
     }
     String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// The read and write bound on one exchange's connection, either kind.
+trait NativeServeTimeouts {
+    fn bound(&self, deadline: std::time::Duration);
+}
+
+impl NativeServeTimeouts for std::net::TcpStream {
+    fn bound(&self, deadline: std::time::Duration) {
+        let _ = self.set_read_timeout(Some(deadline));
+        let _ = self.set_write_timeout(Some(deadline));
+    }
+}
+
+impl NativeServeTimeouts for std::os::unix::net::UnixStream {
+    fn bound(&self, deadline: std::time::Duration) {
+        let _ = self.set_read_timeout(Some(deadline));
+        let _ = self.set_write_timeout(Some(deadline));
+    }
+}
+
+/// The account this host process's effective uid resolves to: under the unix-socket phase, the peer
+/// the service's kernel must attest. Read the way the service reads its peer (getpwuid_r), from the
+/// host's own uid rather than any connection.
+fn native_serve_host_account() -> Result<String, String> {
+    let uid = unsafe { libc::geteuid() };
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buf = vec![0 as libc::c_char; 4096];
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+    if rc != 0 || result.is_null() {
+        return Err(format!(
+            "NATIVE-SERVE REFUSAL cause=HostAccountUnresolved — uid {uid} resolves to no account"
+        ));
+    }
+    Ok(unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }
+        .to_string_lossy()
+        .into_owned())
 }
 
 /// EMIT, BUILD, START AND EXCHANGE WITH ONE `NativeIngressDriver` ENTRY. Preparation is the same
@@ -4164,12 +4222,32 @@ pub fn run_native_serve_program(
             return Err(cause);
         }
     };
-    let responses = match &subject.address {
-        Some(address) => requests
+    // UNDER THE UNIX-SOCKET PHASE every request goes over the socket the reader's argv named; the
+    // announcement still says whether the service bound, and the reader judges it.
+    let responses = match (&launches.unix_socket_path, &subject.address) {
+        (Some(path), Some(_)) => requests
+            .iter()
+            .map(|request| native_serve_unix_exchange(path, request))
+            .collect(),
+        (None, Some(address)) => requests
             .iter()
             .map(|request| native_serve_exchange(address, request))
             .collect(),
-        None => Vec::new(),
+        (_, None) => Vec::new(),
+    };
+    let unix_peer_account = if phases.unix_socket {
+        match native_serve_host_account() {
+            Ok(account) => account,
+            Err(cause) => {
+                subject.stop();
+                if let Some(instance) = &mut peer {
+                    instance.stop();
+                }
+                return Err(cause);
+            }
+        }
+    } else {
+        String::new()
     };
     let stderr = subject.stop();
     let (peer_announcement, peer_stderr) = match &mut peer {
@@ -4226,6 +4304,7 @@ pub fn run_native_serve_program(
         deadline_announcements,
         deadline_responses,
         deadline_exit_statuses,
+        unix_peer_account,
         stderr: format!("{stderr}{peer_stderr}{deadline_stderr}"),
     })
 }

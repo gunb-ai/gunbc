@@ -1,7 +1,7 @@
 module v1.tests.claim.carrier_realization_census
 
 import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
-import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params, emit_native_ingress_driver_main_rs, NativeIngressProgramResolved, NativeIngressRef, NativeIngressParameter, NativeIngressTextArgument, NativeIngressIntArgument }
+import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params, emit_native_ingress_driver_main_rs, NativeIngressProgramResolved, NativeIngressRef, NativeIngressParameter, NativeIngressTextArgument, NativeIngressIntArgument, NativeIngressRequestParameter, NativeIngressTextShape, NativeIngressHeadersShape }
 import v1.compiler.emit_core_support { is_type_def_item }
 import v1.compiler.infer_types { is_coproduct_type, child_type_node }
 import v1.compiler.coercion { type_realization_decision }
@@ -496,6 +496,7 @@ fn crc_ingress_program(startup: Bool) -> NativeIngressProgramResolved {
     binding: NativeIngressRef { module_path: "m", decl_name: "ctor" },
     binding_parameters: [NativeIngressParameter { name: "listener", kind: NativeIngressTextArgument }, NativeIngressParameter { name: "cpu_limit_ms", kind: NativeIngressIntArgument }],
     handler: NativeIngressRef { module_path: "h", decl_name: "handle" },
+    request_parameters: [NativeIngressRequestParameter { name: "path", shape: NativeIngressTextShape }, NativeIngressRequestParameter { name: "request_headers", shape: NativeIngressHeadersShape }],
     startup: if startup { Present { value: NativeIngressRef { module_path: "h", decl_name: "boot" } } } else { none },
   }
 }
@@ -537,11 +538,16 @@ test fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared
 }
 
 // THE MAIN CALLS THE EXACT CONSTRUCTOR AND THE EXACT HANDLER AND STARTUP, by their qualified paths, and derives its
-// contract from the constructor's answer and the descriptor; it parses no serve flag of its own.
+// start from the constructor's answer, the descriptor and the handler's typed request parameters; it parses no serve
+// flag of its own. The handler's arguments are positional in its declared order, each rebuilt from the variant its
+// shape crosses as, followed by the startup value (gunbc.plans.converged_ingress M2b).
 test fn the_native_ingress_main_calls_the_exact_constructor_handler_and_startup_by_qualified_path() -> Bool {
   let text = crc_ingress_main(startup: true)
-  string_contains(s: text, pattern: "http_ingress_native_contract(c::m::ctor(binding_argument_0, binding_argument_1), c::p::prog())")
-    && string_contains(s: text, pattern: "c::h::handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision, startup_value.clone())")
+  string_contains(s: text, pattern: "http_ingress_native_contract(c::m::ctor(binding_argument_0, binding_argument_1), c::p::prog(), Rc::new(request_parameters.into()))")
+    && string_contains(s: text, pattern: "vec![Rc::new(HttpIngressDeclaredParameter { name: \"path\".to_string(), shape: HttpIngressArgumentShape::HttpIngressTextShape }), Rc::new(HttpIngressDeclaredParameter { name: \"request_headers\".to_string(), shape: HttpIngressArgumentShape::HttpIngressHeadersShape })]")
+    && string_contains(s: text, pattern: "[WireArgument::Text(argument_0), WireArgument::Headers(argument_1)] => {")
+    && string_contains(s: text, pattern: "c::h::handle(argument_0.clone(), Rc::new(argument_1.iter().map(|(name, value)| Rc::new(ServeRequestHeader { name: name.clone(), value: value.clone() })).collect::<Vec<_>>().into()), startup_value.clone())")
+    && string_contains(s: text, pattern: "http_ingress_arguments(binding.clone(), facts.clone(), head, body, peer_user.clone())")
     && string_contains(s: text, pattern: "c::h::boot(")
     && string_contains(s: text, pattern: "vec![\"listener\".to_string(), \"cpu_limit_ms\".to_string()]")
     && !string_contains(s: text, pattern: "--host")
@@ -550,8 +556,8 @@ test fn the_native_ingress_main_calls_the_exact_constructor_handler_and_startup_
 // A REQUEST THAT CROSSES THE DEADLINE ENDS THE PROCESS: there is no stuck-worker accounting left to bound.
 test fn the_native_ingress_main_exits_after_a_deadline_and_keeps_no_stuck_worker_count() -> Bool {
   let text = crc_ingress_main(startup: false)
-  string_contains(s: text, pattern: "Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&mut stream, &contract),")
-    && string_contains(s: text, pattern: "Exchange::Overran => exit_after_deadline(&mut stream, &contract),")
+  string_contains(s: text, pattern: "Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&stream, &contract),")
+    && string_contains(s: text, pattern: "Exchange::Overran => exit_after_deadline(&stream, &contract),")
     && !string_contains(s: text, pattern: "stuck")
     && !string_contains(s: text, pattern: "WORKER_ABANDONED")
 }
@@ -561,6 +567,17 @@ test fn the_native_ingress_main_exits_after_a_deadline_and_keeps_no_stuck_worker
 test fn the_native_ingress_main_refuses_to_read_a_body_past_a_deadline_it_could_not_install() -> Bool {
   let text = crc_ingress_main(startup: false)
   string_contains(s: text, pattern: "if let Err(cause) = stream.set_read_timeout(Some(std::cmp::min(left, read_timeout))) { return Exchange::DeadlineUninstallable(cause.to_string()); }")
-    && string_contains(s: text, pattern: "Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&mut stream, &contract, reason),")
+    && string_contains(s: text, pattern: "Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&stream, &contract, reason),")
     && !string_contains(s: text, pattern: "let _ = stream.set_read_timeout")
+}
+
+// THE LISTENER IS THE BINDING'S, AND A UNIX PEER IS THE KERNEL'S (gunbc.plans.converged_ingress M2b): the main binds
+// whichever listener the start returned, reads each unix connection's peer through SO_PEERCRED before any request byte,
+// and reads no peer from the request.
+test fn the_native_ingress_main_binds_the_unix_listener_and_reads_the_peer_from_the_kernel() -> Bool {
+  let text = crc_ingress_main(startup: false)
+  string_contains(s: text, pattern: "HttpIngressListener::HttpIngressUnixSocket { path, mode } => match bind_unix(path, *mode as u32) {")
+    && string_contains(s: text, pattern: "libc::SO_PEERCRED")
+    && string_contains(s: text, pattern: "let user = peer_user(&stream).map_err(|cause| format!(\"unattested peer dropped: {}\", cause))?;")
+    && !string_contains(s: text, pattern: "native-serve binds TCP only")
 }

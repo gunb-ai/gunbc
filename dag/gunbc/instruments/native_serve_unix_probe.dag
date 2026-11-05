@@ -1,0 +1,90 @@
+module gunbc.instruments.native_serve_unix_probe
+
+import std.types { Int, List, String }
+import std.algebra { Cons, Empty }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.native_serve_probe_plan {
+  NativeServePhase, NativeServeUnixSocket, NativeServeRefusedLaunch, native_serve_phase_refusals, no_observation, native_serve_probe_not_held_code,
+  native_serve_probe_launch, native_serve_probe_unix_launch, native_serve_wire_parse, native_serve_first_status, native_serve_first_text,
+}
+
+// THE READER FOR `gunbc test //gunbc/instruments:native-serve-unix`. The service
+// (gunbc.instruments.native_serve_unix_fixture) declares peer_user. The host launches it on a unix socket at a path it
+// chooses (NativeServeUnixSocket), exchanges the requests below over that socket, and reports the account its own
+// effective uid resolves to; it also launches the same binary on loopback TCP (NativeServeRefusedLaunch). What the run
+// must show:
+// - over the socket, /whoami answers exactly the host's account as the peer, although the request's identity header
+//   names someone else, so the peer is the kernel's attestation of the connecting process and not the request's claim;
+// - the announcement names the unix listener;
+// - the TCP launch refuses before it binds, naming the peer the listener cannot attest.
+
+fn native_serve_probe_phases() -> List<NativeServePhase> {
+  [NativeServeUnixSocket, NativeServeRefusedLaunch]
+}
+
+fn native_serve_probe_phases_refused(declared: List<String>) -> List<String> {
+  native_serve_phase_refusals(declared: declared, judged: native_serve_probe_phases())
+}
+
+fn native_serve_probe_release_revision() -> String {
+  "0123456789abcdef0123456789abcdef01234567"
+}
+
+data native_serve_unix_probe_handler: String = "native_serve_unix_fixture_handle"
+
+fn native_serve_probe_launch_argv() -> List<String> {
+  native_serve_probe_launch(handler: native_serve_unix_probe_handler, release_revision: native_serve_probe_release_revision(), cpu_limit_ms: 5000, wall_limit_ms: 5000)
+}
+
+fn native_serve_probe_unix_launch_argv(socket_path: String) -> List<String> {
+  native_serve_probe_unix_launch(handler: native_serve_unix_probe_handler, socket_path: socket_path, release_revision: native_serve_probe_release_revision(), cpu_limit_ms: 5000, wall_limit_ms: 5000)
+}
+
+// The TCP launch of the same binary: its handler declares peer_user, which a TCP listener cannot attest.
+fn native_serve_probe_refused_launches() -> List<List<String>> {
+  [native_serve_probe_launch_argv()]
+}
+
+data native_serve_unix_probe_refusal_marker: String = "handler declares `peer_user`, but only a unix-socket listener attests a peer"
+
+data native_serve_unix_probe_claimed: String = "mallory@example"
+
+fn native_serve_probe_requests(peer_port: Int) -> List<String> {
+  [
+    concat("GET /whoami HTTP/1.1\r\nTailscale-User-Login: ", concat(native_serve_unix_probe_claimed, "\r\nX-Peer-User: mallory\r\n\r\n")),
+    "GET /whoami HTTP/1.1\r\n\r\n",
+  ]
+}
+
+fn native_serve_unix_whoami_failure(response: String, account: String) -> String {
+  match native_serve_wire_parse(response: response) {
+    Absent => concat("a /whoami response is not an HTTP/1.1 status line and body: ", response)
+    Present { value: w } =>
+      if w.status != 200 { concat("/whoami answered status ", concat(to_string(value: w.status), concat(" [", concat(w.body, "]")))) }
+      else if !starts_with(s: w.body, prefix: concat("peer ", concat(account, " (the request claimed ["))) { concat("/whoami did not name the attested account ", concat(account, concat(": [", concat(w.body, "]")))) }
+      else { "" }
+  }
+}
+
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String) -> ProcessExit {
+  let refused_status = native_serve_first_status(statuses: refused_statuses)
+  let refused_stderr = native_serve_first_text(items: refused_stderrs)
+  if unix_peer_account == "" {
+    no_observation(reason: "the host reported no account for its own uid, so there is nothing to compare the attested peer with")
+  } else if !starts_with(s: announcement, prefix: "native-serve listening on unix:") {
+    no_observation(reason: concat("the service did not announce a unix listener: ", announcement))
+  } else if (responses |> count) != 2 {
+    no_observation(reason: "the two /whoami requests were not each answered")
+  } else if (refused_statuses |> count) != 1 {
+    no_observation(reason: "the TCP launch was not run")
+  } else {
+    let failures = concat(
+      responses |> map(r => native_serve_unix_whoami_failure(response: r, account: unix_peer_account)) |> filter(f => f != ""),
+      if refused_status == 2 && starts_with(s: refused_stderr, prefix: "REFUSED: ") && (split(s: refused_stderr, delimiter: native_serve_unix_probe_refusal_marker) |> count) >= 2 { [] }
+      else { [concat("the TCP launch of a handler declaring peer_user did not refuse before binding (status ", concat(to_string(value: refused_status), concat("): ", refused_stderr)))] }
+    )
+    if (failures |> count) > 0 {
+      ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: ", failures |> join(separator: "; ")) }
+    } else { ExitSuccess }
+  }
+}

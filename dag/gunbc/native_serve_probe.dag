@@ -181,6 +181,11 @@ fn native_serve_probe_door_cases() -> List<NativeServeProbeCase> {
       expect: ExpectBody { status: 400, body: "bad request: malformed header line\n" },
     },
     NativeServeProbeCase {
+      identity: "handler_reads_the_planned_request_headers_with_folded_names",
+      request: "GET /headers HTTP/1.1\r\nX-Probe: seen\r\nHost: probe\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "x-probe=seen of 2 headers\n" },
+    },
+    NativeServeProbeCase {
       identity: "handler_route_reads_framed_identity",
       request: "GET /hello HTTP/1.1\r\nHost: probe\r\nTailscale-User-Login: alice@example\r\n\r\n",
       expect: ExpectBody { status: 200, body: "hello, alice@example\n" },
@@ -425,7 +430,7 @@ fn native_serve_deadline_failures(announcements: List<String>, expected: List<St
   }
 }
 
-fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>) -> ProcessExit {
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     no_observation(reason: concat("the service did not announce a bound address: ", announcement))
   } else if !starts_with(s: peer_announcement, prefix: "native-serve listening on ") {
