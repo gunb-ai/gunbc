@@ -10,7 +10,7 @@ import gunbc.spool_queue { RolePending, RoleHandedOff }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.live_deploy.deployed_tree_observation {
-  DeployedRootTreeMatches, DeployedRootTreeMismatch, DeployedTreeObserved,
+  DeployedRootTreeMatches, DeployedRootTreeMismatch, DeployedScopeMatchesCommit, DeployedTreeObserved,
   deployed_root_tree_standing, deployed_tree_root_tree_argv,
 }
 import gunbc.roadmap.roadmap_belt { ManualReady }
@@ -29,7 +29,6 @@ import gunbc.roadmap.roadmap_launch_deployment_observe {
   event_backlog_queued_bound, event_backlog_text, iso8601_utc_epoch_seconds,
   roadmap_workflow_document_decode,
 }
-import gunbc.spool_queue { RolePending, RoleHandedOff }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

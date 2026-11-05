@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
 import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 import gunbc.roadmap.roadmap_launch_deployment_cli { rlm1_merge_commit }
