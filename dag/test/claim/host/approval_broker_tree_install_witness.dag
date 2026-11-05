@@ -23,6 +23,7 @@ import gunbc.host.host_effect_realize {
 }
 import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { list_map }
 import gunbc.host.host_effect_realize {
   TreeMetadataEntry,
   RegularEntryKind,
@@ -268,7 +269,7 @@ test fn metadata_lines_are_sorted_and_stable_across_emissions() -> Bool {
     TreeMetadataEntry { path: "dag/z", kind: DirectoryEntryKind, mode: "755", owner: "gunbc", group: "gunbc" },
     TreeMetadataEntry { path: "dag/a", kind: RegularEntryKind, mode: "644", owner: "gunbc", group: "gunbc" },
   ]
-  tree_metadata_lines(entries: src) == tree_metadata_lines(entries: [src_skip(src, "dag/z"), src_head(src, "dag/z")])
+  tree_metadata_lines(entries: src) == tree_metadata_lines(entries: concat(src_skip(src, "dag/z"), [src_head(src, "dag/z")]))
     && tree_metadata_lines(entries: src) == "dag/a|f|644|gunbc|gunbc\ndag/z|d|755|gunbc|gunbc\n"
 }
 
@@ -351,7 +352,7 @@ test fn directory_targets_include_link_and_directory_parents_once_sorted() -> Bo
 // (without the flag chown would follow it -- a write-anything primitive over the target).
 test fn the_link_rows_spell_cp_no_dereference_then_chown_no_dereference() -> Bool {
   cp_copy_as_link_argv(source: "/src/dag/link", destination: "/opt/r/dag/link") == ["cp", "-P", "/src/dag/link", "/opt/r/dag/link"]
-    && chown_no_dereference_argv(owner: ChownOwnerNames(names: PosixOwnerNames(user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr)), path: "/opt/r/dag/link")
+    && chown_no_dereference_argv(owner: ChownOwnerNames { names: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }, path: "/opt/r/dag/link")
       == ["/usr/bin/chown", "--no-dereference", "gunbc:gunbc", "/opt/r/dag/link"]
 }
 

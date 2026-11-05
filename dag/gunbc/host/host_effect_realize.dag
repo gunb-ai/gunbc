@@ -6954,17 +6954,14 @@ fn approval_broker_tree_install_observed(
   // to the deploy owner, because cp leaves the link root-owned and the readback below names the
   // installed ownership as a certified fact.
   let after_links = fold(tree_symlink_entries(entries: source_metadata), init: after_binary, f: (st, e) =>
-    if st.failed { st }
-    else {
-      let link_target = join([locus, "/", e.path], "")
-      let copied = tree_run_step(state: st, step: TreeStepInstallLink, transport: transport, command: sudo_elevate_command(
-        command: cp_copy_as_link_argv(source: join([source_root, "/", e.path], ""), destination: link_target)))
-      if copied.failed { copied }
-      else {
-        tree_run_step(state: copied, step: TreeStepInstallLink, transport: transport, command: sudo_elevate_command(
-          command: chown_no_dereference_argv(owner: ChownOwnerNames(names: PosixOwnerNames(user: owner, group: owner)), path: link_target)))
-      }
-    })
+    tree_run_step(
+      state: tree_run_step(
+        state: st, step: TreeStepInstallLink, transport: transport,
+        command: sudo_elevate_command(command: cp_copy_as_link_argv(
+          source: join([source_root, "/", e.path], ""), destination: join([locus, "/", e.path], "")))),
+      step: TreeStepInstallLink, transport: transport,
+      command: sudo_elevate_command(command: chown_no_dereference_argv(
+        owner: ChownOwnerNames { names: PosixOwnerNames { user: owner, group: owner } }, path: join([locus, "/", e.path], "")))))
   match after_links {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
