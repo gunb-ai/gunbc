@@ -1,0 +1,16 @@
+module test.fixture.serve_seam_ingress
+
+import std.types { String, Int }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import test.fixture.serve_seam_probe { serve_seam_probe, serve_budget_breach_probe }
+
+// THE PROBE HANDLERS' DEPLOYMENT BINDING. The import above is what puts the handlers in the run's
+// closure; `handler` picks which one this process serves. `gunbc run --entry
+// dag/test/fixture/serve_seam_ingress.dag --function serve_seam_ingress --arg handler=... --arg
+// listener=tcp:127.0.0.1:0 ...` realizes it.
+fn serve_seam_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
+  http_ingress_binding(
+    handler_module: "test.fixture.serve_seam_probe", handler: handler, listener: listener,
+    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+  )
+}

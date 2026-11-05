@@ -262,22 +262,12 @@ pub enum TargetProducer {
     BehavioralReceiptPlan,
     BehavioralReceiptCensus,
     BehavioralReceiptSelftest,
-    CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
     TypedGraphExclusiveBytes,
     TypedGraphExclusiveBytesFloorSubject,
-    PrimitiveEgressCensus,
-    PrimitiveEgressCensusV2,
-    PrimitiveEgressCensusDag,
-    PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
-    /// `NativeCensusVerbProducer { verb }`: a whole-corpus census is a verb of the emitted compiler,
-    /// so a further census is a registry row naming its verb, never another variant.
-    NativeCensusVerb {
-        verb: &'static str,
-    },
     SelfHostFrontier,
     GenericIdentityCensus,
     InterpolationHoleCensus,
@@ -765,7 +755,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::BehavioralReceiptSelftest => behavioral_outcome(
             cli_run::behavioral_receipt_host::run_selftest(&behavioral_receipt_source_roots()),
         ),
-        TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
@@ -782,25 +771,7 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::TypedGraphExclusiveBytesFloorSubject => {
             run_typed_graph_exclusive_bytes_floor_subject()
         }
-        TargetProducer::PrimitiveEgressCensus => {
-            run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
-        }
-        TargetProducer::PrimitiveEgressCensusV2 => run_primitive_egress_census(
-            "primitive-egress-census-v2",
-            "primitive_egress_census_v2_exit",
-        ),
-        TargetProducer::PrimitiveEgressCensusDag => run_primitive_egress_census(
-            "primitive-egress-census-dag",
-            "primitive_egress_census_dag_exit",
-        ),
-        TargetProducer::PrimitiveEgressCensusSeed => run_primitive_egress_census(
-            "primitive-egress-census-seed",
-            "primitive_egress_census_seed_exit",
-        ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::NativeCensusVerb { verb } => {
-            run_census_verb(verb, label, &self_host_source_roots())
-        }
         TargetProducer::SelfHostFrontier => run_self_host_frontier(
             &self_host_source_roots(),
             &crate::gunbc_stage0_stage0_cargo_manifest::stage0_package_root(),
@@ -835,32 +806,10 @@ fn run_cli_wire_program(entry: &'static str, function: &'static str) -> Invocati
     run_cli_wire_census(function, entry, function)
 }
 
-/// THE PRIMITIVE EGRESS CENSUS PRODUCERS (gunbc#11642): evaluate one of the
-/// `gunbc.primitive_egress.census_live` `primitive_egress_census_*_exit` entries, each answering a
-/// `CliWireResponse` -- the receipt bytes (one JSON object per line) plus the exit the census
-/// standing carries. The bytes are printed on EVERY termination, because the receipt is the
-/// product and a did-not-hold census is exactly when its identity lists are wanted.
-///
-/// THE THREE TERMINATIONS map off the wire exit read through the one classifier in `cli_run`:
-/// success is the census holding; `ExitFailure { code: 1 }` is a located census finding (an
-/// identity with zero or two dispositions) and is `ObservationDidNotHold`; `ExitFailure { code: 2 }`
-/// is the population not being established (a refused entry, no identities) and is `Refused`;
-/// a resolve or eval failure is `SubjectUnreached`.
-/// One runner for the four census labels: the scope is the `.dag` entry function the label
-/// names (`gunbc.primitive_egress.census_live` `census_wire(scope:)` decides what it walks), so a
-/// bounded projection is a label of its own and not a flag on the full one.
-fn run_primitive_egress_census(label: &'static str, function: &'static str) -> InvocationOutcome {
-    run_cli_wire_census(
-        label,
-        "dag/gunbc/primitive_egress/census_live.dag",
-        function,
-    )
-}
-
 /// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
 /// entry, evaluate the named function, print the wire bytes on every termination, and map the
-/// wire exit to a Termination through the one classifier in `cli_run`. The primitive egress
-/// census labels and the required-lane resolution census share it; a new instrument of that
+/// wire exit to a Termination through the one classifier in `cli_run`. The required-lane
+/// resolution census shares it; a new instrument of that
 /// shape is a label row plus one arm naming its entry and function, never a second runner.
 fn run_cli_wire_census(
     label: &'static str,
@@ -2049,112 +1998,6 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     }
 }
 
-/// THE DIAGNOSTIC CENSUS PRODUCER. The subject is the whole-tree compile-clean closure, which the
-/// census itself derives from `witness_layer_roots` — like the differential's roots, which corpus
-/// is measured is the instrument's own fact, not an invocation option.
-///
-/// The modeled observation (`gunbc.target_binding` `CompileCleanDiagnosticCensusObservation`) is
-/// the per-class raw summary with its identity block, and the rendering below mirrors
-/// `gunbc.instrument_targets` `compile_clean_diagnostic_census_observation_rendered` line for
-/// line. Two host sections ride below it, outside the model, exactly as the differential's
-/// parse-wall figures do: the UnlistedImportUse binding-source partition and the per-row
-/// worklist, because those are the repair instrument's detail for the one class whose promotion
-/// is staged, not per-class census vocabulary. Their next rung is a modeled carrier; until then
-/// they are named unmodeled host output, printed rather than dropped.
-///
-/// THE TERMINATION IS THE MODELED CLASS-SPECIFIC WALL: the RAW UnlistedImportUse count over the
-/// unfiltered population is zero (`gunbc.instrument_targets`
-/// `compile_clean_diagnostic_census_holds`). Not the all-classes-empty completion target — while
-/// the other advisory classes burn down on their own tracks, this instrument holds exactly when
-/// UnlistedImportUse reaches zero, and a severity change cannot hide a recurrence because no
-/// severity filter stands between emission and the count.
-fn run_compile_clean_diagnostic_census() -> InvocationOutcome {
-    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
-        return InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "compile-clean-diagnostic-census: refused: could not anchor at the workspace root: {e}"
-            ),
-        };
-    }
-    let census = match cli_run::compile_clean_diagnostic_census() {
-        Ok(c) => c,
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!(
-                    "compile-clean-diagnostic-census: refused: {}",
-                    cli_run::diagnostic_census_refusal_rendered(&refusal)
-                ),
-            };
-        }
-    };
-    let unlisted_import_use_raw: usize = census
-        .classes
-        .iter()
-        .filter(|e| e.class_name == "UnlistedImportUse")
-        .map(|e| e.diagnostics)
-        .sum();
-    let mut message = format!(
-        "compile-clean-diagnostic-census: closure_modules={} raw_diagnostics={} classes={} unlisted_import_use_raw={}",
-        census.closure_modules,
-        census.raw_diagnostics,
-        census.classes.len(),
-        unlisted_import_use_raw,
-    );
-    message.push_str(&format!(
-        "\nidentity source_vector={} compiler={} resolver_policy={} diagnostic_class_schema={} closure={}",
-        census.identity.source_vector_digest,
-        census.identity.compiler_executable_digest,
-        census.identity.resolver_policy_digest,
-        census.identity.diagnostic_class_schema_digest,
-        census.identity.closure_digest,
-    ));
-    for entry in &census.classes {
-        message.push_str(&format!(
-            "\n{} gate={} severity={} diagnostics={} distinct_modules={} distinct_positions={}",
-            entry.class_name,
-            cli_run::census_gate_tag(&entry.gate),
-            cli_run::census_severity_tag(&entry.severity),
-            entry.diagnostics,
-            entry.distinct_modules,
-            entry.distinct_positions,
-        ));
-    }
-    if !census.unlisted_import_rows.is_empty() {
-        let mut by_source: std::collections::BTreeMap<&'static str, usize> =
-            std::collections::BTreeMap::new();
-        for row in &census.unlisted_import_rows {
-            *by_source.entry(row.binding_source.as_str()).or_default() += 1;
-        }
-        message.push_str("\n--- UNLISTED_IMPORT_USE BINDING_SOURCE ---");
-        for (source, count) in &by_source {
-            message.push_str(&format!("\nSOURCE\t{source}\t{count}"));
-        }
-        message.push_str(
-            "\n--- UNLISTED_IMPORT_USE TSV ---\nfile\tposition\treferenced_name\treferencing_module\tdefiner_module\tbinding_source",
-        );
-        for row in &census.unlisted_import_rows {
-            message.push_str(&format!(
-                "\n{}\t{}\t{}\t{}\t{}\t{}",
-                row.file,
-                row.position,
-                row.referenced_name,
-                row.referencing_module,
-                row.definer_module.as_deref().unwrap_or(""),
-                row.binding_source.as_str(),
-            ));
-        }
-    }
-    InvocationOutcome {
-        termination: if unlisted_import_use_raw == 0 {
-            Termination::ObservationHeld
-        } else {
-            Termination::ObservationDidNotHold
-        },
-        message,
-    }
-}
 fn behavioral_outcome(
     outcome: cli_run::behavioral_receipt_host::BehavioralHostOutcome,
 ) -> InvocationOutcome {
@@ -4324,12 +4167,6 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     }
 }
 
-/// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
-/// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
-/// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
-/// the exit are decided by `v2.compiler.source_root_eval` `native_demand_census_output`, so the host adds no
-/// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
-/// and 2 or a refused preparation is no observation.
 /// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the
 /// `v2.compiler.compile` closure are read from disk and handed to
 /// `v1.tests.claim.generic_identity_census` as `SourceFile` data. The standing line, each control,
@@ -4400,25 +4237,6 @@ fn run_self_host_frontier(source_roots: &[String], stage0_crate_dir: &str) -> In
             message: format!(
                 "self-host-frontier: exit {code}; the [self-host-frontier] lines above are the derived frontier"
             ),
-        },
-        Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
-            message: cause,
-        },
-    }
-}
-
-/// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
-/// the exit are decided by the emitted verb; the host adds no verdict.
-fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_census_verb(verb, source_roots) {
-        Ok(code) => InvocationOutcome {
-            termination: match code {
-                0 => Termination::ObservationHeld,
-                1 => Termination::ObservationDidNotHold,
-                _ => Termination::SubjectUnreached,
-            },
-            message: format!("{label}: exit {code}; the [{verb}] lines above are the census"),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,

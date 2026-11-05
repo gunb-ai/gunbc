@@ -3,6 +3,7 @@ module extdeps.boards.types
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
+  Micrometer,
   Watt, watt, watt_count,
   Millimeter, millimeter_count,
   SquareMillimeter, square_millimeter, square_millimeter_count,
@@ -38,6 +39,21 @@ type BoardExpansionSlot {
 type BoardExpansionSlots {
   slots: List<BoardExpansionSlot>
   positions: CitedFigureStanding
+  lane_obstacles: List<SlotLaneObstacle>
+}
+
+// A COMPONENT STANDING PROUD OF THE BOARD IN A SLOT'S LANE, PAST WHERE A CARD ENDS: the space a duct or a
+// blower at a card's far end must clear. It is located by the slot whose lane it sits in, its depth from the
+// rear bracket plane along the card direction, and its height above the board's top face; half_extent bounds
+// its footprint about that point in both board directions, so a part kept that far away clears it whatever
+// the footprint's orientation.
+type SlotLaneObstacle {
+  label: NonEmptyStr
+  slot: NonEmptyStr
+  depth_from_bracket_plane: Micrometer
+  half_extent: Micrometer
+  height_above_board: Micrometer
+  standing: CitedFigureStanding
 }
 
 // A vendor manual copy a board model was read from. Title and sha256 are optional: a reading

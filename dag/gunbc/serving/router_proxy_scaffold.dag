@@ -3,7 +3,6 @@ module gunbc.serving.router_proxy_scaffold
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 
 // DECLARED SCAFFOLD. extdeps.proxy.openresty renders its closed typed directive sum directly to nginx
 // and Lua text instead of through extdeps/languages grammar rows. Authority (DESIGN section 5: operator
@@ -43,17 +42,3 @@ data router_proxy_direct_render_dissolution: DissolutionCondition = bound_dissol
 // are emitted as statements rather than concatenated (the nginx grammar alone would not cover them).
 data router_proxy_lua_render_dissolution: DissolutionCondition = bound_dissolution(ref: decl_ref(module_path: "extdeps.languages.lua.grammar", decl_name: "lua_chunk_grammar"))
 
-// THE TWO HAND-RENDERED DECLARATIONS AS FRONTIER ROWS, enrolled in gunbc.census_closure_frontier, so the
-// grammar trigger is evaluated (pending until the nginx-conf grammar rows exist) rather than only stated.
-data router_proxy_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.proxy.openresty", decl_name: "render_nginx_directives"),
-    reason: "nginx configuration text concatenated from the typed directive sum instead of emitted by grammar rows.",
-    dissolution: router_proxy_direct_render_dissolution
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_proxy_config", decl_name: "router_callout_lines"),
-    reason: "Lua callout lines and the raw HTTP/1.1 stream-end request concatenated as text.",
-    dissolution: router_proxy_lua_render_dissolution
-  ),
-]
