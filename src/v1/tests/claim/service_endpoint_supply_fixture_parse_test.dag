@@ -1,0 +1,202 @@
+// src/v1/tests/claim/service_endpoint_supply_fixture_parse_test.dag — EXECUTED HALF OF THE
+// ENDPOINT-SUPPLY CONTROL. `v1.tests.claim.service_endpoint_supply_test` asserts what the fixtures
+// MEAN, through `v1.compiler.infer_service.service_endpoint_supply` and the emitter; that file's
+// entry closure reaches the v1 compiler's type layer and so cannot be resolved as an entry today
+// (recorded: `gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup` says these
+// controls "sit in the non-executing wet population; CI does not run them"). This file keeps the part
+// that DOES execute: it parses every fixture with the real parser and reads it back through the same
+// low-level readers the authority composes from -- all of them `v1.std.core`, none of them the type
+// layer -- so a fixture that stopped parsing, a transport that stopped reading as rest, or an input
+// that stopped spelling `String` goes red HERE, where red is reachable, instead of quietly making the
+// unexecutable file agree with itself.
+//
+// Run:
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --claim-run \
+//     --entry src/v1/tests/claim/service_endpoint_supply_fixture_parse_test.dag \
+//     --function every_fixture_parses_to_a_service_with_operations_holds
+module v1.tests.claim.service_endpoint_supply_fixture_parse_test
+
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.types { String, Bool }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core {
+  build_newline_index, empty_intern_table, NewlineIndex, Node, module_items, no_span, NoConnective,
+  Required, NoExprData, NotAModuleItem, Unmarked, authored_name_at, expr_var_name_at,
+  is_rest_transport, param_node_name_at, param_node_type_expr, service_config_endpoint
+}
+import v1.tests.claim.service_endpoint_supply_fixtures {
+  endpoint_fixture_file, literal_endpoint_source, parameter_endpoint_source,
+  parameter_missing_from_one_operation_source, parameter_wrong_type_source, member_access_endpoint_source,
+  no_rest_operation_source, shadowed_parameter_endpoint_source
+}
+
+fn parse_fixture(source: String) -> ParseWithTableResult {
+  parse_with_table(
+    tokens: tokenize(source: source, file: endpoint_fixture_file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), endpoint_fixture_file, build_newline_index(file: endpoint_fixture_file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+}
+
+// A parse failure yields a node nothing matches, so a broken fixture reports false rather than
+// agreeing with an expectation by accident.
+fn not_a_node() -> Node {
+  Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "__parse_failed__", span: no_span(), ident_span: no_span(), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+}
+
+// The parser reports a failure by populating ParseResult.error. Its value is a diagnostic node
+// on some paths and a bare message on others -- v1.compiler.parse hands it through -- so the
+// question asked here is only whether one is present, which is what a fixture either does or
+// does not do. Asking it in one place keeps no case reading a field whose variant differs.
+fn parse_failed(source: String) -> Bool {
+  match parse_fixture(source: source).result.error {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn every_fixture_parses_without_a_parse_error_holds() -> Bool {
+  !parse_failed(source: literal_endpoint_source)
+    && !parse_failed(source: parameter_endpoint_source)
+    && !parse_failed(source: parameter_missing_from_one_operation_source)
+    && !parse_failed(source: parameter_wrong_type_source)
+    && !parse_failed(source: member_access_endpoint_source)
+    && !parse_failed(source: no_rest_operation_source)
+    && !parse_failed(source: shadowed_parameter_endpoint_source)
+}
+
+fn parsed_module(source: String) -> Node {
+  match parse_fixture(source: source).result.module {
+    Present { value: m } => m
+    Absent => not_a_node()
+  }
+}
+
+// The service item is the item that CARRIES a transport; operations are its children. Read this way
+// on purpose: `v1.compiler.infer_items.item_kind` is the authority that says so, and it sits behind
+// the type layer this file stays out of -- so the probe's own closure stays executable.
+fn fixture_service(source: String) -> Node {
+  match module_items(n: parsed_module(source: source)) |> filter(i => i.transport != none) |> first() {
+    Present { value: s } => s
+    Absent => not_a_node()
+  }
+}
+
+// The operation's OWN authored name, read through the one name reader (a parsed node's `name`
+// field is not the authored spelling, so comparing it to a string is a shape nothing produces).
+fn operation_named(op: Node, name: String, source: String) -> Bool {
+  authored_name_at(source_indices: indices_for(source: source), node: op) == name
+}
+
+// EVERY authored-name read gets the fixture's OWN source text: a `NewlineIndex` built from a
+// different text resolves spans to nothing, and a name read that silently returns "" would make a
+// binding condition look satisfied when nothing was read at all.
+fn indices_for(source: String) -> Map<String, NewlineIndex> {
+  map_insert(empty_map(), endpoint_fixture_file, build_newline_index(file: endpoint_fixture_file, source: source))
+}
+
+fn declared_input_label(op: Node, name: String, source: String) -> String {
+  match op.params |> filter(p => param_node_name_at(n: p, source_indices: indices_for(source: source)) == name) |> first() {
+    Present { value: p } => authored_name_at(source_indices: indices_for(source: source), node: param_node_type_expr(n: p))
+    Absent => ""
+  }
+}
+
+fn endpoint_shape(source: String) -> String {
+  match service_config_endpoint(n: fixture_service(source: source), source_indices: map_insert(empty_map(), endpoint_fixture_file, build_newline_index(file: endpoint_fixture_file, source: source))) {
+    Absent => "absent"
+    Present { value: ep } => match ep.expr_data {
+      ExprLiteral { value: LitStr { value: _ } } => "literal"
+      ExprVar { binding_kind: _ } => concat("identifier:", expr_var_name_at(texpr: ep, source_indices: map_insert(empty_map(), endpoint_fixture_file, build_newline_index(file: endpoint_fixture_file, source: source))))
+      ExprFieldAccess { summary: _ } => "member-access"
+      _ => "other"
+    }
+  }
+}
+
+// ONE CASE PER FIXTURE, because a single conjunction over eight fixtures reports "a fixture broke"
+// and makes the next person bisect by hand. Each says which declaration it is about.
+test fn literal_fixture_parses_holds() -> Bool {
+  (module_items(n: parsed_module(source: literal_endpoint_source)) |> count == 1)
+    && (fixture_service(source: literal_endpoint_source).children |> count == 1)
+}
+
+test fn parameter_fixture_parses_with_two_operations_holds() -> Bool {
+  (module_items(n: parsed_module(source: parameter_endpoint_source)) |> count == 1)
+    && (fixture_service(source: parameter_endpoint_source).children |> count == 2)
+}
+
+test fn missing_input_fixture_parses_with_two_operations_holds() -> Bool {
+  (module_items(n: parsed_module(source: parameter_missing_from_one_operation_source)) |> count == 1)
+    && (fixture_service(source: parameter_missing_from_one_operation_source).children |> count == 2)
+}
+
+test fn wrong_type_fixture_parses_holds() -> Bool {
+  (module_items(n: parsed_module(source: parameter_wrong_type_source)) |> count == 1)
+    && (fixture_service(source: parameter_wrong_type_source).children |> count == 1)
+}
+
+test fn member_access_fixture_parses_holds() -> Bool {
+  (module_items(n: parsed_module(source: member_access_endpoint_source)) |> count == 1)
+    && (fixture_service(source: member_access_endpoint_source).children |> count == 1)
+}
+
+// THE GRAMMAR REQUIRES A DECLARED ENDPOINT. A `config` block that omits it does not parse, so no
+// source can spell "endpoint absent" -- the authority's `EndpointNotDeclared` answer is reachable
+// only from a node no parser produced, and this claim is what stops anyone (including the author of
+// that arm) from reading an `absent` result out of a fixture as if a program had declared it.
+test fn the_parse_failure_question_discriminates_holds() -> Bool {
+  parse_failed(source: malformed_service_source)
+    && !parse_failed(source: literal_endpoint_source)
+}
+
+test fn no_rest_fixture_parses_holds() -> Bool {
+  (module_items(n: parsed_module(source: no_rest_operation_source)) |> count == 1)
+    && (fixture_service(source: no_rest_operation_source).children |> count == 1)
+}
+
+test fn shadowed_fixture_parses_with_the_module_value_holds() -> Bool {
+  (module_items(n: parsed_module(source: shadowed_parameter_endpoint_source)) |> count == 2)
+    && (fixture_service(source: shadowed_parameter_endpoint_source).children |> count == 1)
+}
+
+// THE REST TEST, which is what `service_endpoint_supply` quantifies over. A `transport rest { ... }`
+// block is rest because the parser mints its `base_url` -- if that ever stops being true, the
+// authority's whole-service quantifier silently has nothing to quantify over, and this is the red
+// that says so. The no-rest fixture is the negative control for the same reading.
+test fn the_rest_operations_are_rest_and_the_one_without_a_transport_is_not_holds() -> Bool {
+  (fixture_service(source: parameter_endpoint_source).children |> all(op => op.transport != none && operation_named(op: op, name: "GetToken", source: parameter_endpoint_source) || operation_named(op: op, name: "GetAssertion", source: parameter_endpoint_source)))
+    && (fixture_service(source: parameter_endpoint_source).children |> all(op => match op.transport { Present { value: t } => is_rest_transport(t: t, source_indices: indices_for(source: parameter_endpoint_source))  Absent => false }))
+    && !(fixture_service(source: no_rest_operation_source).children |> all(op => match op.transport { Present { value: t } => is_rest_transport(t: t, source_indices: indices_for(source: no_rest_operation_source))  Absent => false }))
+}
+
+// THE ENDPOINT SHAPES, read back as the authority sees them: a quoted string is a literal, a bare
+// name is an identifier (and which one), member access is neither, and no `config endpoint:` is its
+// own answer rather than an empty expression.
+test fn each_endpoint_spelling_reads_back_as_the_shape_the_authority_expects_holds() -> Bool {
+  endpoint_shape(source: literal_endpoint_source) == "literal"
+    && endpoint_shape(source: parameter_endpoint_source) == "identifier:request_url"
+    && endpoint_shape(source: parameter_missing_from_one_operation_source) == "identifier:request_url"
+    && endpoint_shape(source: parameter_wrong_type_source) == "identifier:request_url"
+    && endpoint_shape(source: shadowed_parameter_endpoint_source) == "identifier:request_url"
+    && endpoint_shape(source: member_access_endpoint_source) == "member-access"
+}
+
+// THE INPUT ANNOTATIONS the binding condition needs, spelled by the author as `String` -- including
+// the fixture that deliberately spells it `Bool`, which is what keeps the binding condition from
+// being "any declared input".
+test fn the_declared_inputs_spell_their_types_as_the_fixtures_intend_holds() -> Bool {
+  // Keyed by the operation's OWN name, not by position: a fixture that gains an operation cannot
+  // quietly move an expectation onto the wrong one.
+  let bound_ops = fixture_service(source: parameter_endpoint_source).children
+  let wrong_type_ops = fixture_service(source: parameter_wrong_type_source).children
+  let missing_ops = fixture_service(source: parameter_missing_from_one_operation_source).children
+  bound_ops |> all(op => declared_input_label(op: op, name: "request_url", source: parameter_endpoint_source) == "String")
+    && (bound_ops |> count == 2)
+    && (wrong_type_ops |> any(op => operation_named(op: op, name: "GetToken", source: parameter_wrong_type_source) && declared_input_label(op: op, name: "request_url", source: parameter_wrong_type_source) == "Bool"))
+    && (missing_ops |> any(op => operation_named(op: op, name: "GetToken", source: parameter_missing_from_one_operation_source) && declared_input_label(op: op, name: "request_url", source: parameter_missing_from_one_operation_source) == "String"))
+    && (missing_ops |> any(op => operation_named(op: op, name: "GetAssertion", source: parameter_missing_from_one_operation_source) && declared_input_label(op: op, name: "request_url", source: parameter_missing_from_one_operation_source) == ""))
+}

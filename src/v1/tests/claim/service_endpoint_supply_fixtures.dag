@@ -1,0 +1,202 @@
+// src/v1/tests/claim/service_endpoint_supply_fixtures.dag — THE FIXTURE SOURCE TEXT for
+// `v1.tests.claim.service_endpoint_supply_test` and its parse probe, in ONE module so the two
+// cannot drift: the witness asserts what these declarations mean, the parse probe asserts these
+// declarations still parse. Nothing here imports the compiler -- only `std.types` -- so a consumer
+// that wants just the text pays just the parse closure.
+module v1.tests.claim.service_endpoint_supply_fixtures
+
+import std.types { String }
+
+// The file name the fixtures are parsed AS. Every reader of a fixture needs the same
+// `NewlineIndex` key, so it lives beside them.
+data endpoint_fixture_file: String = "claim://service_endpoint_supply.dag"
+
+fn fixture_lines(lines: List<String>) -> String { lines |> join(separator: "\n") }
+
+// A literal endpoint: the spelling that has always worked, kept green so this cut cannot break it.
+data literal_endpoint_source: String = fixture_lines(lines: [
+  "module probe.literal",
+  "service Probe {",
+  "  config {",
+  "    endpoint: \"https://sts.googleapis.com\"",
+  "  }",
+  "  operation GetToken {",
+  "    input {",
+  "      request_url: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/token\" }",
+  "  }",
+  "}"
+])
+
+// The spelling this cut admits: every rest operation of the service declares `request_url: String`.
+// TWO operations, so a per-operation reading that only looked at one of them would pass by luck.
+data parameter_endpoint_source: String = fixture_lines(lines: [
+  "module probe.parameter",
+  "service Probe {",
+  "  config {",
+  "    endpoint: request_url",
+  "  }",
+  "  operation GetToken {",
+  "    input {",
+  "      request_url: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/token\" }",
+  "  }",
+  "  operation GetAssertion {",
+  "    input {",
+  "      request_url: String",
+  "      audience: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/assertion\" }",
+  "  }",
+  "}"
+])
+
+// CONTROL: the name is an input of ONE rest operation only. No binding, and the lens must still
+// refuse it the way it always did -- the admission is over EVERY rest operation, not over any.
+data parameter_missing_from_one_operation_source: String = fixture_lines(lines: [
+  "module probe.missing",
+  "service Probe {",
+  "  config {",
+  "    endpoint: request_url",
+  "  }",
+  "  operation GetToken {",
+  "    input {",
+  "      request_url: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/token\" }",
+  "  }",
+  "  operation GetAssertion {",
+  "    input {",
+  "      audience: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/assertion\" }",
+  "  }",
+  "}"
+])
+
+// CONTROL: declared, but not as the text an endpoint can be. A `Bool` input is not a host.
+data parameter_wrong_type_source: String = fixture_lines(lines: [
+  "module probe.wrongtype",
+  "service Probe {",
+  "  config {",
+  "    endpoint: request_url",
+  "  }",
+  "  operation GetToken {",
+  "    input {",
+  "      request_url: Bool",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/token\" }",
+  "  }",
+  "}"
+])
+
+// CONTROL: not a bare identifier. Member access is an EXPRESSION, and the admission is name-scoped.
+data member_access_endpoint_source: String = fixture_lines(lines: [
+  "module probe.member",
+  "service Probe {",
+  "  config {",
+  "    endpoint: settings.api_base",
+  "  }",
+  "  operation GetToken {",
+  "    input {",
+  "      request_url: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/token\" }",
+  "  }",
+  "}"
+])
+
+// A `config` block that carries NO `endpoint` field -- the only route to the authority's
+// EndpointNotDeclared answer. It PARSES: parse_config_fields finds no such property and mints one
+// whose name is empty (its `?? Node { name: "" }` path), which is what the authority's first arm
+// reads. Written line by line like every fixture here, because brace-containing text in a single
+// string literal is tokenized as structure and the item then never closes.
+data config_without_endpoint_source: String = fixture_lines(lines: [
+  "module probe.noendpoint",
+  "service Probe {",
+  "  config {",
+  "    rate_limit: 5",
+  "  }",
+  "  operation GetToken {",
+  "    input {",
+  "      request_url: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/token\" }",
+  "  }",
+  "}"
+])
+
+// CONTROL: a name that binds nothing, because no operation of this service reads a base URL. The
+// declaration then keeps the judgment it has today rather than being silently admitted.
+data no_rest_operation_source: String = fixture_lines(lines: [
+  "module probe.norest",
+  "service Probe {",
+  "  config {",
+  "    endpoint: request_url",
+  "  }",
+  "  operation GetToken {",
+  "    input {",
+  "      request_url: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "  }",
+  "}"
+])
+
+// CONTROL FOR SHADOWING: the name exists BOTH as module-level data and as the operation's input.
+// The interpreter binds the parameter (the param environment is where it evaluates the value), so
+// the supply must bind the input, not the module value.
+data shadowed_parameter_endpoint_source: String = fixture_lines(lines: [
+  "module probe.shadow",
+  "data request_url: String = \"https://module-scope.example\"",
+  "service Probe {",
+  "  config {",
+  "    endpoint: request_url",
+  "  }",
+  "  operation GetToken {",
+    "    input {",
+  "      request_url: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/token\" }",
+  "  }",
+  "}"
+])
+
+// Calibration for the parse-failure question below: a service that cannot possibly parse. It
+// exists so the absence fixtures' verdict is known to discriminate, rather than being the verdict
+// a helper that never sees an error would also return.
+data malformed_service_source: String = fixture_lines(lines: [
+  "service",
+  "Broken"
+])

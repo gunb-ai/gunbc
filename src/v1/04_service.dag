@@ -3,6 +3,7 @@ module v1.compiler.infer_service
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan }
+import std.syntax { LitStr }
 
 import v1.std.core { Unmarked,
   call_semantics_target, callable_identity, DeclaredCallableIdentity,
@@ -11,7 +12,8 @@ import v1.std.core { Unmarked,
   Node,
   Connective, Conj, NoConnective,
   ExprData, NoExprData,
-  ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
+  ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar, ExprLiteral,
+  service_config_endpoint, param_node_name_at,
   Cardinality, Required,
   InferredNode, Resolved,
   NewlineIndex,
@@ -24,7 +26,7 @@ import v1.std.core { Unmarked,
 }
 
 import v1.compiler.infer_types {
-  emit_map_has, nominal_type_ref
+  emit_map_has, nominal_type_ref, type_is_kernel_string
 }
 
 import v1.compiler.infer_items {
@@ -615,6 +617,111 @@ fn service_operation_is_rest(op: Node, service: Node, source_indices: Map<String
       Present { value: t } => is_rest_transport(t: t, source_indices: source_indices)
       Absent => false
     }
+  }
+}
+
+// THE OPERATION ITEMS OF A SERVICE, read by one reader. Every consumer of the endpoint authority
+// below passes exactly this list, so the lens's answer at the declaration and the emitter's answer
+// for a method can never be about two different sets of operations.
+fn service_operation_items(service: Node) -> List<Node> { service.children }
+
+// HOW A REST SERVICE'S ENDPOINT IS SUPPLIED -- ONE ANSWER, TWO CONSUMERS.
+//
+// A `service { config { endpoint: <expr> } }` declaration has one meaning, and until now two
+// readers answered it differently. The reference interpreter (`dispatch_rest`, in
+// src/v1/stage0/src/v1_interpreter.rs) resolves `svc_endpoint` through
+// `find_service_config_string(..., param_env, ctx)`: the value is EVALUATED IN THE CALLED
+// OPERATION'S PARAMETER ENVIRONMENT, so an endpoint that names that operation's own declared
+// input is a legal spelling, and the string that input carries at the call is the answer. The
+// v1 lens judged the same value in MODULE scope (`infer_service_config_properties`, in
+// v1.compiler.infer), so it refused that spelling with `undefined variable` while the
+// interpreter would have honoured it -- two checks for one fact, disagreeing, the lens the
+// weaker. The Rust emitter answered a third way: `emit_service_new_method` read only a string
+// literal and otherwise fell through to the transport `base_url` and then to the
+// `http://localhost` placeholder, so the same declaration compiled to a host its interpretation
+// never used -- the family `response_format_variant_silently_read_as_json` names: one
+// declaration, two routes, no refusal anywhere.
+//
+// This is the single home for the answer; the lens and the emitter both call it and neither
+// re-derives it. Admission is NAME-SCOPED, not expression-wide: the only form newly admitted
+// is a BARE IDENTIFIER, and only when that name is a declared `String` input of EVERY rest
+// operation of the service. The rest test is `service_operation_is_rest`, and the whole-service
+// quantifier is deliberate -- the lens asks at the service declaration, where the call target is
+// not yet known, so the emitter asks the same whole-service question rather than a
+// per-operation one; the two then cannot disagree about one declaration, and a service whose
+// rest operations disagree about the input gets no admission at all. An input that shadows a
+// module-level value of the same name binds to the INPUT, which is what the interpreter's
+// param-env evaluation already does.
+//
+// DELIBERATELY NOT IN SCOPE: every other spelling -- literal, member access, call, or any name
+// that is not a declared input of every rest operation -- keeps the path it has today, judged in
+// module scope by the lens and by the existing chain in the emitter. This function invents no
+// refusal; it only admits one form, and today's refusal of every other form is produced by
+// today's authority. `svc_auth_input` is likewise untouched and stays `FieldDeferred` in
+// `service_config_field_judgment`: the interpreter reads THAT field as a parameter NAME
+// (`resolve_auth` looks the identifier up in the param env instead of evaluating it), which is a
+// different question with its own recorded deferral.
+type ServiceEndpointSupply
+  = EndpointNotDeclared
+  | EndpointLiteral { value: String }
+  | EndpointOperationParameter { name: String, declared_type: Node }
+  | EndpointModuleExpression
+  | EndpointParameterNameUnbound { name: String, missing_from: List<String> }
+
+// The declared type of `name` as an input of `op`, when that operation declares it AND spells it
+// `String` -- `type_is_kernel_string` is the kernel-name reader inference already uses, so no
+// second string test is written here. `none` refuses to bind: the input is absent, or is
+// declared as something other than the text an endpoint can be.
+fn operation_input_string_type(op: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match op.params |> filter(p => param_node_name_at(n: p, source_indices: source_indices) == name) |> first() {
+    Present { value: p } =>
+      let declared = param_node_type_expr(n: p)
+      if type_is_kernel_string(t: declared, source_indices: source_indices) { Present { value: declared } } else { none }
+    Absent => none
+  }
+}
+
+// `operations` is the service item's operation children. Consumers pass the service's WHOLE
+// operation list -- never the one operation being rendered -- for the reason stated above.
+fn service_endpoint_supply(service: Node, operations: List<Node>, source_indices: Map<String, NewlineIndex>) -> ServiceEndpointSupply {
+  match service_config_endpoint(n: service, source_indices: source_indices) {
+    Absent => EndpointNotDeclared
+    Present { value: endpoint_node } =>
+      match endpoint_node.expr_data {
+        // AN EMPTY LITERAL IS THE ABSENT CASE, and only this function is allowed to know it.
+        // `parse_config_fields` (v1.compiler.parse) MINTS `endpoint: ""` -- an empty string literal --
+        // as the config's endpoint when the block carries none, and the grammar goes further: a service
+        // with no `config` block, an empty one, or one that omits `endpoint`, is REJECTED outright (the
+        // executed case `the_grammar_requires_a_declared_endpoint_holds` keeps that fact honest). So an
+        // empty literal is the only way "no host was declared" reaches a reader, and saying so HERE is
+        // what keeps the emitter from baking an empty host where it used to fall through to the
+        // transport's `base_url` -- and keeps any consumer from re-testing the placeholder on its own.
+        ExprLiteral { value: LitStr { value: text } } =>
+          if text == "" { EndpointNotDeclared } else { EndpointLiteral { value: text } }
+        ExprVar { binding_kind: _ } =>
+          let name = expr_var_name_at(texpr: endpoint_node, source_indices: source_indices)
+          let rest_operations = operations |> filter(op => service_operation_is_rest(op: op, service: service, source_indices: source_indices))
+          if count(rest_operations) == 0 {
+            // No rest operation reads a base URL, so this declaration binds nothing here and the
+            // expression keeps the judgment it has today.
+            EndpointModuleExpression
+          } else {
+            let unbound = rest_operations |> filter(op => operation_input_string_type(op: op, name: name, source_indices: source_indices) == none)
+            if count(unbound) > 0 {
+              EndpointParameterNameUnbound { name: name, missing_from: unbound |> map(op => authored_name_at(source_indices: source_indices, node: op)) }
+            } else {
+              match rest_operations |> first() {
+                Present { value: first_rest } =>
+                  match operation_input_string_type(op: first_rest, name: name, source_indices: source_indices) {
+                    Present { value: declared } => EndpointOperationParameter { name: name, declared_type: declared }
+                    Absent => EndpointModuleExpression
+                  }
+                Absent => EndpointModuleExpression
+              }
+            }
+          }
+        _ => EndpointModuleExpression
+      }
   }
 }
 
