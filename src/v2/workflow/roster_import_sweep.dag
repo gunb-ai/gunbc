@@ -203,15 +203,15 @@ fn roster_qn_text(qn: QualifiedName) -> String {
 // A STAGE REFUSAL CARRIES ITS FATAL DIAGNOSTIC (DESIGN section 5: typed AND located). The reason symbol and the file come from
 // the diagnostic itself; the span is byte-granular where the locus has an extent and says so when it has none (a NodeLocus
 // names a node, not bytes). Built in one place, roster_stage_diagnostic, for the tokenize, parse and normalize arms alike.
-type RosterStageSpan
-  = StageSpanBytes { start: Int, end: Int }
-  | StageSpanWholeFile
-  | StageSpanUnlocated
+// The stage's located part, when its fatal diagnostic HAS a file and extent; the extent is v2.std.diagnostic's own Extent.
+type RosterStageLocated {
+  file: Symbol
+  extent: Extent
+}
 
 type RosterStageDiagnostic {
   cause: String
-  file: String
-  span: RosterStageSpan
+  at: Optional<RosterStageLocated>
 }
 
 type RosterRefusalReason
@@ -288,34 +288,31 @@ type RosterRefusalReason
   | RefusalEditsOverlap { start: Int, end: Int, reach: Int }
   | RefusalEditsCoincide { at: Int }
 
-fn roster_stage_span_of(extent: Extent) -> RosterStageSpan {
-  match extent {
-    ByteRange { start: s, end: e } => StageSpanBytes { start: s, end: e }
-    WholeFile => StageSpanWholeFile
-  }
-}
-
 // THE ONE RULE for every stage arm: the FATAL diagnostic (diagnostics_fatal is the sole place the fatal pick is defined),
-// its reason, its file and its extent.
+// its reason, and its file and extent when its locus carries them. A locus with no file (a node, an invariant port, a
+// declaration) is Absent: never an empty file name and never a third span kind.
 fn roster_stage_diagnostic(d: NonEmptyDiagnostics) -> RosterStageDiagnostic {
   let fatal = diagnostics_fatal(d: d)
   let cause = symbol_lexeme(sym: fatal.reason)
   match fatal.at {
-    Textual { file: f, extent: x } => RosterStageDiagnostic { cause: cause, file: symbol_lexeme(sym: f), span: roster_stage_span_of(extent: x) }
-    SourcePortLocus { anchor: _, file: f, extent: x } => RosterStageDiagnostic { cause: cause, file: symbol_lexeme(sym: f), span: roster_stage_span_of(extent: x) }
-    NodeLocus { anchor: _ } => RosterStageDiagnostic { cause: cause, file: "", span: StageSpanUnlocated }
-    InvariantPortLocus { anchor: _, invariant: _ } => RosterStageDiagnostic { cause: cause, file: "", span: StageSpanUnlocated }
-    DeclarationLocus { declaration: _ } => RosterStageDiagnostic { cause: cause, file: "", span: StageSpanUnlocated }
+    Textual { file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: Present { value: RosterStageLocated { file: f, extent: x } } }
+    SourcePortLocus { anchor: _, file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: Present { value: RosterStageLocated { file: f, extent: x } } }
+    NodeLocus { anchor: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
+    InvariantPortLocus { anchor: _, invariant: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
+    DeclarationLocus { declaration: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
   }
 }
 
+// Only this renderer chooses how an absent location is printed.
 fn roster_stage_diagnostic_text(d: RosterStageDiagnostic) -> String {
-  let where_text = match d.span {
-    StageSpanBytes { start: s, end: e } => "bytes=" + int_to_decimal_string(value: s) + ".." + int_to_decimal_string(value: e)
-    StageSpanWholeFile => "bytes=whole-file"
-    StageSpanUnlocated => "bytes=unlocated"
+  match d.at {
+    Absent => "reason=" + d.cause + " file=none bytes=unlocated"
+    Present { value: l } =>
+      "reason=" + d.cause + " file=" + symbol_lexeme(sym: l.file) + " " + (match l.extent {
+        ByteRange { start: st, end: en } => "bytes=" + int_to_decimal_string(value: st) + ".." + int_to_decimal_string(value: en)
+        WholeFile => "bytes=whole-file"
+      })
   }
-  "reason=" + d.cause + " file=" + d.file + " " + where_text
 }
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
