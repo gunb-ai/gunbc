@@ -68,12 +68,12 @@ data verify_entry_compile_samples: List<EntryCompileSample> = [
   EntryCompileSample {
     entry: "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag",
     seconds: second(count: 4143),
-    standing: TranscribedUncited { read_obligation: "transcribed from loyal-deer-449's srv1 report (2026-11-05, origin/main 4a5b8feb, own systemd-run scope, runs 4142.6 s and 3987.4 s, the slower kept); re-derive by running the compile command above on srv1 and reading process_invocation_total; throttling of the original scopes is unrecoverable and a re-run reads memory.events and memory.pressure" as NonEmptyStr },
+    standing: TranscribedUncited { read_obligation: "transcribed from loyal-deer-449's srv1 report (2026-11-05, origin/main 4a5b8feb, own systemd-run scope, runs 4142.6 s, 3987.4 s and 3892.1 s, the slowest kept; run 3 read counters inside the scope: memory.events high 0, pressure ~0, cpu usage/wall 0.9998, so one busy core and not throttled; runs 1 and 2 scopes are gone); re-derive by running the compile command above on srv1 and reading process_invocation_total" as NonEmptyStr },
   },
   EntryCompileSample {
     entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag",
     seconds: second(count: 4018),
-    standing: TranscribedUncited { read_obligation: "transcribed from loyal-deer-449's srv1 report (2026-11-05, origin/main 4a5b8feb, own systemd-run scope, runs 3903.0 s and 4017.8 s, the slower kept); re-derive by running the compile command above on srv1 and reading process_invocation_total; throttling of the original scopes is unrecoverable and a re-run reads memory.events and memory.pressure" as NonEmptyStr },
+    standing: TranscribedUncited { read_obligation: "transcribed from loyal-deer-449's srv1 report (2026-11-05, origin/main 4a5b8feb, own systemd-run scope, runs 3903.0 s and 4017.8 s, the slower kept; scopes are gone, so throttling is unread, but the same entry family ran unthrottled at one busy core); re-derive by running the compile command above on srv1 and reading process_invocation_total" as NonEmptyStr },
   },
 ]
 
