@@ -30,6 +30,8 @@ import gunbc.managed_directory {
   ManagedDirectory,
   DirectoryDependent,
   EntriesUnmanaged,
+  DirectoryOwnerGroupWritableSetgid,
+  DirectoryOwnerAllEveryoneTraverse,
 }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryManaged }
 import gunbc.executor_privileged_operation {
@@ -60,7 +62,7 @@ import gunbc.runner.runner_host_deploy {
   runner_host_spec_for,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet.printer_workflow_artifact { printer_starts_path }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_state_directory, printer_state_parent_directory }
 import gunbc.fleet.printer_state_layout { printer_state_directories }
 import gunbc.host_state_root { host_state_tree }
 import gunbc.owned_directory { owned_directory_path }
@@ -498,4 +500,61 @@ test fn the_refusal_dropping_builder_is_deleted() -> ProcessExit {
       holds: fn(n) { n == 1 },
     )
   )
+}
+
+// ---------------------------------------------------------------------------
+// THE PRIVILEGED-INSTALL PARENT RULING (quick-newt-573 security fix, 2026-11-05). A privileged
+// `install -d -o G -g G -m M <path>` applies its ownership only to the named leaf; when the model ALSO
+// declares the leaf's PARENT as one of these install targets and that parent's GROUP can write it, the
+// de-privileged grantee (a member of that group, via runner_host_grants EnsureSupplementaryGroupMembership)
+// can plant a symlink in the parent that root's install then follows and chowns -- an ownership escalation.
+// The fold (executor_privileged_owned_directory_plans -> executor_privileged_writable_parent_refusal) refuses
+// such a target. The two fixtures below place the parent at the REAL printer-state path so the refusal names
+// a directory the host actually needs, exactly as the /var/lib/gunbc/printer-starts finding did.
+// ---------------------------------------------------------------------------
+
+// THE VULNERABLE SHAPE (what main shipped before the fix): printer-starts declared fleet-owned group-writable
+// setgid (2770), the same group the job user is granted, with a member store installed beneath it.
+fn vulnerable_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
+  let parent = printer_starts_path(tree: host_state_tree()) as String
+  [
+    printer_state_directory(member: "printer-starts", path: parent as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid),
+    printer_state_directory(member: "requests", path: concat(parent, "/requests") as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid),
+  ]
+}
+
+// THE FIXED SHAPE (the host_state_tree_root parent ruling one level down): printer-starts root:root and
+// traverse-only (0755); the member beneath it stays fleet-owned group-writable setgid.
+fn safe_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
+  let parent = printer_starts_path(tree: host_state_tree()) as String
+  [
+    printer_state_parent_directory(member: "printer-starts" as NonEmptyStr, path: parent as NonEmptyStr, mode: DirectoryOwnerAllEveryoneTraverse),
+    printer_state_directory(member: "requests", path: concat(parent, "/requests") as NonEmptyStr, mode: DirectoryOwnerGroupWritableSetgid),
+  ]
+}
+
+// THE RED. The member install under a group-writable parent is refused -- located at the member path, naming
+// the parent and the cause -- and its row is DROPPED so the sudoers projection cannot grant the escalation.
+// The parent install itself is NOT refused (its own parent, /var/lib/gunbc, is not a declared target here), so
+// exactly one row (the parent) and exactly one refusal (the member) survive.
+test fn a_group_writable_parent_of_a_privileged_install_is_refused() -> Bool {
+  let plan = executor_privileged_owned_directory_plans(targets: vulnerable_parent_and_member_targets())
+  length(xs: plan.refusals) == 1
+    && length(xs: executor_privileged_plan_rows(plan: plan)) == 1
+    && match plan.refusals.first() {
+      Absent => false
+      Present { value: r } =>
+        (r.path as String) == concat(printer_starts_path(tree: host_state_tree()) as String, "/requests")
+          && string_contains(s: r.reason as String, pattern: "privileged install -d")
+          && string_contains(s: r.reason as String, pattern: "can write it")
+    }
+}
+
+// THE POSITIVE CONTROL. The SAME member under a root-owned, traverse-only parent is admitted: nothing is
+// refused and both directory rows render, so the projection keeps granting the (now safe) installs. This is
+// the shape of the corrected layout (gunbc.fleet.printer_workflow_artifact printer_state_parent_directory).
+test fn a_root_owned_parent_of_a_privileged_install_is_admitted() -> Bool {
+  let plan = executor_privileged_owned_directory_plans(targets: safe_parent_and_member_targets())
+  length(xs: plan.refusals) == 0
+    && length(xs: executor_privileged_plan_rows(plan: plan)) == 2
 }

@@ -18,7 +18,7 @@ module gunbc.executor_privileged_operation
 // that capability intent, sudoers command, sudoers file, and installation transaction are four
 // facts, not one carrier. This module owns exactly the second, and projects from the first.
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.access.posix { FileMode }
 import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
@@ -33,7 +33,7 @@ import std.env_binding { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.owned_directory { owned_directory_stat_format, owned_directory_install_plan_of, owned_directory_path, OwnedDirectoryTarget }
+import gunbc.owned_directory { owned_directory_stat_format, owned_directory_install_plan_of, owned_directory_path, owned_directory_parent, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused, OwnedDirectoryTarget }
 import gunbc.ensure { EnsurePlan, EnsurePlanAvailable, EnsurePlanUnavailable }
 import std.algebra { fold_list, length }
 
@@ -503,22 +503,98 @@ fn executor_privileged_owned_directory_plan(t: OwnedDirectoryTarget) -> Executor
   }
 }
 
-// TARGETS INTO ONE PLAN. EVERY refusal is kept, in target order: a plan that stops does not stop
-// early. Stopping at the first refusal (what this fold used to do) made the second and later refused
-// directories invisible -- the apply blocked anyway, but the operator learned about missing directories
-// one per run and the census undercounted, which is the countability half of DESIGN section 5 ("every
-// degradation is typed, located and countable") left unmet. Rows are accumulated too: renderers gate on
-// refusals being non-empty, so keeping them cannot weaken the stop, and a plan that carries rows AND
-// refusals is the honest description of what the host was asked for.
+// THE PRIVILEGED-INSTALL PARENT RULING, THE PREDICATES THE FOLD USES. The fold below
+// (executor_privileged_owned_directory_plans) turns every demanded target into a row or a refusal; these two
+// helpers add the security ruling on top of executor_privileged_owned_directory_plan's own single-target
+// decision. See the ruling comment on executor_privileged_writable_parent_refusal.
+//
+// A TARGET'S DECLARED GROUP CLASS CAN WRITE IT when its resolved mode grants the group class write AND
+// the group principal is NOT root. A root-GROUPED directory is writable only by members of group root
+// (effectively root itself), so a de-privileged grantee cannot exploit it; a NON-root group that the
+// grantee may hold is exactly the set the finding is about. A target whose mode cannot be resolved is NOT
+// counted here -- it is refused on its own cause by executor_privileged_owned_directory_plan, and that
+// refusal withholds the whole artifact (runner_host_sudoers_body_guard), so the tree is never granted.
+fn owned_directory_group_can_write(t: OwnedDirectoryTarget) -> Bool {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeResolved { mode } => mode.group.write && (owned_directory_owner(t: t).group as String) != "root"
+    OwnedDirectoryModeRefused { reason: _ } => false
+  }
+}
+
+// THE PRIVILEGED-INSTALL PARENT RULELING (security ruling 2026-11-05, quick-newt-573 finding). A privileged
+// `install -d -o G -g G -m M <path>` applies its owner/group/mode to the FINAL named directory only; the
+// parent components are created by the privileged invoker, root (gunbc.host_state_root
+// host_state_tree_root's comment; extdeps.tools.gnu_coreutils coreutils_install_directory_owned_arguments).
+// But when the model ALSO declares the parent as one of these same install targets, and that parent's
+// GROUP can write it, the de-privileged grantee -- a member of that group, via runner_host_grants
+// EnsureSupplementaryGroupMembership -- can create an entry (a symlink) in the parent, and root's install -d
+// of the child under it FOLLOWS that symlink and chowns its target: a symlink-swap ownership escalation.
+// So a target is refused when its immediate parent is ANOTHER declared target in this same plan whose group
+// can write it. The fix is the parent ruling host_state_tree_root already states for /var/lib/gunbc itself:
+// a directory that hosts privileged installs is root-owned and traverse-only, never group-writable by a
+// group the grantee holds. This is the SHAPE check -- it fires on the layout, independent of any one host --
+// so the projection stops granting an install -d whose parent is writable by the caller (the finding's
+// /var/lib/gunbc/printer-starts and every member under it), and admits the corrected layout where the parent
+// is root:root 0755 (gunbc.fleet.printer_workflow_artifact printer_state_parent_directory).
+fn executor_privileged_writable_parent_refusal(
+  targets: List<OwnedDirectoryTarget>,
+  t: OwnedDirectoryTarget,
+) -> List<OwnedDirectoryPlanRefusal> {
+  let parent = owned_directory_parent(path: owned_directory_path(t: t))
+  let offenders = filter(xs: targets, predicate: fn(c) {
+    (owned_directory_path(t: c) as String) == (parent as String) && owned_directory_group_can_write(t: c)
+  })
+  if count(offenders) == 0 {
+    []
+  } else {
+    [OwnedDirectoryPlanRefusal {
+      path: owned_directory_path(t: t) as String as NonEmptyStr,
+      reason: join([
+        "privileged install -d of ", owned_directory_path(t: t) as String, " is refused: its parent ",
+        parent as String, " is a declared directory whose group can write it, so the de-privileged job user",
+        " in that group could plant a symlink the privileged install would follow and chown -- the parent must",
+        " be root-owned and not group-writable by any group the grantee holds (the host_state_tree_root parent ruling)",
+      ], " ") as NonEmptyStr,
+    }]
+  }
+}
+
+// THE PER-TARGET DECISION IN THE FOLD. The install plan (executor_privileged_owned_directory_plan) is the
+// ONE decision that turns a target into a row or an unavailable-plan refusal; this adds the parent ruling on
+// top. A target the install decision already refuses keeps only its own cause (no second refusal for the
+// same path); an admitted target additionally carries executor_privileged_writable_parent_refusal, and when
+// that fires the target's row is DROPPED (no sudoers grant for an install under a caller-writable parent) and
+// the refusal withholds the whole artifact (runner_host_sudoers_body_guard).
+fn executor_privileged_owned_directory_plan_entry(
+  targets: List<OwnedDirectoryTarget>,
+  acc: ExecutorPrivilegedProvisioningPlan,
+  t: OwnedDirectoryTarget,
+) -> ExecutorPrivilegedProvisioningPlan {
+  let p = executor_privileged_owned_directory_plan(t: t)
+  if count(p.refusals) > 0 {
+    ExecutorPrivilegedProvisioningPlan { rows: concat(acc.rows, p.rows), refusals: concat(acc.refusals, p.refusals) }
+  } else {
+    let parent_refusal = executor_privileged_writable_parent_refusal(targets: targets, t: t)
+    if count(parent_refusal) > 0 {
+      ExecutorPrivilegedProvisioningPlan { rows: acc.rows, refusals: concat(acc.refusals, parent_refusal) }
+    } else {
+      ExecutorPrivilegedProvisioningPlan { rows: concat(acc.rows, p.rows), refusals: concat(acc.refusals, p.refusals) }
+    }
+  }
+}
+
+// TARGETS INTO ONE PLAN. EVERY refusal is kept, in target order: a plan does not stop early (DESIGN 5's
+// countability -- one refusal per run would hide the rest). Each target's row/refusal comes from
+// executor_privileged_owned_directory_plan_entry, which preserves executor_privileged_owned_directory_plan's
+// every-refusal-kept behaviour and additionally drops a target's row (with a refusal) when the parent ruling
+// refuses an install under a caller-writable parent.
 fn executor_privileged_owned_directory_plans(
   targets: List<OwnedDirectoryTarget>,
 ) -> ExecutorPrivilegedProvisioningPlan {
   fold_list(
     xs: targets,
     empty: executor_privileged_empty_provisioning_plan(),
-    cons: (acc, t) =>
-      let p = executor_privileged_owned_directory_plan(t: t)
-      ExecutorPrivilegedProvisioningPlan { rows: concat(acc.rows, p.rows), refusals: concat(acc.refusals, p.refusals) }
+    cons: (acc, t) => executor_privileged_owned_directory_plan_entry(targets: targets, acc: acc, t: t)
   )
 }
 

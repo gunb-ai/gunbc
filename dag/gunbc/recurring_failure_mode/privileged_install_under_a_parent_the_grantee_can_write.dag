@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.privileged_install_under_a_parent_the_grantee_can_write
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data privileged_install_under_a_parent_the_grantee_can_write: RecurringFailureMode = RecurringFailureMode {
+  identity: "privileged_install_under_a_parent_the_grantee_can_write" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**root creates a directory whose PARENT the de-privileged job user can write, so the job user plants a symlink the privileged create follows -- an ownership escalation** (INVALID STATE: a sudoers rule lets the unprivileged runner, as root, run `install -d -o G -g G -m 02770 <parent>/<leaf>` (and the sibling forms `install -o`/`chown`) under a parent it declared group-writable to a group the job user was itself added to. HARM: the job user -- not root -- decides what `<leaf>` names, because a group-writable parent lets it create the entry; it creates a symlink, and root's `install -d` (which follows the last component) writes through it and `chown`s the target to G: the job user has handed a file or directory it owns to a privileged-owned group, or repointed a privileged path. The create is not privileged in the way it looks -- only its EFFECTS are, and one of those effects (the name) is attacker-chosen. DISTINGUISHING FACTS: `install -d -o -g -m` applies its ownership/mode to the FINAL named directory ONLY; the parent components are created by the privileged invoker at its umask, and a parent that ALREADY EXISTS is used as-is and followed through. So the hazard is a parent that BOTH hosts a privileged create AND is writable by a group the caller belongs to. This is exactly what gunbc.host_state_root host_state_tree_root rules out for /var/lib/gunbc -- a directory that hosts privileged installs is 'root-owned and world-traversable rather than owned by any one account' -- and what that ruling failed to reach one level down: the printer-starts parent (gunbc.fleet.printer_workflow_artifact) was fleet-owned group-writable setgid (2770) while the runner was added to that group (gunbc.runner.runner_host_grants EnsureSupplementaryGroupMembership). A fresh root-owned parent closed it; the grants themselves were sound. RECOGNITION RULE: whenever a create is granted to run as root, ask what WRITES the path the create runs under. If the caller can create an entry there -- group-writable by a group the caller holds, or otherwise writable -- the create is a symlink swap waiting to be issued, not a directory install. The parent of a privileged install is root-owned and traverse-only, or the create refuses. RUNG FOUND AT: mitigatable -- the model refuses the shape (gunbc.executor_privileged_operation executor_privileged_writable_parent_refusal / owned_directory_group_can_write), so the sudoers projection withholds the grant; the host still runs a `install`/`chown` whose no-follow behaviour is `install`'s, not the model's. CEILING: structurally impossible once every privileged create runs through a single helper that refuses a symlink or non-directory LEAF (no-follow on a path whose parent the caller can write), so the shape has no spelling. NEXT-RUNG TRIGGER: the sudoers projection emits a `--`-terminated `install` with no-follow semantics, or a dedicated create-helper that lstat-refuses before chowning, as the only route to a privileged directory create. Citing the parent ruling for /var/lib/gunbc as coverage does not discharge this -- that ruling was already there when the group-writable parent below it shipped.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.executor_privileged_operation", decl_name: "executor_privileged_writable_parent_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.executor_privileged_operation", decl_name: "owned_directory_group_can_write", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.printer_workflow_artifact", decl_name: "printer_state_parent_directory", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host_state_root", decl_name: "host_state_tree_root", field: WholeDeclaration },
+  ],
+}
