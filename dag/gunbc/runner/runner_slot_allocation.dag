@@ -1797,21 +1797,12 @@ fn host_deploy_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
 fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
   let authored = host_authored_slots_within_width(host: host, width: committed)
   let fleet_count = committed - authored.length()
-  let deploy = host_deploy_slot_identities(host: host)
-  let deploy_kept = take_prefix(deploy, fleet_count)
-  let ci_kept = take_prefix(
+  take_prefix(
     filter(
-      map(nat_range_inclusive(lo: 1, hi: committed), i => RunnerSlotIdentity { host: host, slot_index: i }),
-      id => !identity_in_list(identity: id, members: authored) && !identity_in_list(identity: id, members: deploy)
+      nat_range_inclusive(lo: 1, hi: committed),
+      i => !identity_in_list(identity: RunnerSlotIdentity { host: host, slot_index: i }, members: authored)
     ),
-    fleet_count - deploy_kept.length()
-  )
-  map(
-    filter(
-      map(nat_range_inclusive(lo: 1, hi: committed), i => RunnerSlotIdentity { host: host, slot_index: i }),
-      id => identity_in_list(identity: id, members: deploy_kept) || identity_in_list(identity: id, members: ci_kept)
-    ),
-    id => id.slot_index
+    fleet_count
   )
 }
 
