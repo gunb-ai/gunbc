@@ -10095,7 +10095,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           )
           InferResult {
             typed: fa_texpr,
-            emissions: infer_emissions_concat(left: probe6_field_emissions(field_name: field_name, base_expr: base_expr, raw_field_type: raw_field_type, field_type: field_type, resolved_base: resolved_base, scope: scope, span: span), right: infer_emissions_concat(left: base_emissions, right: infer_emissions_of_diagnostics(diagnostics: resolved_base_diags)))
+            emissions: infer_emissions_concat(left: probe6_field_emissions(field_name: field_name, base_expr: base_expr, raw_field_type: raw_field_type, field_type: field_type, resolved_base: resolved_base, base_rt: base_rt, scope: scope, span: span), right: infer_emissions_concat(left: base_emissions, right: infer_emissions_of_diagnostics(diagnostics: resolved_base_diags)))
           }
         Absent =>
           let defer_field_miss = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
@@ -12090,7 +12090,7 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
         Absent => structural
       }
     } else { structural }
-    NodeResolveResult { resolved: resolved_record, diagnostics: concat(own_diags, probe7_record_branch(carrier: carrier, carrier_name: carrier_name, structural: structural, env: env, module_name: module_name)) }
+    NodeResolveResult { resolved: resolved_record, diagnostics: concat(own_diags, probe7_record_branch(carrier: carrier, carrier_name: carrier_name, structural: structural, resolved_record: resolved_record, env: env, module_name: module_name)) }
   } else {
     let next_name = carrier_name
 
@@ -12156,7 +12156,7 @@ fn probe3_call_site_emissions(method_name: String, recv_typed: Node, recv_rt: No
   } else { infer_emissions_empty() }
 }
 
-fn probe7_record_branch(carrier: Node, carrier_name: String, structural: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
+fn probe7_record_branch(carrier: Node, carrier_name: String, structural: Node, resolved_record: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
   let arg0_name = match carrier.children |> first {
     Present { value: c } => authored_name_at(source_indices: env.source_indices, node: c)
     Absent => ""
@@ -12193,6 +12193,15 @@ fn probe7_record_branch(carrier: Node, carrier_name: String, structural: Node, e
         concat("target_nparams=", to_string(target.params |> count), " decl_nparams=", to_string(decl.params |> count), " ", slot0, " ", subst_info)
       Absent => "target=absent"
     }
+    let head_after = match lookup_field_type_node(n: resolved_record, field_name: "head", source_indices: si) {
+      Present { value: h } => probe3_inferred_kind(i: h.inferred, source_indices: si)
+      Absent => "no-head"
+    }
+    let head_before = match lookup_field_type_node(n: structural, field_name: "head", source_indices: si) {
+      Present { value: h } => probe3_inferred_kind(i: h.inferred, source_indices: si)
+      Absent => "no-head"
+    }
+    let same_record = if rc_ptr_eq(resolved_record, structural) { "yes" } else { "no" }
     let carrier_child0 = match carrier.children |> first {
       Present { value: c } => probe3_node_shape(n: c, source_indices: si)
       Absent => "nochild"
@@ -12200,14 +12209,14 @@ fn probe7_record_branch(carrier: Node, carrier_name: String, structural: Node, e
     [inference_error(
       message: concat("PROBE7 record_branch carrier_connective=", conn, " carrier_nchildren=", to_string(carrier.children |> count),
         " carrier_child0=", carrier_child0, " gate_record_has_unresolved_param_field=", if gate { "true" } else { "false" },
-        " structural_nparams=", to_string(structural.params |> count), " ", target_info),
+        " structural_nparams=", to_string(structural.params |> count), " head_before_subst=", head_before, " head_after_subst=", head_after, " resolved_record_is_structural=", same_record, " ", target_info),
       span: carrier.span,
       module_name: module_name
     )]
   }
 }
 
-fn probe6_field_emissions(field_name: String, base_expr: Node, raw_field_type: Node, field_type: Node, resolved_base: Node, scope: InferScope, span: SourceSpan) -> InferEmissions {
+fn probe6_field_emissions(field_name: String, base_expr: Node, raw_field_type: Node, field_type: Node, resolved_base: Node, base_rt: Node, scope: InferScope, span: SourceSpan) -> InferEmissions {
   let base_var = match base_expr.expr_data {
     ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base_expr, source_indices: scope.type_env.source_indices)
     _ => "non-var"
@@ -12245,7 +12254,14 @@ fn probe6_field_emissions(field_name: String, base_expr: Node, raw_field_type: N
         " stamped_field_type=", probe3_node_shape(n: field_type, source_indices: si),
         " stamped.inferred=", probe3_inferred_kind(i: field_type.inferred, source_indices: si),
         " resolved_base=", probe3_node_shape(n: resolved_base, source_indices: si),
-        " resolved_base.nparams=", to_string(resolved_base.params |> count)),
+        " resolved_base.nparams=", to_string(resolved_base.params |> count),
+        " ARM caller=", scope.caller_decl_name, " base_var=", base_var,
+        " base_rt=", probe3_node_shape(n: base_rt, source_indices: si),
+        " base_rt_connective=", match base_rt.connective { Conj => "Conj" Disj => "Disj" NoConnective => "NoConnective" _ => "other" },
+        " base_rt_arg0=", match base_rt.children |> first { Present { value: c0 } => probe3_node_shape(n: c0, source_indices: si) Absent => "nochild" },
+        " base_rt_deferred=", if is_deferred_field_access_base(n: base_rt, env: scope.type_env) { "yes" } else { "no" },
+        " base_rt_needs_alias_expansion=", if needs_alias_field_expansion(n: base_rt, env: scope.type_env) { "yes" } else { "no" },
+        " resolved_base_is_base_rt=", if rc_ptr_eq(resolved_base, base_rt) { "yes" } else { "no" }),
       span: span,
       module_name: scope.module_name
     )])
