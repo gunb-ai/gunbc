@@ -305,7 +305,7 @@ fn qualification_attempt_held(
         HostUnitSlotRefused { refusal: _ } => exit_failure(reason: concat("qualification attempt: no attempt slot binds on ", host as String))
         HostUnitSlotBound { slot: slot } =>
           match anchored_host_transport_live(host: host, attempt_raw: attempt as String) {
-            AnchoredBindingBound { bound: b } =>
+            AnchoredBindingBound { bound: b, anchor: _ } =>
               qualification_attempt_bound(host: host, slot: slot, attempt: attempt, revision: git_object_id_wire_hex(oid: accepted.revision) as CommitSha, user: user, hold: hold, transport: b.transport, key: key, token: token)
             other => exit_failure(reason: concat("qualification attempt: no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)))
           }

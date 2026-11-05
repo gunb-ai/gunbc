@@ -2,15 +2,16 @@ module v2.lens.reference_deps
 
 import std.optional { Present, Absent }
 import v2.std.node_query { find_labeled_child }
-import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node, dag_surface_edge_label }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node, dag_surface_edge_label, parse_qualified_name_segments_from_capture, parse_subtree_find_production_captured }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason, bind_outcome, outcome_accepted }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
+import v2.std.qualified_name { qualified_name_from_node }
 
 // THE PARSE-TREE REFERENCE WALKER IS RETIRED (replacement migration, DESIGN section 3).
 // reference_sites_from_parsed_module keyed on ^dag_surface_qualified_name and the import

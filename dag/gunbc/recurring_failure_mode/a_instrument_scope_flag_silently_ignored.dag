@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.a_instrument_scope_flag_silently_ignored
+
+import std.types { NonEmptyStr }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, BelowCeiling }
+
+data a_instrument_scope_flag_silently_ignored: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_instrument_scope_flag_silently_ignored" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a census-scope guard that, when a scoping control (GUNBC_CI_DIFF_BASE or the scoped-plan flag) is set but the scoped plan does not engage, emits a loud diagnostic naming the discarded narrowing instead of silently running the whole-tree subject",
+    },
+  },
+
+  receipts: [
+    "**an instrument accepts a scoping control (an environment variable or flag naming a narrower subject) but IGNORES it and always runs its widest mode, WITHOUT ERROR or NOTE** -- the caller believes it asked for a scoped observation, and then pays for and trusts a whole-corpus one. The defect is not that the wide run happened; it is that the control meant to narrow it was accepted at the CLI and then dropped, so a scoped intent is silently upgraded to whole-tree and nothing in the output says the narrowing was discarded.",
+
+    "SOURCES (producer, not transcription; every figure below is read from these, none copied as free-standing fact): srv2 row `ef-15247-ctl-f021` END receipt (admission/terminal record kept by calm-crab-645), artifacts at `~/runs/ef-15247-ctl-f021/out/` (chiefly `census.stderr.log` and `summary.txt`) and the systemd journal for `ef-15247-ctl-f021.scope`. The instrument that re-derives the run: `gunbc test //gunbc/instruments:compile-clean-diagnostic-census --repository . --source-root dag --source-root src/v2`. Any number a reader needs is reproduced by re-running that instrument or by reading the cited row artifacts; it is NOT asserted here as a transcribed literal.",
+
+    "WHAT THE PRODUCER SHOWED: the census was invoked with the scoping control GUNBC_CI_DIFF_BASE set to a base sha and CI/GITHUB_* unset, intending a diff-scoped resolution over a single touched entry file; the staged diff was observed non-empty (one .dag). The only scope line in census.stderr.log was the whole-tree form `compile-clean scope: whole-tree entry closure (witness_layer_roots)`, and none of the scoped-plan reason lines (which exist in the same module and print an 'N affected entries' line) ever fired. The scope of the run was therefore the whole corpus, and the run did not produce a census verdict; its terminal state and measured footprint are in the cited row receipt and journal.",
+
+    "ROOT CAUSE, read from source (not inferred from the log): in `src/v1/stage0/src/cli_run/compile_clean.rs`, `compile_clean_diagnostic_census()` materializes its subject by calling `witness_layer_roots_compile_clean_sources_for_plan(&CompileCleanScopePlan::WholeTree)` -- the WholeTree plan is HARD-CODED at that call site, and the function never calls `compile_clean_scope_plan_for_ci` and never reads GUNBC_CI_DIFF_BASE. The scoped machinery (compile_clean_scope_plan_for_ci / _from_touched_paths / the floor fast path) lives in the same module and DOES honor the diff -- but it belongs to the compile-clean GATE (admission), not to this census instrument. The two share the witness_layer_roots helper and so LOOK coupled, while only the gate honors the scoping control. That adjacency is why the trap recurs.",
+
+    "THE RECURRING TRAP: gate and census sit in one file and reuse one source-loading helper, so it reads as natural that the instrument scopes like the gate. The failure is SILENT -- no 'scoping inactive', no 'outside selectable universe', no refusal -- just a whole-tree subject the caller never asked for, which can OOM a slot or, if it completes, be TRUSTED as scoped when it was not.",
+
+    "THE REPAIR is to make the census instrument either (a) consult compile_clean_scope_plan_for_ci and honor the scoping control, or (b) REFUSE when a scoping control is set it does not honor, so a caller can never mistake a whole-tree result for a scoped one -- NOT to keep silently ignoring it. A silent ignore is the widening; a loud refusal is narrow.",
+
+    "DISTINCT FROM ITS TWO NEAREST NEIGHBOURS. `a_census_is_cited_wider_than_the_closure_its_instrument_compiles` is a report whose prose reach is wider than the subset that ran -- the instrument ran one closure faithfully and a human over-described it; here the INSTRUMENT itself ignored the control and ran wider than asked, no human in the loop. `absorbing_fallback` is a fallback arm that turns an ABSENCE into a reassuring default VALUE; here there is no fallback value -- a narrowing control is accepted and discarded, widening the SUBJECT rather than defaulting an answer.",
+    "RUNG READING (this row's rung / ceiling / trigger, DESIGN 4b). FOUND BELOW THE LADDER, NOT RungUnread{NoRungStated}: the silent wrongness is OBSERVED, not unread -- the census was invoked with the scoping control SET (GUNBC_CI_DIFF_BASE pinned at a base sha, the observed diff non-empty) and the run still took the whole-tree scope with no note that the narrowing was discarded (the cited census.stderr.log), so DESIGN 4b places this class below the ladder and gives it no GuaranteeRung. CEILING = mechanically preventable, and it is attainable WITH ITS REASON: the very code path that drops the flag (the scoped-plan fallback to WholeTree in `src/v1/stage0/src/cli_run/compile_clean.rs`) already computes 'a scope control was set but Scoped did not engage', so it can emit a loud note naming the discarded narrowing -- a mechanical guard over a state the instrument already holds; it is not structural-impossible because the flag can still be honored later, only that the DROP can never again be silent. BLOCKER = climbable now but unbuilt: no external grounding is awaited, the loud-ignore guard is simply not yet written. TRIGGER = a capability, NOT an artifact and NOT 'rerun the instrument': the loud-ignore guard above, i.e. the capability to report a silently-discarded scope control.",
+  ],
+
+  evidence: [],
+}

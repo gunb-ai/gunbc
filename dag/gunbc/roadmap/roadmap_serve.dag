@@ -7,21 +7,19 @@ import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_key, issue
 import gunbc.auth.request_authentication { ServeActionSaveOwnView }
 import extdeps.http.server { ServeResponseHeaderNoStore, ServeResponseHeaderCacheImmutable, text_css_utf8 }
 import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web_font_stylesheet_max_age_seconds }
-import extdeps.languages.json.emit { JsonNull }
+import extdeps.languages.json.emit { JsonNull, json_bool }
 
-import gunbc.site.document { site_document }
+import gunbc.site.document { site_document, SiteStyles }
 import gunbc.site.specimen { specimen_route_path, specimen_page }
-import gunbc.site.markup { el, txt }
+import gunbc.site.markup { el, txt, page_render_refusal_body }
 import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
 import gunbc.site.controls { site_client_path, site_client_source }
-import gunbc.roadmap.roadmap_style { roadmap_styles }
-import gunbc.site.document { SiteStyles }
+import gunbc.roadmap.roadmap_style { roadmap_styles, roadmap_css }
 
 import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
 import gunbc.roadmap.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
-import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
+import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, roadmap_issue_state }
 
-import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
 import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, IssueFormContext, issue_command_apply, issue_operation_nonce }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
@@ -36,7 +34,6 @@ import gunbc.auth.profile_projection {
 }
 import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
 import gunbc.roadmap.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path, AllocationViewerSignedIn, AllocationViewerSignedOut }
-import gunbc.roadmap.roadmap_style { roadmap_css }
 import gunbc.roadmap.roadmap_allocation_client { allocation_client_source }
 
 
@@ -80,7 +77,6 @@ import gunbc.auth.request_authentication {
 }
 import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason }
 import extdeps.uri { Uri, uri_wire }
-import extdeps.languages.json.emit { json_bool }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
 }
@@ -93,7 +89,7 @@ import gunbc.roadmap.roadmap_task_record { roadmap_task_encode }
 import gunbc.roadmap.roadmap_task_store { RuntimeTaskWrite, roadmap_task_create, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskConflict, RuntimeTaskStale, RuntimeTaskChainFull, RuntimeTaskRefused, roadmap_task_capacity, CapacityWithin, CapacityCompactionDue, CapacityFull }
 import std.algebra { trim }
 import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus, Timestamp }
-import extdeps.uri_path { PathParamBinding, path_param_value }
+import extdeps.uri_path { PathParamBinding, path_param_value, uri_query_param }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -155,7 +151,6 @@ import gunbc.roadmap.roadmap_static_site {
   roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
-import gunbc.site.markup { page_render_refusal_body }
 import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_health_path,
   roadmap_site_dispatch_url_path,
@@ -289,10 +284,11 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be
 // modeled that way today because gunbc.host.host_effect carries only the LiveDeployApply /
 // LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic
-// service-occurrence member exists. That absence is why BOTH bring-up paths must name a command:
-// the systemd unit through gunbc.live_deploy.emit, and the tmux path through
-// gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is
-// separate work and is the thing that stops this recurring.
+// service-occurrence member exists. That absence is why the ONE bring-up path must name a command:
+// the systemd unit through gunbc.live_deploy.emit. The tmux path's argv builder,
+// dashboard_instance_serve_argv, had no consumer in any lane and was deleted under DESIGN §3c; if a
+// tmux bring-up returns it returns through the live-deploy emit, not through a second argv spelling.
+// Registering that member is separate work and is the thing that stops this recurring.
 //
 // THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter
 // load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN
@@ -2073,6 +2069,35 @@ fn roadmap_serve_handle_srv1_lab(
     body: body,
     tailscale_identity: tailscale_identity,
     ingress: IngressUnattested,
+    request_headers: request_headers,
+    release_revision: release_revision,
+  )
+}
+
+// THE AGENT DOOR: the lab's owning agent's listener (gunbc.live_deploy.spec deployment_agent_door_socket).
+// Same instance and the same routes as roadmap_serve_handle_srv1_lab; the only difference is that the
+// kernel-attested peer user is handed to the seam as the request's ingress, as the tailnet door's entry
+// does. The host-account evidence that turns an enrolled peer into an acting principal is a later
+// slice (lineage retire as the agent); until it lands, a peer here is read exactly as on the lab's
+// loopback entry, and an account that is not the tailnet proxy mints no tailnet path.
+fn roadmap_serve_handle_srv1_lab_agent_door(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  peer_user: String,
+  request_headers: List<ServeRequestHeader>,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv1_lab_dashboard_instance(),
+    plan: fn() { roadmap_plan_projection() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    ingress: IngressAttestedPeer { peer_user: peer_user },
     request_headers: request_headers,
     release_revision: release_revision,
   )

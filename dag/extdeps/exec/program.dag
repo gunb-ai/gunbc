@@ -212,6 +212,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.virtualization.qemu", decl_name: "qemu_system_aarch64_program"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_program"),
     decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_program"),
+    decl_ref(module_path: "extdeps.tools.pciutils_setpci", decl_name: "setpci_program"),
     decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_findmnt", decl_name: "findmnt_program"),
