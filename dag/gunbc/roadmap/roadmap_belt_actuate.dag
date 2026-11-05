@@ -687,6 +687,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation,
   filesystem_listing_names_entry,
   filesystem_entry_presence,
+  listed_entry_presence,
   FilesystemReadOutcome,
   FilesystemReadRefused,
   FilesystemReadSucceeded,
@@ -2818,9 +2819,34 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
 // decide on the branch' -- it is never inferred from what the caller wants next.
 fn belt_worktree_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> WorktreeStanding {
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
-    WorktreeHeadObserved { revision } => WorktreeHere { revision: revision as String }
-    WorktreeHeadUnobserved { reason } => WorktreeAbsent { reason: reason }
+  // Absence is ESTABLISHED by a SUCCEEDED listing of the worktree root, never inferred from a failed head
+  // read -- that is filesystem_io's absence-adoption rule, and the exact shape the reviewer flagged: a
+  // failed read is unknown, not 'gone'. The entry name is precisely what dispatch_worktree_path_for_instance
+  // builds: the node-and-attempt directory under the dispatch worktree root.
+  let worktree_name = join([node_id as String, "-a", attempt_key], "")
+  match listed_entry_presence(
+    directory: dashboard_instance_dispatch_worktree_root(instance: instance) as String,
+    name: worktree_name,
+  ) {
+    FilesystemEntryListed { directory: _, name: _ } =>
+      // The listing NAMES the directory: the worktree is PRESENT. Read its head honestly. A present worktree
+      // whose head cannot be read is a git FAULT on a live directory -- NOT a reaping -- so it is Unknown and
+      // the decision refuses rather than restoring (git worktree add, no --force, over live uncommitted work).
+      match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+        WorktreeHeadObserved { revision } => WorktreeHere { revision: revision as String }
+        WorktreeHeadUnobserved { reason } =>
+          WorktreeUnknown { reason: join(["the worktree directory is present but its head could not be read -- a git fault on a live worktree, not a reaping, so the lineage refuses rather than restoring over it: ", reason], "") }
+      }
+    FilesystemEntryAbsent(_established) =>
+      // A SUCCEEDED listing of the root did NOT name this attempt's directory: its absence is ESTABLISHED,
+      // so the worktree is genuinely gone (reaped). Its branch may still hold the committed work; the decision
+      // decides on the branch standing, read against the shared object store that survives reaping.
+      WorktreeAbsent { reason: join(["the worktree directory ", worktree, " is absent from a succeeded listing of the dispatch worktree root (reaped)"], "") }
+    FilesystemEntryPresenceIndeterminate { cause } =>
+      // The root could not be listed, so the directory's absence is NOT established -- unknown, refused.
+      WorktreeUnknown { reason: join(["whether the worktree directory is present is not established (the dispatch worktree root could not be listed): ", cause], "") }
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      WorktreeUnknown { reason: join(["the worktree listing subject ", d, "/", n, " was refused: ", c], "") }
   }
 }
 

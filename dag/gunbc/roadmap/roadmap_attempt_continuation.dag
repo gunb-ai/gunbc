@@ -62,14 +62,21 @@ import gunbc.roadmap.roadmap_workflow_stage {
 // gunbc.design_ruling dispatch_is_continue_or_start_fresh).
 // HOW THE PRIOR ATTEMPT'S WORKTREE STANDS, AS READ. The submission capture and the recovery record live
 // INSIDE the worktree; when it is not present they were NOT read, and the plan must not pretend they are
-// 'absent' or 'none' (DESIGN §5: a fabricated default is a hard reject). Absent means the worktree head
-// could not be observed -- which for a reaped worktree is the whole point: its branch may still hold the
-// committed work, and the branch standing (read against the shared object store, which survives reaping)
-// decides whether that is a restore or a refusal. A genuine git fault fails BOTH the worktree read and the
-// branch read, so it lands as Absent + BranchUnreadable and is refused, never restored onto.
+// 'absent' or 'none' (DESIGN §5: a fabricated default is a hard reject). The three states are read, not
+// inferred from what the caller wants next, and are NOT two names for one thing:
+//   WorktreeHere   -- the head was observed (present and readable).
+//   WorktreeAbsent -- a SUCCEEDED listing of the worktree root did not name the directory, so its absence
+//                     is ESTABLISHED (filesystem_io's absence-adoption rule: absence comes from a listing
+//                     that succeeded, never from a failed read). Genuinely gone (reaped); its branch may
+//                     still hold the committed work, and the branch standing decides whether that is a restore.
+//   WorktreeUnknown-- presence could NOT be established: the root could not be listed, the subject was
+//                     refused, OR the directory lists but its head could not be read (a git fault on a live
+//                     worktree, NOT a reaping). Unknown is refused, never restored onto -- restoring over a
+//                     present-but-unreadable worktree would clobber or omit uncommitted live work.
 type WorktreeStanding
   = WorktreeHere { revision: String }
   | WorktreeAbsent { reason: String }
+  | WorktreeUnknown { reason: String }
 
 // HOW THE PRIOR ATTEMPT'S BRANCH STANDS, AS READ against the shared object store. Consulted only when the
 // worktree is absent: a live branch is a restore target (its head is the durable committed work), a gone
@@ -168,19 +175,35 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
               BranchUnknown { reason: why } =>
                 Refuse { reason: join(["could not determine whether the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present; a failed branch check is not an absent branch and is never restored onto: ", why], "") }
             }
+          WorktreeUnknown { reason } =>
+            // PRESENCE COULD NOT BE ESTABLISHED -- the root was unlistable, the subject refused, or the
+            // directory lists but its head could not be read (a git fault on a LIVE worktree). This is not
+            // the reaped case: it must never be restored onto, because a still-present worktree may hold
+            // uncommitted live work that a restore-from-branch would clobber or silently omit. A read that
+            // failed is unknown, and unknown is refused (DESIGN §5: runtime uncertainty -> typed refusal;
+            // filesystem_io: absence is established only by a listing that succeeded). The belt's own
+            // re-observe is the remedy, not a guessed spawn.
+            Refuse { reason: join(["could not establish how the prior attempt ", prior.attempt_key, "'s worktree stands, so the lineage decides nothing rather than restoring onto a possibly-live directory: ", reason], "") }
           WorktreeHere { revision: _ } =>
         match prior.capture {
           CaptureUnreadable { reason } =>
             Refuse { reason: join(["the prior attempt ", prior.attempt_key, "'s submission store is unreadable, so what it holds is unknown and the lineage decides nothing: ", reason], "") }
           CaptureAbsent =>
             continuation_from_absent_capture(prior: prior)
-          // LAB BUG #4 (a pre-commit-record attempt must not wait forever on 'capture owed'): a
-          // terminal worker whose commit step never ran is a LEGACY record, not an outstanding
-          // obligation the lineage waits on -- the belt's commit pass is its own lane. A lineage that
-          // ended with no candidate is CONTINUED (a new attempt from the branch head, the work kept),
-          // exactly like any other handed-in-nothing; it is never parked in a forever 'capture owed'.
+          // THE CAPTURE IS OWED -- do NOT continue, and do NOT relabel the obligation as handed-in-nothing.
+          // CaptureNotAttempted is produced only when the belt's commit step has not SETTLED this head (no
+          // commit record, or one at another head / deferred / failed): every other consumer in the repo
+          // reads it as owed (roadmap_dogfood_route StageOwed, roadmap_belt_actuate ClaimCaptureOwed), and
+          // the recurring-failure-mode record absent_reads_identically_to_never_looked is explicit that no
+          // capture because-it-is-owed and no capture-because-it-was-settled return the same listing -- so
+          // the decision must NOT decide. Starting a new attempt from the branch head here would silently
+          // drop work the prior worker had not yet committed. The bounded, not-forever nature of this wait
+          // is held by the belt's commit lane itself (belt_capture_absence_for_attempt reads the producer's
+          // own commit record and settles it), not by inventing a 'legacy' reading the observation cannot
+          // support: nothing in this observation can tell an owed-now capture from an old one, so the
+          // decision refuses and waits rather than fabricating the distinction (DESIGN §5).
           CaptureNotAttempted { reason } =>
-            continuation_next_attempt(prior: prior, why: join(["no candidate was ever handed in and the commit step never settled (a legacy pre-commit-record attempt): ", reason], ""))
+            Refuse { reason: join(["the prior attempt ", prior.attempt_key, " has ended but its submission capture is still owed (", reason, "), so whether its branch holds a declared candidate has not been read; the belt's commit lane settles it, and CONTINUE waits for that capture rather than starting a new attempt from a branch head that would omit work the prior worker had not committed"], "") }
           CaptureForHead { capture: c } =>
             match c.submission.readiness {
               SubmissionBlocked =>

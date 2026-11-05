@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, AlreadyComplete, Refuse,
   continuation_plan,
-  WorktreeHere, WorktreeAbsent,
+  WorktreeHere, WorktreeAbsent, WorktreeUnknown,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
@@ -176,14 +176,22 @@ test fn handed_in_nothing_continues_from_branch_head() -> Bool {
     && continued_on(plan: continuation_plan(obs: Present { value: needs }), pattern: "its submission declared needs-context")
 }
 
-// LAB BUG #4: a pre-commit-record attempt whose commit step never settled is a LEGACY record; it
-// CONTINUES (a new attempt from the branch head) and is never parked in a forever 'capture owed'.
-test fn legacy_capture_not_attempted_continues_not_parks() -> Bool {
-  let legacy = pri(capture: CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }, verification: none, review: none, goal_audit: none)
-  continued_on(plan: continuation_plan(obs: Present { value: legacy }), pattern: "commit step never settled")
-    // RED CONTROL: not joined (which would wait forever) and not refused.
-    && !(match continuation_plan(obs: Present { value: legacy }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
-    && !(match continuation_plan(obs: Present { value: legacy }) { Refuse { reason: _ } => true, _ => false })
+// THE CAPTURE IS OWED, NOT HANDED-IN-NOTHING. A terminal worker whose belt commit step has not settled
+// this head yields CaptureNotAttempted -- the repo-wide meaning is 'owed' (dogfood StageOwed, belt
+// ClaimCaptureOwed), and the recurring-failure-mode record absent_reads_identically_to_never_looked is the
+// authority that 'no capture because owed' and 'no capture because settled' read the same and must not be
+// conflated. So the decision REFUSES and waits for the belt's commit lane to settle it (that boundedness is
+// held by belt_capture_absence_for_attempt reading the commit record, not by a fabricated 'legacy' label).
+// RED CONTROL: it must NEVER start a new attempt from the branch head -- that would silently drop work the
+// prior worker had not committed. If the code ever re-reads 'owed' as 'handed in nothing', this fails.
+test fn owed_capture_refuses_and_never_spawns_from_branch_head() -> Bool {
+  let owed = pri(capture: CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }, verification: none, review: none, goal_audit: none)
+  (match continuation_plan(obs: Present { value: owed }) {
+    Refuse { reason } => reason.contains("capture is still owed") && reason.contains("roadmap/n1/a1")
+    _ => false
+  })
+    // RED CONTROL: an owed capture is never continued -- no new attempt is spawned onto a possibly-dirty head.
+    && !(match continuation_plan(obs: Present { value: owed }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
 }
 
 test fn a_stopped_segment_is_a_refusal_not_a_fallback() -> Bool {
@@ -284,4 +292,41 @@ test fn reaped_worktree_with_unreadable_branch_refuses_never_restores_onto_unkno
     // RED CONTROL: an unknown branch is NOT treated as live -- no restore is spawned onto a branch we could
     // not confirm exists. (This is the discriminator against the live-branch restore arm.)
     && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+}
+
+// A WORKTREE WHOSE PRESENCE COULD NOT BE ESTABLISHED (the root would not list, the subject was refused, or
+// the directory lists but its head would not read -- a git fault on a LIVE worktree). This is NOT the reaped
+// case and must never be restored onto: a still-present worktree may hold uncommitted live work that a
+// restore-from-branch (git worktree add, no --force) would clobber or silently omit. This is the state the
+// reviewer's filesystem-absence-adoption finding turns on -- a failed read is unknown, never 'gone'.
+fn pri_worktree_unknown() -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    node_id: "n1",
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worktree: WorktreeUnknown { reason: "the dispatch worktree root could not be listed" },
+    // Even a LIVE branch does not license a restore when the worktree's presence is unknown -- that is the
+    // whole point of separating Unknown from Absent.
+    branch_head: BranchLive,
+    worker_terminal: true,
+    capture: CaptureUnreadable { reason: "not read; the worktree's presence is not established" },
+    verification: none,
+    review: none,
+    goal_audit: none,
+    recovery: SessionRecoveryNone,
+  }
+}
+
+test fn worktree_unknown_refuses_never_restores_onto_a_possibly_live_worktree() -> Bool {
+  let o = pri_worktree_unknown()
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { reason } => reason.contains("prior attempt a1") && reason.contains("could not establish")
+    _ => false
+  })
+    // RED CONTROL: presence-not-established must NOT restore. With a LIVE branch, if WorktreeUnknown were
+    // ever collapsed into WorktreeAbsent this would take the restore arm and spawn -- failing here. This is
+    // the exact discriminator between 'established gone (restorable)' and 'could not tell (refuse)'.
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    // And it must not be mistaken for a resumable in-place session either.
+    && !(match continuation_plan(obs: Present { value: o }) { Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
 }
