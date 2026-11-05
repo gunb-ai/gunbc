@@ -92,6 +92,7 @@ import extdeps.languages.json.parse { json_text_parseable }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_provision_transport,
   prod_role_realization,
   dashboard_instance_health_identity_prefix,
   DashboardProvisionTransport,
@@ -414,7 +415,7 @@ fn dashboard_copy_to_target_atomically(
   remote_path: FilePath,
 ) -> DashboardExecResult {
   let next = dashboard_next_path(path: remote_path)
-  let copied = match instance.provision_transport {
+  let copied = match dashboard_provision_transport(instance: instance) {
     DashboardLocalProvision =>
       dashboard_local_exec(
         workdir: controller_workdir,
@@ -1440,7 +1441,7 @@ fn dashboard_apply_plan(
 // owned install. The decision, the plan, presence and the readback classification are the provider's,
 // shared with the live_deploy transaction. No exit status or diagnostic text is interpreted here.
 fn dashboard_observer_read(instance: HostDashboardInstance, program: FilePath, args: List<String>) -> ObserverRead {
-  match instance.provision_transport {
+  match dashboard_provision_transport(instance: instance) {
     DashboardLocalProvision => {
       let r = gunbc.WitnessBin.Run(
         workdir: dashboard_instance_apply_workdir(instance: instance),

@@ -601,7 +601,7 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
     listen_port: 19999,
     source_anchor_ref: "refs/heads/witness-anchor" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: witness_synthetic_layout().host_identity,
   )
 }
 
@@ -841,7 +841,7 @@ fn witness_production_slot(
     listen_port: 18081,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    actuator_host: "macbook" as NonEmptyStr,
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
@@ -1013,7 +1013,7 @@ fn witness_endpoint_instance(
     listen_port: listen_port,
     source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: layout.host_identity,
   )
 }
 
@@ -1156,7 +1156,7 @@ fn outside_instance_at(root: FilePath) -> HostDashboardInstance {
     listen_port: 18099,
     source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 
@@ -1212,7 +1212,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     listen_port: 18099,
     tmux_server: live.tmux_server,
     actuation: live.actuation,
-    provision_transport: live.provision_transport,
+    actuator_host: live.actuator_host,
     source_seed: live.source_seed,
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,
