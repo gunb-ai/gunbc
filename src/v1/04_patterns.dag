@@ -390,13 +390,20 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
       match find_child_named(n: variant_node, name: field_name, source_indices: source_indices) {
         Present { value: field_child } =>
           let probe = if field_name == "refusals" {
-            match field_child.inferred {
-              Present { value: Resolved { node: _ } } => ""
-              Present { value: CompilerError { message: pm, span: _ } } => concat("PROBE refusals field_child.inferred=CompilerError(", pm, ")")
-              Present { value: TypeVariable { id: pv } } => concat("PROBE refusals field_child.inferred=TypeVariable(", pv, ")")
-              Present { value: Divergent } => "PROBE refusals field_child.inferred=Divergent"
-              Absent => "PROBE refusals field_child.inferred=Absent"
+            let inf_kind = match field_child.inferred {
+              Present { value: Resolved { node: rn } } => concat("Resolved(name=", authored_name_at(source_indices: source_indices, node: rn), " connective_nocon=", if rn.connective == NoConnective { "yes" } else { "no" }, " has_children=", if rn.children |> count > 0 { "yes" } else { "no" }, ")")
+              Present { value: CompilerError { message: pm, span: _ } } => concat("CompilerError(", pm, ")")
+              Present { value: TypeVariable { id: pv } } => concat("TypeVariable(", pv, ")")
+              Present { value: Divergent } => "Divergent"
+              Absent => "Absent"
             }
+            let subj = pattern_subject_from_node(n: child_type_node(ch: field_child))
+            let subj_kind = match subj {
+              PatternResolved { node: _ } => "PatternResolved"
+              PatternDynamic { span: _ } => "PatternDynamic"
+              PatternLookupBlocked => "PatternLookupBlocked"
+            }
+            concat("PROBE2 refusals field_child.inferred=", inf_kind, " pattern_subject_from_node(child_type_node)=", subj_kind)
           } else { "" }
           if probe != "" {
             node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: probe, span: variant_node.span }, module_name: module_name)])
