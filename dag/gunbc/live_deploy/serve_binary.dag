@@ -66,9 +66,11 @@ fn serve_source_from_instance(instance: HostDashboardInstance) -> AdmittedServeB
     // stages it at the serve path -- so it is a build of this repository and speaks the seed grammar.
     // Any other declared path names a binary no modeled lane records building: refuse typed (DESIGN 5).
     DeclaredBuiltBinary { path } =>
-      if starts_with(s: path as String, prefix: join([dashboard_instance_apply_workdir(instance: instance) as String, "/"], ""))
-        then SeedBuiltAtRevision
-        else SourceUndeclared { reason: join(["declared built binary ", path as String, " lives outside the instance apply_workdir; no modeled lane records what built it"], "") }
+      if starts_with(s: path as String, prefix: join([dashboard_instance_apply_workdir(instance: instance) as String, "/"], "")) {
+        SeedBuiltAtRevision
+      } else {
+        SourceUndeclared { reason: join(["declared built binary ", path as String, " lives outside the instance apply_workdir; no modeled lane records what built it"], "") }
+      }
   }
 }
 
