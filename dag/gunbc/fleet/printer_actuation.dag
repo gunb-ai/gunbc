@@ -4,7 +4,7 @@ import std.scoped_authorization {AuthorizationRefused}
 import extdeps.languages.json.emit {JsonNull,JsonBool,JsonArray,JsonObject}
 import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,JsonMemberDuplicated,JsonDocumentUnreadable}
 
-import extdeps.printing.bambu_lab_lan_protocol {bambu_completed_or_idle_state,bambu_start_error_nonblocking}
+import extdeps.printing.bambu_lab_lan_protocol {BambuAmsTray,bambu_completed_or_idle_state,bambu_start_error_nonblocking}
 import extdeps.tools.hostname
 import std.algebra {trim,string_contains}
 import gunbc.fleet.print_record_stores {print_completion_legacy_entry}
@@ -30,7 +30,7 @@ import gunbc.fleet.printer_workflow_artifact {printer_starts_member_path,printer
 import gunbc.host_state_root {HostStateTree}
 import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
 import gunbc.owned_directory {OwnedDirectoryTarget}
-import gunbc.durable_cas_file_store {SlotStore,file_slot_store,listed_slot_store,SlotStoreListed,SlotStoreRefused,slot_observe,slot_commit,admit_cas_attempt_for_derived_payload,ExpectSlotAbsent,DefaultAccessCreateOnly,DerivedPayloadAdmitted,DerivedPayloadKeyNotSlotAddressable,CasCommitted,CasPreconditionFailed,CasStoreRefused,CasObservedReadable,CasObservedUnreadable,CasReadablePresent,CasReadableAbsent}
+import gunbc.durable_cas_file_store {SlotStore,file_slot_store,listed_slot_store,SlotStoreListed,SlotStoreAbsent,SlotStoreRefused,slot_observe,slot_commit,admit_cas_attempt_for_derived_payload,ExpectSlotAbsent,DefaultAccessCreateOnly,DerivedPayloadAdmitted,DerivedPayloadKeyNotSlotAddressable,CasCommitted,CasPreconditionFailed,CasStoreRefused,CasObservedReadable,CasObservedUnreadable,CasReadablePresent,CasReadableAbsent, slot_store_absent_detail }
 import gunbc.fleet.print_request {field}
 import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current}
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_version}
@@ -181,6 +181,7 @@ fn printer_start_claims(tree:HostStateTree) -> PrinterStartClaimsReading {
     PrinterStartsUnreadable {detail:d}=>PrinterStartClaimsUnready {detail:d}
     PrinterStartsLegacyEntries {names:n}=>PrinterStartClaimsUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
     PrinterStartsClean=>match listed_slot_store(member:printer_start_claim_slots.member as String,root:printer_start_claim_path(tree:tree)) {
+      SlotStoreAbsent {member:m,root:r}=>PrinterStartClaimsUnready {detail:slot_store_absent_detail(member:m,root:r)}
       SlotStoreRefused {detail:d}=>PrinterStartClaimsUnready {detail:d}
       SlotStoreListed {root:r}=>PrinterStartClaimsReady {store:PrinterStartClaims {slots:file_slot_store(root:r)}}
     }
@@ -229,7 +230,7 @@ fn printer_start_claim_version(claims:PrinterStartClaims,key:NonEmptyStr) -> Non
 }
 
 type ClaimedPrinterStart sole_constructor {
- printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,claims:PrinterStartClaims,evidence:StartEvidenceStore,
+ printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,claims:PrinterStartClaims,evidence:StartEvidenceStore,ams_tray:BambuAmsTray,
 }
 // Only the gate/claim arm above can mint this input. Authentication is not start authority.
 fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
@@ -256,7 +257,7 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
               Present {value:now}=>match authorize(authorization:claim.authorization,request:claim.request,observed_at:now) {AuthorizationPermitted {grant:_}=>true AuthorizationRefused {cause:_}=>false}
             }
             if !fresh_authority { return exit_failure(reason:"Print approval expired or no longer matches after upload; claim retained") }
-            match start_print_with_session(session:claim.session, remote_name:remote) {
+            match start_print_with_session(session:claim.session, remote_name:remote, ams_tray:claim.ams_tray) {
               PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:"")
               PrintStartRefused { printer: _, cause: c } => exit_failure(reason: c as String)
               PrintStartRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start refused; credential residue remains: ", c as String))
@@ -279,7 +280,7 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
 
 // The one boundary that uploads and starts a printer job. A caller cannot
 // bypass the live readiness check, durable claim, payload binding or grant recheck.
-fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>) -> ProcessExit {
+fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,ams_tray:BambuAmsTray) -> ProcessExit {
 
  let host=os.Hostname.ReadShort()
  if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
@@ -294,6 +295,6 @@ fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence
  if !permitted {return exit_failure(reason:"No current approval for this printer start")}
                     match printer_start_claim_commit(claims:claims,key:claim_key,subject:request.subject) {
                       PrinterStartClaimRefused {cause:c}=>exit_failure(reason:join([c,"; do not replay"],""))
-                      PrinterStartClaimed=>print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request,claims:claims,evidence:evidence})
+                      PrinterStartClaimed=>print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request,claims:claims,evidence:evidence,ams_tray:ams_tray})
                     }
 }

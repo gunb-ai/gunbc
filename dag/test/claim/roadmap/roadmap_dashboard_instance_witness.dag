@@ -121,6 +121,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_path_is_under,
   srv1_linux_toolchain,
   dispatch_worker_memory_ceiling,
+  belt_max_concurrent_default,
+  srv1_lab_belt_max_concurrent,
 }
 
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
@@ -146,6 +148,23 @@ test fn dashboard_actuation_posture_is_instance_data() -> Bool {
   live.actuation == DashboardActuating
     && lab.actuation == DashboardActuating
     && preview.actuation == DashboardObserveOnly
+}
+
+// THE BELT'S CONCURRENT-WORKER CEILING IS A PER-INSTANCE FACT, not one shared constant. The srv1 lab widens
+// to srv1_lab_belt_max_concurrent (6) while srv1-live and srv2-preview stay at the default (3). If the
+// ceiling were still the single roadmap_belt_default_capacity constant these three would be EQUAL, so the
+// live/lab inequality is the RED sensor: a shared constant fails it. It is the figure the launch standing,
+// the reconcile fold and the session pool all read through the instance (see HostDashboardInstance).
+test fn belt_max_concurrent_is_per_instance_not_one_shared_constant() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let preview = srv2_preview_dashboard_instance()
+  live.belt_max_concurrent == belt_max_concurrent_default
+    && lab.belt_max_concurrent == srv1_lab_belt_max_concurrent
+    && preview.belt_max_concurrent == belt_max_concurrent_default
+    // THE DISCRIMINATOR: the lab is strictly wider than srv1-live; a shared constant makes them equal.
+    && lab.belt_max_concurrent != live.belt_max_concurrent
+    && srv1_lab_belt_max_concurrent > belt_max_concurrent_default
 }
 
 test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool {
@@ -816,6 +835,7 @@ fn witness_production_slot(
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: none,
@@ -1186,6 +1206,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+    belt_max_concurrent: live.belt_max_concurrent,
     directory_owner: live.directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: live.materialization_store_root,

@@ -4027,7 +4027,8 @@ fn build_cache_ensure_executed(
             // run, so there is no extraction, no move into /usr/local/bin and no chmod.
             first.executed
           } else {
-            // The count comes from the ONE list_length authority, named by module path rather than
+            // The count comes from the ONE length authority, std.algebra length (std.types list_length
+            // was its duplicate and is deleted), named by module path rather than
             // by bare name. A site-local `list_length` in gunbc.site.aligned_columns was an exact
             // re-mint of std.types.list_length<T>; it broke the bare call here (the whole-corpus
             // effect census refused it: no established callee identity) and was deleted at the root
@@ -4035,11 +4036,11 @@ fn build_cache_ensure_executed(
             // qualification STAYS even with the fork gone: a bare name in the flat namespace is
             // green only by ambient coverage that any later re-mint silently breaks — the callee
             // identity is named, not assumed.
-            // Authority: dag/std/types.dag `list_length`. Recurring failure mode:
+            // Authority: std.algebra `length`. Recurring failure mode:
             // bare_name_resolved_only_by_the_flat_namespace.
             let rest = build_cache_plan_remainder(
               all: ops,
-              already_run: std.types.list_length(items: prefix)
+              already_run: std.algebra.length(xs: prefix)
             )
             build_cache_run_ensure_ops(
               state: first,
@@ -9910,29 +9911,26 @@ fn microvm_controller_owned_dir_argv(path: String) -> List<String> {
   )
 }
 
-// A CONTENT WRITE AND ITS INSTALL, AS TWO STEPS. The bytes are the command's
-// stdin payload -- never a quoted word in a command string, which is where the
-// retired `printf '%s' '<content>' > stage` could have had a quoting surface.
-// dd writes the staged sibling (O_TRUNC, so a stale stage cannot survive);
-// install -m -o -g moves it into place with ownership set at creation, so the
-// live path is never briefly world-readable or root-only.
+// A CONTENT WRITE, AS ONE STEP. The bytes are the command's stdin payload -- never a quoted word in a
+// command string, which is where the retired `printf '%s' '<content>' > stage` could have had a quoting
+// surface -- and install -m -o -g reads them from /dev/stdin straight into the live path, with ownership
+// and mode set at creation, so the path is never briefly world-readable or root-only. That is the same
+// property the earlier two-step form bought by staging a sibling with dd and installing from it, minus the
+// sibling: the stage file was never removed, so every install left <dest>.gunbc-stage beside each unit
+// in /etc/systemd/system and each script in the release dir (srv1, read 2026-11-04 after the manual
+// install of e1f753b9). The VMM receipt already installs from /dev/stdin over this same route.
 fn microvm_controller_staged_write_steps(name: String, dest: String, mode: NonEmptyStr, content: String) -> List<MicrovmControllerInstallStep> {
-  let staged = concat(dest, microvm_controller_stage_suffix)
   [
     microvm_controller_stdin_step(
-      name: join([name, " (stage)"], ""),
-      command: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
-      stdin_payload: content,
-    ),
-    microvm_controller_argv_step(
       name: join([name, " (install)"], ""),
       command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
         mode: mode,
         owner: microvm_controller_owner,
         group: microvm_controller_owner,
-        source: staged,
+        source: "/dev/stdin",
         dest: dest,
       )),
+      stdin_payload: content,
     ),
   ]
 }
