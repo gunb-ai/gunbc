@@ -9168,20 +9168,15 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                 Absent =>
               match body_lower_statement_let_captured_optional(stmt: head) {
                 Absent =>
-                  match body_lower_return_statement_expr_optional(stmt: head) {
-                    Present { value: _ } =>
-                      outcome_rejected(
-                        d: body_lower_diagnostic(
-                          reason: ^body_lowering_reason_return_not_in_tail_position,
-                          n: head
-                        )
-                      )
-                    // A NON-BINDING STATEMENT WITH A SUCCESSOR is the statement Bind: the sequence is a shape
-                    // the core holds (the statement's value is evaluated for its effects and nothing receives
-                    // it), so statement_precedes_without_binding is no longer a refusal. A `return` still
-                    // refuses outside the tail: its exit would be dropped by the sequence.
-                    Absent => body_lower_statement_sequence(stmt: head, rest: rest)
-                  }
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: match body_lower_return_statement_expr_optional(stmt: head) {
+                        Present { value: _ } => ^body_lowering_reason_return_not_in_tail_position
+                        Absent => ^body_lowering_reason_statement_precedes_without_binding
+                      },
+                      n: head
+                    )
+                  )
                 Present { value: let_captured } =>
                   match body_lower_let_in_key_binding_atom_optional(captured: let_captured) {
                     Absent =>
@@ -9591,21 +9586,15 @@ fn body_lower_else_less_branch(guard: BodyLowerGuard) -> Outcome<Node> {
 // is DISCARDED; the rest of the spine runs either way, so the whole `if` sits in the value slot of a statement
 // Bind, whose absent binder is what "nothing receives the value" means at the table. This is the shape the
 // operator's fall-through `if c { i }  i` lowers to.
+// THE ONLY STATEMENT BIND: an else-less if followed by another statement. A NON-BINDING statement of any
+// other shape before a successor still refuses as statement_precedes_without_binding -- admitting those
+// too would silently drop their values (the recorded recurring failure mode
+// lowering_accessor_collapses_a_sequence_operand: `fn f() -> Int { 1 \n 2 }` accepting and discarding the
+// 1). Value-discard for other shapes is a question of its own, to be modeled on its own terms.
 fn body_lower_else_less_if_statement(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
   bind_outcome(o: body_lower_else_less_branch(guard: guard), f: fn(branch) {
     bind_outcome(o: body_lower_stmt_spine(spine: rest), f: fn(body) {
       outcome_accepted(value: lower_bind_statement(value: branch, body_binding: body))
-    })
-  })
-}
-
-// A NON-BINDING STATEMENT WITH A SUCCESSOR: the statement Bind over the statement's lowered value and the
-// rest of the spine. The statement's own value is evaluated for its effects; the sequence's value is the
-// rest's value.
-fn body_lower_statement_sequence(stmt: Node, rest: Node) -> Outcome<Node> {
-  bind_outcome(o: body_lower_value_read(value: stmt), f: fn(value) {
-    bind_outcome(o: body_lower_stmt_spine(spine: rest), f: fn(body) {
-      outcome_accepted(value: lower_bind_statement(value: value, body_binding: body))
     })
   })
 }
