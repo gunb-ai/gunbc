@@ -1220,7 +1220,7 @@ test fn the_report_is_rendered_from_the_typed_model() -> Bool {
     && management_io_text(layout: with_survey(base: p4261_e1_layout, survey: WholeBoardPhotographed)).contains("shows no RJ45")
     && management_io_text(layout: p4261_k1_layout).contains("shows no RJ45")
     && e1_io.contains("USB 3.0 SuperSpeed Micro-B (part number, protocol and role unestablished)")
-    && e1_io.contains("U522 ('TI 31 / T275') is TMP275AIDGKR; trace pins 1 SDA (serial data), 2 SCL (serial clock), 3 ALERT (alert output)")
+    && e1_io.contains("U522 ('T275 / TI ?1') is TMP275AIDGKR; trace pins 1 SDA (serial data), 2 SCL (serial clock), 3 ALERT (alert output)")
 }
 
 // ── THE ENERGIZED INPUT DRAW ──────────────────────────────────────────────────────────────────

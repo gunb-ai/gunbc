@@ -792,10 +792,15 @@ test fn the_real_e1_judges_every_image_reading() -> Bool {
       // would have raised read, and a quiet deletion would have lowered it. The other two frames the
       // operator named are carried by the receipts' authority rather than by extra rows, which is where
       // corroboration belongs when the board is allowed one reading per part.
+      // 2026-11-05, the U521/U535/U536/U522/U1_P1 re-citations: 8 readings that cited bytes the store
+      // does not hold (e1_unlocated_frame x 7, e1_unstored_photo x 1 -- counted in the diff, not assumed)
+      // now cite a frame the store holds, each with its subject-bound box. So 8 move from gaps to
+      // checkable: 520 read stays (no reading was added or removed), 380 + 8 = 388 checkable,
+      // 140 - 8 = 132 gaps, broken still 0.
       read == 520
-        && checkable == 380
+        && checkable == 388
         && count(broken) == 0
-        && count(gaps) == 140
+        && count(gaps) == 132
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0
