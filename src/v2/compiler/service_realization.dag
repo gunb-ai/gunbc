@@ -274,6 +274,18 @@ fn status_code_int_optional(pat: Node) -> Optional<Int> {
 
 // `argv` carries the shared argv vocabulary's cause (std.operation_argv ArgvRefusalCause) when the
 // refusal is a shell argv's, and is Absent otherwise.
+// An entry the strict wall refuses only for an operation-grain argv cause: `name` is the operation's
+// label, `entry` its authored entry, `refusal` the located refusal (at the offending argv).
+type UnrealizableOperation {
+  name: Symbol
+  entry: Node
+  refusal: RealizationRefusal
+}
+
+fn unrealizable_operation_list_empty() -> List<UnrealizableOperation> {
+  Empty
+}
+
 type RealizationRefusal {
   reason: Symbol
   at: Node
@@ -392,16 +404,27 @@ fn symbol_in(xs: List<Symbol>, s: Symbol) -> Bool {
 // transport of a kind with a declared binding; every member reads in that kind's vocabulary. Located at
 // the offending node; the first refusal in authored order.
 fn service_realization_refusal(interface: Node, realization: Node) -> Optional<RealizationRefusal> {
+  service_realization_refusal_with(interface: interface, realization: realization, demote: false)
+}
+
+// The wall with the two OPERATION-grain causes (an argv executable that is not a literal; an argv
+// expression the vocabulary does not evaluate) set aside: those entries are not service defects, they
+// make that one operation unrealizable (service_realization_unrealizable). Every other cause stays fatal.
+fn service_realization_verdict(interface: Node, realization: Node) -> Optional<RealizationRefusal> {
+  service_realization_refusal_with(interface: interface, realization: realization, demote: true)
+}
+
+fn service_realization_refusal_with(interface: Node, realization: Node, demote: Bool) -> Optional<RealizationRefusal> {
   if !all_names_distinct(children: realization.children) {
     realization_refusal(reason: ^service_realization_entry_repeated, at: realization)
   } else {
     fold(realization.children, init: optional_absent(), f: fn(acc, e) {
-      realization_first_refusal(acc: acc, next: fn() { realization_leaf_member_refusal(interface: interface, member: e) })
+      realization_first_refusal(acc: acc, next: fn() { realization_leaf_member_refusal(interface: interface, member: e, demote: demote) })
     })
   }
 }
 
-fn realization_leaf_member_refusal(interface: Node, member: Edge) -> Optional<RealizationRefusal> {
+fn realization_leaf_member_refusal(interface: Node, member: Edge, demote: Bool) -> Optional<RealizationRefusal> {
   match member.label {
     Positional => realization_refusal(reason: ^service_realization_member_unknown, at: member.target)
     StructuralLabel { label: _ } => realization_refusal(reason: ^service_realization_member_unknown, at: member.target)
@@ -410,7 +433,7 @@ fn realization_leaf_member_refusal(interface: Node, member: Edge) -> Optional<Re
         realization_config_refusal(config: member.target)
       } else {
         match named_edge_target_lookup(children: interface.children, name: n) {
-          Found { target: op } => realization_entry_refusal(op: op, entry: member.target)
+          Found { target: op } => realization_entry_refusal(op: op, entry: member.target, demote: demote)
           Ambiguous => realization_refusal(reason: ^service_realization_entry_without_operation, at: member.target)
           NotFound => realization_refusal(reason: ^service_realization_entry_without_operation, at: member.target)
         }
@@ -440,37 +463,37 @@ fn realization_require_conj(n: Node, reason: Symbol, proceed: fn() -> Optional<R
 
 // An ENTRY is a Conj carrying its transport once and each optional member (<status-arms>, <mock-arms>,
 // <projection>) at most once; a second block of one kind refuses at the entry.
-fn realization_entry_refusal(op: Node, entry: Node) -> Optional<RealizationRefusal> {
+fn realization_entry_refusal(op: Node, entry: Node, demote: Bool) -> Optional<RealizationRefusal> {
   match realization_node_shape(n: op) {
-    ShapeArrow => realization_require_conj(n: entry, reason: ^service_realization_entry_malformed, proceed: fn() { realization_entry_members_refusal(op: op, entry: entry) })
+    ShapeArrow => realization_require_conj(n: entry, reason: ^service_realization_entry_malformed, proceed: fn() { realization_entry_members_refusal(op: op, entry: entry, demote: demote) })
     ShapeAtom { identity: _ } => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
     ShapeConj => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
     ShapeOther => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
   }
 }
 
-fn realization_entry_members_refusal(op: Node, entry: Node) -> Optional<RealizationRefusal> {
+fn realization_entry_members_refusal(op: Node, entry: Node, demote: Bool) -> Optional<RealizationRefusal> {
   if !all_names_distinct(children: entry.children) {
     realization_refusal(reason: ^service_realization_entry_member_repeated, at: entry)
   } else {
     match named_edge_target_lookup(children: entry.children, name: realization_transport_label()) {
-      Found { target: transport } => realization_entry_with_transport_refusal(op: op, entry: entry, transport: transport)
+      Found { target: transport } => realization_entry_with_transport_refusal(op: op, entry: entry, transport: transport, demote: demote)
       Ambiguous => realization_refusal(reason: ^service_realization_entry_without_transport, at: entry)
       NotFound => realization_refusal(reason: ^service_realization_entry_without_transport, at: entry)
     }
   }
 }
 
-fn realization_entry_with_transport_refusal(op: Node, entry: Node, transport: Node) -> Optional<RealizationRefusal> {
-  realization_require_conj(n: transport, reason: ^service_realization_transport_malformed, proceed: fn() { realization_transport_block_refusal(op: op, entry: entry, transport: transport) })
+fn realization_entry_with_transport_refusal(op: Node, entry: Node, transport: Node, demote: Bool) -> Optional<RealizationRefusal> {
+  realization_require_conj(n: transport, reason: ^service_realization_transport_malformed, proceed: fn() { realization_transport_block_refusal(op: op, entry: entry, transport: transport, demote: demote) })
 }
 
-fn realization_transport_block_refusal(op: Node, entry: Node, transport: Node) -> Optional<RealizationRefusal> {
+fn realization_transport_block_refusal(op: Node, entry: Node, transport: Node, demote: Bool) -> Optional<RealizationRefusal> {
   match named_edge_target_lookup(children: transport.children, name: realization_transport_kind_label()) {
     Found { target: k } =>
       match realization_transport_kind(k: k) {
         Present { value: kind } =>
-          fold(entry.children, init: realization_transport_refusal(kind: kind, op: op, transport: transport), f: fn(acc, e) {
+          fold(entry.children, init: realization_transport_refusal(kind: kind, op: op, transport: transport, demote: demote), f: fn(acc, e) {
             realization_first_refusal(acc: acc, next: fn() { realization_entry_member_refusal(kind: kind, op: op, member: e) })
           })
         Absent => realization_transport_kind_refusal(k: k)
@@ -504,34 +527,34 @@ fn realization_transport_kind_refusal(k: Node) -> Optional<RealizationRefusal> {
 
 // Every field of the transport block other than its kind is one of the kind's declared binding fields,
 // each at most once.
-fn realization_transport_refusal(kind: DeclaredTransport, op: Node, transport: Node) -> Optional<RealizationRefusal> {
+fn realization_transport_refusal(kind: DeclaredTransport, op: Node, transport: Node, demote: Bool) -> Optional<RealizationRefusal> {
   if !all_names_distinct(children: transport.children) {
     realization_refusal(reason: ^service_realization_binding_field_repeated, at: transport)
   } else {
     fold(transport.children, init: optional_absent(), f: fn(acc, e) {
-      realization_first_refusal(acc: acc, next: fn() { realization_binding_field_refusal(kind: kind, op: op, field: e) })
+      realization_first_refusal(acc: acc, next: fn() { realization_binding_field_refusal(kind: kind, op: op, field: e, demote: demote) })
     })
   }
 }
 
-fn realization_binding_field_refusal(kind: DeclaredTransport, op: Node, field: Edge) -> Optional<RealizationRefusal> {
+fn realization_binding_field_refusal(kind: DeclaredTransport, op: Node, field: Edge, demote: Bool) -> Optional<RealizationRefusal> {
   match named_label(e: field) {
     Present { value: n } =>
       if n == realization_transport_kind_label() { optional_absent() }
-      else { realization_declared_field_refusal(kind: kind, op: op, key: symbol_lexeme(sym: n), value: field.target) }
+      else { realization_declared_field_refusal(kind: kind, op: op, key: symbol_lexeme(sym: n), value: field.target, demote: demote) }
     Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target)
   }
 }
 
 // The field's value contract lives on the declared vocabulary. This wall reads that fold; it does
 // not restate which variants are templates.
-fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: String, value: Node) -> Optional<RealizationRefusal> {
+fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: String, value: Node, demote: Bool) -> Optional<RealizationRefusal> {
   match kind {
     DeclaredShell =>
       match shell_binding_field_of_key(key: key) {
         Present { value: field } =>
           match shell_binding_field_contract(field: field) {
-            ShellArgvContract => shell_argv_refusal(op: op, argv: value)
+            ShellArgvContract => shell_argv_refusal(op: op, argv: value, demote: demote)
             ShellStringTemplateContract => transport_string_field_refusal(op: op, value: value)
           }
         Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
@@ -564,11 +587,60 @@ fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: St
 // name. Each other shape refuses with that module's ArgvRefusalCause: not a list (BindingMalformed),
 // empty (ArgvEmpty), a non-literal executable (ExecutablePositionNotLiteral), a name the operation
 // does not declare (UndeclaredInputBound), or any other expression (ArgvExpressionUnsupported).
-fn shell_argv_refusal(op: Node, argv: Node) -> Optional<RealizationRefusal> {
+fn shell_argv_refusal(op: Node, argv: Node, demote: Bool) -> Optional<RealizationRefusal> {
   match shell_argv_cause(inputs: operation_input_names(op: op), argv: argv) {
     Present { value: cause } =>
-      optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: argv, argv: optional_present(value: cause) })
+      if demote && argv_cause_is_operation_grain(cause: cause) { optional_absent() }
+      else { optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: argv, argv: optional_present(value: cause) }) }
     Absent => optional_absent()
+  }
+}
+
+// Only these two causes say the OPERATION's argv is beyond what this lowering evaluates. An undeclared
+// input, an empty argv, a malformed binding are authoring defects and stay service-fatal.
+fn argv_cause_is_operation_grain(cause: ArgvRefusalCause) -> Bool {
+  match cause {
+    ExecutablePositionNotLiteral { detail: _ } => true
+    ArgvExpressionUnsupported { detail: _ } => true
+    OperationNotFound => false
+    ArgvEmpty => false
+    UndeclaredInputBound { name: _ } => false
+    DuplicateInputBinding { name: _ } => false
+    DeclaredInputUnbound { name: _ } => false
+    TokenListInStringPosition { name: _ } => false
+    BindingMalformed { detail: _ } => false
+  }
+}
+
+// The operations whose entry the STRICT wall refuses only for an operation-grain cause, in authored
+// order, each with that refusal (located at the offending argv). Meaningful only when
+// service_realization_verdict is Absent: then these are the entries to lower as unrealizable markers.
+fn service_realization_unrealizable(interface: Node, realization: Node) -> List<UnrealizableOperation> {
+  fold(realization.children, init: unrealizable_operation_list_empty(), f: fn(acc, e) {
+    match named_label(e: e) {
+      Present { value: n } =>
+        if n == realization_config_label() { acc }
+        else {
+          match named_edge_target_lookup(children: interface.children, name: n) {
+            Found { target: op } =>
+              match realization_entry_refusal(op: op, entry: e.target, demote: false) {
+                Present { value: r } =>
+                  if argv_refusal_is_operation_grain(r: r) { list_snoc_item(xs: acc, item: UnrealizableOperation { name: n, entry: e.target, refusal: r }) } else { acc }
+                Absent => acc
+              }
+            Ambiguous => acc
+            NotFound => acc
+          }
+        }
+      Absent => acc
+    }
+  })
+}
+
+fn argv_refusal_is_operation_grain(r: RealizationRefusal) -> Bool {
+  match r.argv {
+    Present { value: cause } => (r.reason == ^service_realization_argv_refused) && argv_cause_is_operation_grain(cause: cause)
+    Absent => false
   }
 }
 

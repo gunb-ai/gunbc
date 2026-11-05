@@ -1,7 +1,7 @@
 module v2.compiler.body_lowering_fold
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_landed_after_typed_census }
-import v2.compiler.service_realization { realization_refusal_diagnostic, service_realization_refusal }
+import v2.compiler.service_realization { UnrealizableOperation, realization_refusal_diagnostic, service_realization_unrealizable, service_realization_verdict }
 import v2.std.service_realization_labels {
   realization_arm_doc_label,
   realization_arm_pattern_label,
@@ -10,6 +10,8 @@ import v2.std.service_realization_labels {
   realization_mock_arms_label,
   realization_projection_label,
   realization_root_label,
+  realization_unrealizable_label,
+  realization_unrealizable_reason_label,
   realization_status_arms_label,
   realization_status_code_label,
   realization_transport_kind_label,
@@ -12274,7 +12276,7 @@ fn body_lower_service_decl(shell: Node) -> Outcome<BodyLowering> {
               match body_lower_service_realization_refusal_optional(shell: shell, a: a) {
                 Present { value: refused } => Rejected { diagnostics: diagnostics_singleton(d: refused) }
                 Absent =>
-                  body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_leaf_optional(a: a))))
+                  body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_marked_leaf_optional(shell: shell, a: a))))
               }
               }
           }
@@ -12354,6 +12356,57 @@ fn body_lower_service_realization_leaf_optional(a: BodyLowerServiceAcc) -> Optio
   }
 }
 
+// The authored leaf with each operation-grain-unrealizable entry replaced by its marker entry, so the
+// mirror says WHICH operations cannot be realized and why (located at the offending argv element). The
+// wall judged the authored leaf (service_realization_verdict), so only conforming-or-demotable entries
+// reach here.
+fn body_lower_service_realization_marked_leaf_optional(shell: Node, a: BodyLowerServiceAcc) -> Optional<Node> {
+  match body_lower_service_realization_leaf_optional(a: a) {
+    Absent => optional_absent()
+    Present { value: leaf } =>
+      optional_present(value: node_synthetic(
+        kind: TypeNode { connective: Conj },
+        children: body_lower_service_marked_entries(
+          edges: leaf.children,
+          unrealizable: service_realization_unrealizable(interface: body_lower_payload_node(edges: a.operations, source: shell), realization: leaf)
+        )
+      ))
+  }
+}
+
+fn body_lower_service_marked_entries(edges: List<Edge>, unrealizable: List<UnrealizableOperation>) -> List<Edge> {
+  fold(edges, init: body_lower_edge_list_empty(), f: fn(acc, e) {
+    list_snoc_item(xs: acc, item: match body_lower_service_unrealizable_for(edge: e, unrealizable: unrealizable) {
+      Present { value: u } => Edge { label: e.label, target: body_lower_service_unrealizable_entry(u: u), declaration: NotADeclaration }
+      Absent => e
+    })
+  })
+}
+
+fn body_lower_service_unrealizable_for(edge: Edge, unrealizable: List<UnrealizableOperation>) -> Optional<UnrealizableOperation> {
+  fold(unrealizable, init: optional_absent(), f: fn(acc, u) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match edge.label {
+          Authored { name: n } => if n == u.name { optional_present(value: u) } else { acc }
+          Positional => acc
+          StructuralLabel { label: _ } => acc
+        }
+    }
+  })
+}
+
+fn body_lower_service_unrealizable_entry(u: UnrealizableOperation) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: realization_unrealizable_label() }, target: u.refusal.at, declaration: NotADeclaration },
+      Edge { label: Authored { name: realization_unrealizable_reason_label() }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: u.refusal.reason } }, children: []), declaration: NotADeclaration }
+    ]
+  )
+}
+
 fn body_lower_service_entry_with(entries: List<Edge>, op: BodyLowerOperation) -> List<Edge> {
   match op.entry {
     Present { value: entry } => list_snoc_item(xs: entries, item: Edge { label: op.edge.label, target: entry, declaration: NotADeclaration })
@@ -12368,7 +12421,7 @@ fn body_lower_service_realization_refusal_optional(shell: Node, a: BodyLowerServ
   match body_lower_service_realization_leaf_optional(a: a) {
     Absent => optional_absent()
     Present { value: leaf } =>
-      match service_realization_refusal(interface: body_lower_payload_node(edges: a.operations, source: shell), realization: leaf) {
+      match service_realization_verdict(interface: body_lower_payload_node(edges: a.operations, source: shell), realization: leaf) {
         Present { value: r } => optional_present(value: realization_refusal_diagnostic(r: r))
         Absent => optional_absent()
       }
