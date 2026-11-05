@@ -83,7 +83,9 @@ import extdeps.tools.gnu_coreutils {
   install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, cp_command, cp_program, cp_recursive_argv, pwd_command,
   printenv_value_argv, printenv_program_invocation,
+  sleep_program_invocation, sleep_for_argv,
 }
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartRequest,
@@ -333,6 +335,66 @@ data wet_served_binary_env_var: NonEmptyStr = "GUNBC_WET_SERVE_BINARY"
 fn wet_plant_guest_runtime(instance: HostDashboardInstance) -> Bool {
   wet_plant_guest_sources(instance: instance) && wet_plant_guest_binary(instance: instance)
 }
+
+// THE IMAGE HAS TO ANSWER, NOT JUST EXIST. srv2 (stern, 2026-11-04, at 15be89fa and again at
+// fa64a4b9) planted the BATCH RUNNER as the instance gunbc -- `GUNBC_WET_SERVE_BINARY` was pointed at
+// claim_batch -- and all nine root-launch legs died inside the drain on `claim_batch: unknown
+// argument: run`, with no sandbox conjunct ever reached, while the claim that was supposed to notice
+// (the served-binary readback) went GREEN because it only ever asked the planted file for its mode.
+// A mode of 0755 and an executable bit say nothing about whether the image can serve a `.dag`
+// function, which is the one thing the launch legs depend on. So the image is now asked, through the
+// same `run --entry … --function …` route the launch legs use, to answer twice over a module with two
+// bodies: the succeeding one must answer as success and the refusing one must answer as failure, AND
+// carry the refusal text its own body contains. An image that is not the CLI cannot produce both
+// readings, and an image that always exits zero cannot produce the second. The exit code alone is not
+// the oracle: the batch runner's "unknown argument" comes back with a status that depends on its own
+// argument parser, so the pairing of the two readings plus the body's own words is what discriminates.
+// `RunArgvOutcome`, not `RunArgv`, so an image that cannot even be spawned is a value this claim
+// answers (extdeps.transports.shell ShellSpawnRefused) instead of an aborted evaluation that would
+// skip the claim's own cleanup -- gunbc.recurring_failure_mode
+// an_unspawnable_program_aborts_the_run_instead_of_refusing names that route gap.
+data wet_served_probe_module_relative: NonEmptyStr = "dag/test/claim/roadmap/witness_served_probe.dag"
+data wet_served_probe_success_fn: NonEmptyStr = "served_probe_succeeds"
+data wet_served_probe_refusal_fn: NonEmptyStr = "served_probe_refuses"
+data wet_served_probe_refusal_marker: NonEmptyStr = "served probe refuses by design"
+
+fn wet_served_probe_entry(instance: HostDashboardInstance) -> String {
+  join([instance.repo_root as String, "/", wet_served_probe_module_relative as String], "")
+}
+
+// TRUE ONLY IF THE PLANTED IMAGE SERVES THE ROUTE, BOTH WAYS ROUND.
+fn wet_served_image_answers_the_route(instance: HostDashboardInstance) -> Bool {
+  let program = instance.serve_binary as NonEmptyStr
+  let ok_run = shell.Exec.RunArgvOutcome(
+    program: program,
+    arguments: wet_served_probe_argv(instance: instance, function: wet_served_probe_success_fn),
+  )
+  let refuse_run = shell.Exec.RunArgvOutcome(
+    program: program,
+    arguments: wet_served_probe_argv(instance: instance, function: wet_served_probe_refusal_fn),
+  )
+  match ok_run.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited =>
+      match refuse_run.outcome {
+        ShellSpawnRefused { program: _, cause: _ } => false
+        ShellExited =>
+          ok_run.exit_code == 0
+            && refuse_run.exit_code != 0
+            && string_contains(s: refuse_run.stderr, pattern: wet_served_probe_refusal_marker as String)
+      }
+  }
+}
+
+fn wet_served_probe_argv(instance: HostDashboardInstance, function: NonEmptyStr) -> List<String> {
+  wet_served_run_tail(
+    entry: wet_served_probe_entry(instance: instance),
+    function: function as String,
+    extra_args: [],
+    repo_root: instance.repo_root as String,
+  )
+}
+
 
 // THE TREE A REFUSAL LEG NEEDS BEFORE IT CAN MEAN ANYTHING. A refusal leg whose parent
 // directory does not exist is not a confinement result at all: `touch` in a missing directory
@@ -864,15 +926,40 @@ fn wet_rm_elevated(root: NonEmptyStr) -> Bool {
   shell.Exec.RunArgv(program: rm.program.invocation as String, arguments: rm.arguments).exit_code == 0
 }
 
-// One call for every launch claim's tail: the verdict is bound first, the root is then removed (by the
-// claim, or elevated when a root process wrote into it), and the removal is reported as its own stage
-// so leftover scratch stays visible without being able to flip the verdict.
+// One call for every launch claim's tail: the verdict is bound first, the claim root is then taken
+// away, and A ROOT LEFT BEHIND REDDENS THE CLAIM. The cleanup is not decorative and it is not silent.
+// srv2 (stern, 2026-11-04, at fa64a4b9) found twenty /tmp/gunbc-sandbox-* roots still present after
+// the run while the witness's own stage line called the removal "housekeeping-not-verdict" and read
+// ok: the removal had been ATTEMPTED and had not SUCCEEDED, and nothing read the outcome back. A
+// claim that stops mid-way must not be able to hand its scratch tree to the next run, and
+// "cleanup runs whatever the verdict said" is only honest if a failed cleanup is visible in the
+// verdict rather than in a log line nobody compares against.
+//
+// Order: the claim's own removal first; the elevated one when that fails, because a root-side leg
+// wrote its files as root and the claim's own principal cannot unlink them; then a one-second settle
+// and a second elevated attempt, for the `…/source/.git: Directory not empty` case where a git
+// process was still writing (stern, same run, twice). The ORACLE IS THE FILESYSTEM, not rm's exit
+// status -- a directory that never existed and a directory rm could not remove both present as an rm
+// that returned something, so the claim asks `test -e` about its own root. Verdict and housekeeping
+// keep separate stage names, so "the sandbox let the write through" and "the probe left a directory
+// in /tmp" remain two faults with two remedies; the returned value carries both, so neither can be
+// reported as a pass on its own.
 fn wet_launch_claim_verdict(verdict: Bool, root: NonEmptyStr) -> Bool {
-  wet_stage_of(
-    stage: "claim-root-removed-is-housekeeping-not-verdict",
-    ok: wet_clean_claim_root(root: root as String) || wet_rm_elevated(root: root),
-    value: verdict,
-  )
+  let removed_by_claim = wet_clean_claim_root(root: root as String)
+  let removed_after_elevation = removed_by_claim || wet_rm_elevated(root: root)
+  let removed_after_settle =
+    removed_after_elevation
+      || (wet_argv_ok(program: sleep_program_invocation, arguments: sleep_for_argv(seconds: "1"))
+        && wet_rm_elevated(root: root))
+  let gone = wet_stage(stage: "claim-root-gone", ok: removed_after_settle && wet_claim_root_is_absent(root: root))
+  let _ = wet_stage(stage: "claim-root-housekeeping", ok: removed_after_settle)
+  verdict && gone
+}
+
+// THE FILESYSTEM ANSWERS, NOT rm: the claim asks the same `test -e` its sibling readback uses about
+// its own root. Present means the claim failed, whatever any removal command reported on the way.
+fn wet_claim_root_is_absent(root: NonEmptyStr) -> Bool {
+  !wet_path_exists(path: root as String)
 }
 
 // THE ROOT SIDE, AS A SERVED FUNCTION THE CLAIM CAN ELEVATE. Production's root side is the attempt-unit
@@ -942,6 +1029,19 @@ fn wet_root_side_cli(
 fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>, root: NonEmptyStr) -> WetRootLaunch {
   if !wet_root_launcher_is_available() {
     WetRootLaunchRefused { cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it" }
+  } else if !wet_stage(
+    // THE IMAGE IS ASKED BEFORE ANYTHING REACHES A MANAGER. On the srv2 run of fa64a4b9 the batch
+    // runner had been planted as the instance gunbc, so nine legs enqueued a unit, ran the elevated
+    // drain, waited on an exit record and reported a missing marker -- while the real fault was one
+    // argv word deep: the "image" answered `unknown argument: run`. Asking costs two served-probe
+    // runs (measured: a couple of seconds) and turns that into a refusal with a named cause before a
+    // transient unit exists, which is also before anything could leave a root-owned file behind.
+    stage: join(["served-image-answers-the-route:", unit_key], ""),
+    ok: wet_served_image_answers_the_route(instance: instance),
+  ) {
+    WetRootLaunchRefused {
+      cause: "the planted image does not answer the served route -- it is not the gunbc CLI the row names; see the served-probe pair in the witness",
+    }
   } else {
     let request = AttemptSystemUnitStartRequest {
       node_id: wet_probe_node as String,
@@ -1294,17 +1394,38 @@ fn wet_witness_entry(instance: HostDashboardInstance) -> String {
   join([instance.repo_root as String, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], "")
 }
 
-fn launcher_gunbc_run_inner_argv(instance: HostDashboardInstance, function: String, extra_args: List<String>) -> List<String> {
+// THE SERVED-ROUTE ARGV, ONCE. One builder owns the flag words the instance gunbc takes on its served
+// route (`run --source-root … --entry … --function …` plus caller extras); the launcher legs pass the
+// witness entry and the served-image probe passes its own tiny module. Written as one builder rather
+// than two because the probe's whole value is that it asks about the SAME route the launch legs use --
+// a probe with its own copy of the flag words could stay green while the route the claims need broke.
+// THE PROGRAM IS NOT AN ARGUMENT: the tail below starts at `run`, because `shell.Exec.RunArgv` takes
+// the program as its own input (extdeps/shell/exec.dag:73 says exactly this, and repeating the program
+// as argv[0] makes the CLI read it as a subcommand). A unit's inner command is the opposite shape --
+// the manager expands it as a word list with the program in front -- so `launcher_gunbc_run_inner_argv`
+// prepends it there and nowhere else.
+fn wet_served_run_tail(entry: String, function: String, extra_args: List<String>, repo_root: String) -> List<String> {
   concat(
     [
-      instance.serve_binary as String,
       "run",
-      "--source-root", join([instance.repo_root as String, "/dag"], ""),
-      "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
-      "--entry", wet_witness_entry(instance: instance),
+      "--source-root", join([repo_root, "/dag"], ""),
+      "--source-root", join([repo_root, "/src/v2"], ""),
+      "--entry", entry,
       "--function", function,
     ],
     extra_args,
+  )
+}
+
+fn launcher_gunbc_run_inner_argv(instance: HostDashboardInstance, function: String, extra_args: List<String>) -> List<String> {
+  concat(
+    [instance.serve_binary as String],
+    wet_served_run_tail(
+      entry: wet_witness_entry(instance: instance),
+      function: function,
+      extra_args: extra_args,
+      repo_root: instance.repo_root as String,
+    ),
   )
 }
 
@@ -1404,17 +1525,15 @@ test fn the_planted_guest_inputs_reach_the_paths_the_row_derives() -> Bool {
          == wet_file_text(path: join([checkout, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], ""))
     && wet_path_exists(path: join([inst.repo_root as String, "/dag"], ""))
     && wet_path_exists(path: join([inst.repo_root as String, "/src/v2"], ""))
-  // THE VERDICT IS REPORTED BEFORE CLEANUP, AND CLEANUP CANNOT CHANGE IT. On the srv2 run of
-  // 54f3b519 this claim reported FAIL for `rm -rf <root>/source/.git: Directory not empty` after
-  // every conjunct above had passed: housekeeping was being read as a verdict, in a claim whose
-  // whole subject is whether the plant reached the row's paths. `planted` is computed and bound
-  // first; cleanup runs afterwards, prints its own stage so leftover scratch stays visible, and
-  // never feeds the claim's value.
-  wet_stage_of(
-    stage: "plant-cleanup-is-housekeeping-not-verdict",
-    ok: wet_clean_claim_root(root: root),
-    value: planted,
-  )
+  // THE VERDICT IS BOUND FIRST, THEN THE ROOT IS TAKEN AWAY -- AND A ROOT LEFT BEHIND REDDENS THIS
+  // CLAIM. The srv2 run of 54f3b519 reported FAIL here for `rm -rf <root>/source/.git: Directory not
+  // empty` after every conjunct above had passed (housekeeping read as a verdict); the fa64a4b9 run
+  // went the other way and logged the same failure as housekeeping `ok` while the tree stayed on
+  // disk. Both readings were wrong, and the shared cause is that nobody asked the filesystem. The
+  // verdict is computed and bound first so a plant fault is never confused with a scratch fault; the
+  // removal then runs with the elevated retry and settles, and its readback is a conjunct of what the
+  // claim returns -- leftover scratch is a real defect, not a log line.
+  wet_launch_claim_verdict(verdict: planted, root: root)
 }
 
 
@@ -1427,13 +1546,22 @@ test fn the_planted_guest_inputs_reach_the_paths_the_row_derives() -> Bool {
 test fn the_planted_serve_binary_is_the_image_the_operator_named() -> Bool {
   let root = wet_claim_root(tag: "plant-bin" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  wet_claim_is_confined(instance: inst, root: root)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_guest_binary(instance: inst)
     // The mode is read back, not trusted from the `install -m` that wrote it: a served binary that
     // is not executable makes every launcher leg refuse for a reason that is not confinement.
     && wet_octal_mode(path: inst.serve_binary as String) == "755"
     && wet_path_is_executable(path: inst.serve_binary as String)
-    && wet_clean_claim_root(root: root)
+    // AND IT HAS TO SERVE. Mode and the executable bit are what this claim used to stop at, which is
+    // how srv2 (stern, 2026-11-04) went GREEN here while the image it had been handed was the batch
+    // runner and all nine launch legs were already dying on `unknown argument: run`. An image that
+    // cannot answer the route is not the image the operator named, whatever its mode says.
+    && wet_plant_guest_sources(instance: inst)
+    && wet_stage(
+      stage: "served-image-answers-the-route",
+      ok: wet_served_image_answers_the_route(instance: inst),
+    )
+  wet_launch_claim_verdict(verdict: verdict, root: root)
 }
 
 test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Bool {
@@ -1502,7 +1630,16 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
         inner_argv: inner,
         nonce: wet_run_nonce(),
       }
-      if !prepare_launcher_probe(instance: instance, unit_key: unit_key) {
+      if !wet_stage(
+        // SAME ASK, SAME REASON, THIS ROUTE TOO: launcher legs reach a manager through
+        // attempt_system_unit_enqueue_start_wait rather than wet_worker_unit_start, so the image has
+        // to be asked here as well or the nine legs keep discovering the wrong image from the inside
+        // of a launched unit. A leg that cannot run its guest is not a sandbox verdict.
+        stage: join(["served-image-answers-the-route:", unit_key], ""),
+        ok: wet_served_image_answers_the_route(instance: instance),
+      ) {
+        SandboxTouchUnrunnable
+      } else if !prepare_launcher_probe(instance: instance, unit_key: unit_key) {
         SandboxTouchUnrunnable
       } else if !wet_stage(
         // THE SPOOL TREE, BEFORE ANYTHING IS ENQUEUED. The envelope write makes the request-staging

@@ -698,3 +698,18 @@ fn sort_in_place_command(path: String) -> ArgvCommand {
 fn cat_file_command(path: String) -> ArgvCommand {
   argv_command(program: cat_program(), arguments: ["--", path])
 }
+
+// THE HOST'S OWN SLEEP, as an argv TAIL for the reason `printenv_program_invocation` gives: minting a
+// ProgramIdentity goes through `uncataloged_program`, whose callers are enumerated in
+// extdeps.exec.program, and this project does not grow that roster (operator ruling: no allowlists as
+// architecture). GNU coreutils 9.7 `sleep NUMBER[SUFFIX]` suspends for that long and exits 0
+// (<https://www.gnu.org/software/coreutils/manual/html_node/sleep-invocation.html>); the suffix form is
+// not used here, so the tail carries a bare second count as one word. One witness use: letting a child
+// that was still writing under a scratch tree finish before the tree is removed, where the alternative
+// is a claim that reports a leak it did not cause.
+data sleep_program_invocation: NonEmptyStr = "sleep" as NonEmptyStr
+
+// An argv TAIL (argv[0] comes from `sleep_program_invocation`).
+fn sleep_for_argv(seconds: String) -> List<String> {
+  [seconds]
+}
