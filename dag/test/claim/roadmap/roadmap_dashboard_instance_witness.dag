@@ -271,9 +271,9 @@ test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   // them -- the first worker commit dies inside objects/f9. Both are named by the ops below rather than
   // only counted, and their ORDER is pinned by name in the other witness. Asserted by count as well as
   // by name, so a rename or a silently dropped op cannot hide behind either.
-  // SEVEN since the lab is seeded by convergence: the four controller-side ops (hydrate, prepare,
+  // TEN since the lab is seeded by convergence: the four controller-side ops (hydrate, prepare,
   // stage, local origin) are gone, and the one source op resets to the dispatch base ref.
-  count(plan) == 7
+  count(plan) == 10
     && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
     && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
@@ -460,7 +460,7 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     source_anchor_matches: true,
   }
   match dashboard_instance_reconcile(
-    instance: srv1_lab_dashboard_instance(),
+    instance: srv2_lab_dashboard_instance(),
     observed: observed,
   ) {
     DashboardInstanceApply { plan } => count(plan) > 0
@@ -551,7 +551,7 @@ fn retract_plan_is_safe(
 }
 
 test fn dashboard_retract_preserves_recovery_anchor_and_provider_state() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
+  let lab = srv2_lab_dashboard_instance()
   match dashboard_instance_retract_plan(instance: lab) {
     DashboardInstanceRetractPlan { plan } =>
       retract_plan_is_safe(plan: plan, instance: lab)
@@ -613,8 +613,8 @@ test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
   let srv2_lab = instance_anchor_ref(i: srv2_lab_dashboard_instance())
   let srv1_lab = instance_anchor_ref(i: srv1_lab_dashboard_instance())
   synthetic == "refs/heads/witness-anchor"
-    && srv2_lab == "refs/remotes/origin/main"
-    && srv1_lab == "refs/remotes/origin/main"
+    && srv2_lab == (fleet_admitted_revision_source.ref_name as String)
+    && srv1_lab == (srv1_lab_admitted_revision_source.ref_name as String)
 }
 
 // serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists.
@@ -692,7 +692,7 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 9
+  count(plan) == 12
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
@@ -1283,4 +1283,13 @@ test fn the_lab_serve_binary_input_is_absent_not_guessed() -> Bool {
       }
     _ => false
   })
+}
+
+// The convergence-seeded lab owns no bundle or local origin; its repository belongs to convergence, so the
+// isolated-instance retractor REFUSES it (typed) instead of removing a repository it did not create.
+test fn the_convergence_seeded_lab_is_not_retractable_by_the_isolated_instance_retractor() -> Bool {
+  match dashboard_instance_retract_plan(instance: srv1_lab_dashboard_instance()) {
+    DashboardInstanceRetractPlan { plan: _ } => false
+    DashboardInstanceRetractRefused { reason: _ } => true
+  }
 }
