@@ -1141,12 +1141,6 @@ fn census_buckets_add_up(c: AttemptSlotsCensus) -> Bool {
   }
 }
 
-// THE DEFAULT THAT USED TO BE HERE: an unreadable slot read as "generation 0". No line of this census
-// may report a generation it did not observe.
-fn census_reports_no_generation_zero(c: AttemptSlotsCensus) -> Bool {
-  !any(census_entries(c: c), e => match e.source { SlotRead { generation: g, state: _, payload: _ } => g == 0  _ => false })
-}
-
 // THE ORPHAN: opened and launched in the OLD store, exactly as the Oct-14 attempt was (its slot is
 // generation 2, state Launching, under the pre-re-root root).
 // THE ORPHAN, SEEDED THE WAY THE HOST HAS IT. The seat is held in the ledger the current store's subject
@@ -1298,8 +1292,8 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       // payload again under ExpectSlotGeneration at the generation it just read, then answer AlreadyCarried
       // exactly as it does now. Labels unchanged, generation up, only this row red -- and
       // a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads stays green beside it.
-      // The number is read out of the first carry's own outcome and back out of the store through the
-      // census, never typed in by the fixture.
+      // The number is read out of the first carry's own outcome, and the store it was written to is read
+      // back by reference, never typed in by the fixture.
       // PLACEMENT IS THE WHOLE POINT, AND IT WAS LEARNED THE HARD WAY: a first version asked the PRE-carry
       // census whether it held that generation. It never can -- the target side does not exist until a
       // carry writes it -- so the clause was UNSATISFIABLE and this row went red at 31b3fa305bbb on a
@@ -1313,9 +1307,9 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
              AttemptSlotsCarried { reference: r, source_generation: _, target_generation: g } =>
                ((r as String) == unit_a())
                // the copy the first carry CLAIMS it wrote is in the store, at the generation it named
-               && census_target_held_at(c: census_second, reference: unit_a(), generation: g)
+               && target_slot_holds_generation(store: s.slots, reference: unit_a(), generation: g)
                // and it is STILL at that generation after the second pass: no new generation was written
-               && census_target_held_at(c: census_after_two, reference: unit_a(), generation: g)
+               && target_slot_holds_generation(store: s.slots, reference: unit_a(), generation: g)
              _ => false
            })
          })
@@ -1346,7 +1340,11 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
 }
 
 // THE CENSUS IS WHAT THE OPERATOR READS BEFORE A CARRY. A slot it cannot read must appear as a slot it
-// cannot read -- not as generation 0, not as "absent", and not as "the two payloads differ". The counts
+// cannot read -- not as "absent", and not as "the two payloads differ". (It used to be policed a second
+// way, "and never as generation 0": the reading no longer carries a generation at all, so that default
+// cannot be authored, and a clause whose RED cannot be authored witnesses nothing -- DESIGN 4b. What is
+// left is the property that has a RED: an unreadable side is reported unreadable on both sides and the
+// payload relation stays undecided.) The counts
 // are typed data the census computed, so the operator's question ("how much is only in the old root?")
 // is answered by the instrument rather than by a number transcribed into a declaration.
 test fn the_census_reports_a_slot_it_cannot_read_as_unreadable_and_counts_it() -> Bool {
@@ -1368,7 +1366,6 @@ test fn the_census_reports_a_slot_it_cannot_read_as_unreadable_and_counts_it() -
   && census_source_is_unreadable(c: census, reference: unit_b())
   && census_target_is_unreadable(c: census, reference: unit_b())
   && census_relation_is_undecided(c: census, reference: unit_b())
-  && census_reports_no_generation_zero(c: census)
   && census_buckets_add_up(c: census)
   && match census_counts(c: census) {
       Present { value: k } => (k.total == 2) && (k.either_side_unreadable == 1) && (k.in_both_different == 0) && (k.in_both_identical == 0) && (k.only_in_old == 1)
@@ -2033,11 +2030,17 @@ fn carry_carried_arms(c: AttemptSlotsCarry) -> Int {
 
 // THE LIVE STORE HOLDS THIS REFERENCE AT EXACTLY THIS GENERATION, and at no other. The number is the
 // store's own, read back through the census the cutover computed -- never one the fixture typed in.
-// The generation is compared AS THE CARRIER the census reads (SlotRead.generation is a CasGeneration
-// since the fold), and the comparison goes through the carrier's own extractor -- the same style
-// std.durable_compare_and_set uses at its own fence, dag/std/durable_compare_and_set.dag:277.
-fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: CasGeneration) -> Bool {
-  count(filter(census_entries(c: c), e => ((e.reference as String) == reference) && match e.target { SlotRead { generation: g, state: _, payload: _ } => cas_generation_count(g: g) == cas_generation_count(g: generation)  _ => false })) == 1
+// THE GENERATION ANCHOR IS THE STORE, NOT THE CENSUS. The census is the operator's summary of what the
+// carry is about to act on; the fact a carry must be checked against is what the store holds afterwards,
+// read through attempt_lifecycle's own read (attempt_slot_read answers AttemptSlotAbsent or
+// AttemptSlotUnreadable, and neither is "this reference at this generation", so both answer false).
+// The comparison goes through the carrier's extractor -- the style std.durable_compare_and_set uses at
+// its own fence, dag/std/durable_compare_and_set.dag:277 -- rather than == on the branded carrier.
+fn target_slot_holds_generation(store: SlotStore, reference: String, generation: CasGeneration) -> Bool {
+  match attempt_slot_read(store: store, reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g) == cas_generation_count(g: generation)
+    _ => false
+  }
 }
 
 // THE OLD ROOT HOLDS IT (readable or not) AND THE LIVE STORE DOES NOT: the refused reference is left
@@ -2045,8 +2048,8 @@ fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: C
 // fact an operator can act on, and a carry that deleted the problem, which is data loss.
 fn census_only_old_holds(c: AttemptSlotsCensus, reference: String) -> Bool {
   count(filter(census_entries(c: c), e => ((e.reference as String) == reference)
-    && match e.source { SlotAbsent => false  SlotRead { generation: _, state: _, payload: _ } => true  SlotUnreadable { detail: _ } => true }
-    && match e.target { SlotAbsent => true  SlotRead { generation: _, state: _, payload: _ } => false  SlotUnreadable { detail: _ } => false })) == 1
+    && match e.source { SlotAbsent => false  SlotRead { state: _, payload: _ } => true  SlotUnreadable { detail: _ } => true }
+    && match e.target { SlotAbsent => true  SlotRead { state: _, payload: _ } => false  SlotUnreadable { detail: _ } => false })) == 1
 }
 
 // BOTH SIDES HOLD THE SAME BYTES: the carry copied the slot and rewrote nothing.
