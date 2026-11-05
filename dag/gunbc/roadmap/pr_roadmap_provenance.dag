@@ -1,0 +1,98 @@
+module gunbc.roadmap.pr_roadmap_provenance
+
+import std.types { String, Bool, Int, List }
+import std.optional { Present, Absent }
+import std.algebra { trim, length }
+
+// The PR body's roadmap declaration (node pr-roadmap-provenance). A PR declares exactly one
+// of three forms; ids are checked against the declared roadmap nodes, which the CALLER supplies
+// (a witness supplies values at this boundary rather than re-deriving the authority).
+// Merge may move a node to review; no form here can mint acceptance.
+//
+// HOOK DECISION (open, operator): whether this validator runs dashboard-side or as a gate row
+// is not decided here, and nothing in this module is wired into CI.
+type PrDeclaration
+  = Advances { ids: List<String> }
+  | CandidateCloses { ids: List<String> }
+  | NoRoadmapImpact { reason: String }
+
+type PrDeclarationRead
+  = Declared { declaration: PrDeclaration }
+  | NoDeclaration
+  | AmbiguousDeclaration { lines: Int }
+  | EmptyIdList { form: String }
+  | EmptyReason
+
+type PrDeclarationVerdict
+  = DeclarationAdmitted { declaration: PrDeclaration }
+  | DeclarationRefusedUnreadable { read: PrDeclarationRead }
+  | DeclarationRefusedUndeclaredId { id: String }
+
+fn pr_declaration_ids(text: String) -> List<String> {
+  split(s: trim(s: text), delimiter: ",") |> map(p => trim(s: p)) |> filter(p => p != "")
+}
+
+// A line carries a form when splitting it on the form's tag leaves an empty head: the tag is then
+// its first characters. The payload is the second part.
+fn pr_declaration_tagged(line: String, tag: String) -> Bool {
+  let parts = split(s: line, delimiter: tag)
+  length(parts) >= 2 && (match parts[0] { Present { value: h } => h == "", Absent => false })
+}
+
+fn pr_declaration_payload(line: String, tag: String) -> String {
+  match split(s: line, delimiter: tag)[1] {
+    Present { value: p } => trim(s: p)
+    Absent => ""
+  }
+}
+
+fn pr_declaration_lines(body: String) -> List<String> {
+  split(s: body, delimiter: "\n")
+    |> map(l => trim(s: l))
+    |> filter(l => pr_declaration_tagged(line: l, tag: "Advances:") || pr_declaration_tagged(line: l, tag: "Candidate-Closes:") || pr_declaration_tagged(line: l, tag: "No-Roadmap-Impact:"))
+}
+
+fn pr_declaration_read_line(line: String) -> PrDeclarationRead {
+  if pr_declaration_tagged(line: line, tag: "Advances:") {
+    let ids = pr_declaration_ids(text: pr_declaration_payload(line: line, tag: "Advances:"))
+    if length(ids) == 0 { EmptyIdList { form: "Advances" } } else { Declared { declaration: Advances { ids: ids } } }
+  } else if pr_declaration_tagged(line: line, tag: "Candidate-Closes:") {
+    let ids = pr_declaration_ids(text: pr_declaration_payload(line: line, tag: "Candidate-Closes:"))
+    if length(ids) == 0 { EmptyIdList { form: "Candidate-Closes" } } else { Declared { declaration: CandidateCloses { ids: ids } } }
+  } else {
+    let reason = pr_declaration_payload(line: line, tag: "No-Roadmap-Impact:")
+    if reason == "" { EmptyReason } else { Declared { declaration: NoRoadmapImpact { reason: reason } } }
+  }
+}
+
+fn pr_declaration_read(body: String) -> PrDeclarationRead {
+  let lines = pr_declaration_lines(body: body)
+  match lines.first() {
+    Absent => NoDeclaration
+    Present { value: line } =>
+      if length(lines) == 1 { pr_declaration_read_line(line: line) } else { AmbiguousDeclaration { lines: length(lines) } }
+  }
+}
+
+fn pr_declaration_first_undeclared(ids: List<String>, declared_ids: List<String>) -> String? {
+  ids |> filter(i => !declared_ids.any(d => d == i)) |> first
+}
+
+fn pr_declaration_verdict(body: String, declared_ids: List<String>) -> PrDeclarationVerdict {
+  match pr_declaration_read(body: body) {
+    Declared { declaration: d } =>
+      match d {
+        NoRoadmapImpact { reason: r } => DeclarationAdmitted { declaration: d }
+        Advances { ids: ids } => pr_declaration_ids_verdict(d: d, ids: ids, declared_ids: declared_ids)
+        CandidateCloses { ids: ids } => pr_declaration_ids_verdict(d: d, ids: ids, declared_ids: declared_ids)
+      }
+    other => DeclarationRefusedUnreadable { read: other }
+  }
+}
+
+fn pr_declaration_ids_verdict(d: PrDeclaration, ids: List<String>, declared_ids: List<String>) -> PrDeclarationVerdict {
+  match pr_declaration_first_undeclared(ids: ids, declared_ids: declared_ids) {
+    Absent => DeclarationAdmitted { declaration: d }
+    Present { value: bad } => DeclarationRefusedUndeclaredId { id: bad }
+  }
+}
