@@ -1,0 +1,112 @@
+module gunbc.live_deploy.serve_binary_build
+
+import std.types { List, String }
+import std.algebra { trim }
+import std.measure { ByteSize, byte_size, byte_size_count, second, second_count }
+
+// HOW A SERVE BINARY IS BUILT FROM THE ADMITTED REVISION (live_deploy models install and verify, never the
+// build; member_observe and member_identity assume "the deploying checkout's build"). The admitted revision is
+// the single authority for WHICH binary (DESIGN section 3): the build runs IN PLACE in the instance source
+// repo after convergence has reset it to that revision. No worktree (a linked worktree of the lab source repo
+// trips tree-sync) and no `git archive` copy (a second copy of the source, section 2). The cargo target dir is
+// outside the repo, under the instance root, so a build never dirties the checkout and stays incremental.
+//
+// The build embeds `<commit>` (or `<commit>-dirty` from `git status --porcelain`) as its version identity
+// (src/v1/stage0/build.rs, reported by loyal-deer-449), so the readback requires the revision and refuses
+// `-dirty`: a binary built from a tree that differs from the admitted revision does not name it.
+
+type ServeBinaryBuild {
+  repo_root: String,
+  revision: String,
+  target_dir: String,
+  install_path: String,
+}
+
+// MEMORY BOUND: the 16 GiB scope loyal-deer-449's measured srv1 build ran under (BUILD_RC=0, about 556 s wall,
+// cold 9-10 min). The peak resident set was NOT measured, so the bound is an admitted ceiling, not a fit;
+// swap is denied so an overrun is refused rather than paged (DESIGN Building & checks, the memory envelope).
+data serve_binary_build_memory_max: ByteSize = byte_size(17179869184)
+data serve_binary_build_memory_swap_max: ByteSize = byte_size(0)
+
+// THIRTY MINUTES is about three times the measured cold build; a stuck build fails the scope, never holds.
+fn serve_binary_build_runtime_max_seconds() -> String {
+  to_string(second_count(s: second(count: 1800)))
+}
+
+fn serve_binary_built_path(build: ServeBinaryBuild) -> String {
+  join([build.target_dir, "/release/gunbc"], "")
+}
+
+fn serve_binary_staged_path(build: ServeBinaryBuild) -> String {
+  join([build.install_path, ".new"], "")
+}
+
+fn serve_binary_previous_path(build: ServeBinaryBuild) -> String {
+  join([build.install_path, ".prev"], "")
+}
+
+// HEAD of the instance repo; read immediately before AND after the build.
+fn serve_binary_head_argv(build: ServeBinaryBuild) -> List<String> {
+  ["-C", build.repo_root, "rev-parse", "HEAD"]
+}
+
+// systemd-run scope args (program: systemd-run), run with the repo as workdir.
+fn serve_binary_build_argv(build: ServeBinaryBuild) -> List<String> {
+  [
+    "--user", "--scope", "--quiet",
+    join(["-p", "MemoryMax=", to_string(byte_size_count(b: serve_binary_build_memory_max))], ""),
+    join(["-p", "MemorySwapMax=", to_string(byte_size_count(b: serve_binary_build_memory_swap_max))], ""),
+    join(["-p", "RuntimeMaxSec=", serve_binary_build_runtime_max_seconds()], ""),
+    "env", join(["CARGO_TARGET_DIR=", build.target_dir], ""),
+    "cargo", "build", "--release", "-p", "v1-compiler", "--bin", "gunbc",
+  ]
+}
+
+// Install: stage beside the destination, keep the previous bin as a hard link, then one atomic rename. The old
+// bin keeps serving until the rename; a failure before it leaves it untouched.
+fn serve_binary_stage_argv(build: ServeBinaryBuild) -> List<String> {
+  [serve_binary_built_path(build: build), serve_binary_staged_path(build: build)]
+}
+
+fn serve_binary_keep_previous_argv(build: ServeBinaryBuild) -> List<String> {
+  ["-f", build.install_path, serve_binary_previous_path(build: build)]
+}
+
+fn serve_binary_rename_argv(build: ServeBinaryBuild) -> List<String> {
+  ["-f", serve_binary_staged_path(build: build), build.install_path]
+}
+
+type ServeBinaryBuildObservation {
+  head_before: String,
+  build_succeeded: Bool,
+  head_after: String,
+  built_sha256: String,
+  installed_sha256: String,
+  version_text: String,
+}
+
+type ServeBinaryBuildVerdict
+  = ServeBinaryBuilt { revision: String }
+  | ServeBinaryRefusedHeadDriftBefore { found: String }
+  | ServeBinaryRefusedBuildFailed
+  | ServeBinaryRefusedHeadDriftAfter { found: String }
+  | ServeBinaryRefusedInstalledDigestDiffers
+  | ServeBinaryRefusedVersionDoesNotNameRevision { version_text: String }
+
+// Fail closed, in the order the facts become available: nothing after a refusal is consulted.
+fn serve_binary_build_verdict(build: ServeBinaryBuild, observed: ServeBinaryBuildObservation) -> ServeBinaryBuildVerdict {
+  if trim(s: observed.head_before) != build.revision {
+    ServeBinaryRefusedHeadDriftBefore { found: trim(s: observed.head_before) }
+  } else if !observed.build_succeeded {
+    ServeBinaryRefusedBuildFailed
+  } else if trim(s: observed.head_after) != build.revision {
+    ServeBinaryRefusedHeadDriftAfter { found: trim(s: observed.head_after) }
+  } else if observed.built_sha256 != observed.installed_sha256 {
+    ServeBinaryRefusedInstalledDigestDiffers
+  } else if !string_contains(s: observed.version_text, pattern: build.revision)
+    || string_contains(s: observed.version_text, pattern: join([build.revision, "-dirty"], "")) {
+    ServeBinaryRefusedVersionDoesNotNameRevision { version_text: observed.version_text }
+  } else {
+    ServeBinaryBuilt { revision: build.revision }
+  }
+}

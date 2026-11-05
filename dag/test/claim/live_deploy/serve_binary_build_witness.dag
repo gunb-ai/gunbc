@@ -1,0 +1,62 @@
+module test.claim.live_deploy.serve_binary_build_witness
+
+import std.types { List, String }
+import gunbc.live_deploy.serve_binary_build {
+  ServeBinaryBuild, ServeBinaryBuildObservation, ServeBinaryBuildVerdict,
+  ServeBinaryBuilt, ServeBinaryRefusedHeadDriftBefore, ServeBinaryRefusedBuildFailed,
+  ServeBinaryRefusedHeadDriftAfter, ServeBinaryRefusedInstalledDigestDiffers,
+  ServeBinaryRefusedVersionDoesNotNameRevision,
+  serve_binary_build_verdict, serve_binary_build_argv, serve_binary_rename_argv,
+}
+
+fn fixture_build() -> ServeBinaryBuild {
+  ServeBinaryBuild { repo_root: "/r", revision: "abc123", target_dir: "/i/target", install_path: "/i/bin/gunbc" }
+}
+
+fn good() -> ServeBinaryBuildObservation {
+  ServeBinaryBuildObservation {
+    head_before: "abc123\n", build_succeeded: true, head_after: "abc123\n",
+    built_sha256: "s1", installed_sha256: "s1", version_text: "gunbc abc123",
+  }
+}
+
+test fn the_clean_build_is_built() -> Bool {
+  match serve_binary_build_verdict(build: fixture_build(), observed: good()) { ServeBinaryBuilt { revision: r } => r == "abc123" _ => false }
+}
+
+test fn head_drift_before_the_build_refuses() -> Bool {
+  let o = ServeBinaryBuildObservation { head_before: "def456", build_succeeded: true, head_after: "abc123", built_sha256: "s1", installed_sha256: "s1", version_text: "abc123" }
+  match serve_binary_build_verdict(build: fixture_build(), observed: o) { ServeBinaryRefusedHeadDriftBefore { found: f } => f == "def456" _ => false }
+}
+
+test fn a_failed_build_refuses_and_nothing_later_is_consulted() -> Bool {
+  let o = ServeBinaryBuildObservation { head_before: "abc123", build_succeeded: false, head_after: "zzz", built_sha256: "a", installed_sha256: "b", version_text: "" }
+  match serve_binary_build_verdict(build: fixture_build(), observed: o) { ServeBinaryRefusedBuildFailed => true _ => false }
+}
+
+test fn head_drift_after_the_build_refuses() -> Bool {
+  let o = ServeBinaryBuildObservation { head_before: "abc123", build_succeeded: true, head_after: "def456", built_sha256: "s1", installed_sha256: "s1", version_text: "abc123" }
+  match serve_binary_build_verdict(build: fixture_build(), observed: o) { ServeBinaryRefusedHeadDriftAfter { found: f } => f == "def456" _ => false }
+}
+
+test fn an_installed_digest_that_differs_refuses() -> Bool {
+  let o = ServeBinaryBuildObservation { head_before: "abc123", build_succeeded: true, head_after: "abc123", built_sha256: "s1", installed_sha256: "s2", version_text: "abc123" }
+  match serve_binary_build_verdict(build: fixture_build(), observed: o) { ServeBinaryRefusedInstalledDigestDiffers => true _ => false }
+}
+
+test fn a_version_not_naming_the_revision_or_dirty_refuses() -> Bool {
+  let other = ServeBinaryBuildObservation { head_before: "abc123", build_succeeded: true, head_after: "abc123", built_sha256: "s1", installed_sha256: "s1", version_text: "gunbc def456" }
+  let dirty = ServeBinaryBuildObservation { head_before: "abc123", build_succeeded: true, head_after: "abc123", built_sha256: "s1", installed_sha256: "s1", version_text: "gunbc abc123-dirty" }
+  let a = match serve_binary_build_verdict(build: fixture_build(), observed: other) { ServeBinaryRefusedVersionDoesNotNameRevision { version_text: _ } => true _ => false }
+  let b = match serve_binary_build_verdict(build: fixture_build(), observed: dirty) { ServeBinaryRefusedVersionDoesNotNameRevision { version_text: _ } => true _ => false }
+  a && b
+}
+
+test fn the_build_is_scoped_swapless_with_the_target_outside_the_repo() -> Bool {
+  let argv = serve_binary_build_argv(build: fixture_build())
+  contains(argv, "-pMemorySwapMax=0") && contains(argv, "CARGO_TARGET_DIR=/i/target") && contains(argv, "-pMemoryMax=17179869184")
+}
+
+test fn the_install_is_one_rename_onto_the_destination() -> Bool {
+  serve_binary_rename_argv(build: fixture_build()) == ["-f", "/i/bin/gunbc.new", "/i/bin/gunbc"]
+}
