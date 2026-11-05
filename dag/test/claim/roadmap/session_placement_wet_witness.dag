@@ -2045,8 +2045,9 @@ fn carry_carried_arms(c: AttemptSlotsCarry) -> Int {
 // carry is about to act on; what a carry must be checked against is what the store holds, read through
 // attempt_lifecycle's own read (attempt_slot_read answers AttemptSlotAbsent or AttemptSlotUnreadable, and
 // neither is "this reference at this generation", so both answer false rather than inventing a number).
-// The comparison goes through the carrier's extractor -- the style std.durable_compare_and_set uses at
-// its own fence, dag/std/durable_compare_and_set.dag:277 -- rather than == on the branded carrier.
+// The comparison goes through the carrier's extractor rather than == on the branded carrier, which is
+// how std.durable_compare_and_set compares them itself: cas_expectation_admits matches the
+// ExpectSlotGeneration arm as cas_generation_count(g: g) == cas_generation_count(g: v.generation).
 fn store_generation_matches(store: SlotStore, reference: String, expected: CasGeneration) -> Bool {
   match attempt_slot_read(store: store, reference: reference as NonEmptyStr) {
     AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g) == cas_generation_count(g: expected)
