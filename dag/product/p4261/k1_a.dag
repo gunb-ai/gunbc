@@ -172,7 +172,7 @@ fn k1_component(local: NonEmptyStr) -> ComponentInstanceIdentity {
 // span is unboxed -- recorded evidence debt, which the mint will not let anything rely on.
 fn k1_marking(text: NonEmptyStr) -> MarkingReading {
   MarkingReading {
-    content: Transcribed { first: GlyphSpan { span: text, sighting: Absent }, rest: [] },
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: text, sighting: Absent }, rest: [], followed_by: "" },
     evidence: k1_listing
   }
 }
@@ -485,7 +485,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation { ambi
     FlatCableConnectors { count: 2, evidence: k1_listing },
   ],
   components: [
-    InstalledComponent { seen: BeforeIncidents { keys: [k1_u10p2_lift.key] }, component: k1_converter_near, terminals: names(ns: converter_pin_terminals), identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { content: Transcribed { first: GlyphSpan { span: "BDFP 528", sighting: Absent }, rest: [] }, evidence: k1_converter_lead_row_photo_1031 } } },
+    InstalledComponent { seen: BeforeIncidents { keys: [k1_u10p2_lift.key] }, component: k1_converter_near, terminals: names(ns: converter_pin_terminals), identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "BDFP 528", sighting: Absent }, rest: [], followed_by: "" }, evidence: k1_converter_lead_row_photo_1031 } } },
     InstalledComponent { seen: AfterIncidents { keys: [k1_u10p2_lift.key] }, component: k1_converter_near_footprint, terminals: names(ns: footprint_pad_terminals), identification: FootprintUnpopulated { evidence: k1_u10p2_lift_said } },
     InstalledComponent { seen: seen_unordered(), component: k1_converter_far, terminals: names(ns: converter_pin_terminals), identification: MarkingUnresolved { marking: Absent, discriminator: "the same 8-lead package as U10_P2's by eye, below the farther 4R7 with two large ceramics at its right (k1_two_4r7_photo_1031), its top unread: whether it is a second MP2333CGTL is read from its own marking, and its pins are named by that row only on the strength of the match; its eight leads were read to the return 2026-10-31 (k1_converter_lead_resistances)" } },
     InstalledComponent { seen: seen_unordered(), component: k1_u100, terminals: names(ns: u100_lead_terminals), identification: MarkingUnresolved { marking: Absent, discriminator: "the K1's U100, found by its silkscreen; its top was reported to the plan as 'C3U / S62 / 1D' (2026-10-23) with no statement or photograph transcribed here, so the marking is carried unread until one is: the same code as the E1's 'C3U / S22 / 25' with another lot. Its eight leads were read 2026-10-23 (k1_u100_lead_resistances)" } },
@@ -506,8 +506,8 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation { ambi
               // pin 7 (against k1_200 and against the ringed via) and pin 21 (against the beige cap) are the
               // only positions the bench probed on this body; TI's LM5066I names come from the part, through
               // identified_row(c), never onto the specimen.
-              terminals: names(ns: ["pin 7", "pin 21"]), identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { content: Transcribed { first: GlyphSpan { span: "LM5066I / 28A025UG3", sighting: Absent }, rest: [ReadingCircumstance { span: " after a maker logo glyph", noted: "the order the two marks appear in on the body; the logo's maker is not identified", sighting: Absent }] }, evidence: k1_arrow_photo } } },
-    InstalledComponent { seen: seen_unordered(), component: k1_200, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { content: Transcribed { first: GlyphSpan { span: "200", sighting: Absent }, rest: [] }, evidence: k1_arrow_photo } }, discriminator: "'200' is 20 ohm in the three-digit code (a nominal-value candidate, as the E1's '01B' is); its maker and its place in pin 7's network are unread" } },
+              terminals: names(ns: ["pin 7", "pin 21"]), identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "LM5066I / 28A025UG3", sighting: Absent }, rest: [Annotation { annotation: ReadingCircumstance { preceded_by: " ", span: "after a maker logo glyph", noted: "the order the two marks appear in on the body; the logo's maker is not identified", sighting: Absent } }], followed_by: "" }, evidence: k1_arrow_photo } } },
+    InstalledComponent { seen: seen_unordered(), component: k1_200, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "200", sighting: Absent }, rest: [], followed_by: "" }, evidence: k1_arrow_photo } }, discriminator: "'200' is 20 ohm in the three-digit code (a nominal-value candidate, as the E1's '01B' is); its maker and its place in pin 7's network are unread" } },
     InstalledComponent { seen: seen_unordered(), component: k1_beige, terminals: names(ns: ["top end", "bottom end"]), identification: MarkingUnresolved { marking: Absent, discriminator: beige_part_discriminator } },
   ],
   measured: Present { value: k1_measured },

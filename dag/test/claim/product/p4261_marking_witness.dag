@@ -130,7 +130,7 @@ fn read_citation(c: PhotographCitation) -> MarkingReading {
   // A reading is content plus the evidence it was read from. The span-level sighting is what binds the
   // GLYPHS to pixels; the evidence field says where the reading as a whole came from.
   MarkingReading {
-    content: Transcribed { first: GlyphSpan { span: "LV165A", sighting: Present { value: c } }, rest: [] },
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "LV165A", sighting: Present { value: c } }, rest: [], followed_by: "" },
     evidence: OperatorPhotograph { citation: c }
   }
 }
@@ -147,7 +147,7 @@ fn read_citation(c: PhotographCitation) -> MarkingReading {
 // evidence carried a boxed, attributed frame, so at reading level the dissenter was perfectly checkable.
 fn read_glyphs_on_board_frame(text: NonEmptyStr, c: PhotographCitation?, rest: List<MarkingSpan>) -> MarkingReading {
   MarkingReading {
-    content: Transcribed { first: GlyphSpan { span: text, sighting: c }, rest: rest },
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: text, sighting: c }, rest: rest, followed_by: "" },
     evidence: OperatorPhotograph { citation: boxed_a() }
   }
 }
@@ -161,8 +161,10 @@ fn read_glyphs_on_board_frame(text: NonEmptyStr, c: PhotographCitation?, rest: L
 fn read_glyphs_from(text: NonEmptyStr, citation: PhotographCitation, rest: List<MarkingSpan>) -> MarkingReading {
   MarkingReading {
     content: Transcribed {
-      first: GlyphSpan { span: text, sighting: Present { value: citation } },
-      rest: rest
+      leading: [],
+      first: GlyphSpan { preceded_by: "", span: text, sighting: Present { value: citation } },
+      rest: rest,
+      followed_by: ""
     },
     evidence: OperatorPhotograph { citation: citation }
   }
@@ -170,7 +172,7 @@ fn read_glyphs_from(text: NonEmptyStr, citation: PhotographCitation, rest: List<
 
 fn read_no_citation(text: NonEmptyStr) -> MarkingReading {
   MarkingReading {
-    content: Transcribed { first: GlyphSpan { span: text, sighting: Absent }, rest: [] },
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: text, sighting: Absent }, rest: [], followed_by: "" },
     evidence: OperatorPhotograph { citation: unboxed_a() }
   }
 }
@@ -267,7 +269,7 @@ test fn control_4_a_comparison_that_never_ran_supports_nothing() -> Bool {
       readings: set_of(
         who: u49(),
         relied: MarkingReading {
-          content: LookedNothingReadable { circumstances: [] },
+          content: LookedNothingReadable { circumstances: [], followed_by: "" },
           evidence: OperatorPhotograph { citation: boxed_a() }
         },
         others: []
@@ -283,13 +285,11 @@ test fn control_4_a_comparison_that_never_ran_supports_nothing() -> Bool {
 // revision 6 would have quietly undone the reason the glyph type exists.
 test fn control_5_a_look_that_yielded_nothing_is_legal_but_carries_nothing() -> Bool {
   let looked = MarkingReading {
-    content: LookedNothingReadable {
-      circumstances: [ReadingCircumstance {
+    content: LookedNothingReadable { circumstances: [ReadingCircumstance { preceded_by: "",
         span: "faint unreadable glyph",
         noted: "the print is worn; the bench recorded that nothing resolved",
         sighting: Absent
-      }]
-    },
+      }], followed_by: "" },
     evidence: OperatorPhotograph { citation: boxed_a() }
   }
   let readable = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a() }, rest: [])
@@ -312,13 +312,11 @@ test fn control_5_a_look_that_yielded_nothing_is_legal_but_carries_nothing() -> 
 // glyph span, which is why this row cannot be written and why no function has to notice.
 test fn control_6_a_logo_alone_is_not_a_transcription() -> Bool {
   let logo_only = MarkingReading {
-    content: LookedNothingReadable {
-      circumstances: [PrintedLogo {
+    content: LookedNothingReadable { circumstances: [PrintedLogo { preceded_by: "",
         span: "ON logo",
         whose: "onsemi -- the ON mark",
         sighting: Absent
-      }]
-    },
+      }], followed_by: "" },
     evidence: OperatorPhotograph { citation: boxed_a() }
   }
   // No glyph span survives a content with no transcription, so nothing here can be relied on.
@@ -331,14 +329,11 @@ test fn control_6_a_logo_alone_is_not_a_transcription() -> Bool {
 test fn control_7_one_span_may_not_be_claimed_in_two_channels() -> Bool {
   let c = boxed_a()
   let twice = MarkingReading {
-    content: Transcribed {
-      first: GlyphSpan { span: "ON", sighting: Present { value: c } },
-      rest: [PrintedLogo {
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "ON", sighting: Present { value: c } }, rest: [Annotation { annotation: PrintedLogo { preceded_by: "",
         span: "ON",
         whose: "onsemi",
         sighting: Present { value: c }
-      }]
-    },
+      } }], followed_by: "" },
     evidence: OperatorPhotograph { citation: c }
   }
   // Same pixels, two channels: a fault of the row, and every mint refuses it.
@@ -352,11 +347,11 @@ test fn control_7_one_span_may_not_be_claimed_in_two_channels() -> Bool {
     // Same characters, DIFFERENT evidence: not the same observation, so no refusal -- the check is about
     // pixels, and a row that happens to repeat a word is not double-recording anything.
     && !duplicate_channel_claim(
-      r: read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a() }, rest: [ReadingCircumstance {
+      r: read_glyphs_on_board_frame(text: "LV165A", c: Present { value: boxed_a() }, rest: [Annotation { annotation: ReadingCircumstance { preceded_by: "",
         span: "LV165A",
         noted: "the bench wrote the code again in its note",
         sighting: Absent
-      }])
+      } }])
     )
 }
 
@@ -619,10 +614,7 @@ test fn control_15_an_unboxed_frame_never_carries_an_identification() -> Bool {
 // is in the arm's name.
 test fn unstored_bytes_are_a_recorded_gap_and_not_a_reliance() -> Bool {
   let gap = MarkingReading {
-    content: Transcribed {
-      first: GlyphSpan { span: "P617A", sighting: Present { value: gap_citation() } },
-      rest: []
-    },
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "P617A", sighting: Present { value: gap_citation() } }, rest: [], followed_by: "" },
     evidence: OperatorPhotograph { citation: gap_citation() }
   }
   match only_reading(

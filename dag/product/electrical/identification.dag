@@ -120,6 +120,7 @@ type MarkingGlyphs = NonEmptyStr
 // evidence can be checked (§6.3). Absent is legal and is recorded evidence debt — such a span may sit in
 // `others`, and it can never carry reliance.
 type GlyphSpan {
+  preceded_by: String
   span: MarkingGlyphs
   sighting: PhotographCitation?
 }
@@ -128,17 +129,20 @@ type GlyphSpan {
 // classification and nothing else: two spans of DIFFERENT kinds claiming the SAME digest and the SAME box
 // is the contradiction, so the control asks about evidence identity — never about text, and never about
 // boxes overlapping.
+type MarkingAnnotation
+  = PrintedLogo { preceded_by: String, span: NonEmptyStr, whose: NonEmptyStr, sighting: PhotographCitation? }
+  | BodyFeature { preceded_by: String, span: NonEmptyStr, described: NonEmptyStr, sighting: PhotographCitation? }
+  | ReadingCircumstance { preceded_by: String, span: NonEmptyStr, noted: NonEmptyStr, sighting: PhotographCitation? }
+
 type MarkingSpan
-  = Glyphs { span: GlyphSpan }
-  | PrintedLogo { span: NonEmptyStr, whose: NonEmptyStr, sighting: PhotographCitation? }
-  | BodyFeature { span: NonEmptyStr, described: NonEmptyStr, sighting: PhotographCitation? }
-  | ReadingCircumstance { span: NonEmptyStr, noted: NonEmptyStr, sighting: PhotographCitation? }
+  = Glyphs { glyphs: GlyphSpan }
+  | Annotation { annotation: MarkingAnnotation }
 
 // What one bench session recorded about one marking. Two states, and the difference between them is the
 // whole point: glyphs were transcribed, or the bench looked and could not read any.
 type MarkingContent
-  = Transcribed { first: GlyphSpan, rest: List<MarkingSpan> }
-  | LookedNothingReadable { circumstances: List<MarkingSpan> }
+  = Transcribed { leading: List<MarkingAnnotation>, first: GlyphSpan, rest: List<MarkingSpan>, followed_by: String }
+  | LookedNothingReadable { circumstances: List<MarkingAnnotation>, followed_by: String }
 
 // One bench reading of one marking. `content` carries the spans; `evidence` is the receipt for the reading
 // as a whole, and is what a `MarkingObservation` binds its reliance to.
@@ -348,34 +352,52 @@ fn positions_in_dispute(relied_glyphs: List<Char>, other_glyphs: List<Char>) -> 
 // What was observed, quoted. Each arm's companion field says what it MEANS, and the companion is never what
 // a control compares: comparing descriptions is how two channels both containing "TI" once looked like
 // duplication, when the contradiction is one observed span recorded in two channels.
+fn annotation_quoted(a: MarkingAnnotation) -> NonEmptyStr {
+  match a {
+    PrintedLogo { preceded_by: _, span, whose: _, sighting: _ } => span
+    BodyFeature { preceded_by: _, span, described: _, sighting: _ } => span
+    ReadingCircumstance { preceded_by: _, span, noted: _, sighting: _ } => span
+  }
+}
+
 fn span_quoted(s: MarkingSpan) -> NonEmptyStr {
   match s {
-    Glyphs { span } => span.span as NonEmptyStr
-    PrintedLogo { span, whose: _, sighting: _ } => span
-    BodyFeature { span, described: _, sighting: _ } => span
-    ReadingCircumstance { span, noted: _, sighting: _ } => span
+    Glyphs { glyphs } => glyphs.span as NonEmptyStr
+    Annotation { annotation } => annotation_quoted(a: annotation)
   }
 }
 
 // The pixels this span was read from, if any. Absent is RECORDED EVIDENCE DEBT, not a claim about the whole
 // frame: such a span may sit among `others`, and can never carry reliance (§6.3).
+fn annotation_sighting(a: MarkingAnnotation) -> PhotographCitation? {
+  match a {
+    PrintedLogo { preceded_by: _, span: _, whose: _, sighting } => sighting
+    BodyFeature { preceded_by: _, span: _, described: _, sighting } => sighting
+    ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting } => sighting
+  }
+}
+
 fn span_sighting(s: MarkingSpan) -> PhotographCitation? {
   match s {
-    Glyphs { span } => span.sighting
-    PrintedLogo { span: _, whose: _, sighting } => sighting
-    BodyFeature { span: _, described: _, sighting } => sighting
-    ReadingCircumstance { span: _, noted: _, sighting } => sighting
+    Glyphs { glyphs } => glyphs.sighting
+    Annotation { annotation } => annotation_sighting(a: annotation)
   }
 }
 
 // Which channel a span was recorded in, as data. Four, closed: glyphs, a maker's printed logo, a physical
 // feature of the package, a circumstance of the reading.
+fn annotation_channel(a: MarkingAnnotation) -> Nat {
+  match a {
+    PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } => 1
+    BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => 2
+    ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => 3
+  }
+}
+
 fn span_channel(s: MarkingSpan) -> Nat {
   match s {
-    Glyphs { span: _ } => 0
-    PrintedLogo { span: _, whose: _, sighting: _ } => 1
-    BodyFeature { span: _, described: _, sighting: _ } => 2
-    ReadingCircumstance { span: _, noted: _, sighting: _ } => 3
+    Glyphs { glyphs: _ } => 0
+    Annotation { annotation } => annotation_channel(a: annotation)
   }
 }
 
@@ -390,8 +412,11 @@ fn channels_differ(a: MarkingSpan, b: MarkingSpan) -> Bool {
 // Every span a reading recorded, in the order the bench wrote them.
 fn content_spans(c: MarkingContent) -> List<MarkingSpan> {
   match c {
-    Transcribed { first, rest } => Cons { head: MarkingSpan.Glyphs { span: first }, tail: rest }
-    LookedNothingReadable { circumstances } => circumstances
+    Transcribed { leading, first, rest, followed_by: _ } =>
+      map(leading, a => Annotation { annotation: a })
+        + Cons { head: Glyphs { glyphs: first }, tail: rest }
+    LookedNothingReadable { circumstances, followed_by: _ } =>
+      map(circumstances, a => Annotation { annotation: a })
   }
 }
 
@@ -400,10 +425,8 @@ fn glyph_spans_in(spans: List<MarkingSpan>) -> List<GlyphSpan> {
     Empty => []
     Cons { head: s, tail: rest } =>
       match s {
-        Glyphs { span } => Cons { head: span, tail: glyph_spans_in(spans: rest) }
-        PrintedLogo { span: _, whose: _, sighting: _ } => glyph_spans_in(spans: rest)
-        BodyFeature { span: _, described: _, sighting: _ } => glyph_spans_in(spans: rest)
-        ReadingCircumstance { span: _, noted: _, sighting: _ } => glyph_spans_in(spans: rest)
+        Glyphs { glyphs } => Cons { head: glyphs, tail: glyph_spans_in(spans: rest) }
+        Annotation { annotation: _ } => glyph_spans_in(spans: rest)
       }
   }
 }
@@ -1177,13 +1200,16 @@ fn sole_glyph_text(c: MarkingContent) -> MarkingGlyphs? {
 // arms also make it visible that only a logo qualifies.
 fn one_printed_logo(beside: MarkingSpan, after: List<MarkingSpan>) -> NonEmptyStr? {
   match beside {
-    Glyphs { span: _ } => Absent
-    ReadingCircumstance { span: _, noted: _, sighting: _ } => Absent
-    BodyFeature { span: _, described: _, sighting: _ } => Absent
-    PrintedLogo { span: mark, whose: _, sighting: _ } =>
-      match after {
-        Empty => Present { value: mark }
-        Cons { head: _, tail: _ } => Absent
+    Glyphs { glyphs: _ } => Absent
+    Annotation { annotation } =>
+      match annotation {
+        ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => Absent
+        BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => Absent
+        PrintedLogo { preceded_by: _, span: mark, whose: _, sighting: _ } =>
+          match after {
+            Empty => Present { value: mark }
+            Cons { head: _, tail: _ } => Absent
+          }
       }
   }
 }
@@ -1225,13 +1251,16 @@ fn render_asides(spans: List<MarkingSpan>) -> String {
     Empty => ""
     Cons { head: s, tail: rest } =>
       match s {
-        Glyphs { span: _ } => render_asides(spans: rest)
-        PrintedLogo { span, whose, sighting: _ } =>
-          join(["(", span as String, " logo: ", whose as String, ") ", render_asides(spans: rest)], "")
-        BodyFeature { span, described, sighting: _ } =>
-          join(["(", span as String, ": ", described as String, ") ", render_asides(spans: rest)], "")
-        ReadingCircumstance { span, noted, sighting: _ } =>
-          join(["(", span as String, " -- ", noted as String, ") ", render_asides(spans: rest)], "")
+        Glyphs { glyphs: _ } => render_asides(spans: rest)
+        Annotation { annotation } =>
+          match annotation {
+            PrintedLogo { preceded_by: _, span, whose, sighting: _ } =>
+              join(["(", span as String, " logo: ", whose as String, ") ", render_asides(spans: rest)], "")
+            BodyFeature { preceded_by: _, span, described, sighting: _ } =>
+              join(["(", span as String, ": ", described as String, ") ", render_asides(spans: rest)], "")
+            ReadingCircumstance { preceded_by: _, span, noted, sighting: _ } =>
+              join(["(", span as String, " -- ", noted as String, ") ", render_asides(spans: rest)], "")
+          }
       }
   }
 }

@@ -704,7 +704,7 @@ fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
     // `rest` is BOUND and then counted: a pattern is not an expression, so `rest: []` is not how this language
     // asks for an empty list -- it fails to parse with "expected name, found LBracket". The model's own
     // patterns bind (`Transcribed { first, rest }`), and the witness follows them.
-    IdentifiedByMarking { marking: MarkingReading { content: Transcribed { first: GlyphSpan { span: t, sighting: Absent }, rest: rest }, evidence: OperatorPhotograph { citation } } } =>
+    IdentifiedByMarking { marking: MarkingReading { content: Transcribed { leading: _, first: GlyphSpan { preceded_by: _, span: t, sighting: Absent }, rest: rest, followed_by: _ }, evidence: OperatorPhotograph { citation } } } =>
       (t as String).contains("PI3CH") && count(rest) == 0
         && match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
              Checkable { } => true
