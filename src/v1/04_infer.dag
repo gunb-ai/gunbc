@@ -12090,7 +12090,7 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
         Absent => structural
       }
     } else { structural }
-    NodeResolveResult { resolved: resolved_record, diagnostics: own_diags }
+    NodeResolveResult { resolved: resolved_record, diagnostics: concat(own_diags, probe7_record_branch(carrier: carrier, carrier_name: carrier_name, structural: structural, env: env, module_name: module_name)) }
   } else {
     let next_name = carrier_name
 
@@ -12154,6 +12154,53 @@ fn probe3_call_site_emissions(method_name: String, recv_typed: Node, recv_rt: No
       module_name: scope.module_name
     )])
   } else { infer_emissions_empty() }
+}
+
+fn probe7_record_branch(carrier: Node, carrier_name: String, structural: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
+  if carrier_name != "FreeSemigroup" { [] }
+  else {
+    let si = env.source_indices
+    let conn = match carrier.connective {
+      Conj => "Conj"
+      Disj => "Disj"
+      NoConnective => "NoConnective"
+      _ => "other"
+    }
+    let gate = record_has_unresolved_param_field(record: structural, env: env)
+    let target_info = match lookup_type_by_name(env: env, name: carrier_name) {
+      Present { value: target } =>
+        let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
+        let slot0 = match decl.params |> first {
+          Present { value: p0 } =>
+            let child_shape = match p0.children |> first {
+              Present { value: pc } => probe3_node_shape(n: pc, source_indices: si)
+              Absent => "nochild"
+            }
+            concat("slot0=", generic_param_name_at(n: p0, source_indices: si), " slot0_child0=", child_shape)
+          Absent => "slot0=none"
+        }
+        let subst_info = match alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: carrier.children) {
+          Present { value: m } => concat("subst=Present keys=", fold(map_keys(m), init: "", f: (acc, k) => concat(acc, k, ",")), " T_value=", match map_get(m, "T") {
+            Present { value: tv } => probe3_node_shape(n: tv, source_indices: si)
+            Absent => "T-absent"
+          })
+          Absent => "subst=Absent"
+        }
+        concat("target_nparams=", to_string(target.params |> count), " decl_nparams=", to_string(decl.params |> count), " ", slot0, " ", subst_info)
+      Absent => "target=absent"
+    }
+    let carrier_child0 = match carrier.children |> first {
+      Present { value: c } => probe3_node_shape(n: c, source_indices: si)
+      Absent => "nochild"
+    }
+    [inference_error(
+      message: concat("PROBE7 record_branch carrier_connective=", conn, " carrier_nchildren=", to_string(carrier.children |> count),
+        " carrier_child0=", carrier_child0, " gate_record_has_unresolved_param_field=", if gate { "true" } else { "false" },
+        " structural_nparams=", to_string(structural.params |> count), " ", target_info),
+      span: carrier.span,
+      module_name: module_name
+    )]
+  }
 }
 
 fn probe6_field_emissions(field_name: String, base_expr: Node, raw_field_type: Node, field_type: Node, resolved_base: Node, scope: InferScope, span: SourceSpan) -> InferEmissions {
