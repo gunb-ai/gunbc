@@ -226,3 +226,33 @@ test fn lbf_a_fixture_that_does_not_assemble_is_not_typed() -> Bool {
   let body = "fn g(a: Int) -> Int {\n  let b = nope\n  b\n}\n"
   !lbf_present(x: lbf_let_types(body: body).body) && lbf_reason(body: body) == ^lbf_assembly_refused
 }
+
+// ONE RELATION FOR BOTH BINDER KINDS (roadmap shared-check-lets-and-matches). A let binder and a match-arm
+// payload binder are typed by two producers (infer_let_body_frame, infer_match_arm_paid_frame) that each seed
+// one InferBinderType row through infer_frame_with_binder_type / infer_append_binder_types; the reference
+// reader and the consumer's declared_type_inhabitance judge are shared. Same value, wrong type refuses at
+// need_int's `n`; at the right type it is accepted. gunbc.recurring_failure_mode
+// bind_and_match_binders_not_typed_from_their_dependency_sibling.
+// MUTATION (the one that proves a single relation): infer_frame_with_binder_type returns `frame` unchanged
+// (drops the row), which turns lbf_a_let_reference_and_the_let_take_the_bound_type, the let-wrong claim, the
+// arm-right and arm-wrong claims and the same-reason control red together.
+data lbf_arm_wrong: String = "type W\n  = Wrap { flag: Bool }\n  | Other { n: Int }\n\nfn need_int(n: Int) -> Int {\n  n\n}\n\nfn g(w: W) -> Int {\n  match w {\n    Wrap { flag: f } => need_int(n: f)\n    Other { n: k } => k\n  }\n}\n"
+data lbf_arm_right: String = "type W\n  = Wrap { flag: Int }\n  | Other { n: Int }\n\nfn need_int(n: Int) -> Int {\n  n\n}\n\nfn g(w: W) -> Int {\n  match w {\n    Wrap { flag: f } => need_int(n: f)\n    Other { n: k } => k\n  }\n}\n"
+
+// A payload binder of a Bool field passed to an Int formal refuses, with the produced type the field declares.
+test fn lbf_a_bool_payload_binder_refuses_at_an_int_argument() -> Bool {
+  lbf_reason(body: lbf_arm_wrong) == ^application_argument_does_not_inhabit
+    && lbf_present(x: lbf_produced_at_n(body: lbf_arm_wrong))
+}
+
+// The same value at the right type is accepted: the binder is typed Int from its field.
+test fn lbf_an_int_payload_binder_is_accepted_at_an_int_argument() -> Bool {
+  lbf_accepted_clean(body: lbf_arm_right)
+}
+
+// THE SAME RELATION: let-wrong and arm-wrong refuse with one reason and one produced type.
+test fn lbf_let_and_arm_binders_at_the_wrong_type_refuse_alike() -> Bool {
+  lbf_reason(body: lbf_bool_let) == lbf_reason(body: lbf_arm_wrong)
+    && lbf_present(x: lbf_produced_at_n(body: lbf_bool_let))
+    && caf_same_type(a: lbf_produced_at_n(body: lbf_bool_let), b: lbf_produced_at_n(body: lbf_arm_wrong))
+}
