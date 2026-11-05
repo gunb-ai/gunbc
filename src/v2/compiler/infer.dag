@@ -243,14 +243,6 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^infer_branch_shape_invalid,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
 fn infer_branch_cond_not_bool_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_branch_cond_not_bool,
@@ -2665,13 +2657,13 @@ fn infer_branch_bool_if_else_admitted(
 ) -> Outcome<InferredFacts> {
   {
     match branch_slot_target(n: node, slot: BranchConditionSlot) {
-      Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+      Absent => outcome_rejected(infer_malformed_tree_diagnostic(n: node))
       Present { value: cond_target } =>
         match branch_slot_target(n: node, slot: BranchThenSlot) {
-          Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+          Absent => outcome_rejected(infer_malformed_tree_diagnostic(n: node))
           Present { value: then_target } =>
             match branch_slot_target(n: node, slot: BranchElseSlot) {
-              Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+              Absent => outcome_rejected(infer_malformed_tree_diagnostic(n: node))
               Present { value: else_target } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
@@ -8189,10 +8181,10 @@ fn infer_gather_hand_up_failed(node: Node, start: InferHoldResolution, r: NonEmp
 // never without this judgment, so a non-Bool condition cannot be admitted because an enclosing join closes the arms.
 fn infer_branch_condition_refusal(node: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Diagnostic> {
   if !all_edges_positional(children: node.children) {
-    Present { value: infer_branch_shape_invalid_diagnostic(node: node) }
+    Present { value: infer_malformed_tree_diagnostic(n: node) }
   } else {
     match branch_slot_target(n: node, slot: BranchConditionSlot) {
-      Absent => Present { value: infer_branch_shape_invalid_diagnostic(node: node) }
+      Absent => Present { value: infer_malformed_tree_diagnostic(n: node) }
       Present { value: cond_target } =>
         match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
           Absent => Present { value: infer_facts_lookup_miss_diagnostic(key: cond_target) }
