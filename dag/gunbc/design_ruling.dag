@@ -28,6 +28,20 @@ type DesignRuling {
   provenance: String
 }
 
+data printer_start_gate_is_the_approval_not_the_ref: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_gate_is_the_approval_not_the_ref"),
+  decided: "2026-11-05",
+  section: "3d",
+  provenance: "Operator, to sleek-wren-619 on 2026-11-05, verbatim: \"what is reviewed main - its not that sensitive - we should be able to print anything from anywhere with an approval from the app\". SUPERSEDES the 2026-10-25 design-A ruling that only reviewed main's code may start a printer (gunbc.fleet.print_converge print_pass_ref, print_pass_route and PrinterStartRefusedOffReviewedMain, deleted; the printer job's main-only WIF step stays only because Secret Manager access is still WIF-gated). The gate is the approval, which binds printer, project sha256, credential version, attempt, the selected AMS slot and the printer state the human saw (gunbc.fleet.printer_actuation print_subject); the ref is not a gate.",
+}
+
+data printer_credential_is_held_in_host_custody: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_credential_is_held_in_host_custody"),
+  decided: "2026-11-05",
+  section: "3c",
+  provenance: "Operator, to sleek-wren-619 on 2026-11-05, on where the printer LAN access code lives: \"i don't really know what the precedent is - i'll let you decide\". Decided by sleek-wren-619 and confirmed to snappy-ibex-860: the code is held in HOST CUSTODY on srv1 (gunbc.fleet.host_credential_custody_converge, row PrinterAccessCode), root:gunbc-fleet 0640 so only the print runner principal reads it, copied once from its Secret Manager locus (gunbc.fleet.printer_federation) by a run that has WIF. The custody record is JSON {code, sm_version} so the approval subject keeps binding the credential version. The shell route (gunbc.fleet.printer_shell_run) reads custody, never Secret Manager, via gunbc.fleet.printer_credential_source PrinterCredentialSource = SecretManager | HostCustody; a custody read is not an AccessTokenSource arm because it is not a token.",
+}
+
 data printer_start_hold_lifted_2026_11_04: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_hold_lifted_2026_11_04"),
   decided: "2026-11-04",
@@ -644,6 +658,8 @@ data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling 
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    printer_start_gate_is_the_approval_not_the_ref,
+    printer_credential_is_held_in_host_custody,
     belt_concurrency_is_a_per_instance_fact,
     operator_may_arbitrarily_retire_any_work_item,
     bad_process_is_worse_than_no_process,
