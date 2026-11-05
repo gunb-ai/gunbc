@@ -796,16 +796,13 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
 // binder" and "no else": a behavior admitting a different arity set would be a different fact, and no
 // consumer asks the two tables about arity separately (DESIGN 6b: the second local implementation of one
 // rule is the trigger to generalize it, and under 6b "no answer is a reject"). A consumer that preflights
-// a WHOLE node asks bind_positional_shape_admitted / branch_positional_shape_admitted rather than counting
-// children beside the table (DESIGN 3: the arity fact lives where the roles live).
+// a WHOLE node asks branch_positional_shape_admitted rather than counting children beside the table
+// (DESIGN 3: the arity fact lives where the roles live). There is no whole-Bind twin: no consumer asks that
+// question -- every Bind site reads a named slot through bind_slot_target, or numbers ordinals through
+// bind_positional_slot_in_arity -- and a check with no consumer is a second API for a question nobody asks.
 fn positional_arity_admitted(n: Node) -> Bool {
   let arity = count(positional_child_target_nodes(node: n))
   (arity == 2) || (arity == 3)
-}
-
-// IS THE Bind READABLE AT ALL: the Bind edge discipline AND an admitted positional arity.
-fn bind_positional_shape_admitted(n: Node) -> Bool {
-  edges_conform(children: n.children, d: PositionalPlusNamedMarkerEdges) && positional_arity_admitted(n: n)
 }
 
 // THE ROLE OF A Bind's POSITIONAL CHILD, given how many positionals the Bind has. A three-positional Bind
