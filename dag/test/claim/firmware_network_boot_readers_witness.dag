@@ -1,8 +1,8 @@
 module test.claim.firmware_network_boot_readers_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String, EpochMs, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochMs }
 import std.optional { Optional, Present, Absent }
-import std.algebra { list_map }
+import std.algebra { list_map, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
 import gunbc.firmware_network_boot_standing { BootOrderObserved, BootOptionsUnobserved, NicsUnobserved, BiosVersionObserved, BootOrderEntry, FirmwareBootObservation, FirmwareReadRefused, Refused, firmware_network_boot_standing }
@@ -73,7 +73,7 @@ fn count_refusals(rs: List<AxisReply>) -> Int {
 
 test fn a_well_formed_system_yields_five_replies_two_of_them_our_stated_gaps() -> Bool {
   let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on()))
-  list_length(items: rs) == 5 && any_of(rs: rs, p: is_order_two) && any_of(rs: rs, p: is_nics_gap) && any_of(rs: rs, p: is_options_gap) &&
+  length(xs: rs) == 5 && any_of(rs: rs, p: is_order_two) && any_of(rs: rs, p: is_nics_gap) && any_of(rs: rs, p: is_options_gap) &&
   any_of(rs: rs, p: is_secure_on) && any_of(rs: rs, p: is_bios) && count_refusals(rs: rs) == 0
 }
 
@@ -160,10 +160,10 @@ fn decode_with(row: FirmwareBootFamilyRow, rs: RedfishBootReads) -> RedfishDecod
 }
 
 fn unread_count(o: RedfishDecodeOutcome) -> Int {
-  match o { RedfishDecoded { replies: _, unread: u } => list_length(items: u) RedfishRouteNotRedfish { route: _ } => 0 - 1 }
+  match o { RedfishDecoded { replies: _, unread: u } => length(xs: u) RedfishRouteNotRedfish { route: _ } => 0 - 1 }
 }
 fn reply_count(o: RedfishDecodeOutcome) -> Int {
-  match o { RedfishDecoded { replies: r, unread: _ } => list_length(items: r) RedfishRouteNotRedfish { route: _ } => 0 - 1 }
+  match o { RedfishDecoded { replies: r, unread: _ } => length(xs: r) RedfishRouteNotRedfish { route: _ } => 0 - 1 }
 }
 
 // The receipt join is the future observe_redfish_boot_axes's: the test plays it, to show the decoder's replies are what probe() consumes.
@@ -319,7 +319,7 @@ test fn a_non_success_status_with_an_unreadable_body_is_a_status_refusal_not_unr
     Absent => false
     Present { value: r } =>
       match decode_with(row: r, rs: reads(system: system_ok(), secure: RestResponseObserved { status: 500, body: RestBodyReadRefused { cause: "reset" } })) {
-        RedfishDecoded { replies: rep, unread: us } => list_length(items: us) == 0 && any_of(rs: rep, p: is_unexpected)
+        RedfishDecoded { replies: rep, unread: us } => length(xs: us) == 0 && any_of(rs: rep, p: is_unexpected)
         RedfishRouteNotRedfish { route: _ } => false
       }
   }

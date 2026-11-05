@@ -1,6 +1,7 @@
 module gunbc.replacement_cut
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length, brand }
+import std.types { String, NonEmptyStr, Bool, Int, List, brand }
+import std.algebra { length }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
@@ -319,7 +320,7 @@ fn region_causes(acc: List<CutRefusalCause>, region: List<DeclarationRef>) -> Li
       }
     },
   )
-  match count_standing(count: list_length(items: region)) {
+  match count_standing(count: length(xs: region)) {
     CountZero => Cons { head: EmptyCoveredRegion, tail: dup_state.causes }
     CountPositive => dup_state.causes
   }
@@ -346,7 +347,7 @@ fn census_causes(
   match census {
     BoundaryDeclaredEmpty { basis: _ } => acc
     ConsumersEnumerated { consumers: rows } =>
-      match count_standing(count: list_length(items: rows)) {
+      match count_standing(count: length(xs: rows)) {
         CountZero => Cons { head: EnumeratedCensusEmpty, tail: acc }
         CountPositive => enumerated_consumer_causes(acc: acc, old_root_consumer: old_root_consumer, rows: rows)
       }
@@ -357,7 +358,7 @@ fn external_x_causes(acc: List<CutRefusalCause>, x: ExternalXAnswer) -> List<Cut
   match x {
     NoExternalOracleRequired { justification: _ } => acc
     ExternalXRoles { roles: rs } =>
-      match count_standing(count: list_length(items: rs)) {
+      match count_standing(count: length(xs: rs)) {
         CountZero => Cons { head: ExternalRolesEnumeratedEmpty, tail: acc }
         CountPositive => acc
       }
@@ -610,7 +611,7 @@ fn mint_admitted(cut: ReplacementCut, counts: DispositionCounts) -> PlanAdmissio
       replaced_count: counts.replaced,
       evidence_only_count: counts.evidence_only,
       retired_count: counts.retired,
-      covered_region_count: list_length(items: cut.covered_region),
+      covered_region_count: length(xs: cut.covered_region),
     },
   }
 
@@ -625,7 +626,7 @@ fn admit_replacement_cut_plan(cut: ReplacementCut) -> PlanAdmission {
   )
   let evidence_acc = evidence_duplicate_causes(acc: evidence_disposition_acc, rows: cut.evidence_dispositions)
   let all_causes = region_causes(acc: evidence_acc, region: cut.covered_region)
-  match count_standing(count: list_length(items: all_causes)) {
+  match count_standing(count: length(xs: all_causes)) {
     CountZero => mint_admitted(cut: cut, counts: count_dispositions(consumers: census_consumers(census: cut.boundary_census)))
     CountPositive => PlanRefused { causes: all_causes }
   }
@@ -845,10 +846,10 @@ fn registry_exact_count(rs: List<CutRegistration>) -> Int {
 
 fn admit_cut_registry(rs: List<CutRegistration>) -> CutRegistryStanding {
   let causes = registry_parent_causes(acc: registry_duplicate_causes(acc: [], rs: rs), rs: rs)
-  match count_standing(count: list_length(items: causes)) {
+  match count_standing(count: length(xs: causes)) {
     CountZero => CutRegistryAdmitted {
       exact_count: registry_exact_count(rs: rs),
-      remeasure_required_count: list_length(items: rs) - registry_exact_count(rs: rs),
+      remeasure_required_count: length(xs: rs) - registry_exact_count(rs: rs),
     }
     CountPositive => CutRegistryRefused { causes: causes }
   }

@@ -1,6 +1,7 @@
 module gunbc.namespace_cut.namespace_cut_subject_observation
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { length }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -489,7 +490,7 @@ fn observation_refusals(o: SubjectProbeObservation) -> List<SubjectProbeObservat
 }
 
 fn observation_refuses(o: SubjectProbeObservation) -> Bool {
-  list_length(items: observation_refusals(o: o)) > 0
+  length(xs: observation_refusals(o: o)) > 0
 }
 
 // A refusal that carries no reason is still a refusal, and it renders as one rather than vanishing.
@@ -518,7 +519,7 @@ fn refusals_in_rows(rows: List<SubjectObservationRow>) -> List<SubjectProbeObser
 }
 
 fn rows_refuse(rows: List<SubjectObservationRow>) -> Bool {
-  list_length(items: refusals_in_rows(rows: rows)) > 0
+  length(xs: refusals_in_rows(rows: rows)) > 0
 }
 
 fn unobservable_in_row(acc: String, r: SubjectObservationRow) -> String {
