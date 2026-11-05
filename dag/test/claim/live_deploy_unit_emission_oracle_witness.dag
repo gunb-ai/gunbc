@@ -1149,6 +1149,7 @@ fn spec_with_serve_binary(binary: AdmittedFixedServeBinary) -> DeploymentSpec {
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories,
+            role_singletons: base.role_singletons,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: binary, serve_entry: se, serve_function: f,
               provider_state_root: ps, instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
