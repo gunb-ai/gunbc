@@ -35,7 +35,6 @@ import gunbc.host.anchored_host_transport {
   anchored_host_transport_against,
   anchored_host_transport_per_boot,
   per_boot_pin_from_console_line,
-  PerBootHostPin,
   anchored_host_transport_provisioned,
   anchored_host_binding_refusal_reason,
   anchored_host_key_scan_effect,

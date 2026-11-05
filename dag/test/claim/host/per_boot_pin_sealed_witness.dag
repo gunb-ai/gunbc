@@ -1,0 +1,39 @@
+module test.claim.host.per_boot_pin_sealed_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A PerBootHostPin is sole_constructor: per_boot_pin_from_console_line is its only mint, and it builds the anchor
+// with ConsolePerBoot provenance carrying the pin's own boot id. These REDs hand the compiler the forged shapes
+// (fixture source, because the sealed state is unwritable in the accepted corpus) and expect the wall to refuse.
+// The positive control is a_per_boot_pin_binds_the_key_printed_at_that_boot in
+// test.claim.host.anchored_host_transport_witness, which reaches AnchoredBindingBound through the real mint.
+fn violation_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// a matching outer boot id over an anchor of ANY other provenance (ScannedFirstContact, IndependentlyAnchored)
+data forged_other_provenance_source: String = "module forge_other_provenance\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }\nimport gunbc.host.anchored_host_transport { PerBootHostPin }\nfn forged(scanned_anchor: KnownHostKeyRow, boot: NonEmptyStr) -> PerBootHostPin { PerBootHostPin { boot_id: boot, anchor: scanned_anchor } }\n"
+
+test fn a_pin_over_a_scanned_anchor_cannot_be_constructed() -> Bool {
+  violation_count(source: forged_other_provenance_source) >= 1
+}
+
+// a ConsolePerBoot anchor whose embedded boot id differs from the outer one
+data forged_split_boot_source: String = "module forge_split_boot\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }\nimport gunbc.host.anchored_host_transport { PerBootHostPin }\nfn forged(console_anchor_of_other_boot: KnownHostKeyRow, outer_boot: NonEmptyStr) -> PerBootHostPin { PerBootHostPin { boot_id: outer_boot, anchor: console_anchor_of_other_boot } }\n"
+
+test fn a_pin_whose_outer_boot_id_differs_from_its_anchors_cannot_be_constructed() -> Bool {
+  violation_count(source: forged_split_boot_source) >= 1
+}

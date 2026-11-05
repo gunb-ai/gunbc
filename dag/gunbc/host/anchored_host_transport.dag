@@ -233,7 +233,7 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "per_boot_console_marker"),
     reason: "the console-line grammar (GUNBC-HOST-KEY boot_id=<id> ssh-ed25519 <base64> SHA256:<fingerprint>) is a SUPPLIED boundary value with no producer: no runner-medium stage generates a host key at boot, prints this line or starts sshd with that key, so the pairing obligation (the real image emits exactly this shape) is open",
     dissolution: unbound_dissolution(
-      description: "dissolves when the runner medium (gunbc.runner.runner_host_medium) has a stage that generates the host key at boot, prints exactly this line on the console and starts sshd with that HostKey, and a claim over the real stage's rendered output parses through per_boot_pin_from_console_line; the line shape in this module is then derived from that stage, not retyped"
+      description: "dissolves when the runner medium (gunbc.runner.runner_host_medium) has a stage that generates the host key at boot, prints exactly this line on the console and starts sshd with that HostKey, and a claim over the real stage's rendered output parses through per_boot_pin_from_console_line; the line shape in this module is then derived from that stage, not retyped. OPEN: the boot_id character set is not yet restricted (control characters in a console-read id could contaminate a refusal diagnostic); the restriction lands with the live SOL reader, which is the first place such text can arrive"
     )
   ),
   frontier_row_decl(
@@ -396,7 +396,13 @@ fn anchored_host_transport_against(
 //
 // The comparison is unchanged -- anchored_host_transport_against, the known_hosts-line equality -- so a
 // per-boot pin is one more source of an anchor, not a second trust algorithm (§3).
-type PerBootHostPin {
+//
+// THE PIN IS SEALED (sole_constructor): its only mint is per_boot_pin_from_console_line, which builds the anchor
+// with ConsolePerBoot provenance naming the SAME boot id as the pin's own, after the line's blob and fingerprint
+// are verified. A caller-built pin (a matching outer boot id over a ScannedFirstContact anchor, or a
+// ConsolePerBoot whose embedded boot id differs) has no expression, so the binding does not re-check either
+// (DESIGN 4b: construction over validation).
+type PerBootHostPin sole_constructor {
   boot_id: NonEmptyStr
   anchor: KnownHostKeyRow
 }
