@@ -67,6 +67,16 @@ data verify_entry_compile_samples: List<EntryCompileSample> = [
     seconds: second(count: 646),
     // neat-gull-366 2026-11-05, local -j8 build slot, process_invocation_total ms=645578 (not an srv1 unit reading)
   },
+  EntryCompileSample {
+    entry: "dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag",
+    seconds: second(count: 954),
+    // neat-gull-366 2026-11-05, local build slot, process_invocation_total ms=953602 (not an srv1 unit reading)
+  },
+  EntryCompileSample {
+    entry: "dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness.dag",
+    seconds: second(count: 811),
+    // neat-gull-366 2026-11-05, local build slot, process_invocation_total ms=810405 (not an srv1 unit reading)
+  },
 ]
 
 // POLICY BUDGETS, each with its reason (DESIGN 5 explicit policy budget). The headroom is a falsifiable
