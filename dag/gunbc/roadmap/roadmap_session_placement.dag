@@ -1304,13 +1304,28 @@ fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: 
               // charge is already back in the ledger; if the history positively says it is, the slot is
               // retired as bookkeeping (SettleRetireUncharged) instead of being kept on a claim about a
               // holder nobody can date any more.
+              // A Launching slot closes on the trigger, and the trigger needs the unit OBSERVED ended. When
+              // it does not fire there are two keeps, and they are not the same question:
+              //   UnitStillRunning  -- the holder is observed ALIVE. A charge the ledger already returned
+              //     under a live holder is a different defect (a release issued while the holder lived), and
+              //     closing this slot would burn the only handle on that seat. Never retired here.
+              //   UnitLifecycleUnknown -- nothing can date the holder any more: that is the state the
+              //     2026-10-28 lease was left in. The one question with a real answer is whether this
+              //     reference's charge is already back in the ledger's own history. If it positively is, the
+              //     slot is retired as bookkeeping instead of kept forever on an unanswerable claim.
               AttemptLaunching =>
                 match session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now)) {
                   SettleKeep { why: keep, explain: explain } =>
-                    match charge {
-                      SeatChargeReturned { returned_at: back, release_reason: why_returned, generation: lg, acquired_at: _, reference: _ } =>
-                        SettleRetireUncharged { record: rec, generation: g, attempt: name, returned_at: back, release_reason: why_returned, ledger_generation: lg, keep_reason: keep }
-                      other => SettleKeep { why: join([keep, "; and the ledger does not positively show this charge as returned: ", compute_seat_charge_wire(c: other)], ""), explain: explain }
+                    match lifecycle {
+                      UnitStillRunning { detail: live } =>
+                        SettleKeep { why: join([keep, "; and the holder is observed alive (", live, "), so a charge the ledger already returned is a different defect: the release was issued while the holder lived, and closing this slot would drop the only handle on its seat"], ""), explain: true }
+                      UnitLifecycleUnknown { detail: _ } =>
+                        match charge {
+                          SeatChargeReturned { returned_at: back, release_reason: why_returned, generation: lg, acquired_at: _, reference: _ } =>
+                            SettleRetireUncharged { record: rec, generation: g, attempt: name, returned_at: back, release_reason: why_returned, ledger_generation: lg, keep_reason: keep }
+                          other => SettleKeep { why: join([keep, "; and the ledger does not positively show this charge as returned: ", compute_seat_charge_wire(c: other)], ""), explain: explain }
+                        }
+                      _ => SettleKeep { why: keep, explain: explain }
                     }
                   other => other
                 }
