@@ -37,7 +37,7 @@ import gunbc.fleet.printer_execution_hold {
   printer_hold_observation_escalation_id, printer_hold_release_request_at,
   PrinterHoldReleaseRequest, HoldReleaseNothingHeld, HoldReleaseCardFiled, HoldReleaseCardOnFile, HoldReleaseRefused,
   printer_hold_release_request, printer_hold_release_request_for_tree, printer_legacy_hold_release, LegacyHoldReleased, LegacyHoldReleaseRefused,
-  printer_hold_operator_grant, PrinterHoldOperatorGrantHeld, PrinterHoldOperatorGrantMissing, PrinterHoldGrantDenied, PrinterHoldGrantAnotherIntent, PrinterHoldGrantStillPending,
+  printer_hold_operator_grant, PrinterHoldOperatorGrantHeld, PrinterHoldOperatorGrantMissing, PrinterHoldGrantRefused,ApprovalIntentMismatch,ApprovalDenied, PrinterHoldGrantStillPending,
   printer_execution_hold_legacy_store, printer_execution_hold_legacy_state, LegacyHoldFenced, printer_execution_hold_fence_begin, HoldFenceBegun,
 }
 import gunbc.host_state_root { isolated_host_state_tree, HostStateTree }
@@ -612,11 +612,11 @@ test fn the_broker_standing_releases_only_on_an_approval_over_this_exact_hold() 
               PrinterHoldOperatorGrantMissing { cause: _ } => false
             })
             && (match printer_hold_operator_grant(store: store, standing_of: approved_other, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
-              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantAnotherIntent { requested_revision: _, decided_revision: _ } } => true
+              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantRefused { cause: ApprovalIntentMismatch { requested_revision: _, decided_revision: _ } } } => true
               _ => false
             })
             && (match printer_hold_operator_grant(store: store, standing_of: denied, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
-              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantDenied { reason: _ } } => true
+              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantRefused { cause: ApprovalDenied { reason: _ } } } => true
               _ => false
             })
             && (match printer_hold_operator_grant(store: store, standing_of: pending, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {

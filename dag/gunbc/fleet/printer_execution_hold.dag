@@ -36,7 +36,7 @@ import std.scoped_authorization {AuthorizationRefusalCause,authorization_refusal
 import gunbc.auth.approval_gate {
   approval_instant_now,approval_expires_at,approval_file_stored_request,ApprovalFiled,ApprovalFilingRefused,
   approval_standing_read,StandingReadAt,StandingClockUnreadable,approval_reading,approval_derive,ApprovalDerived,ApprovalNotDerived,
-  ApprovalPending,ApprovalNotFiled,ApprovalDenied,ApprovalExpired,ApprovalIntentMismatch,ApprovalStoreUnreadable,ApprovalAuthorizeRefused,
+  ApprovalPending,ApprovalNotFiled,ApprovalDenied,ApprovalExpired,ApprovalIntentMismatch,ApprovalStoreUnreadable,ApprovalAuthorizeRefused,ApprovalGateRefusal,approval_refusal_text,
 }
 import gunbc.auth.approval_request_client {stored_request_from_authorization,ApprovalPollStanding,PollUnreadable}
 import std.measure {second}
@@ -426,20 +426,14 @@ type PrinterHoldOperatorGrant
 type PrinterHoldOperatorGrantCause
   = PrinterHoldGrantStillPending { escalation_id: NonEmptyStr }
   | PrinterHoldGrantNotFiled { escalation_id: NonEmptyStr }
-  | PrinterHoldGrantAnotherIntent { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
-  | PrinterHoldGrantStoreUnreadable { detail: NonEmptyStr }
-  | PrinterHoldGrantDenied { reason: NonEmptyStr }
-  | PrinterHoldGrantExpired
+  | PrinterHoldGrantRefused { cause: ApprovalGateRefusal }
   | PrinterHoldGrantAuthorizeRefused { cause: AuthorizationRefusalCause }
 
 fn printer_hold_operator_grant_missing_detail(cause:PrinterHoldOperatorGrantCause) -> NonEmptyStr {
   match cause {
     PrinterHoldGrantStillPending {escalation_id:e}=>join(["the operator observation for escalation ",e as String," is filed but nobody has decided it yet"],"") as NonEmptyStr
     PrinterHoldGrantNotFiled {escalation_id:e}=>join(["no operator observation is filed for escalation ",e as String,"; the stale printer-start hold stays held"],"") as NonEmptyStr
-    PrinterHoldGrantAnotherIntent {requested_revision:r,decided_revision:d}=>join(["the decided observation for this escalation was decided for a different intent (requested ",r as String,", decided ",d as String,"); nothing released"],"") as NonEmptyStr
-    PrinterHoldGrantStoreUnreadable {detail:d}=>join(["the approval broker's status could not be read: ",d as String],"") as NonEmptyStr
-    PrinterHoldGrantDenied {reason:r}=>join(["the operator DENIED the observation: ",r as String,"; nothing released"],"") as NonEmptyStr
-    PrinterHoldGrantExpired=>"the operator observation expired undecided; nothing released" as NonEmptyStr
+    PrinterHoldGrantRefused {cause:c}=>approval_refusal_text(cause:c) as NonEmptyStr
     PrinterHoldGrantAuthorizeRefused {cause:c}=>authorization_refusal_reason(cause:c) as NonEmptyStr
   }
 }
@@ -467,11 +461,7 @@ fn printer_hold_operator_grant(store:PrinterExecutionHoldStore,standing_of:fn(No
     ApprovalNotDerived {cause:c}=>PrinterHoldOperatorGrantMissing {cause:match c {
       ApprovalPending {escalation_id:e}=>PrinterHoldGrantStillPending {escalation_id:e}
       ApprovalNotFiled {escalation_id:e}=>PrinterHoldGrantNotFiled {escalation_id:e}
-      ApprovalDenied {reason:r}=>PrinterHoldGrantDenied {reason:r}
-      ApprovalExpired=>PrinterHoldGrantExpired
-      ApprovalIntentMismatch {requested_revision:r,decided_revision:d}=>PrinterHoldGrantAnotherIntent {requested_revision:r,decided_revision:d}
-      ApprovalStoreUnreadable {detail:d}=>PrinterHoldGrantStoreUnreadable {detail:d}
-      ApprovalAuthorizeRefused {detail:d}=>PrinterHoldGrantStoreUnreadable {detail:d}
+      other=>PrinterHoldGrantRefused {cause:other}
     }}
   }
 }
