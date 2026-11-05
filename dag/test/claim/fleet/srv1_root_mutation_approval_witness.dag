@@ -11,6 +11,7 @@ import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied, ApprovalExpired }
 import std.measure { second_count, minute_count }
+import std.integer { nat_to_int }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_inheritance, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
   microvm_controller_install_root_scopes, srv1_root_write_scope,
@@ -403,8 +404,8 @@ test fn the_unanswered_window_refuses_with_the_expiry_the_model_knows() -> Bool 
 // ("a run that stops on budget is not an expired window"). One full cadence strictly past expires_at is
 // the minimum: it is what guarantees a clock read at or after the deadline.
 test fn the_poll_budget_outlives_the_window_it_polls() -> Bool {
-  (second_count(s: srv1_root_mutation_poll_cadence) as Int) * srv1_root_mutation_poll_tick_budget()
-    > (second_count(s: srv1_root_mutation_poll_window) as Int) + (second_count(s: srv1_root_mutation_poll_cadence) as Int)
+  nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence)) * srv1_root_mutation_poll_tick_budget()
+    > nat_to_int(n: second_count(s: srv1_root_mutation_poll_window)) + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence))
     && srv1_root_mutation_expiry_overrun_ticks > 0
 }
 
@@ -413,10 +414,10 @@ test fn the_poll_budget_outlives_the_window_it_polls() -> Bool {
 // model failed to end its own wait, and that is a defect to fix rather than a number to raise. The
 // 32-minute limit that killed 41972155901 is the counterexample these numbers are built against.
 test fn the_step_timeout_clears_the_models_worst_case_by_the_stated_margin() -> Bool {
-  let timeout_secs = (minute_count(m: srv1_root_mutation_approval_step_timeout_minutes()) as Int) * 60
-  let model_worst_case = second_count(s: srv1_root_mutation_prelude_allowance) as Int
-    + second_count(s: srv1_root_mutation_poll_window) as Int
-    + (second_count(s: srv1_root_mutation_poll_cadence) as Int) * srv1_root_mutation_expiry_overrun_ticks
-  timeout_secs >= model_worst_case + (second_count(s: srv1_root_mutation_step_margin) as Int)
+  let timeout_secs = nat_to_int(n: minute_count(m: srv1_root_mutation_approval_step_timeout_minutes())) * 60
+  let model_worst_case = nat_to_int(n: second_count(s: srv1_root_mutation_prelude_allowance))
+    + nat_to_int(n: second_count(s: srv1_root_mutation_poll_window))
+    + nat_to_int(n: second_count(s: srv1_root_mutation_poll_cadence)) * srv1_root_mutation_expiry_overrun_ticks
+  timeout_secs >= model_worst_case + nat_to_int(n: second_count(s: srv1_root_mutation_step_margin))
     && model_worst_case > 32 * 60
 }
