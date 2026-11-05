@@ -11,7 +11,7 @@ import std.types { String, NonEmptyStr, List }
 import product.host_identity { HostIdentity }
 import std.nat { Nat, nat_range_inclusive }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
-import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess, StartObserved, StartUnread, ProcessAbsoluteStart }
 import gunbc.runner.runner_incarnation { parse_jit_registration_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_runner_connectivity {
@@ -420,7 +420,10 @@ data jit_ghost_rows: List<GitHubSelfHostedRunnerRegistration> = [
 ]
 
 fn jit_main(pid: Nat) -> RunnerUnitMainProcess {
-  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: pid, start_time: "t" as NonEmptyStr } }
+  // Absolute start one second after the fixture rows' minted epoch (1793701320), i.e. the wrapper minted
+  // its name and exec-ed within the declared fork-to-exec bound -- a genuine same-boot match, not a
+  // recycled pid. The recycled-pid and unread-start arms are covered in the honest-main-reads region.
+  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: pid, start_time: "t" as NonEmptyStr }, absolute_start: StartObserved { started_at_seconds: 1793701321 } }
 }
 
 fn jit_complete_roster(rows: List<GitHubSelfHostedRunnerRegistration>) -> OrganizationRunnerRosterEvidence {
@@ -530,6 +533,42 @@ test fn a_partial_or_unavailable_roster_never_observes_a_zero() -> Bool {
   srv4_01_registrations_unobserved(roster: RosterObservedPartial { observed_on: "2026-11-04" as NonEmptyStr, registrations: jit_other_slot_rows, observed_count: 100, authority_total: 233 })
     && srv4_01_registrations_unobserved(roster: RosterReadUnavailable { reason: "no token" })
     && !slot_registration_observation_settled(o: observe_slot_registrations(slot: srv4_01_slot, roster: RosterReadUnavailable { reason: "no token" }))
+}
+
+// ── THE RECYCLED-PID CHECK: a pid-matched row is only the current incarnation if it agrees with the
+//    running process's observed absolute start (model C: wall clock read at the boundary, compared here) ──
+
+fn current_333_online_roster() -> OrganizationRunnerRosterEvidence {
+  jit_complete_roster(rows: concat(jit_other_slot_rows, concat(jit_ghost_rows, [jit_row(id: 8103, name: "srv4-01-1793701320-333", online: true)])))
+}
+
+fn jit_main_at(pid: Nat, abs: ProcessAbsoluteStart) -> RunnerUnitMainProcess {
+  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: pid, start_time: "t" as NonEmptyStr }, absolute_start: abs }
+}
+
+// POSITIVE CONTROL (same-boot match): the row's mint (1793701320) and the process start (1793701321)
+// agree within the fork-to-exec bound, so the online pid-matched row is the current incarnation.
+test fn a_same_boot_pid_match_is_the_current_incarnation() -> Bool {
+  connectivity_verdict_is_healthy(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at_seconds: 1793701321 }), roster: current_333_online_roster()))
+}
+
+// DISCRIMINATING RED (recycled across a reboot): an online row keeps srv4-01's pid 333 from a dead boot,
+// but the running process started long after that row was minted. Without the start comparison this is
+// the false-HEALTHY (or false-wedged) case; with it the slot is Unknown, never Healthy or Detached.
+test fn a_pid_recycled_across_a_reboot_is_unknown_not_healthy() -> Bool {
+  connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at_seconds: 1793701720 }), roster: current_333_online_roster()))
+}
+
+// DISCRIMINATING RED (minted after start): the row claims a mint AFTER the process began, which no
+// genuine wrapper can do -- a pid borrowed from a name it never owned. Unknown, not Healthy.
+test fn a_row_minted_after_the_process_started_is_unknown() -> Bool {
+  connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at_seconds: 1793701220 }), roster: current_333_online_roster()))
+}
+
+// DISCRIMINATING RED (unread start): with the absolute start unread the current incarnation cannot be
+// told apart from a recycled pid, and it is NEVER guessed -- Unknown, not Healthy and not Orphaned.
+test fn an_unread_absolute_start_is_unknown_not_a_guess() -> Bool {
+  connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartUnread { cause: "btime unread" as NonEmptyStr }), roster: current_333_online_roster()))
 }
 
 // The wet entry's pure half: with the roster unreadable (the arm it records when no admitted token source minted),

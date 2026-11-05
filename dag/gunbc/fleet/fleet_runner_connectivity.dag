@@ -29,7 +29,7 @@ import gunbc.runner.runner_registration_labels {
 import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation, JitRegistrationName, parse_jit_registration_name }
-import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread }
 
 data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
@@ -683,12 +683,42 @@ fn newest_registration(regs: List<GitHubSelfHostedRunnerRegistration>, incarnati
     })
 }
 
-fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incarnation: LocalRunnerSlotIncarnation, pid: Int) -> SlotIncarnationRegistration {
+// HOW FAR AROUND THE BOOT A PID IS TRUSTED. A JIT wrapper bakes its OWN start epoch into its name
+// (<instance>-<epoch>-<pid>) just before it execs the agent, so the row's minted epoch and the main
+// process's absolute start should agree to within the wrapper's fork-to-exec window. A pid-matched row
+// minted AFTER the process started cannot be that process (a name outlives a pid it never owned); a row
+// minted more than this bound BEFORE the process started is a pid recycled across a reboot. The bound is
+// declared with its reason, not tuned: two minutes comfortably covers a wrapper minting its name and
+// then exec-ing config.sh under any load, while staying far under the hours a stale registration survives.
+data jit_wrapper_mint_to_exec_bound_seconds: Int = 120
+
+fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incarnation: LocalRunnerSlotIncarnation, pid: Int, abs: ProcessAbsoluteStart) -> SlotIncarnationRegistration {
   match newest_registration(regs: filter(jit, r => match registration_jit_name(reg: r, incarnation: incarnation) {
       Present { value: n } => n.wrapper_pid == pid
       Absent => false
     }), incarnation: incarnation) {
-    Present { value: reg } => IncarnationRegistrationFound { registration: reg }
+    Present { value: reg } =>
+      // A PID-MATCHED ROW IS ONLY THE CURRENT INCARNATION IF IT AGREES WITH THE RUNNING PROCESS'S START.
+      // The pid match alone cannot survive a reboot: the roster keeps a dead boot's row, GitHub has not
+      // pruned it, and its pid now belongs to an unrelated (or next-boot) process. The absolute start is
+      // observed at the boundary; the comparison is pure and refuses to guess when it is absent.
+      match abs {
+        StartUnread { cause: c } => IncarnationRegistrationUnresolved {
+          reason: concat("the pid-matched registration cannot be trusted against the running process because its absolute start is unread: ", c as String)
+        }
+        StartObserved { started_at_seconds: s } =>
+          match registration_jit_name(reg: reg, incarnation: incarnation) {
+            Absent => IncarnationRegistrationUnresolved { reason: "the pid-matched registration does not carry this incarnation's name" }
+            Present { value: n } =>
+              if n.minted_epoch > s {
+                IncarnationRegistrationUnresolved { reason: "the pid-matched registration was minted AFTER the running process started: a recycled pid, not this incarnation" }
+              } else if (s - n.minted_epoch) > jit_wrapper_mint_to_exec_bound_seconds {
+                IncarnationRegistrationUnresolved { reason: "the pid-matched registration was minted far BEFORE the running process started: a pid recycled across a reboot, not this incarnation" }
+              } else {
+                IncarnationRegistrationFound { registration: reg }
+              }
+          }
+      }
     Absent => IncarnationRegistrationNone
   }
 }
@@ -722,7 +752,7 @@ fn slot_incarnation_registration(
         Empty => IncarnationRegistrationNone
         Cons { head: _, tail: _ } =>
           match main {
-            MainProcess { process: p } => jit_registration_for_pid(jit: jit, incarnation: incarnation, pid: p.pid as Int)
+            MainProcess { process: p, absolute_start: a } => jit_registration_for_pid(jit: jit, incarnation: incarnation, pid: p.pid as Int, abs: a)
             MainProcessUnread { cause: c } => jit_registration_without_pid(jit: jit, why: concat("the unit's main process was not read: ", c as String))
             NoMainProcess => jit_registration_without_pid(jit: jit, why: "the unit has no main process")
             MainProcessUngrounded { pid: _, cause: c } => jit_registration_without_pid(jit: jit, why: concat("the unit's main pid is ungrounded: ", c as String))

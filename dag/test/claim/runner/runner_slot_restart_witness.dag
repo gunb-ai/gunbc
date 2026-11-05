@@ -6,10 +6,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd { UnitLoadError, Failed }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
-import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess, NoMainProcess, MainProcessUnread }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess, NoMainProcess, MainProcessUnread, StartObserved, StartUnread, ProcessAbsoluteStart }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationReading, SlotReadingTyped, SlotReadingUnknownWord, slot_actuation_reading_typed,
   SlotRestartPlan, RestartSteps, RestartRefused, slot_restart_plan, slot_restart_read_back_holds,
+  proc_absolute_start_of,
 }
 
 // Every claim is a function of a supplied reading and supplied main-process observations; nothing reads
@@ -27,7 +28,7 @@ fn reading(load: String, file: String, active: String) -> SlotActuationReading {
 }
 
 fn with_pid(pid: Nat, boot: String) -> RunnerUnitMainProcess {
-  MainProcess { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: "12345" as NonEmptyStr } }
+  MainProcess { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: "12345" as NonEmptyStr }, absolute_start: StartObserved { started_at_seconds: 1793701321 } }
 }
 
 // ── The restart plan is narrower than activation on load, broader on active ────────────────────────
@@ -91,6 +92,41 @@ test fn an_unchanged_main_pid_does_not_read_back_as_restarted() -> Bool {
 test fn a_missing_or_unread_main_after_does_not_read_back_as_restarted() -> Bool {
   !slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: with_pid(pid: 333, boot: "b1"), after_main: NoMainProcess)
     && !slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: NoMainProcess, after_main: MainProcessUnread { cause: "show refused" as NonEmptyStr })
+}
+
+// ── The boundary absolute start: boot epoch + start ticks / READ clock rate, never a zero ─────────
+
+// POSITIVE CONTROL: btime 1793700000 with 100 ticks at 100 Hz is a start of 1793700001 — the wall clock
+// the recycled-pid comparison needs, assembled from reads rather than assumed.
+test fn the_absolute_start_is_btime_plus_ticks_over_the_read_tick_rate() -> Bool {
+  match proc_absolute_start_of(proc_stat: present_string(value: "cpu 0 0 0\nbtime 1793700000\nintr 1\n"), clock_ticks_text: present_string(value: "100\n"), start_ticks: present_int(value: 100)) {
+    StartObserved { started_at_seconds: s } => s == 1793700001
+    StartUnread { cause: _ } => false
+  }
+}
+
+// DISCRIMINATING REDS: an absent /proc/stat, an unparseable / absent clock rate, a non-positive rate, or
+// an absent start time are all StartUnread -- never a zero that would poison the comparison in either
+// direction.
+test fn an_unread_component_of_the_absolute_start_is_never_a_zero() -> Bool {
+  (is_start_unread(v: proc_absolute_start_of(proc_stat: absent_string(), clock_ticks_text: present_string(value: "100"), start_ticks: present_int(value: 100))))
+    && (is_start_unread(v: proc_absolute_start_of(proc_stat: present_string(value: "cpu 0 0 0\nintr 1\n"), clock_ticks_text: present_string(value: "100"), start_ticks: present_int(value: 100))))
+    && (is_start_unread(v: proc_absolute_start_of(proc_stat: present_string(value: "btime 1793700000"), clock_ticks_text: absent_string(), start_ticks: present_int(value: 100))))
+    && (is_start_unread(v: proc_absolute_start_of(proc_stat: present_string(value: "btime 1793700000"), clock_ticks_text: present_string(value: "nope"), start_ticks: present_int(value: 100))))
+    && (is_start_unread(v: proc_absolute_start_of(proc_stat: present_string(value: "btime 1793700000"), clock_ticks_text: present_string(value: "0"), start_ticks: present_int(value: 100))))
+    && (is_start_unread(v: proc_absolute_start_of(proc_stat: present_string(value: "btime 1793700000"), clock_ticks_text: present_string(value: "100"), start_ticks: absent_int())))
+}
+
+fn present_string(value: String) -> String? { Present { value: value } }
+fn absent_string() -> String? { Absent }
+fn present_int(value: Int) -> Int? { Present { value: value } }
+fn absent_int() -> Int? { Absent }
+
+fn is_start_unread(v: ProcessAbsoluteStart) -> Bool {
+  match v {
+    StartUnread { cause: _ } => true
+    StartObserved { started_at_seconds: _ } => false
+  }
 }
 
 // DISCRIMINATING RED (not active after): an inactive unit is not a restart that took, whatever the pid.

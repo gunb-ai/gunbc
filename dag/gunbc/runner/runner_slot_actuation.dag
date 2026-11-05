@@ -1,12 +1,14 @@
 module gunbc.runner.runner_slot_actuation
 
-import std.types { String, List, Bool, Int, Nat, NonEmptyStr }
+import std.types { String, List, Bool, Int, Nat, NonEmptyStr, EpochSecs }
 import std.optional { Absent, Present }
 import std.algebra { trim }
-import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable }
-import extdeps.exec.command { argv_words }
+import extdeps.linux.proc_stat { proc_stat_boot_time, BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch }
+import extdeps.posix.getconf { clock_ticks_reading, ClockTicksObserved, ClockTicksUnparseable, ClockTicksNotPositive, getconf_clock_ticks_command }
+import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.gnu_coreutils { cat_command }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.systemd {
@@ -273,7 +275,7 @@ fn slot_restart_plan(r: SlotActuationReading) -> SlotRestartPlan {
 // none carries none. Used only to prove the restart changed the process.
 fn slot_main_process_pid(m: RunnerUnitMainProcess) -> Nat? {
   match m {
-    MainProcess { process: p } => Present { value: p.pid }
+    MainProcess { process: p, absolute_start: _ } => Present { value: p.pid }
     MainProcessUngrounded { pid: p, cause: _ } => Present { value: p }
     NoMainProcess => Absent
     MainProcessUnread { cause: _ } => Absent
@@ -823,7 +825,7 @@ fn slot_proc_text_over(target: SshTarget, context: FleetSshExecutionContext, pat
 }
 
 // THE PARSE, PURE: the raw MainPID answer plus the two grounding texts, to the one RunnerUnitMainProcess.
-fn slot_main_process_of(raw: String, boot: String?, stat: String?) -> RunnerUnitMainProcess {
+fn slot_main_process_of(raw: String, boot: String?, stat: String?, abs: ProcessAbsoluteStart) -> RunnerUnitMainProcess {
   if starts_with(s: raw, prefix: "unread:") {
     MainProcessUnread { cause: raw as NonEmptyStr }
   } else {
@@ -847,7 +849,7 @@ fn slot_main_process_of(raw: String, boot: String?, stat: String?) -> RunnerUnit
                           if trim(s: b) == "" {
                             MainProcessUngrounded { pid: pid, cause: "the boot id read was empty" as NonEmptyStr }
                           } else {
-                            MainProcess { process: ProcessIdentity { boot_id: trim(s: b) as NonEmptyStr, pid: pid, start_time: to_string(ticks) as NonEmptyStr } }
+                            MainProcess { process: ProcessIdentity { boot_id: trim(s: b) as NonEmptyStr, pid: pid, start_time: to_string(ticks) as NonEmptyStr }, absolute_start: abs }
                           }
                         StartTimeCommUnterminated => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat has no terminated comm field" as NonEmptyStr }
                         StartTimeFieldAbsent { fields_after_comm: _ } => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat has no start time field" as NonEmptyStr }
@@ -867,15 +869,71 @@ fn slot_main_process_over(target: SshTarget, context: FleetSshExecutionContext, 
   match parse_int(s: raw) {
     Present { value: n } =>
       if n > 0 {
+        let pid_stat = slot_proc_text_over(target: target, context: context, path: concat("/proc/", concat(raw, "/stat")))
         slot_main_process_of(
           raw: raw,
           boot: slot_proc_text_over(target: target, context: context, path: "/proc/sys/kernel/random/boot_id"),
-          stat: slot_proc_text_over(target: target, context: context, path: concat("/proc/", concat(raw, "/stat"))),
+          stat: pid_stat,
+          abs: proc_absolute_start_of(
+            proc_stat: slot_proc_text_over(target: target, context: context, path: "/proc/stat"),
+            clock_ticks_text: slot_command_text_over(target: target, context: context, command: getconf_clock_ticks_command()),
+            start_ticks: match pid_stat {
+              Absent => none
+              Present { value: t } => match proc_pid_stat_start_time(content: t) {
+                StartTimeObserved { ticks_since_boot: ticks } => Present { value: ticks }
+                StartTimeCommUnterminated => none
+                StartTimeFieldAbsent { fields_after_comm: _ } => none
+                StartTimeUnparseable { field: _ } => none
+              }
+            },
+          ),
         )
       } else {
-        slot_main_process_of(raw: raw, boot: none, stat: none)
+        slot_main_process_of(raw: raw, boot: none, stat: none, abs: StartUnread { cause: "no main process" as NonEmptyStr })
       }
-    Absent => slot_main_process_of(raw: raw, boot: none, stat: none)
+    Absent => slot_main_process_of(raw: raw, boot: none, stat: none, abs: StartUnread { cause: "MainPID unread" as NonEmptyStr })
+  }
+}
+
+// A SECOND COMMAND READ IN THE SAME PROBE, next to the cat reads, so the absolute start comes from one
+// pass over the host and not a second, differently-timed one. The clock tick rate is READ here (getconf
+// CLK_TCK) and never assumed to be 100 — assuming it silently shifts every start comparison by the
+// ratio between the real rate and the guess.
+fn slot_command_text_over(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> String?
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)) {
+    TypedArgvExecRefused { reason: _ } => none
+    TypedArgvExecConverged { result: r } => if r.success { Present { value: r.stdout } } else { none }
+  }
+}
+
+// THE ABSOLUTE START, PURE AND BOUNDARY-FED: boot epoch (btime) plus the process's start ticks divided
+// by the read tick rate. Any of the three inputs missing or unparseable is StartUnread, never a zero: a
+// zero start would make a fresh pid look ancient to the recycled-pid check, or an ancient one look fresh,
+// depending on which side of the bound it landed on.
+fn proc_absolute_start_of(proc_stat: String?, clock_ticks_text: String?, start_ticks: Int?) -> ProcessAbsoluteStart {
+  match proc_stat {
+    Absent => StartUnread { cause: "/proc/stat was not read, so the boot time is unknown" as NonEmptyStr }
+    Present { value: ps } =>
+      match proc_stat_boot_time(content: ps) {
+        BootTimeLineAbsent => StartUnread { cause: "/proc/stat has no btime line" as NonEmptyStr }
+        BootTimeUnparseable { field: f } => StartUnread { cause: concat("/proc/stat btime is not an integer: ", f) as NonEmptyStr }
+        BootTimeBeforeEpoch { field: f } => StartUnread { cause: concat("/proc/stat btime precedes the epoch: ", f) as NonEmptyStr }
+        BootTimeObserved { epoch_seconds: btime } =>
+          match clock_ticks_text {
+            Absent => StartUnread { cause: "the clock tick rate was not read; it is never assumed to be 100" as NonEmptyStr }
+            Present { value: ct } =>
+              match clock_ticks_reading(stdout: ct) {
+                ClockTicksUnparseable { field: f } => StartUnread { cause: concat("the clock tick rate is not an integer: ", f) as NonEmptyStr }
+                ClockTicksNotPositive { value: v } => StartUnread { cause: concat("the clock tick rate is not positive: ", to_string(v)) as NonEmptyStr }
+                ClockTicksObserved { per_second: hz } =>
+                  match start_ticks {
+                    Absent => StartUnread { cause: "the process start time was not read" as NonEmptyStr }
+                    Present { value: ticks } => StartObserved { started_at_seconds: (btime as Int) + (ticks / hz) }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -901,14 +959,14 @@ fn slot_main_process_wire(m: RunnerUnitMainProcess) -> String {
     MainProcessUnread { cause: c } => concat("main=unread(", concat(c as String, ")"))
     NoMainProcess => "main=none"
     MainProcessUngrounded { pid: p, cause: c } => join(["main=ungrounded(pid=", to_string(p), ": ", c as String, ")"], "")
-    MainProcess { process: p } => join(["main=pid ", to_string(p.pid), " boot=", p.boot_id as String, " start=", p.start_time as String], "")
+    MainProcess { process: p, absolute_start: _ } => join(["main=pid ", to_string(p.pid), " boot=", p.boot_id as String, " start=", p.start_time as String], "")
   }
 }
 
 fn slot_local_observation_settled(o: SlotLocalObservation) -> Bool {
   match o {
     SlotLocalObserved { unit: _, reading: _, worker: w, main: m } =>
-      (match m { MainProcessUnread { cause: _ } => false NoMainProcess => true MainProcessUngrounded { pid: _, cause: _ } => true MainProcess { process: _ } => true })
+      (match m { MainProcessUnread { cause: _ } => false NoMainProcess => true MainProcessUngrounded { pid: _, cause: _ } => true MainProcess { process: _, absolute_start: _ } => true })
         && match w { SlotActivityUnobserved { cause: _ } => false SlotHasLiveWorker => true SlotIdle => true }
     SlotLocalUnobserved { unit: _, step: _, reason: _ } => false
   }

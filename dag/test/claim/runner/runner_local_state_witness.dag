@@ -47,6 +47,7 @@ import gunbc.runner.runner_local_state {
   NoMainProcess,
   MainProcessUngrounded,
   MainProcess,
+  StartObserved,
   RunnerListenerPopulation,
   ListenerPopulationUnobserved,
   NoListener,
@@ -130,7 +131,7 @@ fn loaded_unit(slot: RunnerSlotIdentity, state: SystemdUnitActiveState) -> Runne
     enabled: true,
     active_state: state,
     control_group: "/system.slice/system-actions.slice/x.service" as NonEmptyStr,
-    main_process: MainProcess { process: pid_at(pid: 4001) },
+    main_process: MainProcess { process: pid_at(pid: 4001), absolute_start: StartObserved { started_at_seconds: 1793701321 } },
   }
 }
 
@@ -589,7 +590,7 @@ test fn witness_compared_pids_are_carried_at_identity_grain() -> Bool {
   let main_ok = match unit {
     UnitLoaded { unit: _, enabled: _, active_state: _, control_group: _, main_process: mp } =>
       match mp {
-        MainProcess { process: p } => (p.boot_id as String) != "" && p.pid == 4001
+        MainProcess { process: p, absolute_start: _ } => (p.boot_id as String) != "" && p.pid == 4001
         MainProcessUngrounded { pid: _, cause: _ } => false
         NoMainProcess => false
         MainProcessUnread { cause: _ } => false
@@ -610,7 +611,7 @@ test fn witness_ungrounded_main_pid_is_its_own_state() -> Bool {
   }
   match ungrounded {
     MainProcessUngrounded { pid: n, cause: _ } => n == 51
-    MainProcess { process: _ } => false
+    MainProcess { process: _, absolute_start: _ } => false
     NoMainProcess => false
     MainProcessUnread { cause: _ } => false
   }
