@@ -3,8 +3,14 @@ module gunbc.runner.runner_slot_actuation
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.algebra { trim }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
+import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils { cat_command }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.systemd {
-  IdProperty, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
+  IdProperty, MainPID, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
   SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
   SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state,
 }
@@ -681,5 +687,144 @@ fn slot_current_registration_over_unit(target: SshTarget, context: FleetSshExecu
         SlotRegistrationUnreadable { instance: i, cause: c } =>
           UnitRegistrationUnreadable { unit: unit, cause: join(["the host holds no readable current registration for ", i as String, ": ", c], "") }
       }
+  }
+}
+
+// ── ObserveRunnerLocalState: a read, never an actuation ─────────────────────────────────────────
+
+// THE SLOT'S LOCAL STANDING AS ONE READ-ONLY OBSERVATION over the same administrator edge as the two
+// actuations. It issues only `systemctl show`, `ps` and `cat` of /proc, so it mutates nothing; it is settled when
+// the unit reading AND the worker reading both came back and the main process is not unread, and any refused leg
+// is a located NotConverged naming the leg, never a default. The main process is gunbc.runner.runner_local_state
+// RunnerUnitMainProcess, parsed ONCE from the `systemctl show` answer: `0` is NoMainProcess ("supervises no
+// process", never a pid), a pid is grounded by the boot id and the /proc start time into a ProcessIdentity or
+// stays MainProcessUngrounded, and a leg that did not answer is MainProcessUnread. The unread/ungrounded reading
+// feeds slot_incarnation_registration directly.
+type SlotLocalObservation
+  = SlotLocalObserved { unit: NonEmptyStr, reading: SlotActuationReading, worker: SlotActivityObservation, main: RunnerUnitMainProcess }
+  | SlotLocalUnobserved { unit: NonEmptyStr, step: String, reason: String }
+
+fn slot_main_pid_raw_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [IdProperty, MainPID])) {
+    TypedArgvExecRefused { reason: why } => concat("unread:", why)
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        join(["unread:systemctl show exit=", to_string(r.exit_code)], "")
+      } else {
+        match fold(split(s: r.stdout, delimiter: "\n"), init: none, f: (acc, l) =>
+          if starts_with(s: l, prefix: "MainPID=") { Present { value: trim(s: substring(s: l, start: 8, end: string_length(s: l))) } } else { acc }) {
+          Absent => "unread:no MainPID line"
+          Present { value: v } => v
+        }
+      }
+  }
+}
+
+// ONE READ OF A /proc TEXT over the edge; a refused or failed read is Absent (unread), never an empty text.
+fn slot_proc_text_over(target: SshTarget, context: FleetSshExecutionContext, path: String) -> String?
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: cat_command(path: path))) {
+    TypedArgvExecRefused { reason: _ } => none
+    TypedArgvExecConverged { result: r } => if r.success { Present { value: r.stdout } } else { none }
+  }
+}
+
+// THE PARSE, PURE: the raw MainPID answer plus the two grounding texts, to the one RunnerUnitMainProcess.
+fn slot_main_process_of(raw: String, boot: String?, stat: String?) -> RunnerUnitMainProcess {
+  if starts_with(s: raw, prefix: "unread:") {
+    MainProcessUnread { cause: raw as NonEmptyStr }
+  } else {
+    match parse_int(s: raw) {
+      Absent => MainProcessUnread { cause: concat("MainPID answered something that is not an integer: ", raw) as NonEmptyStr }
+      Present { value: n } =>
+        if n == 0 {
+          NoMainProcess
+        } else {
+          match checked_int_to_nat(n: n) {
+            Absent => MainProcessUnread { cause: concat("MainPID is not a pid: ", raw) as NonEmptyStr }
+            Present { value: pid } =>
+              match boot {
+                Absent => MainProcessUngrounded { pid: pid, cause: "the boot id was not read, so the pid is not an identity" as NonEmptyStr }
+                Present { value: b } =>
+                  match stat {
+                    Absent => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat was not read, so the start time is unknown" as NonEmptyStr }
+                    Present { value: t } =>
+                      match proc_pid_stat_start_time(content: t) {
+                        StartTimeObserved { ticks_since_boot: ticks } =>
+                          if trim(s: b) == "" {
+                            MainProcessUngrounded { pid: pid, cause: "the boot id read was empty" as NonEmptyStr }
+                          } else {
+                            MainProcess { process: ProcessIdentity { boot_id: trim(s: b) as NonEmptyStr, pid: pid, start_time: to_string(ticks) as NonEmptyStr } }
+                          }
+                        StartTimeCommUnterminated => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat has no terminated comm field" as NonEmptyStr }
+                        StartTimeFieldAbsent { fields_after_comm: _ } => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat has no start time field" as NonEmptyStr }
+                        StartTimeUnparseable { field: _ } => MainProcessUngrounded { pid: pid, cause: "/proc/PID/stat start time is not an integer" as NonEmptyStr }
+                      }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn slot_main_process_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> RunnerUnitMainProcess
+{
+  let raw = slot_main_pid_raw_over(target: target, context: context, unit: unit)
+  match parse_int(s: raw) {
+    Present { value: n } =>
+      if n > 0 {
+        slot_main_process_of(
+          raw: raw,
+          boot: slot_proc_text_over(target: target, context: context, path: "/proc/sys/kernel/random/boot_id"),
+          stat: slot_proc_text_over(target: target, context: context, path: concat("/proc/", concat(raw, "/stat"))),
+        )
+      } else {
+        slot_main_process_of(raw: raw, boot: none, stat: none)
+      }
+    Absent => slot_main_process_of(raw: raw, boot: none, stat: none)
+  }
+}
+
+fn observe_runner_slot_local_state_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotLocalObservation
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotLocalUnobserved { unit: unit, step: "unit-read", reason: why }
+    SlotRead { reading: rd } =>
+      SlotLocalObserved { unit: unit, reading: rd, worker: read_slot_worker_over(target: target, context: context, unit: unit), main: slot_main_process_over(target: target, context: context, unit: unit) }
+  }
+}
+
+fn slot_activity_wire(a: SlotActivityObservation) -> String {
+  match a {
+    SlotHasLiveWorker => "worker=live"
+    SlotIdle => "worker=idle"
+    SlotActivityUnobserved { cause: c } => join(["worker=unobserved(", c as String, ")"], "")
+  }
+}
+
+fn slot_main_process_wire(m: RunnerUnitMainProcess) -> String {
+  match m {
+    MainProcessUnread { cause: c } => concat("main=unread(", concat(c as String, ")"))
+    NoMainProcess => "main=none"
+    MainProcessUngrounded { pid: p, cause: c } => join(["main=ungrounded(pid=", to_string(p), ": ", c as String, ")"], "")
+    MainProcess { process: p } => join(["main=pid ", to_string(p.pid), " boot=", p.boot_id as String, " start=", p.start_time as String], "")
+  }
+}
+
+fn slot_local_observation_settled(o: SlotLocalObservation) -> Bool {
+  match o {
+    SlotLocalObserved { unit: _, reading: _, worker: w, main: m } =>
+      (match m { MainProcessUnread { cause: _ } => false NoMainProcess => true MainProcessUngrounded { pid: _, cause: _ } => true MainProcess { process: _ } => true })
+        && match w { SlotActivityUnobserved { cause: _ } => false SlotHasLiveWorker => true SlotIdle => true }
+    SlotLocalUnobserved { unit: _, step: _, reason: _ } => false
+  }
+}
+
+fn slot_local_observation_wire(o: SlotLocalObservation) -> String {
+  match o {
+    SlotLocalObserved { unit: u, reading: _, worker: w, main: m } => join(["observe ", u as String, " ", slot_main_process_wire(m: m), " ", slot_activity_wire(a: w)], "")
+    SlotLocalUnobserved { unit: u, step: st, reason: r } => join(["observe ", u as String, " UNOBSERVED step=", st, " ", r], "")
   }
 }

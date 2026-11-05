@@ -8,7 +8,6 @@ import std.optional { Optional, Present, Absent, optional_present, optional_abse
 import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
 import std.measure { Millisecond }
-import gunbc.native_census_verb { NativeCensusVerbWord }
 import gunbc.native_serve_probe_plan { NativeServeProbe }
 
 // A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
@@ -51,7 +50,6 @@ type TargetProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
-  | NativeCensusVerbProducer { verb: NativeCensusVerbWord }
   | SelfHostFrontierProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
@@ -88,7 +86,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     RequiredLaneResolutionCensusProducer {} => optional_absent()
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
-    NativeCensusVerbProducer { verb: _ } => optional_absent()
     SelfHostFrontierProducer {} => optional_absent()
     GenericIdentityCensusProducer {} => optional_absent()
     InterpolationHoleCensusProducer {} => optional_absent()
