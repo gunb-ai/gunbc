@@ -219,14 +219,6 @@ data conformance_domains: List<ConformanceDomain> = [
             ],
           },
         },
-        ConformanceHomeGroup {
-          label: "Coverage evidence",
-          purpose: "classifies the privileged-effect sites that exist today",
-          homes: FreeSemigroup {
-            head: decl_ref(module_path: "gunbc.auth.privileged_effect_census", decl_name: "privileged_effect_census"),
-            tail: [],
-          },
-        },
       ],
     },
   },

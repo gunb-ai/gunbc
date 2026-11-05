@@ -28,6 +28,13 @@ type DesignRuling {
   provenance: String
 }
 
+data printer_start_hold_lifted_2026_11_04: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_hold_lifted_2026_11_04"),
+  decided: "2026-11-04",
+  section: "6",
+  provenance: "Operator, relayed by wise-tern-646 to witty-tern-466 on 2026-11-04: the 2026-10-21 standing hold on printer starts (do not touch /var/lib/gunbc/printer-starts) is LIFTED. It is released through the modeled route, the fleet-converge printer mode's hold-release-request operation (gunbc.fleet.printer_execution_hold printer_hold_release_request), which files the operator card and releases nothing by hand. The same day's two PETG prints were started out of band (a hand-run prepare_request_plate and a hand-written MQTT publish after a pasted token); that path is not the modeled route and is superseded by print_converge, whose start now takes its AMS tray from gunbc.fleet.printer_ams_loading select_ams_tray.",
+}
+
 data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
   decided: "2026-10-28",
@@ -617,6 +624,13 @@ data belt_concurrency_is_a_per_instance_fact: DesignRuling = DesignRuling {
 }
 
 
+data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_may_arbitrarily_retire_any_work_item"),
+  decided: "2026-11-04",
+  section: "6",
+  provenance: "Operator, relayed by silent-bee-845 on the daily-workspace close/advance slice: \"I should be allowed to arbitrarily retire any work item\". The operator RETIRE route (gunbc.roadmap.roadmap_serve, POST /issue/\{node\}/retire) ends any work item in any state and is recorded honestly as retired by <principal>, never as accepted; its only refusals are unknown node, already terminal, unauthenticated, and stale revision — never a lineage-state precondition; the lab-only lineage-retire route's \"only a ContinuationEnded lineage\" admission dies with that route (deleted per the same-day dispatch ruling, START FRESH superseding it) and is not carried to main. A closed or retired NODE is terminal — and terminality is never a separate operator-facing lineage state: the operator ruling of the same day (dispatch collapses to CONTINUE and START FRESH, retire-LINEAGE deleted, START FRESH superseding it) keeps the standing node-level, while the belt computes terminality internally from the node's own standing and durable acceptance (gunbc.roadmap.roadmap_belt_obligation and gunbc.roadmap.roadmap_belt_actuate read that one rule: no further verify/review/re-delivery spawns, fail closed on unreadable). Dispatch verbs CONTINUE and START FRESH refuse on a retired node with that reason; retired does not satisfy dependents, and a child held by a retired parent surfaces the reason visibly as 'blocked by retired <id>' (derived from the blocker's standing, no new label type) — the same use-found defect class as a_write_control_renders_disabled_with_no_visible_reason.",
+}
+
 // THE SRV1 LAB'S WORKER (SESSION) MEMORY CEILING IS A PER-INSTANCE POLICY FIGURE, NOT THE CI RUNNER SLOT.
 // The figure itself is the data srv1_lab_dispatch_worker_memory_max in gunbc.roadmap.roadmap_dashboard_instance;
 // this row is its dated authority (DESIGN §3: the authority is the ruling, not comment arithmetic).
@@ -627,10 +641,10 @@ data worker_session_memory_is_a_per_instance_policy_figure: DesignRuling = Desig
   provenance: "Operator direction 2026-11-04 (msg_07adf77e): 'workers should NOT get a build-sized allocation. Builds and tests go to remote/compute; a worker gets a much smaller memory allocation, if any.' Then the operator's figure decision 2026-11-04 ~14:35Z (msg_8f1f9b78, relayed through session loyal-deer-449): 8 GiB for the srv1 lab's dispatch_worker_memory_max -- 'lets try it and fix it if it breaks something', keep N=6, and fail loudly: a worker killed at 8 GiB must surface as an OOM in its attempt, not a silent retry. THE DEFECT: dispatch_worker_memory_max was, for EVERY instance, dispatch_worker_memory_ceiling = gunbc_runner_slot_desired().memory_max (22 GiB) -- the CI runner slot reused as the agent-session lease AND as the worker unit's MemoryMax (host_capacity 'the unit's ceiling is the reserved amount'; roadmap_dispatch_actuator sets -p MemoryMax=byte_size_count(dispatch_worker_memory_max)). That sizes an agent session for a build it does not run: the capacity model already partitions builds/tests into the ComputeBuildPool sibling and runs compute work as its own units (work_class_grant/work_provider_local), so the 22 GiB reservation is the wrong quantity. THE FIX: dispatch_worker_memory_max is now a per-instance field (it already was on HostDashboardInstance) that an instance may override; srv1_lab_dashboard_instance overrides it to srv1_lab_dispatch_worker_memory_max = 8 GiB, a stated POLICY figure, while every other row keeps dispatch_worker_memory_ceiling (the runner slot). The session pool's appropriation keeps its form: dispatch_worker_memory_max x slots (host_capacity_pool_appropriation), so it follows the per-instance ceiling automatically. THE FIGURE IS POLICY, NOT A MEASUREMENT, AND IS ANCHORED HERE RATHER THAN IN COMMENT ARITHMETIC: sized from the harness worker's MEASURED resting footprint (~6.7 GiB memory.current, srv1 2026-11-04) plus headroom for the agent's own non-build working set. The observed 15,771 MiB peak is NOT the basis -- it came from the agent running compile_entry_cli / gunbc.compute.test_run INSIDE its own cgroup; that peak leaves with the compute-routing change (step 1, quiet-dove-609, 'in-harness compute tool'), which is a PRECONDITION for this row landing: shrinking to 8 GiB before builds/tests leave the worker cgroup would OOM a worker mid-build. No agent-session cgroup PEAK under 8 GiB is claimed (srv1 was HOST_CLOSED for most of this work; none is fabricated). DISSOLVE-ON: if a lab worker is OOM-killed at this ceiling, the operator raises the figure or moves the workload out -- the ceiling is a policy that 'fixes what breaks', not a permanent bound. FAIL LOUDLY (the operator's condition): the worker's own cgroup OOM must surface, not be silently retried at a bigger number. Traced and witnessed: an OOM kill delivers SIGKILL -> the exit spool records an AttemptProcessSignaled carrying the signal -> roadmap_dispatch_actuator.attempt_unit_from_exit_record maps it to an AttemptUnitFinished whose exit_status is the signal number (the record retains the signaled distinction, so the attempt is recorded killed-by-signal and kept for inspection). This is DISTINCT from the COMPUTE-grant OOM path (work_provider_local), which retries an OOM-killed grant AT THE CEILING with a loud release reason -- the intended grow-the-grant behavior for routed builds/tests, not the worker's own session. The worker/session ceiling decoupling is step 2; it lands after step 1 and after the belt-concurrency row gunbc.design_ruling.belt_concurrency_is_a_per_instance_fact.",
 }
 
-
 fn design_rulings() -> List<DesignRuling> {
   [
     belt_concurrency_is_a_per_instance_fact,
+    operator_may_arbitrarily_retire_any_work_item,
     worker_session_memory_is_a_per_instance_policy_figure,
     bad_process_is_worse_than_no_process,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
@@ -703,6 +717,7 @@ fn design_rulings() -> List<DesignRuling> {
     one_serving_context_cap,
     installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
+    printer_start_hold_lifted_2026_11_04,
   ]
 }
 

@@ -100,7 +100,7 @@ import gunbc.durable_exclusive_hold_file_store {
   hold_observation_of_cas,
 }
 import gunbc.process_hold_identity {
-  process_hold_text, process_hold_marker, process_hold_decode, ProcessHoldHolder,
+  process_hold_text, process_hold_owner_read, ProcessHoldOwnerRead, ProcessHoldOwnerNamesNoProcess, ProcessHoldOwnerProcessUndecodable, ProcessHoldHolder,
   self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
 }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
@@ -1239,9 +1239,10 @@ type LocalStoreHoldAcquisition
   | LocalStoreHoldRefused { refusal: LocalStoreHoldRefusal }
 
 fn local_store_hold_owner_process(owner: DurableHoldOwnerRef) -> ProcessHoldHolder? {
-  let halves: List<String> = (owner as String).split(delimiter: process_hold_marker)
-  if count(halves) != 2 || (match first(halves) { Present { value: v } => v Absent => "" }) != local_store_hold_owner_prefix { none } else {
-    process_hold_decode(text: concat("boot=", match first(skip(halves, 1)) { Present { value: v } => v Absent => "" }))
+  match process_hold_owner_read(owner: owner as String) {
+    ProcessHoldOwnerRead { head: h, holder: p } => if (h as String) == local_store_hold_owner_prefix { Present { value: p } } else { none }
+    ProcessHoldOwnerNamesNoProcess => none
+    ProcessHoldOwnerProcessUndecodable => none
   }
 }
 

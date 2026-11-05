@@ -36,7 +36,6 @@ import gunbc.instrument_targets {
   self_host_source_roots,
   v2_native_cli_source_roots
 }
-import gunbc.native_census_verb { native_census_verb_word }
 import gunbc.target_binding { TargetBinding, TargetProducer }
 import std.types { List, NonEmptyStr, String }
 
@@ -108,21 +107,12 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     BehavioralReceiptPlanProducer => "TargetProducer::BehavioralReceiptPlan"
     BehavioralReceiptCensusProducer => "TargetProducer::BehavioralReceiptCensus"
     BehavioralReceiptSelftestProducer => "TargetProducer::BehavioralReceiptSelftest"
-    CompileCleanDiagnosticCensusProducer => "TargetProducer::CompileCleanDiagnosticCensus"
     EvaluationStoreAddressExactHeadProducer => "TargetProducer::EvaluationStoreAddressExactHead"
     TypedGraphExclusiveBytesProducer => "TargetProducer::TypedGraphExclusiveBytes"
     TypedGraphExclusiveBytesFloorSubjectProducer => "TargetProducer::TypedGraphExclusiveBytesFloorSubject"
-    PrimitiveEgressCensusProducer => "TargetProducer::PrimitiveEgressCensus"
-    PrimitiveEgressCensusV2Producer => "TargetProducer::PrimitiveEgressCensusV2"
-    PrimitiveEgressCensusDagProducer => "TargetProducer::PrimitiveEgressCensusDag"
-    PrimitiveEgressCensusSeedProducer => "TargetProducer::PrimitiveEgressCensusSeed"
     RequiredLaneResolutionCensusProducer => "TargetProducer::RequiredLaneResolutionCensus"
     BareReferenceChannelOutcomeProducer => "TargetProducer::BareReferenceChannelOutcome"
     SelfHostBehavioralEquivalenceProducer => "TargetProducer::SelfHostBehavioralEquivalence"
-    NativeCensusVerbProducer { verb } => concat(
-      "TargetProducer::NativeCensusVerb \{\n                verb: ",
-      concat(rust_string_literal(value: native_census_verb_word(v: verb)), ",\n            }"),
-    )
     SelfHostFrontierProducer => "TargetProducer::SelfHostFrontier"
     GenericIdentityCensusProducer => "TargetProducer::GenericIdentityCensus"
     InterpolationHoleCensusProducer => "TargetProducer::InterpolationHoleCensus"
