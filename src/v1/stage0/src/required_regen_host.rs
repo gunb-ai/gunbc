@@ -3851,14 +3851,14 @@ impl SupervisedSubjectModel {
                 format!("refusal: gunbc.host.memory_stall_refusal {name} did not answer: {e}")
             })
         };
-        let ms = |name: &str| match ask(name)? {
-            Value::Int(i) if i > 0 => Ok(i as u64),
+        let ms = |name: &str| match &ask(name)? {
+            Value::Int(i) if *i > 0 => Ok(*i as u64),
             other => Err(format!(
                 "refusal: {name} answered {} where a positive Int is owed",
                 other.type_label_public()
             )),
         };
-        let receipt_dir = match ask("supervised_slot_receipt_dir")? {
+        let receipt_dir = match &ask("supervised_slot_receipt_dir")? {
             Value::Str(s) if !s.is_empty() => PathBuf::from(s.as_ref().to_string()),
             other => {
                 return Err(format!(
