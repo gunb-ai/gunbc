@@ -88,6 +88,7 @@ import product.p4261.findings { ImageReadingsJudged }
 import product.p4261.k1_a { p4261_k1_layout }
 
 import product.electrical.identification {
+  marking_text,
   InstalledComponent,
   MarkingReading,
 }
@@ -307,7 +308,9 @@ fn boxes(designator: NonEmptyStr, want: PixelRegion) -> Bool {
 fn prints(designator: NonEmptyStr, want: String) -> Bool {
   match e1_marking_at(designator) {
     Absent => false
-    Present { value: reading } => reading.text == want
+    // A reading renders what was read; there is no optional text field to compare any more, and the
+    // reporting function is the only thing that turns content into words.
+    Present { value: reading } => marking_text(r: reading) == (want as String)
   }
 }
 

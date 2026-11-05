@@ -142,6 +142,7 @@ import product.electrical.continuity {
   junction_between,
 }
 import product.electrical.identification {
+  marking_text,
   seen_unordered,
   identification_established,
   FootprintUnpopulated,
@@ -155,6 +156,8 @@ import product.electrical.identification {
   pin_terminal_name,
   regulator_pins,
   shared_withstand,
+  GlyphSpan,
+  Transcribed,
 }
 import product.p4261.carrier {
   PcbCode,
@@ -614,7 +617,7 @@ test fn the_fsv_row_names_the_maker_the_sheet_prints() -> Bool {
 // control is about the bound machinery, not about claiming a board fact the bench has not read.
 test fn a_rectifier_below_the_tvs_limit_bounds_the_input() -> Bool {
   let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied 50 V rectifier")
-  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: low_fsv_row(), marking: MarkingReading { text: "supplied", evidence: supplied_said() } } }
+  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: low_fsv_row(), marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "supplied", sighting: Absent }, rest: [] }, evidence: supplied_said() } } }
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
   let with_low = concat(p4261_e1_layout.components, [low_part])
@@ -632,7 +635,7 @@ test fn a_rectifier_below_the_tvs_limit_bounds_the_input() -> Bool {
 // rectifier arm reaches input_bound (50 V wins) and is ordered correctly against the TVS (100 V loses).
 test fn the_real_rectifier_rating_does_not_displace_the_tvs_limit() -> Bool {
   let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied FSV20100V across the input")
-  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: onsemi_schottky_fsv20100v, marking: MarkingReading { text: "FSV20100V / JC03 / ON logo", evidence: supplied_said() } } }
+  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: onsemi_schottky_fsv20100v, marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "FSV20100V / JC03 / ON logo", sighting: Absent }, rest: [] }, evidence: supplied_said() } } }
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
   let with_low = concat(p4261_e1_layout.components, [low_part])
@@ -910,7 +913,7 @@ fn low_can_row() -> ElectronicComponentRow {
 test fn only_a_rating_across_the_input_bounds_it() -> Bool {
   let f300 = placement_of(layout: p4261_e1_layout, c: e1_f300)
   let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied 16 V can")
-  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: low_can_row(), marking: MarkingReading { text: "supplied", evidence: supplied_said() } } }
+  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: low_can_row(), marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "supplied", sighting: Absent }, rest: [] }, evidence: supplied_said() } } }
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
   let with_low = concat(p4261_e1_layout.components, [low_part])
@@ -1997,7 +2000,7 @@ test fn a_marking_candidate_is_not_an_identification() -> Bool {
   let live = count(parts) == 2
     && all(parts, c => match identified_row(c: c) { Absent => true, Present { value: _ } => false })
     && all(parts, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("CANDIDATE Diodes Incorporated BSS138-7-F from the marking 'K38'") })
-  let as_identified = map(parts, c => InstalledComponent { seen: c.seen, component: c.component, terminals: c.terminals, identification: IdentifiedByMarking { row: bss138, marking: MarkingReading { text: "K38", evidence: e1_k38_photo } } })
+  let as_identified = map(parts, c => InstalledComponent { seen: c.seen, component: c.component, terminals: c.terminals, identification: IdentifiedByMarking { row: bss138, marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "K38", sighting: Absent }, rest: [] }, evidence: e1_k38_photo } } })
   let credited = all(as_identified, c => match mosfet_of(c: c) { Absent => false, Present { value: _ } => true })
   live && credited
 }
@@ -2030,7 +2033,7 @@ fn reads_at_54(t: ElectricalTerminalRef, millivolts: Nat) -> Bool {
 fn marking_text_contains(c: InstalledComponent, text: NonEmptyStr) -> Bool {
   match c.identification {
     MarkingUnresolved { marking, discriminator: _ } => match marking {
-      Present { value: m } => (m.text as String).contains(text as String)
+      Present { value: m } => (marking_text(r: m)).contains(text)
       Absent => false
     }
     _ => false
@@ -2527,7 +2530,7 @@ test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
     && !one_node(net: live, a: e1_u500_contact(n: "right contact 2"), b: e1_ground_ref)
     && any(rs, o => reads_pair(o: o, a: e1_u500_contact(n: "right contact 2"), b: e1_ground_ref) && is_reported_zero(o: o))
     && all(component_of(layout: p4261_e1_layout, c: e1_u500), c => count(c.terminals) == 8 && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
-    && all(component_of(layout: p4261_e1_layout, c: e1_u43), c => count(c.terminals) == 5 && match identified_row(c: c) { Present { value: _ } => false, Absent => true } && match c.identification { MarkingCandidate { row: _, marking, discriminator: _ } => (marking.text as String).contains("WEJ"), _ => false })
+    && all(component_of(layout: p4261_e1_layout, c: e1_u43), c => count(c.terminals) == 5 && match identified_row(c: c) { Present { value: _ } => false, Absent => true } && match c.identification { MarkingCandidate { row: _, marking, discriminator: _ } => (marking_text(r: marking)).contains("WEJ"), _ => false })
     && gate_pin_text(layout: p4261_e1_layout, c: e1_u43, number: 4).contains("under the candidate pinout, U43 pin 4 (Y) is its output, the AND of its inputs")
     && gate_pin_text(layout: p4261_e1_layout, c: e1_u43, number: 1).contains("U43 pin 1 (A) is an input the gate reads")
     && gate_pin_text(layout: p4261_e1_layout, c: e1_u43, number: 3).contains("U43 pin 3 (GND) is its supply or return")

@@ -34,6 +34,7 @@ import v2.std.text { string_eq }
 import std.optional { Absent, Present }
 import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label }
 import product.electrical.identification {
+  marking_text,
   BodySeenMarkingUnread,
   ComponentIdentification,
   FootprintUnpopulated,
@@ -47,6 +48,8 @@ import product.electrical.identification {
   ResistanceCodeRead,
   ObservedPresence,
   observed_presence,
+  GlyphSpan,
+  Transcribed,
 }
 import extdeps.nvidia.p4261.population {
   PopulatedPart,
@@ -210,12 +213,11 @@ test fn a_candidate_never_became_an_identification() -> Bool {
 // attaches to Y1 from this pass. (A crystal's maker, package and orderable are still owed.)
 test fn a_printed_frequency_is_not_an_identification() -> Bool {
   any(component_rows("Y1"), c => match c.identification {
-    // MarkingReading.text is optional: a reading can record evidence without a legible text. Absent text
-    // prints nothing, so it cannot be the reading that carries "27.000".
-    MarkingUnresolved { marking: m, discriminator: _ } => match m.text {
-      Present { value: t } => (t as String).contains("27.000")
-      Absent => false
-    }
+    // Rev 6: a reading that yielded nothing renders as "no glyphs read ...", which cannot contain the
+    // figure, so the reporting function answers this without a branch on an optional text that no longer
+    // exists. The figure has to have been TRANSCRIBED to appear here at all.
+    MarkingUnresolved { marking: m, discriminator: _ } =>
+      (marking_text(r: m)).contains("27.000")
     _ => false
   })
     && !identified_as("Y1", "anything")
@@ -694,7 +696,7 @@ fn claim_obligation(d: NonEmptyStr) -> NonEmptyStr? {
 
 fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
   count(component_rows(d), c => match c.identification {
-    IdentifiedByMarking { marking: MarkingReading { text: t, evidence: OperatorPhotograph { citation } } } =>
+    IdentifiedByMarking { marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: t, sighting: Absent }, rest: [] }, evidence: OperatorPhotograph { citation } } } =>
       (t as String).contains("PI3CH")
         && match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
              Checkable { } => true
