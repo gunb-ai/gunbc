@@ -801,7 +801,17 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
 // question -- every Bind site reads a named slot through bind_slot_target, or numbers ordinals through
 // bind_positional_slot_in_arity -- and a check with no consumer is a second API for a question nobody asks.
 fn positional_arity_admitted(n: Node) -> Bool {
-  let arity = count(positional_child_target_nodes(node: n))
+  positional_arity_admitted_in(children: n.children)
+}
+
+// THE SAME QUESTION OVER A CHILDREN LIST: the one place the admitted arity set {2, 3} is written. The slot
+// tables ask it through positional_arity_admitted and the shape-conformance fold asks it directly, so there
+// is one answer. Both count POSITIONAL edges only (positional_child_count is the count behind
+// positional_child_target_nodes); a Branch's conformance already requires every edge positional, so there
+// the count equals count(children) and nothing differs, while a Bind may also carry named marker edges that
+// are rightly not counted.
+fn positional_arity_admitted_in(children: List<Edge>) -> Bool {
+  let arity = positional_child_count(children: children)
   (arity == 2) || (arity == 3)
 }
 
@@ -2152,11 +2162,11 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Transform =>
       edges_conform(children: children, d: PositionalPrefixThenLabeledEdges)
         && (positional_child_count(children: children) >= 1)
-    Branch => edges_conform(children: children, d: PositionalEdges) && ((count(children) == 2) || (count(children) == 3))
+    Branch => edges_conform(children: children, d: PositionalEdges) && positional_arity_admitted_in(children: children)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
       edges_conform(children: children, d: PositionalPlusNamedMarkerEdges)
-        && ((positional_child_count(children: children) == 2) || (positional_child_count(children: children) == 3))
+        && positional_arity_admitted_in(children: children)
     // Scrutinee only is well-formed (Never eliminator). Exhaustiveness is infer, not shape.
     Match =>
       edges_conform(children: children, d: PositionalEdges)
