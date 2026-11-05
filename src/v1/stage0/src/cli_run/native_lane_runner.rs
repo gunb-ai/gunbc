@@ -4006,6 +4006,11 @@ pub struct NativeServeProgramRun {
     /// The account the host's own effective uid resolves to, when the subject was served on a unix
     /// socket: the peer the kernel must attest for every connection the host made. Empty otherwise.
     pub unix_peer_account: String,
+    /// The live-socket launch: its status and stderr, and whether the host's own listener at that
+    /// path still received a connection by path afterwards (None/empty/false when not run).
+    pub unix_live_status: Option<i32>,
+    pub unix_live_stderr: String,
+    pub unix_live_still_named: bool,
     pub stderr: String,
 }
 
@@ -4027,6 +4032,10 @@ pub struct NativeServePhases {
 pub struct NativeServeLaunches {
     pub subject: Vec<String>,
     pub unix_socket_path: Option<String>,
+    /// Under the unix-socket phase, a second socket path the HOST listens on and the argv that
+    /// launches the subject's binary on it: the launch must refuse rather than displace a live
+    /// listener.
+    pub unix_live: Option<(String, Vec<String>)>,
     pub refused: Vec<Vec<String>>,
     pub deadline: Vec<Vec<String>>,
 }
@@ -4173,6 +4182,28 @@ pub fn run_native_serve_program(
             refused_stderrs.push(stderr);
         }
     }
+    // THE LIVE-SOCKET LAUNCH: the host listens at a path and launches the binary on it; the launch
+    // must refuse, and the host's listener must still be the one a connection by that path reaches.
+    let (unix_live_status, unix_live_stderr, unix_live_still_named) = match &launches.unix_live {
+        None => (None, String::new(), false),
+        Some((path, argv)) => {
+            let held = std::os::unix::net::UnixListener::bind(path).map_err(|cause| {
+                format!("NATIVE-SERVE REFUSAL cause=LiveListenerUnbound entry={entry} path={path} — {cause}")
+            })?;
+            let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+            let still_named = std::os::unix::net::UnixStream::connect(path).is_ok()
+                && held.set_nonblocking(true).is_ok()
+                && held.accept().is_ok();
+            (status, stderr, still_named)
+        }
+    };
+    // THE STALE SOCKET: under the unix-socket phase the subject's path already holds a socket no
+    // process listens on, which the subject must show stale and replace before it can announce.
+    if let Some(path) = &launches.unix_socket_path {
+        drop(std::os::unix::net::UnixListener::bind(path).map_err(|cause| {
+            format!("NATIVE-SERVE REFUSAL cause=StaleSocketUncreated entry={entry} path={path} — {cause}")
+        })?);
+    }
     // The PEER is a second instance of the same entry: the local server the entry's bound REST
     // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
     // one fact only it can publish, so the reader module is asked for the requests only after it.
@@ -4305,6 +4336,9 @@ pub fn run_native_serve_program(
         deadline_responses,
         deadline_exit_statuses,
         unix_peer_account,
+        unix_live_status,
+        unix_live_stderr,
+        unix_live_still_named,
         stderr: format!("{stderr}{peer_stderr}{deadline_stderr}"),
     })
 }

@@ -200,6 +200,21 @@ fn bind_unix(path: &str, mode: u32) -> Result<IngressListener, String> {
                 "unix socket {path} exists and is not a socket; refusing to replace it"
             ));
         }
+        // Stale only when SHOWN stale: a refused connection means no process listens there. A live
+        // listener is never displaced, and a socket whose staleness cannot be shown is refused.
+        match std::os::unix::net::UnixStream::connect(path) {
+            Ok(_) => {
+                return Err(format!(
+                    "unix socket {path} has a live listener; refusing to displace it"
+                ))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {}
+            Err(e) => {
+                return Err(format!(
+                    "unix socket {path} could not be shown stale ({e}); refusing to replace it"
+                ))
+            }
+        }
         std::fs::remove_file(path)
             .map_err(|e| format!("could not remove the stale socket {path}: {e}"))?;
     }
@@ -957,6 +972,30 @@ mod tests {
         std::fs::write(&path, b"data").unwrap();
         assert!(bind_unix(&path, 0o666).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"data");
+    }
+
+    // A socket a process still listens on is live, not stale: a second bind refuses and the first
+    // listener keeps its name, so a connection by path still reaches it (side-chat review 5785782995).
+    #[test]
+    fn a_live_unix_listener_is_never_displaced() {
+        let path = temp_socket_path("live");
+        let live = bind_unix(&path, 0o666).expect("first bind");
+        let refused = bind_unix(&path, 0o666);
+        assert!(
+            matches!(&refused, Err(reason) if reason.contains("has a live listener")),
+            "a live listener is refused, not displaced"
+        );
+        let IngressListener::Unix(held, _) = &live else {
+            panic!("bind_unix returns a unix listener")
+        };
+        let _client = std::os::unix::net::UnixStream::connect(&path)
+            .expect("the path still names a listener");
+        assert!(
+            held.accept().is_ok(),
+            "the connection reached the original listener"
+        );
+        drop(live);
+        std::fs::remove_file(&path).unwrap();
     }
 
     // A TCP listener attests nothing: its peer is empty, and gunbc.http_ingress

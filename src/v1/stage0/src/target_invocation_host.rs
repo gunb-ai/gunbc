@@ -1690,6 +1690,16 @@ struct NativeServeBindingRead {
     declared: Vec<String>,
 }
 
+/// The unix-socket phase's directory, removed when the run ends by any path, including an early
+/// refusal between its creation and the run.
+struct NativeServeSocketDir(std::path::PathBuf);
+
+impl Drop for NativeServeSocketDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, String> {
     const BINDINGS: &str = "dag/gunbc/instrument_targets.dag";
     let roots = cli_run::default_source_roots();
@@ -1939,34 +1949,42 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
                 ),
             };
         }
-        Some(dir)
+        Some(NativeServeSocketDir(dir))
     } else {
         None
     };
     let unix_socket_path = unix_socket_dir
         .as_ref()
-        .map(|dir| dir.join("serve.sock").display().to_string());
+        .map(|dir| dir.0.join("serve.sock").display().to_string());
     // Every launch's argv is the reader's (gunbc.native_serve_probe_plan native_serve_probe_launch); a
     // phase the row does not declare owes no function.
+    let unix_launch = |path: &str| -> Result<Vec<String>, String> {
+        let value = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_serve_probe_unix_launch_argv",
+            &[(
+                Some("socket_path".to_string()),
+                crate::v1_interpreter::str_value(path),
+            )],
+            true,
+        )
+        .map_err(|cause| {
+            format!("{label_name}: {READER} native_serve_probe_unix_launch_argv failed: {cause}")
+        })?;
+        words(&value).ok_or_else(|| "the unix launch argv is not a List of String".to_string())
+    };
+    let unix_live_path = unix_socket_dir
+        .as_ref()
+        .map(|dir| dir.0.join("live.sock").display().to_string());
     let plan = (|| -> Result<cli_run::NativeServeLaunches, String> {
         let subject = match &unix_socket_path {
-            Some(path) => {
-                let value = crate::v1_interpreter::run_in_context_with_args(
-                    &ctx,
-                    "native_serve_probe_unix_launch_argv",
-                    &[(
-                        Some("socket_path".to_string()),
-                        crate::v1_interpreter::str_value(path),
-                    )],
-                    true,
-                )
-                .map_err(|cause| {
-                    format!("{label_name}: {READER} native_serve_probe_unix_launch_argv failed: {cause}")
-                })?;
-                words(&value).ok_or("the unix launch argv is not a List of String")?
-            }
+            Some(path) => unix_launch(path)?,
             None => words(&read("native_serve_probe_launch_argv")?)
                 .ok_or("the launch argv is not a List of String")?,
+        };
+        let unix_live = match &unix_live_path {
+            Some(path) => Some((path.clone(), unix_launch(path)?)),
+            None => None,
         };
         let refused = if binding.phases.refused_launch {
             argvs(&read("native_serve_probe_refused_launches")?)
@@ -1983,6 +2001,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         Ok(cli_run::NativeServeLaunches {
             subject,
             unix_socket_path: unix_socket_path.clone(),
+            unix_live,
             refused,
             deadline,
         })
@@ -2004,9 +2023,6 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         &requests_for_peer_port,
         &deadline_requests_for_silent_port,
     );
-    if let Some(dir) = &unix_socket_dir {
-        let _ = std::fs::remove_dir_all(dir);
-    }
     let run = match run {
         Ok(run) => run,
         Err(cause) => {
@@ -2078,6 +2094,18 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         (
             Some("unix_peer_account".to_string()),
             crate::v1_interpreter::Value::Str(run.unix_peer_account.clone().into()),
+        ),
+        (
+            Some("unix_live_status".to_string()),
+            crate::v1_interpreter::Value::Int(i64::from(run.unix_live_status.unwrap_or(-1))),
+        ),
+        (
+            Some("unix_live_stderr".to_string()),
+            crate::v1_interpreter::Value::Str(run.unix_live_stderr.clone().into()),
+        ),
+        (
+            Some("unix_live_still_named".to_string()),
+            crate::v1_interpreter::Value::Bool(run.unix_live_still_named),
         ),
     ];
     let standing = match crate::v1_interpreter::run_in_context_with_args(

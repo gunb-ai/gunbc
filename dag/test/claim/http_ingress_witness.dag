@@ -331,3 +331,32 @@ test fn the_native_start_refuses_an_unattested_peer_an_unknown_fact_and_a_shape_
     && w_native_start(listener: "tcp:127.0.0.1:0", cpu: 10, wall: 10, program_handler: "serve_seam_probe", declared: [w_headers(name: "path")])
     == "REFUSED: handler parameter `path` is declared as the request's header list, but the request fact it names is text"
 }
+
+// A CONSTRUCTOR MAY BUILD ITS BINDING ITSELF rather than through http_ingress_binding (side-chat review 5785782995), so
+// the start judges the listener it was handed, never one the helper already sanitized: these bindings are built
+// directly, with a port and a socket mode no socket can carry, and each refuses before any bind instead of being
+// narrowed into another listener.
+fn w_direct_start(listener: HttpIngressListener) -> String {
+  match w_bound(listener: "tcp:127.0.0.1:0") {
+    Absent => "<no binding>"
+    Present { value: b } =>
+      match http_ingress_native_contract(
+        admission: HttpIngressBound { binding: HttpIngressBinding {
+          handler: b.handler, listener: listener, release_revision: b.release_revision, head_limit: b.head_limit,
+          body_limit: b.body_limit, read_timeout: b.read_timeout, cpu_limit: b.cpu_limit, wall_limit: b.wall_limit,
+        } },
+        program: w_program(handler: "serve_seam_probe"), declared: [w_text(name: "path")]) {
+        HttpIngressNativeListen { contract: _, listener: l, binding: _, facts: _ } => concat("LISTEN ", http_ingress_listener_text(listener: l))
+        HttpIngressNativeRefused { reason: r } => concat("REFUSED: ", r)
+      }
+  }
+}
+
+test fn a_directly_built_listener_no_socket_can_carry_refuses_before_binding() -> Bool {
+  w_direct_start(listener: HttpIngressTcp { host: "127.0.0.1", port: 65536 }) == "REFUSED: listener port out of range: 65536"
+    && w_direct_start(listener: HttpIngressTcp { host: "127.0.0.1", port: -1 }) == "REFUSED: listener port out of range: -1"
+    && w_direct_start(listener: HttpIngressUnixSocket { path: "/run/x.sock" as NonEmptyStr, mode: -1 }) == "REFUSED: listener socket mode out of range: -1"
+    && w_direct_start(listener: HttpIngressUnixSocket { path: "/run/x.sock" as NonEmptyStr, mode: 4096 }) == "REFUSED: listener socket mode out of range: 4096"
+    && w_direct_start(listener: HttpIngressTcp { host: "127.0.0.1", port: 65535 }) == "LISTEN tcp:127.0.0.1:65535"
+    && w_direct_start(listener: HttpIngressUnixSocket { path: "/run/x.sock" as NonEmptyStr, mode: 4095 }) == "LISTEN unix:/run/x.sock"
+}
