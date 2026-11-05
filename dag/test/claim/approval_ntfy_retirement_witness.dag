@@ -7,9 +7,10 @@ module test.claim.approval_ntfy_retirement_witness
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.scoped_authorization { first_uncovered_scope, AuthorizationScope }
-import std.effect_grant { Write }
+import std.effect_grant { Write, Execute, filesystem_position }
 import std.optional { Absent, Present }
 import std.list { first_where }
+import std.filesystem_path_grant { absolute_path_segments }
 import gunbc.fleet.approval_ntfy_retirement {
   ntfy_retire_members, member_text, ntfy_retire_legs, ntfy_retire_receipt_text,
   ntfy_retire_receipt_is_clean, ntfy_retire_verdict_text,
@@ -30,11 +31,13 @@ import gunbc.fleet.approval_ntfy_retirement {
   NtfyRetireLeg, NoSubjectAbsentAnswer, SubjectAbsentExit,
 }
 import extdeps.ssh.session { SshSessionExecResult }
-import extdeps.shadow.account_deletion { userdel_user_not_found_exit, groupdel_group_not_found_exit }
+import extdeps.shadow.account_deletion {
+  userdel_user_not_found_exit, groupdel_group_not_found_exit, userdel_binary_path, groupdel_binary_path,
+}
 import extdeps.posix.getent { getent_key_not_found_exit }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, approval_ntfy_retire_root_scopes, srv1_root_removal_action,
-  srv1_root_removal_scope_at,
+  srv1_root_removal_scope_at,, srv1_root_account_remove_action, srv1_root_group_remove_action
 }
 
 // ── The approval the run asks for ──────────────────────────────────────────────────────────────
@@ -633,3 +636,32 @@ test fn the_group_is_a_roster_member_removed_after_the_account() -> Bool {
     }
 }
 
+// THE OPERATOR IS ASKED FOR THE REMOVALS SEPARATELY, AND FOR THE PROGRAMS THE LEGS ACTUALLY RUN. The
+// account and the group are two privileges with two tools and two action words: an approval that said
+// "remove the account" must never be readable as consent to remove the group it leaves behind (gid 984
+// still exists on srv1 with the account gone, which is exactly why the group is its own member). Each
+// side is checked against the extdeps row that owns the program path -- the same row the leg's argv is
+// built from -- so a scope pointing at some other binary, or an action word quietly shared between the
+// two, goes red here. The paths arrive as segments because an AuthorizationScope names a filesystem
+// POSITION, which is what an approver on a phone is agreeing to.
+test fn the_account_and_group_removals_are_approved_apart_and_on_their_own_programs() -> Bool {
+  let account = srv1_root_account_remove_action
+  let group = srv1_root_group_remove_action
+  let programs_are_apart = account != group
+    && any(approval_ntfy_retire_root_scopes, s => match s {
+      AuthorizationScope { verb: Execute, resource: r, action: a } =>
+        a == account
+          && r == filesystem_position(path: absolute_path_segments(path: userdel_binary_path as String))
+      _ => false
+    })
+    && any(approval_ntfy_retire_root_scopes, s => match s {
+      AuthorizationScope { verb: Execute, resource: r, action: a } =>
+        a == group
+          && r == filesystem_position(path: absolute_path_segments(path: groupdel_binary_path as String))
+      _ => false
+    })
+  // And neither removal is folded into a broader directory grant: the two Execute scopes are in the
+  // retirement's own list, not merely inherited from the job's wider write scopes.
+  let in_the_retirement_list = count(approval_ntfy_retire_root_scopes) == 10
+  programs_are_apart && in_the_retirement_list
+}

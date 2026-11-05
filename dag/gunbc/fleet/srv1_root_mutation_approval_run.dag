@@ -10,6 +10,7 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import std.effect_grant { Write, Execute, filesystem_position }
 import std.filesystem_path_grant { absolute_path_position }
 import std.filesystem { path_parent_directory }
+import extdeps.shadow.account_deletion { userdel_binary_path, groupdel_binary_path }
 import extdeps.sudo.visudo { visudo_binary_path }
 import extdeps.systemd.unit_file { systemd_system_unit_directory }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
@@ -217,8 +218,19 @@ data srv1_root_service_disable_scope: AuthorizationScope = AuthorizationScope {
   verb: Execute, resource: filesystem_position(path: ["usr", "bin", "systemctl"]), action: srv1_root_service_disable_action,
 }
 
+// THE PROGRAM THE OPERATOR APPROVES IS THE PROGRAM THE LEG EXECUTES, BY CONSTRUCTION. Both account and
+// group removal read the program path from the module that owns the tool and builds its argv
+// (gunbc.extdeps.shadow.account_deletion userdel_binary_path / groupdel_binary_path), so an approval
+// cannot name /usr/sbin/groupdel while the leg runs some other groupdel. Review 91318 (APPROVE) pointed
+// at this duplication; DESIGN 5 -- "stronger than catching a wrong state is making it unwritable" --
+// settles it in favour of one spelling rather than a claim that compares two. The two scopes next to
+// these keep their literals for a reason worth stating: extdeps.systemd.unit_file and
+// gunbc.extdeps.tailscale.serve state a systemctl UNIT DIRECTORY and a bare invocation ("tailscale",
+// resolved through PATH by ProgramIdentity), neither of which is an absolute filesystem position, so
+// naming a position is this module's own fact. If those modules ever declare the absolute program paths
+// they imply, these two scopes should read them the same way.
 data srv1_root_account_removal_scope: AuthorizationScope = AuthorizationScope {
-  verb: Execute, resource: filesystem_position(path: ["usr", "sbin", "userdel"]), action: srv1_root_account_remove_action,
+  verb: Execute, resource: absolute_path_position(path: userdel_binary_path as String), action: srv1_root_account_remove_action,
 }
 
 data srv1_root_serve_route_removal_scope: AuthorizationScope = AuthorizationScope {
@@ -226,7 +238,7 @@ data srv1_root_serve_route_removal_scope: AuthorizationScope = AuthorizationScop
 }
 
 data srv1_root_group_removal_scope: AuthorizationScope = AuthorizationScope {
-  verb: Execute, resource: filesystem_position(path: ["usr", "sbin", "groupdel"]), action: srv1_root_group_remove_action,
+  verb: Execute, resource: absolute_path_position(path: groupdel_binary_path as String), action: srv1_root_group_remove_action,
 }
 
 // THE SCOPES THE ntfy RETIREMENT EXERCISES, read off the legs it runs
