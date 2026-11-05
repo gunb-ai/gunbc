@@ -1,7 +1,7 @@
 module test.claim.busybox_bmc_build
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.algebra { length }
 import extdeps.exec.command { shell_command_render }
 import gunbc.busybox_bmc_build { bmc_busybox_build_plan, busybox_build_commands }
 
@@ -16,5 +16,5 @@ test fn busybox_build_is_modeled_and_grounded() -> Bool {
     && string_contains(s: all, pattern: "'-fsL'")
     && string_contains(s: all, pattern: "'--strip-components=1'")
     && string_contains(s: all, pattern: "'mkdir' '-p'")
-    && list_length(items: cmds) == 8
+    && length(xs: cmds) == 8
 }

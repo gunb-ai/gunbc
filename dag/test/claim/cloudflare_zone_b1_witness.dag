@@ -53,6 +53,7 @@ import gunbc.cloudflare.zone {
   gunb_ai_delegated_nameservers, boot_origin_bind_readback, ReadbackNotTaken, ReadbackOf, boot_origin_nxdomain_answers,
   boot_origin_zone_admissibility, boot_origin_zone_hold_observation, copied_record_of_type,
 }
+import std.algebra { length }
 
 // THE PRODUCT'S OWN CALL SITE is claimed too (review 87180: a rule only tests call is not a rule the
 // product uses). Today there is no zone identity to put in front of the rule, so the module's answer is
@@ -317,7 +318,7 @@ test fn the_filter_excludes_exactly_the_registrar_rows() -> Bool {
 // a type that admits a proxy. If a proxied answer were ever allowed to stand in for the record list, this
 // is the count that would silently empty, which is exactly the failure this witness exists to make loud.
 test fn outstanding_set_is_the_proxied_nine() -> Bool {
-  list_length(items: unverified_copied_records()) == 9
+  length(xs: unverified_copied_records()) == 9
     && fold(
          unverified_copied_records(),
          init: true,
@@ -331,7 +332,7 @@ test fn outstanding_set_is_the_proxied_nine() -> Bool {
 test fn copy_stands_pending_with_its_nine_outstanding() -> Bool {
   match zone_record_copy_standing() {
     CopyPendingRecordList { outstanding, unproxied_contents_agree: agree } =>
-      list_length(items: outstanding) == 9 && agree
+      length(xs: outstanding) == 9 && agree
     _ => false
   }
 }
@@ -342,13 +343,13 @@ test fn copy_stands_pending_with_its_nine_outstanding() -> Bool {
 test fn zone_is_live_but_identity_unobserved() -> Bool {
   match fleet_gunb_ai_zone_standing() {
     ZoneLiveButIdentityUnobserved { nameservers, soa } =>
-      list_length(items: nameservers) == 2 && string_contains(s: soa, pattern: "alexandra.ns.cloudflare.com")
+      length(xs: nameservers) == 2 && string_contains(s: soa, pattern: "alexandra.ns.cloudflare.com")
     _ => false
   }
 }
 
 test fn delegated_nameservers_match_the_parent_reading() -> Bool {
-  list_length(items: gunb_ai_delegated_nameservers) == 2
+  length(xs: gunb_ai_delegated_nameservers) == 2
     && fold(
          gunb_ai_delegated_nameservers,
          init: 0,
@@ -438,7 +439,7 @@ test fn an_unread_bucket_account_refuses_for_its_own_reason() -> Bool {
 // (c) a gap that reports nothing is UNREPRESENTABLE (missing is std.algebra FreeSemigroup), so the
 //     runtime length check and its comment are deleted; what remains is the countable one.
 fn gap_reports(gap: BootOriginBindEffectGap) -> Int {
-  list_length(items: boot_origin_bind_gap_names(gap: gap))
+  length(xs: boot_origin_bind_gap_names(gap: gap))
 }
 
 test fn each_gap_constructor_lands_on_its_own_arm() -> Bool {

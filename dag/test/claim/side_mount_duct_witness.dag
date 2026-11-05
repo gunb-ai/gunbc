@@ -88,3 +88,19 @@ test fn an_unread_card_refuses_both_faces() -> Bool {
 test fn the_card_gap_holds_the_lug_arm_and_screw_head() -> Bool {
   micrometer_count(m: side_mount_card_gap) as Int - lug_arm_protrusion(wall: a16_duct_design.wall) >= 1000
 }
+
+// THE ONLY DECLARED PRINTED-VS-PURCHASED OVERLAP IS THE SCREW: the blower interface lists SCREW as intended to
+// interpenetrate the duct and nothing else (not FAN, not CARD), so the CAD check's purchased-overlap refusal
+// still fires on the housing against the socket wall. Exercises the manifest data the adapter reads.
+test fn only_the_lug_screw_is_declared_to_overlap_the_printed_duct() -> Bool {
+  all([BackFaceSide, FrontFaceSide], s => match printed_assembly_root_from_wire(s: a16_side_root(side: s)) {
+    Present { value: r } => match select_printable_assembly(root: r) {
+      PrintableAssemblyReady { assembly: a } => {
+        let declared = flat_map(a.interfaces, i => i.intended_overlap)
+        length(list: declared) == 1 && any(declared, d => d == "SCREW")
+      }
+      PrintableAssemblyRefused { reason: _ } => false
+    }
+    Absent => false
+  })
+}

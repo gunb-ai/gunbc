@@ -3,7 +3,8 @@ module extdeps.firmware.types
 import extdeps.board_authority { BoardAuthorityRef }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
-import std.types { Bool, Int, EpochMs, NonEmptyStr, String, List, list_length }
+import std.types { Bool, Int, EpochMs, NonEmptyStr, String, List }
+import std.algebra { length }
 import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -346,7 +347,7 @@ fn prerequisite_evidence_verdict(
 fn prerequisite_evidence_uncontradicted(
   observations: List<FirmwarePrerequisiteObservation>,
 ) -> PrerequisiteEvidenceVerdict {
-  match list_length(observations) {
+  match length(observations) {
     0 => PrerequisiteEvidenceAbsent
     _ =>
       PrerequisiteConsistentUpperBound {
