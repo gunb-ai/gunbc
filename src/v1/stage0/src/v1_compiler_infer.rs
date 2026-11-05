@@ -1649,14 +1649,7 @@ pub fn unlisted_variant_use_diagnostics(
 }
 
 pub fn declared_field_is_required(sf: Rc<Node>) -> bool {
-    {
-        let sf_type = match sf.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
-            _ => crate::v1_std_core::field_node_type_expr(sf.clone()),
-        };
-        ((sf_type.return_cardinality.clone() != Cardinality::CardOptional)
-            && (sf.body.clone() == std::option::Option::None))
-    }
+    (sf.body.clone() == std::option::Option::None)
 }
 
 pub fn bare_variant_reference_missing_field_diagnostics(
