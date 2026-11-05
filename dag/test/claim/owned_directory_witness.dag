@@ -267,11 +267,13 @@ test fn the_provider_installs_nothing_over_a_foreign_owner_at_act_time() -> Bool
 // will feed when the apply legs thread it, the node's next rung), and every observe() call of the
 // provider (act re-read, after-readback) returns the same post-plan reading.
 
+// The baseline is 755, not the declared 700: a baseline equal to the declaration decides Noop, and the
+// act-time handover is consulted only under Apply, so the claim would never reach the check it names.
 test fn the_provider_refuses_a_handover_before_the_install_runs() -> Bool {
   match owned_directory_ensure(
     policy: EnsureMayApply,
     target: target(),
-    plan_reading: Present { value: observed(line: "directory|svc|svc|700") },
+    plan_reading: Present { value: observed(line: "directory|svc|svc|755") },
     observe: p => observed(line: "directory|root|root|700"),
     run: plan => false,
   ) {

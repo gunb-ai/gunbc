@@ -7,10 +7,8 @@ import extdeps.printing.fdm {
   BuildEnvelope, EnvelopeFit, PartFits, PartExceedsEnvelope, envelope_fit, part_extent,
 }
 import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
-import extdeps.standards.micro_atx {
-  MountingLocation, MountingLocationId, LocC, LocF,
-  micro_atx_mounting_locations, micro_atx_standard_hole_diameter,
-}
+import extdeps.standards.motherboard_mounting_location { MountingLocation, MountingLocationId, LocC, LocF }
+import extdeps.standards.micro_atx { micro_atx_mounting_locations, micro_atx_standard_hole_diameter }
 import product.printed_chassis.coupon {
   PlateDimensions, plate_dimensions, CouponOperation, OpThroughHole,
   micrometer_to_millimeter_ceiling,
