@@ -11,7 +11,7 @@ import std.effect_grant { Write }
 import std.optional { Absent, Present }
 import std.list { first_where }
 import gunbc.fleet.approval_ntfy_retirement {
-  ntfy_retire_members, ntfy_retire_legs, ntfy_retire_receipt_text,
+  ntfy_retire_members, member_text, ntfy_retire_legs, ntfy_retire_receipt_text,
   ntfy_retire_receipt_is_clean, ntfy_retire_verdict_text,
   RetireMemberAbsent, RetireMemberPresent, RetireMemberUnreadable, NtfyRetireVerdict,
   NtfyRetireRead, ReadPresent, ReadAbsent, ReadUnreadable,
@@ -24,7 +24,7 @@ import gunbc.fleet.approval_ntfy_retirement {
   ntfy_retire_removals, ntfy_retire_removals_are_stated, ntfy_retire_removal_target_is_stated,
   ntfy_retire_removal_argv, ntfy_retire_roster_paths,
   ntfy_retire_leg_answers_subject_absent, ntfy_retire_subject_absent_reason,
-  ntfy_retire_leg_decision, LegDecisionRun, LegDecisionSkip, ntfy_retire_any_member_unreadable,
+  ntfy_retire_leg_decision, LegDecisionRun, LegDecisionSkip, ntfy_retire_unreadable_members,
   NtfyRetireMember, MemberUnit, MemberFrontDoor, MemberAccount,
   MemberConfigDir, MemberStateRoot, MemberBinary,
   NtfyRetireLeg, NoSubjectAbsentAnswer, SubjectAbsentExit,
@@ -184,7 +184,7 @@ data verdict_all_absent: List<NtfyRetireVerdict> = [
 test fn the_clean_receipt_reads_every_roster_member_absent_once() -> Bool {
   ntfy_retire_receipt_is_clean(vs: verdict_all_absent)
     && count(ntfy_retire_members) == 6
-    && all(ntfy_retire_members, m => string_contains(s: ntfy_retire_receipt_text(vs: verdict_all_absent), pattern: m as String))
+    && all(ntfy_retire_members, m => string_contains(s: ntfy_retire_receipt_text(vs: verdict_all_absent), pattern: member_text(member: m)))
 }
 
 // RED: A MEMBER FOUND PRESENT. The receipt is the condition the step passes on, so a present member
@@ -489,7 +489,18 @@ test fn red_an_unreadable_member_refuses_before_the_first_leg() -> Bool {
     )],
   )
   let all_read = map(ntfy_retire_members, m => witness_member_absent(member: m))
-  ntfy_retire_any_member_unreadable(vs: with_gap) && !ntfy_retire_any_member_unreadable(vs: all_read)
+  count(ntfy_retire_unreadable_members(vs: with_gap)) == 1
+    && count(ntfy_retire_unreadable_members(vs: all_read)) == 0
+    && match first_where(xs: ntfy_retire_unreadable_members(vs: with_gap), keep: v => true) {
+      // WHICH member it refuses on survives the answer; a Bool could not have said this, and the
+      // operator reads exactly that sentence when the run stops.
+      Absent => false
+      Present { value: v } => match v {
+        RetireMemberUnreadable { member: m, evidence: _ } => (m == MemberBinary)
+        RetireMemberAbsent { member: _, evidence: _ } => false
+        RetireMemberPresent { member: _, evidence: _ } => false
+      }
+    }
 }
 
 // EVERY LEG REMOVES A MEMBER THE ROSTER KNOWS. The skip rule matches a leg to a verdict by member name;
