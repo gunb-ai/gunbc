@@ -169,6 +169,25 @@ type SeedToolchainLane {
   pin_default: Step,
 }
 
+// THE ONE ENVIRONMENT VARIABLE rustup-init reads to skip its sudo probe, named in one place so the lane
+// and any later author of a toolchain install step spell it identically. The variable is read by
+// rustup-init itself: it is present in both archives the action can fetch (producer: strings over
+// static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init and the same path at
+// 1.29.3, which also carry the "euid-obtained home directory" warning string the probe prints).
+fn rustup_init_skip_sudo_check_var_name() -> String {
+  "RUSTUP_INIT_SKIP_SUDO_CHECK"
+}
+
+// THE INSTALL STEP IS OURS, which is why this can be said here at all. On a slot with no rustup on PATH
+// the action's fetch branch runs rustup-init, which probes for sudo and prints a warning line that reads
+// like a failure in a step log while the install itself succeeds -- observed as success on every
+// setup-rust step of heal run 41941387689 on srv4-14. Skipping the probe silences that noise and changes
+// nothing the lane depends on: it selects no toolchain, alters no exit status, and the default is
+// resolved afterwards by pin_default, not by the probe.
+fn rustup_init_skip_sudo_check_env() -> List<YamlKeyValue> {
+  [kv(key: rustup_init_skip_sudo_check_var_name(), value: yaml_string(s: "yes"))]
+}
+
 fn seed_toolchain_lane(step_name: NonEmptyStr) -> SeedToolchainLane {
   SeedToolchainLane {
     isolation: toolchain_home_isolation_step(),
@@ -177,7 +196,7 @@ fn seed_toolchain_lane(step_name: NonEmptyStr) -> SeedToolchainLane {
       id: none,
       uses: setup_rust_action,
       with: Present { value: [kv(key: "cache", value: yaml_bool(b: false))] },
-      env: none,
+      env: Present { value: rustup_init_skip_sudo_check_env() },
       if_condition: none,
       continue_on_error: none,
       timeout_minutes: none
