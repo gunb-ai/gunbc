@@ -4034,7 +4034,7 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
                     if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
                       equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
                     } else {
-                      equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: authored_name_at(source_indices: source_indices, node: peeled), at_operand_root: false) == none
+                      false
                     }
                 }
               }
@@ -4058,7 +4058,7 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
 // declarations inserted. Nothing is merged table into table; a lookup reads the one table by the target's declaration identity,
 // which names the declaring file.
 fn equality_table_with_module(table: Map<String, Bool>, typed: TypedModule, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
-  fold(typed.items |> filter(item => equality_declaration_is_walked(item: item)), init: table, f: (acc, d) =>
+  fold(typed.items |> filter(item => equality_declaration_is_walked(item: item) || equality_declaration_is_marker(item: item, source_indices: source_indices)), init: table, f: (acc, d) =>
     match map_get(typed.type_env.equality_by_target, node_declaration_identity(n: d, source_indices: source_indices)) {
       Present { value: by_target } => map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), by_target)
       Absent => map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), false)
@@ -4069,12 +4069,27 @@ fn equality_declaration_is_walked(item: Node) -> Bool {
   (item.connective == Conj || item.connective == Disj) && item.transport == none
 }
 
+// A MARKER DECLARATION IS ADMITTED BY A POSITIVE FACT READ FROM THE DECLARATION, never by a lookup miss: a declared type with no members,
+// no refinement, no annotation and no head-erasing property (`type Hardware`, extdeps.hardware), whose identity is all it carries. Two
+// values of it are equal exactly when their identities are, which the derived comparison is by the target. The table names it with
+// the entry true so an applied argument finds it Present; a type the table does not name (an unresolved spelling, a refinement, a type
+// parameter's stand-in) still reads Absent and an applied argument that is Absent refuses (equality_argument_by_target).
+fn equality_declaration_is_marker(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let head = match item.inferred {
+    Present { value: Resolved { node: target } } => target
+    _ => item
+  }
+  head.connective == NoConnective && (head.children |> count) == 0 && head.transport == none && head.type_annotation == none && (head.properties |> filter(p => !type_head_preserving_property(p: p)) |> count) == 0 && !is_kernel_type(name: authored_name_at(source_indices: source_indices, node: head)) && node_declaration_identity(n: item, source_indices: source_indices) != "::"
+}
+
 fn build_equality_by_target(items: List<Node>, env: TypeEnv, module_name: String) -> Map<String, Bool> {
   let source_indices = env.source_indices
   let declarations = items |> filter(item => equality_declaration_is_walked(item: item))
   let seed = fold(declarations, init: env.equality_by_target, f: (acc, d) =>
     map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), true))
-  equality_by_target_rounds(declarations: declarations, env: env, module_name: module_name, table: seed, fuel: (declarations |> count) + 1)
+  let settled = equality_by_target_rounds(declarations: declarations, env: env, module_name: module_name, table: seed, fuel: (declarations |> count) + 1)
+  fold(items |> filter(item => equality_declaration_is_marker(item: item, source_indices: source_indices)), init: settled, f: (acc, d) =>
+    map_insert(acc, node_declaration_identity(n: d, source_indices: source_indices), true))
 }
 
 fn equality_by_target_rounds(declarations: List<Node>, env: TypeEnv, module_name: String, table: Map<String, Bool>, fuel: Int) -> Map<String, Bool> {
