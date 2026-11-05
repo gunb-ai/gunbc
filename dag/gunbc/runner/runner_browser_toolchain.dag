@@ -2,11 +2,11 @@ module gunbc.runner.runner_browser_toolchain
 
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
-import std.types { Bool, Int, List, NonEmptyStr, FilePath, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.shell
 import extdeps.posix.test_utility { test_exists_command }
 import std.measure { ByteSize, byte_size }
-import std.algebra { Cons, Empty, list_append, trim }
+import std.algebra { Cons, Empty, list_append, trim, length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import std.env_binding { EnvBinding, EnvSet }
@@ -1247,7 +1247,7 @@ fn observe_superseded_trees_wet(location: RunnerBrowserToolchainLocation) -> Sup
 fn superseded_trees_text(r: SupersededTrees) -> String {
   match r {
     SupersededTreesObserved { entries: es } =>
-      if list_length(es) == 0 { "superseded-retained=none" } else { join(["superseded-retained=", join(es, ","), " (retirement outstanding: nothing establishes these trees are unused)"], "") }
+      if length(es) == 0 { "superseded-retained=none" } else { join(["superseded-retained=", join(es, ","), " (retirement outstanding: nothing establishes these trees are unused)"], "") }
     SupersededTreesUnobservable { cause: c } => concat("superseded=unobservable ", c)
   }
 }

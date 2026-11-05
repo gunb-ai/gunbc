@@ -100,22 +100,6 @@ pub enum Commands {
         #[arg(long, default_value = "")]
         candidate_branch: String,
     },
-    /// Measure a root's whole-root compile demand under an enforceable cgroup memory limit.
-    /// The only product is a receipt (gunbc.root_demand_measurement); no artifact, no verdict.
-    MeasureRootDemand {
-        /// The primary root to measure first, then its dependency pools in order.
-        #[arg(long = "source-root")]
-        source_roots: Vec<String>,
-        /// Repository identity of the root, declared by the caller.
-        #[arg(long)]
-        repository: String,
-        /// Where the parent writes the measurement receipt.
-        #[arg(long)]
-        receipt: String,
-        /// Set by the measuring parent on the child it observes; the child emits only its census line.
-        #[arg(long)]
-        measurement_child: bool,
-    },
     /// Run a target named by an absolute label or a bazel-style target PATTERN, and
     /// report the standing its own producer answers in. An exact label routes to
     /// its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is
@@ -150,13 +134,6 @@ pub trait CliDispatchHost {
         entry: Option<String>,
         claim_run: bool,
         args: Vec<String>,
-    ) -> !;
-    fn measure_root_demand(
-        &self,
-        source_roots: Vec<String>,
-        repository: String,
-        receipt: String,
-        measurement_child: bool,
     ) -> !;
     fn invoke_bound_target_producer(&self, target: String) -> !;
 }
@@ -243,20 +220,6 @@ pub fn dispatch<H: CliDispatchHost>(
             ],
             "receipt_path",
             ".gunbc-converge-receipts",
-        ),
-        (
-            Commands::MeasureRootDemand {
-                source_roots,
-                repository,
-                receipt,
-                measurement_child,
-            },
-            _,
-        ) => __gunbc_dispatch_executor_0.measure_root_demand(
-            source_roots,
-            repository,
-            receipt,
-            measurement_child,
         ),
         (Commands::Test { target }, _) => {
             __gunbc_dispatch_executor_0.invoke_bound_target_producer(target)
