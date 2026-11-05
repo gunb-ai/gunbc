@@ -102,13 +102,13 @@ data ntfy_retire_front_door_endpoint: TailscaleServeEndpoint = TailscaleServeEnd
 // THE ROSTER, in the order the members come off. Removal order matters: the unit is stopped and
 // disabled before its file goes, the file before daemon-reload, the account before its directories,
 // so no leg leaves a running process holding a tree it is about to delete.
-data ntfy_retire_members: List<NonEmptyStr> = [
-  ntfy_retire_member_unit,
-  ntfy_retire_member_front_door,
-  ntfy_retire_member_account,
-  ntfy_retire_member_config_dir,
-  ntfy_retire_member_state_root,
-  ntfy_retire_member_binary,
+data ntfy_retire_members: List<NtfyRetireMember> = [
+  MemberUnit,
+  MemberFrontDoor,
+  MemberAccount,
+  MemberConfigDir,
+  MemberStateRoot,
+  MemberBinary,
 ]
 
 // ── What the operator is asked to approve ──────────────────────────────────────────────────────
@@ -210,15 +210,20 @@ fn ntfy_retire_front_door_off_argv() -> List<String> {
   argv_words(command: tailscale_serve_off_command(endpoint: ntfy_retire_front_door_endpoint))
 }
 
-// THE ROSTER MEMBERS, named once each. The readback verdicts and the legs both speak these names, so
-// "which member does this leg remove" and "which member did this read attest" cannot drift apart --
-// a leg keyed on a spelling the verdicts do not use would silently never be skipped.
-data ntfy_retire_member_unit: NonEmptyStr = "unit"
-data ntfy_retire_member_front_door: NonEmptyStr = "front door"
-data ntfy_retire_member_account: NonEmptyStr = "account"
-data ntfy_retire_member_config_dir: NonEmptyStr = "config directory"
-data ntfy_retire_member_state_root: NonEmptyStr = "state root"
-data ntfy_retire_member_binary: NonEmptyStr = "binary"
+// THE ROSTER MEMBERS ARE A CLOSED SET, so they are a coproduct and not six strings. A leg's subject
+// and a verdict's member are the SAME type, which is what makes the resume rule decidable: the join in
+// ntfy_retire_leg_decision cannot be fed a spelling the readback never emits, so "nothing was read
+// about this member" stops being a state reachable by accident. DESIGN.md 5: "Stronger than catching a
+// wrong state is making it unwritable -- correctness by construction, not validation." A typo in a
+// string roster row would have skipped nothing and said nothing; it would only have made every leg for
+// that member run on every pass -- the very failure this module exists to survive.
+type NtfyRetireMember
+  = MemberUnit
+  | MemberFrontDoor
+  | MemberAccount
+  | MemberConfigDir
+  | MemberStateRoot
+  | MemberBinary
 
 // THE LEGS IN ORDER, each named. The name is what a refusal says: "unit-stop refused: ..." is a
 // locator, where an unnamed chain of legs would leave the operator reading exit codes. SUBJECT is the
@@ -227,7 +232,7 @@ data ntfy_retire_member_binary: NonEmptyStr = "binary"
 type NtfyRetireLeg {
   name: String
   argv: List<String>
-  subject: NonEmptyStr
+  subject: NtfyRetireMember
   // The exit code this leg's tool returns when the thing it was told to remove is NOT on the host at
   // all. Most tools have no such answer -- systemctl stops a unit that is not running without
   // complaint, `rm -f` and `tailscale serve --https=8443 off` report nothing -- so they declare
@@ -244,15 +249,15 @@ type NtfyRetireSubjectAbsentAnswer
   | SubjectAbsentExit { exit_code: Int }
 
 data ntfy_retire_legs: List<NtfyRetireLeg> = [
-  NtfyRetireLeg { name: "unit-stop", subject: ntfy_retire_member_unit, argv: ntfy_retire_stop_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "unit-disable", subject: ntfy_retire_member_unit, argv: ntfy_retire_disable_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "unit-file-remove", subject: ntfy_retire_member_unit, argv: ntfy_retire_remove_unit_file_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "daemon-reload", subject: ntfy_retire_member_unit, argv: ntfy_retire_daemon_reload_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "account-remove", subject: ntfy_retire_member_account, argv: ntfy_retire_remove_account_argv(), subject_absent: SubjectAbsentExit { exit_code: userdel_user_not_found_exit } },
-  NtfyRetireLeg { name: "config-dir-remove", subject: ntfy_retire_member_config_dir, argv: ntfy_retire_remove_config_dir_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "state-root-remove", subject: ntfy_retire_member_state_root, argv: ntfy_retire_remove_state_root_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "binary-remove", subject: ntfy_retire_member_binary, argv: ntfy_retire_remove_binary_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "front-door-off", subject: ntfy_retire_member_front_door, argv: ntfy_retire_front_door_off_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "unit-stop", subject: MemberUnit, argv: ntfy_retire_stop_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "unit-disable", subject: MemberUnit, argv: ntfy_retire_disable_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "unit-file-remove", subject: MemberUnit, argv: ntfy_retire_remove_unit_file_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "daemon-reload", subject: MemberUnit, argv: ntfy_retire_daemon_reload_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "account-remove", subject: MemberAccount, argv: ntfy_retire_remove_account_argv(), subject_absent: SubjectAbsentExit { exit_code: userdel_user_not_found_exit } },
+  NtfyRetireLeg { name: "config-dir-remove", subject: MemberConfigDir, argv: ntfy_retire_remove_config_dir_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "state-root-remove", subject: MemberStateRoot, argv: ntfy_retire_remove_state_root_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "binary-remove", subject: MemberBinary, argv: ntfy_retire_remove_binary_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "front-door-off", subject: MemberFrontDoor, argv: ntfy_retire_front_door_off_argv(), subject_absent: NoSubjectAbsentAnswer },
 ]
 
 // ── The readback ───────────────────────────────────────────────────────────────────────────────
@@ -428,9 +433,9 @@ fn ntfy_retire_unit_read(load_state: SshSessionExecResult, unit_path_exit: Int) 
 // reported as UNREADABLE and fails the run: it is not absent, and calling it still-present would be
 // just as much a claim about the host as calling it gone.
 type NtfyRetireVerdict
-  = RetireMemberAbsent { member: NonEmptyStr, evidence: String }
-  | RetireMemberPresent { member: NonEmptyStr, evidence: String }
-  | RetireMemberUnreadable { member: NonEmptyStr, evidence: String }
+  = RetireMemberAbsent { member: NtfyRetireMember, evidence: String }
+  | RetireMemberPresent { member: NtfyRetireMember, evidence: String }
+  | RetireMemberUnreadable { member: NtfyRetireMember, evidence: String }
 
 fn ntfy_retire_verdict_text(v: NtfyRetireVerdict) -> String {
   match v {
@@ -450,7 +455,7 @@ fn ntfy_retire_verdict_text(v: NtfyRetireVerdict) -> String {
 // gunbc.test.claim.approval_ntfy_retirement_witness
 // red_a_read_that_was_never_made_never_becomes_an_absent_verdict pins that the classifiers, not the
 // printing, decide the state.
-fn ntfy_retire_verdict_from_read(member: NonEmptyStr, read: NtfyRetireRead) -> NtfyRetireVerdict {
+fn ntfy_retire_verdict_from_read(member: NtfyRetireMember, read: NtfyRetireRead) -> NtfyRetireVerdict {
   match read {
     ReadAbsent { evidence: e } => RetireMemberAbsent { member: member, evidence: e }
     ReadPresent { evidence: e } => RetireMemberPresent { member: member, evidence: e }
@@ -478,8 +483,17 @@ fn ntfy_retire_receipt_is_clean(vs: List<NtfyRetireVerdict>) -> Bool {
   })) == 1)
 }
 
-fn member_text(member: NonEmptyStr) -> String {
-  member as String
+// THE ONE PLACE THE MEMBERS ARE SPOKEN: the receipt and the leg decisions print through here, so the
+// words belong to the coproduct rather than to whatever string a caller brought.
+fn member_text(member: NtfyRetireMember) -> String {
+  match member {
+    MemberUnit => "unit"
+    MemberFrontDoor => "front door"
+    MemberAccount => "account"
+    MemberConfigDir => "config directory"
+    MemberStateRoot => "state root"
+    MemberBinary => "binary"
+  }
 }
 
 // THE RECEIPT IS WRITTEN TO THE STEP'S OWN SUMMARY, the artifact a run leaves that a later reader
@@ -593,13 +607,17 @@ type NtfyRetireLegDecision
 
 fn ntfy_retire_leg_decision(leg: NtfyRetireLeg, verdicts: List<NtfyRetireVerdict>) -> NtfyRetireLegDecision {
   let for_subject = filter(verdicts, v => match v {
-    RetireMemberAbsent { member: m, evidence: _ } => m == leg.subject
-    RetireMemberPresent { member: m, evidence: _ } => m == leg.subject
-    RetireMemberUnreadable { member: m, evidence: _ } => m == leg.subject
+    RetireMemberAbsent { member: m, evidence: _ } => (m == leg.subject)
+    RetireMemberPresent { member: m, evidence: _ } => (m == leg.subject)
+    RetireMemberUnreadable { member: m, evidence: _ } => (m == leg.subject)
   })
   match list_at_optional(xs: for_subject, index: 0) {
-    // NOTHING WAS READ ABOUT THIS MEMBER. The run does not conclude it is gone -- the roster is the
-    // standard -- it removes it and lets the readback judge the host.
+    // NOTHING WAS READ ABOUT THIS MEMBER. With the members a coproduct this arm is no longer
+    // reachable by a mismatched spelling -- a leg's subject and a verdict's member are the same type,
+    // and the actuation reads every roster member before the first leg. It stays as the conservative
+    // answer for the only gap that remains: a verdict list that genuinely omits a member. The run does
+    // not conclude the member is gone -- the roster is the standard -- it removes it and lets the
+    // readback judge the host.
     Absent => LegDecisionRun { note: concat("leg ", concat(leg.name, ": ran (nothing was read about its subject)")) }
     Present { value: v } => match v {
       RetireMemberAbsent { member: m, evidence: e } =>
@@ -777,27 +795,27 @@ fn ntfy_retire_verdict_reads(target: SshTarget, context: FleetSshExecutionContex
                                   // and fails the run.
                                   let verdicts: List<NtfyRetireVerdict> = [
                                     ntfy_retire_verdict_from_read(
-                                      member: ntfy_retire_member_unit,
+                                      member: MemberUnit,
                                       read: ntfy_retire_unit_read(load_state: unit_read, unit_path_exit: unit_path_exit),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: ntfy_retire_member_front_door,
+                                      member: MemberFrontDoor,
                                       read: ntfy_retire_front_door_read(status_read: serve_read),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: ntfy_retire_member_account,
+                                      member: MemberAccount,
                                       read: ntfy_retire_account_read(read: account_read),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: ntfy_retire_member_config_dir,
+                                      member: MemberConfigDir,
                                       read: ntfy_retire_path_read(exit_code: config_exit),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: ntfy_retire_member_state_root,
+                                      member: MemberStateRoot,
                                       read: ntfy_retire_path_read(exit_code: state_exit),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: ntfy_retire_member_binary,
+                                      member: MemberBinary,
                                       read: ntfy_retire_path_read(exit_code: binary_exit),
                                     ),
                                   ]

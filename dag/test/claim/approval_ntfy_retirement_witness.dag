@@ -25,8 +25,8 @@ import gunbc.fleet.approval_ntfy_retirement {
   ntfy_retire_removal_argv, ntfy_retire_roster_paths,
   ntfy_retire_leg_answers_subject_absent, ntfy_retire_subject_absent_reason,
   ntfy_retire_leg_decision, LegDecisionRun, LegDecisionSkip, ntfy_retire_any_member_unreadable,
-  ntfy_retire_member_unit, ntfy_retire_member_front_door, ntfy_retire_member_account,
-  ntfy_retire_member_config_dir, ntfy_retire_member_state_root, ntfy_retire_member_binary,
+  NtfyRetireMember, MemberUnit, MemberFrontDoor, MemberAccount,
+  MemberConfigDir, MemberStateRoot, MemberBinary,
   NtfyRetireLeg, NoSubjectAbsentAnswer, SubjectAbsentExit,
 }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -173,12 +173,12 @@ test fn red_a_userdel_that_found_no_account_refuses_as_a_roster_divergence() -> 
 // ── The readback verdicts ──────────────────────────────────────────────────────────────────────
 
 data verdict_all_absent: List<NtfyRetireVerdict> = [
-  RetireMemberAbsent { member: "unit" as NonEmptyStr, evidence: "systemd LoadState is not-found" },
-  RetireMemberAbsent { member: "front door" as NonEmptyStr, evidence: "tailscale serve status lists no route" },
-  RetireMemberAbsent { member: "account" as NonEmptyStr, evidence: "getent passwd resolves no entry" },
-  RetireMemberAbsent { member: "config directory" as NonEmptyStr, evidence: "the config path does not exist" },
-  RetireMemberAbsent { member: "state root" as NonEmptyStr, evidence: "the state root does not exist" },
-  RetireMemberAbsent { member: "binary" as NonEmptyStr, evidence: "the binary path does not exist" },
+  RetireMemberAbsent { member: MemberUnit, evidence: "systemd LoadState is not-found" },
+  RetireMemberAbsent { member: MemberFrontDoor, evidence: "tailscale serve status lists no route" },
+  RetireMemberAbsent { member: MemberAccount, evidence: "getent passwd resolves no entry" },
+  RetireMemberAbsent { member: MemberConfigDir, evidence: "the config path does not exist" },
+  RetireMemberAbsent { member: MemberStateRoot, evidence: "the state root does not exist" },
+  RetireMemberAbsent { member: MemberBinary, evidence: "the binary path does not exist" },
 ]
 
 test fn the_clean_receipt_reads_every_roster_member_absent_once() -> Bool {
@@ -192,7 +192,7 @@ test fn the_clean_receipt_reads_every_roster_member_absent_once() -> Bool {
 test fn red_a_member_found_present_makes_the_receipt_unclean() -> Bool {
   let one_present = map(verdict_all_absent, v => match v {
     RetireMemberAbsent { member: m, evidence: e } =>
-      if m == ("state root" as NonEmptyStr) {
+      if m == (MemberStateRoot) {
         RetireMemberPresent { member: m, evidence: e }
       } else {
         RetireMemberAbsent { member: m, evidence: e }
@@ -208,7 +208,7 @@ test fn red_a_member_found_present_makes_the_receipt_unclean() -> Bool {
 // a receipt that simply omits a member is not clean coverage, it is a gap.
 test fn red_a_roster_member_never_read_makes_the_receipt_unclean() -> Bool {
   let five = filter(verdict_all_absent, v => match v {
-    RetireMemberAbsent { member: m, evidence: _ } => m != ("binary" as NonEmptyStr)
+    RetireMemberAbsent { member: m, evidence: _ } => m != (MemberBinary)
     RetireMemberPresent { member: _, evidence: _ } => true
     RetireMemberUnreadable { member: _, evidence: _ } => true
   })
@@ -304,9 +304,9 @@ test fn a_path_probe_reads_only_exit_one_as_absent() -> Bool {
 // an operand it cannot parse. It must land as UNREADABLE, make the receipt unclean, and above all
 // never print as `absent:` for that member.
 test fn red_a_probe_that_errored_is_not_read_as_absent() -> Bool {
-  let errored = ntfy_retire_verdict_from_read(member: "binary" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 2))
+  let errored = ntfy_retire_verdict_from_read(member: MemberBinary, read: ntfy_retire_path_read(exit_code: 2))
   let vs = concat([errored], filter(verdict_all_absent, x => match x {
-    RetireMemberAbsent { member: m, evidence: _ } => m != ("binary" as NonEmptyStr)
+    RetireMemberAbsent { member: m, evidence: _ } => m != (MemberBinary)
     RetireMemberPresent { member: _, evidence: _ } => true
     RetireMemberUnreadable { member: _, evidence: _ } => true
   }))
@@ -329,21 +329,21 @@ test fn red_a_read_that_was_never_made_never_becomes_an_absent_verdict() -> Bool
     && witness_read_state(read: ntfy_retire_account_read(read: errored_getent)) == "unreadable"
     && witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable))) == "unreadable"
     && witness_read_state(read: ntfy_retire_path_read(exit_code: 2)) == "unreadable"
-    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "unit" as NonEmptyStr, read: ntfy_retire_load_state_read(read: failed_systemctl))) == "unreadable"
-    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "account" as NonEmptyStr, read: ntfy_retire_account_read(read: hollow_getent))) == "unreadable"
-    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "front door" as NonEmptyStr, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable)))) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: MemberUnit, read: ntfy_retire_load_state_read(read: failed_systemctl))) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: MemberAccount, read: ntfy_retire_account_read(read: hollow_getent))) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: MemberFrontDoor, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable)))) == "unreadable"
 }
 
 // A READ THAT HAPPENED IS CLASSIFIED BY WHAT IT ANSWERED, and one shared function is the only thing
 // between a read and a verdict: the receipt built from six real answers is clean, and each line names
 // the prober that decided it rather than restating the run's intent.
 test fn a_read_that_happened_is_classified_by_what_it_answered() -> Bool {
-  let unit_absent = ntfy_retire_verdict_from_read(member: "unit" as NonEmptyStr, read: ntfy_retire_unit_read(load_state: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" }, unit_path_exit: 1))
-  let door_absent = ntfy_retire_verdict_from_read(member: "front door" as NonEmptyStr, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_without_route)))
-  let account_absent = ntfy_retire_verdict_from_read(member: "account" as NonEmptyStr, read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
-  let config_absent = ntfy_retire_verdict_from_read(member: "config directory" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 1))
-  let state_absent = ntfy_retire_verdict_from_read(member: "state root" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 1))
-  let binary_absent = ntfy_retire_verdict_from_read(member: "binary" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 1))
+  let unit_absent = ntfy_retire_verdict_from_read(member: MemberUnit, read: ntfy_retire_unit_read(load_state: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" }, unit_path_exit: 1))
+  let door_absent = ntfy_retire_verdict_from_read(member: MemberFrontDoor, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_without_route)))
+  let account_absent = ntfy_retire_verdict_from_read(member: MemberAccount, read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
+  let config_absent = ntfy_retire_verdict_from_read(member: MemberConfigDir, read: ntfy_retire_path_read(exit_code: 1))
+  let state_absent = ntfy_retire_verdict_from_read(member: MemberStateRoot, read: ntfy_retire_path_read(exit_code: 1))
+  let binary_absent = ntfy_retire_verdict_from_read(member: MemberBinary, read: ntfy_retire_path_read(exit_code: 1))
   let vs = [unit_absent, door_absent, account_absent, config_absent, state_absent, binary_absent]
   all(vs, v => witness_verdict_state(v: v) == "absent")
     && ntfy_retire_receipt_is_clean(vs: vs)
@@ -414,12 +414,12 @@ test fn red_the_front_door_close_names_the_tailscale_program() -> Bool {
 test fn red_a_failed_serve_status_is_never_read_as_a_closed_door() -> Bool {
   witness_read_state(read: ntfy_retire_front_door_read(status_read: failed_serve_status)) == "unreadable"
     && witness_verdict_state(v: ntfy_retire_verdict_from_read(
-      member: ntfy_retire_member_front_door,
+      member: MemberFrontDoor,
       read: ntfy_retire_front_door_read(status_read: failed_serve_status),
     )) == "unreadable"
 }
 
-fn witness_member_absent(member: NonEmptyStr) -> NtfyRetireVerdict {
+fn witness_member_absent(member: NtfyRetireMember) -> NtfyRetireVerdict {
   ntfy_retire_verdict_from_read(member: member, read: ReadAbsent { evidence: "the member's own probe said not there" })
 }
 
@@ -431,11 +431,11 @@ fn witness_member_absent(member: NonEmptyStr) -> NtfyRetireVerdict {
 test fn red_a_resumed_pass_skips_only_what_its_reads_found_gone() -> Bool {
   let vs = concat(
     [ntfy_retire_verdict_from_read(
-      member: ntfy_retire_member_front_door,
+      member: MemberFrontDoor,
       read: ReadPresent { evidence: "tailscale serve status still lists a route" },
     )],
-    map([ntfy_retire_member_unit, ntfy_retire_member_account, ntfy_retire_member_config_dir,
-         ntfy_retire_member_state_root, ntfy_retire_member_binary], m => witness_member_absent(member: m)),
+    map([MemberUnit, MemberAccount, MemberConfigDir,
+         MemberStateRoot, MemberBinary], m => witness_member_absent(member: m)),
   )
   let skipped = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: vs) {
     LegDecisionSkip { note: _ } => true
@@ -466,7 +466,7 @@ test fn red_no_leg_skips_on_a_read_that_was_never_made() -> Bool {
     LegDecisionSkip { note: _ } => false
   }))
   let blind = [ntfy_retire_verdict_from_read(
-    member: ntfy_retire_member_binary,
+    member: MemberBinary,
     read: ReadUnreadable { evidence: "the probe could not reach the host" },
   )]
   let ran_blind = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: blind) {
@@ -481,10 +481,10 @@ test fn red_no_leg_skips_on_a_read_that_was_never_made() -> Bool {
 // read, the same predicate is what lets it proceed.
 test fn red_an_unreadable_member_refuses_before_the_first_leg() -> Bool {
   let with_gap = concat(
-    map([ntfy_retire_member_unit, ntfy_retire_member_front_door, ntfy_retire_member_account,
-         ntfy_retire_member_config_dir, ntfy_retire_member_state_root], m => witness_member_absent(member: m)),
+    map([MemberUnit, MemberFrontDoor, MemberAccount,
+         MemberConfigDir, MemberStateRoot], m => witness_member_absent(member: m)),
     [ntfy_retire_verdict_from_read(
-      member: ntfy_retire_member_binary,
+      member: MemberBinary,
       read: ReadUnreadable { evidence: "the probe could not reach the host" },
     )],
   )
@@ -496,5 +496,5 @@ test fn red_an_unreadable_member_refuses_before_the_first_leg() -> Bool {
 // a leg whose subject is not on the roster would never match a verdict and so would never skip -- a
 // silent hole in the resume rule above. This pins the two lists to one vocabulary.
 test fn every_leg_removes_a_roster_member_the_readback_attests() -> Bool {
-  all(ntfy_retire_legs, leg => any(ntfy_retire_members, m => m == leg.subject))
+  all(ntfy_retire_legs, leg => any(ntfy_retire_members, m => (m == leg.subject)))
 }
