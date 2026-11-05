@@ -101,7 +101,10 @@ import gunbc.runner.runner_microvm_slot_unit {
   MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, ControllerReceipts, microvm_receipt_record,
 }
 import gunbc.runner.runner_guest_image {
-  runner_guest_image_root, runner_guest_image_path, runner_guest_base_artifact_path, runner_guest_kernel_artifact,
+  runner_guest_image_root, runner_guest_image_path,
+}
+import gunbc.runner.microvm_guest_artifacts {
+  runner_guest_base_artifact_path, runner_guest_kernel_artifact,
 }
 import gunbc.runner.runner_microvm {
   gunbc_runner_guest_image, RunnerMicroVmShape,
@@ -140,6 +143,7 @@ import gunbc.runner.runner_attempt_launch {
 import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved, microvm_shakedown_runner_group_name,
   runner_group_restriction_not_yet_observed, observe_shakedown_runner_group_restriction,
+  microvm_shakedown_selected_workflow,
 }
 import gunbc.runner.jit_registration_subject { microvm_registration_subject }
 import gunbc.runner.runner_jit_perform {
@@ -326,6 +330,10 @@ fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
 // controller-custodied key.
 fn attempt_mint_binding(binding: MicroVmCellBinding) -> JitMintBinding admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
+  // The attempt witness executes this mint on the sealed fixture binding (prod gap sweep: the
+  // function was gated to one production caller and run by NOTHING, which is how its closure
+  // broke unnoticed). The witness is the verifying caller the roster admits for it.
+  decl_ref(module_path: "test.claim.runner.runner_microvm_attempt_witness", decl_name: "attempt_mint_binding_binds_the_shakedown_lane"),
 ] {
   jit_mint_binding(
     subject: microvm_registration_subject(binding: binding),
