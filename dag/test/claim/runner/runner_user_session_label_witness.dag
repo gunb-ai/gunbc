@@ -89,7 +89,6 @@ import gunbc.runner.runner_user_session_receipt {
   runner_user_session_converge_receipt_staleness,
   runner_user_session_converge_receipt_artifact_name,
   runner_user_session_converge_receipt_names_host,
-  RunnerUserSessionProducerRunSelection, ProducerRunSelected, ProducerRunNone, runner_user_session_producer_run_select,
 }
 import std.roster_frontier { frontier_rows_well_formed, DeclSubject, PathSubject }
 import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
@@ -99,7 +98,11 @@ import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_workflow_mode_wire, RunnerUserSessionConverge, RunnerBrowserToolchainConverge }
 import extdeps.github.actions { Workflow }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed_with, runner_user_session_receipt_unreadable }
-import gunbc.runner.runner_user_session_receipt { RunnerUserSessionRunScan, RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached, runner_user_session_run_scan_step }
+import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_mode_wire }
+import gunbc.fleet.fleet_converge_producer_run {
+  ProducerRunSelected, ProducerRunNone, fleet_converge_producer_run_select,
+  RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached, fleet_converge_producer_run_scan_step,
+}
 import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
@@ -750,17 +753,18 @@ fn user_session_title(host: String, nonce: String) -> String {
 // RED control: let the fold accept any conclusion, any status, any mode or any host and an arm goes red.
 test fn no_successful_run_for_this_mode_and_host_refuses() -> Bool {
   let other_mode = fleet_converge_run_title(mode: fleet_converge_workflow_mode_wire(mode: RunnerBrowserToolchainConverge), host: "srv4", nonce: "n3")
-  match runner_user_session_producer_run_select(
+  match fleet_converge_producer_run_select(
     runs: [
       producer_run(id: 1, title: user_session_title(host: "srv4", nonce: "n1"), completed: true, conclusion: Present { value: false }, created_at: "2026-10-28T00:00:00Z"),
       producer_run(id: 2, title: user_session_title(host: "srv4", nonce: "n2"), completed: false, conclusion: Absent, created_at: "2026-10-28T01:00:00Z"),
       producer_run(id: 3, title: other_mode, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T02:00:00Z"),
       producer_run(id: 4, title: user_session_title(host: "srv1", nonce: "n4"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T03:00:00Z"),
     ],
+    mode: runner_user_session_converge_mode_wire,
     host: "srv4",
   ) {
     ProducerRunNone { cause: c } => string_contains(s: c, pattern: "srv4") && string_contains(s: c, pattern: fleet_converge_workflow_mode_wire(mode: RunnerUserSessionConverge))
-    ProducerRunSelected { run: _, created_at: _ } => false
+    ProducerRunSelected { run: _, attempt: _, created_at: _ } => false
   }
 }
 
@@ -770,14 +774,15 @@ test fn no_successful_run_for_this_mode_and_host_refuses() -> Bool {
 // the grant is RosteredUnconverged naming the age, never Granted.
 // RED control: pick the first listed run (the older id wins) or drop the staleness gate and an arm goes red.
 test fn the_newest_run_is_read_and_a_stale_newest_receipt_refuses() -> Bool {
-  match runner_user_session_producer_run_select(
+  match fleet_converge_producer_run_select(
     runs: [
       producer_run(id: 20, title: user_session_title(host: "srv4", nonce: "new"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z"),
       producer_run(id: 10, title: user_session_title(host: "srv4", nonce: "old"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-01T00:00:00Z"),
     ],
+    mode: runner_user_session_converge_mode_wire,
     host: "srv4",
   ) {
-    ProducerRunSelected { run: r, created_at: at } =>
+    ProducerRunSelected { run: r, attempt: _, created_at: at } =>
       github_workflow_run_id_wire_text(id: r) == "20" && at == "2026-10-28T00:00:00Z"
         && match runner_user_session_grant_of_roster(
           host: operator_host_srv4,
@@ -807,19 +812,21 @@ test fn the_producer_run_name_is_a_title_the_selection_qualifies() -> Bool {
   match fleet_converge_workflow.run_name {
     Present { value: rendered } =>
       rendered == placeholder
-        && match runner_user_session_producer_run_select(
+        && match fleet_converge_producer_run_select(
           runs: [producer_run(id: 7, title: user_session_title(host: "srv4", nonce: "abc"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z")],
+          mode: runner_user_session_converge_mode_wire,
           host: "srv4",
         ) {
-          ProducerRunSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "7"
+          ProducerRunSelected { run: r, attempt: _, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "7"
           ProducerRunNone { cause: _ } => false
         }
-        && match runner_user_session_producer_run_select(
+        && match fleet_converge_producer_run_select(
           runs: [producer_run(id: 8, title: "fleet converge runner_user_session_converge srv4 nonce=abc", completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T00:00:00Z")],
+          mode: runner_user_session_converge_mode_wire,
           host: "srv4",
         ) {
           ProducerRunNone { cause: _ } => true
-          ProducerRunSelected { run: _, created_at: _ } => false
+          ProducerRunSelected { run: _, attempt: _, created_at: _ } => false
         }
     Absent => false
   }
@@ -859,39 +866,39 @@ test fn a_full_page_without_a_qualifying_run_does_not_establish_absence() -> Boo
   let old = producer_run(id: 2, title: "unrelated", completed: true, conclusion: Present { value: true }, created_at: "2026-09-01T00:00:00Z")
   let fresh_qualifying = producer_run(id: 3, title: user_session_title(host: "srv4", nonce: "n9"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T01:00:00Z")
   let older_qualifying = producer_run(id: 4, title: user_session_title(host: "srv4", nonce: "n8"), completed: true, conclusion: Present { value: true }, created_at: "2026-10-27T01:00:00Z")
-  match runner_user_session_run_scan_step(scanned: [], page_runs: [recent, old, old], host: "srv4", page: 1, max_pages: 2, page_size: 3) {
+  match fleet_converge_producer_run_scan_step(scanned: [], page_runs: [recent, old, old], mode: runner_user_session_converge_mode_wire, host: "srv4", page: 1, max_pages: 2, page_size: 3) {
     RunScanContinues { scanned: seen } =>
-      match runner_user_session_run_scan_step(scanned: seen, page_runs: [fresh_qualifying], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
-        RunScanSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "3"
+      match fleet_converge_producer_run_scan_step(scanned: seen, page_runs: [fresh_qualifying], mode: runner_user_session_converge_mode_wire, host: "srv4", page: 2, max_pages: 2, page_size: 3) {
+        RunScanSelected { run: r, attempt: _, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "3"
         RunScanNone { cause: _ } => false
         RunScanContinues { scanned: _ } => false
         RunScanCapReached { cause: _ } => false
       }
-    RunScanSelected { run: _, created_at: _ } => false
+    RunScanSelected { run: _, attempt: _, created_at: _ } => false
     RunScanNone { cause: _ } => false
     RunScanCapReached { cause: _ } => false
   }
-    && match runner_user_session_run_scan_step(scanned: [], page_runs: [older_qualifying, old, old], host: "srv4", page: 1, max_pages: 2, page_size: 3) {
+    && match fleet_converge_producer_run_scan_step(scanned: [], page_runs: [older_qualifying, old, old], mode: runner_user_session_converge_mode_wire, host: "srv4", page: 1, max_pages: 2, page_size: 3) {
       RunScanContinues { scanned: seen } =>
-        match runner_user_session_run_scan_step(scanned: seen, page_runs: [fresh_qualifying], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
-          RunScanSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "3"
+        match fleet_converge_producer_run_scan_step(scanned: seen, page_runs: [fresh_qualifying], mode: runner_user_session_converge_mode_wire, host: "srv4", page: 2, max_pages: 2, page_size: 3) {
+          RunScanSelected { run: r, attempt: _, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "3"
           RunScanNone { cause: _ } => false
           RunScanContinues { scanned: _ } => false
           RunScanCapReached { cause: _ } => false
         }
-      RunScanSelected { run: _, created_at: _ } => false
+      RunScanSelected { run: _, attempt: _, created_at: _ } => false
       RunScanNone { cause: _ } => false
       RunScanCapReached { cause: _ } => false
     }
-    && match runner_user_session_run_scan_step(scanned: [recent, recent, recent], page_runs: [fresh_qualifying, recent, recent], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
+    && match fleet_converge_producer_run_scan_step(scanned: [recent, recent, recent], page_runs: [fresh_qualifying, recent, recent], mode: runner_user_session_converge_mode_wire, host: "srv4", page: 2, max_pages: 2, page_size: 3) {
       RunScanCapReached { cause: c } => capped_is_unjudged_with_no_replace(cause: c)
-      RunScanSelected { run: _, created_at: _ } => false
+      RunScanSelected { run: _, attempt: _, created_at: _ } => false
       RunScanNone { cause: _ } => false
       RunScanContinues { scanned: _ } => false
     }
-    && match runner_user_session_run_scan_step(scanned: [recent, recent, recent], page_runs: [recent], host: "srv4", page: 2, max_pages: 2, page_size: 3) {
+    && match fleet_converge_producer_run_scan_step(scanned: [recent, recent, recent], page_runs: [recent], mode: runner_user_session_converge_mode_wire, host: "srv4", page: 2, max_pages: 2, page_size: 3) {
       RunScanNone { cause: _ } => true
-      RunScanSelected { run: _, created_at: _ } => false
+      RunScanSelected { run: _, attempt: _, created_at: _ } => false
       RunScanContinues { scanned: _ } => false
       RunScanCapReached { cause: _ } => false
     }
@@ -915,13 +922,13 @@ test fn a_branch_dispatched_run_is_never_the_producer() -> Bool {
   let title = user_session_title(host: "srv4", nonce: "nb")
   let branch_run = producer_run_on(id: 7, title: title, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T05:00:00Z", branch: "evil-branch")
   let main_run = producer_run_on(id: 5, title: title, completed: true, conclusion: Present { value: true }, created_at: "2026-10-28T01:00:00Z", branch: "main")
-  match runner_user_session_producer_run_select(runs: [branch_run, main_run], host: "srv4") {
-    ProducerRunSelected { run: r, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "5"
+  match fleet_converge_producer_run_select(runs: [branch_run, main_run], mode: runner_user_session_converge_mode_wire, host: "srv4") {
+    ProducerRunSelected { run: r, attempt: _, created_at: _ } => github_workflow_run_id_wire_text(id: r) == "5"
     ProducerRunNone { cause: _ } => false
   }
-    && match runner_user_session_producer_run_select(runs: [branch_run], host: "srv4") {
+    && match fleet_converge_producer_run_select(runs: [branch_run], mode: runner_user_session_converge_mode_wire, host: "srv4") {
       ProducerRunNone { cause: _ } => true
-      ProducerRunSelected { run: _, created_at: _ } => false
+      ProducerRunSelected { run: _, attempt: _, created_at: _ } => false
     }
 }
 

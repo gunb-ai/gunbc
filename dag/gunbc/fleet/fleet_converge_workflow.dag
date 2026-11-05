@@ -116,7 +116,8 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import std.algebra { list_map, length }
+import std.algebra { list_map, empty_map, map_insert, length }
+import product.host_identity { HostIdentity }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -150,6 +151,7 @@ import gunbc.auth.ci_app_key_rotation {
   app_key_verify_receipt_path,
 }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
+import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_boot_mode_wire, mtcollins1_boot_receipts_artifact_name }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
 import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_job, qualification_floor_job_id, qualification_attempt_subject_env_name, qualification_attempt_artifact_glob }
@@ -291,7 +293,7 @@ import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import std.types { NonEmptyStr, List, String, Int, Bool, Duration }
+import std.types { NonEmptyStr, List, String, Int, Bool, Duration, Map }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
@@ -495,7 +497,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     WorkspaceCheckpointRestore => "workspace_checkpoint_restore"
     WorkspaceTranscriptRateObserve => "workspace_transcript_rate_observe"
     ApprovalKeyringConverge => "approval_keyring_converge"
-    MtCollins1Boot => "mtcollins1_boot"
+    MtCollins1Boot => mtcollins1_boot_mode_wire
     GcpIamConverge => "gcp_iam_converge"
     NamecheapObserve => "namecheap_observe"
     ReviewSheetConverge => "review_sheet_converge"
@@ -4018,6 +4020,9 @@ fn fleet_converge_qualification_attempt_step() -> Step {
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       kv(key: qualification_attempt_subject_env_name as String, value: yaml_string(s: join(["${{ github.event.inputs.", fleet_converge_subject_host_input.name, " }}"], ""))),
+      // the job's own token (actions: read): the slot's user-session receipt and the subject's running-OS receipt
+      // are read from their producer runs' artifacts with it (gunbc.fleet.fleet_converge_producer_run).
+      kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_qualification_attempt_step_if },
@@ -4160,7 +4165,7 @@ fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
     id: Present { value: "mtcollins1_boot_receipt_upload" },
     uses: upload_artifact_action,
     with: Present { value: workflow_artifact_upload_with(
-      name: "mtcollins1-boot-receipts",
+      name: mtcollins1_boot_receipts_artifact_name,
       path: mtcollins1_boot_artifact_glob,
       retention_days: Present { value: 30 },
       compression_level: none,
@@ -7256,6 +7261,49 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = filter(
   fleet_converge_dispatch_input_rows,
   i => i.name != "target" || count(fleet_converge_spark_target_options) > 0
 )
+
+// ONE DISPATCH OF THIS WORKFLOW, AS A TYPED SPEC: the mode it selects, the executor host its job is pinned to, and
+// every other input it supplies, each by its declared DispatchInput so a renamed input breaks the spec rather than the
+// dispatch. One builder renders every spec into the inputs map GitHub receives (the qualification floor's dispatch and
+// the qualification attempt's, gunbc.runner.runner_qualification_dispatch and
+// gunbc.runner.runner_qualification_attempt_dispatch), so no caller assembles that map by hand.
+type DispatchInputValue {
+  input: DispatchInput
+  value: String
+}
+
+type FleetConvergeDispatchSpec {
+  mode: FleetConvergeWorkflowMode
+  executor: HostIdentity
+  inputs: List<DispatchInputValue>
+}
+
+fn fleet_converge_dispatch_values(spec: FleetConvergeDispatchSpec) -> Map<String, String> {
+  fold(
+    spec.inputs,
+    init: map_insert(
+      m: map_insert(m: empty_map(), key: fleet_converge_mode_input.name, value: fleet_converge_workflow_mode_wire(mode: spec.mode)),
+      key: fleet_converge_host_input.name,
+      value: spec.executor as String,
+    ),
+    f: (m, iv) => map_insert(m: m, key: iv.input.name, value: iv.value),
+  )
+}
+
+// THE NAMES A DISPATCH SUPPLIES, read from the inputs alone, so an admission can ask before any value exists.
+fn fleet_converge_dispatch_names_supplying(inputs: List<DispatchInput>) -> List<String> {
+  concat([fleet_converge_mode_input.name, fleet_converge_host_input.name], map(inputs, i => i.name))
+}
+
+fn fleet_converge_dispatch_value_names(spec: FleetConvergeDispatchSpec) -> List<String> {
+  fleet_converge_dispatch_names_supplying(inputs: map(spec.inputs, iv => iv.input))
+}
+
+// EVERY INPUT THE WORKFLOW REQUIRES, BY NAME, THAT THE SUPPLIED NAMES DO NOT CARRY. GitHub refuses such a dispatch
+// before any run exists; an admission reads this first.
+fn fleet_converge_required_inputs_unsupplied(declared: List<DispatchInput>, supplied: List<String>) -> List<String> {
+  declared |> filter(i => i.required && !(supplied |> any(n => n == i.name))) |> map(i => i.name)
+}
 
 fn fleet_converge_empty_choice_input_names() -> List<String> {
   map(

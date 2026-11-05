@@ -19,7 +19,10 @@ import std.measure { Second, second, second_count, Millisecond, millisecond, mil
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
-import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium }
+import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium, runner_host_running_os_of_up }
+import gunbc.host.running_os { RunningOsReading }
+import gunbc.host.running_os_receipt { RunningOsReceiptProducer, running_os_receipt_text }
+import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_boot_running_os_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_image_stem, mtcollins1_census_image, census_served_check }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
@@ -79,7 +82,7 @@ import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate,
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGatePowered, PoweredFanGate, PostPowerFanGateReached, PostPowerFanGateAbandoned, post_power_fan_gate_abandoned_text, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
-import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import extdeps.shell
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
@@ -180,6 +183,7 @@ data mtcollins1_sol_collector_executable: NonEmptyStr = "ipmitool"
 data mtcollins1_boot_artifact_glob: String = "artifacts/mtcollins1-boot-*"
 
 data mtcollins1_boot_receipt_path: String = "artifacts/mtcollins1-boot-receipt.txt"
+
 
 data mtcollins1_boot_poll_cadence: Second = second(count: 15)
 
@@ -1798,7 +1802,7 @@ fn mtcollins1_boot_await_capture_terminal(
   let ended = match seen.phase { CensusEnded => true _ => false }
   match watch_tick(verdict: seen.verdict, channel: seen.channel) {
     WatchAccepted => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
-    WatchRunnerHostAccepted { up: up } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: Present { value: up } }
+    WatchRunnerHostAccepted { up: up } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: Present { value: MtCollins1RunnerHostTerminal { up: up, running: runner_host_running_os_of_up(up: up, subject: subject) } } }
     WatchRefused { causes: causes } => TerminalWatch { outcome: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
     WatchChannelLost { collector: l, client: c, last: why } =>
       TerminalWatch { outcome: mtcollins1_boot_watch_channel_lost(seen: seen, collector: l, client: c, last: why, last_live_at: last_live_at, capture_path: capture_path, password_file: password_file, screen: screen), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
@@ -1950,13 +1954,20 @@ fn mtcollins1_census_phase(capture: String, subject: AdmittedBootSubject) -> Cen
 
 // runner_host IS THE ONE ACCEPTED RUNNER-HOST READING (gunbc.runner.runner_host_medium RunnerHostUp),
 // carried whole so the qualification receipt's GuestIdleMeminfoAndNproc reads it here rather than
-// re-parsing the capture; none for every other medium and every non-accepting end.
+// re-parsing the capture, and beside it the running-OS reading of that readback over the admitted subject
+// (runner_host_running_os_of_up), which the conclusion writes as the running-OS receipt
+// (gunbc.host.running_os_receipt); none for every other medium and every non-accepting end.
+type MtCollins1RunnerHostTerminal {
+  up: RunnerHostUp
+  running: RunningOsReading
+}
+
 type TerminalWatch {
   outcome: ProcessExit
   census_ended: Bool
   smpro_census: SmproReading
   screen_reported: List<String>
-  runner_host: RunnerHostUp?
+  runner_host: MtCollins1RunnerHostTerminal?
 }
 
 // THE SCREEN'S BOUNDARY, REPORTED IN THE TICK AND BEFORE ANY OPTIONAL READ (acceptance (b)). Every
@@ -2126,7 +2137,7 @@ type MtCollins1BootActuation {
   power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
-  runner_host: RunnerHostUp?
+  runner_host: MtCollins1RunnerHostTerminal?
   fan_gate: PostPowerFanGateReading
 }
 
@@ -2195,7 +2206,7 @@ type ActuationWatch {
   stage: MtCollins1BootActuationStage
   smpro_step: BootPhaseStep
   terminal_step: BootPhaseStep
-  runner_host: RunnerHostUp?
+  runner_host: MtCollins1RunnerHostTerminal?
   fan_gate: PostPowerFanGateReading
 }
 
@@ -3049,7 +3060,7 @@ type MtCollins1BootAttempt {
   power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
-  runner_host: RunnerHostUp?
+  runner_host: MtCollins1RunnerHostTerminal?
   fan_gate: PostPowerFanGateReading
   configuration: AttemptConfigurationReceipt
   // WHAT THE PRE-POWER PHASE ITSELF REPORTED for the two extra captures (review 86381 finding 1). They
@@ -3284,7 +3295,38 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
       ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: concat(r, " | could not write receipt: ", kept.error) }
     }
   }
-  concluded
+  match mtcollins1_boot_write_running_os_receipt(attempt: attempt) {
+    Absent => concluded
+    Present { value: why } => match concluded {
+      ExitSuccess => exit_failure(reason: concat("mtcollins1 boot: ", why))
+      ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: concat(r, " | ", why) }
+    }
+  }
+}
+
+// THE RUNNING-OS RECEIPT (gunbc.host.running_os_receipt), written only when the runner host was accepted and its
+// running OS observed, naming THIS run and attempt as its producer. A runner host accepted with no receipt written
+// fails the run: a later job could not initialize the host, and a success would say otherwise. Returns the failure,
+// or none when there is nothing to write or it was written.
+fn mtcollins1_boot_write_running_os_receipt(attempt: MtCollins1BootAttempt) -> String? {
+  match attempt.runner_host {
+    Absent => none
+    Present { value: terminal } => {
+      let run_id = actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr)
+      let run_attempt = actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr)
+      if run_id == "" || run_attempt == "" {
+        Present { value: "the runner host was accepted but GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the running-OS receipt names no producer and is not written" }
+      } else {
+        match running_os_receipt_text(producer: RunningOsReceiptProducer { run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr }, reading: terminal.running) {
+          Absent => Present { value: "the runner host was accepted but its running OS was not observed, so no running-OS receipt is written" }
+          Present { value: text } => {
+            let wrote = Filesystem.Write(path: mtcollins1_boot_running_os_receipt_path, content: text)
+            if wrote.success { none } else { Present { value: concat("could not write the running-OS receipt: ", wrote.error) } }
+          }
+        }
+      }
+    }
+  }
 }
 
 // THE HOST ADMISSION lives in gunbc.machine_intake.mtcollins1_boot_admission, whose closure is

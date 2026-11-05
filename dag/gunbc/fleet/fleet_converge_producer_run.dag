@@ -1,0 +1,125 @@
+module gunbc.fleet.fleet_converge_producer_run
+
+import std.types { String, Bool, Int, List, Secret, Timestamp }
+import std.algebra { length }
+import std.optional { Present, Absent }
+import extdeps.github.workflow_runs
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_of_wire, WorkflowRun, Completed, Success }
+import extdeps.github.github { max_per_page }
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_location, FleetConvergeYamlArtifact }
+import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
+import gunbc.superseded_run_starvation_census { census_read_refusal_cause }
+import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title_selector }
+
+// WHICH FLEET-CONVERGE RUN PRODUCED THE ARTIFACT A CONSUMER READS, ONE RULE FOR EVERY MODE. A consumer that
+// reads evidence a fleet-converge run uploaded (the runner user session's converge receipt, a boot run's
+// running-OS receipt) selects the producer run by the same rule, so the rule lives once, keyed on the mode and
+// the host its title names; the artifact name, the document and its parser stay with each consumer. It was
+// gunbc.runner.runner_user_session_receipt's own selection until the boot receipt
+// (gunbc.host.running_os_receipt) needed the same rule for another mode (DESIGN section 6b: the second local
+// implementation of one rule is the trigger to generalize it, not to copy it).
+//
+// THE RULE: a fleet-converge run of THIS mode for THIS host (its display_title carries both, rendered by
+// gunbc.fleet.fleet_converge_run_name), completed with conclusion success, on the repository's DEFAULT BRANCH
+// (the title is built from dispatch inputs only, so a branch-dispatched run of unreviewed workflow code could
+// otherwise upload evidence a consumer spends -- review 89001), and of those the NEWEST by created_at. A failed
+// run may still upload its artifact, but a failed run is not evidence, so it is not selectable. Selection is
+// provenance, not freshness: each consumer judges its document's freshness itself.
+type FleetConvergeProducerRunSelection
+  = ProducerRunSelected { run: GitHubWorkflowRunId, attempt: Int, created_at: Timestamp }
+  | ProducerRunNone { cause: String }
+
+fn fleet_converge_producer_run_qualifies(run: WorkflowRun, mode: String, host: String) -> Bool {
+  let selector = fleet_converge_run_title_selector(mode: mode, host: host)
+  let titled = match run.display_title {
+    Present { value: t } => starts_with(s: t, prefix: selector)
+    Absent => false
+  }
+  let succeeded = match run.conclusion {
+    Present { value: c } => match c { Success => true  _ => false }
+    Absent => false
+  }
+  let completed = match run.status { Completed => true  _ => false }
+  let on_default_branch = match run.head_branch {
+    Present { value: b } => b == gunbc_repository.default_branch
+    Absent => false
+  }
+  titled && succeeded && completed && on_default_branch
+}
+
+fn fleet_converge_producer_run_select(runs: List<WorkflowRun>, mode: String, host: String) -> FleetConvergeProducerRunSelection {
+  let qualifying = filter(runs, r => fleet_converge_producer_run_qualifies(run: r, mode: mode, host: host))
+  let no_run: WorkflowRun? = Absent
+  let newest = fold(qualifying, init: no_run, f: (best, r) => match best {
+    Absent => Present { value: r }
+    Present { value: b } => if r.created_at > b.created_at { Present { value: r } } else { best }
+  })
+  match newest {
+    Absent => ProducerRunNone { cause: join(["no completed, successful fleet-converge run of mode ", mode, " for host ", host, " is in the listing, so there is no producer artifact to read"], "") }
+    Present { value: r } => ProducerRunSelected { run: github_workflow_run_id_of_wire(n: r.id), attempt: r.run_attempt, created_at: r.created_at }
+  }
+}
+
+// ABSENCE IS ESTABLISHED, NEVER ASSUMED FROM AN INCOMPLETE LISTING (DESIGN 5: an incomplete observation must not
+// authorize an action). extdeps.github.workflow_runs ListWorkflowRuns does not model an ordering across pages, so
+// NO page-local fact (an old run, a page without a match) may end the search: the scan reads every page until an
+// UNDERFULL one (the listing is exhausted) and selects the newest qualifying run by created_at across ALL pages
+// scanned. Reaching the page cap with a full page is a typed refusal -- even when a qualifying run was already
+// seen, because a newer one may lie beyond the cap.
+data fleet_converge_producer_run_search_max_pages: Int = 10
+
+type FleetConvergeProducerRunScan
+  = RunScanSelected { run: GitHubWorkflowRunId, attempt: Int, created_at: Timestamp }
+  | RunScanNone { cause: String }
+  | RunScanContinues { scanned: List<WorkflowRun> }
+  | RunScanCapReached { cause: String }
+
+fn fleet_converge_producer_run_scan_step(scanned: List<WorkflowRun>, page_runs: List<WorkflowRun>, mode: String, host: String, page: Int, max_pages: Int, page_size: Int) -> FleetConvergeProducerRunScan {
+  let all = concat(scanned, page_runs)
+  if length(xs: page_runs) < page_size {
+    match fleet_converge_producer_run_select(runs: all, mode: mode, host: host) {
+      ProducerRunSelected { run: r, attempt: a, created_at: c } => RunScanSelected { run: r, attempt: a, created_at: c }
+      ProducerRunNone { cause: c } => RunScanNone { cause: c }
+    }
+  } else if page >= max_pages {
+    RunScanCapReached {
+      cause: join(["the run listing was still full after ", to_string(page), " pages, so the newest qualifying run is not established (bounded search of ", to_string(max_pages), " pages)"], "")
+    }
+  } else {
+    RunScanContinues { scanned: all }
+  }
+}
+
+// THE LIVE READ: one ListWorkflowRuns page per step over the fleet-converge workflow's workflow_dispatch runs,
+// the pure scan above deciding select / none / continue / cap. Every failure is located in its cause.
+type FleetConvergeProducerRunObservation
+  = ProducerRunObserved { run: GitHubWorkflowRunId, attempt: Int }
+  | ProducerRunAbsent { cause: String }
+  | ProducerRunUnreadable { cause: String }
+
+fn fleet_converge_producer_run_observed(mode: String, host: String, token: Secret) -> FleetConvergeProducerRunObservation {
+  fleet_converge_producer_run_pages(mode: mode, host: host, token: token, page: 1, scanned: [])
+}
+
+fn fleet_converge_producer_run_pages(mode: String, host: String, token: Secret, page: Int, scanned: List<WorkflowRun>) -> FleetConvergeProducerRunObservation {
+  match github.WorkflowRuns.ListWorkflowRuns(
+    auth_token: token,
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    workflow_name: artifact_location(a: FleetConvergeYamlArtifact).name,
+    event: workflow_dispatch_event_name,
+    created_range: "",
+    per_page: max_per_page,
+    page: page,
+  ) {
+    RestRefused { refusal } => ProducerRunUnreadable { cause: census_read_refusal_cause(operation: join(["github.WorkflowRuns.ListWorkflowRuns page ", to_string(page)], ""), refusal: refusal) as String }
+    RestAnswered { answer } => match fleet_converge_producer_run_scan_step(scanned: scanned, page_runs: answer.result.workflow_runs, mode: mode, host: host, page: page, max_pages: fleet_converge_producer_run_search_max_pages, page_size: max_per_page) {
+      RunScanSelected { run: run, attempt: a, created_at: _ } => ProducerRunObserved { run: run, attempt: a }
+      RunScanNone { cause: c } => ProducerRunAbsent { cause: c }
+      RunScanContinues { scanned: all } => fleet_converge_producer_run_pages(mode: mode, host: host, token: token, page: page + 1, scanned: all)
+      RunScanCapReached { cause: c } => ProducerRunUnreadable { cause: c }
+    }
+  }
+}

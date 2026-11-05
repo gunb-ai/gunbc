@@ -33,6 +33,8 @@ import gunbc.repository { gunbc_repository }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow, fleet_converge_dispatch_inputs, fleet_converge_expected_revision_input, fleet_converge_mode_input, fleet_converge_host_input,
   fleet_converge_workflow_mode_wire, QualificationFloor,
+  FleetConvergeDispatchSpec, DispatchInputValue, fleet_converge_dispatch_values, fleet_converge_dispatch_names_supplying,
+  fleet_converge_required_inputs_unsupplied,
 }
 import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
@@ -128,24 +130,21 @@ data qualification_revision_dispatch_input: DispatchInput = fleet_converge_expec
 // executor host (the slot's host, which is where the floor runs), the attempt label its runs-on reads and the revision
 // its guard checks out. A dispatch omitting a required input is refused by GitHub before any run exists, and the
 // admission below refuses a workflow requiring one this map does not carry (SubjectRequiredInputUnsupplied).
-fn qualification_dispatch_inputs(attempt: NonEmptyStr, revision: CommitSha, host: HostIdentity) -> Map<String, String> {
-  map_insert(
-    m: map_insert(
-      m: map_insert(
-        m: map_insert(m: empty_map(), key: fleet_converge_mode_input.name, value: fleet_converge_workflow_mode_wire(mode: QualificationFloor)),
-        key: fleet_converge_host_input.name,
-        value: host as String,
-      ),
-      key: qualification_attempt_dispatch_input.name,
-      value: attempt as String,
-    ),
-    key: qualification_revision_dispatch_input.name,
-    value: revision as String,
-  )
+data qualification_floor_supplied_inputs: List<DispatchInput> = [qualification_attempt_dispatch_input, qualification_revision_dispatch_input]
+
+fn qualification_floor_dispatch_spec(attempt: NonEmptyStr, revision: CommitSha, host: HostIdentity) -> FleetConvergeDispatchSpec {
+  FleetConvergeDispatchSpec {
+    mode: QualificationFloor,
+    executor: host,
+    inputs: [
+      DispatchInputValue { input: qualification_attempt_dispatch_input, value: attempt as String },
+      DispatchInputValue { input: qualification_revision_dispatch_input, value: revision as String },
+    ],
+  }
 }
 
 fn qualification_dispatch_input_names() -> List<String> {
-  [fleet_converge_mode_input.name, fleet_converge_host_input.name, qualification_attempt_dispatch_input.name, qualification_revision_dispatch_input.name]
+  fleet_converge_dispatch_names_supplying(inputs: qualification_floor_supplied_inputs)
 }
 
 fn step_runs_after_a_failure(step: Step) -> Bool {
@@ -284,9 +283,7 @@ fn workflow_dispatch_inputs_of(workflow: Workflow) -> List<DispatchInput> {
 }
 
 fn required_inputs_unsupplied(workflow: Workflow) -> List<String> {
-  workflow_dispatch_inputs_of(workflow: workflow)
-    |> filter(i => i.required && !(qualification_dispatch_input_names() |> any(n => n == i.name)))
-    |> map(i => i.name)
+  fleet_converge_required_inputs_unsupplied(declared: workflow_dispatch_inputs_of(workflow: workflow), supplied: qualification_dispatch_input_names())
 }
 
 // The workflow must declare the attempt input, and its floor job's runs-on must be exactly it.
@@ -539,7 +536,7 @@ fn dispatch_qualification_floor(
             repo: gunbc_repository.name as NonEmptyStr,
             workflow_id: qualification_workflow_file_name(),
             git_ref: subject.pin.name.branch,
-            inputs: qualification_dispatch_inputs(attempt: subject.attempt, revision: subject.pin.revision, host: subject.host),
+            inputs: fleet_converge_dispatch_values(spec: qualification_floor_dispatch_spec(attempt: subject.attempt, revision: subject.pin.revision, host: subject.host)),
           )
           match qualification_dispatch_standing(dispatch: answer.dispatch) {
             DispatchStandingSucceeded { receipt: r } => QualificationDispatched { run: DispatchedQualificationRun { subject: subject, receipt: r } }
