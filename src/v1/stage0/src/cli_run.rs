@@ -6994,13 +6994,6 @@ pub enum CompileSubject {
     /// Every module under this source root, plus their transitive import closure. The
     /// remaining roots stay a dependency pool.
     PrimaryRoot(String),
-    /// THE ROOT DEMAND MEASUREMENT: the same population as `PrimaryRoot`, compiled as its OWN
-    /// subject whose only product is a measurement receipt. Constructible only from an admitted
-    /// measurement (`memory_governor::AdmittedRootDemandMeasurement` has private fields), so it is
-    /// not the whole-root compile with its demand refusal skipped: whole-root admission is not
-    /// asked of it because `root_demand_measurement_admission` already required an enforceable
-    /// limit, and its caller emits nothing (`measure_root_demand`).
-    RootDemandMeasurement(crate::memory_governor::AdmittedRootDemandMeasurement),
 }
 
 /// THE EXACT TEXT `gunbc.emit_diagnostic_observation` `emit_entry_scope_marker` MATCHES ON.
@@ -7040,13 +7033,12 @@ impl CompileScopeReceipt {
 }
 
 impl CompileSubject {
-    /// The primary root a POPULATION subject compiles, or `None` for an entry. Both population
+    /// The primary root a POPULATION subject compiles, or `None` for an entry. The population
     /// arms share every step after admission, so they read the root from one place.
     pub fn population_root(&self) -> Option<&str> {
         match self {
             CompileSubject::Entry(_) => None,
             CompileSubject::PrimaryRoot(root) => Some(root.as_str()),
-            CompileSubject::RootDemandMeasurement(m) => Some(m.root().primary_root.as_str()),
         }
     }
 
@@ -7060,11 +7052,6 @@ impl CompileSubject {
             CompileSubject::PrimaryRoot(root) => {
                 CompileScopeReceipt::PrimaryRootPopulation { root: root.clone() }
             }
-            CompileSubject::RootDemandMeasurement(m) => {
-                CompileScopeReceipt::PrimaryRootPopulation {
-                    root: m.root().primary_root.clone(),
-                }
-            }
         }
     }
 
@@ -7075,9 +7062,6 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => path.clone(),
             CompileSubject::PrimaryRoot(root) => format!("{root} (whole root)"),
-            CompileSubject::RootDemandMeasurement(m) => {
-                format!("{} (root demand measurement)", m.root().primary_root)
-            }
         }
     }
 
@@ -7090,9 +7074,6 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => format!("entry:{path}"),
             CompileSubject::PrimaryRoot(root) => format!("primary-root:{root}"),
-            CompileSubject::RootDemandMeasurement(m) => {
-                format!("root-demand-measurement:{}", m.root().primary_root)
-            }
         }
     }
 }
@@ -7406,7 +7387,6 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     let entry_path: &str = match &request.subject {
         CompileSubject::Entry(path) => path.as_str(),
         CompileSubject::PrimaryRoot(root) => root.as_str(),
-        CompileSubject::RootDemandMeasurement(m) => m.root().primary_root.as_str(),
     };
     if let CompileSubject::Entry(_) = &request.subject {
         // The entry is a FILE, so it is anchored against the workspace root directly rather
@@ -7572,12 +7552,11 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // root with no `module` header would have left its closure silently (review 66847 on
         // gunbc#11461; DESIGN 2/6 forked logic). Each refusal names its phase so this arm maps it
         // onto compile_not_executed and the tap onto its own refusal, from one derivation.
-        // Both population arms name a root and derive the same subject from it.
-        CompileSubject::PrimaryRoot(_) | CompileSubject::RootDemandMeasurement(_) => {
+        CompileSubject::PrimaryRoot(_) => {
             let root = request
                 .subject
                 .population_root()
-                .expect("both population arms name a root");
+                .expect("the population arm names a root");
             match primary_root_subject_closure(&index, root) {
                 Ok(closure) => closure,
                 Err(PrimaryRootSubjectRefusal { phase, cause }) => {
@@ -14689,6 +14668,7 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
+    let mut equality_by_target: Rc<HashMap<String, bool>> = v1_rt::rc_empty_map();
     // S2a move 2 (resolver-graph-major-design (deleted) §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
@@ -14915,6 +14895,7 @@ fn reconcile_with_typed_cache(
                                     intern_table.clone(),
                                     module_symbol_index,
                                     module_variant_base,
+                                    equality_by_target.clone(),
                                 );
                                 // Per-module attribution for the typecheck-dominant resolves measured
                                 // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
@@ -14970,6 +14951,11 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
+                equality_by_target = v1_compiler_infer::equality_table_with_module(
+                    equality_by_target,
+                    typed.clone(),
+                    source_indices.clone(),
+                );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {
@@ -17900,150 +17886,6 @@ impl ScopedRunObservation {
 #[cfg(not(unix))]
 fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
     Err("scoped dynamic-line stderr capture requires a Unix host".to_string())
-}
-
-/// THE ROOT DEMAND MEASUREMENT — how a root acquires its first `MeasuredForRoot` row. Seed
-/// realization of `gunbc.root_demand_measurement`, DESIGN section 5's stopped-line audit: it
-/// reports, it does not green.
-///
-/// The PARENT (`measurement_child == false`) asks `root_demand_measurement_admission`, spawns this
-/// same verb as the measured CHILD, and observes it through `wait4`: exit status or signal, and the
-/// child's peak resident set from its rusage. A killed child cannot write a receipt, so the parent
-/// writes it — `Exceeded` on a kill at the limit — to `receipt_path`, and that receipt is the run's
-/// only product. The CHILD re-asks the admission under the cgroup it inherited, compiles the
-/// population as `CompileSubject::RootDemandMeasurement`, prints one census line, and exits with the
-/// compile's status. It is handed no output directory, so it has nowhere to emit an artifact, and it
-/// renders no diagnostics and no verdict.
-pub fn measure_root_demand(
-    source_roots: Vec<String>,
-    repository: String,
-    receipt_path: String,
-    measurement_child: bool,
-) -> ! {
-    let Some(primary_root) = source_roots.first().cloned() else {
-        eprintln!(
-            "gunbc measure-root-demand: admission: no --source-root names the root to measure"
-        );
-        std::process::exit(2);
-    };
-    let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
-        repository: repository.clone(),
-        primary_root,
-        dependency_pools: source_roots.iter().skip(1).cloned().collect(),
-    };
-    let limit = crate::memory_governor::read_root_demand_measurement_limit();
-    let admission = crate::memory_governor::root_demand_measurement_admission(&limit, &identity);
-    if let Some(diagnostic) =
-        crate::memory_governor::root_demand_measurement_refusal_diagnostic(&admission)
-    {
-        eprintln!("gunbc measure-root-demand: admission: {diagnostic}");
-        std::process::exit(1);
-    }
-    let crate::memory_governor::RootDemandMeasurementAdmission::Admitted(admitted) = admission
-    else {
-        unreachable!("a refused admission returned above");
-    };
-    if measurement_child {
-        let run = compile_emission(&CompileRequest {
-            subject: CompileSubject::RootDemandMeasurement(admitted),
-            root_demand: RootDemandDeclaration::default(),
-            source_roots: source_roots.clone(),
-            primary_precedence: true,
-            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Dag],
-        });
-        println!(
-            "{} {} {}",
-            crate::memory_governor::ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX,
-            run.closure_modules,
-            run.closure_source_bytes
-        );
-        let code = match run.disposition {
-            CompileDisposition::Completed { .. } => 0,
-            CompileDisposition::Refused { .. } => 1,
-            CompileDisposition::NotExecuted { .. } => 2,
-        };
-        std::process::exit(code);
-    }
-    let exe = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("gunbc measure-root-demand: spawn: cannot locate this executable: {e}");
-            std::process::exit(2);
-        }
-    };
-    let mut argv = vec![
-        "measure-root-demand".to_string(),
-        "--repository".to_string(),
-        repository,
-    ];
-    for r in &source_roots {
-        argv.push("--source-root".to_string());
-        argv.push(r.clone());
-    }
-    argv.push("--receipt".to_string());
-    argv.push(receipt_path.clone());
-    argv.push("--measurement-child".to_string());
-    let mut child = match std::process::Command::new(&exe)
-        .args(&argv)
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("gunbc measure-root-demand: spawn: {e}");
-            std::process::exit(2);
-        }
-    };
-    let pid = child.id() as libc::pid_t;
-    let mut stdout = String::new();
-    if let Some(mut out) = child.stdout.take() {
-        use std::io::Read;
-        let _ = out.read_to_string(&mut stdout);
-    }
-    let mut status: libc::c_int = 0;
-    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
-    let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
-    if waited != pid {
-        eprintln!(
-            "gunbc measure-root-demand: wait4 on the measured child failed: {}",
-            std::io::Error::last_os_error()
-        );
-        std::process::exit(2);
-    }
-    let wait = if libc::WIFSIGNALED(status) {
-        crate::memory_governor::RootDemandMeasurementWait::Signaled(libc::WTERMSIG(status))
-    } else {
-        crate::memory_governor::RootDemandMeasurementWait::Exited(libc::WEXITSTATUS(status))
-    };
-    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .map(|h| h.trim().to_string())
-        .unwrap_or_else(|_| "hostname unreadable".to_string());
-    let run = crate::memory_governor::RootDemandMeasurementRun {
-        root: admitted.root().clone(),
-        limit_bytes: admitted.limit_bytes(),
-        limit_source: admitted.limit_source().to_string(),
-        measured_on_host: host,
-        instrument_run: format!(
-            "gunbc measure-root-demand ({}) child pid {pid} at unix {}",
-            env!("GUNBC_BUILD_IDENTITY"),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0)
-        ),
-        census: crate::memory_governor::parse_root_demand_measurement_census(&stdout),
-    };
-    let peak_bytes = (usage.ru_maxrss as u64).saturating_mul(1024);
-    let receipt = crate::memory_governor::root_demand_measurement_receipt(run, wait, peak_bytes);
-    let json = crate::memory_governor::root_demand_measurement_receipt_json(&receipt);
-    if let Err(e) = std::fs::write(&receipt_path, &json) {
-        eprintln!("gunbc measure-root-demand: receipt: cannot write {receipt_path}: {e}");
-        std::process::exit(2);
-    }
-    eprint!("gunbc measure-root-demand: receipt written to {receipt_path}: {json}");
-    std::process::exit(crate::memory_governor::root_demand_measurement_exit_code(
-        &receipt,
-    ));
 }
 
 /// VISIBILITY WIDENED by the cli-run cut for the same §3 reason as `witness_layer_roots`:
@@ -31376,6 +31218,7 @@ mod peel_alias_fixpoint_termination {
                 symbol_index,
                 unit_variant_index: crate::v1_rt::rc_empty_map(),
                 unit_variant_index_observed: false,
+                equality_by_target: crate::v1_rt::rc_empty_map(),
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix

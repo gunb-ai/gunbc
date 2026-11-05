@@ -1,6 +1,7 @@
 module v2.test.lens_identity_captured_navigation
 
 import v2.std.node { NotADeclaration }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -93,9 +94,6 @@ fn findings_for(scrutinee_name_sym: Symbol, mentions: List<Symbol>) -> List<v2.l
   identity_captured_navigation_findings(root: root)
 }
 
-fn finding_list_length(fs: List<v2.lens.identity_captured_navigation.Finding>) -> Int {
-  fold(fs, init: 0, f: fn(acc, _) { acc + 1 })
-}
 
 fn any_suspect(fs: List<v2.lens.identity_captured_navigation.Finding>) -> Bool {
   fold(fs, init: false, f: fn(acc, f) { acc || v2.lens.identity_captured_navigation.analyze.finding_is_suspect(f: f) })
@@ -106,7 +104,7 @@ test fn red_control_bare_identity_mention_is_flagged_suspect() -> Bool {
     scrutinee_name_sym: ^grammar_production_identity_node_projection,
     mentions: [^probe_leaked_identity_mention]
   )
-  finding_list_length(fs: fs) == 1 && any_suspect(fs: fs)
+  length(xs: fs) == 1 && any_suspect(fs: fs)
 }
 
 test fn green_control_sanctioned_single_reduction_not_flagged() -> Bool {
@@ -114,7 +112,7 @@ test fn green_control_sanctioned_single_reduction_not_flagged() -> Bool {
     scrutinee_name_sym: ^grammar_production_identity_node_projection,
     mentions: [^node_atom_identity_optional, ^probe_present_binder_mention]
   )
-  finding_list_length(fs: fs) == 0
+  length(xs: fs) == 0
 }
 
 test fn unrelated_scrutinee_name_not_flagged() -> Bool {
@@ -122,7 +120,7 @@ test fn unrelated_scrutinee_name_not_flagged() -> Bool {
     scrutinee_name_sym: ^grammar_production_captured_node_projection,
     mentions: [^probe_leaked_identity_mention]
   )
-  finding_list_length(fs: fs) == 0
+  length(xs: fs) == 0
 }
 
 fn discrepancy_count(xs: List<FidelityDiscrepancy>) -> Int {

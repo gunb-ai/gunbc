@@ -1387,7 +1387,7 @@ data e1_blink_videos: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", lo
 
 data e1_u3_leads: List<NonEmptyStr> = ["upper-left lead", "upper-middle lead", "upper-right lead", "lower-right lead", "lower-middle lead", "lower-left lead"]
 
-data e1_module_site_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads 9da5383c (J4, H2, U4), 9cd281be (J3), 1749253a and fe0f5816 (U3 on the back below Q300 and Q301, with the pad group below it) and 376b5588 (U43, Y50 and U500 at the site's corner beside U51 and U49); e8c5473a and its repeat, the operator's 500 marks on the cluster beside J3 (not on Drive)")
+data e1_module_site_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads 9da5383c (J4, H2, U4), 9cd281be (J3, superseded 2026-11-04: the label was read there only from this upload, whose bytes were never supplied, and the board's J3 reading now cites a stored frame with the label boxed on it), 1749253a and fe0f5816 (U3 on the back below Q300 and Q301, with the pad group below it) and 376b5588 (U43, Y50 and U500 at the site's corner beside U51 and U49); e8c5473a and its repeat, the operator's 500 marks on the cluster beside J3 (not on Drive)")
 
 data e1_site_clusters_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "both of the J3/J4 sites have similar clusters under them that both read 500 - there are many pins that i.e. read 500 in that cluster - do you need the exact? my goal isn't to build an exact netlist, unless we really have to -" }
 
@@ -2251,6 +2251,14 @@ fn e1_atlas_frame(
   }
 }
 
+// A sighting on bytes the store DOES hold, where the atlas recorded no region for it. A different
+// gap from `e1_unlocated_frame` (no frame was located at all) and from `e1_unstored_photo` (bytes
+// never hashed): here the photograph is in the store and resolvable by content, so what is owed is
+// a box on it, not a file. The row's own text names the region it means.
+fn e1_atlas_frame_unboxed(content: Sha256Digest) -> PhotographCitation {
+  InStore { content: content, region: Absent }
+}
+
 // A sighting the atlas recorded with no frame it could name. That is a different gap from "the
 // bytes were never hashed" (e1_unstored_photo): here no image was located for the row at all, so
 // the obligation is to photograph the footprint, not to re-supply a file. The date is the atlas
@@ -2306,7 +2314,20 @@ data e1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: e1_u500, designator: "U500", evidence: e1_u500_photo },
   DesignatorReading { specimen: e1_y50, designator: "Y50", evidence: e1_u500_photo },
   DesignatorReading { specimen: e1_u43, designator: "U43", evidence: e1_u43_photo },
-  DesignatorReading { specimen: e1_j3, designator: "J3", evidence: e1_module_site_photo },
+  // J3 keeps its position, and the reason it keeps it changed on 2026-11-04. It used to rest on the
+  // 2026-10-20 bench read of upload 9cd281be, whose bytes never reached us; the operator has since read
+  // 'J3' in three frames the store does hold, and gave the box for each. Grain A allows ONE modelled
+  // reading per part, citing its best photo, so this row cites the largest of the three boxes -- 50x60
+  // px on frame _22 -- and the other two frames are carried by the FromStoredFrames authority in
+  // e1_position_receipts, which names every digest, file name and box. The atlas-pass witness requires
+  // this row's digest to be one of the authority's, which is what makes it one read recorded twice
+  // rather than a name asserted twice. The superseded bench citation is not lost: the authority says who
+  // read the label and on what day, and the unresolved row below names the 15 numbered top close-ups the
+  // pass never read -- the count and the ranges are stated once, in J3's authority text in
+  // e1_position_receipts ("the 15 numbered close-ups it never read are 05-08, 14-18, 22-23 and 26-29"), and
+  // this comment defers to that rather than restating it -- the reason it recorded J3 as 'overview only'.
+  // Corrected 2026-11-04: this comment said 16, carried from the handoff before the receipts were counted.
+  DesignatorReading { specimen: e1_j3, designator: "J3", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "471155264d4b3337a59c6eeaa55d14ce440a5d36b5b8d6e0d912d9eaec8e54db" as Sha256DigestHex }, left: 675, top: 1612, width: 50, height: 60) } },
   DesignatorReading { specimen: e1_j4, designator: "J4", evidence: e1_module_site_photo },
   DesignatorReading { specimen: e1_u3, designator: "U3", evidence: e1_u3_photo },
   DesignatorReading { specimen: e1_u4, designator: "U4", evidence: e1_u4_photo },
@@ -2448,7 +2469,6 @@ data e1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: e1_component(local: "DS11"), designator: "DS11", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "273b7c8fb55ac7e6d219d3015665f11d3ed5db79cb93b56e03178e1288fb4e1c" as Sha256DigestHex }, left: 901, top: 318, width: 104, height: 270) } },
   DesignatorReading { specimen: e1_component(local: "DS12"), designator: "DS12", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "273b7c8fb55ac7e6d219d3015665f11d3ed5db79cb93b56e03178e1288fb4e1c" as Sha256DigestHex }, left: 1127, top: 307, width: 105, height: 281) } },
   DesignatorReading { specimen: e1_component(local: "DS13"), designator: "DS13", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "273b7c8fb55ac7e6d219d3015665f11d3ed5db79cb93b56e03178e1288fb4e1c" as Sha256DigestHex }, left: 1016, top: 307, width: 99, height: 281) } },
-  DesignatorReading { specimen: e1_component(local: "C3_F1"), designator: "C3_F1", evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(designator: "C3_F1", located: "the final pass reported the label visible at atlas row t4_07, but the designator was never transcribed and no frame was registered", closing: "a close-up of the label at A1 -- the atlas lists C3_F1 among the designators legible in photos yet missing from the merged inventory") } },
   DesignatorReading { specimen: e1_component(local: "C10_P1"), designator: "C10_P1", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a972c12b9589261bd173ac510a17450d04bef219df1495cc23a494fa99d777b9" as Sha256DigestHex }, left: 2398, top: 2554, width: 164, height: 398) } },
   DesignatorReading { specimen: e1_component(local: "D1_P1"), designator: "D1_P1", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f6a462a3789850cae3c2594b20d60917a540cda314a1baa781869e91a21a6407" as Sha256DigestHex }, left: 3190, top: 2081, width: 233, height: 404) } },
   DesignatorReading { specimen: e1_component(local: "D1_P5"), designator: "D1_P5", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "d1187d9758c9fca2911fbbdec7ca326b835f686aa0fb81c1d9efb2baeba81eb6" as Sha256DigestHex }, left: 1103, top: 1045, width: 424, height: 259) } },
@@ -2769,7 +2789,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q140"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "KA?", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "4eb39d5be3f0196b4f8369daa3359a2b3739c090062dc13f5ce454cb30d8773e" as Sha256DigestHex }, left: 1400, top: 800, width: 160, height: 125) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q530"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "7BW 27", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "c81cb3b7f5e6ddda3f2fa84f613b4778bc71d15d117ba8fd95a579503e6b28fe" as Sha256DigestHex }, left: 917, top: 411, width: 498, height: 223) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q531"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "7BW?", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "fe2c30717331f2d3cc0ef652787f6db5382e472c6bd09504254b379e4f77815b" as Sha256DigestHex }, left: 1180, top: 1080, width: 215, height: 325) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
-      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "C3_F1"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "150 / J ZU / 26AL (as its three neighbours)", evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(designator: "C3_F1", located: "the final pass reported the label visible at atlas row t4_07, but the designator was never transcribed and no frame was registered", closing: "a close-up of the label at A1 -- the atlas lists C3_F1 among the designators legible in photos yet missing from the merged inventory") } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
+      InstalledComponent { seen: seen_unordered(), component: e1_component(local: "can-shaped body at the cell the inventory row calls C3_F1 (top, A1); the name is the row's and the repair pass's, never a read spelling"), terminals: [], identification: MarkingUnresolved { marking: Absent, discriminator: "nobody read this body: the inventory row's marking is copied from C1_F1, C2_F1 and C4_F1 and says so in its own parentheses ('as its three neighbours'), and the atlas registers no best frame for it (its photos column names t4_07; neither per-photo jsonl has a record of it). The row stays on the board as a designated location the pass named; what stands in it is open, and the C1-C4 sequence is a naming hypothesis, not a reading" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "C10_P1"), terminals: [], identification: MarkingUnresolved { marking: MarkingReading { text: "150 / J 2U / 26AL", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a972c12b9589261bd173ac510a17450d04bef219df1495cc23a494fa99d777b9" as Sha256DigestHex }, left: 2398, top: 2554, width: 164, height: 398) } }, discriminator: "the marking is read but names no part we can cite; no candidate recorded; the document that ties this marking to an orderable would close it" } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D1_P5"), terminals: [], identification: FootprintUnpopulated { evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "d1187d9758c9fca2911fbbdec7ca326b835f686aa0fb81c1d9efb2baeba81eb6" as Sha256DigestHex }, left: 1103, top: 1045, width: 424, height: 259) } } },
       InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U1_P1"), terminals: [], identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { text: "[NS logo] 28A025UG3 / LM5066I", evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U1_P1", located: "the atlas names no frame for this row") } } } },
@@ -2878,181 +2898,243 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     // resolved: two have frames that disagree about whether a body is fitted, and one was sighted without
     // the atlas being able to say what kind of thing it saw. None is written as fitted and none as empty,
     // because the receipts do not say either, and the later sighting does not outrank the earlier one.
-    UnresolvedPart { designator: Present { value: "D1_P1" }, marking: Absent, obligation: "two atlas frames disagree and neither is overridden: p4261_e1b_top_A4-B4_U1_P1_U522_D4_P1_D1_P1_2026-11-02_45.jpg sights a small SOD-323-size outline with silk bars directly under the label and calls it too small to tell, while p4261_e1b_top_A4-A5_D1_P1_D5_P1_2026-11-03_sd080.JPG reads the two-pad footprint inside the white silk box as empty. Look at the pads under the label and say which frame reads it right; until then this footprint is neither fitted nor empty", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f6a462a3789850cae3c2594b20d60917a540cda314a1baa781869e91a21a6407" as Sha256DigestHex }, left: 3190, top: 2081, width: 233, height: 404) } },
-    UnresolvedPart { designator: Present { value: "U3_P3" }, marking: Absent, obligation: "whose body the label names is unsettled: p4261_e1b_top_D1-D2_U1_TSW_U3_P3_U511_U520_2026-11-02_41.jpg reads the label unambiguously and says the only IC-like body nearby needs a closer look to be sure it belongs here, while p4261_e1b_top_C1-D1_D1_P3_U3_P3_2026-11-03_sd010.JPG records the nearest multi-pad outline as an unpopulated footprint. Name the fitted outline the label belongs to, or confirm the label stands over bare footprints", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "01b7fc69bbf0f04fbacf6548274c2d6356758f0c855691be2b585f53ed652a4c" as Sha256DigestHex }, left: 3131, top: 2336, width: 494, height: 541) } },
-    UnresolvedPart { designator: Present { value: "U40" }, marking: Absent, obligation: "the atlas saw the position and could not say what kind of thing is there: p4261_e1b_top_A5-A6-B5-B6_U15_U48_U86_U90_2026-11-02_34.jpg records the label and notes the labelled part is not clearly visible, only passives nearby. It is therefore not among the bodies stated as fitted from a sighting, and nothing here says the footprint is empty either. A closer frame of the labelled part, at a zoom that shows its outline and any marking, closes it", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "15f6ba1a2ae5626a18b4d6f15a98f50b92881a056307e57f7be344867c8d5990" as Sha256DigestHex }, left: 1808, top: 1119, width: 48, height: 25) } },
-    UnresolvedPart { designator: Absent, marking: Present { value: "P617A / 01 14 / 226" }, obligation: "an 8-pin MSOP left of the VCI mark, read at the photograph's resolution: maker and function unresolved", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
-    UnresolvedPart { designator: Present { value: "U1_P1" }, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor, designator read 2026-10-19: its marking is not legible; its _P5 twin U1_P5 is an LM5066I, a lead for this one, not its identity", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
-    UnresolvedPart { designator: Absent, marking: Present { value: "HA..." }, obligation: "a part below D5, partly in frame: read its marking", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
-    UnresolvedPart { designator: Absent, marking: Absent, obligation: "the large bare pads by F300 and the copper-ringed mounting holes were read as populations ('all of the big bare pads', 'J20 connects to all copper holes'); each would be a terminal once numbered on a photograph", evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "all of the big bare pads are connected the to the power rail" } },
-    UnresolvedPart { designator: Present { value: "J24" }, marking: Absent, obligation: "a keyed socket of about 2 x 5 positions in the debug corner: its ground and logic-reference points by unpowered readings and idle voltages, nothing bridged", evidence: e1_switch_photo },
-    UnresolvedPart { designator: Present { value: "J540" }, marking: Absent, obligation: "a smaller multi-pin socket beside U71, U95, DS3 to DS6 and S1: its position count, its ground and logic-reference points, nothing bridged", evidence: e1_switch_photo },
-    UnresolvedPart { designator: Present { value: "J31" }, marking: Absent, obligation: "a two-pin header silkscreened J31 beside Q530 in the corner photograph, a different header from J30: its role and its points", evidence: e1_switch_photo },
+    // C3_F1 is a Candidate rather than a read: the pass saw a label there and never transcribed it, so
+    // the row points at the pass's own receipt instead of presenting a spelling. The name is what the
+    // merged inventory row (top side, cell A1, photos 't4_07') and the repair pass call it, and it lives
+    // in the obligation as text a reader can use. Presenting it here would assert a spelling was read --
+    // and product.p4261.carrier.UnresolvedIdentity, the sum that carries this field, has no arm for a
+    // row that does both.
+    UnresolvedPart {
+        identity: Candidate { source: C3_F1 { } },
+        marking: Absent, obligation: "the label was seen and never read: the atlas's final pass added the row reporting the label visible at frame t4_07 (its photos column names t4_07; no per-photo record of this designator exists in either jsonl), and no receipt transcribed it, so neither its characters nor its body have been read. The row is held as the untranscribed candidate its receipts module calls C3_F1 -- a proposed name from the inventory row and the repair pass, never a read spelling, which is why no designator is presented. The inventory's marking for this row is copied from C1_F1, C2_F1 and C4_F1 and says so in its own parentheses; nobody read this body. The frame t4_07 is in the store by content, so what is owed here is a box on it: a close-up of the label at A1 that transcribes the designator, and a frame showing what stands under it", evidence: OperatorPhotograph { citation: e1_atlas_frame_unboxed(Sha256Digest { hex: "13cc395be05c69badbc652e4b8d7169b7f176a7e95ae35f50683cee6268d3303" as Sha256DigestHex }) } },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "D1_P1" },
+        marking: Absent, obligation: "two atlas frames disagree and neither is overridden: p4261_e1b_top_A4-B4_U1_P1_U522_D4_P1_D1_P1_2026-11-02_45.jpg sights a small SOD-323-size outline with silk bars directly under the label and calls it too small to tell, while p4261_e1b_top_A4-A5_D1_P1_D5_P1_2026-11-03_sd080.JPG reads the two-pad footprint inside the white silk box as empty. Look at the pads under the label and say which frame reads it right; until then this footprint is neither fitted nor empty", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f6a462a3789850cae3c2594b20d60917a540cda314a1baa781869e91a21a6407" as Sha256DigestHex }, left: 3190, top: 2081, width: 233, height: 404) } },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "U3_P3" },
+        marking: Absent, obligation: "whose body the label names is unsettled: p4261_e1b_top_D1-D2_U1_TSW_U3_P3_U511_U520_2026-11-02_41.jpg reads the label unambiguously and says the only IC-like body nearby needs a closer look to be sure it belongs here, while p4261_e1b_top_C1-D1_D1_P3_U3_P3_2026-11-03_sd010.JPG records the nearest multi-pad outline as an unpopulated footprint. Name the fitted outline the label belongs to, or confirm the label stands over bare footprints", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "01b7fc69bbf0f04fbacf6548274c2d6356758f0c855691be2b585f53ed652a4c" as Sha256DigestHex }, left: 3131, top: 2336, width: 494, height: 541) } },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "U40" },
+        marking: Absent, obligation: "the atlas saw the position and could not say what kind of thing is there: p4261_e1b_top_A5-A6-B5-B6_U15_U48_U86_U90_2026-11-02_34.jpg records the label and notes the labelled part is not clearly visible, only passives nearby. It is therefore not among the bodies stated as fitted from a sighting, and nothing here says the footprint is empty either. A closer frame of the labelled part, at a zoom that shows its outline and any marking, closes it", evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "15f6ba1a2ae5626a18b4d6f15a98f50b92881a056307e57f7be344867c8d5990" as Sha256DigestHex }, left: 1808, top: 1119, width: 48, height: 25) } },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Present { value: "P617A / 01 14 / 226" }, obligation: "an 8-pin MSOP left of the VCI mark, read at the photograph's resolution: maker and function unresolved", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "U1_P1" },
+        marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor, designator read 2026-10-19: its marking is not legible; its _P5 twin U1_P5 is an LM5066I, a lead for this one, not its identity", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Present { value: "HA..." }, obligation: "a part below D5, partly in frame: read its marking", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Absent, obligation: "the large bare pads by F300 and the copper-ringed mounting holes were read as populations ('all of the big bare pads', 'J20 connects to all copper holes'); each would be a terminal once numbered on a photograph", evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "all of the big bare pads are connected the to the power rail" } },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "J24" },
+        marking: Absent, obligation: "a keyed socket of about 2 x 5 positions in the debug corner: its ground and logic-reference points by unpowered readings and idle voltages, nothing bridged", evidence: e1_switch_photo },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "J540" },
+        marking: Absent, obligation: "a smaller multi-pin socket beside U71, U95, DS3 to DS6 and S1: its position count, its ground and logic-reference points, nothing bridged", evidence: e1_switch_photo },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "J31" },
+        marking: Absent, obligation: "a two-pin header silkscreened J31 beside Q530 in the corner photograph, a different header from J30: its role and its points", evidence: e1_switch_photo },
   
+    UnresolvedPart {
+        identity: Candidate { source: U1_INV { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Absent { },
+        obligation: "'U1_INV' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_042156_048.JPG",
+        evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "992c000519cc9f3a278353bd1ec8aa28dfbb29876dc4d90e401d66d1d46c9b6e" as Sha256DigestHex }, left: 2908, top: 864, width: 228, height: 751) },
+    },
+    UnresolvedPart {
+        identity: Candidate { source: U1_TNW { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Absent { },
+        obligation: "'U1_TNW' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell D6",
+        evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U1_TNW", located: "the atlas names no frame for this row") },
+    },
   UnresolvedPart {
-    designator: Present { value: "U1_INV" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_042156_048.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "992c000519cc9f3a278353bd1ec8aa28dfbb29876dc4d90e401d66d1d46c9b6e" as Sha256DigestHex }, left: 2908, top: 864, width: 228, height: 751) },
+      identity: ReadDesignator { designator: "U88" },
+      marking: Present { value: "VE" },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_040039_003.JPG",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "758483cf3878451968002e43d4c3f61a775d8ee41cd4ce9d5b890ba5107390a8" as Sha256DigestHex }, left: 1575, top: 2800, width: 186, height: 224) },
+  }
+    UnresolvedPart {
+        identity: Candidate { source: U108 { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Absent { },
+        obligation: "'U108' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell C6",
+        evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U108", located: "the atlas names no frame for this row") },
+    },
+    UnresolvedPart {
+        identity: Candidate { source: U138 { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Absent { },
+        obligation: "'U138' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell unnamed",
+        evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U138", located: "the atlas names no frame for this row") },
+    },
+  UnresolvedPart {
+      identity: ReadDesignator { designator: "U483" },
+      marking: Present { value: "IWEJ" },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_042234_053.JPG",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "5f08a2225aa637514d8b1930b368d79669d744d8a3d13cd1af620a61c7398a50" as Sha256DigestHex }, left: 2595, top: 2140, width: 395, height: 550) },
   }
   UnresolvedPart {
-    designator: Present { value: "U1_TNW" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell D6",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U1_TNW", located: "the atlas names no frame for this row") },
+      identity: ReadDesignator { designator: "U817" },
+      marking: Absent { },
+      obligation: "glare in the only frame means a light-bodied part cannot be ruled out; a low-glare frame of U817 closes it",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "44f0f91a18cf93b21c56a0aea7535eb43302dac2e1e3ecbd277b3c6032c413c6" as Sha256DigestHex }, left: 1209, top: 663, width: 657, height: 440) },
   }
   UnresolvedPart {
-    designator: Present { value: "U88" },
-    marking: Present { value: "VE" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_040039_003.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "758483cf3878451968002e43d4c3f61a775d8ee41cd4ce9d5b890ba5107390a8" as Sha256DigestHex }, left: 1575, top: 2800, width: 186, height: 224) },
+      identity: ReadDesignator { designator: "Y2" },
+      marking: Absent { },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_041548_037.JPG",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "338acf4503710927f24f347d602686ca331036250f0e82891003cb8d6a139fe8" as Sha256DigestHex }, left: 3770, top: 2720, width: 155, height: 190) },
   }
   UnresolvedPart {
-    designator: Present { value: "U108" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell C6",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U108", located: "the atlas names no frame for this row") },
+      identity: ReadDesignator { designator: "Y360" },
+      marking: Present { value: "A?HYR" },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_041548_037.JPG",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "338acf4503710927f24f347d602686ca331036250f0e82891003cb8d6a139fe8" as Sha256DigestHex }, left: 3232, top: 2081, width: 435, height: 536) },
   }
   UnresolvedPart {
-    designator: Present { value: "U138" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell unnamed",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U138", located: "the atlas names no frame for this row") },
+      identity: ReadDesignator { designator: "J3" },
+      marking: Absent { },
+      obligation: "the label is read and cited: three stored frames, boxed, on 2026-11-04, in the FromStoredFrames authority that admits the position and in the single DesignatorReading above. What this row still carries is that the ATLAS has never read it -- its reading_standing is not confirmed by any pass of ours, the marking is unknown, and the close-ups it skipped are listed in `located` -- so the position stands on a read recorded here, not on a pass that has not looked",
+      evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(
+      designator: "J3",
+      located: "the atlas pass names no frame in its photos column ('overview only') because of its own coverage gap: the pass recorded readings for 28 of the 51 top-side files in manifest_e1_all_photos.csv and never read 15 numbered close-ups among them: 05-08, 14-18, 22-23 and 26-29. The operator has since read the label in three of those stored frames -- cited in the FromStoredFrames authority that admits the position, and on the best of them by the single DesignatorReading above",
+      closing: "the label is read and cited; what remains is the atlas pass over the close-ups it skipped, joined through these same receipts, and a box on any frame still cited without one") },
+  }
+    UnresolvedPart {
+        identity: Candidate { source: J141 { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Absent { },
+        obligation: "'J141' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_040055_004.JPG",
+        evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a2bb0d2349f8cd9a2ba3d7943c41ba54d94ae9e9de2c8edebbcf984f250d55fb" as Sha256DigestHex }, left: 2757, top: 2814, width: 189, height: 74) },
+    },
+  UnresolvedPart {
+      identity: ReadDesignator { designator: "Q533" },
+      marking: Present { value: "7BW?" },
+      obligation: "the designator read stands as 'final-pass critic', not confirmed; the frame that would settle it is 2020_0112_040543_014.JPG",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "ddd4f9332987ca4279a195e29ca41e7765cd8f64964eb88d56f2ca0278ba395a" as Sha256DigestHex }, left: 2296, top: 1092, width: 122, height: 300) },
   }
   UnresolvedPart {
-    designator: Present { value: "U483" },
-    marking: Present { value: "IWEJ" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_042234_053.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "5f08a2225aa637514d8b1930b368d79669d744d8a3d13cd1af620a61c7398a50" as Sha256DigestHex }, left: 2595, top: 2140, width: 395, height: 550) },
+      identity: ReadDesignator { designator: "DS10-DS13" },
+      marking: Absent { },
+      obligation: "DS10-DS13 is a group label, not a footprint: one outline was read as a range. Each member owes its own silkscreen read before any of them can be a position",
+      evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "DS10-DS13", located: "the atlas names no frame for this row") },
   }
   UnresolvedPart {
-    designator: Present { value: "U817" },
-    marking: Absent { },
-    obligation: "glare in the only frame means a light-bodied part cannot be ruled out; a low-glare frame of U817 closes it",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "44f0f91a18cf93b21c56a0aea7535eb43302dac2e1e3ecbd277b3c6032c413c6" as Sha256DigestHex }, left: 1209, top: 663, width: 657, height: 440) },
+      identity: ReadDesignator { designator: "D5_P1" },
+      marking: Absent { },
+      obligation: "the outline reads probably unpopulated with an uncertain link; a frame that resolves the link closes it",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f6a462a3789850cae3c2594b20d60917a540cda314a1baa781869e91a21a6407" as Sha256DigestHex }, left: 2977, top: 1219, width: 223, height: 576) },
+  }
+    UnresolvedPart {
+        identity: Candidate { source: Q1_P1 { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Absent { },
+        obligation: "'Q1_P1' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_043040_081.JPG",
+        evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex }, left: 215, top: 1737, width: 602, height: 228) },
+    },
+  UnresolvedPart {
+      identity: ReadDesignator { designator: "Q4_P1" },
+      marking: Present { value: "?2N 18" },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_043040_081.JPG",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex }, left: 330, top: 970, width: 417, height: 245) },
   }
   UnresolvedPart {
-    designator: Present { value: "Y2" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_041548_037.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "338acf4503710927f24f347d602686ca331036250f0e82891003cb8d6a139fe8" as Sha256DigestHex }, left: 3770, top: 2720, width: 155, height: 190) },
+      identity: ReadDesignator { designator: "Q5_P1" },
+      marking: Absent { },
+      obligation: "the silkscreen tail could not be resolved (Q or O), so neither the designator nor the emptiness is settled; a close-up of the outline closes it",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "499eeb6274fbe6d0b6c6b59214f2c27afccab40df98853d17e17fd70803b043c" as Sha256DigestHex }, left: 1300, top: 1090, width: 520, height: 595) },
+  }
+    UnresolvedPart {
+        identity: Candidate { source: Q6_P1 { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Absent { },
+        obligation: "'Q6_P1' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_043040_081.JPG",
+        evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex }, left: 210, top: 2013, width: 596, height: 228) },
+    },
+  UnresolvedPart {
+      identity: ReadDesignator { designator: "U10_P2" },
+      marking: Absent { },
+      obligation: "the alteration ledger already records this part as removed during the rail-short repair; an observed-empty footprint would claim we found it empty, which we did not",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f98031a7957ce0f4b9143f7ee2ecf770a1177b5432b137f2858b9262d06f15ab" as Sha256DigestHex }, left: 2190, top: 626, width: 408, height: 127) },
+  }
+    UnresolvedPart {
+        identity: Candidate { source: Q3_3 { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Present { value: "?" },
+        obligation: "'Q3_3' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell D2",
+        evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q3_3", located: "the atlas names no frame for this row") },
+    },
+  UnresolvedPart {
+      identity: ReadDesignator { designator: "U60_3" },
+      marking: Present { value: "AWR; P21; 190 (on the QFN to the upper right, printed upside down)" },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_041359_028.JPG",
+      evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "1bfb5bb27ac969ed22d6de504cf20a06b87226c0a482c9956176db7da78f8a51" as Sha256DigestHex }, left: 2749, top: 1700, width: 531, height: 360) },
+  }
+    UnresolvedPart {
+        identity: Candidate { source: Q4_4 { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Present { value: "?04?" },
+        obligation: "'Q4_4' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_041439_034.JPG",
+        evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "fcb5749540cb6f86e1310a89dfac6af48f1ec1a8687090b398022f853beea7e4" as Sha256DigestHex }, left: 1552, top: 1238, width: 508, height: 622) },
+    },
+  UnresolvedPart {
+      identity: ReadDesignator { designator: "U58_4" },
+      marking: Present { value: "?" },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell D2",
+      evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U58_4", located: "the atlas names no frame for this row") },
   }
   UnresolvedPart {
-    designator: Present { value: "Y360" },
-    marking: Present { value: "A?HYR" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_041548_037.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "338acf4503710927f24f347d602686ca331036250f0e82891003cb8d6a139fe8" as Sha256DigestHex }, left: 3232, top: 2081, width: 435, height: 536) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "J3" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'final-pass critic', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell B2 C2 settles it -- the position itself stands on the 2026-10-20 bench read of J3, whose bytes were never supplied",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "J3", located: "the atlas names no frame for this row") },
-  }
-  UnresolvedPart {
-    designator: Present { value: "J141" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_040055_004.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a2bb0d2349f8cd9a2ba3d7943c41ba54d94ae9e9de2c8edebbcf984f250d55fb" as Sha256DigestHex }, left: 2757, top: 2814, width: 189, height: 74) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "Q533" },
-    marking: Present { value: "7BW?" },
-    obligation: "the designator read stands as 'final-pass critic', not confirmed; the frame that would settle it is 2020_0112_040543_014.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "ddd4f9332987ca4279a195e29ca41e7765cd8f64964eb88d56f2ca0278ba395a" as Sha256DigestHex }, left: 2296, top: 1092, width: 122, height: 300) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "DS10-DS13" },
-    marking: Absent { },
-    obligation: "DS10-DS13 is a group label, not a footprint: one outline was read as a range. Each member owes its own silkscreen read before any of them can be a position",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "DS10-DS13", located: "the atlas names no frame for this row") },
-  }
-  UnresolvedPart {
-    designator: Present { value: "D5_P1" },
-    marking: Absent { },
-    obligation: "the outline reads probably unpopulated with an uncertain link; a frame that resolves the link closes it",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f6a462a3789850cae3c2594b20d60917a540cda314a1baa781869e91a21a6407" as Sha256DigestHex }, left: 2977, top: 1219, width: 223, height: 576) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "Q1_P1" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_043040_081.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex }, left: 215, top: 1737, width: 602, height: 228) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "Q4_P1" },
-    marking: Present { value: "?2N 18" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_043040_081.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex }, left: 330, top: 970, width: 417, height: 245) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "Q5_P1" },
-    marking: Absent { },
-    obligation: "the silkscreen tail could not be resolved (Q or O), so neither the designator nor the emptiness is settled; a close-up of the outline closes it",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "499eeb6274fbe6d0b6c6b59214f2c27afccab40df98853d17e17fd70803b043c" as Sha256DigestHex }, left: 1300, top: 1090, width: 520, height: 595) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "Q6_P1" },
-    marking: Absent { },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_043040_081.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex }, left: 210, top: 2013, width: 596, height: 228) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "U10_P2" },
-    marking: Absent { },
-    obligation: "the alteration ledger already records this part as removed during the rail-short repair; an observed-empty footprint would claim we found it empty, which we did not",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f98031a7957ce0f4b9143f7ee2ecf770a1177b5432b137f2858b9262d06f15ab" as Sha256DigestHex }, left: 2190, top: 626, width: 408, height: 127) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "Q3_3" },
-    marking: Present { value: "?" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell D2",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q3_3", located: "the atlas names no frame for this row") },
-  }
-  UnresolvedPart {
-    designator: Present { value: "U60_3" },
-    marking: Present { value: "AWR; P21; 190 (on the QFN to the upper right, printed upside down)" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_041359_028.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "1bfb5bb27ac969ed22d6de504cf20a06b87226c0a482c9956176db7da78f8a51" as Sha256DigestHex }, left: 2749, top: 1700, width: 531, height: 360) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "Q4_4" },
-    marking: Present { value: "?04?" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is 2020_0112_041439_034.JPG",
-    evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "fcb5749540cb6f86e1310a89dfac6af48f1ec1a8687090b398022f853beea7e4" as Sha256DigestHex }, left: 1552, top: 1238, width: 508, height: 622) },
-  }
-  UnresolvedPart {
-    designator: Present { value: "U58_4" },
-    marking: Present { value: "?" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell D2",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U58_4", located: "the atlas names no frame for this row") },
-  }
-  UnresolvedPart {
-    designator: Present { value: "U522" },
-    marking: Present { value: "T275 / TI ?1" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell A4 settles it -- the position stands on the bench read of the T275 marking, which this pass could not confirm",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U522", located: "the atlas names no frame for this row") },
+      identity: ReadDesignator { designator: "U522" },
+      marking: Present { value: "T275 / TI ?1" },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell A4 settles it -- the position stands on the bench read of the T275 marking, which this pass could not confirm",
+      evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U522", located: "the atlas names no frame for this row") },
   }
   // Two bottom-side reads the final pass refused to count as positions of their own. They are kept
   // because the reads happened and the receipts hold them; dropping them would make the model claim a
   // clean bottom side that the atlas never reported.
   UnresolvedPart {
-    designator: Present { value: "D17" },
-    marking: Absent { },
-    obligation: "the bottom-side label reads D17 clearly at b3_09, but which part it labels is not settled: the atlas's final pass reads it as D17_5 or D17_P2 truncated, so it is not counted as a position of its own. A close-up that holds the label and the body it belongs to in one frame closes it",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(designator: "D17", located: "seen at atlas row b3_09, bottom side; no registered frame holds it", closing: "a close-up that holds the label and the body it belongs to in one frame") },
+      identity: ReadDesignator { designator: "D17" },
+      marking: Absent { },
+      obligation: "the bottom-side label reads D17 clearly at b3_09, but which part it labels is not settled: the atlas's final pass reads it as D17_5 or D17_P2 truncated, so it is not counted as a position of its own. A close-up that holds the label and the body it belongs to in one frame closes it",
+      evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(designator: "D17", located: "seen at atlas row b3_09, bottom side; no registered frame holds it", closing: "a close-up that holds the label and the body it belongs to in one frame") },
   }
+    UnresolvedPart {
+        identity: Candidate { source: Q12 { } },
+        // A candidate, not a read: the receipts transcribed this label only in part, so no
+        // designator is presented here. The name is carried below, in the obligation, as the
+        // text it is -- see DesignatorCandidate in e1_position_receipts.
+        marking: Present { value: "Q12 read upside down; body marking unreadable" },
+        obligation: "'Q12' is what the receipts call it, a proposed spelling read in part and not in full, so no designator is presented and this row is held rather than read; the receipts module's DesignatorCandidate holds the same fact with the frames to read; the bottom-side glyphs read Q12 upside down at b1_14, and an inverted label puts any suffix past the frame edge, so the full designator is probably Q12_P2 -- which is already a position. The atlas's final pass refused to count this read separately; a re-shoot with the whole label in frame closes it",
+        evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(designator: "Q12", located: "seen at atlas row b1_14, bottom side; no registered frame holds it", closing: "a re-shoot with the whole inverted label, suffix included, in frame") },
+    },
   UnresolvedPart {
-    designator: Present { value: "Q12" },
-    marking: Present { value: "Q12 read upside down; body marking unreadable" },
-    obligation: "the bottom-side glyphs read Q12 upside down at b1_14, and an inverted label puts any suffix past the frame edge, so the full designator is probably Q12_P2 -- which is already a position. The atlas's final pass refused to count this read separately; a re-shoot with the whole label in frame closes it",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(designator: "Q12", located: "seen at atlas row b1_14, bottom side; no registered frame holds it", closing: "a re-shoot with the whole inverted label, suffix included, in frame") },
-  }
-  UnresolvedPart {
-    designator: Present { value: "Q10_P2" },
-    marking: Present { value: "BC4X?" },
-    obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell B6",
-    evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q10_P2", located: "the atlas names no frame for this row") },
+      identity: ReadDesignator { designator: "Q10_P2" },
+      marking: Present { value: "BC4X?" },
+      obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell B6",
+      evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "Q10_P2", located: "the atlas names no frame for this row") },
   }],
   ambiguous_designators: [
   AmbiguousDesignatorReading {

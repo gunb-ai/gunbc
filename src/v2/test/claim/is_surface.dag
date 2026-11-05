@@ -194,7 +194,7 @@ fn is_infer_locus_is_arm(o: Outcome<ResolvedTree>) -> Bool {
         Rejected { diagnostics: d } =>
           match diagnostics_fatal(d: d).at {
             NodeLocus { anchor: a } =>
-              match find_core_child(root: a.at, marker: MatchArmPatternEdge) {
+              match find_core_child(root: a.at.node, marker: MatchArmPatternEdge) {
                 Accepted { value: _, diagnostics: _ } => true
                 Rejected { diagnostics: _ } => false
               }
