@@ -2,7 +2,7 @@ module test.claim.owned_directory_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.managed_directory { DirectoryOwnerOnly }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllGroupTraverse }
 import gunbc.ensure { EnsureMayApply, EnsureObserveOnly, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
 import std.upsert_decision { Noop, Apply, Refuse }
 import gunbc.owned_directory {
@@ -11,7 +11,7 @@ import gunbc.owned_directory {
   ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverFailure, ObserverNotSpawned, ObserverExited, ObserverTransportRefused,
   owned_directory_ensure, owned_directory_ensure_observed, OwnedDirectoryEnsured, OwnedDirectoryEnsureRefused,
   owned_directory_act_time_handover, HandoverOwnerChanged, HandoverAppeared,
-  SameUserRegroupToDeclaredGroup,
+  SameUserRegroupToDeclaredGroup, owned_directory_inheriting_from_parent,
 }
 
 // THE PROVIDER'S DECISION TABLE, over supplied observations (DESIGN 3: one interface, supplied values).
@@ -295,4 +295,46 @@ test fn the_provider_refuses_a_foreign_baseline_as_foreign_never_as_a_handover()
     OwnedDirectoryEnsureRefused { target: _, reason } =>
       string_contains(s: reason, pattern: "never adopted") && !string_contains(s: reason, pattern: "changed hands")
   }
+}
+
+// A CHILD OF A SETGID PARENT EXPECTS THE PARENT'S GROUP AND THE SETGID BIT (derived, not re-declared).
+fn inheriting_parent(mode: DeclaredDirectoryMode) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "attempt-state" as NonEmptyStr,
+    path: "/srv/instance/attempt-state" as FilePath,
+    owner: PosixOwnerNames { user: "svc" as NonEmptyStr, group: "gunbc-attempt" as NonEmptyStr },
+    mode: mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+fn inheriting_child_decision(parent_mode: DeclaredDirectoryMode, line: String) -> String {
+  match owned_directory_decide(
+    policy: EnsureMayApply,
+    target: owned_directory_inheriting_from_parent(parent: inheriting_parent(mode: parent_mode), child: target()),
+    observation: observed(line: line),
+  ) {
+    Noop => "noop"
+    Apply { plan: _ } => "apply"
+    Refuse { reason } => join(["refuse:", reason as String], "")
+  }
+}
+
+// PASS on the live shape: a 2700 child of the setgid parent in the parent's group.
+test fn a_setgid_parents_child_expects_the_inherited_group_and_bit() -> Bool {
+  inheriting_child_decision(parent_mode: DirectoryOwnerGroupWritableSetgid, line: "directory|svc|gunbc-attempt|2700") == "noop"
+}
+
+// A non-setgid parent changes nothing: the child still expects the owner's own group, and the
+// inherited-shape reading is no longer the expected one.
+test fn a_non_setgid_parents_child_still_expects_the_owners_group() -> Bool {
+  inheriting_child_decision(parent_mode: DirectoryOwnerAllGroupTraverse, line: "directory|svc|svc|700") == "noop"
+    && starts_with(s: inheriting_child_decision(parent_mode: DirectoryOwnerAllGroupTraverse, line: "directory|svc|gunbc-attempt|2700"), prefix: "refuse:")
+}
+
+// A live group that differs from the derived one still refuses (never adopted), and a
+// missing setgid bit under a setgid parent is a mode drift the plan repairs (Apply).
+test fn a_child_whose_live_group_or_bit_differs_from_the_derived_still_refuses() -> Bool {
+  starts_with(s: inheriting_child_decision(parent_mode: DirectoryOwnerGroupWritableSetgid, line: "directory|svc|svc|2700"), prefix: "refuse:")
+    && inheriting_child_decision(parent_mode: DirectoryOwnerGroupWritableSetgid, line: "directory|svc|gunbc-attempt|700") == "apply"
 }

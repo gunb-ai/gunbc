@@ -137,9 +137,9 @@ pub fn native_compiler_route_denominator() -> Rc<NativeEffectDenominator> {
             static CACHED: Rc<NativeEffectDenominator> = {
                 Rc::new(NativeEffectDenominator {
         route: NativeEffectRoute::NativeCompilerRoute,
-        ruling: crate::std_decl_ref::decl_ref("gunbc.plans.demand_engine_program".to_string(), "demand_engine_program_plan".to_string()),
-        scope: Rc::new(NativeEffectScope::NativeAdmitAllExcept {
-        excluded: Rc::new(vec![native_effect_declared("std.resources".to_string(), "Clock".to_string()), native_effect_declared("std.resources".to_string(), "Network".to_string()), native_effect_declared("std.resources".to_string(), "Entropy".to_string()), native_effect_declared("std.resources".to_string(), "AuthContext".to_string()), native_effect_declared("extdeps.clock".to_string(), "Clock".to_string()), Rc::new(NativeEffectClass::NativeOutgoingHttp)]),
+        ruling: crate::std_decl_ref::decl_ref("gunbc.design_ruling".to_string(), "native_compiler_route_admits_the_declared_cargo_build".to_string()),
+        scope: Rc::new(NativeEffectScope::NativeAdmitOnly {
+        admitted: Rc::new(vec![native_effect_declared("extdeps.filesystem.filesystem_io".to_string(), "Filesystem".to_string())]),
     }),
     })
             };
