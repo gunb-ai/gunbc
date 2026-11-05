@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
 }
 // The executing route's record write, so the row that witnesses the record exercises the SAME function the
 // belt tick calls -- a witness that wrote the file itself would witness a different act.
-import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_slots_cutover_record_write, belt_slots_cutover_pass_outcome, BeltPassOutcome, BeltPassRecorded }
+import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_slots_cutover_record_write, belt_slots_cutover_pass_outcome, BeltPassRecorded }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout, attempt_exit_inbox_dir, attempt_exit_refused_dir }
