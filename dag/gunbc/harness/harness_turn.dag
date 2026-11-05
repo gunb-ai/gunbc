@@ -3,7 +3,7 @@ module gunbc.harness.harness_turn
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonBool, JsonObject, JsonArray, JsonString, json_kv, json_string, json_int, json_array, json_object, serialize_json,
 }
@@ -2152,7 +2152,7 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
 // one resume event (S3's turn.resumed or the patient contract's turn.request_redelivered, each counted apart) and
 // pick the loop up at that round with the steps already taken. The same conversation, the same events file.
 fn harness_resume_from_round(config: HarnessTurnConfig, step_budget: Int, prior_content: String, round: Int, interrupted: List<String>, resumed_event: String) -> HarnessTurnOutcome {
-  if list_length(items: interrupted) > 0 {
+  if length(xs: interrupted) > 0 {
     TurnResumeRefused { cause: join(["the session stopped with tool calls that have no recorded result (", join(interrupted, ", "), "); their effects are not established, so it is not resumable"], "") }
   } else {
     let request = Filesystem.Read(path: harness_wire_log_path(config: config, round: round, kind: ".request.json"))
@@ -2238,7 +2238,7 @@ fn harness_supervision_bounded(text: String) -> String {
 data harness_supervision_observed_message_cap: Int = 120
 
 fn harness_supervision_observation_text(messages: List<JsonValue>, round_steps: Int) -> String {
-  let n = list_length(items: messages)
+  let n = length(xs: messages)
   let tail = if 3 * round_steps < harness_supervision_observed_message_cap { 3 * round_steps } else { harness_supervision_observed_message_cap }
   let from = if n - tail < 1 { 1 } else { n - tail }
   join(
@@ -2478,7 +2478,7 @@ fn harness_messages_with_steer(shape: HarnessWireShape, messages: List<JsonValue
   match shape {
     OpenAiChatCompletionsShape => concat(messages, [harness_user_text_message_json(shape: shape, text: steer)])
     AnthropicMessagesShape => {
-      let n = list_length(items: messages)
+      let n = length(xs: messages)
       match messages.last() {
         Absent => [harness_user_text_message_json(shape: shape, text: steer)]
         Present { value: last } =>
