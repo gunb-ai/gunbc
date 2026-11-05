@@ -5,7 +5,7 @@ import std.algebra { trim }
 import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired }
+import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired, Progress, Blocked, HandedBack }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
 
 // Authorization precedes this boundary. The operation is a submission identity, independent of
@@ -26,6 +26,14 @@ type IssueCommand
   // is the ROUTE's check (an already-retired or accepted node refuses); the command itself carries
   // no admission, because the operator's authority is the admission.
   | RetireNode { subject: IssueCommandSubject, reason: NonEmptyStr }
+  | RecordWorkEvent { subject: IssueCommandSubject, work: IssueWorkEvent }
+
+// The work events a served caller may append. A closed sum, so a route cannot be asked for a
+// Retired or acceptance kind through it: those have their own routes and admissions.
+type IssueWorkEvent
+  = WorkProgress { note: NonEmptyStr }
+  | WorkBlocked { reason: NonEmptyStr }
+  | WorkHandedBack { reason: NonEmptyStr }
 
 type IssueFormContext { operation: String, csrf: String }
 
@@ -46,10 +54,16 @@ fn issue_command_event(command: IssueCommand, recorded_at: String) -> RoadmapEve
       parent: subject.expected, kind: CommentCreated { comment: subject.operation, body: body, visibility: "public", parent_comment: none }, recorded_at: recorded_at }
     RetireNode { subject, reason } => RoadmapEvent { node: subject.node, author: subject.author,
       parent: subject.expected, kind: Retired { reason: reason }, recorded_at: recorded_at }
+    RecordWorkEvent { subject, work } => RoadmapEvent { node: subject.node, author: subject.author,
+      parent: subject.expected, recorded_at: recorded_at, kind: match work {
+        WorkProgress { note } => Progress { note: note }
+        WorkBlocked { reason } => Blocked { reason: reason }
+        WorkHandedBack { reason } => HandedBack { reason: reason }
+      } }
   }
 }
 
 fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand, recorded_at: String) -> CarrierClosed<RoadmapEventAppend> {
-  let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation }
+  let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation RecordWorkEvent { subject, work: _ } => subject.operation }
   roadmap_event_append(layout: layout, event: issue_command_event(command: command, recorded_at: recorded_at), operation: operation as String)
 }

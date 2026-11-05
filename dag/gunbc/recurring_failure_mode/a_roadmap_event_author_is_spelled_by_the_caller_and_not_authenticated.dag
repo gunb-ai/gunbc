@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.a_roadmap_event_author_is_spelled_by_the_caller_and_not_authenticated
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+data a_roadmap_event_author_is_spelled_by_the_caller_and_not_authenticated: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_roadmap_event_author_is_spelled_by_the_caller_and_not_authenticated" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "an event-append route whose principal is taken from the authenticated request and never from caller input, so an event naming a different author than the authenticated one has no accepted path. Sufficient for: the CLI append route no longer being the only writer." } },
+
+  receipts: [
+    "**a roadmap event author is spelled by the caller and not authenticated**. INVALID STATE: `gunbc.roadmap.roadmap_event_cli` `roadmap_event_record_cli` takes `author` as a caller-supplied string and checks only that it parses as a `principal:<authority>/<namespace>/<subject>` spelling. Any caller can therefore record a Claimed, Progress or ResultReturned event as any principal. HARM: progress and handback read as fact in the event-derived program metrics while naming an author nobody authenticated. FOUND: read of the CLI source while proposing the event-write route (vivid-crane-742, 2026-11-05); not executed. NEXT TRIGGER: the served POST /issue/{node}/event route (`roadmap-event-write-route` in `gunbc.roadmap.roadmap_authority`)."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_event_cli", decl_name: "roadmap_event_record_cli", field: WholeDeclaration },
+  ],
+}

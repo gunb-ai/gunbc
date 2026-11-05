@@ -365,6 +365,10 @@ type ServeRouteAction
   // route's only refusals are unknown node, already terminal, unauthenticated, stale revision.
   | ServeActionCloseNode
   | ServeActionRetireNode
+  // Progress, Blocked and HandedBack events (POST /issue/{node}/event). The author is the
+  // authenticated principal only; the agent door is not granted, so the event is a human or
+  // later-ruled workflow-principal act.
+  | ServeActionRecordWorkEvent
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
@@ -380,6 +384,7 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionPublishNode => "publish-node" as NonEmptyStr
     ServeActionCloseNode => "close-node" as NonEmptyStr
     ServeActionRetireNode => "retire-node" as NonEmptyStr
+    ServeActionRecordWorkEvent => "record-work-event" as NonEmptyStr
   }
 }
 
@@ -467,6 +472,7 @@ fn serve_route_action_agent_admissible(action: ServeRouteAction) -> Bool {
     // door's grant (2026-11-04) was assign/dispatch only. Both stay human acts.
     ServeActionCloseNode => false
     ServeActionRetireNode => false
+    ServeActionRecordWorkEvent => false
     ServeActionCreateAllocation => false
     ServeActionReleaseAllocation => false
   }
@@ -638,6 +644,7 @@ fn human_action_authorization_decision(
         ServeActionPublishNode => Permit
         ServeActionCloseNode => Permit
         ServeActionRetireNode => Permit
+        ServeActionRecordWorkEvent => Permit
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>

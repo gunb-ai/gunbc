@@ -20,7 +20,7 @@ import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, Lau
 import gunbc.roadmap.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, roadmap_issue_state, roadmap_standing_is_retired }
 
-import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, RetireNode, IssueFormContext, issue_command_apply, issue_operation_nonce }
+import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, RetireNode, RecordWorkEvent, WorkProgress, WorkBlocked, WorkHandedBack, IssueFormContext, issue_command_apply, issue_operation_nonce }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
@@ -73,7 +73,7 @@ import gunbc.auth.request_authentication {
   roadmap_deployment_access_policy,
   ServeActionAssignIssue,
   ServeActionCreateIssue,
-  ServeActionCommentIssue, ServeActionCloseNode, ServeActionRetireNode,
+  ServeActionCommentIssue, ServeActionCloseNode, ServeActionRetireNode, ServeActionRecordWorkEvent,
   ServeActionDispatchNode,
   ServeActionStopNode,
   ServeActionPublishNode,
@@ -354,6 +354,7 @@ type RoadmapServeHandler
   | IssueViewPreferencesReadHandler
   | IssueViewPreferencesSaveHandler
   | IssueCommentHandler
+  | IssueEventHandler
   // The operator's daily close and retire (operator ruling 2026-11-04).
   | IssueCloseHandler
   | IssueRetireHandler
@@ -433,6 +434,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
+    ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/event", handler: IssueEventHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/close", handler: IssueCloseHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/retire", handler: IssueRetireHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
@@ -1353,6 +1355,66 @@ fn serve_issue_retire_response_over(
     }
   }
 
+// ══ THE WORK-EVENT ROUTE ══════════════════════════════════════════════════════════════════════
+// POST /issue/{node_id}/event takes kind (progress | blocked | handed_back) and text. The author is
+// the authenticated principal of the request and NOTHING ELSE: no field of the body is read as a
+// principal, so a principal argument is ignored by construction. The kind is a closed sum
+// (IssueWorkEvent), so this route cannot append Retired or any acceptance fact. The write law is the
+// retire route's: deployment policy, authenticated human, session CSRF, operation key as the
+// idempotency key. It replaces the CLI's caller-spelled author
+// (gunbc.recurring_failure_mode a_roadmap_event_author_is_spelled_by_the_caller_and_not_authenticated).
+fn serve_issue_event_response_over(
+  instance: HostDashboardInstance,
+  plan: fn() -> RoadmapAuthorityProjection,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  match human_write_admission(route_path: concat("/issue/", concat(node_id, "/event")) as NonEmptyStr,
+    action: ServeActionRecordWorkEvent, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => {
+      let proj = plan()
+      if !issue_detail_node_exists(proj: proj, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "event refused: unknown node\n") }
+      else { match authenticated_write_author_principal(security: request.security) {
+        Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+        Present { value: author } => {
+          let get = fn(name) { issue_form_field(body: request.body, name: name) }
+          let text = get("text")
+          if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "event refused: a valid operation key and explicit expected_revision are required\n") }
+          else if text == "" { serve_text_response(status: 400, content_type: text_plain_utf8, body: "event refused: text is required\n") }
+          else {
+            let kind = get("kind")
+            let work = if kind == "progress" { Present { value: WorkProgress { note: text as NonEmptyStr } } }
+              else if kind == "blocked" { Present { value: WorkBlocked { reason: text as NonEmptyStr } } }
+              else if kind == "handed_back" { Present { value: WorkHandedBack { reason: text as NonEmptyStr } } }
+              else { none }
+            match work {
+              Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "event refused: kind must be progress, blocked or handed_back\n")
+              Present { value: w } => {
+                let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+                let expected = get("expected_revision")
+                let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: layout,
+                  command: RecordWorkEvent { subject: IssueCommandSubject { node: node_id as NonEmptyStr as RoadmapNodeId,
+                    author: EventPrincipalAuthenticated { ref: author }, operation: get("key") as NonEmptyStr,
+                    expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, work: w },
+                  recorded_at: human_write_observed_at(security: request.security)))
+                match outcome {
+                  EventAppended { id } => serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["recorded: ", node_id, " (event ", id as String, ")\n"], ""))
+                  EventAlreadyPresent { id } => serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["recorded: ", node_id, " (already recorded event ", id as String, ")\n"], ""))
+                  EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
+                }
+              }
+            }
+          }
+        }
+      } }
+    }
+  }
+}
+
 // THE CREATE ROUTE. POST /issues creates a runtime task in the fabric state namespace
 // (gunbc.roadmap.roadmap_task_store). The write law is the assign route's: the tailnet deployment policy,
 // the authenticated human, session CSRF. The operation key is the idempotency key AND the source of
@@ -1792,6 +1854,7 @@ fn roadmap_serve_invoke_over(
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    IssueEventHandler => serve_issue_event_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCloseHandler => serve_issue_close_response_over(instance: instance, plan: plan, request: request, params: params, read: serve_close_pr_readback)
     IssueRetireHandler => serve_issue_retire_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCreateHandler => serve_issue_create_response_over(instance: instance, request: request)

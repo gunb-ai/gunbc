@@ -1,0 +1,70 @@
+module test.claim.roadmap.roadmap_event_route_witness
+
+// EXECUTING WITNESS for POST /issue/{node}/event (operator-approved route, sleek-owl-397).
+//   RED      an unauthenticated request refuses (403) and appends nothing;
+//   RED      a `principal=` argument is never read: the recorded author is the session principal;
+//   RED      a kind outside progress | blocked | handed_back (e.g. retired) refuses 400;
+//   POSITIVE an authenticated append round-trips: the event reads back with the session principal
+//            as its author and the kind asked for.
+// The principal is taken ONLY from the authenticated request context, by construction of
+// serve_issue_event_response_over (no body field is read as a principal).
+// Not wired into any CI gate by this change; it runs under the ordinary claim executor.
+
+import std.types { String, Bool, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import extdeps.shell
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, EventsRead, EventsReadRefused, roadmap_events_read }
+import gunbc.roadmap.roadmap_event_log { Progress }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_serve { serve_issue_event_response_over }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
+import test.claim.roadmap.roadmap_operator_close_retire_witness { plan_with_nodes, close_request, close_request_as_operator, node_param, opr_principal }
+
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
+data event_body_ok: String = "key=op-event-1&csrf=csrf-opr&expected_revision=&kind=progress&text=began+the+fold"
+
+test fn the_event_route_refuses_anonymously_and_appends_nothing() -> Bool {
+  let r = serve_issue_event_response_over(
+    instance: srv2_preview_dashboard_instance(), plan: fn() { plan_with_nodes(["operator-node"]) },
+    request: close_request(body: event_body_ok, node_id: "operator-node"), params: node_param("operator-node"))
+  claim("the anonymous event is refused: " + r.body, r.status == 403)
+}
+
+test fn the_event_route_refuses_a_kind_outside_its_closed_sum() -> Bool {
+  let r = serve_issue_event_response_over(
+    instance: srv2_preview_dashboard_instance(), plan: fn() { plan_with_nodes(["operator-node"]) },
+    request: close_request_as_operator(body: "key=op-event-2&csrf=csrf-opr&expected_revision=&kind=retired&text=x", node_id: "operator-node"),
+    params: node_param("operator-node"))
+  claim("a retired kind is refused 400 naming the allowed kinds: " + r.body,
+    r.status == 400 && string_contains(s: r.body, pattern: "handed_back"))
+}
+
+test fn an_authenticated_event_round_trips_with_the_session_principal_and_ignores_a_principal_argument() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  if !directory.success { claim("the temp dir for the event route row could not be made", false) }
+  else {
+    let instance = fabric_fixture_instance(root: directory.path as String)
+    let r = serve_issue_event_response_over(
+      instance: instance, plan: fn() { plan_with_nodes(["operator-node"]) },
+      request: close_request_as_operator(
+        body: "key=op-event-1&csrf=csrf-opr&expected_revision=&kind=progress&text=began+the+fold&principal=principal%3Aattacker%2Fx%2Fy",
+        node_id: "operator-node"),
+      params: node_param("operator-node"))
+    let e1 = claim("the authenticated event is recorded: " + r.body, r.status == 200)
+    match roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: "operator-node" as NonEmptyStr as RoadmapNodeId) {
+      EventsReadRefused { node: _, step: _, reason: why } => claim("the history was unreadable: " + why, false)
+      EventsRead { node: _, envelopes: envs } =>
+        match envs.first() {
+          Absent => claim("no event was appended", false)
+          Present { value: env } => {
+            let e2 = claim("the author is the session principal, not the argument", env.event.author == opr_principal())
+            let e3 = claim("the kind is progress", match env.event.kind { Progress { note: _ } => true _ => false })
+            e1 && e2 && e3
+          }
+        }
+    }
+  }
+}
