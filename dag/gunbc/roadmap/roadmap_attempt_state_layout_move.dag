@@ -201,7 +201,7 @@ fn legacy_writer_retirement(unit: LegacyWriterUnit, reading: LegacyWriterUnitRea
         LegacyWriterRetirementRefused { reason: r }
       } else if reading.load_state != "loaded" {
         LegacyWriterRetirementRefused { reason: join([r, "; LoadState '", reading.load_state, "' has no modeled retirement"], "") }
-      } else if reading.fragment_path == unit.etc_fragment as String {
+      } else if reading.fragment_path == (unit.etc_fragment as String) {
         LegacyWriterRetireEtcFragment
       } else if legacy_writer_fragment_is_vendor(path: reading.fragment_path) {
         LegacyWriterMaskVendorFragment
@@ -273,5 +273,25 @@ fn legacy_writer_fence_for(rows: List<LegacyWriterFenceRow>, instance_id: NonEmp
     LegacyWriterFenceConflict { instance_id: instance_id, rows: length(xs: mine) }
   } else {
     fold(mine, init: LegacyWriterUndeclared, f: (acc, r) => r.fence)
+  }
+}
+
+// THE GRANT IS THE OPERATION SET, NOT A SECOND LIST. What the operator account is authorized to run
+// without a password is exactly the etc-fragment retirement's own operations (stop, rename into the
+// rollback store, daemon-reload) and the rollback's reverse rename, for each declared unit and its
+// declared fragment path; it is derived by the same two functions the apply leg runs, so a leg argv
+// the grant lacks cannot exist (gunbc.recurring_failure_mode
+// a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize). The vendor-mask arm is not
+// granted (operator decision A: stop, rename, daemon-reload only), so a vendor fragment refuses at
+// the sudo prompt rather than running unauthorized. No wildcard: every word is named.
+fn legacy_writer_grant_operations(fence: LegacyWriterFence) -> List<ExecutorPrivilegedOperation> {
+  match fence {
+    LegacyWriterUnits { systemctl: _, units: us, rollback_store: store } =>
+      flat_map(us, u => concat(
+        legacy_writer_retirement_operations(rollback_store: store, unit: u, plan: LegacyWriterRetireEtcFragment),
+        legacy_writer_restore_operations(rollback_store: store, unit: u, plan: LegacyWriterRetireEtcFragment),
+      ))
+    LegacyWriterUndeclared => []
+    LegacyWriterFenceConflict { instance_id: _, rows: _ } => []
   }
 }

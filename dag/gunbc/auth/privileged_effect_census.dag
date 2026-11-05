@@ -1209,6 +1209,28 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
 
+  // THE LAB APPLY'S LEGACY-WRITER RETIREMENT GRANT (operator decision A, 2026-11-05). The apply, as the
+  // bootstrap principal on srv1, stops one declared legacy unit, renames its /etc fragment into the rollback
+  // store and reloads the manager: reversible (reverse rename + reload), once per instance apply, three exact
+  // sudoers lines plus the reverse rename, no wildcard. select_authorization_pattern selects
+  // FederatedScopedGrant as for the runner mask: the grant is derived from the same operations the leg runs
+  // (gunbc.roadmap.roadmap_attempt_state_layout_move legacy_writer_grant_operations, rendered by
+  // gunbc.runner.runner_host_grants runner_host_lab_apply_operator_block), so grant and leg are one fact.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.roadmap_attempt_state_layout_move", decl_name: "legacy_writer_grant_operations"),
+    effect: PrivilegedEffect {
+      subject: "on a lab instance apply whose declared legacy dispatcher unit is still loadable, stop it, rename its declared /etc fragment into the rollback store and daemon-reload (and the reverse on rollback)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "the bootstrap principal on srv1, the lab apply's host principal" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
   // THE RUNNER-RETIREMENT MASK. `systemctl mask --now` of one runner unit inside the operator's authorized
   // interruption scope is reversible (unmask), recurs on every provision whose transition requires the retiree,
   // and mints one exact-unit sudoers line. select_authorization_pattern selects FederatedScopedGrant: the
