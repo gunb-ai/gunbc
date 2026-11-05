@@ -92,10 +92,13 @@ if [ "$MODE" = livelock ] || [ "$MODE" = livelockedge ]; then
     echo "livelock not established" | tee -a "$OUT/precondition.txt"; collect_log; tail -n 5 "$OUT/job.log" 2>&1 | tee -a "$OUT/precondition.txt"; kill $SAMP 2>/dev/null; systemctl --user stop "$UNIT"; exit 3
   fi
 fi
+if [ "$MODE" != livelock ] && [ "$MODE" != livelockedge ]; then
+# LIVELOCK MODES RUN WITHOUT A LISTENER (a second resident ends the stall: measured 2026-11-05); the Listener-sparing path is tested by the controls, which join one.
 # the Listener joins the ESTABLISHED slot cgroup now (same user, delegated subtree); its pid comes from $!
 "$OUT/bin/Runner.Listener" 100000 & LPID=$!; echo "$LPID" >"$OUT/listener.pid"
 echo "$LPID" >"$CG/cgroup.procs" || { echo "listener join refused" | tee -a "$OUT/precondition.txt"; kill "$LPID"; systemctl --user stop "$UNIT"; exit 4; }
 echo "listener pid $LPID joined; rss_kb=$(awk '/VmRSS/{print $2}' /proc/$LPID/status) procs=$(wc -l <"$CG/cgroup.procs") current=$(cat $CG/memory.current)" >>"$OUT/cgroup.txt"
+fi
 # the verb under test, with a hard stop at $SECS (fixture, not production)
 /usr/bin/time -v -o "$OUT/verb.time" timeout "$SECS" ${SUDO:-} "$BIN" slot-watchdog --slot-cgroup "$CG" --source-root "$CHK/dag" --source-root "$CHK/src/v2" >"$OUT/verb.out" 2>&1
 echo "verb_rc=$?" >"$OUT/verdict.txt"
