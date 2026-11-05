@@ -27,6 +27,12 @@ import extdeps.git {
   git_local_config_get_command, git_shared_repository_posture_readbacks,
 }
 import extdeps.tools.chmod { chmod_binary_path }
+import gunbc.live_deploy.serve_binary_build {
+  ServeBinaryBuild, BuildFromGitCheckout, ServeBinaryBuildVerdict, ServeBinaryReadyToInstall, ServeBinaryBuilt,
+  serve_binary_build_target_dir_under, serve_binary_head_argv, serve_binary_build_argv, serve_binary_stage_argv,
+  serve_binary_keep_previous_argv, serve_binary_rename_argv, serve_binary_staged_path, serve_binary_built_path,
+  serve_binary_pre_install_verdict, serve_binary_post_install_verdict, serve_binary_refusal_detail,
+}
 import extdeps.tools.findutils { find_subtree_mode_readback_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.access.posix { file_mode_of_octal_text }
@@ -561,8 +567,79 @@ fn dashboard_ensure_serve_binary(
   path: FilePath,
 ) -> DashboardExecResult {
   match built_binary {
-    Absent => dashboard_exec_refused(detail: "no serve binary build is declared for this instance (built_binary is Absent); declare the build before apply")
+    Absent => dashboard_build_serve_binary_in_place(instance: instance, path: path)
     Present { value: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, built_binary: declared, path: path)
+  }
+}
+
+// THE LAB SERVE BINARY IS BUILT IN PLACE FROM THE ADMITTED REVISION (gunbc.live_deploy.serve_binary_build):
+// convergence has already reset repo_root to instance.dispatch_base_ref, HEAD must equal that revision before
+// and after the build, and the install is stage + keep-previous + one rename with a digest and --version readback.
+fn dashboard_build_serve_binary_in_place(instance: HostDashboardInstance, path: FilePath) -> DashboardExecResult {
+  let admitted = dashboard_target_exec(
+    instance: instance,
+    program: "/usr/bin/git" as FilePath,
+    args: shape_git_rev_parse_argv(repo: instance.repo_root, target: instance.dispatch_base_ref as GitRef),
+  )
+  if !admitted.success {
+    admitted
+  } else {
+    let build = ServeBinaryBuild {
+      repo_root: instance.repo_root as String,
+      revision: trim(admitted.stdout),
+      target_dir: serve_binary_build_target_dir_under(instance_root: instance.instance_root as String),
+      install_path: path as String,
+      source_identity: BuildFromGitCheckout,
+    }
+    let head = (dashboard_target_exec(instance: instance, program: "/usr/bin/git" as FilePath, args: serve_binary_head_argv(build: build)))
+    let ran = dashboard_target_exec(instance: instance, program: "/usr/bin/systemd-run" as FilePath, args: serve_binary_build_argv(build: build))
+    let head_after = dashboard_target_exec(instance: instance, program: "/usr/bin/git" as FilePath, args: serve_binary_head_argv(build: build))
+    match serve_binary_pre_install_verdict(build: build, head_before: head.stdout, build_succeeded: ran.success, head_after: head_after.stdout) {
+      ServeBinaryReadyToInstall => dashboard_install_built_serve_binary(instance: instance, build: build)
+      refused => dashboard_exec_refused(detail: serve_binary_refusal_detail(verdict: refused))
+    }
+  }
+}
+
+fn dashboard_install_built_serve_binary(instance: HostDashboardInstance, build: ServeBinaryBuild) -> DashboardExecResult {
+  let made = dashboard_target_exec(instance: instance, program: "/usr/bin/mkdir" as FilePath, args: ["-p", trim(dashboard_target_exec(instance: instance, program: "/usr/bin/dirname" as FilePath, args: [build.install_path]).stdout)])
+  let staged = dashboard_target_exec(instance: instance, program: "/usr/bin/cp" as FilePath, args: serve_binary_stage_argv(build: build))
+  if !made.success {
+    made
+  } else if !staged.success {
+    staged
+  } else {
+    let chmodded = dashboard_target_exec(instance: instance, program: chmod_binary_path as String as FilePath, args: ["0755", serve_binary_staged_path(build: build)])
+    let built_sum = dashboard_target_digest(instance: instance, path: serve_binary_built_path(build: build))
+    // The previous bin is kept as a hard link only when one exists; the rename then replaces atomically.
+    let had_previous = dashboard_target_exec(instance: instance, program: instance.toolchain.path_test, args: ["-f", build.install_path])
+    let kept = if had_previous.success {
+      dashboard_target_exec(instance: instance, program: "/usr/bin/ln" as FilePath, args: serve_binary_keep_previous_argv(build: build))
+    } else {
+      had_previous
+    }
+    if !chmodded.success {
+      chmodded
+    } else if had_previous.success && !kept.success {
+      kept
+    } else {
+      let renamed = dashboard_target_exec(instance: instance, program: "/usr/bin/mv" as FilePath, args: serve_binary_rename_argv(build: build))
+      if !renamed.success {
+        renamed
+      } else {
+        let installed_sum = dashboard_target_digest(instance: instance, path: build.install_path)
+        let version = dashboard_target_exec(instance: instance, program: build.install_path as FilePath, args: ["--version"])
+        match serve_binary_post_install_verdict(
+          build: build,
+          built_sha256: built_sum,
+          installed_sha256: installed_sum,
+          version_text: version.stdout,
+        ) {
+          ServeBinaryBuilt { revision: _ } => version
+          refused => dashboard_exec_refused(detail: serve_binary_refusal_detail(verdict: refused))
+        }
+      }
+    }
   }
 }
 
