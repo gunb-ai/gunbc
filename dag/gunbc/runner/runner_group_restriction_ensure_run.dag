@@ -104,7 +104,11 @@ data microvm_runner_group_effect_allowance: Second = second(count: 120)
 // poll at the run's remaining job budget and refuse with a typed cause naming the still-open
 // escalation ("still decidable, continue on the next dispatch"), so this module can consume
 // approval_request_window directly with no 970-minute step; or fan the roster out to one dispatch
-// per group. Owner: whoever next touches the runner-group lane; this is not a ntfy-retirement task.
+// per group. OWNER: the microVM runner-group lane, scheduled by stern-bat-401 as the follow-up to
+// gunbc#15901 (raised by the review of that PR, review 91180) — the same lane that shaped this roster
+// and its admission in gunbc#15435 (runner-qualification branch) and gunbc#15499 (in-job tenancy
+// admission). It is deliberately NOT left to "whoever next touches" it, and it is not a
+// ntfy-retirement task, which is why it is filed here rather than built inside this PR.
 //
 // THE PRELUDE ALLOWANCE next to it (120 s, unmeasured) is part of the same criticism: the 240 s
 // measured for the srv1 root-mutation prelude on run 41972155901 belongs to a DIFFERENT step's
