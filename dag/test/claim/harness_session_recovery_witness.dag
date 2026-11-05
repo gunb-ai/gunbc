@@ -85,7 +85,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
 // resumes the SAME attempt's session; it neither mints a new attempt nor ends the lineage.
 test fn s3_claim_2_a_recovery_needed_prior_resumes_the_same_session() -> Bool {
   match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38))) }) {
-    Resume { reason: _, attempt_key, ordinal, checkpoint: _, causes } => attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
+    Resume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
     _ => false
   }
 }
@@ -121,7 +121,7 @@ test fn s3_claim_5_past_the_resume_bound_the_lineage_ends_with_every_cause() -> 
       _ => false
     })
     && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: concat(concat(needed, resumed), concat(needed, resumed)) |> concat(needed))) }) {
-      Resume { reason: _, attempt_key: _, ordinal, checkpoint: _, causes: _ } => ordinal == 3
+      Resume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 3
       _ => false
     })
 }

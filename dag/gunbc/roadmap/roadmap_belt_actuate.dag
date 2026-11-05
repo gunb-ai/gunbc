@@ -565,6 +565,8 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   ContinuationPlan, StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Resume,
   continuation_plan,
+  WorktreeStanding, WorktreeHere, WorktreeAbsent,
+  BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
@@ -2438,7 +2440,7 @@ type BeltSpawnKey
 
 fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String, decision: ContinuationPlan) -> BeltSpawnKey {
   match decision {
-    Resume { reason: _, attempt_key, ordinal: _, checkpoint: _, causes: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
+    Resume { reason: _, attempt_key, ordinal: _, causes: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
     StartInitial { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     NextAttempt { reason: _, from_branch: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     Refuse { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
@@ -2606,7 +2608,7 @@ type BeltSpawnRoute
 fn belt_spawn_route_for_decision(decision: ContinuationPlan, request: AttemptLaunchRequest) -> BeltSpawnRoute {
   match decision {
     StartInitial { reason: _ } => SpawnRouteWorker
-    Resume { reason: _, attempt_key, ordinal, checkpoint: _, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
+    Resume { reason: _, attempt_key, ordinal, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
     // CONTINUE starts the next attempt from the branch head ONLY on an operator/claim request. The belt's
     // own autonomous wake must NOT start a fresh attempt against adverse evidence (a failed verification,
     // a changes-requested review, a blocked/needs-context submission): under DESIGN §5 a flapping engine
@@ -2741,45 +2743,33 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
 
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
 fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationPlan {
+  // THE WORKTREE AND BRANCH STANDING ARE READ, AS IS -- neither is inferred from what the caller wants to do
+  // next (DESIGN §5). The capture and recovery below are still read honestly; when the worktree is absent the
+  // decision ignores them (it routes on the read BRANCH standing instead), so no 'absent'/'none' default is
+  // ever fabricated over a read that did not happen.
+  let worktree = belt_worktree_standing(instance: instance, node_id: node.node, attempt_key: progress.attempt_key)
+  let branch_head = belt_branch_standing(instance: instance, branch: progress.branch)
   continuation_plan(
     obs: Present { value: PriorExecutionObservation {
       node_id: node.node as String,
       attempt_key: progress.attempt_key,
       branch: progress.branch,
+      worktree: worktree,
+      branch_head: branch_head,
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
-      capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key, branch: progress.branch),
+      capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
-      // A REAPED WORKTREE CANNOT BE RESUMED IN PLACE. The Resume spawn (SpawnRouteResume) drives the worker
-      // into its own worktree directory and assumes it still exists; only the NextAttempt restore
-      // (DispatchWorkerContinuedFrom) re-adds the worktree from the branch head. So when the worktree is
-      // gone the prior session's recovery standing is NOT read as resumable -- the decision falls through to
-      // NextAttempt, which keeps the committed branch work by starting the new attempt from that head. When
-      // the worktree is still present, the recovery standing is read normally and a validated session resumes
-      // in place as before.
-      recovery: if belt_worktree_present(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
-        belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key)
-      } else {
-        SessionRecoveryNone
-      },
+      // THE RECOVERY RECORD IS READ HONESTLY, UNCONDITIONALLY. It lives in the ATTEMPT LOG (its events
+      // member), not inside the worktree, so it is readable even when the worktree has been reaped -- and it
+      // is never defaulted to 'none' just because the worktree is gone. When the worktree is absent the
+      // decision does not consult recovery at all (it routes on the branch standing, so it can never Resume
+      // into a directory that no longer exists); when the worktree is present a session that stopped at a
+      // validated state resumes in place exactly as before.
+      recovery: belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
     } },
   )
-}
-
-// WHETHER AN ATTEMPT'S WORKTREE DIRECTORY STILL EXISTS -- a typed observation projected to a Bool, the
-// same belt_worktree_head_observe the capture read uses. A reaped worktree is Unobserved; the caller must
-// not route a reaped worktree into an in-place Resume (which assumes the directory exists) -- only the
-// NextAttempt restore re-adds it. This is the gate that keeps a reaped worktree from resuming into a
-// directory that no longer exists.
-fn belt_worktree_present(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> Bool {
-  match belt_worktree_head_observe(
-    instance: instance,
-    worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-  ) {
-    WorktreeHeadObserved { revision: _ } => true
-    WorktreeHeadUnobserved { reason: _ } => false
-  }
 }
 
 // THE PRIOR SESSION'S RECOVERY STANDING, read from its own event stream (the stream a harness worker
@@ -2799,36 +2789,18 @@ fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: Roadmap
 // verify gate binds -- the capture record at the worktree's current head -- through the same
 // reader, so the two passes can never disagree about what the terminal worker declared. A head
 // that cannot be observed is not a yield: it is unknown, and the decision refuses on it.
-fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, branch: String) -> SubmissionCaptureObservation {
+fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SubmissionCaptureObservation {
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
-    WorktreeHeadUnobserved { reason: _ } =>
-      // LAB BUG #2 (the reaped worktree must not block the decision): the worktree is gone -- reaped
-      // after the attempt's work was committed -- but the durable fact is the BRANCH, not the worktree.
-      // If the branch is still live, the prior attempt DID hand in work: read it as a candidate-less
-      // capture so the decision CONTINUES (NextAttempt) and the general restore re-adds the worktree
-      // from that branch's head. Only when the branch itself is gone is there nothing to restore -- the
-      // typed BranchAbsent refusal, a Refuse and never a fallback into a base-ref spawn.
-      match belt_branch_head_observe(instance: instance, branch: branch) {
-        BranchHeadPresent { revision: _ } =>
-          // LAB BUG #2 (the reaped worktree must not block the decision): the worktree is gone -- reaped
-          // after the attempt's work was committed -- but the durable fact is the BRANCH, not the worktree.
-          // If the branch is still live, the prior attempt DID hand in work: read it as a candidate-less
-          // capture so the decision CONTINUES (NextAttempt) and the general restore re-adds the worktree
-          // from that branch's head.
-          CaptureAbsent
-        BranchHeadAbsent =>
-          // Only the genuine exit-1 miss is the typed BranchAbsent refusal -- a Refuse, never a fallback
-          // into a base-ref spawn.
-          CaptureUnreadable {
-            reason: join(["BranchAbsent: the prior attempt ", attempt_key, "'s branch ", branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], ""),
-          }
-        BranchHeadUndeterminable { reason } =>
-          // A failed or refused git check is NOT the fact that the branch is gone: it is unknown. Refuse on
-          // the unknown (never spawn), but say it is undeterminable rather than asserting absence.
-          CaptureUnreadable {
-            reason: join(["could not determine whether the prior attempt ", attempt_key, "'s branch ", branch, " is present; a failed branch check is not reported as an absent branch: ", reason], ""),
-          }
+    WorktreeHeadUnobserved { reason } =>
+      // THE WORKTREE IS NOT PRESENT -- it was reaped, or its head could not be read. The submission capture
+      // lives INSIDE the worktree and is NOT read here, so this is honestly 'unreadable', NEVER the
+      // fabricated 'handed in nothing' (CaptureAbsent would claim the worker submitted nothing when in fact
+      // nothing was read -- DESIGN §5: a fabricated default is a hard reject). When the worktree is absent
+      // the decision does not consult this capture at all; it routes on the read BRANCH standing instead
+      // (the general restore path). The branch standing, not a made-up capture, decides (lab bug #2).
+      CaptureUnreadable {
+        reason: join(["the prior attempt ", attempt_key, "'s worktree is not present, so its submission capture was not read: ", reason], ""),
       }
     WorktreeHeadObserved { revision } =>
       belt_submission_capture_for_head(
@@ -2837,6 +2809,32 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
         node_id: node_id, attempt_key: attempt_key,
         head_sha: revision as String,
       )
+  }
+}
+
+// HOW THE PRIOR WORKTREE STANDS, projected from the same belt_worktree_head_observe the capture read uses,
+// into the decision's OWN vocabulary. Observed -> here (with the head revision); unobserved -> absent. This
+// is the honest input that separates 'the worktree is here, read its capture' from 'the worktree is gone,
+// decide on the branch' -- it is never inferred from what the caller wants next.
+fn belt_worktree_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> WorktreeStanding {
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadObserved { revision } => WorktreeHere { revision: revision as String }
+    WorktreeHeadUnobserved { reason } => WorktreeAbsent { reason: reason }
+  }
+}
+
+// HOW THE PRIOR BRANCH STANDS, projected from belt_branch_head_observe (read against the shared object
+// store at instance.repo_root, which survives the worktree being reaped) into the decision's vocabulary.
+// This is the discriminator: a reaped worktree fails the worktree read but this read still succeeds on a
+// live branch (-> restore); a genuine git fault fails BOTH, so the branch is Unknown and the plan refuses
+// rather than restoring onto an unknown. Only the genuine exit-1 miss is Gone; a failed/refused check is
+// Unknown, never Gone (a failed command is not the fact that a branch is gone).
+fn belt_branch_standing(instance: HostDashboardInstance, branch: String) -> BranchStanding {
+  match belt_branch_head_observe(instance: instance, branch: branch) {
+    BranchHeadPresent { revision: _ } => BranchLive
+    BranchHeadAbsent => BranchGone
+    BranchHeadUndeterminable { reason } => BranchUnknown { reason: reason }
   }
 }
 

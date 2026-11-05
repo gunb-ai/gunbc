@@ -2779,7 +2779,7 @@ test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
     && (match next_attempt_claim { SpawnRouteNextAttempt { from_branch } => from_branch == "roadmap/n1/a1"  _ => false })
     && (match next_attempt_autonomous { SpawnRouteNone { step, detail: _ } => step == "continuation-await-operator"  _ => false })
     && (match fresh { SpawnRouteWorker => true  _ => false })
-    && (match belt_spawn_route_for_decision(decision: Resume { reason: "r", attempt_key: "a1", ordinal: 2, checkpoint: 2, causes: ["c"] }, request: LaunchAutonomous) {
+    && (match belt_spawn_route_for_decision(decision: Resume { reason: "r", attempt_key: "a1", ordinal: 2, causes: ["c"] }, request: LaunchAutonomous) {
       SpawnRouteResume { attempt_key, ordinal } => attempt_key == "a1" && ordinal == 2
       _ => false
     })

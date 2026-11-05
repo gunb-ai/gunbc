@@ -12,6 +12,8 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, AlreadyComplete, Refuse,
   continuation_plan,
+  WorktreeStanding, WorktreeHere, WorktreeAbsent,
+  BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import gunbc.roadmap.roadmap_submission {
@@ -36,11 +38,35 @@ fn pri(
     node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
+    // PRESENT by default: the whole existing partition is read from the CAPTURE, so the worktree is here.
+    // The reaped-worktree cases build their own observation (they exercise the branch standing instead).
+    worktree: WorktreeHere { revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    branch_head: BranchLive,
     worker_terminal: true,
     capture: capture,
     verification: verification,
     review: review,
     goal_audit: goal_audit,
+    recovery: SessionRecoveryNone,
+  }
+}
+
+// A PRIOR ATTEMPT WHOSE WORKTREE IS GONE (reaped). The capture and recovery were NOT read (they live in the
+// absent worktree) and are INERT here -- the decision routes on the branch standing instead. The capture is
+// left CaptureUnreadable to mirror exactly what the belt puts there when the worktree is absent, so a test
+// can prove the decision never reads it (it must not turn an unread capture into a Resume or a false 'absent').
+fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    node_id: "n1",
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worktree: WorktreeAbsent { reason: "git could not read the worktree head: no such directory" },
+    branch_head: branch_head,
+    worker_terminal: true,
+    capture: CaptureUnreadable { reason: "the worktree is not present; the submission capture was not read" },
+    verification: none,
+    review: none,
+    goal_audit: none,
     recovery: SessionRecoveryNone,
   }
 }
@@ -97,6 +123,8 @@ test fn worker_not_terminal_joins_the_live_attempt_never_double() -> Bool {
     node_id: running.node_id,
     attempt_key: running.attempt_key,
     branch: running.branch,
+    worktree: running.worktree,
+    branch_head: running.branch_head,
     worker_terminal: false,
     capture: running.capture,
     verification: running.verification,
@@ -214,4 +242,46 @@ test fn segments_in_motion_join_and_stopped_refuses() -> Bool {
       Refuse { reason: _ } => true
       _ => false
     })
+}
+
+// LAB BUG #2, THE GENERAL RESTORE. A reaped worktree must NOT block the decision and must NOT be read as
+// 'the worker handed in nothing'. When the branch is still live it is the durable record, so CONTINUE
+// restores: a new attempt from that branch's head. RED CONTROLS: the unread capture is never turned into a
+// Resume (there is no directory to resume into), never a false completion, and never the first attempt.
+test fn reaped_worktree_with_live_branch_restores_from_branch_head() -> Bool {
+  let o = pri_reaped(branch_head: BranchLive)
+  continued_on(plan: continuation_plan(obs: Present { value: o }), pattern: "worktree is gone")
+    // RED CONTROL: an unread capture must not be misread as a resumable session (the worktree is gone --
+    // resuming would drive a worker into a directory that no longer exists).
+    && !(match continuation_plan(obs: Present { value: o }) { Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true, _ => false })
+    // RED CONTROL: it is not 'handed in nothing' read as a completion, nor a first attempt (it continues prior work).
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyComplete { reason: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: o }) { StartInitial { reason: _ } => true, _ => false })
+}
+
+// A GONE BRANCH LEAVES NOTHING TO RESTORE ONTO -- the typed BranchAbsent refusal (a Refuse, never a spawn
+// onto a base ref). RED CONTROL: this must NOT continue (spawning onto a gone branch would fabricate a base).
+test fn reaped_worktree_with_gone_branch_is_a_typed_branch_absent_refusal() -> Bool {
+  let o = pri_reaped(branch_head: BranchGone)
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { reason } => reason.contains("BranchAbsent") && reason.contains("roadmap/n1/a1")
+    _ => false
+  })
+    // RED CONTROL: a gone branch is never treated as restorable -- no new attempt is spawned onto it.
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+}
+
+// A FAILED BRANCH CHECK IS NOT THE FACT THAT THE BRANCH IS GONE, and is not live either -- it is unknown,
+// and unknown is refused, never restored onto. RED CONTROL: unlike the live-branch case, this must NOT
+// continue; if the code confused Unknown with Live it would wrongly spawn a restore here. This is the exact
+// arm that separates 'the git command failed' from 'the branch is gone'.
+test fn reaped_worktree_with_unreadable_branch_refuses_never_restores_onto_unknown() -> Bool {
+  let o = pri_reaped(branch_head: BranchUnknown { reason: "git rev-parse exit 128: lock file exists" })
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { reason } => reason.contains("roadmap/n1/a1")
+    _ => false
+  })
+    // RED CONTROL: an unknown branch is NOT treated as live -- no restore is spawned onto a branch we could
+    // not confirm exists. (This is the discriminator against the live-branch restore arm.)
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
 }
