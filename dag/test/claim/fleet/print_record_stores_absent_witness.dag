@@ -1,0 +1,69 @@
+module test.claim.fleet.print_record_stores_absent_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import gunbc.durable_cas_file_store { SlotStoreListed, SlotStoreAbsent }
+import gunbc.fleet.print_record_stores {
+  print_request_slots, print_completion_slots, print_request_path, print_completion_path,
+  print_request_store_admitted, print_completion_store_admitted,
+  PrintRequestStoreReady, PrintRequestStoreUnready, PrintCompletionStoreReady, PrintCompletionStoreUnready,
+}
+
+// Each store's admission is SUPPLIED at its own fold: an absent store refuses with its own typed
+// *StoreUnready naming its own member and root, never the other store's, the two refusals differ, and a
+// listed store admits over the listed root. The tree is never touched.
+fn fixture_tree() -> HostStateTree {
+  isolated_host_state_tree(dir: "/nonexistent/gunbc-print-record-stores-absent-fixture" as NonEmptyStr)
+}
+
+fn absent_sentence(member: String, root: NonEmptyStr) -> String {
+  join(["the ", member, " store's own directory was never created at ", root as String], "")
+}
+
+fn absent_request_detail() -> String {
+  let tree = fixture_tree()
+  match print_request_store_admitted(admission: SlotStoreAbsent { member: print_request_slots.member as String, root: print_request_path(tree: tree) }) {
+    PrintRequestStoreUnready { detail: d } => d
+    PrintRequestStoreReady { store: _ } => ""
+  }
+}
+
+fn absent_completion_detail() -> String {
+  let tree = fixture_tree()
+  match print_completion_store_admitted(admission: SlotStoreAbsent { member: print_completion_slots.member as String, root: print_completion_path(tree: tree) }) {
+    PrintCompletionStoreUnready { detail: d } => d
+    PrintCompletionStoreReady { store: _ } => ""
+  }
+}
+
+test fn an_absent_request_store_refuses_naming_its_own_member_and_root_and_a_listed_one_admits() -> Bool {
+  let tree = fixture_tree()
+  let root = print_request_path(tree: tree)
+  let detail = absent_request_detail()
+  let listed = match print_request_store_admitted(admission: SlotStoreListed { root: root }) {
+    PrintRequestStoreReady { store: s } => s.root == root
+    PrintRequestStoreUnready { detail: _ } => false
+  }
+  detail.contains(absent_sentence(member: print_request_slots.member as String, root: root))
+    && !detail.contains(print_completion_path(tree: tree) as String)
+    && listed
+}
+
+test fn an_absent_completion_store_refuses_naming_its_own_member_and_root_and_a_listed_one_admits() -> Bool {
+  let tree = fixture_tree()
+  let root = print_completion_path(tree: tree)
+  let detail = absent_completion_detail()
+  let listed = match print_completion_store_admitted(admission: SlotStoreListed { root: root }) {
+    PrintCompletionStoreReady { store: s } => s.root == root
+    PrintCompletionStoreUnready { detail: _ } => false
+  }
+  detail.contains(absent_sentence(member: print_completion_slots.member as String, root: root))
+    && !detail.contains(print_request_path(tree: tree) as String)
+    && listed
+}
+
+test fn the_two_absent_print_record_stores_refuse_distinctly() -> Bool {
+  let requests = absent_request_detail()
+  let completions = absent_completion_detail()
+  requests != "" && completions != "" && requests != completions
+}

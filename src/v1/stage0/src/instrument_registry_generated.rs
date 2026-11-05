@@ -40,13 +40,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "compile-clean-diagnostic-census".to_string(),
-            },
-            TargetProducer::CompileCleanDiagnosticCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "self-host".to_string(),
             },
             TargetProducer::SelfHost,
@@ -106,15 +99,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
                 target: "self-host-behavioral-equivalence".to_string(),
             },
             TargetProducer::SelfHostBehavioralEquivalence,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "dependency-demand-census".to_string(),
-            },
-            TargetProducer::NativeCensusVerb {
-                verb: "demand-census",
-            },
         ),
         (
             Label {

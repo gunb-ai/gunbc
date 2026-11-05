@@ -6,11 +6,11 @@ import std.measure { Micrometer, micrometer, micrometer_count }
 import std.euclidean_geometry { Axis3X, Axis3Y }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, FixedFrame, LayOnXY, FrictionFitSleeve, Proposed,
-  ProfileVertex, block, part, mechanical_interface, prism, M5FanScrewIntoBlowerLug, Clearance,
+  ProfileVertex, block, part, mechanical_interface, tapping_into, prism, M5FanScrewIntoBlowerLug, Clearance,
 }
 import product.printed_chassis.blower_outlet_mount {
   OutletMount, EdgeAlongY, outlet_mount_unfit, run_for_label, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
-  socket_edge_lo, socket_edge_hi, opening_edge_lo, opening_edge_hi, opening_half_thickness, outlet_mount_note, label_side_stack, lug_screw_part, housing_box,
+  socket_edge_lo, socket_edge_hi, opening_edge_lo, opening_edge_hi, opening_half_thickness, outlet_mount_note, label_side_stack, lug_screw_part, housing_boxes,
 }
 import extdeps.fans.delta { delta_bfb1012m_outlet }
 import product.printed_chassis.fit_observations { a2_row_fit_plate_fit_display }
@@ -340,7 +340,7 @@ fn group_blower_stages(faces: List<GroupMemberFace>, b: BlowerDuctDesign) -> Blo
   let outer2 = y_prism(outline: [ProfileVertex { u: sp.y_lo - w, v: z1 }, ProfileVertex { u: sp.y_hi + w, v: z1 }, ProfileVertex { u: sy_hi, v: mz }, ProfileVertex { u: sy_lo, v: mz }], x_lo: xc - so, x_hi: xc + so)
   let chan2 = y_prism(outline: [ProfileVertex { u: sp.y_lo, v: z1 }, ProfileVertex { u: sp.y_hi, v: z1 }, ProfileVertex { u: oy_hi, v: mz + 500 }, ProfileVertex { u: oy_lo, v: mz + 500 }], x_lo: xc - oh, x_hi: xc + oh)
   let envelope = part(id: "FAN-1", name: "Delta BFB1012M radial blower envelope, lying flat behind the row", kind: Purchased, scope: FixedFrame,
-    adds: [housing_box(m: m, half: half, edge_length: b.blower.housing_depth, rise: b.blower.housing_length)],
+    adds: housing_boxes(m: m, half: half, edge_length: b.blower.housing_depth, rise: b.blower.housing_length),
     cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 120000, plane: LayOnXY,
     notes: "Bounding envelope only: the housing is a rounded scroll inside it. Outlet frame in the socket, label face up against the screw arm, intake facing down toward the board.")
   BlowerStages {
@@ -361,8 +361,8 @@ fn group_duct_merge(plate: List<AssemblyPart>, stages: BlowerStages) -> List<Ass
 }
 
 fn group_blower_joint(k: Int) -> MechanicalInterface {
-  mechanical_interface(id: join(["blower-", to_string(value: k), "-to-socket"], ""), members: ["DUCT", join(["FAN-", to_string(value: k)], ""), join(["SCREW-", to_string(value: k)], "")], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
-    requirement: "The blower's outlet frame sits in its socket on the ledges around the opening, label face against the arm; one M5 x 10 fan screw through the arm into the lug of the hole nearer the outlet retains it.")
+  tapping_into(i: mechanical_interface(id: join(["blower-", to_string(value: k), "-to-socket"], ""), members: ["DUCT", join(["FAN-", to_string(value: k)], ""), join(["SCREW-", to_string(value: k)], "")], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
+    requirement: "The blower's outlet frame sits in its socket on the ledges around the opening, label face against the arm; one M5 x 10 fan screw through the arm into the lug of the hole nearer the outlet retains it."), members: [join(["SCREW-", to_string(value: k)], "")])
 }
 
 fn group_duct_readme(p: GroupDuctPlan) -> String {

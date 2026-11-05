@@ -3,7 +3,7 @@ import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import product.printed_chassis.assembly_inventory { InventoryMutation, InventoryObservation, InventoryCaptured, InventoryReadRefusal, InventoryUnread, decode_inventory, inventory_json, capture_validity, transition_inventory, InventoryTransitionPrepared, InventoryTransitionRefused }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreListed, SlotStoreAbsent,SlotStoreRefused, slot_observe, slot_commit, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, DefaultAccessCreateOnly }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreListed, SlotStoreAbsent,SlotStoreRefused, slot_observe, slot_commit, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, DefaultAccessCreateOnly, slot_store_absent_detail }
 import std.durable_compare_and_set { CasExpectation, CasGeneration, cas_generation_count, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
 import gunbc.fleet.printer_workflow_artifact { printer_starts_member_path, printer_state_directory, printer_starts_legacy_scan, PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable }
 import gunbc.host_state_root { HostStateTree }
@@ -35,7 +35,7 @@ fn cassette_inventory_store(tree:HostStateTree) -> CassetteInventoryStoreReading
  PrinterStartsUnreadable {detail:d}=>CassetteInventoryStoreUnready {detail:d}
  PrinterStartsLegacyEntries {names:n}=>CassetteInventoryStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
  PrinterStartsClean=>match listed_slot_store(member:cassette_inventory_slots.member as String,root:cassette_inventory_path(tree:tree)) {
- SlotStoreAbsent {member:_,root:_}=>CassetteInventoryStoreUnready {detail:"the store's own directory was never created -- admission answers absence, and an absent store is not an empty store"}
+ SlotStoreAbsent {member:m,root:r}=>CassetteInventoryStoreUnready {detail:slot_store_absent_detail(member:m,root:r)}
  SlotStoreRefused {detail:d}=>CassetteInventoryStoreUnready {detail:d}
  SlotStoreListed {root:r}=>CassetteInventoryStoreReady {store:CassetteInventoryStore {slots:file_slot_store(root:r)}}
  }
