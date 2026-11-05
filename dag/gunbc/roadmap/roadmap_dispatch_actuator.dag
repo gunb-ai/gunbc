@@ -2720,6 +2720,7 @@ fn dispatch_session_container_for_provider(
         provider_inner: provider_inner,
         unavailable_step: "replay-transient-unit" as NonEmptyStr,
         unavailable_why: "the replay worker runs in the same transient unit as a real worker so its confinement and exit record are the real ones",
+        worker_role: worker_role,
       )
     GunbcHarnessProvider =>
       dispatch_systemd_unit_container_plan(
