@@ -1170,7 +1170,9 @@ test fn w_a_plain_vendor_path_is_also_published_as_length_digest_and_disposition
     Present { value: at } => at == 0 &&
       !string_contains(s: line, pattern: "/ui/source.min.js") &&
       string_contains(s: line, pattern: "disposition=admitted") &&
-      string_contains(s: line, pattern: sha256_hex_of_text(text: witness_asset_path() as String))
+      string_contains(s: line, pattern: concat(" ref_sha256=", sha256_hex_of_text(text: witness_asset_path() as String))) &&
+      !string_contains(s: line, pattern: " sha256=") &&
+      !string_contains(s: line, pattern: " length=")
   }
 }
 
