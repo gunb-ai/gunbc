@@ -631,9 +631,17 @@ data belt_concurrency_is_a_per_instance_fact: DesignRuling = DesignRuling {
 }
 
 
+data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_may_arbitrarily_retire_any_work_item"),
+  decided: "2026-11-04",
+  section: "6",
+  provenance: "Operator, relayed by silent-bee-845 on the daily-workspace close/advance slice: \"I should be allowed to arbitrarily retire any work item\". The operator RETIRE route (gunbc.roadmap.roadmap_serve, POST /issue/\{node\}/retire) ends any work item in any state and is recorded honestly as retired by <principal>, never as accepted; its only refusals are unknown node, already terminal, unauthenticated, and stale revision — never a lineage-state precondition; the lab-only lineage-retire route's \"only a ContinuationEnded lineage\" admission dies with that route (deleted per the same-day dispatch ruling, START FRESH superseding it) and is not carried to main. A closed or retired NODE is terminal — and terminality is never a separate operator-facing lineage state: the operator ruling of the same day (dispatch collapses to CONTINUE and START FRESH, retire-LINEAGE deleted, START FRESH superseding it) keeps the standing node-level, while the belt computes terminality internally from the node's own standing and durable acceptance (gunbc.roadmap.roadmap_belt_obligation and gunbc.roadmap.roadmap_belt_actuate read that one rule: no further verify/review/re-delivery spawns, fail closed on unreadable). Dispatch verbs CONTINUE and START FRESH refuse on a retired node with that reason; retired does not satisfy dependents, and a child held by a retired parent surfaces the reason visibly as 'blocked by retired <id>' (derived from the blocker's standing, no new label type) — the same use-found defect class as a_write_control_renders_disabled_with_no_visible_reason.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     belt_concurrency_is_a_per_instance_fact,
+    operator_may_arbitrarily_retire_any_work_item,
     bad_process_is_worse_than_no_process,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,

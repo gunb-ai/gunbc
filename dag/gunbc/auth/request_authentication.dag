@@ -361,6 +361,13 @@ type ServeRouteAction
   | ServeActionDispatchNode
   | ServeActionStopNode
   | ServeActionPublishNode
+  // The operator's daily close and retire (operator ruling 2026-11-04). CLOSE admits the
+  // authenticated Workspace human; the merged-PR readback gate lives in the route (roadmap_serve),
+  // so authorization itself is the principal axis only. RETIRE admits the authenticated Workspace
+  // human with NO further precondition — the operator retires any work item, in any state; the
+  // route's only refusals are unknown node, already terminal, unauthenticated, stale revision.
+  | ServeActionCloseNode
+  | ServeActionRetireNode
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
@@ -375,6 +382,8 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionDispatchNode => "dispatch-node" as NonEmptyStr
     ServeActionStopNode => "stop-node" as NonEmptyStr
     ServeActionPublishNode => "publish-node" as NonEmptyStr
+    ServeActionCloseNode => "close-node" as NonEmptyStr
+    ServeActionRetireNode => "retire-node" as NonEmptyStr
   }
 }
 
@@ -468,6 +477,11 @@ fn serve_route_action_agent_admissible(action: ServeRouteAction) -> Bool {
     ServeActionStopNode => false
     ServeActionPublishNode => false
     ServeActionApproveDecision => false
+    // CLOSE is an acceptance act — the acceptance verdict belongs to the human operator, never to
+    // an agent closing its own work. RETIRE is the operator's disposal of a work item; the agent
+    // door's grant (2026-11-04) was assign/dispatch only. Both stay human acts.
+    ServeActionCloseNode => false
+    ServeActionRetireNode => false
     ServeActionCreateAllocation => false
     ServeActionReleaseAllocation => false
     ServeActionRetireLineage => false
@@ -649,6 +663,8 @@ fn human_action_authorization_decision(
         ServeActionDispatchNode => Permit
         ServeActionStopNode => Permit
         ServeActionPublishNode => Permit
+        ServeActionCloseNode => Permit
+        ServeActionRetireNode => Permit
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>

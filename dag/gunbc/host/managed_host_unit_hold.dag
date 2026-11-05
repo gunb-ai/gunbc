@@ -1,7 +1,7 @@
 module gunbc.host.managed_host_unit_hold
 
 import gunbc.process_hold_identity {
-  process_hold_text, process_hold_marker, process_hold_decode, text_at, self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
+  process_hold_text, process_hold_owner_read, ProcessHoldOwnerRead, ProcessHoldOwnerNamesNoProcess, ProcessHoldOwnerProcessUndecodable, self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
 }
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -481,14 +481,10 @@ fn decode_process_held_run(raw: String, kind: ProcessHeldRunKind) -> UnitHoldOwn
   match unit_hold_owner_detail_after(raw: raw, tag: process_held_run_tag(k: kind)) {
     Absent => UnitHoldOwnerUnrecognized { raw: raw }
     Present { value: d } => {
-      let halves = split(s: d as String, delimiter: process_hold_marker)
-      if count(halves) != 2 || text_at(xs: halves, i: 0) == "" {
-        UnitHoldOwnerUnrecognized { raw: raw }
-      } else {
-        match process_hold_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
-          Present { value: h } => UnitHoldOwnerDecoded { owner: ProcessHeldRun { kind: kind, run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: h.process, pid_namespace: h.pid_namespace } }
-          Absent => UnitHoldOwnerUnrecognized { raw: raw }
-        }
+      match process_hold_owner_read(owner: d as String) {
+        ProcessHoldOwnerRead { head: id, holder: h } => UnitHoldOwnerDecoded { owner: ProcessHeldRun { kind: kind, run_id: id, process: h.process, pid_namespace: h.pid_namespace } }
+        ProcessHoldOwnerNamesNoProcess => UnitHoldOwnerUnrecognized { raw: raw }
+        ProcessHoldOwnerProcessUndecodable => UnitHoldOwnerUnrecognized { raw: raw }
       }
     }
   }

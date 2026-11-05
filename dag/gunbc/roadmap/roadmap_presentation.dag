@@ -9,13 +9,14 @@ import gunbc.roadmap.roadmap_issue_status {
 import std.types { Map }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
-  readiness_is_dispatchable, readiness_gap_blockers,
+  readiness_is_dispatchable, readiness_gap_blockers, readiness_text_with_retired, readiness_reason_text_with_retired,
 }
 import gunbc.roadmap.roadmap_project { node_project_membership_in, MembershipMember, RoadmapMembershipIndex, membership_index, project_member_ids_in }
 
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapNodeStanding, IssueAssignmentProjection,
+  RoadmapNodeStanding, IssueAssignmentProjection, RoadmapStandings, StandingsUnobserved, NodeStandingRow,
   NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeReadyForReview, NodeForked, NodeHistoryIncomplete,
+  NodeRetired, standing_for_node,
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
@@ -452,6 +453,12 @@ type WorkRowView {
   assignment: IssueAssignmentProjection?
   attempt_stale: Bool
   profiles: List<PrincipalProfile>
+  // BLOCKERS THIS ROW IS HELD BY THAT ARE RETIRED, derived from each blocker's OWN standing at
+  // construction (never by name, claim, or position). A child of a retired parent is blocked
+  // forever; the surface says so with the retired voice instead of a bare id (the operator rule
+  // against blocked-with-no-visible-reason). Empty is the ordinary voice, including when the
+  // standings could not be read — unobserved never claims retired.
+  retired_blockers: List<String>
 }
 
 // STALENESS DIMS (operator ruling 2026-09-20): an attempt launched against a revision that is no
@@ -1145,11 +1152,12 @@ fn work_row_view(
   attempt_stale: Bool,
   profiles: List<PrincipalProfile>,
   assignment: IssueAssignmentProjection? = none,
+  standings: RoadmapStandings = StandingsUnobserved { reason: "this projection observes no live standings" as NonEmptyStr },
 ) -> WorkRowView {
   work_row_view_in(
     rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged,
     activity: activity, rounds: rounds, launch: launch, worker_alive: worker_alive, standing: standing,
-    attempt_stale: attempt_stale, profiles: profiles, assignment: assignment,
+    attempt_stale: attempt_stale, profiles: profiles, assignment: assignment, standings: standings,
   )
 }
 
@@ -1165,9 +1173,20 @@ fn work_row_view_in(
   attempt_stale: Bool,
   profiles: List<PrincipalProfile>,
   assignment: IssueAssignmentProjection?,
+  standings: RoadmapStandings,
 ) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
   let scheduling = work_scheduling_in(rn: rn, graph: graph, merged: merged)
+  // A blocker reads as retired exactly when ITS OWN standing says so — never by name, claim, or
+  // position. Unobserved standings leave every blocker in the ordinary voice (never-blocks).
+  let retired_blockers = match scheduling {
+    SchedulingNotReady { missing } => filter(flat_map(missing, g => readiness_gap_blockers(g: g)), b =>
+      match standing_for_node(standings: standings, node_id: b) {
+        Present { value } => match value { NodeRetired { by: _, reason: _ } => true _ => false }
+        Absent => false
+      })
+    _ => [] as List<String>
+  }
   WorkRowView {
     node_id: rn.node as String,
     headline: row_headline(line: rn.line),
@@ -1185,6 +1204,7 @@ fn work_row_view_in(
     assignment: assignment,
     attempt_stale: attempt_stale,
     profiles: profiles,
+    retired_blockers: retired_blockers,
   }
 }
 
@@ -1472,7 +1492,9 @@ fn task_bar_idle_view(view: WorkRowView) -> TaskBarView {
             match view.scheduling {
               SchedulingNotReady { missing } => TaskBarView {
                 fill: BarFillNone,
-                signal: readiness_text(r: NotReady { missing: missing }),
+                // The blockers a RETIRED parent holds read "blocked by retired <id>" (operator
+                // ruling 2026-11-04): a child held forever must say why, in its own visible strip.
+                signal: readiness_text_with_retired(r: NotReady { missing: missing }, retired: view.retired_blockers),
                 signal_class: "neutral", count: "", subline: "", attention: false,
               }
               SchedulingReady => TaskBarView {
@@ -1911,6 +1933,7 @@ fn row_pulses(row: WorkRowView) -> Bool {
         NodeInProgress { by: _, last_note: _ } => true
         NodeBlocked { by: _, reason: _ } => true
         NodeHandedBack { by: _, reason: _ } => true
+        NodeRetired { by: _, reason: _ } => false
         NodeReadyForReview { by: _, pr: _, head: _ } => true
         NodeForked { heads: _ } => true
         NodeHistoryIncomplete { missing_parents: _ } => true
@@ -2156,6 +2179,7 @@ fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
       NodeInProgress { by: _, last_note: _ } => "in_progress"
       NodeBlocked { by: _, reason: _ } => "blocked"
       NodeHandedBack { by: _, reason: _ } => "handed_back"
+      NodeRetired { by: _, reason: _ } => "retired"
       NodeReadyForReview { by: _, pr: _, head: _ } => "ready_for_review"
       NodeForked { heads: _ } => "unknown"
       NodeHistoryIncomplete { missing_parents: _ } => "unknown"
@@ -2166,6 +2190,7 @@ fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
   let activity = activity_arm_key(a: view.activity)
   if standing == "unknown" || activity == "unobservable" { DisplayUnknown }
   else if work_lifecycle_is_closed(l: view.lifecycle) { closed_lifecycle_display_status(l: view.lifecycle) }
+  else if standing == "retired" { DisplayRetired }
   else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { DisplayBlocked }
   else if standing == "in_progress" || activity == "active" { DisplayActive }
   else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { DisplayReview }
@@ -2190,7 +2215,9 @@ fn issue_status_sort_rank(view: WorkRowView) -> Int {
 fn issue_status_details(view: WorkRowView) -> IssueStatusDetails {
   let planning = join([work_lifecycle_key(l: view.lifecycle), " · ", match view.scheduling {
     SchedulingReady => "Ready to dispatch"
-    SchedulingNotReady { missing } => readiness_reason_text(r: NotReady { missing: missing })
+    // Same voice law as the idle strip: a dependency blocker that is retired is named retired
+    // (the row derived that from the blocker's own standing; no new label type exists).
+    SchedulingNotReady { missing } => readiness_reason_text_with_retired(r: NotReady { missing: missing }, retired: view.retired_blockers)
     SchedulingDone => "Delivered; acceptance evidence remains authoritative"
     SchedulingSuperseded => concat("Superseded by ", view.superseded_by)
   }], "")
@@ -2300,6 +2327,7 @@ fn family_subject_row(row: WorkRowView, subject: String) -> WorkRowView {
     assignment: row.assignment,
     attempt_stale: row.attempt_stale,
     profiles: row.profiles,
+    retired_blockers: row.retired_blockers,
   }
 }
 
@@ -2402,6 +2430,7 @@ fn row_has_work_in_flight(row: WorkRowView) -> Bool {
       NodeInProgress { by: _, last_note: _ } => true
       NodeBlocked { by: _, reason: _ } => true
       NodeHandedBack { by: _, reason: _ } => true
+      NodeRetired { by: _, reason: _ } => true
       NodeReadyForReview { by: _, pr: _, head: _ } => true
       NodeForked { heads: _ } => true
       NodeHistoryIncomplete { missing_parents: _ } => true
