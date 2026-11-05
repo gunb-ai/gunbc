@@ -2,6 +2,7 @@ module test.claim.c_roadmap2_old_bytes_wet_witness
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.algebra { length }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventId }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -106,7 +107,7 @@ test fn the_served_observation_index_bytes_survive_the_seal() -> ProcessExit {
         ServedObservationWriteRefused { error: e } => join(["put-refused: ", e], "")
         ServedObservationWritten =>
           match served_observation_read_for_instance(instance: instance) {
-            ServedObservationPresent { index: read } => if list_length(read.entries) != 1 { "typed-read-entry-count" } else if !any(read.entries, e => e.status == 200 && e.digest == "0123456789abcdef0123456789abcdef0123456789abcdef") { "typed-read-entry-fields" } else if read_raw(path: join([instance_receipts_dir(instance_root: instance.instance_root as String), "/", served_observation_slots.index_stem as String, served_observation_slots.index_suffix as String], "")) != bytes { "raw-bytes-differ-from-the-pre-seal-serializer" } else { "ok" }
+            ServedObservationPresent { index: read } => if length(xs: read.entries) != 1 { "typed-read-entry-count" } else if !any(read.entries, e => e.status == 200 && e.digest == "0123456789abcdef0123456789abcdef0123456789abcdef") { "typed-read-entry-fields" } else if read_raw(path: join([instance_receipts_dir(instance_root: instance.instance_root as String), "/", served_observation_slots.index_stem as String, served_observation_slots.index_suffix as String], "")) != bytes { "raw-bytes-differ-from-the-pre-seal-serializer" } else { "ok" }
             _ => "typed-read-not-present"
           }
       }
@@ -223,7 +224,7 @@ test fn the_issue_view_preferences_round_trip_through_the_sealed_store() -> Proc
         IssueViewSaveConflict => "save-conflict-on-a-fresh-slot"
         IssueViewSaveOk { revision: _ } =>
           match issue_view_preference_read(store: store, key: key) {
-            IssueViewFound { prefs: read, revision: _, expected: _ } => if read.query != prefs.query || read.band != prefs.band || read.project != prefs.project || read.selected != prefs.selected || read.expanded != prefs.expanded { "saved-fields-differ" } else if list_length(read.sorts) != list_length(prefs.sorts) { "saved-sort-count-differs" } else { "ok" }
+            IssueViewFound { prefs: read, revision: _, expected: _ } => if read.query != prefs.query || read.band != prefs.band || read.project != prefs.project || read.selected != prefs.selected || read.expanded != prefs.expanded { "saved-fields-differ" } else if length(xs: read.sorts) != length(xs: prefs.sorts) { "saved-sort-count-differs" } else { "ok" }
             IssueViewAbsent => "absent-after-save"
             IssueViewUnread => "unread-after-save"
           }

@@ -2,7 +2,7 @@ module test.claim.c_roadmap2_srv1_bytes_wet_witness
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import std.algebra { string_contains }
+import std.algebra { string_contains, length }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead,
@@ -126,7 +126,7 @@ test fn the_srv1_census_receipt_is_read_by_the_sealed_reader() -> ProcessExit {
           SnapshotCensusReceiptContentRead { content: c } => if c != bytes { "read-bytes-differ-from-srv1" }
             else { match snapshot_census_receipt_decode(raw: c, namespace: "/tmp/gunbc-roadmap-event-snapshot.bce04b228d3a492c.") {
               SnapshotCensusReceiptDecoded { receipt: receipt } => if receipt.namespace != "/tmp/gunbc-roadmap-event-snapshot.bce04b228d3a492c." { "decoded-namespace-differs" }
-                else if list_length(receipt.snapshots) != 0 { "decoded-snapshot-count" } else { "ok" }
+                else if length(xs: receipt.snapshots) != 0 { "decoded-snapshot-count" } else { "ok" }
               SnapshotCensusReceiptUndecodable { reason: r } => join(["undecodable: ", r], "")
             } }
           SnapshotCensusReceiptContentAbsent => "absent"
@@ -154,7 +154,7 @@ test fn the_srv1_served_observation_is_read_by_the_sealed_reader() -> Bool {
       plant(root: store.root as String, name: index_name, content: index_bytes) &&
         plant(root: store.root as String, name: body_name, content: body_bytes) &&
         match served_observation_read_for_instance(instance: instance) {
-          ServedObservationPresent { index: read } => list_length(read.entries) == 5 && read.observed_at == "2026-10-29T11:17:14Z" &&
+          ServedObservationPresent { index: read } => length(xs: read.entries) == 5 && read.observed_at == "2026-10-29T11:17:14Z" &&
             match served_observation_body_observe(store: store, kind: AttemptsJson) {
               FilesystemFileRead { path: _, content: body } => body == body_bytes
               FilesystemFileAbsent(_ ) => false

@@ -1,6 +1,7 @@
 module test.claim.c_roadmap2_systemd_file_state_table_witness
 
-import std.types { Bool, String, List, list_length }
+import std.types { Bool, String, List }
+import std.algebra { length }
 import extdeps.systemd {
   SystemdUnitFileState, SystemdUnitFileStateRow, systemd_unit_file_state_table,
   UnitFileEnabled, UnitFileEnabledRuntime, UnitFileLinked, UnitFileLinkedRuntime, UnitFileMasked,
@@ -92,5 +93,5 @@ test fn words_outside_the_table_parse_to_no_state() -> Bool {
 }
 
 test fn the_table_is_the_twelve_words_is_enabled_prints_with_none_repeated() -> Bool {
-  list_length(items: systemd_unit_file_state_table) == 12 && no_word_repeats(remaining: systemd_unit_file_state_table)
+  length(xs: systemd_unit_file_state_table) == 12 && no_word_repeats(remaining: systemd_unit_file_state_table)
 }
