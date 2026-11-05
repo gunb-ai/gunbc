@@ -3951,11 +3951,18 @@ fn roster_import_sweep_real_route_inhabitance() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "grammar FAIL unprepared\n"
     Accepted { value: prepared, diagnostics: _ } => {
-      let derived = roster_rename_companions(rows: roster_rename_production_row(), prepared: prepared, lex: dag_prepared_lex())
-      let ghost = roster_rename_companions(rows: roster_control_ghost_rows(), prepared: prepared, lex: dag_prepared_lex())
+      // ONE acquisition and ONE read set for the run, carried as values through the claims (DESIGN 2). selecting-call stays on
+      // the REAL entry: what it asserts is that entry's own route, so its internal derivation is the entry's and is not shared.
+      let closures = roster_homes_closures_read(homes: ["std.optional", "std.types"], bindings: roster_repository_bindings(root: ""))
+      let empty_reads: Map<String, RosterModuleRead> = empty_map()
+      let first = roster_rename_companions_carried(rows: roster_rename_production_row(), reads: empty_reads, closures: closures, prepared: prepared, lex: dag_prepared_lex())
+      let second = roster_rename_companions_carried(rows: roster_control_ghost_rows(), reads: first.reads, closures: closures, prepared: prepared, lex: dag_prepared_lex())
+      let derived = first.companions
+      let ghost = second.companions
       roster_inhabitance_line(name: "companion-derived", fail: roster_companion_derived_check(companions: derived) + roster_companion_equals_supplied(real: derived, supplied: roster_control_supplied_companion()))
         + roster_inhabitance_line(name: "companion-underivable", fail: roster_companion_equals_supplied(real: ghost, supplied: roster_control_supplied_ghost_companion()))
-        + roster_inhabitance_line(name: "closure-inhabited", fail: roster_control_closure_inhabited())
+        + roster_inhabitance_line(name: "closure-inhabited", fail: roster_control_closure_inhabited_in(closures: closures))
+        + roster_inhabitance_line(name: "shared-set-equals-per-claim", fail: roster_shared_set_equivalence(prepared: prepared, lex: dag_prepared_lex()))
         + roster_inhabitance_line(name: "selecting-call", fail: roster_scope_exit_refuses(name: "selecting-call", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "count"), refusal: RefusalUnreadable))
     }
   }
@@ -3964,7 +3971,7 @@ fn roster_import_sweep_real_route_inhabitance() -> String {
 // THE CLAIM'S EXECUTING ROUTE: the label //gunbc/instruments:roster-import-sweep-real-route (gunbc.instrument_targets), its own
 // label so the controls label stays on supplied inputs. Green only when every DECLARED claim name answers HELD: a missing
 // line is a failure, never an implicit pass.
-data roster_real_route_claim_names: List<String> = ["companion-derived", "companion-underivable", "closure-inhabited", "selecting-call"]
+data roster_real_route_claim_names: List<String> = ["companion-derived", "companion-underivable", "closure-inhabited", "shared-set-equals-per-claim", "selecting-call"]
 
 fn roster_import_sweep_real_route_wire() -> CliWireResponse {
   let report = roster_import_sweep_real_route_inhabitance()
@@ -3977,6 +3984,38 @@ fn roster_import_sweep_real_route_wire() -> CliWireResponse {
   } else {
     CliWirePrintable { bytes: report + missing, exit: exit_failure(reason: report + missing) }
   }
+}
+
+// THE SHARED SET CHANGES NOTHING BUT THE COST. On a small real input (a rename into std.optional's own optional_present: one
+// tiny module, no imports), the carried path -- over a read set and closures a previous claim already holds -- and the
+// per-claim path (roster_rename_companions, the empty-set entry) must render the same companions, and std.optional's closure
+// taken from the union acquisition must answer the same cycle verdict as std.optional's closure acquired alone. Run on the
+// small input so the check does not re-pay the expensive std.algebra front end it exists to remove.
+fn roster_shared_set_equivalence_row() -> List<RosterHeadRow> {
+  [RosterHeadRow { call: "some_of", key: "some_of", import_name: "optional_present", home: qualified_name_from_dotted_string(dotted: "std.optional"), labels: [], head: RenameHead { to: "optional_present", positional: ["value"], appended: [] } }]
+}
+
+fn roster_cycle_verdict_text(v: Optional<RosterRefusalReason>) -> String {
+  match v {
+    Present { value: r } => roster_refusal_text(reason: r)
+    Absent => "admitted"
+  }
+}
+
+fn roster_shared_set_equivalence(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let rows = roster_shared_set_equivalence_row()
+  let union = roster_homes_closures_read(homes: ["std.types", "std.optional"], bindings: roster_repository_bindings(root: ""))
+  let empty_reads: Map<String, RosterModuleRead> = empty_map()
+  let warm = roster_rename_companions_carried(rows: rows, reads: empty_reads, closures: union, prepared: prepared, lex: lex)
+  let shared = roster_rename_companions_carried(rows: rows, reads: warm.reads, closures: union, prepared: prepared, lex: lex).companions
+  let alone = roster_rename_companions(rows: rows, prepared: prepared, lex: lex)
+  let s = roster_join(xs: list_map(xs: shared, f: fn(c) { roster_companion_text(c: c) }), sep: " | ")
+  let a = roster_join(xs: list_map(xs: alone, f: fn(c) { roster_companion_text(c: c) }), sep: " | ")
+  let alone_closure = [roster_home_closure_read(home: "std.optional", bindings: roster_repository_bindings(root: ""))]
+  let vs = roster_cycle_refusal(closures: [roster_closure_of_home(closures: union, module: "std.optional")], home: "std.optional", module: "std.algebra")
+  let va = roster_cycle_refusal(closures: alone_closure, home: "std.optional", module: "std.algebra")
+  (if s == a { "" } else { "shared path rendered [" + s + "], per-claim path rendered [" + a + "]\n" })
+    + (if roster_cycle_verdict_text(v: vs) == roster_cycle_verdict_text(v: va) { "" } else { "closure verdict: union says " + roster_cycle_verdict_text(v: vs) + ", alone says " + roster_cycle_verdict_text(v: va) + "\n" })
 }
 
 fn roster_inhabitance_line(name: String, fail: String) -> String {
@@ -4010,7 +4049,11 @@ fn roster_companion_equals_supplied(real: List<RosterCompanion>, supplied: List<
 // std.types' closure and it holds std.algebra (std.types defines List over std.algebra's FreeMonoid), so importing std.types
 // into std.algebra is refused by the real path.
 fn roster_control_closure_inhabited() -> String {
-  match roster_cycle_refusal(closures: [roster_home_closure_read(home: "std.types", bindings: roster_repository_bindings(root: ""))], home: "std.types", module: "std.algebra") {
+  roster_control_closure_inhabited_in(closures: [roster_home_closure_read(home: "std.types", bindings: roster_repository_bindings(root: ""))])
+}
+
+fn roster_control_closure_inhabited_in(closures: List<RosterHomeClosure>) -> String {
+  match roster_cycle_refusal(closures: [roster_closure_of_home(closures: closures, module: "std.types")], home: "std.types", module: "std.algebra") {
     Present { value: RefusalImportClosesCycle { home: _, module: _ } } => ""
     Present { value: r } => "CONTROL-FAIL closure-inhabited: the real closure of std.types refused " + roster_refusal_text(reason: r) + "\n"
     Absent => "CONTROL-FAIL closure-inhabited: the real closure of std.types does not hold std.algebra\n"
@@ -4772,24 +4815,52 @@ fn roster_owner_modules(owners: List<RosterRenameOwner>) -> List<String> {
 
 // ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing. Every distinct module is read
 // once and every distinct owner's closure is acquired once, however many rows name them.
+// THE EMPTY-SET ENTRY: one invocation of a sweep entry derives its companions once, so it starts from nothing. It is the
+// carried variant below over an empty read set and no acquired closures -- one body, not two.
 fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterCompanion> {
+  let empty_reads: Map<String, RosterModuleRead> = empty_map()
+  roster_rename_companions_carried(rows: rows, reads: empty_reads, closures: [], prepared: prepared, lex: lex).companions
+}
+
+// THE CARRIED READ SET (DESIGN 2: carry the first value; not a cache). A caller deriving companions for several row sets in
+// one run passes the module reads and closures it already holds, and gets back the grown read set to pass on, so a module's
+// front end (roster_module_read: tokenize, parse, normalize) and an owner's closure acquisition run once per run, not once
+// per call. Only owner closures the caller did not already acquire are acquired here.
+type RosterCompanionRun {
+  companions: List<RosterCompanion>
+  reads: Map<String, RosterModuleRead>
+}
+
+fn roster_rename_companions_carried(rows: List<RosterHeadRow>, reads: Map<String, RosterModuleRead>, closures: List<RosterHomeClosure>, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanionRun {
   let renames: List<RosterRename> = fold_list(xs: rows, empty: [], cons: fn(acc, r) {
     match roster_rename_target(r: r) {
       Present { value: t } => list_snoc_item(xs: acc, item: RosterRename { row: r, to: t })
       Absent => acc
     }
   })
-  let empty_reads: Map<String, RosterModuleRead> = empty_map()
-  let home_reads = roster_modules_read_into(reads: empty_reads, names: list_map(xs: renames, f: fn(x) { roster_qn_text(qn: x.row.home) }), prepared: prepared, lex: lex)
+  let home_reads = roster_modules_read_into(reads: reads, names: list_map(xs: renames, f: fn(x) { roster_qn_text(qn: x.row.home) }), prepared: prepared, lex: lex)
   let owners: List<RosterRenameOwner> = list_map(xs: renames, f: fn(x) { RosterRenameOwner { rename: x, owner: roster_companion_owner(row: x.row, to: x.to, reads: home_reads) } })
   let owner_modules = roster_owner_modules(owners: owners)
-  let reads = roster_modules_read_into(reads: home_reads, names: owner_modules, prepared: prepared, lex: lex)
-  let closures = roster_homes_closures_read(homes: owner_modules, bindings: roster_repository_bindings(root: ""))
-  list_map(xs: owners, f: fn(p) {
-    match p.owner {
-      OwnerUnderivable { companion: c } => c
-      OwnerDerived { owner: q } => roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: reads, closures: closures)
-    }
+  let grown = roster_modules_read_into(reads: home_reads, names: owner_modules, prepared: prepared, lex: lex)
+  let missing = fold_list(xs: owner_modules, empty: [], cons: fn(acc, m) { if roster_closure_held(closures: closures, home: m) { acc } else { list_snoc_item(xs: acc, item: m) } })
+  let all_closures = if is_empty(xs: missing) { closures } else { list_append(left: closures, right: roster_homes_closures_read(homes: missing, bindings: roster_repository_bindings(root: ""))) }
+  RosterCompanionRun {
+    companions: list_map(xs: owners, f: fn(p) {
+      match p.owner {
+        OwnerUnderivable { companion: c } => c
+        OwnerDerived { owner: q } => roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: grown, closures: all_closures)
+      }
+    }),
+    reads: grown,
+  }
+}
+
+fn roster_closure_held(closures: List<RosterHomeClosure>, home: String) -> Bool {
+  fold_list(xs: closures, empty: false, cons: fn(acc, c) {
+    acc || (match c {
+      RosterClosureRead { home: h, modules: _ } => h == home
+      RosterClosureUnread { home: h } => h == home
+    })
   })
 }
 
