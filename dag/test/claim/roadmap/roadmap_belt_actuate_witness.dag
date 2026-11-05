@@ -214,7 +214,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence {
 import gunbc.roadmap.roadmap_launch_admission { occurrence_census_row }
 
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnRoute, SpawnRouteWorker, SpawnRouteResume, SpawnRouteNone, belt_spawn_route_for_decision,
+  BeltSpawnRoute, SpawnRouteWorker, SpawnRouteResume, SpawnRouteNextAttempt, SpawnRouteNone, belt_spawn_route_for_decision,
   VerifyOneReceiptObservation, VerifyOneReceiptAbsent, VerifyOneReceiptRecorded, VerifyOneReceiptUnreadable,
   VerifyOneGate, VerifyOneRun, VerifyOneNoOp, VerifyOneRefuse,
   belt_verify_one_gate,
