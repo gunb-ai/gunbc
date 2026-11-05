@@ -2021,7 +2021,13 @@ fn eval_control_choose(
 ) -> Outcome<Optional<Node>> {
   match interpreter {
     BranchRuntimeInterpreter { interpreter: branch } => branch.choose_branch(site, selector_value, environment)
-    MatchRuntimeInterpreter { interpreter: match_interpreter } => match_interpreter.choose_arm(site, selector_value, environment)
+    // A Match's chooser always selects an arm (its std.runtime slot answers Outcome<Node>), so its answer is
+    // PRESENT by construction; only a Branch's chooser may answer Absent.
+    MatchRuntimeInterpreter { interpreter: match_interpreter } =>
+      match match_interpreter.choose_arm(site, selector_value, environment) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: arm, diagnostics: d } => Accepted { value: optional_present(value: arm), diagnostics: d }
+      }
     _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: site))
   }
 }

@@ -235,9 +235,9 @@ fn rr_context_without_effects() -> EvalContext {
 }
 
 // A chooser that returns the condition: a node that is no alternative of the site.
-fn rr_choose_condition(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+fn rr_choose_condition(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Optional<Node>> {
   match branch_slot_target(n: node, slot: BranchConditionSlot) {
-    Present { value: condition } => Accepted { value: condition, diagnostics: None }
+    Present { value: condition } => Accepted { value: optional_present(value: condition), diagnostics: None }
     Absent => Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^rr_no_condition, node: node)) }
   }
 }
@@ -250,7 +250,7 @@ fn rr_choose_first_arm(node: Node, _value: RuntimeValue, _env: EvaluationEnviron
   }
 }
 
-fn rr_interpretation(choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>, branch_identity: Symbol, choose_arm: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>, arm_identity: Symbol) -> InterpretationAlgebra {
+fn rr_interpretation(choose_branch: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Optional<Node>>, branch_identity: Symbol, choose_arm: fn(Node, RuntimeValue, EvaluationEnvironment) -> Outcome<Node>, arm_identity: Symbol) -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter { allocate_literal: program_allocate_literal, identity: ^program_allocate_literal },
     transform: TransformInterpreter { call_primitive: program_reject_primitive, identity: ^program_reject_primitive },
