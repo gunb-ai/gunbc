@@ -240,6 +240,16 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "roster-import-sweep-real-route".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_import_sweep.dag",
+                function: "roster_import_sweep_real_route_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "roster-rehome-controls".to_string(),
             },
             TargetProducer::CliWireProgram {

@@ -3943,9 +3943,9 @@ fn roster_control_ghost_rows() -> List<RosterHeadRow> {
 }
 
 // THE ONE INHABITANCE CLAIM for the supplied inputs above (the pairing obligation): the REAL route, executed once, emits the
-// supplied shapes. Run by name -- `gunbc run … --entry src/v2/workflow/roster_import_sweep.dag --function
-// roster_import_sweep_real_route_inhabitance` -- and deliberately NOT on //gunbc/instruments:roster-import-sweep-controls,
-// whose budget it would otherwise carry. One line per claim, `<name> HELD` or `<name> FAIL <why>`; a reader joins on the names.
+// supplied shapes. Enrolled as its own label, `gunbc test //gunbc/instruments:roster-import-sweep-real-route`
+// (roster_import_sweep_real_route_wire), deliberately NOT on //gunbc/instruments:roster-import-sweep-controls, whose budget
+// it would otherwise carry. One line per claim, `<name> HELD` or `<name> FAIL <why>`; a reader joins on the names.
 // Deleting any of these routes makes its line FAIL.
 fn roster_import_sweep_real_route_inhabitance() -> String {
   match dag_prepared_grammar() {
@@ -3958,6 +3958,24 @@ fn roster_import_sweep_real_route_inhabitance() -> String {
         + roster_inhabitance_line(name: "closure-inhabited", fail: roster_control_closure_inhabited())
         + roster_inhabitance_line(name: "selecting-call", fail: roster_scope_exit_refuses(name: "selecting-call", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "count"), refusal: RefusalUnreadable))
     }
+  }
+}
+
+// THE CLAIM'S EXECUTING ROUTE: the label //gunbc/instruments:roster-import-sweep-real-route (gunbc.instrument_targets), its own
+// label so the controls label stays on supplied inputs. Green only when every DECLARED claim name answers HELD: a missing
+// line is a failure, never an implicit pass.
+data roster_real_route_claim_names: List<String> = ["companion-derived", "companion-underivable", "closure-inhabited", "selecting-call"]
+
+fn roster_import_sweep_real_route_wire() -> CliWireResponse {
+  let report = roster_import_sweep_real_route_inhabitance()
+  let lines = split(s: report, delimiter: "\n")
+  let missing = fold_list(xs: roster_real_route_claim_names, empty: "", cons: fn(acc, nm) {
+    if roster_contains(xs: lines, name: nm + " HELD") { acc } else { acc + "CONTROL-FAIL real-route: " + nm + " did not answer HELD\n" }
+  })
+  if missing == "" {
+    CliWirePrintable { bytes: report + "roster-import-sweep real route held\n", exit: ExitSuccess }
+  } else {
+    CliWirePrintable { bytes: report + missing, exit: exit_failure(reason: report + missing) }
   }
 }
 
