@@ -162,7 +162,7 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }
-import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program, coreutils_install_directory_owned_arguments }
+import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program, coreutils_install_directory_owned_argv }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
@@ -201,8 +201,11 @@ import gunbc.live_deploy.lab_host_plan {
   lab_plan_worker_sandbox_choice,
   SystemManagerLauncherSelected,
 }
+import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnixSocket, http_ingress_listener_text, http_ingress_unix_socket_mode }
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
+  roadmap_ingress_function, approval_broker_ingress_function,
+  fabric_storage_ingress_entry_file, fabric_storage_ingress_function, fabric_storage_handler_function,
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
@@ -224,7 +227,8 @@ import gunbc.live_deploy.spec {
   ComposeOwnedArtifactKind,
   UpsertArtifactKind,
   ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
+  deployment_agent_door_socket_of, deployment_agent_door_function_suffix,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -290,9 +294,6 @@ import gunbc.membership_reconcile {
   membership_effects,
 }
 import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv, shell_command_text_of_stmts }
-import gunbc.live_deploy.operations {
-  install_directory_owned_command,
-}
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
   Pipeline, PipelineStep,
@@ -367,12 +368,57 @@ fn deploy_raw(command: String) -> PipelineStep {
 // evaluation_limit_unset_is_a_state_not_a_default_note), so it emits no flag and the
 // process announces `unset` at startup — the same visible operational fact it announces
 // today. What changes is that production no longer REACHES that arm by omission.
-fn eval_budget_flag_text(flag: String, limit: EvaluationLimit) -> String {
+// A per-request budget rendered as a binding argument. A binding's budgets are positive by
+// construction (gunbc.http_ingress http_ingress_binding), so an UNSET limit renders no argument and
+// the unit's `gunbc run` refuses at startup for the missing parameter: a declared "unbounded" cannot
+// be served, and it fails loudly rather than being given a number.
+fn ingress_limit_arg_text(name: String, limit: EvaluationLimit) -> String {
   match limit {
     LimitUnset => ""
     LimitSet { limit: l } =>
-      join([" ", flag, " ", to_string(positive_millisecond_count(m: l))], "")
+      join([" --arg ", name, "=", to_string(positive_millisecond_count(m: l))], "")
   }
+}
+
+// THE SERVED UNIT'S EXECSTART: `gunbc run` on the service's ingress binding (gunbc.http_ingress,
+// gunbc.plans.converged_ingress). There is no serve verb: the entry is the binding module, the
+// function its constructor, and every per-host value is a typed argument of that constructor --
+// which handler, the listener in its one text encoding, the release, and the per-request budgets.
+// ONE SOURCE FOR THE INGRESS ARGV TEXT. The ExecStart weaves the binary and
+// --arg release_revision around these two segment lists; the plan serve-entry verdict's argument
+// digest (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) digests the same
+// segments, minus the binary and the revision, which the record binds separately. A renamed, added
+// or reordered ingress flag moves the digest and the unit together -- the swap's identity binding
+// cannot drift from what the unit actually binds (DESIGN §3: one fact, one place).
+fn live_deploy_ingress_argv_segments(entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr, listener: HttpIngressListener) -> List<String> {
+  [
+    " run",
+    deployment_serve_source_root_flags_text(),
+    " --entry ", entry as String, " --function ", binding_function as String,
+    " --arg handler=", handler as String,
+    " --arg listener=", http_ingress_listener_text(listener: listener),
+  ]
+}
+
+fn live_deploy_ingress_limit_argv_segments(cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit) -> List<String> {
+  [
+    ingress_limit_arg_text(name: "cpu_limit_ms", limit: cpu_limit),
+    ingress_limit_arg_text(name: "wall_limit_ms", limit: wall_limit),
+  ]
+}
+
+fn live_deploy_ingress_execstart(
+  binary: String, entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr,
+  listener: HttpIngressListener, revision: ReleaseRevisionBinding,
+  cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit,
+) -> NonEmptyStr {
+  join(concat([binary], concat(
+    live_deploy_ingress_argv_segments(entry: entry, binding_function: binding_function, handler: handler, listener: listener),
+    concat(
+      [" --arg release_revision=", release_revision_execstart_text(binding: revision)],
+      live_deploy_ingress_limit_argv_segments(cpu_limit: cpu_limit, wall_limit: wall_limit),
+    ),
+  )), "") as NonEmptyStr
 }
 
 // THE TYPED UNIT VALUE IS A NAMED PRODUCER, so a reader that compares the EFFECTIVE unit on a host
@@ -456,8 +502,8 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> Live
   live_deploy_oidc_unit_env_for(spec: spec, now_epoch: Present { value: now_epoch })
 }
 
-// The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the
-// ONE .dag entry gunbc.roadmap.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
+// The belt-B unit: ExecStart is `gunbc run` on the roadmap's ingress binding (gunbc.roadmap.roadmap_ingress;
+// the seed binary answering every request through the ONE .dag handler gunbc.roadmap.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
 // User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane
 // verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is
 // non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and
@@ -482,21 +528,40 @@ fn live_deploy_serve_unit_emission_at(
 // One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
 // manager environment and evaluation caps are the same value, and the two differ only in the
 // entry function they launch and the listener they bind.
+// ONE PRODUCER FOR THE PRINCIPAL SERVE UNIT'S INGRESS CHOICE. The unit
+// live_deploy_serve_unit_file_over installs and the plan serve-entry verdict's argument digest
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) both read the handler,
+// listener and binding function from here -- choosing another listener kind or moving the handler
+// moves the unit and the digest together (DESIGN §3: one fact, one place).
+type ServeUnitIngressArgs {
+  binding_function: NonEmptyStr,
+  handler: NonEmptyStr,
+  listener: HttpIngressListener,
+}
+
+fn live_deploy_serve_unit_ingress_args(service: DeploymentServiceConfig<AdmittedFixedServeBinary>) -> ServeUnitIngressArgs {
+  ServeUnitIngressArgs {
+    binding_function: roadmap_ingress_function,
+    handler: service.serve_function,
+    listener: HttpIngressTcp { host: service.listen.host, port: service.listen.port as Int },
+  }
+}
+
 fn live_deploy_serve_unit_file_over(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>,
 ) -> SystemdUnitFile {
-  let svc = spec.service
+  let args = live_deploy_serve_unit_ingress_args(service: spec.service)
   live_deploy_serve_unit_file_over_listener(
     spec: spec, revision: revision, oidc_env: oidc_env,
-    description: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr,
-    function: svc.serve_function,
-    listener: join([" --host ", svc.listen.host, " --port ", to_string(svc.listen.port)], ""),
+    description: "gunbc roadmap HTTP server (gunbc run, ingress binding)" as NonEmptyStr,
+    function: args.handler,
+    listener: args.listener,
   )
 }
 
 fn live_deploy_serve_unit_file_over_listener(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>,
-  description: NonEmptyStr, function: NonEmptyStr, listener: String,
+  description: NonEmptyStr, function: NonEmptyStr, listener: HttpIngressListener,
 ) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
@@ -512,16 +577,12 @@ fn live_deploy_serve_unit_file_over_listener(
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), concat(oidc_env, [
-      ExecStart { command: join([
-        fixed_serve_binary_path(binary: svc.serve_binary),
-        " serve",
-        deployment_serve_source_root_flags_text(),
-        " --entry ", svc.serve_entry as String, " --function ", function as String,
-        listener,
-        " --release-revision ", release_revision_execstart_text(binding: revision),
-        eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
-        eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
-      ], "") as NonEmptyStr },
+      ExecStart { command: live_deploy_ingress_execstart(
+        binary: fixed_serve_binary_path(binary: svc.serve_binary),
+        entry: svc.serve_entry, binding_function: roadmap_ingress_function, handler: function,
+        listener: listener, revision: revision,
+        cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
+      ) },
       Restart { policy: "on-failure" as NonEmptyStr },
     ]))),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
@@ -548,16 +609,40 @@ fn live_deploy_tailnet_door_unit_file(
         Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
           file: live_deploy_serve_unit_file_over_listener(
             spec: spec, revision: revision, oidc_env: directives,
-            description: "gunbc roadmap tailnet door (gunbc serve)" as NonEmptyStr,
+            description: "gunbc roadmap tailnet door (gunbc run, ingress binding)" as NonEmptyStr,
             function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
-            listener: concat(" --unix-socket ", socket as String),
+            listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
           )
         }
       }
   }
 }
 
-// THE FABRIC DB ENDPOINT'S UNIT: `gunbc serve` answering every request through the ONE .dag entry
+// THE LAB AGENT'S DOOR UNIT: the same server on the agent-door entry, bound to the socket the
+// spec's agent-door directory demand names. Emitted only for a spec that carries that demand; the
+// emission type is the tailnet door's, because the three outcomes are the same.
+fn live_deploy_agent_door_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
+) -> LiveDeployTailnetDoorUnitEmission {
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
+    LiveDeployOidcEnvRefused { cause } =>
+      LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: cause }
+    LiveDeployOidcEnvAdmitted { directives } =>
+      match deployment_agent_door_socket_of(spec: spec) {
+        Absent => LiveDeployTailnetDoorUnitNotDeployed
+        Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
+          file: live_deploy_serve_unit_file_over_listener(
+            spec: spec, revision: revision, oidc_env: directives,
+            description: "gunbc roadmap lab agent door (gunbc run, ingress binding)" as NonEmptyStr,
+            function: concat(spec.service.serve_function as String, deployment_agent_door_function_suffix) as NonEmptyStr,
+            listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
+          )
+        }
+      }
+  }
+}
+
+// THE FABRIC DB ENDPOINT'S UNIT: `gunbc run` on gunbc.fabric.fabric_storage_ingress, answering every request through the ONE .dag handler
 // gunbc.fabric.fabric_storage_serve fabric_storage_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
 // route to it (FabricStorageServeMapping), which is the deployment fact extdeps.tailscale.identity says
 // the identity header's trust rests on. Same principal, slice, tree, binary and declared evaluation
@@ -569,7 +654,7 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
   let svc = spec.service
   ServiceUnitFile {
     unit: [
-      Description { text: "gunbc fabric DB endpoint (gunbc serve)" as NonEmptyStr },
+      Description { text: "gunbc fabric DB endpoint (gunbc run, ingress binding)" as NonEmptyStr },
       After { target: "network-online.target tailscaled.service" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
@@ -580,16 +665,14 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
     ], concat(user_manager_environment_directives(uid: svc.service_uid), [
-      ExecStart { command: join([
-        fixed_serve_binary_path(binary: svc.serve_binary),
-        " serve",
-        deployment_serve_source_root_flags_text(),
-        " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
-        " --unix-socket ", door_socket as String,
-        " --release-revision ", release_revision_execstart_text(binding: revision),
-        eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
-        eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
-      ], "") as NonEmptyStr },
+      ExecStart { command: live_deploy_ingress_execstart(
+        binary: fixed_serve_binary_path(binary: svc.serve_binary),
+        entry: fabric_storage_ingress_entry_file, binding_function: fabric_storage_ingress_function,
+        handler: fabric_storage_handler_function,
+        listener: HttpIngressUnixSocket { path: door_socket, mode: http_ingress_unix_socket_mode },
+        revision: revision,
+        cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
+      ) },
       Restart { policy: "on-failure" as NonEmptyStr },
     ])),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
@@ -678,7 +761,7 @@ fn live_deploy_approval_broker_unit_file_on(
   let release_dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
   ServiceUnitFile {
     unit: [
-      Description { text: "gunbc approval broker HTTP server (gunbc serve)" as NonEmptyStr },
+      Description { text: "gunbc approval broker HTTP server (gunbc run, ingress binding)" as NonEmptyStr },
       After { target: join(["network-online.target tailscaled.service ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
       Wants { target: join(["network-online.target ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
     ],
@@ -691,16 +774,13 @@ fn live_deploy_approval_broker_unit_file_on(
       EnvironmentFile { path: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision) as NonEmptyStr },
       release_locus_workspace_root_environment(release_dir: release_dir),
       approval_broker_base_url_environment(spec: spec),
-      ExecStart { command: join([
-        serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision),
-        " serve",
-        deployment_serve_source_root_flags_text(),
-        " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
-        " --host ", svc.listen.host, " --port ", to_string(port),
-        " --release-revision ", release_revision_execstart_text(binding: revision),
-        eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
-        eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
-      ], "") as NonEmptyStr },
+      ExecStart { command: live_deploy_ingress_execstart(
+        binary: serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision),
+        entry: svc.serve_entry, binding_function: approval_broker_ingress_function, handler: svc.serve_function,
+        listener: HttpIngressTcp { host: svc.listen.host, port: port as Int },
+        revision: revision,
+        cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
+      ) },
       Restart { policy: "on-failure" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
@@ -1184,6 +1264,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         FabricStorageServeUnit => none
         FabricStorageServeMapping => none
         TailnetDoorServeUnit => none
+        AgentDoorServeUnit => none
       }
     }
     Dependency { step: _ } => none
@@ -1458,12 +1539,76 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
 )
 
 fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
-  install_directory_owned_command(
-    mode: install_d_shared_mode,
-    owner: user,
-    group: user,
-    path: path,
-  )
+  render_install_line(render: install_d_owned_render_for(user: user, path: path))
+}
+
+// THE TYPED OUTCOME behind the render surface: an install line is emitted only when the path passes
+// the checked constructor below; otherwise the refusal carries a NAMED cause, not prose. The String
+// surface (install_d_owned_command / install_d_owned_for_user) is the total DISPLAY of this outcome,
+// and its refusal arm is a FALSE COMMAND -- a spliced refusal stops the script at that point (§5: no
+// plausible output fabricated in place of a stop), never a line that installs nothing but looks done.
+type InstallLineRender
+  = InstallLine { text: String }
+  | InstallLineRefused { cause: InstallRefusalCause }
+
+type InstallRefusalCause
+  = RefusalEmpty
+  | RefusalNotAbsolute
+  | RefusalUnsafeBytes
+
+// The checked constructor for the one path shape this surface can express: absolute, non-empty, and
+// free of every byte the shell gives a meaning (control, quote, expansion, glob, whitespace,
+// traversal). One named list; a path needing quoting is REFUSED rather than quoted, because the
+// surface's point is that its output embeds inertly (§5 correctness-by-construction: downstream code
+// only ever sees the carrier or a refusal, never a raw unchecked path).
+type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: String }
+
+fn shell_inert_absolute_path(path: String) -> Optional<ShellInertAbsolutePath> {
+  if path == "" { Absent }
+  else if !starts_with(s: path, prefix: "/") { Absent }
+  else if any(unsafe_install_fragments, u => string_contains(s: path, pattern: u)) { Absent }
+  else { Present { value: ShellInertAbsolutePath { raw: path } } }
+}
+
+data unsafe_install_fragments: List<String> = [
+  " ", "\t", "\n", ";", "|", "&", ">", "<", "$", "`", "\\", "'", "\"",
+  "(", ")", "{", "}", "[", "]", "*", "?", "!", "~", "#", "..",
+]
+
+// The cause is classified from the SAME list the constructor uses -- one authority, two renderings.
+fn install_refusal_cause(path: String) -> InstallRefusalCause {
+  if path == "" { RefusalEmpty }
+  else if !starts_with(s: path, prefix: "/") { RefusalNotAbsolute }
+  else { RefusalUnsafeBytes }
+}
+
+fn install_refusal_cause_label(cause: InstallRefusalCause) -> String {
+  match cause {
+    RefusalEmpty => "path is empty"
+    RefusalNotAbsolute => "path is not absolute"
+    RefusalUnsafeBytes => "path carries shell-active bytes"
+  }
+}
+
+fn install_d_owned_render_for(user: NonEmptyStr, path: String) -> InstallLineRender {
+  match shell_inert_absolute_path(path: path) {
+    Absent => InstallLineRefused { cause: install_refusal_cause(path: path) }
+    Present { value: inert } => InstallLine {
+      text: shell_privileged_command_text_of_argv(
+        argv: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: user, group: user, path: inert.raw),
+      ),
+    }
+  }
+}
+
+// The TOTAL DISPLAY: rendered line, or a false command that fails the script closed at the refusal
+// point. The refusal text is shell-inert (no control word survives it) and carries no byte of the
+// refused path -- a refusal that echoed the path would re-smuggle the operator it refused.
+fn render_install_line(render: InstallLineRender) -> String {
+  match render {
+    InstallLine { text } => text
+    InstallLineRefused { cause } => join(["false # install refused: ", install_refusal_cause_label(cause: cause)], "")
+  }
 }
 
 // WHY THIS INSTALLS WITH -o/-g RATHER THAN WRITING AS ROOT AND FIXING UP, and the history is the
@@ -1494,9 +1639,22 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
   install_d_owned_for_user(user: spec.service.service_user, path: path)
 }
 
+// A directory the plan holds no decision about is NOT installed (R2, one-deploy-path safety). The
+// old arm returned true on MemberNotInPlan -- an install with no decision, which is exactly the
+// unblessed act §5 forbids: the plan authority never admitted it, yet the readback would have blessed
+// it. This is SOUND rather than merely safer because the ONE plan authority cannot omit a demanded
+// directory: gunbc.live_deploy.member_observe deployment_member_roster maps EVERY
+// deployment_directory_demands path into the roster as a DirectoryRoot, and derive_member_plan emits
+// exactly one row per roster member -- so for every plan that reaches its two consumers (this module's
+// standing route and gunbc.live_deploy.apply_legs deploy_apply_directories_plan, both fed only from
+// release_member_plan) MemberNotInPlan is unreachable for a demanded path. The refusal arm therefore
+// fires only on planner drift, and the drift then fails LOUDLY: a demanded directory that is not
+// Keep-in-plan must have an apply leg, and a dropped leg means the post-apply readback of that member
+// fails its admission -- never a silent skip. Witness: test.claim.live_deploy.emit's
+// a_demanded_directory_with_no_plan_decision_installs_nothing flips exactly the row's presence.
 fn owned_directory_will_install(spec: DeploymentSpec, plan: ReleaseEffectPlan, t: OwnedDirectoryTarget) -> Bool {
   match plan_mutation_of(plan: plan, member: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }) {
-    MemberNotInPlan => true
+    MemberNotInPlan => false
     MutationInPlan { mutation } => !mutation_is_keep(e: mutation)
   }
 }
