@@ -1,6 +1,5 @@
 module std.machine_word
 
-import std.types { list_length }
 import std.induction { int_pow_bounded }
 import std.power_of_two { bitwise_pow2 }
 import std.machine_width_range { machine_width_admits }
@@ -10,7 +9,7 @@ import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
 import std.integer { Unsigned, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
-import std.algebra { list_push }
+import std.algebra { list_push, length }
 
 // THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
 //
@@ -865,7 +864,7 @@ fn octets_big_endian_value(octets: List<Int>, radix: Int, acc: Int) -> Int {
 fn word_from_octets_realizable(width: RealizableWidth, octets: QualifiedOctets, endianness: Endianness) -> WordResult {
   let members = qualified_octet_members(q: octets)
   let expected = word_octet_count(w: width.width)
-  let observed = list_length(items: members)
+  let observed = length(xs: members)
   if observed != expected {
     WordRefused { cause: OctetCountMismatch { width: width.width, expected: expected, observed: observed } }
   } else {
@@ -919,13 +918,8 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
 // prose is indistinguishable from a dangling declaration to everything except a human reader who
 // happens to look.
 //
-// DECLARING THE ROWS IS HALF OF IT; BEING FOLDED IS THE OTHER HALF, AND THE FIRST CUT OF THIS
-// ROSTER HAD ONLY THE FIRST. It asserted in prose that gunbc.dissolution_census reads these rows
-// while the census folded one roster this was not a member of, so the expiry of every row below
-// was computed by nothing -- an inert lens, and the same 4c violation this roster exists to
-// correct, committed in the sentence claiming to correct it (review 68088). Membership is
-// gunbc.census_closure_frontier census_closure_frontier_row_groups, which this roster is now
-// enrolled in; that enrolment, not this annotation, is what makes the expiry a computed fact.
+// THE ROWS ARE TYPED DATA. The roster fold that once computed their expiry
+// (gunbc.census_closure_frontier) was retired, so nothing now computes it.
 //
 // EVERY ROW IS UNBOUND, AND THE REASON IS A GATE, NOT A PREFERENCE. std.dissolution
 // bound_dissolution takes a DeclarationRef, and a DeclarationRef is a CITATION: the required

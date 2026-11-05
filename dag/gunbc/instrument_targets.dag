@@ -3,10 +3,9 @@ module gunbc.instrument_targets
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
 import gunbc.native_serve_probe_plan {
-  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
-  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
+  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit,
+  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_deadline_exit,
 }
-import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -14,7 +13,6 @@ import gunbc.target_binding {
   HeadsReadingDifferentialProducer,
   TypedGraphExclusiveBytesProducer,
   TypedGraphExclusiveBytesFloorSubjectProducer,
-  CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
@@ -22,24 +20,6 @@ import gunbc.target_binding {
   CliWireProgramProducer,
   native_claim_deadline_if_entry,
   native_serve_probe_if_entry,
-  CompileCleanDiagnosticCensusStanding,
-  CompileCleanDiagnosticCensusCompleted,
-  CompileCleanDiagnosticCensusRefused,
-  CompileCleanDiagnosticCensusObservation,
-  CompileCleanDiagnosticCensusIdentity,
-  CompileCleanDiagnosticCensusRefusalCause,
-  DiagnosticCensusClosureUnresolvable, DiagnosticCensusGraphAbsent,
-  DiagnosticCensusPolicyUnreadable, DiagnosticCensusConservationViolated,
-  DiagnosticCensusDetailCountMismatch, DiagnosticCensusCeilingRosterDuplicate,
-  DiagnosticCensusCeilingRosterStale, DiagnosticCensusCeilingRosterUncovered,
-  DiagnosticCensusIdentityUnavailable,
-  DiagnosticCensusSchemaAuthorityAbsent, DiagnosticCensusSchemaSpecimenDuplicate,
-  DiagnosticCensusSchemaCountMismatch, DiagnosticCensusSchemaConstructorUnrepresented,
-  DiagnosticCensusSchemaSpecimenUnknownToAuthority,
-  DiagnosticCensusGateDisposition, CensusBlocking, CensusAdvisoryTypecheck,
-  CensusRenderedUncounted,
-  DiagnosticCensusSeverity, CensusSeverityError, CensusSeverityNonError,
-  RawDiagnosticClassObservation,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted,
   HeadsReadingDifferentialSubjectUnreached,
@@ -52,7 +32,6 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-    NativeCensusVerbProducer,
   SelfHostFrontierProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
@@ -138,19 +117,6 @@ fn behavioral_receipt_census_label() -> Label {
 
 fn behavioral_receipt_selftest_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-selftest" } }
-}
-
-// THE COMPILE-CLEAN DIAGNOSTIC CENSUS. Its subject is the whole-tree compile-clean closure -- the
-// same source set the floor gate compiles -- because a diagnostic count is a statement about the
-// corpus only when the closure is the corpus's: censusing a narrower entry would report what was
-// compiled, not what exists. This is the restored reachability for the census whose standalone
-// bin was swept as an unrostered seed probe in gunbc#9160; the instrument target is the rostered
-// entry point that sweep showed was missing. It was the ADVISORY census until the false-zero
-// finding (review 2026-09-09): partitioning by severity before counting let a class vanish from
-// the instrument exactly when its disposition changed, so the census now counts the raw emitted
-// population and carries disposition as a row attribute.
-fn compile_clean_diagnostic_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "compile-clean-diagnostic-census" } }
 }
 
 // THE SELF-HOST INSTRUMENT: THE GENERATION THIS REPOSITORY CAN PERFORM, ASKED AS ONE QUESTION.
@@ -293,19 +259,6 @@ fn native_crypto_vectors_entry() -> String {
   "dag/gunbc/instruments/native_crypto_vectors.dag"
 }
 
-// THE RECURRING-FAILURE-MODE RUNG CENSUS: the typed `rung` field of every
-// gunbc.recurring_failure_mode row folded by the NativeClaimDriver program
-// gunbc.instruments.rfm_rung_census -- counts of read / below-ceiling / unread-by-cause rows, a
-// refusal of any malformed standing (current at or above ceiling, blank trigger capability), and the
-// discriminating REDs with positive controls. `gunbc test //gunbc/instruments:rfm-rung-census`.
-fn rfm_rung_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "rfm-rung-census" } }
-}
-
-fn rfm_rung_census_entry() -> String {
-  "dag/gunbc/instruments/rfm_rung_census.dag"
-}
-
 // THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion
 // executed natively over Apple's published sample rows by the NativeClaimDriver program
 // gunbc.instruments.native_app_attest -- the P-384 chain links and the P-256 assertion signature on
@@ -326,7 +279,7 @@ fn native_app_attest_entry() -> String {
 // drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, which names this label as the
 // route that still runs them; run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`.
-// THE NATIVE SERVE DOOR: std.compiler_entry NativeServeDriver exercised end to end. The seed emits
+// THE NATIVE SERVE DOOR: std.compiler_entry NativeIngressDriver exercised end to end. The seed emits
 // and builds the fixture service gunbc.instruments.native_serve_fixture, starts it on a loopback
 // port the OS chooses, sends gunbc.native_serve_probe's requests over real TCP and lets that module
 // judge the answers -- handler routes, the handler's own refusal, the door's 400 refusals, /livez
@@ -341,21 +294,32 @@ fn native_serve_entry() -> String {
   "dag/gunbc/instruments/native_serve_fixture.dag"
 }
 
+fn revision_request_native_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "revision-request-native" } }
+}
+
+fn revision_request_native_binding() -> TargetBinding {
+  TargetBinding { target: revision_request_native_label() producer: NativeServeProgramProducer {
+    entry: "dag/gunbc/instruments/revision_request_fixture.dag"
+    probe: NativeServeProbe { reader: "dag/gunbc/instruments/revision_request_probe.dag" phases: [] }
+  } }
+}
+
 fn native_serve_binding() -> TargetBinding {
   TargetBinding { target: native_serve_label() producer: NativeServeProgramProducer { entry: native_serve_entry() probe: native_serve_fixture_probe() } }
 }
 
 // THE FIXTURE'S PROBE DECLARES ALL THREE PHASES: its reader judges the peer-bound REST routes, the
-// refused launch and the stuck-ceiling exit, and the host runs exactly what this row says.
+// refused launches and the deadline exits, and the host runs exactly what this row says.
 fn native_serve_fixture_probe() -> NativeServeProbe {
   NativeServeProbe {
     reader: "dag/gunbc/native_serve_probe.dag"
-    phases: [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit]
+    phases: [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit]
   }
 }
 
-// THE DEVICE-CRYPTO VERIFIER SIDECAR: std.compiler_entry NativeServeDriver over
-// gunbc.auth.approval_device_crypto_serve, the natively emitted realization of the approval
+// THE DEVICE-CRYPTO VERIFIER SIDECAR: std.compiler_entry NativeIngressDriver over its binding
+// gunbc.auth.approval_device_crypto_ingress (handler gunbc.auth.approval_device_crypto_serve), the natively emitted realization of the approval
 // broker's device verifiers (gunbc.auth.approval_device_crypto_realization). The seed emits and
 // builds the service, starts it on a loopback port, sends the requests of
 // gunbc.instruments.native_serve_device_crypto_probe over real TCP and lets that module judge: the
@@ -368,7 +332,7 @@ fn native_serve_device_crypto_label() -> Label {
 }
 
 fn native_serve_device_crypto_entry() -> String {
-  "dag/gunbc/auth/approval_device_crypto_serve.dag"
+  "dag/gunbc/auth/approval_device_crypto_ingress.dag"
 }
 
 fn native_serve_device_crypto_binding() -> TargetBinding {
@@ -381,9 +345,9 @@ fn native_serve_device_crypto_binding() -> TargetBinding {
   }
 }
 
-// THE STARTUP-FOLD CONTROL: std.compiler_entry NativeServeDriver over
+// THE STARTUP-FOLD CONTROL: std.compiler_entry NativeIngressDriver over
 // gunbc.instruments.native_serve_startup_refusal_fixture, whose startup fold (gunbc.native_serve
-// native_serve_startup_entry_function) refuses exactly when dropping each single obligation of
+// NativeServeStartup, named by its program descriptor) refuses exactly when dropping each single obligation of
 // gunbc.auth.approval_device_crypto_realization device_crypto_obligations made the handler receipt refuse. The seed
 // emits and builds it and launches it once with a valid revision; gunbc.instruments.native_serve_startup_refusal_probe
 // holds when the process exited by itself with the startup exit code, never bound, and named every dropped evidence. It
@@ -549,31 +513,6 @@ fn evaluation_store_address_exact_head_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "evaluation-store-address-exact-head" } }
 }
 
-// O(corpus) identity-grain census of the live primitive population (gunbc#11642): every
-// realization surface joined to canonical identity, every resolver-produced primitive consumer
-// edge over dag, src/v2 and src/v1, and exactly one disposition per identity. Prints the
-// machine-readable receipt on every termination; not a floor witness, not a required CI job.
-// `gunbc test //gunbc/instruments:primitive-egress-census`.
-fn primitive_egress_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "primitive-egress-census" } }
-}
-
-// THE BOUNDED PROJECTIONS ARE LABELS OF THEIR OWN, not a flag on the full census: each is a
-// different walk (src/v2 entries, dag entries, src/v1 entries against dag), so a regression in one
-// is reported under a name that says which, and a run can be sized to the host it runs on. The
-// receipt's `scope` line carries the same fact.
-fn primitive_egress_census_v2_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-v2" } }
-}
-
-fn primitive_egress_census_dag_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-dag" } }
-}
-
-fn primitive_egress_census_seed_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "primitive-egress-census-seed" } }
-}
-
 // THE REQUIRED-LANE RESOLUTION CENSUS: for every module under the source roots, does at least
 // one required lane RESOLVE it -- hand its source to compile_to_resolved under the Strict gate?
 // The unreached population, by identity, is the printed product; the exit says whether it is
@@ -618,36 +557,6 @@ fn self_host_frontier_label() -> Label {
 
 fn self_host_frontier_binding() -> TargetBinding {
   TargetBinding { target: self_host_frontier_label() producer: SelfHostFrontierProducer {} }
-}
-
-// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output, the emitted compiler's
-// `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
-// the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
-// Run by name, on no lane: its consumer is the D13 row-deletion change, which executes it at its own
-// head as part of its evidence rather than citing an earlier run.
-// `gunbc test //gunbc/instruments:dependency-demand-census`.
-fn dependency_demand_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
-}
-
-// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (v2.compiler.source_root_eval
-// native_decl_ref_census_output, the emitted compiler's `decl-ref-census` verb): resolves every
-// std.decl_ref DeclarationRef literal and every backtick symbol span in the recurring-failure-mode and
-// rung_drop ledgers against the native ingest's ResolutionContext; exit 1 on any unresolved reference
-// or stale span. `gunbc test //gunbc/instruments:decl-ref-census`.
-fn decl_ref_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "decl-ref-census" } }
-}
-
-// THE EFFECT-PAIR CENSUS (gunbc.plans.demand_engine_program D16 TRIGGER; v2.compiler.source_root_eval
-// native_effect_pair_census_output, the emitted compiler's `effect-pair-census` verb): per function body,
-// every pair of effect-reaching call occurrences with no derived ordering (value use or Branch/Match
-// activation), with the not-derived rows, per-module totals, the unobserved population and a per-root
-// refusal report. Resource identity is unmodelled, so the count OVER-COUNTS and says so. Measurement
-// only: exit 0 means the census was observed, never that no pair exists.
-// `gunbc test //gunbc/instruments:effect-pair-census`.
-fn effect_pair_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "effect-pair-census" } }
 }
 
 // THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
@@ -750,10 +659,6 @@ fn behavioral_receipt_selftest_target() -> BuildTarget {
   instrument_test_target(label: behavioral_receipt_selftest_label())
 }
 
-fn compile_clean_diagnostic_census_target() -> BuildTarget {
-  instrument_test_target(label: compile_clean_diagnostic_census_label())
-}
-
 fn self_host_target() -> BuildTarget {
   instrument_test_target(label: self_host_label())
 }
@@ -766,40 +671,12 @@ fn evaluation_store_address_exact_head_target() -> BuildTarget {
   instrument_test_target(label: evaluation_store_address_exact_head_label())
 }
 
-fn primitive_egress_census_target() -> BuildTarget {
-  instrument_test_target(label: primitive_egress_census_label())
-}
-
-fn primitive_egress_census_v2_target() -> BuildTarget {
-  instrument_test_target(label: primitive_egress_census_v2_label())
-}
-
-fn primitive_egress_census_dag_target() -> BuildTarget {
-  instrument_test_target(label: primitive_egress_census_dag_label())
-}
-
-fn primitive_egress_census_seed_target() -> BuildTarget {
-  instrument_test_target(label: primitive_egress_census_seed_label())
-}
-
 fn required_lane_resolution_census_target() -> BuildTarget {
   instrument_test_target(label: required_lane_resolution_census_label())
 }
 
 fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
-}
-
-fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDemand } }
-}
-
-fn decl_ref_census_binding() -> TargetBinding {
-  TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
-}
-
-fn effect_pair_census_binding() -> TargetBinding {
-  TargetBinding { target: effect_pair_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbEffectPair } }
 }
 
 fn generic_identity_census_binding() -> TargetBinding {
@@ -922,22 +799,6 @@ fn member_home_cost_label() -> Label {
 // The N7 member wall's cost receipt: each ambient member against its std.algebra home on the emitted path.
 fn member_home_cost_binding() -> TargetBinding {
   TargetBinding { target: member_home_cost_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/member_home_cost_native.dag" deadline: native_claim_policy_child_deadline() } }
-}
-
-fn claim_coverage_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "claim-coverage-census" } }
-}
-
-fn claim_coverage_census_entry() -> String {
-  "dag/gunbc/claim_coverage_census_live.dag"
-}
-
-fn claim_coverage_census_function() -> String {
-  "claim_coverage_census_exit"
-}
-
-fn claim_coverage_census_binding() -> TargetBinding {
-  TargetBinding { target: claim_coverage_census_label() producer: CliWireProgramProducer { entry: claim_coverage_census_entry() function: claim_coverage_census_function() } }
 }
 
 // THE KNOWN-RED DERIVATION. The label exists to print a list no file holds: which ExpectedToHold claims
@@ -1101,10 +962,6 @@ fn value_position_block_nests_child_deadline() -> Millisecond {
   millisecond(count: 15000)
 }
 
-fn rfm_rung_census_binding() -> TargetBinding {
-  TargetBinding { target: rfm_rung_census_label() producer: NativeClaimProgramProducer { entry: rfm_rung_census_entry() deadline: native_claim_policy_child_deadline() } }
-}
-
 fn native_crypto_vectors_binding() -> TargetBinding {
   TargetBinding { target: native_crypto_vectors_label() producer: NativeClaimProgramProducer { entry: native_crypto_vectors_entry() deadline: native_claim_policy_child_deadline() } }
 }
@@ -1263,24 +1120,8 @@ fn behavioral_receipt_selftest_binding() -> TargetBinding {
   TargetBinding { target: behavioral_receipt_selftest_label() producer: BehavioralReceiptSelftestProducer {} }
 }
 
-fn compile_clean_diagnostic_census_binding() -> TargetBinding {
-  TargetBinding { target: compile_clean_diagnostic_census_label() producer: CompileCleanDiagnosticCensusProducer {} }
-}
-
 fn evaluation_store_address_exact_head_binding() -> TargetBinding {
   TargetBinding { target: evaluation_store_address_exact_head_label() producer: EvaluationStoreAddressExactHeadProducer {} }
-}
-
-fn primitive_egress_census_binding() -> TargetBinding {
-  TargetBinding { target: primitive_egress_census_label() producer: PrimitiveEgressCensusProducer {} }
-}
-
-fn primitive_egress_census_v2_binding() -> TargetBinding {
-  TargetBinding { target: primitive_egress_census_v2_label() producer: PrimitiveEgressCensusV2Producer {} }
-}
-
-fn primitive_egress_census_dag_binding() -> TargetBinding {
-  TargetBinding { target: primitive_egress_census_dag_label() producer: PrimitiveEgressCensusDagProducer {} }
 }
 
 fn typed_graph_exclusive_bytes_binding() -> TargetBinding {
@@ -1295,10 +1136,6 @@ fn typed_graph_exclusive_bytes_floor_subject_binding() -> TargetBinding {
     target: typed_graph_exclusive_bytes_floor_subject_label()
     producer: TypedGraphExclusiveBytesFloorSubjectProducer {}
   }
-}
-
-fn primitive_egress_census_seed_binding() -> TargetBinding {
-  TargetBinding { target: primitive_egress_census_seed_label() producer: PrimitiveEgressCensusSeedProducer {} }
 }
 
 fn required_lane_resolution_census_binding() -> TargetBinding {
@@ -1342,6 +1179,38 @@ fn behavioral_receipt_source_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
+// THE ORPHAN, BROUGHT HOME. The host's emitted-crate-workspace instrument read a source-root list
+// that existed only in the host; the instrument's own module never stated it. Stated here so the
+// corpus it measures is the instrument's fact, rendered into the host by
+// `gunbc.instruments.instrument_registry_emit`.
+fn emitted_crate_workspace_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+// WHICH CORPUS AN INSTRUMENT MEASURES, IN ONE LIST.
+//
+// A row is a MEASURED SUBJECT, not a label: the three behavioral producers measure one corpus and
+// share one list, so the key is the subject's name -- the same word the supplying `*_source_roots`
+// function is built from -- and the values come from that function and nowhere else. The host used to
+// hand-list these six bodies beside the code that reads them, which is the same subject held twice
+// with the dispatch reading the unbound copy; the emitter renders them from here, so a subject that
+// loses its row loses its host function and the seed stops compiling rather than measuring nothing.
+type InstrumentSourceRootsRow {
+  name: String
+  roots: List<String>
+}
+
+fn instrument_source_roots_rows() -> List<InstrumentSourceRootsRow> {
+  [
+    InstrumentSourceRootsRow { name: "heads_reading_differential" roots: heads_reading_differential_source_roots() }
+    InstrumentSourceRootsRow { name: "self_host" roots: self_host_source_roots() }
+    InstrumentSourceRootsRow { name: "v2_native_cli" roots: v2_native_cli_source_roots() }
+    InstrumentSourceRootsRow { name: "emitted_crate_workspace" roots: emitted_crate_workspace_source_roots() }
+    InstrumentSourceRootsRow { name: "bare_reference_channel" roots: bare_reference_channel_source_roots() }
+    InstrumentSourceRootsRow { name: "behavioral_receipt" roots: behavioral_receipt_source_roots() }
+  ]
+}
+
 // WHAT AN INVOCATION OF THIS INSTRUMENT DOES NOT ESTABLISH, STATED HERE RATHER THAN ASSUMED SAFE.
 //
 // The differential's producer reads an UNPINNED LIVE WORKING TREE. Nothing binds the bytes it
@@ -1352,15 +1221,6 @@ fn behavioral_receipt_source_roots() -> List<String> {
 // hashing before the run, after it, or both proves nothing, because the tree can go A -> B -> A
 // while the producer reads a MIXED population and both hashes agree. A field that looks like
 // provenance and supports none is worse than the gap it hides.
-//
-// THE DIAGNOSTIC CENSUS IS THE ONE EXCEPTION, AND THE MECHANISM IS THE DIFFERENCE. It does not
-// hash the tree and then read it: it materializes the whole source vector into memory FIRST,
-// hashes exactly that vector, and hands the same in-memory bytes to the compiler, so the bytes
-// hashed are the bytes compiled and the mixed-population hole has no write path. Its identity
-// block (gunbc.target_binding CompileCleanDiagnosticCensusIdentity) is therefore provenance that
-// binds, not a digest-shaped decoration. What it still does not establish is anything CROSS-RUN:
-// comparing two observations (the per-class ratchet the burndown program wants) needs a stored
-// prior reading and a join discipline of its own, which is a later consumer, not a field here.
 //
 // SO FOR THE SEAM GENERALLY THE FOLLOWING REMAIN OUT OF REACH UNTIL SOURCE BINDING LANDS AS ITS
 // OWN CAPABILITY: caching a target's result, executing remotely, replaying. Direct invocation and
@@ -1379,22 +1239,20 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
-    evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
-    primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
-    primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
+    self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
+    evaluation_store_address_exact_head_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), self_host_frontier_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
-    native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
+    native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 
@@ -1514,147 +1372,6 @@ fn heads_reading_differential_standing_rendered(
       concat(
         "heads-reading-differential: refused: ",
         differential_refusal_cause_rendered(c: c)
-      )
-  }
-}
-
-// ---------------------------------------------------------------------------------------------
-// THE DIAGNOSTIC CENSUS'S OWN CLASSIFIER AND ITS OWN RENDERING
-// ---------------------------------------------------------------------------------------------
-
-// THE RAW COUNT OF ONE CLASS OVER THE UNFILTERED POPULATION. An absent row and a zero-count row
-// are the same answer here -- the class emitted nothing -- because the census counts every
-// emitted diagnostic and a class with no emission has no row to carry.
-fn diagnostic_class_raw_count(
-  classes: List<RawDiagnosticClassObservation>,
-  wanted: NonEmptyStr
-) -> Int {
-  classes
-    |> filter(r => r.diagnostic_class == wanted)
-    |> fold(init: 0, f: fn(acc, r) { acc + r.diagnostics })
-}
-
-// WHAT "HELD" MEANS FOR THIS INSTRUMENT: the class-specific zero wall for the class whose
-// burndown it governs -- the RAW UnlistedImportUse count is zero. Two properties are doing the
-// work, and both are the point of the raw census. FIRST, the count is read over the unfiltered
-// population, so a severity change cannot hide a recurrence: the class row exists with its gate
-// and severity attributes whether the policy row says FloorNotYet or Enforced, and promoting the
-// class to blocking does not retire this wall -- it is the same observation. SECOND, the wall is
-// class-specific rather than the all-advisories-empty completion target: while the other advisory
-// classes burn down on their own tracks, this instrument holds exactly when UnlistedImportUse
-// reaches zero, and a reintroduced occurrence flips it back. A census that cannot reach its
-// closure, read its policy, or satisfy its conservation and roster invariants refuses; it never
-// reports an unobserved tree as a clean one.
-fn compile_clean_diagnostic_census_holds(o: CompileCleanDiagnosticCensusObservation) -> Bool {
-  diagnostic_class_raw_count(classes: o.classes, wanted: "UnlistedImportUse" as NonEmptyStr) == 0
-}
-
-fn compile_clean_diagnostic_census_termination(
-  s: CompileCleanDiagnosticCensusStanding
-) -> InvocationTermination {
-  match s {
-    CompileCleanDiagnosticCensusCompleted { observation: o } =>
-      if compile_clean_diagnostic_census_holds(o: o) {
-        InvocationObservationHeld {}
-      } else {
-        InvocationObservationDidNotHold {}
-      }
-    CompileCleanDiagnosticCensusRefused { cause: _ } => InvocationRefused {}
-  }
-}
-
-fn diagnostic_census_refusal_cause_rendered(c: CompileCleanDiagnosticCensusRefusalCause) -> String {
-  match c {
-    DiagnosticCensusClosureUnresolvable => "whole-tree closure unresolvable"
-    DiagnosticCensusGraphAbsent => "compilation produced no graph"
-    DiagnosticCensusPolicyUnreadable => "disposition policy or ceiling roster unreadable"
-    DiagnosticCensusConservationViolated => "per-class counts do not sum to the raw diagnostics vector"
-    DiagnosticCensusDetailCountMismatch => "class count disagrees with the detailed UnlistedImportUse worklist"
-    DiagnosticCensusCeilingRosterDuplicate => "two ceiling rows name one diagnostic class"
-    DiagnosticCensusCeilingRosterStale => "a ceiling row names a class outside the schema or no longer advisory"
-    DiagnosticCensusCeilingRosterUncovered => "an observed advisory-typecheck class carries no ceiling row"
-    DiagnosticCensusIdentityUnavailable => "an identity digest could not be computed; the observation would be unbound"
-    DiagnosticCensusSchemaAuthorityAbsent =>
-      "the CompilerDiagnostic coproduct authority is absent from the compiled closure"
-    DiagnosticCensusSchemaSpecimenDuplicate => "two schema specimens project one class identity"
-    DiagnosticCensusSchemaCountMismatch =>
-      "the schema specimen count disagrees with the authority constructor census"
-    DiagnosticCensusSchemaConstructorUnrepresented =>
-      "an authority constructor has no schema specimen"
-    DiagnosticCensusSchemaSpecimenUnknownToAuthority =>
-      "a schema specimen names no authority constructor"
-  }
-}
-
-fn diagnostic_census_gate_rendered(g: DiagnosticCensusGateDisposition) -> String {
-  match g {
-    CensusBlocking => "blocking"
-    CensusAdvisoryTypecheck => "advisory-typecheck"
-    CensusRenderedUncounted { reason: r } => join(["rendered-uncounted(", r as String, ")"], "")
-  }
-}
-
-fn diagnostic_census_severity_rendered(s: DiagnosticCensusSeverity) -> String {
-  match s {
-    CensusSeverityError => "error"
-    CensusSeverityNonError => "non-error"
-  }
-}
-
-fn raw_diagnostic_class_observation_rendered(e: RawDiagnosticClassObservation) -> String {
-  join([
-    e.diagnostic_class as String,
-    " gate=", diagnostic_census_gate_rendered(g: e.gate),
-    " severity=", diagnostic_census_severity_rendered(s: e.severity),
-    " diagnostics=", to_string(e.diagnostics),
-    " distinct_modules=", to_string(e.distinct_modules),
-    " distinct_positions=", to_string(e.distinct_positions)
-  ], "")
-}
-
-fn compile_clean_diagnostic_census_identity_rendered(
-  i: CompileCleanDiagnosticCensusIdentity
-) -> String {
-  join([
-    "identity source_vector=", i.source_vector_digest as String,
-    " compiler=", i.compiler_executable_digest as String,
-    " resolver_policy=", i.resolver_policy_digest as String,
-    " diagnostic_class_schema=", i.diagnostic_class_schema_digest as String,
-    " closure=", i.closure_digest as String
-  ], "")
-}
-
-// THE RENDERING IS THE CENSUS'S OWN VOCABULARY: the denominator and the raw total, the walled
-// class's own count (the termination's subject, printed so the verdict and the printout cannot
-// diverge), the five identity digests, then one line per class with disposition and the three
-// burndown counts. It does not say PASSED or FAILED -- those are the aggregate's words, and this
-// instrument is outside the aggregate by construction.
-fn compile_clean_diagnostic_census_observation_rendered(
-  o: CompileCleanDiagnosticCensusObservation
-) -> String {
-  join([
-    "compile-clean-diagnostic-census: closure_modules=", to_string(o.closure_modules),
-    " raw_diagnostics=", to_string(o.raw_diagnostics),
-    " classes=", to_string(o.classes |> count),
-    " unlisted_import_use_raw=",
-      to_string(diagnostic_class_raw_count(classes: o.classes, wanted: "UnlistedImportUse" as NonEmptyStr)),
-    "\n",
-    compile_clean_diagnostic_census_identity_rendered(i: o.identity),
-    "\n",
-    join(o.classes |> map(e => raw_diagnostic_class_observation_rendered(e: e)), "\n")
-  ], "")
-}
-
-fn compile_clean_diagnostic_census_standing_rendered(
-  s: CompileCleanDiagnosticCensusStanding
-) -> String {
-  match s {
-    CompileCleanDiagnosticCensusCompleted { observation: o } =>
-      compile_clean_diagnostic_census_observation_rendered(o: o)
-    CompileCleanDiagnosticCensusRefused { cause: c } =>
-      concat(
-        "compile-clean-diagnostic-census: refused: ",
-        diagnostic_census_refusal_cause_rendered(c: c)
       )
   }
 }
@@ -1877,9 +1594,9 @@ fn native_serve_probe_runs_refused_launch(entry: String) -> Bool {
   }
 }
 
-fn native_serve_probe_runs_stuck_ceiling_exit(entry: String) -> Bool {
+fn native_serve_probe_runs_deadline_exit(entry: String) -> Bool {
   match native_serve_probe_for_entry(entry: entry) {
     Absent => false
-    Present { value: p } => native_serve_declares_stuck_ceiling_exit(probe: p)
+    Present { value: p } => native_serve_declares_deadline_exit(probe: p)
   }
 }

@@ -8,18 +8,29 @@ import gunbc.heal_publisher_workflow {
   heal_publisher_route_steps, heal_publisher_resolved_steps, heal_publisher_steps_refusal_reason,
   heal_publisher_candidate_directory, HealPublisherBoundStep, HealPublisherPolicy,
   heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step,
-  heal_publisher_seed_route_steps, heal_publisher_seed_route_without_a_composition_refusal_reason
+  heal_publisher_seed_route_steps, heal_publisher_seed_route_without_a_composition_refusal_reason,
+  heal_publisher_build_step_name, heal_publisher_toolchain_install_step_name,
+  heal_publisher_seed_toolchain_role,
 }
 import gunbc.ci.ci_materialization { step_display_name }
 import v2.std.diagnostic { diagnostics_reason_lexemes, Accepted, Rejected }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
+// THE STANDING MODULE'S OWN PREDICATES, so the order below is asserted with the definitions the
+// admission actually uses -- a name kept here would be a second account of what an install is.
+import gunbc.toolchain_home_standing { step_isolates_toolchain_homes, step_installs_toolchain, step_pins_default_toolchain }
+import gunbc.roadmap.roadmap_execution_contract {
+  ExecutionCapability, execution_capability_equal,
+  CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
+}
+import std.list { list_cover }
 import gunbc.drift_watch_workflow { drift_watch_workflow_yml_for, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
-import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_build_step }
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
+import std.algebra { list_head }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
@@ -52,7 +63,7 @@ import gunbc.witness.witness_roster {
 import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
 import gunbc.ci.repository_compose_overlay {
   command,
-  word, heal_seal_env }
+  word, heal_seal_env, private_root_assign_stmt }
 import gunbc.action_use_admission {
   checkout_ref_admitted_in_jobs, checkout_ref_value_refusals, job_step_ids,
   seed_pin_verifier_producer, seed_pin_verifier_job_id, seed_pin_verifier_output_name,
@@ -60,7 +71,7 @@ import gunbc.action_use_admission {
 }
 import gunbc.ci.repository_seed_steps {
   seed_pin_proofs, seed_pin_fetch_url,
-  seed_lane_steps,
+  seed_lane_steps, SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps,
   seed_pin_consumer_guard_step_name, seed_pin_consumer_guard_var_name,
   seed_pin_consumer_guard_statements,
   seed_pin_verifier_output_path, seed_pin_checkout_ref_expression,
@@ -1032,7 +1043,7 @@ test fn the_drift_emission_seals_at_the_head_and_uploads_the_candidate() -> Bool
 // record of why it is allowed to be unread here. What is NOT asserted, and cannot be from inside a claim:
 // that the DECL names the roster lists exist. std.roster_frontier builds them as typed `decl_ref` literals,
 // and the authority that resolves those against the live declaration index is the decl-ref census instrument
-// (gunbc.native_census_verb, dispatched through gunbc/instrument_targets.dag, manual dispatch), which per
+// (the retired census verb, dispatched through gunbc/instrument_targets.dag, manual dispatch), which per
 // gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved refuses an
 // unresolved identity BY NAME; resolving refs inside claim evaluation is the repo's declared stall
 // (gunbc.guarantee_stall::decl_ref_host_resolver_awaits_native_claim_evaluation_stall), so no Bool here can
@@ -1173,6 +1184,35 @@ test fn the_seal_step_is_invoked_through_the_rows_roots() -> Bool {
       string_contains(s: text, pattern: "'--source-root' 'overlay/dag'") &&
       !(string_contains(s: text, pattern: "'--source-root' 'dag'"))
     ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+  }
+}
+
+// THE COMPOSED ROOT MUST BE COMPOSABLE BY THE SHELL THAT COMPOSES IT. The compose step assigns PRIVATE_ROOT
+// from a command substitution. When that substitution's body was wrapped in a subshell the rendering came
+// out `PRIVATE_ROOT=$(('cd' '..'; 'pwd'))`, and bash reads the adjacent `((` as the opening of an arithmetic
+// expression: "syntax error: operand expected", the step dies before the overlay exists, and the section 4c
+// step behind it can only report that the composed root is absent. gunbc-private's CI found it on 2026-11-03
+// (runs 41593920495 and 41593920470) and no `gunbc` emission could, because only a mirror row composes an
+// overlay. The renderer refuses the carrier shape (v2.test.claim.bash_command_fold carries those rows); this
+// control holds the property the mirror's step needs on the bytes the emitter produces, from the isolated
+// statement AND from the emitted mirror workflow. The subshell carrier's own structural shape is a separate,
+// already recorded program row (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
+test fn the_mirrors_compose_step_is_bash_that_parses() -> Bool {
+  let assignment = match bash_emit_stmts(statements: [private_root_assign_stmt()], set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ""
+  }
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+    ProjectionDriftWorkflowGenerated { content: text } =>
+      string_contains(s: assignment, pattern: "PRIVATE_ROOT=$(") &&
+      string_contains(s: assignment, pattern: "'realpath' '..'") &&
+      !(string_contains(s: assignment, pattern: "$((")) &&
+      !(string_contains(s: assignment, pattern: "))")) &&
+      string_contains(s: text, pattern: "PRIVATE_ROOT=$(")
   }
 }
 
@@ -1650,16 +1690,24 @@ test fn the_compiler_source_selects_the_build_steps_and_not_the_presence_of_othe
           match mirror_on_own {
             Absent => false
             Present { value: own_like_names } =>
-              // The isolation step is in ONE list and not the other, and the seed's own build step is in the
-              // other and not that one. Both directions are required: a single-direction check would pass if
-              // the emitter always emitted the checkout route, and the second pair rules out always emitting
-              // the seed route.
-              any(own_names, n => n == step_display_name(s: toolchain_home_isolation_step())) &&
-                all(seed_names, n => n != step_display_name(s: toolchain_home_isolation_step())) &&
-                any(seed_names, n => n == fixture_seed().build_step_name as String) &&
+              // WHAT DIFFERS IS THE BUILD, AND ONLY THE BUILD. Both routes install a toolchain, so both
+              // carry the isolation that install requires -- `every_seed_route_toolchain_lane_is_isolation_then_install_then_pin`
+              // claims that shared half, and the version of this control before the mirror wrote the
+              // isolation into ONE list only, which is the defect read back as an expectation. The
+              // discrimination is carried in both directions by the build steps, which are route-specific:
+              // the seed's own build step appears in the seed route and never in an own-checkout route, and
+              // an own-checkout route always builds through the publisher's floor build step. The third row
+              // (a mirror that keeps its seal and publish rows but says its compiler lives in this checkout)
+              // is what makes this a reading of `source` rather than of which neighbour rows happen to exist.
+              any(seed_names, n => n == fixture_seed().build_step_name as String) &&
                 all(own_names, n => n != fixture_seed().build_step_name as String) &&
-                any(own_like_names, n => n == step_display_name(s: toolchain_home_isolation_step())) &&
-                all(own_like_names, n => n != fixture_seed().build_step_name as String)
+                any(own_names, n => n == heal_publisher_build_step_name as String) &&
+                all(seed_names, n => n != heal_publisher_build_step_name as String) &&
+                any(own_like_names, n => n == heal_publisher_build_step_name as String) &&
+                all(own_like_names, n => n != fixture_seed().build_step_name as String) &&
+                any(seed_names, n => n == heal_publisher_toolchain_install_step_name as String) &&
+                any(own_names, n => n == step_display_name(s: toolchain_home_isolation_step())) &&
+                any(own_like_names, n => n == step_display_name(s: toolchain_home_isolation_step()))
           }
       }
   }
@@ -1698,8 +1746,104 @@ test fn a_seed_built_row_without_an_overlay_builds_the_seed_and_copies_nothing()
       Accepted { value: steps, diagnostics: _ } =>
         let step_names = list_map(xs: steps, f: fn(b) { step_display_name(s: b.step) })
         any(step_names, n => n == fixture_seed().build_step_name as String) &&
-          all(step_names, n => n != step_display_name(s: toolchain_home_isolation_step()))
+          // THE TOOLCHAIN LANE IS PRESENT HERE TOO: this route installs a toolchain, so it carries the
+          // isolation and the pin. (It used to assert their absence, which is how the omission survived
+          // review of gunbc, where no row takes this arm.)
+          any(step_names, n => n == step_display_name(s: toolchain_home_isolation_step()))
     }
+}
+
+// THE TOOLCHAIN LANE, IN ORDER, IN THE ROUTE THAT ONCE SHIPPED WITHOUT IT.
+// The order is asserted with gunbc.toolchain_home_standing's own predicates -- a step IT calls an install
+// must have behind it a step IT calls an isolation, and the default-toolchain pin must come after the
+// install, because an isolated RUSTUP_HOME starts with no default for a build to resolve. A fold is used
+// rather than three `any`s precisely because order is the claim: an isolation after the install isolates
+// nothing, which is the standing module's own words.
+//
+// WHY THIS CONTROL EXISTS AT ALL. The publisher's seed arm emitted the install with neither of its two
+// companions. Nothing in gunbc could see it, because gunbc's own row takes the own-checkout arm, which did
+// compose them -- so the property was tested only where it happened to hold. The first repository to run
+// the seed arm was gunbc-private, whose publisher job is scheduled in a declared self-hosted fleet group:
+// there the home persists and is shared, and gunbc.toolchain_home_standing refused the emitted file by
+// name. Two things make this a control and not a comment: deleting the isolation from
+// gunbc.ci.repository_seed_steps seed_toolchain_lane turns it red, and the same deletion makes the
+// mirror's heal-publish.yml refuse -- the emission and the claim fail together.
+fn seed_route_toolchain_lane_is_in_order(steps: List<HealPublisherBoundStep>) -> Bool {
+  let reached = fold(steps, init: 0, f: fn(state, bound) {
+    if state == 0 && step_isolates_toolchain_homes(step: bound.step) {
+      1
+    } else if state == 1 && step_installs_toolchain(step: bound.step) {
+      2
+    } else if state == 2 && step_pins_default_toolchain(step: bound.step) {
+      3
+    } else {
+      state
+    }
+  })
+  reached == 3
+}
+
+test fn every_seed_route_toolchain_lane_is_isolation_then_install_then_pin() -> Bool {
+  match heal_publisher_seed_route_steps(seed: fixture_seed()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: steps, diagnostics: _ } => seed_route_toolchain_lane_is_in_order(steps: steps)
+  }
+}
+
+// THE ROLES ARE THE STEPS', NOT THE LIST'S. Each of the three lane members is asked what it is, of the
+// same module that admits the workflow's toolchain homes, and gets the role that answer earns: the
+// isolation is capability-neutral, the install provides the toolchain, the pin consumes it. The
+// discrimination matters in both directions -- a classifier that read position, or that fell through to a
+// default, would hand the pin's consumes-only to any step at all.
+//
+// TWO MUTATIONS MAKE THESE CONTROLS CONTROLS: giving the fall-through arm back (an unrecognised step is
+// then Accepted as the pin, and `the_publisher_refuses_a_lane_step_that_is_none_of_the_three` goes red),
+// and deleting the pin arm (the real pin step then falls to the refusal, and this row goes red).
+test fn the_publisher_lane_roles_come_from_the_steps_themselves() -> Bool {
+  let lane = seed_toolchain_lane(step_name: heal_publisher_toolchain_install_step_name)
+  match heal_publisher_seed_toolchain_role(step: lane.isolation) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: isolation_role, diagnostics: _ } =>
+      list_cover(held: isolation_role.provides, expected: [], eq: execution_capability_equal) &&
+        list_cover(held: isolation_role.consumes, expected: [], eq: execution_capability_equal) &&
+        match heal_publisher_seed_toolchain_role(step: lane.install) {
+          Rejected { diagnostics: _ } => false
+          Accepted { value: install_role, diagnostics: _ } =>
+            list_cover(
+              held: install_role.provides,
+              expected: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability],
+              eq: execution_capability_equal
+            ) &&
+              list_cover(held: install_role.consumes, expected: [], eq: execution_capability_equal) &&
+              match heal_publisher_seed_toolchain_role(step: lane.pin_default) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: pin_role, diagnostics: _ } =>
+                  list_cover(held: pin_role.provides, expected: [], eq: execution_capability_equal) &&
+                    list_cover(
+                      held: pin_role.consumes,
+                      expected: [RustupCapability, CargoCapability],
+                      eq: execution_capability_equal
+                    )
+              }
+        }
+  }
+}
+
+// THE FALL-THROUGH ARM DOES NOT EXIST, SO A STEP THAT IS NONE OF THE THREE IS REFUSED RATHER THAN
+// ANNOTATED. The build step is a real step from this route's own neighbourhood -- a run step, so not the
+// install; with none of the isolation's four command rows, so not the isolation; with none of the pin's
+// three, so not the pin. Under the fall-through it would have been called the pin, which is the fabricated
+// default this refuses: the classification would then say nothing about any step it annotated.
+test fn the_publisher_refuses_a_lane_step_that_is_none_of_the_three() -> Bool {
+  let not_a_lane_member = witness_floor_build_step(
+    step_name: "Build the witness floor",
+    build_script: "cargo build --release -p gunbc"
+  )
+  match heal_publisher_seed_toolchain_role(step: not_a_lane_member) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      string_contains(s: diagnostics_reason_lexemes(diagnostics: d), pattern: "heal_publisher_seed_lane_step_unrecognised")
+  }
 }
 
 // THE COMPOSITION AND THE SEED ARE ONE FACT, NOT TWO FIELDS THAT NEED A RULE TO AGREE. An `OverlayIngest`

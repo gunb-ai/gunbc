@@ -46,9 +46,53 @@ data a2_row_fit_plate_fit: RecordedFact<GroupFitPlateProposition> = RecordedFact
 data a2_row_fit_plate_fit_provenance: EvidenceProvenance = EvidenceProvenance {
  entity:"operator-conversation/a2-row-fit-plate-fit-2026-11-02",activity:"manual-print-and-hand-fit",agent:"operator",
 }
+// THE SECOND A2 ROW FIT PLATE, printed 2026-11-02 on printer-02 after the first plate's reading: the lip at
+// 0.1 mm and each band tab cut as the band's whole section, reaching to within 0.3 mm of the expected first
+// fin. Operator, 2026-11-03: "the lip seems okay", and "one of the triangles hits the fins, so something is a
+// bit off - i'm not sure i got the slope/face measurements right". So the lip allowance holds, and a tab
+// placed within a fraction of a millimetre of the fins by the band readings does not; which reading is off is
+// not established.
+type GroupFitPlateSecondProposition { lip_fits: Bool, band_tabs_clear_fins: Bool }
+data a2_row_fit_plate_second_fit: RecordedFact<GroupFitPlateSecondProposition> = RecordedFact {
+ id:"a2-row-fit-plate-fit-2026-11-03",value:GroupFitPlateSecondProposition {lip_fits:true,band_tabs_clear_fins:false},
+}
+data a2_row_fit_plate_second_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/a2-row-fit-plate-fit-2026-11-03",activity:"manual-print-and-hand-fit",agent:"operator",
+}
+// THE THIRD A2 ROW FIT PLATE, printed 2026-11-03 on printer-02 (3MF sha256 ad2599f674af9a6bfb6379e30b6ea1ee9a4af55e9ef69b6332e29885e029ddbf),
+// its tabs gripping only the first 1.5 mm of each band's slope. Operator, 2026-11-04: "the a2 plate fits okay,
+// but its still not resting totally flat on the back of the fan" (the plate's face side; no fan is fitted).
+// The tabs were the only part that entered a face; which tab held the plate off is not established.
+type GroupFitPlateThirdProposition { fits_row: Bool, rests_flat: Bool }
+data a2_row_fit_plate_third_fit: RecordedFact<GroupFitPlateThirdProposition> = RecordedFact {
+ id:"a2-row-fit-plate-fit-2026-11-04",value:GroupFitPlateThirdProposition {fits_row:true,rests_flat:false},
+}
+data a2_row_fit_plate_third_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/a2-row-fit-plate-fit-2026-11-04",activity:"manual-print-and-hand-fit",agent:"operator",
+}
 fn a2_row_fit_plate_fit_display() -> String {
  let v=a2_row_fit_plate_fit.value
+ let w=a2_row_fit_plate_second_fit.value
+ let x=a2_row_fit_plate_third_fit.value
  join([if v.plate_goes_over_the_row {"The first A2 row fit plate went over all four card ends (2 November 2026): the installed separation and the read openings hold as the datum."} else {"The first A2 row fit plate did not go over the row."},
   if v.lip_too_loose {" Its lip was loose at the 0.3 mm allowance, so the lip clearance is tightened."} else {""},
-  if v.top_tabs_seat_flush {""} else {" Its thin band tabs struck the band slope and kept the top from seating, so the tabs follow the read band taper."}],"")
+  if v.top_tabs_seat_flush {""} else {" Its thin band tabs struck the band slope and kept the top from seating, so the tabs follow the read band taper."},
+  if w.lip_fits {" The second plate's 0.1 mm lip fits (3 November 2026)."} else {" The second plate's 0.1 mm lip does not fit."},
+  if w.band_tabs_clear_fins {""} else {" Its band tabs, each the band's whole section to within 0.3 mm of the first fin, struck the fins at one end, so the tabs were cut to grip only the start of the slope."},
+  if x.fits_row {" The third plate fits the row (4 November 2026)"} else {" The third plate does not fit the row"},
+  if x.rests_flat {"."} else {" but does not rest flat on the faces, so the tabs are removed and a deeper sleeve holds the plate."}],"")
+}
+
+// THE RECEIVED DELTA BFB1012M, read by the operator on 2026-11-04 with four units in hand. The intake is on one
+// face only, the face WITHOUT the label. The lug around the hole nearer the outlet is flush with the label face.
+// Held with the label toward the reader and the outlet pointing down, the outlet is at the RIGHT end of the
+// bottom edge. That hole's centre is 28 mm along the edge past the end of the outlet mouth and 18 mm up from
+// the outlet edge, which is the datasheet's hole (extdeps.fans.delta delta_bfb1012m_outlet_side_hole) to 0.1 mm.
+// Read by product.printed_chassis.blower_outlet_mount, which mounts the blower by that hole from the label face.
+type ReceivedBlowerProposition { intake_only_on_unlabelled_face: Bool, side_hole_lug_flush_with_label_face: Bool, outlet_at_right_with_label_toward_reader_and_outlet_down: Bool }
+data bfb1012m_received_reading: RecordedFact<ReceivedBlowerProposition> = RecordedFact {
+ id:"bfb1012m-received-reading-2026-11-04",value:ReceivedBlowerProposition {intake_only_on_unlabelled_face:true,side_hole_lug_flush_with_label_face:true,outlet_at_right_with_label_toward_reader_and_outlet_down:true},
+}
+data bfb1012m_received_reading_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/bfb1012m-received-reading-2026-11-04",activity:"caliper-reading-of-received-units",agent:"operator",
 }

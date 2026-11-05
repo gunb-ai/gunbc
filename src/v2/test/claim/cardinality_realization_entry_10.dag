@@ -1,0 +1,19 @@
+module v2.test.claim.cardinality_realization_entry_10
+
+import std.types { String }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld }
+import v2.test.claim.cardinality_realization_specimens { specimen_char_at_position, tag_position_read }
+
+// ONE SPECIMEN AS A PROGRAM of the wet instrument gunbc.instruments.cardinality_realization_conformance:
+// char_at's position read, closed and emitted by the seed, built, and run, so the one line it prints is
+// the tag as the REALIZED program computes it: 103 for a present read, 101 for the absence past the end.
+// A realization that carries absence as the empty text prints neither, which is the distinction the
+// specimen exists to hold. AT THIS REVISION the Optional comes from std.host_text char_at's interim
+// .dag body, so what this program exercises is the declared operation reached through the emitted crate,
+// not yet the seed primitive seam's own answer; v2.test.claim.cardinality_realization_coverage records
+// which route each compiled target is declared to take.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn native_claim_report() -> NativeClaimReport {
+  NativeClaimReport { stdout: concat("tag=", to_string(value: tag_position_read(x: specimen_char_at_position()))), terminal: NativeClaimHeld }
+}

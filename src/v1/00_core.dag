@@ -422,6 +422,9 @@ type CompilerDiagnostic
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUnmodeled { position: String, span: SourceSpan }
+  | ArithmeticWithoutCarrier { operation: String, operands: List<String>, span: SourceSpan }
+  | ArithmeticAmbiguousCarrier { operation: String, candidates: List<String>, span: SourceSpan }
+  | ArithmeticUndecidedCarrier { operation: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | ReferenceDerivedImportProviderUnknown { name: String, referencing_module: String, span: SourceSpan }
   | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
@@ -432,6 +435,7 @@ type CompilerDiagnostic
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | EmittedSymbolCollision { symbol: String, identities: List<String>, span: SourceSpan }
   | NativeEffectRealizationRefused { entry: String, refusals: List<String>, span: SourceSpan }
+  | NativeIngressProgramRefused { program: String, reasons: List<String>, span: SourceSpan }
   | EffectSummaryIncompleteAtFunctionValue { caller: String, span: SourceSpan }
   | EffectSummaryIncompleteAtLocalBinding { caller: String, name: String, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
@@ -680,6 +684,9 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
     DeclaredTypeInhabitanceUnmodeled { position: _, span: s } => s
+    ArithmeticWithoutCarrier { operation: _, operands: _, span: s } => s
+    ArithmeticAmbiguousCarrier { operation: _, candidates: _, span: s } => s
+    ArithmeticUndecidedCarrier { operation: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: s } => s
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
@@ -690,6 +697,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     EmittedSymbolCollision { symbol: _, identities: _, span: s } => s
     NativeEffectRealizationRefused { entry: _, refusals: _, span: s } => s
+    NativeIngressProgramRefused { program: _, reasons: _, span: s } => s
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: s } => s
     EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
@@ -790,6 +798,12 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
     DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
       concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
+    ArithmeticWithoutCarrier { operation: op, operands: os, span: _ } =>
+      concat("no arithmetic carrier: no declared carrier defines ", op, " for the operands (", join(os, separator: ", "), ") through the declared implicit injections")
+    ArithmeticAmbiguousCarrier { operation: op, candidates: cs, span: _ } =>
+      concat("arithmetic carrier is ambiguous for ", op, ": ", to_string(cs |> count), " incomparable carriers (", join(cs, separator: ", "), ") define it through the declared implicit injections; name the conversion")
+    ArithmeticUndecidedCarrier { operation: op, span: _ } =>
+      concat("arithmetic carrier is undecided for ", op, ": an operand's alias chain is longer than the carrier reader's bound, so its carrier was not read; no carrier is assumed")
     DeclaredTypeInhabitanceUnmodeled { position: pos, span: _ } =>
       concat("declared-type inhabitance is UNMODELED at the ", pos, ": no arm of the relation judges this pair yet. This is not an undecidable fact but a gap in the relation's wiring, counted here instead of read as acceptance until the class is dispositioned and the terminal arm refuses")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
@@ -804,6 +818,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
     EmittedSymbolCollision { symbol: s, identities: ids, span: _ } => concat("emitted symbol collision: ", to_string(value: ids |> count), " authored identities render one emitted symbol '", s, "': ", join(ids, separator: ", "), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one")
     NativeEffectRealizationRefused { entry: e, refusals: rs, span: _ } => concat("native effect realization refused for entry '", e, "': ", join(rs, separator: "; "), " (v1.compiler.emit NativeEffectRealizationAdmission: the rendered main binds only admitted handlers, so an unadmitted effect refuses here rather than failing to build or link)")
+    NativeIngressProgramRefused { program: p, reasons: rs, span: _ } => concat("native ingress program refused for ", p, ": ", join(rs, separator: "; "), " (v1.compiler.emit_rust native_ingress_program_resolution: a NativeIngressDriver names one NativeIngressProgram descriptor, and its binding constructor, handler and startup must each resolve to exactly one whole declaration of the declared kind and signature before any main is rendered)")
     EffectSummaryIncompleteAtFunctionValue { caller: c, span: _ } => concat("effect summary incomplete: ", c, " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer")
     EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, span: _ } => concat(concat(concat(concat("effect summary incomplete: ", c), " calls the local binding '"), n), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
@@ -944,6 +959,9 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ConstructorCallAdmissionRefused { constructor_module_path: _, constructor_decl_name: _, caller_module_path: _, caller_decl_name: _, permitted_callers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticWithoutCarrier { operation: _, operands: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticAmbiguousCarrier { operation: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticUndecidedCarrier { operation: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     DeclaredTypeInhabitanceUnmodeled { position: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
@@ -956,6 +974,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EmittedSymbolCollision { symbol: _, identities: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     NativeEffectRealizationRefused { entry: _, refusals: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    NativeIngressProgramRefused { program: _, reasons: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

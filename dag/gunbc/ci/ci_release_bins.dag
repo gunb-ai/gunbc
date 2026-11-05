@@ -114,11 +114,13 @@ type EmittedReleaseBin {
   entry: String
 }
 
-// The device-crypto verifier sidecar (gunbc.auth.approval_device_crypto_serve). Its name is a row for
+// The device-crypto verifier sidecar, built from its binding module gunbc.auth.approval_device_crypto_ingress (handler
+// gunbc.auth.approval_device_crypto_serve, native program gunbc.auth.approval_device_crypto_realization
+// device_crypto_native_ingress). Its name is a row for
 // the reason gunbc_release_bin_name is: gunbc.live_deploy installs the pack's file of this name, and
 // a deploy copying a name the pack does not verify would install nothing.
 data approval_device_crypto_serve_release_bin_name: String = "approval_device_crypto_serve"
-data approval_device_crypto_serve_entry_file: String = "dag/gunbc/auth/approval_device_crypto_serve.dag"
+data approval_device_crypto_serve_entry_file: String = "dag/gunbc/auth/approval_device_crypto_ingress.dag"
 
 fn ci_emitted_release_bins() -> List<EmittedReleaseBin> {
   [EmittedReleaseBin { name: approval_device_crypto_serve_release_bin_name, entry: approval_device_crypto_serve_entry_file }]

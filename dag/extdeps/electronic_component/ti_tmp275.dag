@@ -34,7 +34,7 @@ data tmp275_dgk: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "TMP275AIDGKR",
   package: "VSSOP-8 (DGK)",
-  top_marking: "T275",
+  top_marking: Present { value: "T275" },
   specification: TemperatureSensorSpec { sensor: TemperatureSensorSpecification {
     supply: MillivoltRange { minimum: millivolt(count: 2700), maximum: millivolt(count: 5500) },
     bus: I2cOrSmbus,

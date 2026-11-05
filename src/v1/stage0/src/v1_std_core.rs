@@ -785,6 +785,20 @@ pub enum CompilerDiagnostic {
         position: String,
         span: Rc<SourceSpan>,
     },
+    ArithmeticWithoutCarrier {
+        operation: String,
+        operands: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
+    ArithmeticAmbiguousCarrier {
+        operation: String,
+        candidates: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
+    ArithmeticUndecidedCarrier {
+        operation: String,
+        span: Rc<SourceSpan>,
+    },
     UnlistedImportUse {
         name: String,
         span: Rc<SourceSpan>,
@@ -830,6 +844,11 @@ pub enum CompilerDiagnostic {
     NativeEffectRealizationRefused {
         entry: String,
         refusals: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
+    NativeIngressProgramRefused {
+        program: String,
+        reasons: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     EffectSummaryIncompleteAtFunctionValue {
@@ -1075,6 +1094,9 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::DeclaredTypeNotInhabited { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ArithmeticWithoutCarrier { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { span: s, .. } => s.clone(),
@@ -1085,6 +1107,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ModuleFilenameCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::EmittedSymbolCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::NativeEffectRealizationRefused { span: s, .. } => s.clone(),
+        CompilerDiagnostic::NativeIngressProgramRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
@@ -1159,6 +1182,9 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
+    CompilerDiagnostic::ArithmeticWithoutCarrier { operation: op, operands: os, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no arithmetic carrier: no declared carrier defines ".to_string(), op.clone()), " for the operands (".to_string()), os.clone().join(&", ".to_string())), ") through the declared implicit injections".to_string()),
+    CompilerDiagnostic::ArithmeticAmbiguousCarrier { operation: op, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("arithmetic carrier is ambiguous for ".to_string(), op.clone()), ": ".to_string()), ((cs.clone().len() as i64)).to_string()), " incomparable carriers (".to_string()), cs.clone().join(&", ".to_string())), ") define it through the declared implicit injections; name the conversion".to_string()),
+    CompilerDiagnostic::ArithmeticUndecidedCarrier { operation: op, .. } => v1_rt::concat(v1_rt::concat("arithmetic carrier is undecided for ".to_string(), op.clone()), ": an operand's alias chain is longer than the carrier reader's bound, so its carrier was not read; no carrier is assumed".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position: pos, .. } => v1_rt::concat(v1_rt::concat("declared-type inhabitance is UNMODELED at the ".to_string(), pos.clone()), ": no arm of the relation judges this pair yet. This is not an undecidable fact but a gap in the relation's wiring, counted here instead of read as acceptance until the class is dispositioned and the terminal arm refuses".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no provider is present for '".to_string(), n.clone()), "', referenced by module '".to_string()), rm.clone()), "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply".to_string()),
@@ -1170,6 +1196,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
     CompilerDiagnostic::EmittedSymbolCollision { symbol: s, identities: ids, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("emitted symbol collision: ".to_string(), ((ids.clone().len() as i64)).to_string()), " authored identities render one emitted symbol '".to_string()), s.clone()), "': ".to_string()), ids.clone().join(&", ".to_string())), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one".to_string()),
     CompilerDiagnostic::NativeEffectRealizationRefused { entry: e, refusals: rs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("native effect realization refused for entry '".to_string(), e.clone()), "': ".to_string()), rs.clone().join(&"; ".to_string())), " (v1.compiler.emit NativeEffectRealizationAdmission: the rendered main binds only admitted handlers, so an unadmitted effect refuses here rather than failing to build or link)".to_string()),
+    CompilerDiagnostic::NativeIngressProgramRefused { program: p, reasons: rs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("native ingress program refused for ".to_string(), p.clone()), ": ".to_string()), rs.clone().join(&"; ".to_string())), " (v1.compiler.emit_rust native_ingress_program_resolution: a NativeIngressDriver names one NativeIngressProgram descriptor, and its binding constructor, handler and startup must each resolve to exactly one whole declaration of the declared kind and signature before any main is rendered)".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller: c, .. } => v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls the local binding '".to_string()), n.clone()), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
@@ -1413,6 +1440,18 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
+    CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ArithmeticUndecidedCarrier { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
@@ -1458,6 +1497,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::NativeEffectRealizationRefused { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::NativeIngressProgramRefused { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),

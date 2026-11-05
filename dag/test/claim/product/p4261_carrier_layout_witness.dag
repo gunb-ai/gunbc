@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_k1_a, p4261_e1_b }
-import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin }
+import extdeps.electronic_component.types { ElectronicComponentRow, RectifierSpec, RectifierSpecification, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin, RectifierRepetitivePeak, voltage_withstand }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
@@ -97,6 +97,7 @@ import product.electrical.measured_netlist {
   node_of,
   netlist_text,
 }
+import product.electrical.photograph { photograph_citation_text }
 import product.electrical.continuity {
   ModuleState,
   ReadingOrder,
@@ -107,6 +108,7 @@ import product.electrical.continuity {
   ModuleInstalled,
   ReachabilityGraph,
   reachability_graph,
+  reach,
   ContinuityObservation,
   BenchConditions,
   Unpowered,
@@ -302,7 +304,6 @@ import product.p4261.e1_b {
   e1_w4_end,
   e1_y50,
   p4261_e1_layout,
-  p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.k1_a {
   k1_label_photo,
@@ -450,6 +451,7 @@ import product.p4261.report {
   u4_configuration_text,
   u5_2_root_of_trust_text,
 }
+import product.p4261.investigation { p4261_near_4r7_converter_hypothesis }
 import product.p4261.findings {
   CarrierFinding,
   CarrierPhaseObserved,
@@ -480,10 +482,13 @@ import product.electrical.carrier_phase {
 import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1 }
 import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 
+import extdeps.electronic_component.onsemi_fsv20100v {
+  onsemi_schottky_fsv20100v,
+}
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
 fn layout_with(base: CarrierLayoutObservation, components: List<InstalledComponent>, measured: MeasuredBoard?, input: InputConnector?) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset,
     design: base.design,
     revision: base.revision,
@@ -578,6 +583,91 @@ fn negative_term() -> TerminalIdentity {
 
 // The K1 has no measured board, so every rated part is an observed rating with no placement and the
 // photographs establish NO bound; the 75 V fuse and the 100 V MOSFETs are carried, never promoted.
+// ---- FSV20100V: what the component row itself may say ---------------------------------------
+// Grounded in the onsemi datasheet (fsv20100v-d.pdf, Rev 4, September 2024): the cover gives Part
+// Number FSV20100V with Top Mark FSV20100V, and the page-1 maximum-ratings table gives V_RRM 100 V at
+// T_A = 25 C in a single value column. Both tests exist to be reddened: delete a character from
+// top_marking, or change the rating, and the identification stops being supportable.
+test fn the_fsv_row_prints_the_part_number_the_sheet_prints() -> Bool {
+  match onsemi_schottky_fsv20100v.top_marking {
+    Absent => false
+    Present { value: printed } => printed == "FSV20100V"
+  }
+}
+
+// The sheet's own legend prints the issuer as "onsemi" (33 occurrences, including "$Y = onsemi Logo"),
+// and never prints "ON Semiconductor"; the copyright line names Semiconductor Components Industries,
+// LLC. The row carries the name the document prints, so a rebrand of this string is a change to what
+// the datasheet says, not to how we refer to the company.
+test fn the_fsv_row_names_the_maker_the_sheet_prints() -> Bool {
+  onsemi_schottky_fsv20100v.vendor.legal_name == "onsemi"
+}
+
+// END-TO-END, NOT READ-BACK. the_fsv_row_reports_the_sheets_rrrm_as_a_rectifier only asks
+// voltage_withstand to read the row back. A defect that drops or filters RectifierSpec between an
+// installed FSV row and input_bound -- an arm filtered out of observed_ratings, a withstand kind
+// excluded from the bound -- leaves that green and this red, which is the point (§4b).
+// Measured, with commands, before writing this: NONE of the four FSV positions is across the input on
+// the observed board. grep -c '"D2_P1"' dag/product/p4261/e1_b.dag -> 2 (its InstalledComponent and its
+// DesignatorReading; likewise D8_P1, D2_P5, D8_P5), and no continuity reading names them. So the rating
+// is carried by a supplied component placed across the input, exactly as the 16 V can above does -- the
+// control is about the bound machinery, not about claiming a board fact the bench has not read.
+test fn a_rectifier_below_the_tvs_limit_bounds_the_input() -> Bool {
+  let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied 50 V rectifier")
+  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: low_fsv_row(), marking: MarkingReading { text: "supplied", evidence: supplied_said() } } }
+  let low_pos = terminal_ref(component: low, terminal: positive_term())
+  let low_neg = terminal_ref(component: low, terminal: negative_term())
+  let with_low = concat(p4261_e1_layout.components, [low_part])
+  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  true
+    && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
+    && bound_volts(b: input_bound(layout: placed)) == 50 && bound_limiter_is(b: input_bound(layout: placed), c: low)
+    && bound_volts(b: input_bound(layout: unread)) == 60
+}
+
+// THE OTHER HALF. Carrying the REAL 100 V row across the input must leave the 60 V TVS standoff as
+// the bound and must not name the rectifier the limiter -- and the last clause says why that is not
+// simply a missing rating: the row does read 100 V as a rectifier. Together the two tests say the
+// rectifier arm reaches input_bound (50 V wins) and is ordered correctly against the TVS (100 V loses).
+test fn the_real_rectifier_rating_does_not_displace_the_tvs_limit() -> Bool {
+  let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied FSV20100V across the input")
+  let low_part = InstalledComponent { seen: seen_unordered(), component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: onsemi_schottky_fsv20100v, marking: MarkingReading { text: "FSV20100V / JC03 / ON logo", evidence: supplied_said() } } }
+  let low_pos = terminal_ref(component: low, terminal: positive_term())
+  let low_neg = terminal_ref(component: low, terminal: negative_term())
+  let with_low = concat(p4261_e1_layout.components, [low_part])
+  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  true
+    && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
+    && bound_volts(b: input_bound(layout: placed)) == 60 && !bound_limiter_is(b: input_bound(layout: placed), c: low)
+    && bound_volts(b: input_bound(layout: unread)) == 60
+    && match voltage_withstand(spec: onsemi_schottky_fsv20100v.specification) {
+         Absent => false
+         Present { value: w } => w.kind == RectifierRepetitivePeak && w.maximum == volt(count: 100)
+       }
+}
+
+// An otherwise-equivalent FSV rectifier row, one figure lower than the sheet's, used only to ask the
+// bound machinery whether a rectifier rating can become the bound at all. Same shape as low_can_row().
+fn low_fsv_row() -> ElectronicComponentRow {
+  ElectronicComponentRow {
+    vendor: onsemi_schottky_fsv20100v.vendor,
+    ordering_code: "supplied 50 V rectifier",
+    package: "supplied",
+    top_marking: Present { value: "supplied" },
+    specification: RectifierSpec { rectifier: RectifierSpecification { reverse_repetitive_peak: volt(count: 50) } },
+    vendor_application_statements: [],
+  }
+}
+
+test fn the_fsv_row_reports_the_sheets_rrrm_as_a_rectifier() -> Bool {
+  match voltage_withstand(spec: onsemi_schottky_fsv20100v.specification) {
+    Absent => false
+    Present { value: w } => w.kind == RectifierRepetitivePeak && w.maximum == volt(count: 100)
+  }
+}
+
 test fn the_photographs_establish_no_input_bound() -> Bool {
   match input_bound(layout: p4261_k1_layout) {
     BoundUnestablished { observed } =>
@@ -782,7 +872,7 @@ fn shared_marking_evidence(c: ComponentInstanceIdentity) -> List<String> {
 fn evidence_text(e: EvidenceRef) -> String {
   match e {
     OperatorStatement { stated_on, verbatim } => join([stated_on as String, verbatim as String], " ")
-    OperatorPhotograph { taken_on, locator } => join([taken_on as String, locator as String], " ")
+    OperatorPhotograph { citation } => photograph_citation_text(citation: citation)
     _ => "listing"
   }
 }
@@ -808,7 +898,7 @@ fn low_can_row() -> ElectronicComponentRow {
     vendor: eeh_zu1j151.vendor,
     ordering_code: "supplied 16 V can",
     package: "supplied",
-    top_marking: "supplied",
+    top_marking: Present { value: "supplied" },
     specification: CapacitorSpec { capacitor: CapacitorSpecification { capacitance_microfarads: 100, rated_voltage: volt(count: 16) } },
     vendor_application_statements: [],
   }
@@ -1089,7 +1179,7 @@ test fn counts_are_derived_from_inventories() -> Bool {
 // ── THE REPORT IS RENDERED FROM THE TYPED MODEL ───────────────────────────────────────────────
 
 fn with_survey(base: CarrierLayoutObservation, survey: ManagementIoSurvey) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset,
     design: base.design,
     revision: base.revision,
@@ -2859,7 +2949,7 @@ test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
 // received board, never the listing; the E1 recorded against the K1's revision is contradicted by its
 // own label, and the rendered label carries the revision and its uncited standing.
 fn with_revision(base: CarrierLayoutObservation, revision: P4261AssemblyRevision) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset,
     design: base.design,
     revision: revision,
@@ -2894,7 +2984,7 @@ fn is_contradicted_on_board(s: AssemblyRevisionStanding) -> Bool {
 }
 
 fn with_markings(base: CarrierLayoutObservation, markings: List<BoardMarking>) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset,
     design: base.design,
     revision: base.revision,

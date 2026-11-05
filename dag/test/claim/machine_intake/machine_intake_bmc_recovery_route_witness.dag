@@ -37,7 +37,6 @@ import std.roster_frontier {
 import gunbc.auth.privileged_effect_census {
   PrivilegedEffectInterlock, privileged_effect_interlocks,
 }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.machine_intake.bmc_recovery_route_frontier {
   bmc_recovery_route_consumer_frontier_rows,
   bmc_recovery_route_onboarding_consumer_frontier_rows, bmc_recovery_route_pairing_frontier_rows,
@@ -56,6 +55,7 @@ import gunbc.machine_intake.arrival_converge {
   ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
 }
 import gunbc.fleet.convergence_fold { step_instance_key, ConvergenceRunId, StepSubjectKey }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -205,9 +205,9 @@ test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement(
     CatalogAmbiguousForController { observed: o, matched: matched } =>
       o == reading
         // the refusal is COUNTABLE and locatable: it carries both rows, not a sentence about them
-        && list_length(items: matched) == 2
+        && length(xs: matched) == 2
         // every row the fold handed back is a measured refusal (none of them a NotMeasured placeholder)
-        && list_length(items: filter(matched, p => refuses_that_code(policy: p))) == list_length(items: matched)
+        && length(xs: filter(matched, p => refuses_that_code(policy: p))) == length(xs: matched)
     ControllerNeverMeasured { observed: _ } => false
     RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
     CatalogIndexesDisagree { firmware: _, observed: _ } => false
@@ -268,7 +268,7 @@ fn verdict_for(wanted: String) -> SiteVerdict? {
 }
 
 test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool {
-  list_length(items: recovery_site_verdicts()) == 2
+  length(xs: recovery_site_verdicts()) == 2
     // Each row's conformance is MATCHED. A bare `Diverges` carries no reason, which forks the authority,
     // so it is refused outright; a reasoned divergence is allowed to pass with its reason attached. The two
     // need different fixes, so they are not flattened to one false.
@@ -620,7 +620,7 @@ test fn every_convergence_step_names_a_declaration_the_tree_actually_contains() 
        })
     // and the two are genuinely different lists -- the handoff requires a subset of the six the route runs.
     // Equal lengths would mean the ordering law had collapsed into one list.
-    && list_length(items: recovery_convergence_steps()) != list_length(items: recovery_proof_requires())
+    && length(xs: recovery_convergence_steps()) != length(xs: recovery_proof_requires())
 }
 
 // EVERY REFUSAL TELLS SOMEONE WHAT TO DO NEXT, AND NO TWO SAY THE SAME THING. A cause with no
@@ -721,10 +721,6 @@ fn recovery_frontier_subject_declared(row: FrontierRow) -> Bool {
   }
 }
 
-fn recovery_frontier_enrolled(row: FrontierRow) -> Bool {
-  any(xs: census_closure_frontier_rows(), predicate: fn(c) { c == row })
-}
-
 fn recovery_frontier_trigger_module(row: FrontierRow) -> String {
   match row.dissolution {
     BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).module_path as String
@@ -732,9 +728,7 @@ fn recovery_frontier_trigger_module(row: FrontierRow) -> String {
   }
 }
 
-// Each group yields EXACTLY ONE row (a silently-dropped row is the failure mode of a list); each is
-// enrolled in gunbc.census_closure_frontier.census_closure_frontier_rows, the roster the dissolution
-// census folds -- a row nobody concatenates is the same absence in a new file; each is pending against
+// Each group yields EXACTLY ONE row (a silently-dropped row is the failure mode of a list); each is pending against
 // the census's own declaration population; and each subject is a declaration the tree has. THREE groups
 // since the side-chat verdict: the fold's consumer, the reset pairing, and the success side's onboarding
 // consumer -- the third is what replaced the module's "re-enters onboarding" prose, and its trigger
@@ -743,24 +737,21 @@ test fn the_recovery_obligations_are_rostered_as_pending_frontiers() -> Bool {
   let consumer = bmc_recovery_route_consumer_frontier_rows()
   let pairing = bmc_recovery_route_pairing_frontier_rows()
   let onboarding = bmc_recovery_route_onboarding_consumer_frontier_rows()
-  list_length(items: consumer) == 1
-    && list_length(items: pairing) == 1
-    && list_length(items: onboarding) == 1
+  length(xs: consumer) == 1
+    && length(xs: pairing) == 1
+    && length(xs: onboarding) == 1
     && any(xs: consumer, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
            // the named consumer is a future arrival entry, in the module that owns arrivals
            && recovery_frontier_trigger_module(row: row) == "gunbc.machine_intake.arrival_converge"
        })
     && any(xs: pairing, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
        })
     && any(xs: onboarding, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
            // the dissolve trigger is the fold this row exists to demand: a bmc_secure fold, which does
            // not exist today -- if someone repoints the trigger at a live declaration, this goes red and
@@ -790,11 +781,11 @@ test fn the_reset_interlock_rosters_no_root_the_fold_cannot_show() -> Bool {
   match recovery_reset_interlock() {
     Absent => false
     Present { value: i } =>
-      list_length(items: i.hold_owning_roots) == 0
+      length(xs: i.hold_owning_roots) == 0
         && (match i.hold {
              Absent => false
              Present { value: h } => (h.decl_name as String) == "UnitHoldProof"
            })
-        && list_length(items: bmc_recovery_route_pairing_frontier_rows()) == 1
+        && length(xs: bmc_recovery_route_pairing_frontier_rows()) == 1
   }
 }

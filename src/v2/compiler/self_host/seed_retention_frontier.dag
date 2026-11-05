@@ -183,6 +183,7 @@ data seed_retention_frontier_hand_maintained_hosts: List<SeedRetentionFrontierRo
   retained_reason_undeclared(path: "src/evaluation_budget_consequence_generated.rs", cause: WetActuatorGeneratedSource),
   retained_reason_undeclared(path: "src/generated_artifact_boundary_host.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/gunbc_file_transport_generated.rs", cause: WetActuatorGeneratedSource),
+  retained_reason_undeclared(path: "src/instrument_registry_generated.rs", cause: WetActuatorGeneratedSource),
   retained_reason_undeclared(path: "src/native_route_seed_boundary_generated.rs", cause: WetActuatorGeneratedSource),
   retained_reason_undeclared(path: "src/partition_crate_boundary_host.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/release_locus_seed_constants_generated.rs", cause: WetActuatorGeneratedSource),
