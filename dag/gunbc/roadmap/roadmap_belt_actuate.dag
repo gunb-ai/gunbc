@@ -25,6 +25,11 @@ import gunbc.roadmap.roadmap_attempt_metering {
   MeteredAttemptsObserved, MeteredAttemptsRefused, metering_attempt_index, metering_attempt_index_admit,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
+import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history, roadmap_operator_node_closed, AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable }
+import gunbc.roadmap.roadmap_node_terminality { BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageTerminalUnreadable, belt_node_lineage_terminal_read }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, RoadmapEventsRead, EventsRead, EventsReadRefused }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, RoadmapNodeStanding, roadmap_issue_state, roadmap_standing_is_retired }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.roadmap.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap.roadmap_status { signoff_accepts, line_ticket, node_title }
 import gunbc.roadmap.roadmap_review_role {
@@ -14506,6 +14511,13 @@ fn belt_verify_retry_wakes(instance: HostDashboardInstance, progress: WorkflowAt
 }
 
 fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationRun {
+  // The acceptance history depends only on the store: load it ONCE for this pass and hand the
+  // loaded value to the terminality read (review 90991; DESIGN §2 shared-value rule).
+  let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+  match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
+    LineageTerminal { why } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: join(["the node's lineage is terminal, so it owes nothing: ", why], "") }
+    LineageTerminalUnreadable { reason: r } => BeltAttemptObligationsRefused { node_id: node_id, attempt_key: attempt_key, reason: join(["lineage terminality is unreadable, so nothing is provably owed: ", r], "") }
+    LineageOpen => {
   let folded = fold(belt_attempt_obligation_order, init: BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: [] }, f: fn(acc, kind) {
     match acc.read {
       BeltAttemptProgressFound { progress } =>
@@ -14526,6 +14538,8 @@ fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String
       if count(folded.steps) == 0 { BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: reason } } else { BeltAttemptObligationsRan { node_id: node_id, attempt_key: attempt_key, steps: folded.steps } }
     BeltAttemptProgressRefused { reason } =>
       BeltAttemptObligationsRefused { node_id: node_id, attempt_key: attempt_key, reason: join(["the attempt's evidence could not be observed: ", reason, if count(folded.steps) == 0 { "" } else { join([" (after ", to_string(count(folded.steps)), " obligation(s) ran)"], "") }], "") }
+  }
+    }
   }
 }
 
@@ -14785,16 +14799,29 @@ type BeltDiscovery
   | BeltDiscoveryRefused { reason: String }
 
 // PURE: which attempts are owed something, in observation order, and the bounded prefix to queue.
-fn belt_discovery_owed(instance: HostDashboardInstance, attempts: List<WorkflowAttemptProgress>) -> List<WorkflowAttemptProgress> {
-  attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0
-    || refused_retry_wakes(standing: belt_verify_retry_standing(instance: instance, progress: p)))
+// THE ONE TERMINALITY RULE rules discovery too: a terminal lineage has nothing to discover, and an
+// attempt whose terminality is UNREADABLE is not owed either — what cannot be proven owed is not
+// enqueued (the next discovery retries it). The caller supplies the fact; this stays a pure filter.
+fn belt_discovery_owed(instance: HostDashboardInstance, attempts: List<WorkflowAttemptProgress>, node_terminal_of: fn(WorkflowAttemptProgress) -> Bool) -> List<WorkflowAttemptProgress> {
+  attempts |> filter(p => !node_terminal_of(p) && (count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0
+    || refused_retry_wakes(standing: belt_verify_retry_standing(instance: instance, progress: p))))
 }
 
 fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } => BeltDiscoveryRefused { reason: join(["the attempts ledger is unobservable, so no outstanding obligation can be discovered: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
-      let owed = belt_discovery_owed(instance: instance, attempts: attempts)
+      // One acceptance-history load for the whole pass — the closure below runs per attempt, and
+      // the history does not depend on the attempt (review 90991; DESIGN §6 cost-shape rule).
+      let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+      let owed = belt_discovery_owed(
+        instance: instance,
+        attempts: attempts,
+        node_terminal_of: fn(p) { match belt_node_lineage_terminal_read(instance: instance, node_id: p.node_id, history: history) {
+          LineageOpen => false
+          LineageTerminal { why: _ } => true
+          LineageTerminalUnreadable { reason: _ } => true
+        } })
       BeltDiscovered {
         owed: count(owed),
         enqueues: concat(
