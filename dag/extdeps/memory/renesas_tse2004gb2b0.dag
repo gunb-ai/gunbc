@@ -34,6 +34,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // MODEL: a module that fits it references this declaration (see extdeps.memory.samsung).
 // Consumer: declared frontier, the P5 margin derivation, usable only once a module is shown to fit this
 // model (trigger: P5 landing and that fitted-sensor fact).
+// Consumer: P5 margin derivation, joined through the Samsung fitted-sensor reference. Trigger: P5 landing and the fitted-sensor fact being read.
 data tse2004gb2b0: DimmSensorModel = DimmSensorModel {
   manufacturer: "Renesas Electronics",
   part: "TSE2004GB2B0",

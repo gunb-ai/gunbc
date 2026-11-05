@@ -1200,10 +1200,12 @@ data asrock_altrad8ud_psu_smbus_header_pin_count: Nat = 5
 // their vendors' own authorities and these rows reference them.
 // Consumer: declared frontier, the P5 hard constraints and the B5 guard, whose VoltageRegulator ceiling in
 // gunbc.machine_intake.megarac_fan_thermal_guard is Absent today (trigger: P5 landing).
+// Consumer: P5 hard constraint on the SoC regulator, and the B5 guard VoltageRegulator ceiling (megarac_guard_component_ceiling, Absent today). Trigger: P5 landing.
 data asrock_altrad8ud_soc_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
   read_obligation: "Identify the SoC-rail VRM controller and power stages of the ALTRAD8UD-1L2T (board BOM or ASRock Rack support) and read their datasheets for maximum junction temperature, relating it to the CPU0_SOC_VRDTemp sensor location; manual v1.20 gives no regulator limit."
 }
 
+// Consumer: P5 hard constraint on the DIMM regulator, and the B5 guard VoltageRegulator ceiling (megarac_guard_component_ceiling, Absent today). Trigger: P5 landing.
 data asrock_altrad8ud_dimm_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
   read_obligation: "Identify the DIMM-rail VRM controller and power stages of the ALTRAD8UD-1L2T (board BOM or ASRock Rack support) and read their datasheets for maximum junction temperature, relating it to the CPU0_DIMMVRDTemp sensor location; manual v1.20 gives no regulator limit."
 }

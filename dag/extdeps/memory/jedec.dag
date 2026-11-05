@@ -78,6 +78,7 @@ type Ddr4RefreshBand {
   refresh_interval: Nanosecond
 }
 
+// Consumer: P5 hard constraint (85 C DIMM ceiling, plan section 7). Trigger: P5 landing.
 data ddr4_normal_refresh_band: RowField<Ddr4RefreshBand> = FromCitedFigure {
   value: Ddr4RefreshBand { upper_tcase: celsius(85), refresh_interval: nanosecond(7800) },
   standing: ddr4_band_standing(what: "the top of the normal operating TCASE band and its tREFI of 7.8 us"),
@@ -85,6 +86,7 @@ data ddr4_normal_refresh_band: RowField<Ddr4RefreshBand> = FromCitedFigure {
 
 // Above the normal band and up to 95 C the part must refresh twice as often. Above this band the part is
 // out of specification: there is no band, so no row, and a consumer that needs the edge reads upper_tcase.
+// Consumer: B5 guard (95 C emergency floor) and the P5 refresh-rate term. Trigger: P5 landing.
 data ddr4_extended_refresh_band: RowField<Ddr4RefreshBand> = FromCitedFigure {
   value: Ddr4RefreshBand { upper_tcase: celsius(95), refresh_interval: nanosecond(3900) },
   standing: ddr4_band_standing(what: "the top of the extended operating TCASE band and its doubled refresh (tREFI 3.9 us)"),
@@ -111,6 +113,7 @@ type DimmSensorModel {
   active_range_accuracy: RowField<DimmSensorAccuracy>
 }
 
+// Consumer: P5 margin derivation (fallback when no fitted-sensor model is established). Trigger: P5 landing.
 data tse2004av_class_accuracy_requirement: RowField<DimmSensorAccuracy> = NeedsReading {
   read_obligation: "Read the JEDEC TSE2004av temperature-sensor device specification (JC-42.4; name the revision and its accuracy table) for the accuracy class a compliant DIMM sensor must meet over 75-95 C. No JEDEC document is held; the Renesas TSE2004GB2B0 datasheet is a compliant part's own figure, not the class requirement."
 }
