@@ -283,7 +283,7 @@ fn spec_same_host_surface_collision(
       || a.service.repo_root == b.service.repo_root
       // The collision axis is the serve binary's PATH -- two deployments driving one binary is
       // the hazard this law prevents. PROVENANCE is not a collision axis: it is judged by the
-      // grammar gate (live_deploy_serve_grammar_verdict), so the compare reads the path field,
+      // grammar gate (live_deploy_serve_grammar_refusal), so the compare reads the path field,
       // never the whole record.
       || fixed_serve_binary_path(binary: a.service.serve_binary) == fixed_serve_binary_path(binary: b.service.serve_binary)
       || a.service.serve_function == b.service.serve_function

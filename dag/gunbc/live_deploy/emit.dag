@@ -480,14 +480,11 @@ type LiveDeployServeUnitEmission
 // grammar arrives as a new arm HERE, not as a
 // runtime path compare against the host_layout seed path (DESIGN section 4d: path equality is a
 // proxy -- an in-place seed build lives elsewhere and speaks the same CLI).
-type LiveDeployServeGrammarVerdict
-  = LiveDeployServeGrammarAdmitted
-  | LiveDeployServeGrammarRefused { binary_path: NonEmptyStr, reason: NonEmptyStr }
-
-fn live_deploy_serve_grammar_verdict(binary: AdmittedFixedServeBinary) -> LiveDeployServeGrammarVerdict {
+fn live_deploy_serve_grammar_refusal(binary: AdmittedFixedServeBinary) -> Optional<LiveDeployServeUnitGrammarRefused> {
   match binary.source {
-    SeedBuiltAtRevision => LiveDeployServeGrammarAdmitted
-    SourceUndeclared { reason } => LiveDeployServeGrammarRefused { binary_path: binary.path, reason: reason }
+    SeedBuiltAtRevision => Absent
+    SourceUndeclared { reason } =>
+      Present { value: LiveDeployServeUnitGrammarRefused { binary_path: binary.path, reason: reason } }
   }
 }
 
@@ -542,10 +539,9 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> Live
 fn live_deploy_serve_unit_emission(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployServeUnitEmission {
-  match live_deploy_serve_grammar_verdict(binary: spec.service.serve_binary) {
-    LiveDeployServeGrammarRefused { binary_path, reason } =>
-      LiveDeployServeUnitGrammarRefused { binary_path: binary_path, reason: reason }
-    LiveDeployServeGrammarAdmitted =>
+  match live_deploy_serve_grammar_refusal(binary: spec.service.serve_binary) {
+    Present { value: refused } => refused
+    Absent =>
       match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
     LiveDeployOidcEnvAdmitted { directives } =>
       LiveDeployServeUnitEmitted { file: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: directives) }

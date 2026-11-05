@@ -1,7 +1,7 @@
 module gunbc.live_deploy.serve_binary
 
 import std.types { String, NonEmptyStr }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, DashboardServeBinaryOrigin, dashboard_instance_serve_binary_origin, dashboard_instance_apply_workdir }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, DashboardServeBinaryOrigin, dashboard_instance_serve_binary_origin }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionNotInstalled, release_locus_binary_path }
 
 // WHICH BINARY A SERVICE RUNS IS A TWO-ARMED FACT, AND THE TYPE HOLDS BOTH ARMS. A service either runs one
@@ -61,16 +61,12 @@ fn serve_source_from_instance(instance: HostDashboardInstance) -> AdmittedServeB
   match dashboard_instance_serve_binary_origin(instance: instance) {
     // Stood up by the in-place build lane (gunbc.live_deploy.serve_binary_build) from this repository.
     BuildInPlaceFromAdmittedRevision => SeedBuiltAtRevision
-    // A declared built binary UNDER THE INSTANCE'S OWN APPLY WORKDIR is that checkout's cargo release
-    // output -- the ensure lane (roadmap_dashboard_instance_apply dashboard_ensure_declared_serve_binary)
-    // stages it at the serve path -- so it is a build of this repository and speaks the seed grammar.
-    // Any other declared path names a binary no modeled lane records building: refuse typed (DESIGN 5).
+    // The cargo release output of the instance's own source checkout: a build of this repository,
+    // NAMED by the arm -- no path test, no inference from where the file sits (DESIGN 4d, 5).
+    CargoReleaseOfInstanceCheckout { path: _ } => SeedBuiltAtRevision
+    // A declared built binary names a path, not a builder: no modeled lane says what built it.
     DeclaredBuiltBinary { path } =>
-      if starts_with(s: path as String, prefix: join([dashboard_instance_apply_workdir(instance: instance) as String, "/"], "")) {
-        SeedBuiltAtRevision
-      } else {
-        SourceUndeclared { reason: join(["declared built binary ", path as String, " lives outside the instance apply_workdir; no modeled lane records what built it"], "") }
-      }
+      SourceUndeclared { reason: join(["declared built binary ", path as String, "; no modeled lane records what built it"], "") }
   }
 }
 
