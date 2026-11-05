@@ -153,7 +153,7 @@ fn admit_standoff_gauge(
 }
 
 // THE PART TO PRINT. LocF to LocC on the A1 mini's envelope. The two ends are named once, here, so
-// the fit record of this gauge (product.printed_chassis.cassette_profiles altra_gauged_locations)
+// the fit record of this gauge (product.printed_chassis.cassette_profiles declared_altra_gauges)
 // reads the same locations the part was cut for.
 data altrad8ud_standoff_gauge_a: MountingLocationId = LocF
 data altrad8ud_standoff_gauge_b: MountingLocationId = LocC
