@@ -3507,11 +3507,12 @@ fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
 // be a second door to the same box for the same purpose.
 data fleet_converge_mtcollins1_ui_status_asset_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
 
-// The upload's own condition, named instead of inlined so the policy is a declaration a reader can
-// find: the mode still gates it, and `always()` is what keeps the upload alive when the step it reports
-// on failed. The parentheses are not decoration -- `always() && a || b` does not mean what the comment
-// above it says.
-data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = concat("always() && (", concat(fleet_converge_mtcollins1_ui_status_asset_observe_step_if, ")"))
+// The upload's own condition, named instead of inlined so the policy is a declaration a reader can find:
+// the mode still gates it, and `always()` is what keeps the upload alive when the step it reports on
+// failed. Built the same way as the app-key version's upload condition, so every upload that must survive
+// a failed step reads the same way in the generated workflow; no parentheses, because this condition is a
+// single comparison rather than a disjunction.
+data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = join(["always() && ", fleet_converge_mtcollins1_ui_status_asset_observe_step_if], "")
 
 fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Step {
   RunStep {
