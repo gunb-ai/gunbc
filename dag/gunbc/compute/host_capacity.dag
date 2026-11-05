@@ -717,7 +717,11 @@ fn seat_charge_scan_step(state: SeatChargeScan, wrapped: ChainEnvelope<PoolEvent
   }
 }
 
-fn compute_seat_charge_returned(store: FabricStorageBinding, partition: PartitionId, ceiling: Kibibyte, reference: NonEmptyStr) -> ComputeSeatCharge {
+// WHY THERE IS NO CEILING PARAMETER. The bound is a property of the read, not of the caller:
+// compute_partition_read_budget is the same budget the acquisition read uses, and a caller-chosen
+// ceiling over one partition's history would be a second, unenforced number sitting beside it. A chain
+// that cannot be read to its end is SeatChargeUnproven, never "not returned".
+fn compute_seat_charge_returned(store: FabricStorageBinding, partition: PartitionId, reference: NonEmptyStr) -> ComputeSeatCharge {
   match event_log_read_partition(store: store, partition: partition, budget: compute_partition_read_budget) {
     PartitionReadRefused { cause: c } => SeatChargeUnproven { detail: event_log_refusal_wire(cause: c) }
     PartitionReadOk { head: _, walk: walk } =>

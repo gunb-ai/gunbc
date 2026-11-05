@@ -1395,7 +1395,7 @@ fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmpt
   // conditions. It is a bounded read of one partition's own history (compute_partition_read_budget, the same
   // ceiling the acquisition read uses), and it is the only way the pass can tell "never acquired" from
   // "returned": the folded pool alone cannot, because a returned charge has no term to show.
-  let charge = compute_seat_charge_returned(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: key)
+  let charge = compute_seat_charge_returned(store: stores.store, partition: stores.partition, reference: key)
   match session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot), charge: charge) {
     SettleDone { why } => SessionSettlementDone { unit: key as String, why: why }
     SettleKeep { why, explain } =>
