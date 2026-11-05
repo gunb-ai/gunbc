@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_converge_producer_run
 
-import std.types { String, Bool, Int, List, Secret, Timestamp, list_length }
+import std.types { String, Bool, Int, List, Secret, Timestamp }
+import std.algebra { length }
 import std.optional { Present, Absent }
 import extdeps.github.workflow_runs
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_of_wire, WorkflowRun, Completed, Success }
@@ -77,7 +78,7 @@ type FleetConvergeProducerRunScan
 
 fn fleet_converge_producer_run_scan_step(scanned: List<WorkflowRun>, page_runs: List<WorkflowRun>, mode: String, host: String, page: Int, max_pages: Int, page_size: Int) -> FleetConvergeProducerRunScan {
   let all = concat(scanned, page_runs)
-  if list_length(items: page_runs) < page_size {
+  if length(xs: page_runs) < page_size {
     match fleet_converge_producer_run_select(runs: all, mode: mode, host: host) {
       ProducerRunSelected { run: r, attempt: a, created_at: c } => RunScanSelected { run: r, attempt: a, created_at: c }
       ProducerRunNone { cause: c } => RunScanNone { cause: c }

@@ -1,6 +1,7 @@
 module std.machine_shape
 
-import std.types { NonEmptyStr, Bool, List, Map, list_length, brand }
+import std.types { NonEmptyStr, Bool, List, Map, brand }
+import std.algebra { length }
 import std.measure {
   ByteSize,
   Bandwidth,
@@ -123,7 +124,7 @@ fn machine_shape_validate(shape: MachineShape) -> MachineShapeConstruction {
 }
 
 fn machine_shape_is_single_domain(shape: MachineShape) -> Bool {
-  list_length(items: shape.domains) == 1
+  length(xs: shape.domains) == 1
 }
 
 fn machine_shape_domain_lane_count(shape: MachineShape) -> HardwareThreadCount? {

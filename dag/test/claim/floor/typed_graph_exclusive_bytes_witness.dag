@@ -1,6 +1,7 @@
 module test.claim.floor.typed_graph_exclusive_bytes_witness
 
-import std.types { Bool, Int, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { length }
 import std.measure { byte_size_count, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.floor.typed_graph_exclusive_bytes {
   TypedGraphClassReading, typed_graph_exclusive_report, ExclusiveBytesReported, ExclusiveReadingTorn, ExclusiveReadingEmpty,
@@ -26,7 +27,7 @@ test fn exclusive_bytes_and_the_shared_residual_are_derived_from_the_drops() -> 
     reading(class: "items", all: 1004, after: 984, end: 902),
   ]) {
     ExclusiveBytesReported { classes: cs, graph_total: t, sum_of_exclusives: s, shared_or_unlisted: r } =>
-      list_length(items: cs) == 2
+      length(xs: cs) == 2
         && byte_size_count(b: t) == 100
         && byte_size_count(b: s) == 50
         && match r { MeasureDifference { value: v } => byte_size_count(b: v) == 50, _ => false }
@@ -73,7 +74,7 @@ test fn a_joint_set_is_reported_beside_the_sum_and_not_added_into_it() -> Bool {
     set_reading(class: "type_env+items", members: 2, all: 1000, after: 930, end: 900),
   ]) {
     ExclusiveBytesReported { classes: cs, graph_total: _, sum_of_exclusives: s, shared_or_unlisted: r } =>
-      list_length(items: cs) == 3
+      length(xs: cs) == 3
         && byte_size_count(b: s) == 50
         && match r { MeasureDifference { value: v } => byte_size_count(b: v) == 50, _ => false }
     _ => false

@@ -115,7 +115,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import std.algebra { list_map, empty_map, map_insert }
+import std.algebra { list_map, empty_map, map_insert, length }
 import product.host_identity { HostIdentity }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
@@ -292,7 +292,7 @@ import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import std.types { NonEmptyStr, List, String, Int, Bool, list_length, Duration, Map }
+import std.types { NonEmptyStr, List, String, Int, Bool, Duration, Map }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
@@ -7355,7 +7355,7 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
     DispatchAssignmentRefused { cause: c } =>
       FleetConvergeYamlGenerationRefused { reason: fleet_converge_reset_assignment_refusal_reason(cause: c) }
     DispatchAssignment { pairings: ps } =>
-      if list_length(ps) == 0 {
+      if length(ps) == 0 {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
         }
