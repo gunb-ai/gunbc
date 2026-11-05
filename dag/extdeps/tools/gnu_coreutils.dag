@@ -17,7 +17,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data coreutils_cp_recursive_flag: NonEmptyStr = "-r"
 data grep_recursive_quiet_flags: NonEmptyStr = "-rqE"
 // `diff` ARGV IS DELIBERATELY ABSENT FROM THIS MODULE. A `diff_recursive_flags` row once
 // sat beside these and was deleted as a fork: the diff invocation is owned by
@@ -177,13 +176,6 @@ fn cp_command(source: String, destination: String) -> ArgvCommand {
 // pull the target of a link into the root it is planting into: a link arrives inert, and the guest
 // reads only what it actually opens. A caller that wants the OTHER default has to ask for it in
 // its own name; this row does not take a flag list, for the same reason `cp_command` does not.
-// An argv TAIL, argv[0] supplied by the caller's `cp_program()`; not built with `argv_command`, whose
-// minting is gated behind a caller roster in extdeps.exec.command that this project does not grow
-// (operator ruling: no allowlists as architecture).
-fn cp_recursive_argv(source: String, destination: String) -> List<String> {
-  [coreutils_cp_recursive_flag as String, source, destination]
-}
-
 // `--update=none` (coreutils 9.3+, "cp invocation"): copy only when the destination does not exist,
 // and exit 0 either way -- a postinst's "install from default if absent", not an overwrite.
 fn cp_preserve_if_absent_command(source: String, destination: String) -> ArgvCommand {

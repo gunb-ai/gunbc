@@ -143,7 +143,7 @@ fn wet_ok(command: ArgvCommand) -> Bool {
 }
 
 // THE WORD-LIST SIBLINGS OF wet / wet_ok / wet_out. A host operation modeled as an argv TAIL (the
-// `_argv` rows in the extdeps modules: systemctl_stop_user_argv, cp_recursive_argv,
+// `_argv` rows in the extdeps modules: systemctl_stop_user_argv,
 // basename_argv) carries no argv[0]; the caller names the program, and shell.Exec.RunArgv is the seam the
 // whole fleet already uses for that shape. They exist here rather than in extdeps.exec.command because
 // sealing the same words into an ArgvCommand needs a caller roster that project does not grow.

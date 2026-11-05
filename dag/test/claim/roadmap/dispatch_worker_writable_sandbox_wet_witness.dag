@@ -81,7 +81,7 @@ import extdeps.tools.stat { stat_mode_command }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, tee_append_command,
   install_directory_owned_argv_command,
-  install_empty_file_command, install_file_mode_command, cp_command, cp_program, cp_recursive_argv, pwd_command,
+  install_empty_file_command, install_file_mode_command, pwd_command,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 // The fleet's ONE environment read: `shell.Env.Get` (extdeps/shell.dag, transport shell
@@ -281,13 +281,34 @@ fn wet_plant_guest_sources(instance: HostDashboardInstance) -> Bool {
   // THE CHECKOUT IS HOST-SAID, NOT ASSUMED. `pwd` is the batch's own working directory as the
   // host reports it; an empty reading refuses the plant rather than copying a guessed path.
   checkout != ""
-    // `repo` itself has to exist before `cp` can put a tree in it -- the first attempt missed
+    // `repo` itself has to exist before the copy can put a tree in it -- the first attempt missed
     // this and the copy refused on a missing parent, which is the difference between a plant and
-    // an intention.
+    // an intention. The copy is the fleet's OWN route, `shell.Copy.Recursive` (extdeps/shell.dag,
+    // transport shell { argv: ["cp", "-r", "{source}", "{destination}"] }); a `-r` argv tail
+    // beside it was a fork and is deleted (review 90943, the same defect the printenv rows had).
     && wet_ok(command: mkdir_parents_command(path: repo))
-    && wet_argv_ok(program: cp_program().invocation as String, arguments: cp_recursive_argv(source: join([checkout, "/dag"], ""), destination: join([repo, "/dag"], "")))
+    && shell.Copy.Recursive(
+      source: join([checkout, "/dag"], "") as FilePath,
+      destination: join([repo, "/dag"], "") as FilePath,
+    ).success
     && wet_ok(command: mkdir_parents_command(path: join([repo, "/src"], "")))
-    && wet_argv_ok(program: cp_program().invocation as String, arguments: cp_recursive_argv(source: join([checkout, "/src/v2"], ""), destination: join([repo, "/src/v2"], "")))
+    && shell.Copy.Recursive(
+      source: join([checkout, "/src/v2"], "") as FilePath,
+      destination: join([repo, "/src/v2"], "") as FilePath,
+    ).success
+    // THE MANIFEST IS PART OF THE TREE A GUEST CAN RUN FROM. The CLI keys its module graph by a path
+    // RELATIVE to a workspace root and finds that root by walking up from its starting directory
+    // looking for `Cargo.toml` beside `dag/` (cli_run.rs `resolve_process_workspace_root`; it refuses
+    // rather than keying indices against a guessed base). Measured 2026-11-05 with the real CLI
+    // against a plant that copied only dag/ and src/v2: the served probe answered "error: no
+    // workspace root: none of the current directory <root>/source's ancestors is a git checkout
+    // carrying Cargo.toml beside dag/" and exit 2 -- the guest could not run at all, which is the
+    // fixture's defect and not a sandbox verdict. A plant that cannot be run from is not a plant, so
+    // the manifest the real attempt worktree carries goes in too, before the repository is made.
+    && shell.Copy.Recursive(
+      source: join([checkout, "/Cargo.toml"], "") as FilePath,
+      destination: join([repo, "/Cargo.toml"], "") as FilePath,
+    ).success
     && wet_make_source_repository(instance: instance)
 }
 
@@ -383,13 +404,24 @@ fn wet_served_probe_entry(instance: HostDashboardInstance) -> String {
 
 // TRUE ONLY IF THE PLANTED IMAGE SERVES THE ROUTE, BOTH WAYS ROUND.
 fn wet_served_image_answers_the_route(instance: HostDashboardInstance) -> Bool {
-  let program = instance.serve_binary as NonEmptyStr
+  // THE DIRECTORY IS PART OF THE ROUTE. The CLI keys its module graph by a path RELATIVE to its
+  // process workspace root and refuses -- by panic, exit 101 -- an entry outside it
+  // (cli_run.rs `repo_relative_path_normalized`: "path ... is not under process workspace root").
+  // Measured on srv2 (stern, 2026-11-05) when this probe first ran the planted image from the
+  // batch's own directory: both probe children panicked 101 and the claim read the panic as "the
+  // image cannot serve", which is a fixture bug, not a verdict. Production's inner side never sees
+  // this because the unit starts in the plan's WorkingDirectory, and for this provider shape
+  // `dispatch_pane_working_directory` (gunbc.roadmap.dispatch_worker_unit_confinement) answers
+  // `instance.repo_root` -- the same directory the gate asserts is under the claim root. So the
+  // probe starts there too, through coreutils `env -C`, the fleet's own idiom for "run this in that
+  // directory" (`shell.Find.Files` spells `env -C {workdir} find ...`). A missing directory answers
+  // 125 with env's own message; nothing here fabricates a working directory.
   let ok_run = shell.Exec.RunArgvOutcome(
-    program: program,
+    program: wet_served_probe_env_program,
     arguments: wet_served_probe_argv(instance: instance, function: wet_served_probe_success_fn),
   )
   let refuse_run = shell.Exec.RunArgvOutcome(
-    program: program,
+    program: wet_served_probe_env_program,
     arguments: wet_served_probe_argv(instance: instance, function: wet_served_probe_refusal_fn),
   )
   match ok_run.outcome {
@@ -405,12 +437,22 @@ fn wet_served_image_answers_the_route(instance: HostDashboardInstance) -> Bool {
   }
 }
 
+data wet_served_probe_env_program: NonEmptyStr = "/usr/bin/env"
+
+// `env -C <the directory the unit would start in> <serve_binary> run ...` -- the inner argv of
+// `launcher_gunbc_run_inner_argv` (same words, same starting directory), executed here instead of
+// inside a unit because this is the pre-launch read: the claim asks the IMAGE before it asks a
+// manager. The words stay in `wet_served_run_tail`, so the probe and the unit's ExecStart cannot
+// drift apart.
 fn wet_served_probe_argv(instance: HostDashboardInstance, function: NonEmptyStr) -> List<String> {
-  wet_served_run_tail(
-    entry: wet_served_probe_entry(instance: instance),
-    function: function as String,
-    extra_args: [],
-    repo_root: instance.repo_root as String,
+  concat(
+    ["-C", instance.repo_root as String, instance.serve_binary as String],
+    wet_served_run_tail(
+      entry: wet_served_probe_entry(instance: instance),
+      function: function as String,
+      extra_args: [],
+      repo_root: instance.repo_root as String,
+    ),
   )
 }
 
@@ -1290,7 +1332,7 @@ test fn a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_incon
 test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
   let root = wet_claim_root(tag: "unsandboxed-control" as NonEmptyStr)
   let principal_is_not_root =
-    shell.Exec.RunArgv(program: "sh", arguments: ["-c", "test \"$(id -u)\" -ne 0"]).exit_code == 0
+    shell.Sh.ReparseWith(shell: "sh" as NonEmptyStr, command: "test \"$(id -u)\" -ne 0" as NonEmptyStr).success
   // Each cell's verdict is bound BEFORE its unit is retired, and the retirement is then a conjunct of
   // its own: a leaked unit turns the claim red without being able to flip what the cell measured.
   let enoent = !unsandboxed_sibling_write_ok(root: root, label: "inhabit-enoent", path: "/proc/gunbc-no-such-dir/target")
@@ -2098,7 +2140,9 @@ test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
 // for the direct probes in #14655 and is not written a second time here; the launcher cells consume it once
 // both land.
 fn wet_path_is_executable(path: String) -> Bool {
-  shell.Exec.RunArgv(program: "test", arguments: ["-x", path]).exit_code == 0
+  // `shell.Test.IsExecutable` is the modeled `test -x` (extdeps/shell.dag); running the verb
+  // through shell.Exec.RunArgv here was a second path beside it (review 90943's class).
+  shell.Test.IsExecutable(path: path as FilePath).executable
 }
 
 fn wet_path_exists(path: String) -> Bool {
