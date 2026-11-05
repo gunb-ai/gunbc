@@ -9,9 +9,8 @@ import extdeps.transports.rest {
   RestRefusal, RestExchangeRefusal, RestExchangeStatusRefused,
   RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
 }
-import gunbc.runner.runner_qualification_group { qualification_branch_prefix, qualification_workflow_path, qualification_selected_workflow, qualification_selected_workflow_prefix, qualification_runner_group_name }
+import gunbc.runner.runner_qualification_group { qualification_branch_prefix, qualification_selected_workflow, qualification_runner_group_name }
 import gunbc.repository { gunbc_repository }
-import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, RunnerGroupListDecoded, RunnerGroupListDecodeRefused }
 import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused, RestrictedRunnerGroup,
