@@ -2,15 +2,16 @@ module test.claim.live_deploy_verify_run_bound_witness
 
 import std.types { Bool, String, Int, List }
 import std.measure { Second, second, second_count }
+import std.algebra { string_contains }
 import gunbc.live_deploy.belt_cadence {
-  EntryCompileSample, VerifyRunBound, VerifyRunBounded, VerifyRunOverCeiling, VerifyRunUnsampled,
+  EntryCompileSample, VerifyRunBound, VerifyRunBounded, VerifyRunProvisional, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_note,
   verify_run_bound_for, verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
   verify_unit_outer_run_bound,
 }
 
 data fixture_samples: List<EntryCompileSample> = [
-  EntryCompileSample { entry: "a.dag", seconds: second(count: 100), observed: "fixture" },
-  EntryCompileSample { entry: "b.dag", seconds: second(count: 200), observed: "fixture" },
+  EntryCompileSample { entry: "a.dag", seconds: second(count: 100) },
+  EntryCompileSample { entry: "b.dag", seconds: second(count: 200) },
 ]
 
 // A normal node: two sampled entries run within the sum of their figures plus 50% headroom plus the slack.
@@ -19,6 +20,7 @@ test fn verify_bound_of_a_normal_node_is_the_sum_with_headroom_and_slack() -> Bo
     VerifyRunBounded { bound, entries } => second_count(s: bound) == 300 + 150 + 60 && entries == 2
     VerifyRunOverCeiling { entries: _, ceiling: _ } => false
     VerifyRunUnsampled { entry: _ } => false
+    VerifyRunProvisional { bound: _, entries: _, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } => false
   }
 }
 
@@ -28,16 +30,33 @@ test fn verify_bound_over_the_ceiling_refuses_typed() -> Bool {
     VerifyRunOverCeiling { entries, ceiling } => entries == 3 && ceiling == 2
     VerifyRunBounded { bound: _, entries: _ } => false
     VerifyRunUnsampled { entry: _ } => false
+    VerifyRunProvisional { bound: _, entries: _, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } => false
   }
 }
 
-// An entry with no recorded sample refuses typed, naming the entry; it never defaults.
-test fn verify_bound_of_an_unsampled_entry_refuses_typed() -> Bool {
-  match verify_run_bound_for(entries: ["a.dag", "c.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)) {
+// With NO recorded sample there is nothing to borrow: the entry refuses typed, naming it; it never defaults.
+test fn verify_bound_with_no_recorded_sample_at_all_refuses_typed() -> Bool {
+  match verify_run_bound_for(entries: ["c.dag"], samples: [] as List<EntryCompileSample>, ceiling: 4, headroom_percent: 50, slack: second(count: 60)) {
     VerifyRunUnsampled { entry } => entry == "c.dag"
-    VerifyRunBounded { bound: _, entries: _ } => false
-    VerifyRunOverCeiling { entries: _, ceiling: _ } => false
+    _ => false
   }
+}
+
+// An unsampled entry runs under a PROVISIONAL bound: the slowest recorded sample is its figure, the bet names the
+// entry and the sample it borrowed, and the receipt line says so.
+test fn verify_bound_of_an_unsampled_entry_is_a_named_provisional_bet() -> Bool {
+  match verify_run_bound_for(entries: ["a.dag", "c.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)) {
+    VerifyRunProvisional { bound, entries, unsampled, borrowed_entry, borrowed_seconds } =>
+      second_count(s: bound) == 300 + 150 + 60 && entries == 2 && unsampled == ["c.dag"] && borrowed_entry == "b.dag" && borrowed_seconds == 200
+    _ => false
+  }
+}
+
+// The receipt line names the bet and is empty when every entry is sampled.
+test fn the_provisional_bet_is_visible_in_the_receipt_line_and_a_sampled_node_has_none() -> Bool {
+  let bet = verify_run_bound_note(bound: verify_run_bound_for(entries: ["c.dag", "d.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)))
+  let sampled = verify_run_bound_note(bound: verify_run_bound_for(entries: ["a.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)))
+  string_contains(s: bet, pattern: "ProvisionalUnsampled: 2 entries") && string_contains(s: bet, pattern: "b.dag") && sampled == ""
 }
 
 // The unit's outer net is derived from the same rows and clears the ceiling's worth of the slowest figure.

@@ -607,7 +607,7 @@ import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
 import gunbc.live_deploy.belt_cadence {
   belt_tick_run_bound, instance_obligation_run_bound, belt_attempt_obligation_unit_run_bound,
-  VerifyRunBound, VerifyRunBounded, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_for,
+  VerifyRunBound, VerifyRunBounded, VerifyRunProvisional, verify_run_bound_note, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_for,
   verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
 }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
@@ -9294,6 +9294,23 @@ fn belt_covered_claims_all_passed(covered: List<ValidationOperation>, document: 
   })) == 0
 }
 
+// The one reading of a node's verification bound: the receipt line and the run share it (no second derivation).
+fn belt_verify_bound_of(validations: List<ValidationOperation>) -> VerifyRunBound {
+  let entries = flat_map(belt_validation_units(validations: validations), v => match v {
+    GunbcClaimValidation { entry, function: _ } => [entry as String]
+    _ => [] as List<String>
+  })
+  verify_run_bound_for(entries: entries, samples: verify_entry_compile_samples, ceiling: verify_entries_ceiling, headroom_percent: verify_run_headroom_percent, slack: verify_run_slack)
+}
+
+// The bet's receipt line, empty unless the contract closes on validations with an unsampled entry.
+fn belt_verify_provisional_note(contract: WorkItemExecutionContract) -> String {
+  match contract_closure(contract: contract) {
+    ContractCloses { validations } => verify_run_bound_note(bound: belt_verify_bound_of(validations: validations))
+    _ => ""
+  }
+}
+
 // THE VERIFICATION BOUND IS CHECKED BEFORE ANY RUN STARTS. The node's entries are known here, inside the unit, so
 // an entry count past the declared ceiling, or an entry with no recorded compile sample, is a typed refusal
 // instead of a run the unit's outer bound would kill (gunbc.live_deploy.belt_cadence verify_run_bound_for).
@@ -9306,12 +9323,10 @@ fn belt_run_validation_operations(
   diff_window_path: String?,
   source_roots: ClaimSourceRootLayout,
 ) -> BeltValidationRun {
-  let entries = flat_map(belt_validation_units(validations: validations), v => match v {
-    GunbcClaimValidation { entry, function: _ } => [entry as String]
-    _ => [] as List<String>
-  })
-  match verify_run_bound_for(entries: entries, samples: verify_entry_compile_samples, ceiling: verify_entries_ceiling, headroom_percent: verify_run_headroom_percent, slack: verify_run_slack) {
+  match belt_verify_bound_of(validations: validations) {
     VerifyRunBounded { bound: _, entries: _ } =>
+      belt_run_bounded_validation_units(instance: instance, subject: subject, validations: validations, worktree: worktree, oracle_identity: oracle_identity, diff_window_path: diff_window_path, source_roots: source_roots)
+    VerifyRunProvisional { bound: _, entries: _, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } =>
       belt_run_bounded_validation_units(instance: instance, subject: subject, validations: validations, worktree: worktree, oracle_identity: oracle_identity, diff_window_path: diff_window_path, source_roots: source_roots)
     VerifyRunOverCeiling { entries: n, ceiling } =>
       BeltValidationRun {
@@ -10164,7 +10179,10 @@ fn belt_verify_run_and_persist(
         VerifyRecorded {
           node_id: progress.node_id,
           verdict_key: validation_verdict_key(verdict: run.verdict),
-          detail: validation_verdict_detail(verdict: run.verdict),
+          detail: match belt_verify_provisional_note(contract: node.execution) {
+            "" => validation_verdict_detail(verdict: run.verdict)
+            note => join([note, "; ", validation_verdict_detail(verdict: run.verdict)], "")
+          },
         }
       FilesystemWriteRefused { path: _, error: e } =>
         VerifyWriteFailed {

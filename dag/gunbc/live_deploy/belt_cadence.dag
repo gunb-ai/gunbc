@@ -57,7 +57,6 @@ data launch_obligation_run_bound: Second = second(count: 2700)
 type EntryCompileSample {
   entry: String
   seconds: Second
-  observed: String
 }
 
 // Reproduce: `gunbc compile --source-root dag --source-root src/v2 --entry <entry> --output-dir <dir>`;
@@ -66,7 +65,7 @@ data verify_entry_compile_samples: List<EntryCompileSample> = [
   EntryCompileSample {
     entry: "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag",
     seconds: second(count: 646),
-    observed: "neat-gull-366 2026-11-05, local -j8 build slot, process_invocation_total ms=645578",
+    // neat-gull-366 2026-11-05, local -j8 build slot, process_invocation_total ms=645578 (not an srv1 unit reading)
   },
 ]
 
@@ -80,8 +79,16 @@ data verify_run_headroom_percent: Nat = 50
 data verify_run_slack: Second = second(count: 900)
 // Reason: the drain bound (event_backlog_drain_bound) is the corpus-load allowance the same unit pays once.
 
+// A PROVISIONAL BOUND IS A TYPED BET (DESIGN 4d), NOT A DEFAULT: an entry with no recorded sample runs under the
+// slowest recorded sample as its figure, plus the same declared headroom and slack, and the arm names every
+// entry it bets on and the sample it borrowed. It is a loud, bounded interim (DESIGN 5): a node with unsampled
+// entries still verifies, the bet is carried to the attempt's receipt line, and it is countable there.
+// DISSOLUTION TRIGGER: the measured compile time of an unsampled entry's first run is recorded as its sample
+// (verify_entry_compile_samples is a hand-authored data row today, so the write-back is not modeled; owed
+// follow-up). With no recorded sample at all there is nothing to borrow, so the entry refuses typed.
 type VerifyRunBound
   = VerifyRunBounded { bound: Second, entries: Int }
+  | VerifyRunProvisional { bound: Second, entries: Int, unsampled: List<String>, borrowed_entry: String, borrowed_seconds: Int }
   | VerifyRunOverCeiling { entries: Int, ceiling: Int }
   | VerifyRunUnsampled { entry: String }
 
@@ -92,25 +99,52 @@ fn verify_entry_sample_seconds(samples: List<EntryCompileSample>, entry: String)
   }
 }
 
-// The entries are the node's distinct validation entries; the bound is their summed recorded figures
-// plus headroom and slack. samples, ceiling, headroom and slack are supplied so each arm is exercisable.
+fn verify_slowest_sample(samples: List<EntryCompileSample>) -> EntryCompileSample? {
+  let slowest = fold(samples, init: second_count(s: second(count: 0)), f: (acc, s) => if second_count(s: s.seconds) > acc { second_count(s: s.seconds) } else { acc })
+  match filter(samples, s => second_count(s: s.seconds) == slowest) {
+    Empty {} => none
+    Cons { head: first, tail: _ } => Present { value: first }
+  }
+}
+
+// The entries are the node's distinct validation entries; the bound is their summed figures (recorded, or the
+// borrowed slowest for an unsampled one) plus headroom and slack. samples, ceiling, headroom and slack are
+// supplied so each arm is exercisable.
 fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>, ceiling: Nat, headroom_percent: Nat, slack: Second) -> VerifyRunBound {
   if length(entries) > nat_to_int(n: ceiling) {
     VerifyRunOverCeiling { entries: length(entries), ceiling: nat_to_int(n: ceiling) }
   } else {
-    match filter(entries, e => match verify_entry_sample_seconds(samples: samples, entry: e) {
+    let missing = filter(entries, e => match verify_entry_sample_seconds(samples: samples, entry: e) {
       Absent => true
       Present { value: _ } => false
-    }) {
-      Cons { head: missing, tail: _ } => VerifyRunUnsampled { entry: missing }
-      Empty {} => {
+    })
+    match verify_slowest_sample(samples: samples) {
+      Absent => match missing {
+        Cons { head: first, tail: _ } => VerifyRunUnsampled { entry: first }
+        Empty {} => VerifyRunBounded { bound: second(count: second_count(s: slack)), entries: length(entries) }
+      }
+      Present { value: slowest } => {
+        let borrowed = second_count(s: slowest.seconds)
         let total = fold(entries, init: second_count(s: second(count: 0)), f: (acc, e) => match verify_entry_sample_seconds(samples: samples, entry: e) {
           Present { value: n } => acc + n
-          Absent => acc
+          Absent => acc + borrowed
         })
-        VerifyRunBounded { bound: second(count: total + total * headroom_percent / 100 + second_count(s: slack)), entries: length(entries) }
+        let bound = second(count: total + total * headroom_percent / 100 + second_count(s: slack))
+        match missing {
+          Empty {} => VerifyRunBounded { bound: bound, entries: length(entries) }
+          Cons { head: _, tail: _ } => VerifyRunProvisional { bound: bound, entries: length(entries), unsampled: missing, borrowed_entry: slowest.entry, borrowed_seconds: nat_to_int(n: borrowed) }
+        }
       }
     }
+  }
+}
+
+// The receipt line for a provisional bet; empty when the bound rests on recorded samples only. Countable by prefix.
+fn verify_run_bound_note(bound: VerifyRunBound) -> String {
+  match bound {
+    VerifyRunProvisional { bound: _, entries: _, unsampled, borrowed_entry, borrowed_seconds } =>
+      join(["ProvisionalUnsampled: ", to_string(value: length(unsampled)), " entries ran under a bound borrowed from the sample of ", borrowed_entry, " (", to_string(value: borrowed_seconds), " s each): ", join(unsampled, ", ")], "")
+    _ => ""
   }
 }
 
