@@ -24,7 +24,7 @@ import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_ro
 import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
-import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
+import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path, AdmittedFixedServeBinary, AdmittedServeBinarySource, HostSeedInstall, SeedBuiltAtRevision, SourceUndeclared }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -467,6 +467,28 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
 type LiveDeployServeUnitEmission
   = LiveDeployServeUnitEmitted { file: SystemdUnitFile }
   | LiveDeployServeUnitOidcReadbackRefused { cause: NonEmptyStr }
+  // THE BINARY CANNOT ANSWER THE GRAMMAR THE UNIT SPELLS. The ExecStart words are seed-CLI words
+  // (`run --source-root ... --entry ... --arg handler=...`); when the lane admitted the binary
+  // without saying what it is, no ExecStart is emitted -- the refusal names the path and the
+  // missing provenance instead of a unit that would die at restart (DESIGN section 5).
+  | LiveDeployServeUnitGrammarRefused { binary_path: NonEmptyStr, reason: NonEmptyStr }
+
+// THE ONE PLACE THE SEED CLI GRAMMAR IS JUSTIFIED for the serve unit. Both seed arms render the
+// same words (host seed install, or a seed build staged at an admitted revision by
+// gunbc.live_deploy.serve_binary_build); a third grammar arrives as a new arm HERE, not as a
+// runtime path compare against the host_layout seed path (DESIGN section 4d: path equality is a
+// proxy -- an in-place seed build lives elsewhere and speaks the same CLI).
+type LiveDeployServeGrammarVerdict
+  = LiveDeployServeGrammarAdmitted
+  | LiveDeployServeGrammarRefused { binary_path: NonEmptyStr, reason: NonEmptyStr }
+
+fn live_deploy_serve_grammar_verdict(binary: AdmittedFixedServeBinary) -> LiveDeployServeGrammarVerdict {
+  match binary.source {
+    HostSeedInstall => LiveDeployServeGrammarAdmitted
+    SeedBuiltAtRevision { revision: _ } => LiveDeployServeGrammarAdmitted
+    SourceUndeclared { reason } => LiveDeployServeGrammarRefused { binary_path: binary.path, reason: reason }
+  }
+}
 
 // Admitted env is empty when the instance is unassigned or the environment is unbound.
 // Unsatisfied / missing realization is Refused — never an empty list on a Configured-looking unit.
@@ -519,11 +541,16 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> Live
 fn live_deploy_serve_unit_emission(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployServeUnitEmission {
-  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
+  match live_deploy_serve_grammar_verdict(binary: spec.service.serve_binary) {
+    LiveDeployServeGrammarRefused { binary_path, reason } =>
+      LiveDeployServeUnitGrammarRefused { binary_path: binary_path, reason: reason }
+    LiveDeployServeGrammarAdmitted =>
+      match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
     LiveDeployOidcEnvAdmitted { directives } =>
       LiveDeployServeUnitEmitted { file: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: directives) }
     LiveDeployOidcEnvRefused { cause } =>
       LiveDeployServeUnitOidcReadbackRefused { cause: cause }
+      }
   }
 }
 

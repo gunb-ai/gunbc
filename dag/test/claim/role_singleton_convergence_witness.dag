@@ -327,7 +327,7 @@ test fn unobservable_srv2_and_desired_install_is_host_unobservable() -> Bool {
 }
 
 fn row_plans_broker_or_fabric(row: DesiredDeployment, desired: ProdRoleRealization) -> Bool {
-  let spec = deployment_spec_for(realization: desired, instance: row.instance, target: row.target, names: row.names)
+  let spec = deployment_spec_for(realization: desired, instance: row.instance, target: row.target, names: row.names, source: row.serve_binary_source)
   deployment_owns_the_host_approval_broker(spec: spec) || count(deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names)) > 0
 }
 

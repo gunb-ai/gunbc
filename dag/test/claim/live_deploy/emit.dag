@@ -115,7 +115,7 @@ import extdeps.systemd.unit_file {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { deployment_directory_demands }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary, HostSeedInstall }
 import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
 import gunbc.membership_reconcile { EffectRemove }
 import gunbc.live_deploy.retract_legs {
@@ -714,6 +714,7 @@ fn spec_with_target(target: DeploymentHostTarget) -> DeploymentSpec {
     instance: srv1_live_dashboard_instance(),
     target: target,
     names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
+    source: HostSeedInstall,
   )
 }
 
@@ -996,7 +997,7 @@ test fn the_broker_serve_binary_is_the_per_release_arm_over_the_bound_revision()
 }
 
 test fn a_fixed_serve_binary_resolves_to_its_own_path_whatever_the_revision() -> Bool {
-  let admitted = admit_fixed_serve_path(path: "/opt/gunbc/bin/gunbc" as NonEmptyStr)
+  let admitted = admit_fixed_serve_path(path: "/opt/gunbc/bin/gunbc" as NonEmptyStr, source: HostSeedInstall)
   let fixed = FixedServeBinary { binary: admitted }
   fixed_serve_binary_path(binary: admitted) == "/opt/gunbc/bin/gunbc"
     && serve_binary_path(binary: fixed, release_root: "/x", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }) == "/opt/gunbc/bin/gunbc"

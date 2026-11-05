@@ -23,16 +23,32 @@ fn serve_binary_path(binary: ServeBinarySource, release_root: String, revision: 
   }
 }
 
+// WHICH ARGUMENT GRAMMAR THE ADMITTED BINARY SPEAKS IS DECIDED AT ADMISSION, NOT AT EMISSION.
+// The serve unit's ExecStart spells the seed CLI (`<binary> run --source-root ... --entry ... --arg
+// handler=...`), words only a binary built from THIS repo -- the host seed install, or a seed build
+// staged at an admitted revision by gunbc.live_deploy.serve_binary_build -- can answer. Comparing the
+// admitted path against the host_layout seed path would be a proxy (DESIGN section 4d): a seed binary
+// built in place at the admitted revision lives at another path and speaks the same grammar. So the
+// lane that admits the binary declares the source it actually stood up, and the emitter matches on
+// this sum (DESIGN section 5: the unjustified state is refused at construction or emit, not assumed).
+type AdmittedServeBinarySource
+  = HostSeedInstall
+  | SeedBuiltAtRevision { revision: NonEmptyStr }
+  | SourceUndeclared { reason: NonEmptyStr }
+
 // A fixed path no revision can change, minted only here (sole_constructor), so a renderer that has no revision in hand
 // takes this type and a PerReleaseBinary has no constructor path to it. The sole_constructor wall itself is executed
-// generically (sole_constructor_completeness_audit_probe); no RED here is specific to this type, so the rung is
-// construction by declaration, not established by a type-specific refusal (DESIGN section 4b). DeploymentSpec.service is typed over it; the broker's config is typed over the sum.
+// generically (sole_constructor_completeness_audit_probe). The source argument has NO default: admitting cannot
+// quietly inherit a grammar claim from proximity -- a lane that cannot say what its binary is admits
+// SourceUndeclared, and the serve-unit emission refuses it typed (DESIGN section 5). DeploymentSpec.service is typed
+// over it; the broker's config is typed over the sum.
 type AdmittedFixedServeBinary sole_constructor {
-  path: NonEmptyStr
+  path: NonEmptyStr,
+  source: AdmittedServeBinarySource,
 }
 
-fn admit_fixed_serve_path(path: NonEmptyStr) -> AdmittedFixedServeBinary {
-  AdmittedFixedServeBinary { path: path }
+fn admit_fixed_serve_path(path: NonEmptyStr, source: AdmittedServeBinarySource) -> AdmittedFixedServeBinary {
+  AdmittedFixedServeBinary { path: path, source: source }
 }
 
 fn fixed_serve_binary_path(binary: AdmittedFixedServeBinary) -> String {

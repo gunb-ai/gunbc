@@ -1,6 +1,6 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path, AdmittedFixedServeBinary, admit_fixed_serve_path, SeedBuiltAtRevision, SourceUndeclared }
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port, Int }
 import std.optional { Present, Absent }
 import gunbc.auth.approval_device_crypto_client { device_crypto_readback_expectation }
@@ -34,7 +34,7 @@ import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
-  emit_slice_unit_doc, live_deploy_protocol, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
+  emit_slice_unit_doc, live_deploy_protocol, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
   emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_binary_path,
 }
 import gunbc.live_deploy.release_locus {
@@ -704,6 +704,7 @@ fn serve_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
   match live_deploy_serve_unit_emission(spec: spec, revision: live_revision(), now_epoch: claim_oidc_now_for(spec: spec)) {
     LiveDeployServeUnitEmitted { file } => file
     LiveDeployServeUnitOidcReadbackRefused { cause: _ } => live_deploy_slice_unit_file(spec: spec)
+    LiveDeployServeUnitGrammarRefused { binary_path: _, reason: _ } => live_deploy_slice_unit_file(spec: spec)
   }
 }
 
@@ -1133,3 +1134,69 @@ test fn the_readback_expectation_is_the_gates_own_requirement_and_a_refused_gate
     })
 }
 
+// THE GRAMMAR OF THE ADMITTED BINARY IS A CONSTRUCTION-TIME FACT (S4). The serve unit's ExecStart
+// spells the seed CLI; only an admission that can answer for that grammar emits. A host seed
+// install and an in-place seed build at an admitted revision both do; an undeclared admission
+// refuses TYPED, naming the path and the missing provenance -- never a unit that would die at
+// restart (DESIGN section 5: the unjustified state is refused, not assumed).
+fn spec_with_serve_binary(binary: AdmittedFixedServeBinary) -> DeploymentSpec {
+  let base = live_spec()
+  match base {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
+          provider_state_root: ps, instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: binary, serve_entry: se, serve_function: f,
+              provider_state_root: ps, instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
+              listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+test fn an_undeclared_serve_binary_source_refuses_the_serve_unit_typed() -> Bool {
+  let emitted = live_deploy_serve_unit_emission(
+    spec: spec_with_serve_binary(binary: admit_fixed_serve_path(
+      path: "/opt/gunbc/bin/not-known-to-be-the-seed" as NonEmptyStr,
+      source: SourceUndeclared { reason: "witness fixture: the lane did not declare what this binary is" })),
+    revision: live_revision(), now_epoch: claim_oidc_now_for(spec: live_spec()))
+  match emitted {
+    LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+      bp == "/opt/gunbc/bin/not-known-to-be-the-seed"
+        && string_contains(s: r as String, pattern: "witness fixture: the lane did not declare what this binary is")
+    _ => false
+  }
+}
+
+test fn an_in_place_built_serve_binary_emits_the_same_grammar_at_its_own_path() -> Bool {
+  let built_path = "/opt/gunbc/builds/7c0ffee5a5/gunbc" as NonEmptyStr
+  let spec = spec_with_serve_binary(binary: admit_fixed_serve_path(
+    path: built_path, source: SeedBuiltAtRevision { revision: "7c0ffee5a5" as NonEmptyStr }))
+  let emitted = live_deploy_serve_unit_emission(
+    spec: spec, revision: live_revision(), now_epoch: claim_oidc_now_for(spec: spec))
+  match emitted {
+    LiveDeployServeUnitEmitted { file } =>
+      serialize_systemd_unit_file(file: file)
+        == string_replace(
+             text: serialize_systemd_unit_file(file: serve_file_of(spec: live_spec())),
+             from: "/opt/gunbc/bin/gunbc", to: built_path as String)
+    _ => false
+  }
+}
+
+test fn the_host_seed_admission_still_emits_and_the_refusal_is_not_a_blanket() -> Bool {
+  let emitted = live_deploy_serve_unit_emission(
+    spec: spec_with_serve_binary(binary: admit_fixed_serve_path(
+      path: "/opt/gunbc/bin/gunbc" as NonEmptyStr, source: SeedBuiltAtRevision { revision: "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd" as NonEmptyStr })),
+    revision: live_revision(), now_epoch: claim_oidc_now_for(spec: live_spec()))
+  match emitted {
+    LiveDeployServeUnitEmitted { file } =>
+      string_contains(s: serialize_systemd_unit_file(file: file), pattern: "/opt/gunbc/bin/gunbc run --source-root")
+    _ => false
+  }
+}

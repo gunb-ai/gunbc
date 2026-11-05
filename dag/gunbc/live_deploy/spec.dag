@@ -90,7 +90,7 @@ import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_approve_front_door }
 import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
 import product.network_topology { NetworkEndpoint }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, admit_fixed_serve_path, PerReleaseBinary }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, AdmittedServeBinarySource, admit_fixed_serve_path, PerReleaseBinary }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
 // Belt B membership: the service is `gunbc
@@ -1505,10 +1505,11 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 fn deployment_service_config(
   instance: HostDashboardInstance,
   names: DeploymentNames,
+  source: AdmittedServeBinarySource,
 ) -> DeploymentServiceConfig<AdmittedFixedServeBinary> {
   DeploymentServiceConfig {
     unit_name: names.unit_name,
-    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr),
+    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr, source: source),
     serve_entry: roadmap_serve_entry_file,
     provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
     serve_function: instance.serve_function,
@@ -1546,6 +1547,7 @@ fn deployment_spec_for(
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,
   names: DeploymentNames,
+  source: AdmittedServeBinarySource,
 ) -> DeploymentSpec {
   let holding = role_singleton_holding_under(realization: realization, instance: instance)
   DeploymentSpec {
@@ -1555,6 +1557,7 @@ fn deployment_spec_for(
     service: deployment_service_config(
       instance: instance,
       names: names,
+      source: source,
     ),
     approval_broker: approval_broker_service_config(
       instance: instance,
