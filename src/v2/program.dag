@@ -75,7 +75,8 @@ import v2.std.runtime {
   RuntimeUnit,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  runtime_value_equality
 }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v2.std.witness { Holds, Violates, Witness }
