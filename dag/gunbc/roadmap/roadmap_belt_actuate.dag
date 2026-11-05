@@ -2750,7 +2750,6 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
   let branch_head = belt_branch_standing(instance: instance, branch: progress.branch)
   continuation_plan(
     obs: Present { value: PriorExecutionObservation {
-      node_id: node.node as String,
       attempt_key: progress.attempt_key,
       branch: progress.branch,
       worktree: worktree,

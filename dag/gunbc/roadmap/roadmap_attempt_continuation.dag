@@ -38,7 +38,6 @@ module gunbc.roadmap.roadmap_attempt_continuation
 
 import std.types { Bool, String, Int, List }
 import std.algebra { length }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_resume_bound }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable, CaptureNotAttempted,
@@ -93,7 +92,6 @@ type BranchStanding
   | BranchUnknown { reason: String }
 
 type PriorExecutionObservation = {
-  node_id: RoadmapNodeId,
   attempt_key: String,
   branch: String,
   // HOW THE WORKTREE AND ITS BRANCH STAND, as read by the belt -- the honest inputs that decide whether a

@@ -37,7 +37,6 @@ fn pri(
   goal_audit: WorkflowSegment?,
 ) -> PriorExecutionObservation {
   PriorExecutionObservation {
-    node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     // PRESENT by default: the whole existing partition is read from the CAPTURE, so the worktree is here.
@@ -59,7 +58,6 @@ fn pri(
 // can prove the decision never reads it (it must not turn an unread capture into a Resume or a false 'absent').
 fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
   PriorExecutionObservation {
-    node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     worktree: AttemptWorktreeAbsent { path: "/wt" },
@@ -122,7 +120,6 @@ test fn no_prior_attempt_is_the_first_attempt() -> Bool {
 test fn worker_not_terminal_joins_the_live_attempt_never_double() -> Bool {
   let running = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
   let joined = PriorExecutionObservation {
-    node_id: running.node_id,
     attempt_key: running.attempt_key,
     branch: running.branch,
     worktree: running.worktree,
@@ -279,7 +276,6 @@ fn pri_reaped_ledger(
   goal_audit: WorkflowSegment?,
 ) -> PriorExecutionObservation {
   PriorExecutionObservation {
-    node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     worktree: AttemptWorktreeAbsent { path: "/wt" },
@@ -379,7 +375,6 @@ test fn reaped_worktree_with_unreadable_branch_refuses_never_restores_onto_unkno
 // reviewer's filesystem-absence-adoption finding turns on -- a failed read is unknown, never 'gone'.
 fn pri_worktree_unknown() -> PriorExecutionObservation {
   PriorExecutionObservation {
-    node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     worktree: AttemptWorktreeUnobserved { path: "/wt", cause: "the dispatch worktree root could not be listed" },
