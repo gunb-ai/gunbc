@@ -5,7 +5,7 @@ import std.types { Bool, String, NonEmptyStr, FilePath, Port }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
-import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory, session_reviewer_slots_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory }
 import gunbc.auth.session_store_root { session_store_directory }
 import gunbc.auth.login_transaction_store_root { login_transaction_store_directory }
@@ -1248,13 +1248,15 @@ test fn the_lab_publishes_into_its_integration_branch_and_live_into_main() -> Bo
 // stops its consumer at the first read: credential slots on 2026-10-16, worktree claims on 2026-10-20. The
 // join is over the roots the instance's durable slot stores read under it, and the creator it asks for is the
 // one instance directory list. The session slot store joined it when the belt's own mkdir of its root was
-// deleted (gunbc.roadmap.roadmap_session_attempt_slots_root). THE LIST OF STORES IS AUTHORED, which is the
+// deleted (gunbc.roadmap.roadmap_session_attempt_slots_root); the reviewer lane's root joined in the same change
+// as the lane itself, per the recognition rule named above. THE LIST OF STORES IS AUTHORED, which is the
 // same declared limit as the directory list itself (D14 step 4).
 fn slot_store_roots_without_a_creator(instance: HostDashboardInstance, demands: List<OwnedDirectoryTarget>) -> List<FilePath> {
   filter([
     owned_directory_path(t: credential_acquisition_slots_directory(instance: instance)),
     owned_directory_path(t: worktree_claim_slots_directory(instance: instance)),
     owned_directory_path(t: session_attempt_slots_directory(instance: instance)),
+    owned_directory_path(t: session_reviewer_slots_directory(instance: instance)),
   ], root => !any(demands, t => owned_directory_path(t: t) == root))
 }
 
@@ -1280,6 +1282,16 @@ test fn a_demand_list_without_the_session_slots_creator_leaves_that_root_uncreat
   let sessions = owned_directory_path(t: session_attempt_slots_directory(instance: lab))
   let without = filter(dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab), t => owned_directory_path(t: t) != sessions)
   slot_store_roots_without_a_creator(instance: lab, demands: without) == [sessions]
+}
+
+// The same control for the REVIEWER slot store, whose root joins the list in the same change as the store
+// (the recognition rule in gunbc.recurring_failure_mode a_store_root_nothing_creates): a list that loses the
+// reviewer-attempts row goes red here, at the join, not at the reviewer lane's first CAS read.
+test fn a_demand_list_without_the_reviewer_slots_creator_leaves_that_root_uncreated() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let reviewer_slots = owned_directory_path(t: session_reviewer_slots_directory(instance: lab))
+  let without = filter(dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab), t => owned_directory_path(t: t) != reviewer_slots)
+  slot_store_roots_without_a_creator(instance: lab, demands: without) == [reviewer_slots]
 }
 
 // The lab NAMES its serve-binary source: it builds in place from the admitted revision, chosen on the instance and

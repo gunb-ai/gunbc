@@ -15,7 +15,7 @@ import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands 
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
 import gunbc.roadmap.roadmap_belt_receipt_store_root { belt_projects_directory }
 import gunbc.roadmap.roadmap_dogfood_start_store_root { dogfood_start_receipt_owned_directory }
-import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory, session_reviewer_slots_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory, cursor_attempt_runtime_directory }
 
 // THE ONLY LIST OF AN INSTANCE'S DIRECTORIES. Every row is the demand its consumer declares -- the
@@ -55,5 +55,6 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     belt_projects_directory(instance: instance),
     dogfood_start_receipt_owned_directory(instance: instance),
     session_attempt_slots_directory(instance: instance),
+    session_reviewer_slots_directory(instance: instance),
   ], concat(compute_capacity_directories(instance: instance), fabric_storage_directory_demands(realization: realization, instance: instance))))
 }
