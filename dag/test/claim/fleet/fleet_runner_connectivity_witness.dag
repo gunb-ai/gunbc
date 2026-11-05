@@ -1,7 +1,10 @@
 module test.claim.fleet.fleet_runner_connectivity_witness
 
-import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput, ReceiptAbsent, ReceiptUnreadable }
-import test.claim.runner.runner_user_session_label_witness { srv4_holding_input }
+import gunbc.runner.runner_user_session_receipt {
+  RunnerUserSessionReceiptInput, ReceiptAbsent, ReceiptUnreadable,
+  RunnerUserSessionConvergeReceipt, runner_user_session_converge_receipt_document_text, runner_user_session_receipt_input_of_text,
+  parse_user_session_linger_enable, parse_loginctl_linger_reading, parse_user_session_answer,
+}
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
@@ -534,4 +537,30 @@ test fn a_partial_or_unavailable_roster_never_observes_a_zero() -> Bool {
 test fn the_wet_entrys_lines_for_an_unavailable_roster_are_unobserved_per_slot() -> Bool {
   runner_connectivity_observation_lines(roster: RosterReadUnavailable { reason: "no token" })
     == map(local_runner_slot_incarnations(), inc => slot_registration_observation_wire(o: SlotRegistrationsUnobserved { slot: inc.slot, reason: "roster unavailable: no token" }))
+}
+
+// The srv4 holding receipt, built here from the receipt module's own document writer and parser rather than imported
+// from test.claim.runner.runner_user_session_label_witness: that witness imports fleet_converge_workflow (and through
+// it the CI spec emitters), which put 3,000+ files and a 90-minute timeout in this witness's closure (DESIGN section 3,
+// a witness discriminates at one interface). The label witness keeps the receipt-backed grant claims.
+fn srv4_holding_input() -> RunnerUserSessionReceiptInput {
+  runner_user_session_receipt_input_of_text(
+    text: join(
+      [
+        "context_receipt: agent accepted\n",
+        runner_user_session_converge_receipt_document_text(
+          receipt: RunnerUserSessionConvergeReceipt {
+            host: "srv4",
+            probed_at: "2026-10-28T00:00:00Z",
+            enable_linger: parse_user_session_linger_enable(rest: "ok"),
+            linger: parse_loginctl_linger_reading(rest: "yes"),
+            bus: parse_user_session_answer(rest: "answered"),
+          },
+          job_user: "ghrunner",
+        ),
+      ],
+      "",
+    ),
+    read_at: "2026-10-28T00:00:00Z",
+  )
 }
