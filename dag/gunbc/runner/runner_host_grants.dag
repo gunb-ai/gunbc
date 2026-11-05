@@ -398,13 +398,16 @@ fn runner_host_declared_directory_targets(spec: RunnerHostSpec) -> List<OwnedDir
   unit_hold_store_targets(spec: spec) + install_media_store_targets(spec: spec) + printer_state_store_targets(spec: spec)
 }
 
-// THE HOST-UNION PARENT RULING (quick-newt-573 review, msg_eb68902c). The per-plan fold refuses an install
-// under a caller-writable parent but sees only its OWN targets, while a host's sudoers is the UNION of
-// several plans' rows: a group-writable directory declared by one plan with a privileged install beneath it
-// declared by another is the same escalation and no single fold sees across plans. Running the ruling over
-// the whole declared set closes that. For the corrected model it adds NOTHING (every privileged-install
-// parent is root-owned, so the two per-plan terms are already empty) -- a safety net that makes the SHAPE
-// check host-scoped, not a change in what a real host emits.
+// THE PARENT RULING RUNS AT EXACTLY ONE SITE (quick-newt-573 review, msg_eb68902c + review 91167). The two
+// plan arms below carry ONLY their install decision's own refusals (an unresolvable mode); the fold does NOT
+// apply the parent ruling. The ruling is applied ONCE here, host-wide, over runner_host_declared_directory_targets
+// -- the union of every target the host renders. Running it in the fold too (its earlier shape) refused a
+// within-plan offender twice -- once from the fold arm, once from this union term -- which breaks the
+// countability DESIGN 5 demands. Host-wide is the natural single site because a host's sudoers is the UNION of
+// several plans' rows: a group-writable parent declared by one plan with a privileged install beneath it
+// declared by another is the same escalation, and only the union sees across plans. For the corrected model it
+// adds NOTHING (every privileged-install parent is root-owned) -- a shape check that makes the ruling host-
+// scoped, not a change in what a real host emits. One offender therefore yields exactly one refusal.
 fn runner_host_provisioning_plan_refusals(spec: RunnerHostSpec) -> List<OwnedDirectoryPlanRefusal> {
   runner_host_wide_plan(spec: spec).refusals
     + printer_state_store_plan(spec: spec).refusals
