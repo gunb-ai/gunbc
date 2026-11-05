@@ -2040,11 +2040,11 @@ fn eval_branch_node_eval(
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   match interpreter {
-    BranchRuntimeInterpreter { interpreter: branch } =>
+    BranchRuntimeInterpreter { interpreter: _ } =>
       bind_outcome(
         o: eval_branch_selection(
           node: node,
-          interpreter: branch,
+          interpreter: interpreter,
           tree: tree,
           interpretation: interpretation,
           environment: environment,
@@ -2261,22 +2261,15 @@ fn eval_statement_effect(
     ComputationNode { behavior: Branch } =>
       match branch_slot_target(n: node, slot: BranchElseSlot) {
         Absent =>
-          match interpretation_behavior_dispatch(interpretation: interpretation, behavior: Branch) {
-            BranchRuntimeInterpreter { interpreter: branch } =>
-              eval_branch_effect_eval(
-                node: node,
-                interpreter: branch,
-                tree: tree,
-                interpretation: interpretation,
-                environment: environment,
-                runtime: runtime,
-                effect_io: effect_io
-              )
-            _ =>
-              outcome_rejected(
-                d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
-              )
-          }
+          eval_branch_effect_eval(
+            node: node,
+            interpreter: interpretation_behavior_dispatch(interpretation: interpretation, behavior: Branch),
+            tree: tree,
+            interpretation: interpretation,
+            environment: environment,
+            runtime: runtime,
+            effect_io: effect_io
+          )
         Present { value: _ } =>
           match eval_runtime_node(
             node: node,
