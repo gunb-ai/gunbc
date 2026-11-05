@@ -20325,11 +20325,28 @@ fn native_ingress_site(modules: List<TypedModule>, r: NativeIngressRef, role: St
 // Whether a type position names exactly the declaration (module, name), by the declaration the
 // position resolves to -- never by its leaf spelling, so a homonymous type in another module does not
 // pass.
-fn native_ingress_type_names(n: Node, env: TypeEnv, module_path: String, decl_name: String) -> Bool {
+// An applied generic (NativeServeStartup<S>) resolves to a node carrying the reference's span, which the
+// span-keyed reading cannot identify, so the head is then read through the position's own module scope
+// (v1.compiler.infer_env type_reference_declaration_ref) -- still the declaration the position names in
+// that module, never a corpus-wide bare-name lookup.
+fn native_ingress_type_declaration(n: Node, env: TypeEnv) -> DeclarationRef? {
   match type_reference_declaration_reading(n: n, source_indices: env.source_indices, env: env) {
-    TypeReferenceNamesDeclaration { declaration: d } => declaration_ref_eq(a: d, b: decl_ref(module_path: module_path, decl_name: decl_name))
-    _ => false
+    TypeReferenceNamesDeclaration { declaration: d } => Present { value: d }
+    _ => type_reference_declaration_ref(n: n, source_indices: env.source_indices, env: env)
   }
+}
+
+fn native_ingress_type_names(n: Node, env: TypeEnv, module_path: String, decl_name: String) -> Bool {
+  match native_ingress_type_declaration(n: n, env: env) {
+    Present { value: d } => declaration_ref_eq(a: d, b: decl_ref(module_path: module_path, decl_name: decl_name))
+    Absent => false
+  }
+}
+
+// The executable's octets: a one-element collection whose element is Int.
+fn native_ingress_type_is_octets(n: Node, env: TypeEnv) -> Bool {
+  node_is_element_collection(n: n, source_indices: env.source_indices)
+    && native_ingress_type_is_kernel(n: for_each_element_type_node(n: n, source_indices: env.source_indices), env: env, name: "Int")
 }
 
 fn native_ingress_type_is_kernel(n: Node, env: TypeEnv, name: String) -> Bool {
@@ -20341,17 +20358,19 @@ fn native_ingress_type_is_kernel(n: Node, env: TypeEnv, name: String) -> Bool {
 
 fn native_ingress_same_type(a: Node, a_env: TypeEnv, b: Node, b_env: TypeEnv) -> Bool {
   match type_reference_declaration_reading(n: a, source_indices: a_env.source_indices, env: a_env) {
-    TypeReferenceNamesDeclaration { declaration: da } =>
-      match type_reference_declaration_reading(n: b, source_indices: b_env.source_indices, env: b_env) {
-        TypeReferenceNamesDeclaration { declaration: db } => declaration_ref_eq(a: da, b: db)
-        _ => false
-      }
     TypeReferenceIsKernelType { name: ka } =>
       match type_reference_declaration_reading(n: b, source_indices: b_env.source_indices, env: b_env) {
         TypeReferenceIsKernelType { name: kb } => ka == kb
         _ => false
       }
-    _ => false
+    _ =>
+      match native_ingress_type_declaration(n: a, env: a_env) {
+        Present { value: da } => match native_ingress_type_declaration(n: b, env: b_env) {
+          Present { value: db } => declaration_ref_eq(a: da, b: db)
+          Absent => false
+        }
+        Absent => false
+      }
   }
 }
 
@@ -20450,7 +20469,7 @@ fn native_ingress_startup_refusals(startup: NativeIngressSite) -> List<String> {
   let params = startup.item.params
   let arity = match params |> first {
     Present { value: p } =>
-      if (params |> count) == 1 && native_ingress_type_is_kernel(n: param_node_type_expr(n: p), env: env, name: "List") { [] }
+      if (params |> count) == 1 && native_ingress_type_is_octets(n: param_node_type_expr(n: p), env: env) { [] }
       else { ["the startup must take exactly one parameter, the running executable's octets (List<Int>)"] }
     Absent => ["the startup must take exactly one parameter, the running executable's octets (List<Int>)"]
   }

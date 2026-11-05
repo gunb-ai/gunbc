@@ -45804,14 +45804,12 @@ pub fn native_ingress_site(
     }
 }
 
-pub fn native_ingress_type_names(
+pub fn native_ingress_type_declaration(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_path: String,
-    decl_name: String,
-) -> bool {
+) -> Option<Rc<DeclarationRef>> {
     match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
-        n,
+        n.clone(),
         env.source_indices.clone(),
         env.clone(),
     ))
@@ -45819,12 +45817,42 @@ pub fn native_ingress_type_names(
     {
         TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
             declaration: d, ..
-        } => crate::std_decl_ref::declaration_ref_eq(
+        } => Some(d.clone()),
+        _ => crate::v1_compiler_infer_env::type_reference_declaration_ref(
+            n.clone(),
+            env.source_indices.clone(),
+            env.clone(),
+        ),
+    }
+}
+
+pub fn native_ingress_type_names(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_path: String,
+    decl_name: String,
+) -> bool {
+    match native_ingress_type_declaration(n, env) {
+        Some(d) => crate::std_decl_ref::declaration_ref_eq(
             d.clone(),
             crate::std_decl_ref::decl_ref(module_path, decl_name),
         ),
-        _ => false,
+        std::option::Option::None => false,
     }
+}
+
+pub fn native_ingress_type_is_octets(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    (crate::v1_compiler_infer_types::node_is_element_collection(
+        n.clone(),
+        env.source_indices.clone(),
+    ) && native_ingress_type_is_kernel(
+        crate::v1_compiler_infer_types::for_each_element_type_node(
+            n.clone(),
+            env.source_indices.clone(),
+        ),
+        env.clone(),
+        "Int".to_string(),
+    ))
 }
 
 pub fn native_ingress_type_is_kernel(n: Rc<Node>, env: Rc<TypeEnv>, name: String) -> bool {
@@ -45849,27 +45877,12 @@ pub fn native_ingress_same_type(
     b_env: Rc<TypeEnv>,
 ) -> bool {
     match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
-        a,
+        a.clone(),
         a_env.source_indices.clone(),
         a_env.clone(),
     ))
     .clone()
     {
-        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-            declaration: da, ..
-        } => match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
-            b.clone(),
-            b_env.source_indices.clone(),
-            b_env.clone(),
-        ))
-        .clone()
-        {
-            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                declaration: db,
-                ..
-            } => crate::std_decl_ref::declaration_ref_eq(da.clone(), db.clone()),
-            _ => false,
-        },
         TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: ka, .. } => {
             match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
                 b.clone(),
@@ -45884,7 +45897,13 @@ pub fn native_ingress_same_type(
                 _ => false,
             }
         }
-        _ => false,
+        _ => match native_ingress_type_declaration(a.clone(), a_env.clone()) {
+            Some(da) => match native_ingress_type_declaration(b.clone(), b_env.clone()) {
+                Some(db) => crate::std_decl_ref::declaration_ref_eq(da.clone(), db.clone()),
+                std::option::Option::None => false,
+            },
+            std::option::Option::None => false,
+        },
     }
 }
 
@@ -46160,7 +46179,7 @@ pub fn native_ingress_startup_refusals(startup: Rc<NativeIngressSite>) -> Rc<Vec
         let env = startup.tm.type_env.clone();
         let params = startup.item.params.clone();
         let arity = match params.clone().first().cloned() {
-    Some(p) => if (((params.clone().len() as i64) == 1) && native_ingress_type_is_kernel(crate::v1_std_core::param_node_type_expr(p.clone()), env.clone(), "List".to_string())) {
+    Some(p) => if (((params.clone().len() as i64) == 1) && native_ingress_type_is_octets(crate::v1_std_core::param_node_type_expr(p.clone()), env.clone())) {
             Rc::new(vec![])
         } else {
             Rc::new(vec!["the startup must take exactly one parameter, the running executable's octets (List<Int>)".to_string()])
