@@ -9,7 +9,7 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_dashboard_lab_id,
-  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating,
   srv1_dashboard_lab_id, srv2_dashboard_lab_id, srv1_lab_dashboard_instance, srv2_lab_dashboard_instance,
   macbook_local_dashboard_instance, dashboard_instance_dispatch_attempt_state_root,
   dashboard_instance_metering_closing_writer_fence, dashboard_instance_provision_plan_rows,
@@ -84,7 +84,6 @@ fn fx_lab_instance(tag: String) -> HostDashboardInstance {
     listen_port: 18121,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
   )
 }
 

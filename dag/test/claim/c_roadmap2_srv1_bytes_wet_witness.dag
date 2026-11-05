@@ -12,7 +12,7 @@ import extdeps.crypto.sha2 { sha256_hex }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.host.host_layout { srv1_host_layout, instance_receipts_dir }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_snapshot_census { SnapshotCensusReceiptStore, SnapshotCensusReceiptStoreReading, SnapshotCensusReceiptStoreReady, SnapshotCensusReceiptStoreUnready, SnapshotCensusReceiptContent, SnapshotCensusReceiptContentRead, SnapshotCensusReceiptContentAbsent, SnapshotCensusReceiptContentUnreadable, SnapshotCensusReceiptRead, SnapshotCensusReceiptDecoded, SnapshotCensusReceiptUndecodable, RoadmapSnapshotCensusReceipt, snapshot_census_receipt_slots, snapshot_census_receipt_store, snapshot_census_receipt_content, snapshot_census_receipt_decode }
 import gunbc.roadmap.roadmap_served_observation { ServedObservationStore, ServedObservationStoreReading, ServedObservationStoreReady, ServedObservationStoreUnready, ServedObservationRead, ServedObservationPresent, ServedObservationKind, AttemptsJson, served_observation_slots, served_observation_store, served_observation_read_for_instance, served_observation_body_observe }
@@ -72,7 +72,6 @@ fn wet_instance(tag: String, dir: String) -> HostDashboardInstance {
     listen_port: 18108,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
   )
 }
 

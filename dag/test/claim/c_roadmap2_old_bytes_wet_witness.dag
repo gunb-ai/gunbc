@@ -9,7 +9,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.host.host_layout { srv1_host_layout, instance_receipts_dir }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_view_preferences { IssueViewPreferences, default_issue_view_preferences }
 import gunbc.roadmap.roadmap_view_preference_store { IssueViewPreferenceStore, IssueViewPreferenceStoreReading, IssueViewPreferenceStoreReady, IssueViewPreferenceStoreUnready, IssueViewStored, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaved, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused, issue_view_preference_store, issue_view_preference_read, issue_view_preference_save }
@@ -43,7 +43,6 @@ fn wet_instance(tag: String, dir: String) -> HostDashboardInstance {
     listen_port: 18107,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
   )
 }
 

@@ -5,7 +5,7 @@ import std.algebra { string_contains }
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringClosingAcquisition, AttemptMeteringListing, AttemptMeteringListingRead, AttemptMeteringListingUnreadable,
@@ -44,7 +44,6 @@ fn fx_instance(tag: String, dir: String) -> HostDashboardInstance {
     listen_port: 18109,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
   )
 }
 
