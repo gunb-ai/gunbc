@@ -22,6 +22,7 @@ import extdeps.git {
   git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
   git_maintenance_auto_disabled_config_command,
 }
+import std.optional { Optional, Present, Absent }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
@@ -129,8 +130,23 @@ type DashboardProvisionTransport
   = DashboardLocalProvision
   | DashboardSshProvision { host: NonEmptyStr }
 
+// DashboardSeededByConvergence: the instance repository's objects AND its admitted ref both arrive
+// through repository convergence (admitted_revision.remote == '.'), so the plan carries NO controller
+// repository: no hydrate, no bundle, no local origin, and no read of any ref outside the instance's
+// own repo_root. The ref named here is the instance's admitted_revision.ref_name, read where
+// convergence wrote it (one name, one repository, section 3). The repository must already exist; an
+// absent one is a typed, located refusal and never a clone (convergence owns its creation).
+// built_binary is the serve binary as its OWN declared input (an artifact built on the apply host); Absent
+// means no build is declared and the ensure-serve-binary step refuses by name (never a guessed path),
+// and apply_workdir is the directory the apply host runs its local steps in -- both were implied by
+// "the controller worktree" before; neither is a repository.
 type DashboardSourceSeed
   = DashboardExistingRepo { anchor_ref: NonEmptyStr }
+  | DashboardSeededByConvergence {
+      anchor_ref: NonEmptyStr,
+      built_binary: Optional<FilePath>,
+      apply_workdir: FilePath,
+    }
   | DashboardGitBundle {
       controller_repo: FilePath,
       staged_bundle: FilePath,
@@ -566,9 +582,10 @@ fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> NonEmp
   ) as NonEmptyStr
 }
 
-fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> FilePath {
+fn dashboard_instance_apply_workdir(instance: HostDashboardInstance) -> FilePath {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => instance.repo_root
+    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir } => apply_workdir
     DashboardGitBundle {
       controller_repo,
       staged_bundle: _,
@@ -576,6 +593,28 @@ fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> Fil
       history_remote: _,
     } =>
       controller_repo
+  }
+}
+
+// THE SERVE BINARY IS A BUILT ARTIFACT WITH A DECLARED SOURCE: the convergence arm names it; the
+// bundle and existing-repo arms keep their built seed under the workdir they already named.
+fn dashboard_instance_serve_binary_source(instance: HostDashboardInstance) -> Optional<FilePath> {
+  match instance.source_seed {
+    DashboardSeededByConvergence { anchor_ref: _, built_binary, apply_workdir: _ } => built_binary
+    DashboardExistingRepo { anchor_ref: _ } =>
+      Present {
+        value: dashboard_instance_child(
+          root: dashboard_instance_apply_workdir(instance: instance),
+          child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
+        ),
+      }
+    DashboardGitBundle { controller_repo, staged_bundle: _, anchor_ref: _, history_remote: _ } =>
+      Present {
+        value: dashboard_instance_child(
+          root: controller_repo,
+          child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
+        ),
+      }
   }
 }
 
@@ -914,6 +953,7 @@ type DashboardInstanceByInstanceRoot
 fn dashboard_instance_answers_host_lookup(instance: HostDashboardInstance) -> Bool {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => false
     DashboardGitBundle {
       controller_repo: _,
       staged_bundle: _,
@@ -1286,7 +1326,13 @@ fn isolated_dashboard_instance(
 ) -> HostDashboardInstance {
   isolated_dashboard_instance_admitting(
     deployment: deployment, instance_id: instance_id, layout: layout, root: root,
-    serve_function: serve_function, listen_port: listen_port, source_anchor_ref: source_anchor_ref,
+    serve_function: serve_function, listen_port: listen_port,
+    source_seed: DashboardGitBundle {
+      controller_repo: layout.controller_repo,
+      staged_bundle: dashboard_instance_child(root: dashboard_inbox_under(root: root), child: "source.bundle"),
+      anchor_ref: source_anchor_ref,
+      history_remote: "origin" as NonEmptyStr,
+    },
     actuation: actuation, provision_transport: provision_transport,
     admitted_revision: fleet_admitted_revision_source,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
@@ -1307,7 +1353,7 @@ fn isolated_dashboard_instance_admitting(
   root: FilePath,
   serve_function: NonEmptyStr,
   listen_port: Port,
-  source_anchor_ref: NonEmptyStr,
+  source_seed: DashboardSourceSeed,
   actuation: DashboardActuationPosture,
   provision_transport: DashboardProvisionTransport,
   admitted_revision: DashboardAdmittedRevisionSource,
@@ -1355,12 +1401,7 @@ fn isolated_dashboard_instance_admitting(
     tmux_server: dashboard_named_tmux_server(instance_id: instance_id),
     actuation: actuation,
     provision_transport: provision_transport,
-    source_seed: DashboardGitBundle {
-      controller_repo: layout.controller_repo,
-      staged_bundle: dashboard_instance_child(root: dashboard_inbox_under(root: root), child: "source.bundle"),
-      anchor_ref: source_anchor_ref,
-      history_remote: "origin" as NonEmptyStr,
-    },
+    source_seed: source_seed,
     admitted_revision: admitted_revision,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
@@ -1381,6 +1422,14 @@ data srv1_lab_admitted_revision_source: DashboardAdmittedRevisionSource = Dashbo
   ref_name: "refs/gunbc/srv1-lab-admitted" as GitRef,
 }
 
+// THE LAB'S SERVE BINARY IS A DECLARED INPUT WITH NO DECLARED SOURCE YET: srv1 holds no declared build
+// the apply could copy (the instance's bin/gunbc is the DESTINATION). Absent makes ensure-serve-binary
+// refuse by name rather than bind a guessed path (section 5); the operator's trigger is a modeled
+// build (e.g. the compute pool's gunbc-binary materialization keyed by the admitted revision).
+
+// Local apply steps use absolute paths only, so their working directory carries no repository.
+data dashboard_apply_neutral_workdir: FilePath = "/" as FilePath
+
 fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance_admitting(
     deployment: srv1_lab_codex_feedback_deployment,
@@ -1395,7 +1444,11 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     // shared remote-tracking ref held two meanings across two checkouts (§3). The serve anchor, the
     // dispatch fork base, and the convergence writer's target are now THE SAME ref the operator
     // advances: refs/gunbc/srv1-lab-admitted.
-    source_anchor_ref: srv1_lab_admitted_revision_source.ref_name as NonEmptyStr,
+    source_seed: DashboardSeededByConvergence {
+      anchor_ref: srv1_lab_admitted_revision_source.ref_name as NonEmptyStr,
+      built_binary: Absent,
+      apply_workdir: dashboard_apply_neutral_workdir,
+    },
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     admitted_revision: srv1_lab_admitted_revision_source,
@@ -3063,6 +3116,7 @@ fn dashboard_inbox_under(root: FilePath) -> FilePath {
 fn dashboard_instance_inbox_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
+    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => []
     DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _, history_remote: _ } => [
       OwnedDirectoryDeclared {
         member: "bundle-inbox" as NonEmptyStr,
@@ -3255,8 +3309,8 @@ type DashboardInstanceProvisionOp
       staged_bundle: FilePath,
     }
   | DashboardEnsureServeBinary {
-      controller_repo: FilePath,
-      built_binary: FilePath,
+      apply_workdir: FilePath,
+      built_binary: Optional<FilePath>,
       path: FilePath,
     }
   | DashboardEnsureOwnershipMarker {
@@ -3343,6 +3397,7 @@ type DashboardInstanceProvisionOp
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
+    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => []
     DashboardGitBundle {
       controller_repo,
       staged_bundle: _,
@@ -3373,11 +3428,8 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   }
   let common = [
     DashboardEnsureServeBinary {
-      controller_repo: dashboard_instance_controller_workdir(instance: instance),
-      built_binary: dashboard_instance_child(
-        root: dashboard_instance_controller_workdir(instance: instance),
-        child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
-      ),
+      apply_workdir: dashboard_instance_apply_workdir(instance: instance),
+      built_binary: dashboard_instance_serve_binary_source(instance: instance),
       path: instance.serve_binary,
     },
     DashboardEnsureOwnershipMarker {
@@ -3387,6 +3439,13 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   ]
   let source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
+    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => [
+      DashboardEnsureSourceRepo {
+        origin: instance.local_origin_root,
+        repo: instance.repo_root,
+        anchor_ref: instance.dispatch_base_ref,
+      },
+    ]
     DashboardGitBundle {
       controller_repo,
       staged_bundle,
@@ -3473,13 +3532,13 @@ fn dashboard_instance_provision_op_row(
         target: staged_bundle as String,
         detail: "copy proven temporary bundle to .next, then atomically rename",
       }
-    DashboardEnsureServeBinary { controller_repo: _, built_binary, path } =>
+    DashboardEnsureServeBinary { apply_workdir: _, built_binary, path } =>
       DashboardInstanceProvisionPlanRow {
         kind: "ensure-serve-binary" as NonEmptyStr,
         target: path as String,
         detail: join([
-          "copy the controller's built seed from ",
-          built_binary as String,
+          "copy the declared built seed from ",
+          match built_binary { Present { value: v } => v as String, Absent => "(no declared build: refuses)" },
           "; atomic move, never a build",
         ], ""),
       }
@@ -3639,6 +3698,7 @@ fn dashboard_source_seed_ready(
 ) -> Bool {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => true
     DashboardGitBundle {
       controller_repo: _,
       staged_bundle: _,
@@ -3743,6 +3803,10 @@ fn dashboard_instance_retract_plan(
       DashboardExistingRepo { anchor_ref: _ } =>
         DashboardInstanceRetractRefused {
           reason: "existing-repo dashboard instances are not owned by the isolated-instance retractor" as NonEmptyStr,
+        }
+      DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } =>
+        DashboardInstanceRetractRefused {
+          reason: "convergence-seeded dashboard instances own no bundle or local origin; their repository belongs to convergence, not the isolated-instance retractor" as NonEmptyStr,
         }
       DashboardGitBundle {
         controller_repo: _,

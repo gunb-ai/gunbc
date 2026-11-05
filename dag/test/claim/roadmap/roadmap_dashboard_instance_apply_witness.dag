@@ -2,8 +2,12 @@ module test.claim.roadmap.roadmap_dashboard_instance_apply_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, GitRef, Int }
 import std.optional { Present, Absent }
+import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_dashboard_instance_apply {
   dashboard_source_repo_reset_admission,
+  dashboard_convergence_source_preflight_decision,
+  DashboardApplyPreflightRefused,
+  DashboardApplyPreflightReady,
   dashboard_anchor_verify_of_ran,
   DashboardAnchorVerification,
   AnchorPresent,
@@ -727,4 +731,27 @@ test fn the_verify_exit_code_discriminates_absence_from_unverifiable() -> Bool {
     _ => false
   }
   present && absent && broken && not_run
+}
+
+// THE RED FOR AN ABSENT ADMITTED REF: the convergence arm's preflight reads the ref in the instance repo,
+// and a failed read refuses by name at step admitted-source-ref.
+test fn an_absent_admitted_ref_in_the_instance_repo_refuses_the_convergence_preflight() -> Bool {
+  match dashboard_convergence_source_preflight_decision(
+    instance: srv1_lab_dashboard_instance(),
+    ref_read: DashboardExecResult { success: false, stdout: "", stderr: "fatal: Needed a single revision" },
+  ) {
+    DashboardApplyPreflightRefused { instance_id: _, step, detail: _ } => step == "admitted-source-ref"
+    _ => false
+  }
+}
+
+test fn a_present_admitted_ref_in_the_instance_repo_is_the_convergence_preflight_revision() -> Bool {
+  match dashboard_convergence_source_preflight_decision(
+    instance: srv1_lab_dashboard_instance(),
+    ref_read: DashboardExecResult { success: true, stdout: "0123456789abcdef0123456789abcdef01234567\n", stderr: "" },
+  ) {
+    DashboardApplyPreflightReady { instance_id: _, source_revision } =>
+      (source_revision as String) == "0123456789abcdef0123456789abcdef01234567"
+    _ => false
+  }
 }

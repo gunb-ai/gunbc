@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_dashboard_instance_witness
 
+import std.optional { Present, Absent }
 import std.types { Bool, String, NonEmptyStr, FilePath, Port }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.owned_directory { owned_directory_path }
@@ -106,6 +107,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instances_dispatch_state_is_consistent,
   DashboardGitBundle,
   DashboardExistingRepo,
+  DashboardSeededByConvergence,
+  srv1_lab_admitted_revision_source,
   DashboardLocalProvision,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
@@ -189,6 +192,7 @@ fn instance_anchor_ref(i: HostDashboardInstance) -> String {
       history_remote: _,
     } => anchor_ref as String
     DashboardExistingRepo { anchor_ref } => anchor_ref as String
+    DashboardSeededByConvergence { anchor_ref, built_binary: _, apply_workdir: _ } => anchor_ref as String
   }
 }
 
@@ -267,12 +271,17 @@ test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   // them -- the first worker commit dies inside objects/f9. Both are named by the ops below rather than
   // only counted, and their ORDER is pinned by name in the other witness. Asserted by count as well as
   // by name, so a rename or a silently dropped op cannot hide behind either.
-  count(plan) == 11
+  // SEVEN since the lab is seeded by convergence: the four controller-side ops (hydrate, prepare,
+  // stage, local origin) are gone, and the one source op resets to the dispatch base ref.
+  count(plan) == 7
     && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
     && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
-    && plan_binds_source_ref_translation(plan: plan, instance: lab)
+    && any(plan, op => match op {
+      DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref } => anchor_ref == lab.dispatch_base_ref
+      _ => false
+    })
 }
 
 // THE POSTURE OP, exactly once, bound to THIS instance's repository. Exactly once matters: two of them
@@ -459,34 +468,28 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
   }
 }
 
-test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  let plan = dashboard_instance_provision_plan(instance: lab)
-  any(plan, op => match op {
-    DashboardHydrateControllerHistory {
-      controller_repo,
-      history_remote,
-    } =>
-      controller_repo == srv1_dashboard_controller_repo
-        && history_remote == "origin"
+// THE LAB PLAN CARRIES NO CONTROLLER-ANCHOR READ. The srv1 lab is seeded by convergence (its admitted
+// revision has remote '.'), so no hydrate / prepare / stage / local-origin op exists in its plan, and its
+// only source op is the ensure-source-repo reset to the admitted ref in its OWN repository. The srv2 lab
+// still bundles from a controller and keeps the full chain (the follow-up that moves it).
+test fn the_lab_plan_has_no_controller_anchor_read_and_the_bundling_lab_keeps_its_chain() -> Bool {
+  let lab = dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance())
+  let bundling = dashboard_instance_provision_plan(instance: srv2_lab_dashboard_instance())
+  !any(lab, op => match op {
+    DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => true
+    DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => true
+    DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => true
+    DashboardEnsureLocalOrigin { bundle: _, origin: _, source_ref: _, publish_ref: _ } => true
     _ => false
   })
-    && any(plan, op => match op {
-    DashboardPrepareGitBundle {
-      controller_repo,
-      anchor_ref,
-    } =>
-      controller_repo == srv1_dashboard_controller_repo
-        && anchor_ref == "refs/remotes/origin/main"
-    _ => false
-  })
-    && any(plan, op => match op {
-      DashboardStageGitBundle {
-        controller_repo,
-        staged_bundle,
-      } =>
-        controller_repo == srv1_dashboard_controller_repo
-          && staged_bundle == "/opt/gunbc-lab/codex-provider-feedback-v0/inbox/source.bundle"
+    && any(lab, op => match op {
+      DashboardEnsureSourceRepo { origin: _, repo, anchor_ref } =>
+        repo == srv1_lab_dashboard_instance().repo_root
+          && (anchor_ref as String) == (srv1_lab_admitted_revision_source.ref_name as String)
+      _ => false
+    })
+    && any(bundling, op => match op {
+      DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => true
       _ => false
     })
 }
@@ -643,6 +646,7 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
         history_remote: _,
       } => controller_repo == "/witness/controller-repo"
       DashboardExistingRepo { anchor_ref: _ } => false
+      DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => false
     }
     && !(i.serve_binary == srv1_gunbc_serve_binary)
     && !(dashboard_instance_provider_state_root(instance: i) == srv1_roadmap_codex_home)
@@ -654,6 +658,7 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
         history_remote: _,
       } => controller_repo == srv1_dashboard_controller_repo
       DashboardExistingRepo { anchor_ref: _ } => false
+      DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => false
     })
 }
 
@@ -717,7 +722,7 @@ fn plan_ensures_serve_binary(
   instance: HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
-    DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path } =>
+    DashboardEnsureServeBinary { apply_workdir: _, built_binary: _, path } =>
       path == instance.serve_binary
     _ => false
   })
@@ -1265,4 +1270,17 @@ test fn a_demand_list_without_the_session_slots_creator_leaves_that_root_uncreat
   let sessions = owned_directory_path(t: session_attempt_slots_directory(instance: lab))
   let without = filter(dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab), t => owned_directory_path(t: t) != sessions)
   slot_store_roots_without_a_creator(instance: lab, demands: without) == [sessions]
+}
+
+// The lab declares NO serve-binary source (srv1 holds no declared build): the plan carries the step with an
+// Absent input, so the apply refuses by name rather than copying a guessed path.
+test fn the_lab_serve_binary_input_is_absent_not_guessed() -> Bool {
+  any(dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance()), op => match op {
+    DashboardEnsureServeBinary { apply_workdir: _, built_binary, path: _ } =>
+      match built_binary {
+        Absent => true
+        Present { value: _ } => false
+      }
+    _ => false
+  })
 }
