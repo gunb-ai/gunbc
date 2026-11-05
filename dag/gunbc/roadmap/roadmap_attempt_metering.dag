@@ -13,7 +13,18 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
   FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
 }
-import std.durable_compare_and_set { CasGeneration, CasUnreadableSlot, CasUnreadableReadRefused }
+import std.durable_compare_and_set { CasGeneration, CasUnreadableSlot, CasUnreadableReadRefused, cas_generation_count, cas_unreadable_slot_detail }
+import std.integer { int_to_decimal_string }
+// THE RECORD COMMIT IS THE LIBRARY'S COMPARE-AND-SET, not a local re-implementation of one (§6b: the
+// exclusion lives in the library that declares the slot layout, and the landed pattern is the same route
+// gunbc.fabric.fabric_storage_file_store takes for a head).
+import gunbc.durable_cas_file_store {
+  observe_cas_slot_state, admit_cas_attempt_for_derived_payload, file_compare_and_set,
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasCommitted, CasPreconditionFailed, CasStoreRefused, CasStoreFailure,
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
+  DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, DefaultAccessCreateOnly,
+}
 import std.durable_exclusive_hold {
   DurableHoldObservation, DurableHoldOwnerRef, durable_hold_owner_equal,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
@@ -40,7 +51,17 @@ import extdeps.filesystem.filesystem_io {
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized, filesystem_create_new,
 }
-import gunbc.harness.harness_wire { IntRead, IntAbsent, IntDuplicated, IntNotAnObject, IntNotANumber, IntNotAnInteger, harness_member_int, harness_int_read_gap }
+// THE RECORD COMMIT IS THE LIBRARY'S COMPARE-AND-SET, not a local re-implementation of one (§6b: the
+// exclusion lives in the library that declares the slot layout, and #14944's landed pattern is the same
+// route fabric_storage_file_store takes for a head).
+import gunbc.durable_cas_file_store {
+  observe_cas_slot_state, admit_cas_attempt_for_derived_payload, file_compare_and_set,
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasCommitted, CasPreconditionFailed, CasStoreRefused, CasStoreFailure,
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
+  DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, DefaultAccessCreateOnly,
+}
+ IntAbsent, IntDuplicated, IntNotAnObject, IntNotANumber, IntNotAnInteger, harness_member_int, harness_int_read_gap }
 import gunbc.harness.harness_throughput {
   RoundObservation, UsageRowIsOurs, UsageRowIsAnotherEvent, UsageRowUnreadable, RoundReadOk, RoundReadUnclocked, RoundReadGap,
   throughput_is_usage_row, round_observation_of,
@@ -1160,10 +1181,6 @@ type AttemptMeteringListing
   = AttemptMeteringListingRead { names: List<String> }
   | AttemptMeteringListingUnreadable { detail: String }
 
-type AttemptMeteringWrite
-  = AttemptMeteringWritten
-  | AttemptMeteringWriteRefused { error: String }
-
 type AttemptMeteringCreateOnce
   = AttemptMeteringCreated
   | AttemptMeteringAlreadyPresent
@@ -1222,6 +1239,118 @@ fn attempt_metering_read(store: AttemptMeteringStore, entry: NonEmptyStr) -> Opt
   attempt_metering_read_at(path: join([store.directory as String, "/", entry as String], ""), dir: store.directory as String, name: entry as String)
 }
 
+// THE METERING RECORD IS COMPARE-AND-SET, NEVER A BLIND OVERWRITE (review 90868).
+//
+// main's writer was a raw `Filesystem.Write` at one plain name, and its only caller is read-then-write:
+// `metering_persist_for_attempt` observes the standing and then calls `metering_persist_record`, which
+// wrote with NO expectation taken from that observation. Two ticks -- the belt's and a hand run's, or two
+// belts after a host moves -- could both observe `NotYetWritten`/`Provisional` and both write, so the
+// slower one clobbered a record the faster one had already made Final. That broke the module's own
+// invariant, which the comment above that write asserted: A FINAL RECORD IS NEVER REWRITTEN.
+//
+// It is fixed by construction rather than by instruction:
+// - the commit goes through `gunbc.durable_cas_file_store` `file_compare_and_set` with an ADMITTED attempt
+//   (`admit_cas_attempt_for_derived_payload`), so the generation is a NEW create-only file per commit and
+//   the OS decides the race -- there is no in-place write left in this module to race;
+// - the expectation comes from the head the commit is admitted against: absent when nothing has been
+//   committed (`ExpectSlotAbsent`), the observed generation for a provisional head
+//   (`ExpectSlotGeneration`), and NOTHING is invented for a head that could not be read -- an unreadable
+//   head refuses (`metering_record_head`'s refused arm), because inventing a generation is how a store
+//   conflates absent with generation zero;
+// - a lost race is a typed refusal (`AttemptMeteringCommitLostRace`), and the persist route re-observes
+//   and answers `MeteringAlreadyFinal` when the head that beat it is Final, so the winner's bytes stand;
+// - the Final gate lives HERE, next to the commit, not only in the caller's pre-read: the head is judged
+//   by this module's own reading route (`metering_observe_against`, the same decoder and admissibility the
+//   reader uses), so a caller that believed the record was provisional still cannot overwrite a Final one.
+//
+// THE CUTOVER IS A REPLACEMENT, NOT A SECOND PATH (DESIGN 3: a store does not resolve through the thing it
+// replaces). main wrote this record at one plain name, so pre-seal bytes can stand there; this module reads
+// and writes ONLY committed generations, and a plain entry with no generation answers a typed refusal
+// (`metering_record_head`) -- never `absent` (that would have the belt meter an already-metered attempt
+// again, double-counting bytes that are sitting right there) and never `the head` (that would be the old
+// layout resolving through the new store). Adoption of live pre-seal bytes into generation one is a separate
+// cutover act, not a read path: `attempt_metering_adopt_pre_seal_record` below, gated by the adoption
+// claims of test/claim/c_roadmap2_metering_record_cas_wet_witness.
+// The roster's listing filter takes only the launch prefix (`metering_open_roster_for_attempt`), so
+// generation files cannot be read as roster entries; the attempt directory already carries generation-
+// suffixed entries from the closing hold (`metering_closing_hold_key`).
+type AttemptMeteringCommit
+  = AttemptMeteringCommitted { generation: CasGeneration }
+  | AttemptMeteringCommitLostRace { detail: String }
+  | AttemptMeteringCommitRefused { error: String }
+  | AttemptMeteringCommitNameRefused { key: String }
+
+// Why a commit was refused by the store, in the caller's reporting type. Each arm of the library's
+// CasStoreFailure is named, so a root-cause never has to re-derive which failure it was.
+fn metering_cas_failure_detail(cause: CasStoreFailure) -> String {
+  match cause {
+    CasSlotObservationRefused { cause: c } => cas_unreadable_slot_detail(cause: c)
+    CasGenerationPublicationRefused { detail: d } => join(["the generation publication was refused: ", d as String], "")
+    CasGenerationSpaceExhausted { head: g } => join(["the record slot exhausted its generation space at ", int_to_decimal_string(value: cas_generation_count(g: g))], "")
+  }
+}
+
+fn metering_cas_expectation_text(expected: CasExpectation) -> String {
+  match expected {
+    ExpectSlotAbsent => "the record was absent"
+    ExpectSlotGeneration { generation: g } => join(["the record stood at generation ", int_to_decimal_string(value: cas_generation_count(g: g))], "")
+  }
+}
+
+// The record's slot key IS the declared member name, so the generation files sit beside the pre-seal plain
+// entry under the same declared name -- no second spelling of the record's path.
+fn metering_record_slot_key() -> NonEmptyStr {
+  metering_attempt_record_name()
+}
+
+// THE HEAD A COMMIT IS ADMITTED AGAINST, and the reader's own view: the newest committed generation, or
+// nothing at all when no generation has been committed. An unreadable slot refuses rather than reading as
+// absent -- that is the #15247 lesson about answering absence for a failed read -- and so does a pre-seal
+// plain entry, which is neither (see the cutover note above `AttemptMeteringCommit`).
+type MeteringRecordHead
+  = MeteringRecordHeadAbsent
+  | MeteringRecordHeadCommitted { generation: CasGeneration, content: String }
+  | MeteringRecordHeadRefused { cause: String }
+
+fn metering_record_head(store: AttemptMeteringStore) -> MeteringRecordHead {
+  let key = metering_record_slot_key()
+  match observe_cas_slot_state(root: store.directory, key: key) {
+    CasObservedReadable { readable: CasReadablePresent { version: v } } =>
+      MeteringRecordHeadCommitted { generation: v.generation, content: v.value as String }
+    CasObservedReadable { readable: CasReadableAbsent } =>
+      match attempt_metering_read(store: store, entry: key) {
+        // A PRE-SEAL PLAIN ENTRY IS NEITHER ABSENT NOR A HEAD. main wrote the record at this plain name, so
+        // one can stand here with no committed generation. Reading through it would be a second path beside
+        // the store -- Y resolving through X, which DESIGN 3's replacement doctrine forbids -- and answering
+        // `absent` would be worse: the belt would believe the attempt had never been metered and meter it
+        // again, double-counting a record whose bytes are sitting there. So it answers a typed refusal that
+        // names what has to happen (migrate it into a generation), and NOTHING in this module reads or
+        // overwrites those bytes.
+        OptionalFileContent { content: _ } => MeteringRecordHeadRefused { cause: join(["a pre-seal metering record stands at ", key as String, " with no committed generation; it is neither absent nor readable as the head, and must be adopted into a generation before this attempt can be metered or its record read"], "") }
+        OptionalFileAbsent => MeteringRecordHeadAbsent
+        OptionalFileRefused { cause: c } => MeteringRecordHeadRefused { cause: c }
+      }
+    CasObservedUnreadable { cause: c } =>
+      MeteringRecordHeadRefused { cause: join(["the metering record slot is not readable: ", cas_unreadable_slot_detail(cause: c)], "") }
+  }
+}
+
+// THE COMMIT ITSELF: an admitted attempt, then the library's create-only publication. No path, no bytes
+// handed to an actuator directly -- the attempt has to be admitted first, and the publication is create-only
+// so a racing commit cannot overwrite the winner's generation.
+fn attempt_metering_commit(store: AttemptMeteringStore, expected: CasExpectation, content: String) -> AttemptMeteringCommit {
+  match admit_cas_attempt_for_derived_payload(key: metering_record_slot_key(), expected: expected, proposed: content as NonEmptyStr) {
+    DerivedPayloadKeyNotSlotAddressable { key: k } => AttemptMeteringCommitNameRefused { key: k as String }
+    DerivedPayloadAdmitted { verified: v } =>
+      match file_compare_and_set(root: store.directory, publication: DefaultAccessCreateOnly, verified: v) {
+        CasCommitted { committed: c } => AttemptMeteringCommitted { generation: c.generation }
+        CasPreconditionFailed { expected: e, observed: _ } =>
+          AttemptMeteringCommitLostRace { detail: join(["the metering record no longer stands where this commit expected (", metering_cas_expectation_text(expected: e), ")"], "") }
+        CasStoreRefused { cause: c } => AttemptMeteringCommitRefused { error: metering_cas_failure_detail(cause: c) }
+      }
+  }
+}
+
 // A read of a file the attempt-state declaration itself names inside the attempt's tree — the worker and
 // reviewer event streams and the seat pointer beside them, which belong to OTHER stores. The path is
 // admitted only while it lies under this store's own directory; anything else refuses typed.
@@ -1255,15 +1384,6 @@ fn attempt_metering_read_at(path: String, dir: String, name: String) -> Optional
 
 fn attempt_metering_listing_of(store: AttemptMeteringStore) -> AttemptMeteringListing {
   attempt_metering_listing(root: store.directory as String, what: "the attempt metering directory")
-}
-
-fn attempt_metering_write(store: AttemptMeteringStore, entry: NonEmptyStr, content: String) -> AttemptMeteringWrite {
-  let path = join([store.directory as String, "/", entry as String], "")
-  let written = Filesystem.Write(path: path, content: content)
-  match filesystem_write_outcome(path: path, success: written.success, error: written.error) {
-    FilesystemWritten { path: _ } => AttemptMeteringWritten
-    FilesystemWriteRefused { path: _, error: e } => AttemptMeteringWriteRefused { error: e }
-  }
 }
 
 // THE CREATE-ONCE. The roster's launch entries are create-once RECORDS, not locks: an entry says a launch
@@ -1666,12 +1786,20 @@ fn metering_observe_against(node_id: String, attempt_key: String, launches: List
   }
 }
 
+// THE READER IS SLOT-FIRST: the newest committed generation IS the record, and while no generation has been
+// committed the record is main's pre-seal plain entry at the declared name (`metering_record_head`'s cutover
+// note). Exactly one of the two is authoritative at any moment, and a slot that cannot be read REFUSES -- it
+// does not report the record absent and does not fall back to bytes the slot would supersede.
 fn metering_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptMeteringObservation {
-  match metering_attempt_read_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: metering_attempt_record_name()) {
-    OptionalFileAbsent => MeteringNotYetWritten
-    OptionalFileRefused { cause: c } => MeteringRefused { cause: c }
-    OptionalFileContent { content: raw } =>
-      metering_observe_from_text(node_id: node_id as String, attempt_key: attempt_key, roster: metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key), raw: raw)
+  let roster = metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => MeteringRefused { cause: detail }
+    AttemptMeteringStoreReady { store: mstore } => match metering_record_head(store: mstore) {
+      MeteringRecordHeadAbsent => MeteringNotYetWritten
+      MeteringRecordHeadRefused { cause: c } => MeteringRefused { cause: c }
+      MeteringRecordHeadCommitted { generation: _, content: raw } =>
+        metering_observe_from_text(node_id: node_id as String, attempt_key: attempt_key, roster: roster, raw: raw)
+    }
   }
 }
 
@@ -1731,6 +1859,115 @@ type MeteringPersist
   | MeteringNotDue
   | MeteringPersistRefused { cause: String }
 
+type AttemptMeteringAdopt
+  = Adopted { generation: CasGeneration }
+  | AdoptAlreadyHead
+  | AdoptNothingToAdopt
+  | AdoptVerificationRefused { detail: String }
+  | AdoptNotRetired { generation: CasGeneration, detail: String }
+  | AdoptRefused { error: String }
+
+// THE ADOPTION ACT (srv2 carries 23 pre-seal records, so the bytes must keep counting -- and the store must
+// not read through them). A modeled cutover act of the belt, NOT a read path and not a hand script: for ONE
+// attempt it reads the plain entry once, verifies those exact bytes against the roster and its seal through
+// `metering_observe_against` (a record that does not answer Final refuses, typed, and stays exactly where it
+// is -- unverifiable bytes are never adopted), commits them UNCHANGED as generation one under the store with
+// `ExpectSlotAbsent`, and then retires the plain name itself with `Filesystem.Delete`. Re-running it is not a
+// duplicate: once a generation exists the head is committed, so a second call answers `AdoptAlreadyHead`
+// without touching anything, and a race between two adopters is one `CommitLostRace` -- the loser writes
+// nothing. Until it runs, `metering_record_head` answers a typed refusal over such an attempt (never
+// `absent`, which would double-count; never the head, which would be the old layout resolving through the
+// new store), so the run order matters: adopt before the sealed reader serves. The belt's per-attempt
+// metering step, `gunbc.roadmap.roadmap_belt_actuate` `belt_metering_for_attempt`, is its invoker.
+fn attempt_metering_adopt_pre_seal_record(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> AttemptMeteringAdopt {
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail: d } => AdoptRefused { error: join(["the attempt's metering store is not ready, so nothing can be adopted: ", d], "") }
+    AttemptMeteringStoreReady { store: store } => match metering_record_head(store: store) {
+    MeteringRecordHeadCommitted { generation: _, content: _ } => AdoptAlreadyHead
+    MeteringRecordHeadRefused { cause: c } => AdoptRefused { error: c }
+    MeteringRecordHeadAbsent =>
+      match attempt_metering_read(store: store, entry: metering_record_slot_key()) {
+        OptionalFileAbsent => AdoptNothingToAdopt
+        OptionalFileRefused { cause: c } => AdoptRefused { error: c }
+        OptionalFileContent { content: raw } =>
+          match metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+            RosterRefused { cause: c } => AdoptRefused { error: join(["the launch roster is unreadable, so nothing verifies the record: ", c], "") }
+            RosterOpen { launches: _ } => AdoptVerificationRefused { detail: "the launch roster is open, so no seal digest exists to verify the record against; the plain record is left in place" }
+            RosterSealed { launches: launches, digest: digest } =>
+              match metering_observe_against(
+                node_id: node_id as String, attempt_key: attempt_key,
+                launches: launches, seal: Present { value: digest }, raw: raw,
+              ) {
+                MeteringObserved { record: _ } =>
+                  match attempt_metering_commit(store: store, expected: ExpectSlotAbsent, content: raw) {
+                    AttemptMeteringCommitted { generation: generation } => {
+                      let retired = Filesystem.Delete(
+                        path: attempt_state_text(
+                          instance: instance, node_id: node_id,
+                          attempt_key: attempt_key, member: AttemptMeteringRecordFile),
+                      )
+                      if retired.success {
+                        Adopted { generation: generation }
+                      } else {
+                        AdoptNotRetired { generation: generation, detail: "the record is committed as a generation and the reader serves the generation, but the plain name could not be retired -- it is unreachable from here, and a later pass of this same act retires it" }
+                      }
+                    }
+                    AttemptMeteringCommitLostRace { detail: d } => AdoptRefused { error: join(["another commit won the slot; the act writes nothing: ", d], "") }
+                    AttemptMeteringCommitRefused { error: e } => AdoptRefused { error: e }
+                    AttemptMeteringCommitNameRefused { key: k } => AdoptRefused { error: join(["the record key is not slot-addressable: ", k], "") }
+                  }
+                MeteringProvisional { record: _ } => AdoptVerificationRefused { detail: "the plain record is provisional, not a final metering record; provisional bytes are never adopted" }
+                MeteringNotYetWritten => AdoptVerificationRefused { detail: "the plain record matches none of the attempt's sealed launches, so nothing verifies it" }
+                MeteringRefused { cause: c } => AdoptVerificationRefused { detail: join(["the plain record is not admissible: ", c], "") }
+              }
+          }
+      }
+    }
+  }
+}
+
+// COMMIT, AND IF THE RACE WAS LOST, SAY WHAT WON. A precondition failure is not swallowed and is not
+// retried blindly: the head is re-observed ONCE, and if the record that beat this commit is Final the
+// caller is told the attempt is already finalized (the winner's bytes stand, which is the invariant); any
+// other head is a typed refusal naming both the failed expectation and what stands now. No path through
+// here can report success while another writer's bytes are the head.
+fn metering_commit_at_head(store: AttemptMeteringStore, node_id: RoadmapNodeId, attempt_key: String, record: AttemptMeteringRecord, launches: List<MeteredRole>, seal: String?, expected: CasExpectation) -> MeteringPersist {
+  match attempt_metering_commit(store: store, expected: expected, content: attempt_metering_json(record: record)) {
+    AttemptMeteringCommitted { generation: g } => MeteringPersisted {
+      path: join([store.directory as String, "/", metering_attempt_record_name() as String, ".", int_to_decimal_string(value: cas_generation_count(g: g))], ""),
+      standing: metering_standing_of(record: record, seal: seal),
+    }
+    AttemptMeteringCommitLostRace { detail: d } => metering_head_answer(
+      store: store, node_id: node_id, attempt_key: attempt_key, launches: launches, seal: seal, prefix: d)
+    AttemptMeteringCommitRefused { error: e } => MeteringPersistRefused { cause: e }
+    AttemptMeteringCommitNameRefused { key: k } => MeteringPersistRefused { cause: join(["the metering record name ", k, " is not a slot address"], "") }
+  }
+}
+
+// WHAT STANDS NOW, told to the caller after a lost race. Each head shape gets its own answer; none of them
+// is a silent success, and none invents an absence for a read that failed.
+fn metering_head_answer(store: AttemptMeteringStore, node_id: RoadmapNodeId, attempt_key: String, launches: List<MeteredRole>, seal: String?, prefix: String) -> MeteringPersist {
+  match metering_record_head(store: store) {
+    MeteringRecordHeadCommitted { generation: _, content: raw } => metering_head_verdict(
+      node_id: node_id, attempt_key: attempt_key, launches: launches, seal: seal, prefix: prefix, raw: raw)
+    MeteringRecordHeadAbsent => MeteringPersistRefused { cause: join([prefix, "; the record is absent again -- nothing was written, re-run the tick"], "") }
+    MeteringRecordHeadRefused { cause: c } => MeteringPersistRefused { cause: join([prefix, "; and the head that beat this commit could not be read: ", c], "") }
+  }
+}
+
+fn metering_head_verdict(node_id: RoadmapNodeId, attempt_key: String, launches: List<MeteredRole>, seal: String?, prefix: String, raw: String) -> MeteringPersist {
+  match metering_observe_against(node_id: node_id as String, attempt_key: attempt_key, launches: launches, seal: seal, raw: raw) {
+    MeteringObserved { record: _ } => MeteringAlreadyFinal
+    MeteringProvisional { record: _ } => MeteringPersistRefused { cause: join([prefix, "; another writer's provisional record stands, and the belt's next tick will re-observe it"], "") }
+    MeteringNotYetWritten => MeteringPersistRefused { cause: join([prefix, "; the head disappeared between the two observations"], "") }
+    MeteringRefused { cause: c } => MeteringPersistRefused { cause: join([prefix, "; the head that beat this commit is not admissible: ", c], "") }
+  }
+}
+
 fn metering_persist_record(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, launches: List<MeteredRole>, seal: String?) -> MeteringPersist {
   match now_epoch_seconds() {
     Absent => MeteringPersistRefused { cause: "the clock could not be read as epoch seconds" }
@@ -1749,13 +1986,28 @@ fn metering_persist_record(instance: HostDashboardInstance, node_id: RoadmapNode
       match metering_record_inadmissible(record: record, roster: launches, seal: seal) {
         Present { value: c } => MeteringPersistRefused { cause: c }
         Absent => {
-          let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptMeteringRecordFile)
           match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
             AttemptMeteringStoreUnready { detail } => MeteringPersistRefused { cause: detail }
-            AttemptMeteringStoreReady { store: mstore } => match attempt_metering_write(store: mstore, entry: metering_attempt_record_name(), content: attempt_metering_json(record: record)) {
-              AttemptMeteringWritten => MeteringPersisted { path: path, standing: metering_standing_of(record: record, seal: seal) }
-              AttemptMeteringWriteRefused { error: e } => MeteringPersistRefused { cause: e }
-            }
+            AttemptMeteringStoreReady { store: mstore } =>
+              // THE HEAD DECIDES BOTH WHETHER THIS COMMIT MAY HAPPEN AND WHAT IT EXPECTS, and it is read
+              // here, beside the commit, not only from the caller's earlier observation: a caller that still
+              // believes the record is provisional cannot overwrite a Final head, because the head is judged
+              // by this module's own reading route before any attempt is admitted.
+              match metering_record_head(store: mstore) {
+                MeteringRecordHeadRefused { cause: c } => MeteringPersistRefused { cause: c }
+                MeteringRecordHeadAbsent => metering_commit_at_head(
+                  store: mstore, node_id: node_id, attempt_key: attempt_key,
+                  record: record, launches: launches, seal: seal, expected: ExpectSlotAbsent)
+                MeteringRecordHeadCommitted { generation: g, content: raw } =>
+                  match metering_observe_against(node_id: node_id as String, attempt_key: attempt_key, launches: launches, seal: seal, raw: raw) {
+                    MeteringObserved { record: _ } => MeteringAlreadyFinal
+                    MeteringNotYetWritten => MeteringPersistRefused { cause: "the committed generation does not decode as a metering record, so nothing is committed over it" }
+                    MeteringRefused { cause: c } => MeteringPersistRefused { cause: join(["the committed metering record head is not admissible, so nothing is committed over it: ", c], "") }
+                    MeteringProvisional { record: _ } => metering_commit_at_head(
+                      store: mstore, node_id: node_id, attempt_key: attempt_key,
+                      record: record, launches: launches, seal: seal, expected: ExpectSlotGeneration { generation: g })
+                  }
+              }
           }
         }
       }

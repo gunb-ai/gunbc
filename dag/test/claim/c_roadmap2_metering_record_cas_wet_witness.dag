@@ -1,0 +1,392 @@
+module test.claim.c_roadmap2_metering_record_cas_wet_witness
+
+import std.types { Bool, String, Int, List, NonEmptyStr, FilePath, EpochSecs }
+import std.measure { TokenCount, token_count }
+import gunbc.harness.harness_seat_ledger { HarnessSeatPointer }
+import gunbc.product.capacity.quota { PartitionId }
+import std.algebra { string_contains }
+import extdeps.shell
+import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.durable_cas_file_store { ExpectSlotAbsent, cas_generation_first }
+import std.durable_compare_and_set { cas_generation_count }
+import gunbc.roadmap.roadmap_attempt_metering {
+  AttemptMeteringCommitted, AttemptMeteringCommitLostRace,
+  MeteredWorker,
+  MeteringAlreadyFinal, MeteringObserved, MeteringPersisted, MeteringProvisional, MeteringRefused,
+  MeteringRecordHeadCommitted, MeteringRecordHeadRefused,
+  OptionalFileAbsent, OptionalFileContent, RosterAdmitted, RosterSealed,
+  AdoptAlreadyHead, Adopted, AdoptVerificationRefused, AttemptMeteringCreated,
+  AttemptMeteringRecord, MeteredRole, MeteredRoleUsage, SeatHeld,
+  TokensObserved, SeatReleased,
+  attempt_metering_adopt_pre_seal_record, attempt_metering_commit, attempt_metering_create_once,
+  attempt_metering_json, attempt_metering_read, attempt_metering_store,
+  metering_attempt_record_name, metered_role_usage_final, metering_observe_against,
+  metering_observe_for_attempt, metering_persist_for_attempt, metering_record_from_usage,
+  metering_record_head, metering_roster_admit, metering_roster_digest, metering_roster_seal,
+}
+
+// THE METERING RECORD IS COMPARE-AND-SET, AND THESE CLAIMS RUN THE REAL ROUTE IN AN ISOLATED INSTANCE UNDER
+// A MKTEMP DIR (review 90868). main's writer was a raw overwriting `Filesystem.Write` at one plain name, and
+// its only caller is read-then-write, so two ticks -- the belt's and a hand run's, or two belts after a host
+// moves -- could both observe `NotYetWritten`/`Provisional` and both write, the slower clobbering a record
+// the faster had already made Final. That is the case this module's own comment said could not happen. What
+// is claimed here, by execution:
+//   1. the first persist COMMITS generation one through the store library and the reader reads it back;
+//   2. a second persist over that Final head REFUSES (`MeteringAlreadyFinal`), leaves the winner's generation
+//      and bytes untouched, and leaves NO plain entry beside them -- the last conjunct is what makes a
+//      raw-write mutant red rather than merely different;
+//   3. a commit admitted against a STALE expectation is a typed lost race and cannot move the head;
+//   4. an UNREADABLE head refuses both the reader and the commit -- it never reads as absent, and no
+//      generation is invented for a read that failed.
+// WITNESS, NOT PROOF: what the CAS library answers on this host, established by running the production fns
+// (`metering_persist_for_attempt`, `metering_observe_for_attempt`, `metering_record_head`,
+// `attempt_metering_commit`) rather than a copy of their logic.
+
+fn fx_root(tag: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc-c-roadmap2-record-", tag, "-XXXXXXXXXX"], "") as FilePath).path as String
+}
+
+fn fx_instance(tag: String, dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["c-roadmap2-record-", tag], "") as NonEmptyStr),
+    instance_id: join(["c-roadmap2-record-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18117,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn fx_node() -> RoadmapNodeId {
+  "c-roadmap2-record-node" as RoadmapNodeId
+}
+
+fn fx_key(tag: String) -> String {
+  join(["c-roadmap2-record-", tag], "")
+}
+
+// THE ATTEMPT'S METERING STORE, MINTED FROM THE DECLARATION -- the witness never spells the path, which is
+// what the seal in c_roadmap2_store_seal_witness is there to keep true.
+fn fx_store(instance: HostDashboardInstance, key: String) -> AttemptMeteringStore? {
+  match attempt_metering_store(instance: instance, node_id: fx_node(), attempt_key: key) {
+    AttemptMeteringStoreReady { store: s } => Present { value: s }
+    AttemptMeteringStoreUnready { detail: _ } => Absent
+  }
+}
+
+// A ROSTER WITH ONE WORKER LAUNCH, CLOSED AND SEALED, so the persisted record stands Final on the first
+// persist: the exclusion under test is the one that must hold once a record is Final.
+fn fx_sealed_attempt(instance: HostDashboardInstance, key: String) -> Bool {
+  match metering_roster_admit(instance: instance, node_id: fx_node(), attempt_key: key, role: MeteredWorker {}) {
+    RosterAdmitted => match metering_roster_seal(instance: instance, node_id: fx_node(), attempt_key: key) {
+      RosterSealed { launches: _, digest: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// THE FIRST PERSIST COMMITS GENERATION ONE, AND THE READER READS THE COMMITTED GENERATION BACK. The head is
+// the library's generation one (`cas_generation_first`), not a file the writer placed at the plain name.
+test fn the_first_persist_commits_generation_one_and_the_reader_reads_it() -> Bool {
+  let dir = fx_root("first")
+  let instance = fx_instance("first", dir)
+  let key = fx_key("first")
+  fx_sealed_attempt(instance: instance, key: key)
+    && match metering_persist_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key, departed: true) {
+        MeteringPersisted { path: _, standing: _ } => match fx_store(instance: instance, key: key) {
+          Absent => false
+          Present { value: store } => match metering_record_head(store: store) {
+            MeteringRecordHeadCommitted { generation: g, content: raw } =>
+              cas_generation_count(g: g) == cas_generation_count(g: cas_generation_first())
+                && string_contains(s: raw, pattern: "attempt_key")
+                && match metering_observe_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key) {
+                    MeteringObserved { record: _ } => true
+                    MeteringProvisional { record: _ } => true
+                    _ => false
+                  }
+            _ => false
+          }
+        }
+        _ => false
+      }
+}
+
+// A FINAL HEAD IS NEVER REWRITTEN, NOT EVEN BY THE ROUTE THAT WROTE IT. The second persist asks the real
+// route to write again over the Final record: it must answer `MeteringAlreadyFinal`, the committed generation
+// must still be the first with byte-identical content, and NOTHING may appear at the plain pre-seal name.
+// That last conjunct is the discriminating one -- a writer that went back to a raw in-place
+// `Filesystem.Write` would answer `MeteringPersisted` and leave bytes at the plain name, and this claim is
+// red on both.
+test fn a_second_persist_over_the_final_head_refuses_and_leaves_the_winner_untouched() -> Bool {
+  let dir = fx_root("final")
+  let instance = fx_instance("final", dir)
+  let key = fx_key("final")
+  fx_sealed_attempt(instance: instance, key: key)
+    && match metering_persist_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key, departed: true) {
+        MeteringPersisted { path: _, standing: _ } => match fx_store(instance: instance, key: key) {
+          Absent => false
+          Present { value: store } => match metering_record_head(store: store) {
+            MeteringRecordHeadCommitted { generation: first_gen, content: first_raw } =>
+              match metering_persist_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key, departed: true) {
+                MeteringAlreadyFinal => match metering_record_head(store: store) {
+                  MeteringRecordHeadCommitted { generation: g, content: raw } =>
+                    cas_generation_count(g: g) == cas_generation_count(g: first_gen)
+                      && raw == first_raw
+                      && match attempt_metering_read(store: store, entry: metering_attempt_record_name()) {
+                          OptionalFileAbsent => true
+                          _ => false
+                        }
+                  _ => false
+                }
+                _ => false
+              }
+            _ => false
+          }
+        }
+        _ => false
+      }
+}
+
+// A STALE EXPECTATION IS A TYPED REFUSAL, NOT AN OVERWRITE. Generation one stands from the first persist; a
+// commit admitted as though nothing had been committed must come back `AttemptMeteringCommitLostRace`, and
+// the head must be exactly the generation that was there before. A lost race that reported success is the
+// defect this claim exists to catch: the caller would believe its own bytes were the record.
+test fn a_stale_expectation_refuses_the_commit_and_cannot_move_the_head() -> Bool {
+  let dir = fx_root("stale")
+  let instance = fx_instance("stale", dir)
+  let key = fx_key("stale")
+  fx_sealed_attempt(instance: instance, key: key)
+    && match metering_persist_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key, departed: true) {
+        MeteringPersisted { path: _, standing: _ } => match fx_store(instance: instance, key: key) {
+          Absent => false
+          Present { value: store } => match metering_record_head(store: store) {
+            MeteringRecordHeadCommitted { generation: first_gen, content: first_raw } =>
+              match attempt_metering_commit(store: store, expected: ExpectSlotAbsent, content: "{\"schema\":\"metering-record\",\"attempt_key\":\"another-writer\"}") {
+                AttemptMeteringCommitLostRace { detail: _ } => match metering_record_head(store: store) {
+                  MeteringRecordHeadCommitted { generation: g, content: raw } =>
+                    cas_generation_count(g: g) == cas_generation_count(g: first_gen) && raw == first_raw
+                  _ => false
+                }
+                _ => false
+              }
+            _ => false
+          }
+        }
+        _ => false
+      }
+}
+
+// AN UNREADABLE HEAD REFUSES; IT DOES NOT READ AS ABSENT. A directory planted at generation one's slot name
+// is a name the galloping head search tries to read and cannot. Both the reader and the commit must refuse:
+// the reader must not answer absent (that is how a failed read becomes a second record for one attempt), and
+// the commit must not invent a generation for a slot it could not read.
+// A DIRECTORY planted at generation one's slot name, created through the declared exec surface:
+// `extdeps.shell`'s `shell.Exec.RunArgv` with argv from `gunbc.extdeps.tools.gnu_coreutils.mkdir_create_only_command`,
+// so the words and the program have their one home upstream and this file authors no command of its own.
+fn mkdir_slot_generation_one(dir: String) -> Bool {
+  let cmd = mkdir_create_only_command(path: join([dir, "/", metering_attempt_record_name() as String, ".1"], ""))
+  shell.Exec.RunArgv(program: cmd.program.invocation as NonEmptyStr, arguments: cmd.arguments).exit_code == 0
+}
+
+test fn an_unreadable_head_refuses_rather_than_reading_as_absent() -> Bool {
+  let dir = fx_root("unreadable")
+  let instance = fx_instance("unreadable", dir)
+  let key = fx_key("unreadable")
+  match fx_store(instance: instance, key: key) {
+    Absent => false
+    Present { value: store } =>
+      mkdir_slot_generation_one(dir: dir)
+        && match metering_record_head(store: store) {
+            MeteringRecordHeadRefused { cause: _ } =>
+              match metering_observe_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key) {
+                MeteringRefused { cause: _ } => match attempt_metering_commit(store: store, expected: ExpectSlotAbsent, content: "{\"schema\":\"metering-record\"}") {
+                  AttemptMeteringCommitted { generation: _ } => false
+                  _ => true
+                }
+                _ => false
+              }
+            _ => false
+          }
+  }
+}
+
+// THE PRODUCER THAT MAKES THE FINAL HEAD REALLY REACHES FINAL -- THE PAIRING OBLIGATION FOR CLAIM 2. A claim
+// that only READS a committed Final head would also pass in a system whose producer could never produce such
+// a record, so the producer is executed here: it is handed readings that are final by their own types
+// (`TokensObserved { terminal: true }` plus `SeatReleased`) and the real seal digest
+// (`metering_roster_digest` over the same launches the roster carries), and is judged only by the production
+// predicates -- `metered_role_usage_final` on every role, and `metering_observe_against` over the bytes
+// `attempt_metering_json` serializes answering `MeteringObserved`, with what comes back re-serializing to the
+// SAME text (equality against the producer's own output, never a second literal). Those are the bytes claim 2
+// commits through the real persist route.
+fn fx_final_usage() -> MeteredRoleUsage {
+  MeteredRoleUsage {
+    role: MeteredWorker {},
+    tokens: TokensObserved {
+      rounds: 3, input_tokens: token_count(11), output_tokens: token_count(7), terminal: true,
+    },
+    seat: SeatReleased {
+      pointer: HarnessSeatPointer {
+        partition: "c-roadmap2-record-seat" as PartitionId,
+        reference: "c-roadmap2-record-seat-ref" as NonEmptyStr,
+        owner: "c-roadmap2-record-owner" as NonEmptyStr,
+      },
+      granted_at: 1700000000,
+      released_at: 1700000001,
+    },
+  }
+}
+
+fn fx_final_record(key: String, digest: String) -> AttemptMeteringRecord {
+  metering_record_from_usage(
+    node_id: fx_node() as String, attempt_key: key, metered_at: 1700000002,
+    sealed_roster: Present { value: digest }, roles: [fx_final_usage()])
+}
+
+test fn the_real_producer_reaches_final_and_its_own_bytes_are_what_the_reader_accepts() -> Bool {
+  let key = fx_key("producer")
+  let launches = [MeteredWorker {}]
+  let digest = metering_roster_digest(launches: launches)
+  let record = fx_final_record(key: key, digest: digest)
+  let bytes = attempt_metering_json(record: record)
+  metered_role_usage_final(u: fx_final_usage())
+    && match metering_observe_against(
+         node_id: fx_node() as String, attempt_key: key,
+         launches: launches, seal: Present { value: digest }, raw: bytes,
+       ) {
+         MeteringObserved { record: read_back } => attempt_metering_json(record: read_back) == bytes
+         _ => false
+       }
+}
+
+// THE ADOPTION ACT, EXECUTED (the 23 srv2 records). srv2's live population, inventoried 2026-11-04 by stern
+// at jolly-hawk-60's request: ~/.local/share/gunbc-srv2-deploy/attempt-state/, 136 attempt directories, 23 of
+// them holding a plain `metering.json` of 523-3829 bytes, all dated 2026-10-24, none modified in the two days
+// before the inventory. Nobody has shown those records dead, so they must keep counting -- and the store must
+// never read through them. Here the plain entry is planted by the store's OWN create-only route with the bytes
+// the real producer serializes, the roster is admitted and sealed by the real routes, and then
+// `attempt_metering_adopt_pre_seal_record` runs: it verifies those bytes against the roster and its seal,
+// commits them UNCHANGED as generation one, retires the plain name, and the reader serves the generation.
+test fn a_plain_record_adopts_and_the_reader_then_reads_the_committed_generation() -> Bool {
+  let dir = fx_root("adopt")
+  let instance = fx_instance("adopt", dir)
+  let key = fx_key("adopt")
+  let digest = metering_roster_digest(launches: [MeteredWorker {}])
+  let bytes = attempt_metering_json(record: fx_final_record(key: key, digest: digest))
+  let sealed = fx_sealed_attempt(instance: instance, key: key)
+  match fx_store(instance: instance, key: key) {
+    Absent => false
+    Present { value: store } => sealed
+      && attempt_metering_create_once(store: store, entry: metering_attempt_record_name(), content: bytes) is AttemptMeteringCreated
+      && match attempt_metering_adopt_pre_seal_record(instance: instance, node_id: fx_node(), attempt_key: key) {
+           Adopted { generation: g } => match metering_record_head(store: store) {
+             MeteringRecordHeadCommitted { generation: head_gen, content: head } =>
+               cas_generation_count(g: head_gen) == cas_generation_count(g: cas_generation_first())
+                 && cas_generation_count(g: g) == cas_generation_count(g: cas_generation_first())
+                 && head == bytes
+                 && match attempt_metering_read(store: store, entry: metering_attempt_record_name()) {
+                     // THE PLAIN NAME IS RETIRED BY THE ACT ITSELF, and what the reader serves is the
+                     // committed generation.
+                     OptionalFileAbsent => match metering_observe_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key) {
+                       MeteringObserved { record: _ } => true
+                       _ => false
+                     }
+                     _ => false
+                   }
+             _ => false
+           }
+           _ => false
+         }
+  }
+}
+
+// ADOPTING TWICE IS NOT A DUPLICATE. Once a generation exists the head is committed, so the second act
+// answers `AdoptAlreadyHead` and writes nothing -- the generation number, the content and the reader's answer
+// are all exactly what the first act left. A race between two adopters is the same case one level down: one
+// `CommitLostRace`, no second generation.
+test fn adopting_a_record_twice_leaves_the_head_exactly_as_the_first_adopt_left_it() -> Bool {
+  let dir = fx_root("adopt-twice")
+  let instance = fx_instance("adopt-twice", dir)
+  let key = fx_key("adopt-twice")
+  let digest = metering_roster_digest(launches: [MeteredWorker {}])
+  let bytes = attempt_metering_json(record: fx_final_record(key: key, digest: digest))
+  let sealed = fx_sealed_attempt(instance: instance, key: key)
+  match fx_store(instance: instance, key: key) {
+    Absent => false
+    Present { value: store } => sealed
+      && attempt_metering_create_once(store: store, entry: metering_attempt_record_name(), content: bytes) is AttemptMeteringCreated
+      && match attempt_metering_adopt_pre_seal_record(instance: instance, node_id: fx_node(), attempt_key: key) {
+           Adopted { generation: first_gen } => match metering_record_head(store: store) {
+             MeteringRecordHeadCommitted { generation: before_gen, content: before } =>
+               match attempt_metering_adopt_pre_seal_record(instance: instance, node_id: fx_node(), attempt_key: key) {
+                 AdoptAlreadyHead => match metering_record_head(store: store) {
+                   MeteringRecordHeadCommitted { generation: after_gen, content: after } =>
+                     cas_generation_count(g: first_gen) == cas_generation_count(g: before_gen)
+                       && cas_generation_count(g: after_gen) == cas_generation_count(g: before_gen)
+                       && after == before
+                       && after == bytes
+                   _ => false
+                 }
+                 _ => false
+               }
+             _ => false
+           }
+           _ => false
+         }
+  }
+}
+
+// AN UNVERIFIABLE PLAIN RECORD REFUSES, TYPED, AND STAYS EXACTLY WHERE IT WAS. The bytes planted here decode,
+// but they are PROVISIONAL -- no seal is bound and the tokens are not terminal -- so `metering_observe_against`
+// does not answer Final, and the act must not adopt them: the head stays uncommitted, the reader keeps
+// answering the typed pre-seal refusal, and the plain entry still holds the same bytes. Dropping the
+// verification from `attempt_metering_adopt_pre_seal_record` makes this claim red, which is what makes the
+// verify a claim rather than a comment.
+test fn an_unverifiable_plain_record_refuses_adoption_and_stays_exactly_where_it_was() -> Bool {
+  let dir = fx_root("adopt-bad")
+  let instance = fx_instance("adopt-bad", dir)
+  let key = fx_key("adopt-bad")
+  let provisional = metering_record_from_usage(
+    node_id: fx_node() as String, attempt_key: key, metered_at: 1700000002,
+    sealed_roster: Absent,
+    roles: [MeteredRoleUsage {
+      role: MeteredWorker {},
+      tokens: TokensObserved {
+        rounds: 1, input_tokens: token_count(2), output_tokens: token_count(1), terminal: false,
+      },
+      seat: SeatReleased {
+        pointer: HarnessSeatPointer {
+          partition: "c-roadmap2-record-seat" as PartitionId,
+          reference: "c-roadmap2-record-seat-ref" as NonEmptyStr,
+          owner: "c-roadmap2-record-owner" as NonEmptyStr,
+        },
+        granted_at: 1700000000,
+        released_at: 1700000001,
+      },
+    }])
+  let bytes = attempt_metering_json(record: provisional)
+  let sealed = fx_sealed_attempt(instance: instance, key: key)
+  match fx_store(instance: instance, key: key) {
+    Absent => false
+    Present { value: store } => sealed
+      && attempt_metering_create_once(store: store, entry: metering_attempt_record_name(), content: bytes) is AttemptMeteringCreated
+      && match attempt_metering_adopt_pre_seal_record(instance: instance, node_id: fx_node(), attempt_key: key) {
+           AdoptVerificationRefused { detail: _ } => match metering_record_head(store: store) {
+             MeteringRecordHeadRefused { cause: _ } => match attempt_metering_read(store: store, entry: metering_attempt_record_name()) {
+               OptionalFileContent { content: still } => still == bytes
+               _ => false
+             }
+             _ => false
+           }
+           _ => false
+         }
+  }
+}
