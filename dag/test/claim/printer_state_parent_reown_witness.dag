@@ -113,8 +113,8 @@ test fn witness_the_matching_prior_reowns_and_reads_back_the_declared_identity()
               PrinterStartsParentReowned { path: at, before: before, after: after } =>
                 at == path
                   && printer_state_directory_identity_text(reading: before) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
-                  && printer_state_directory_identity_text(reading: after) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "755"], "|")
-                  && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "755"], "|")
+                  && printer_state_directory_identity_text(reading: after) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "0755"], "|")
+                  && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "0755"], "|")
               PrinterStartsParentReownPreconditionFailed { path: _, cause: _ } => false
               PrinterStartsParentReownRefused { path: _, cause: _ } => false
             }
@@ -170,7 +170,7 @@ test fn witness_a_prior_that_differs_in_mode_refuses_although_the_live_mode_is_a
             let prior_at_another_mode = OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
             match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: prior_at_another_mode, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
               PrinterStartsParentReowned { path: _, before: _, after: _ } => false
-              PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "755"], "|")
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "0755"], "|")
               PrinterStartsParentReownRefused { path: _, cause: _ } => false
             }
           }
@@ -259,7 +259,7 @@ test fn witness_a_missing_directory_refuses_rather_than_creates() -> Bool {
 test fn witness_the_production_transition_is_pinned_to_what_15908_declares() -> Bool {
   let tree = host_state_tree()
   let target = printer_state_parent_reown_target(tree: tree)
-  printer_state_parent_reown_prior_text() == "directory|gunbc-fleet|gunbc-fleet|2770"
+  printer_state_parent_reown_prior_text() == "directory|gunbc-fleet:gunbc-fleet|2770"
     && match owned_directory_install_plan_of(t: target) {
       EnsurePlanUnavailable { reason: _ } => false
       EnsurePlanAvailable { plan: plan } =>
