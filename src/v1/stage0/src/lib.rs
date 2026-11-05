@@ -741,26 +741,6 @@ pub mod v1_tests_claim_escape_json_string_differential;
     suspicious_double_ref_op,
     clippy::all
 )]
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_tests_claim_item_kind_dissolves_shape_predicates_control_test;
 #[allow(
     unused_imports,
@@ -817,16 +797,6 @@ pub mod v1_tests_claim_production_fed_exposure_discrimination_control_test;
     clippy::all
 )]
 pub mod v1_tests_claim_reference_derived_disposition_census_witness_test;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 #[allow(
     unused_imports,
     unused_variables,
