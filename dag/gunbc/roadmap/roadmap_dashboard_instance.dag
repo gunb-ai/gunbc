@@ -289,7 +289,7 @@ type HostDashboardInstance {
   listen_port: Port
   tmux_server: TmuxServerScope
   actuation: DashboardActuationPosture
-  provision_transport: DashboardProvisionTransport
+  actuator_host: NonEmptyStr
   source_seed: DashboardSourceSeed
   admitted_revision: DashboardAdmittedRevisionSource
   toolchain: DashboardToolchain
@@ -622,6 +622,19 @@ fn dashboard_actuation_posture_label(posture: DashboardActuationPosture) -> Stri
   match posture {
     DashboardObserveOnly => "observe-only"
     DashboardActuating => "actuating"
+  }
+}
+
+// THE TRANSPORT IS A SELECTION, NOT A FIELD. Where the apply runs (actuator_host) and where the
+// instance lives (host_identity) are both placement facts; the realization that reaches the target
+// follows from comparing them. Same host: run locally, because an ssh hop to yourself is redundant
+// work and an extra failure surface (DESIGN section 2). Different hosts: ssh to the instance's
+// host. The dispatch that selects a realization is itself realization (DESIGN section 3), so this is
+// the one place it is decided and no row spells it.
+fn dashboard_provision_transport(instance: HostDashboardInstance) -> DashboardProvisionTransport {
+  match (instance.actuator_host as String) == (instance.host_identity as String) {
+    true => DashboardLocalProvision
+    false => DashboardSshProvision { host: instance.host_identity }
   }
 }
 
@@ -1114,7 +1127,7 @@ data macbook_local_codex_home: FilePath = codex_account_state_root(
 // make the operator's own shells indistinguishable from dispatch sessions to the reaper. The named
 // server is the same isolation the labs already declare, for the same reason.
 //
-// provision_transport is Local rather than ssh:srv1, which is the honest reading of a host that
+// the transport selects Local rather than ssh:srv1, which is the honest reading of a host that
 // provisions itself and is why DashboardLocalProvision already exists as a variant.
 //
 // WHAT THIS ROW DOES NOT DO, stated because an actuating instance reads like a grant: it does not
@@ -1156,7 +1169,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     listen_port: 8081,
     tmux_server: dashboard_named_tmux_server(instance_id: macbook_local_dashboard_id),
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: "macbook" as NonEmptyStr,
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: macbook_local_admitted_revision_source,
     toolchain: macbook_local_toolchain,
@@ -1261,7 +1274,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     listen_port: 8080,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    actuator_host: "macbook" as NonEmptyStr,
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
@@ -1322,7 +1335,7 @@ fn isolated_dashboard_instance(
   listen_port: Port,
   source_anchor_ref: NonEmptyStr,
   actuation: DashboardActuationPosture,
-  provision_transport: DashboardProvisionTransport,
+  actuator_host: NonEmptyStr,
 ) -> HostDashboardInstance {
   isolated_dashboard_instance_admitting(
     deployment: deployment, instance_id: instance_id, layout: layout, root: root,
@@ -1333,7 +1346,7 @@ fn isolated_dashboard_instance(
       anchor_ref: source_anchor_ref,
       history_remote: "origin" as NonEmptyStr,
     },
-    actuation: actuation, provision_transport: provision_transport,
+    actuation: actuation, actuator_host: actuator_host,
     admitted_revision: fleet_admitted_revision_source,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
     publication_base_branch: "main" as NonEmptyStr,
@@ -1355,7 +1368,7 @@ fn isolated_dashboard_instance_admitting(
   listen_port: Port,
   source_seed: DashboardSourceSeed,
   actuation: DashboardActuationPosture,
-  provision_transport: DashboardProvisionTransport,
+  actuator_host: NonEmptyStr,
   admitted_revision: DashboardAdmittedRevisionSource,
   // The ref a fresh attempt forks from, named PER INSTANCE: the srv1 lab names its admitted ref
   // (refs/gunbc/srv1-lab-admitted) so its attempts fork from the revision it actually serves --
@@ -1400,7 +1413,7 @@ fn isolated_dashboard_instance_admitting(
     listen_port: listen_port,
     tmux_server: dashboard_named_tmux_server(instance_id: instance_id),
     actuation: actuation,
-    provision_transport: provision_transport,
+    actuator_host: actuator_host,
     source_seed: source_seed,
     admitted_revision: admitted_revision,
     toolchain: srv1_linux_toolchain,
@@ -1450,7 +1463,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
       apply_workdir: dashboard_apply_neutral_workdir,
     },
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    actuator_host: "srv1" as NonEmptyStr,
     admitted_revision: srv1_lab_admitted_revision_source,
     dispatch_base_ref: srv1_lab_admitted_revision_source.ref_name as NonEmptyStr,
     publication_base_branch: srv1_lab_publication_base_branch,
@@ -1480,7 +1493,7 @@ fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
     listen_port: 18080,
     source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
     actuation: DashboardObserveOnly,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv2_host_layout().host_identity,
   )
 }
 
@@ -1595,7 +1608,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     listen_port: 18082,
     tmux_server: dashboard_named_tmux_server(instance_id: srv2_deploy_dashboard_id),
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv2_host_layout().host_identity,
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: srv2_deploy_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
@@ -1626,7 +1639,7 @@ fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
     // stopped advancing that shared ref.
     source_anchor_ref: fleet_admitted_revision_source.ref_name as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv2_host_layout().host_identity,
   )
 }
 
@@ -1735,7 +1748,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     listen_port: 18084,
     tmux_server: dashboard_named_tmux_server(instance_id: fleet_compute_hermetic_dashboard_id),
     actuation: DashboardObserveOnly,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: "ghrunner-hermetic" as NonEmptyStr,
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
     toolchain: toolchain,

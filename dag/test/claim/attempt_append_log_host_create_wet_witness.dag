@@ -52,7 +52,7 @@ fn instance_service_at(root: String) -> HostDashboardInstance {
     listen_port: 18097,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 
@@ -66,7 +66,7 @@ fn instance_dedicated_at(root: String) -> HostDashboardInstance {
     listen_port: 18097,
     source_seed: DashboardExistingRepo { anchor_ref: "refs/heads/main" as NonEmptyStr },
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
     admitted_revision: fleet_admitted_revision_source,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
     publication_base_branch: "main" as NonEmptyStr,
