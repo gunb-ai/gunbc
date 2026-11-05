@@ -1,6 +1,7 @@
 module test.claim.altra_pcb_world_svg_witness
 
-import std.types { Bool, String, NonEmptyStr, List, list_length }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key, decl_ref }
 import std.measure { micrometer_count }
@@ -223,7 +224,7 @@ fn world_with_obligations(obs: List<PcbComponentObligation>) -> PcbWorld? {
             attachment_obligations: [],
             functional_obligations: [],
             body_layout: PcbBodyLayoutAdmittedOverEstablishedSubsetOnly {
-              parts_still_owed: list_length(items: obs),
+              parts_still_owed: length(xs: obs),
             },
             stackup: capability_pending(what_is_owed: "synthetic stackup"),
             footprints: capability_pending(what_is_owed: "synthetic footprints"),
@@ -553,7 +554,7 @@ test fn w_the_board_land_pattern_is_no_longer_an_open_obligation() -> Bool {
       let land_still_open = fold(obligations, init: false, f: fn(acc, a) {
         acc || (a.layer as String) == "board land pattern"
       })
-      !land_still_open && list_length(items: obligations) > 0
+      !land_still_open && length(xs: obligations) > 0
   }
 }
 
@@ -626,7 +627,7 @@ test fn w_the_two_envelope_reads_are_distinct_declarations() -> Bool {
     Absent => false
     Present { value: w } =>
       let reads = pcb_envelope_reads(p: pcb_world_physical(w: w))
-      list_length(items: reads) == 5
+      length(xs: reads) == 5
         && fold(reads, init: true, f: fn(ok, r) {
           ok && fold(reads, init: true, f: fn(inner, q) {
             inner && ((r.identity as String) == (q.identity as String) || !declaration_ref_eq(a: r.source, b: q.source))

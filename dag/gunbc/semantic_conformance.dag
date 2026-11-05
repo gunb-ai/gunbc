@@ -1,6 +1,7 @@
 module gunbc.semantic_conformance
 
-import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.external_authority { ExternalAuthority }
 import std.primitive_projection { PrimitiveIdentity }
@@ -301,7 +302,7 @@ fn effect_receipts_agree(
   expected: List<EffectReceiptEntry>,
   receipt: List<EffectReceiptEntry>
 ) -> Bool {
-  list_length(items: expected) == list_length(items: receipt)
+  length(xs: expected) == length(xs: receipt)
     && fold(
          expected,
          init: true,
@@ -693,7 +694,7 @@ fn admit_conformance(
             source_tree: source_tree,
             omitted_arm: held,
             judged_route: route,
-            subject_count: list_length(items: dispositions),
+            subject_count: length(xs: dispositions),
             producer: producer
           }
         OmittedArmFailedOpen { judged_generation_tree: _, detail: _ } =>

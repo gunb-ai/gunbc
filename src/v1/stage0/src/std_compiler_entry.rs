@@ -8,11 +8,12 @@ use self::NativeDriverCostAccounting::*;
 use self::NativeDriverCostRowStanding::*;
 use self::NativeDriverExclusiveRowKey::*;
 use self::NativeEffectClass::*;
+use self::NativeEffectRoute::*;
 use self::NativeEffectScope::*;
 pub use crate::std_algebra::collection_map_shape;
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
 pub use crate::std_measure::{
-    millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count, Nanosecond,
+    millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count, Nanosecond, Second,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -44,9 +45,7 @@ pub struct NativeClaimReport {
     pub terminal: Rc<NativeClaimTerminal>,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CompilerEntryDriver {
     RetainedHostCliKernel,
@@ -54,7 +53,32 @@ pub enum CompilerEntryDriver {
     SourceRootEvalDriver,
     NativeCliDriver,
     NativeClaimDriver,
-    NativeServeDriver,
+    NativeIngressDriver { program: Rc<DeclarationRef> },
+}
+impl CompilerEntryDriver {
+    pub fn program(&self) -> Rc<DeclarationRef> {
+        match self {
+            CompilerEntryDriver::RetainedHostCliKernel => panic!("no program on unit variant"),
+            CompilerEntryDriver::DirectIngestDriver => panic!("no program on unit variant"),
+            CompilerEntryDriver::SourceRootEvalDriver => panic!("no program on unit variant"),
+            CompilerEntryDriver::NativeCliDriver => panic!("no program on unit variant"),
+            CompilerEntryDriver::NativeClaimDriver => panic!("no program on unit variant"),
+            CompilerEntryDriver::NativeIngressDriver { program: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressStartup {
+    pub fold: Rc<DeclarationRef>,
+    pub bound: Second,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressProgram {
+    pub binding: Rc<DeclarationRef>,
+    pub handler: Rc<DeclarationRef>,
+    pub startup: Option<Rc<NativeIngressStartup>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -85,9 +109,19 @@ pub enum NativeEffectScope {
     },
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectRoute {
+    NativeCompilerRoute,
+    NativeClaimRoute,
+    NativeIngressRoute,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NativeEffectDenominator {
-    pub route: CompilerEntryDriver,
+    pub route: NativeEffectRoute,
     pub ruling: Rc<DeclarationRef>,
     pub scope: Rc<NativeEffectScope>,
 }
@@ -102,7 +136,7 @@ pub fn native_compiler_route_denominator() -> Rc<NativeEffectDenominator> {
     thread_local! {
             static CACHED: Rc<NativeEffectDenominator> = {
                 Rc::new(NativeEffectDenominator {
-        route: CompilerEntryDriver::NativeCliDriver,
+        route: NativeEffectRoute::NativeCompilerRoute,
         ruling: crate::std_decl_ref::decl_ref("gunbc.plans.demand_engine_program".to_string(), "demand_engine_program_plan".to_string()),
         scope: Rc::new(NativeEffectScope::NativeAdmitAllExcept {
         excluded: Rc::new(vec![native_effect_declared("std.resources".to_string(), "Clock".to_string()), native_effect_declared("std.resources".to_string(), "Network".to_string()), native_effect_declared("std.resources".to_string(), "Entropy".to_string()), native_effect_declared("std.resources".to_string(), "AuthContext".to_string()), native_effect_declared("extdeps.clock".to_string(), "Clock".to_string()), Rc::new(NativeEffectClass::NativeOutgoingHttp)]),
@@ -113,11 +147,11 @@ pub fn native_compiler_route_denominator() -> Rc<NativeEffectDenominator> {
     CACHED.with(|c: &Rc<NativeEffectDenominator>| c.clone())
 }
 
-pub fn native_service_route_denominator() -> Rc<NativeEffectDenominator> {
+pub fn native_ingress_route_denominator() -> Rc<NativeEffectDenominator> {
     thread_local! {
             static CACHED: Rc<NativeEffectDenominator> = {
                 Rc::new(NativeEffectDenominator {
-        route: CompilerEntryDriver::NativeServeDriver,
+        route: NativeEffectRoute::NativeIngressRoute,
         ruling: crate::std_decl_ref::decl_ref("gunbc.plans.demand_engine_program".to_string(), "demand_engine_program_plan".to_string()),
         scope: Rc::new(NativeEffectScope::NativeAdmitAllExcept {
         excluded: Rc::new(vec![native_effect_declared("std.resources".to_string(), "Entropy".to_string()), native_effect_declared("std.resources".to_string(), "AuthContext".to_string())]),
@@ -132,7 +166,7 @@ pub fn native_claim_route_denominator() -> Rc<NativeEffectDenominator> {
     thread_local! {
             static CACHED: Rc<NativeEffectDenominator> = {
                 Rc::new(NativeEffectDenominator {
-        route: CompilerEntryDriver::NativeClaimDriver,
+        route: NativeEffectRoute::NativeClaimRoute,
         ruling: crate::std_decl_ref::decl_ref("gunbc.design_ruling".to_string(), "native_claim_route_admits_the_docker_cli".to_string()),
         scope: Rc::new(NativeEffectScope::NativeAdmitOnly {
         admitted: Rc::new(vec![native_effect_declared("extdeps.filesystem.filesystem_io".to_string(), "Filesystem".to_string()), native_effect_declared("std.realization_measurement".to_string(), "AllocationCounter".to_string()), native_effect_declared("extdeps.docker.cli_service".to_string(), "DockerCli".to_string())]),
@@ -348,17 +382,11 @@ pub fn native_driver_cost_row_standing(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct RetainedHostCliKernel;
+pub struct NativeCompilerRoute;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct DirectIngestDriver;
+pub struct NativeClaimRoute;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SourceRootEvalDriver;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NativeCliDriver;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NativeClaimDriver;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NativeServeDriver;
+pub struct NativeIngressRoute;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExclusiveLoad;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
