@@ -4918,3 +4918,20 @@ fn roster_rename_controls_report() -> String {
     Accepted { value: prepared, diagnostics: _ } => roster_rename_controls_ran(verdicts: roster_rename_controls_verdicts_all(prepared: prepared, lex: dag_prepared_lex()))
   }
 }
+
+// MEASUREMENT PROBE P1 (keen-otter msg_ac6d9786; NEVER MERGED, branch probe/real-route-p1-algebra-r1). ONE route in its own
+// process: R1's front end of std.algebra -- roster_module_read with exactly R1's arguments (dag_prepared_grammar,
+// dag_prepared_lex; its body selects NormalizeWithIsolatedAllocator). The COMPLETE result is consumed: the normalized tree is
+// walked to its full node count and the import rows are counted, so no field is left unevaluated. Returns a String, which
+// `gunbc run` reports as "error: function `roster_probe_algebra_r1` returned `...`" with exit 2.
+fn roster_probe_algebra_r1() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "algebra-r1 grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match roster_module_read(name: "std.algebra", prepared: prepared, lex: dag_prepared_lex()) {
+        ModuleReadOk { root: r, imports: im } =>
+          "algebra-r1 read-ok nodes=" + int_to_decimal_string(value: length(xs: node_subtree_nodes(root: r))) + " imports=" + int_to_decimal_string(value: length(xs: im))
+        ModuleReadFailed { detail: d } => "algebra-r1 read-failed " + d
+      }
+  }
+}
