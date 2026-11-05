@@ -1,4 +1,5 @@
 module v2.test.lens_complexity.algebra_receipts
+import v2.std.node { NodeOccurrence }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -44,18 +45,18 @@ data algebra_receipts_diagnostic: Diagnostic = Diagnostic {
 data polynomial_product_degree_claim: ComplexityProjectionClaim = ComplexityProjectionClaim {
   input_cost: ProductCost {
     lhs: PolynomialCost {
-      variable: SizeVariable { source: algebra_receipts_x },
+      variable: SizeVariable { source: NodeOccurrence { node: algebra_receipts_x } },
       degree: polynomial_degree_two_receipt
     },
     rhs: PolynomialCost {
-      variable: SizeVariable { source: algebra_receipts_y },
+      variable: SizeVariable { source: NodeOccurrence { node: algebra_receipts_y } },
       degree: polynomial_degree_two_receipt
     }
   },
   expected_complexity: multidimensional_polynomial_complexity(
     variables: composite_complexity_variables(
-      lhs: single_complexity_variable(size_var: SizeVariable { source: algebra_receipts_x }),
-      rhs: single_complexity_variable(size_var: SizeVariable { source: algebra_receipts_y })
+      lhs: single_complexity_variable(size_var: SizeVariable { source: NodeOccurrence { node: algebra_receipts_x } }),
+      rhs: single_complexity_variable(size_var: SizeVariable { source: NodeOccurrence { node: algebra_receipts_y } })
     ),
     degree: polynomial_degree_four_receipt
   ),
@@ -63,8 +64,8 @@ data polynomial_product_degree_claim: ComplexityProjectionClaim = ComplexityProj
 }
 
 data variable_sensitive_dominance_claim: ComplexityDominanceClaim = ComplexityDominanceClaim {
-  lhs: linear_complexity(size_var: SizeVariable { source: algebra_receipts_x }),
-  rhs: linear_complexity(size_var: SizeVariable { source: algebra_receipts_y }),
+  lhs: linear_complexity(size_var: SizeVariable { source: NodeOccurrence { node: algebra_receipts_x } }),
+  rhs: linear_complexity(size_var: SizeVariable { source: NodeOccurrence { node: algebra_receipts_y } }),
   expected_dominates: false,
   falsification: algebra_receipts_diagnostic
 }

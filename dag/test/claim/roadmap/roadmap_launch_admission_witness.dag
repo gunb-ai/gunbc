@@ -22,7 +22,10 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassRecorded,
   belt_capacity_of_instance,
 }
-import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun,
+}import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.roadmap.roadmap_presentation {
   WorkAction, ActionAvailable, ActionUnavailable, PrimaryAction, SecondaryAction, DiagnosticAction,
   OpenLifecycle, DoneLifecycle, dispatch_action,
@@ -827,6 +830,7 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRecorded,
+    slots_cutover_pass: BeltPassDeferred { reason: "witness fixture: the cutover pass did not run" },
   }
   match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: receipt))) {
     BeltTickReceiptPresent { receipt: back } =>
