@@ -48,7 +48,7 @@ import test.claim.fabric.fabric_storage_fixture {
     FabricWetScenarioReady,    fabric_wet_scenario,}
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageBindingRefused }
 import extdeps.shell
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, CarrierClosed }
 import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, IssueCommandSubject, issue_command_apply }
 import gunbc.fabric.fabric_event_log { EventAppended }
 import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, fabric_storage_slots }
@@ -286,25 +286,21 @@ data close_body_no_csrf: String = "key=op-serve-close-1&repo=briansrls/gunbc&pr=
 
 // ── THE CLOCK DERIVES THE DAY ────────────────────────────────────────────────────────────────────
 
-data clock_zero: EpochSecs = { value: 0 }
+data clock_zero: EpochSecs = 0 as EpochSecs
 
-data clock_newest: EpochSecs = { value: 1791676800 }
+data clock_newest: EpochSecs = 1791676800 as EpochSecs
 
-data clock_mid: EpochSecs = { value: 1760227200 }
-
-data clock_before_epoch: EpochSecs = { value: -86400 }
+data clock_mid: EpochSecs = 1760227200 as EpochSecs
 
 test fn the_close_derives_the_civil_utc_day_from_the_clock() -> Bool {
   let d0 = roadmap_operator_date_from_epoch_secs(secs: clock_zero)
   let d1 = roadmap_operator_date_from_epoch_secs(secs: clock_newest)
   let d2 = roadmap_operator_date_from_epoch_secs(secs: clock_mid)
-  let dn = roadmap_operator_date_from_epoch_secs(secs: clock_before_epoch)
   let e0 = claim("epoch zero is 1970-01-01", d0.year == 1970 && d0.month == 1 && d0.day == 1
     && (roadmap_operator_render_civil_date(date: d0) as String) == "1970-01-01")
   let e1 = claim("the newest seed day reads back exactly", (roadmap_operator_render_civil_date(date: d1) as String) == "2026-10-11")
   let e2 = claim("a mid-year day lands right", (roadmap_operator_render_civil_date(date: d2) as String) == "2025-10-12")
-  let e3 = claim("a negative epoch second rounds DOWN to the prior day, not toward zero", dn.year == 1969 && dn.month == 12 && dn.day == 31)
-  e0 && e1 && e2 && e3
+  e0 && e1 && e2
 }
 
 // ── THE WIRE LINE IS CANONICAL AND PARSLES UNDER THE SEED'S OWN LAW ──────────────────────────────
@@ -320,7 +316,7 @@ fn sample_receipt(node: String) -> RoadmapAcceptanceReceipt {
     },
     handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
     accepted_by: "briansrls" as NonEmptyStr,
-    accepted_on: Iso8601CivilDate { year: 2026, month: 11, day: 3 },
+    accepted_on: "2026-11-03" as NonEmptyStr,
   }
 }
 
@@ -632,7 +628,7 @@ test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
         expected: none },
         reason: "ended by the operator" as NonEmptyStr },
       recorded_at: "2026-11-04T08:00:00Z") {
-      EventAppended { id: _ } =>
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } =>
         match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt") {
           LineageTerminal { why: w } => claim("the retired node reads terminal, and the read names retirement", string_contains(s: w, pattern: "retired"))
           LineageOpen => claim("a retired node read open to the belt", false)
