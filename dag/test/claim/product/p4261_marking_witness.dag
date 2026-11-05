@@ -130,7 +130,7 @@ fn read_citation(c: PhotographCitation) -> MarkingReading {
   // A reading is content plus the evidence it was read from. The span-level sighting is what binds the
   // GLYPHS to pixels; the evidence field says where the reading as a whole came from.
   MarkingReading {
-    content: Transcribed { first: GlyphSpan { text: "LV165A", sighting: Present { value: c } }, rest: [] },
+    content: Transcribed { first: GlyphSpan { span: "LV165A", sighting: Present { value: c } }, rest: [] },
     evidence: OperatorPhotograph { citation: c }
   }
 }
@@ -147,7 +147,7 @@ fn read_citation(c: PhotographCitation) -> MarkingReading {
 // evidence carried a boxed, attributed frame, so at reading level the dissenter was perfectly checkable.
 fn read_glyphs_on_board_frame(text: NonEmptyStr, c: PhotographCitation?, rest: List<MarkingSpan>) -> MarkingReading {
   MarkingReading {
-    content: Transcribed { first: GlyphSpan { text: text, sighting: c }, rest: rest },
+    content: Transcribed { first: GlyphSpan { span: text, sighting: c }, rest: rest },
     evidence: OperatorPhotograph { citation: boxed_a() }
   }
 }
@@ -161,7 +161,7 @@ fn read_glyphs_on_board_frame(text: NonEmptyStr, c: PhotographCitation?, rest: L
 fn read_glyphs_from(text: NonEmptyStr, citation: PhotographCitation, rest: List<MarkingSpan>) -> MarkingReading {
   MarkingReading {
     content: Transcribed {
-      first: GlyphSpan { text: text, sighting: Present { value: citation } },
+      first: GlyphSpan { span: text, sighting: Present { value: citation } },
       rest: rest
     },
     evidence: OperatorPhotograph { citation: citation }
@@ -170,7 +170,7 @@ fn read_glyphs_from(text: NonEmptyStr, citation: PhotographCitation, rest: List<
 
 fn read_no_citation(text: NonEmptyStr) -> MarkingReading {
   MarkingReading {
-    content: Transcribed { first: GlyphSpan { text: text, sighting: Absent }, rest: [] },
+    content: Transcribed { first: GlyphSpan { span: text, sighting: Absent }, rest: [] },
     evidence: OperatorPhotograph { citation: unboxed_a() }
   }
 }
@@ -332,7 +332,7 @@ test fn control_7_one_span_may_not_be_claimed_in_two_channels() -> Bool {
   let c = boxed_a()
   let twice = MarkingReading {
     content: Transcribed {
-      first: GlyphSpan { text: "ON", sighting: Present { value: c } },
+      first: GlyphSpan { span: "ON", sighting: Present { value: c } },
       rest: [PrintedLogo {
         span: "ON",
         whose: "onsemi",
@@ -620,7 +620,7 @@ test fn control_15_an_unboxed_frame_never_carries_an_identification() -> Bool {
 test fn unstored_bytes_are_a_recorded_gap_and_not_a_reliance() -> Bool {
   let gap = MarkingReading {
     content: Transcribed {
-      first: GlyphSpan { text: "P617A", sighting: Present { value: gap_citation() } },
+      first: GlyphSpan { span: "P617A", sighting: Present { value: gap_citation() } },
       rest: []
     },
     evidence: OperatorPhotograph { citation: gap_citation() }

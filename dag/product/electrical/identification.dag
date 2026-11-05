@@ -120,7 +120,7 @@ type MarkingGlyphs = NonEmptyStr
 // evidence can be checked (§6.3). Absent is legal and is recorded evidence debt — such a span may sit in
 // `others`, and it can never carry reliance.
 type GlyphSpan {
-  text: MarkingGlyphs
+  span: MarkingGlyphs
   sighting: PhotographCitation?
 }
 
@@ -347,7 +347,7 @@ fn positions_in_dispute(relied_glyphs: List<Char>, other_glyphs: List<Char>) -> 
 // duplication, when the contradiction is one observed span recorded in two channels.
 fn span_quoted(s: MarkingSpan) -> NonEmptyStr {
   match s {
-    Glyphs { span } => span.text as NonEmptyStr
+    Glyphs { span } => span.span as NonEmptyStr
     PrintedLogo { span, whose: _, sighting: _ } => span
     BodyFeature { span, described: _, sighting: _ } => span
     ReadingCircumstance { span, noted: _, sighting: _ } => span
@@ -444,7 +444,7 @@ fn any_glyph_unread(spans: List<GlyphSpan>) -> Bool {
 // without the recursive tail) are both green. So the coercion is bound in a function that never calls itself,
 // and the walk below binds nothing at all.
 fn span_carries_mark(s: GlyphSpan, mark: Char) -> Bool {
-  let host = shown_text(t: s.text)
+  let host = shown_text(t: s.span)
   string_contains_char(s: host, c: mark)
 }
 
@@ -475,7 +475,7 @@ fn reduce_glyphs(spans: List<GlyphSpan>) -> GlyphReduction {
   match spans {
     Empty => Reduced { lines: [] }
     Cons { head: s, tail: rest } =>
-      match reduced_marking(text: s.text) {
+      match reduced_marking(text: s.span) {
         ReductionUnavailable { why } => ReductionUnavailable { why: why }
         Reduced { lines: here } =>
           match reduce_glyphs(spans: rest) {
@@ -1163,7 +1163,7 @@ fn sole_glyph_text(c: MarkingContent) -> MarkingGlyphs? {
     Empty => Absent
     Cons { head: only, tail: rest } =>
       match rest {
-        Empty => Present { value: only.text }
+        Empty => Present { value: only.span }
         Cons { head: _, tail: _ } => Absent
       }
   }
@@ -1208,9 +1208,9 @@ fn render_glyph_lines(gs: List<GlyphSpan>) -> String {
     Empty => ""
     Cons { head: g, tail: rest } =>
       match rest {
-        Empty => g.text as String
+        Empty => g.span as String
         Cons { head: _, tail: _ } =>
-          join([g.text as String, " / ", render_glyph_lines(gs: rest)], "")
+          join([g.span as String, " / ", render_glyph_lines(gs: rest)], "")
       }
   }
 }
