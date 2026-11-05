@@ -58,7 +58,7 @@ import gunbc.runner.runner_microvm_lifecycle {
   SubjectSlotNetwork,
   ObservedTeardown, ObservedStop, ObservedCgroup, ObservedPath, TeardownSettlement,
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject, TeardownSubject,
-  TeardownReadbackSubjectUnobservable, UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
+  TeardownReadbackSubjectUnobservable, UnitAttemptBindingReading, UnitAttemptBindingRead, UnitAttemptBindingUnread,
   SubjectInvocation, attempt_teardown_readback, settle_teardown,
 }
 
@@ -229,7 +229,7 @@ fn observed_for(id: AttemptIdentity, facts: HostFacts) -> ObservedTeardown {
   ObservedTeardown {
     host: id.attempt.slot.host as String,
     generation: id.allocation_generation,
-    stop: ObservedStop { unit: runner_microvm_attempt_unit_name(attempt: id.attempt), invocation_id: UnitInvocationRead { invocation_id: id.invocation_id }, outcome: facts.stop },
+    stop: ObservedStop { unit: runner_microvm_attempt_unit_name(attempt: id.attempt), attempt_binding: UnitAttemptBindingRead { attempt_token: id.invocation_id }, outcome: facts.stop },
     cgroup: ObservedCgroup { root: fabric_cell_slice_name(slot: id.attempt.slot) as NonEmptyStr, readback: facts.cgroup },
     mounts: ObservedPath { path: runner_microvm_attempt_jail_base(attempt: id.attempt), readback: facts.mounts },
     attempt_storage: ObservedPath { path: runner_microvm_attempt_dir(attempt: id.attempt), readback: facts.attempt_storage },
@@ -391,11 +391,11 @@ test fn an_unreadable_unit_invocation_refuses_as_unobservable_and_a_foreign_one_
         Absent => false
         Present { value: b } => {
           let clean = clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)
-          let unread = match binding_with_invocation(bound: b, id: id, facts: clean, reading: UnitInvocationUnread { reason: "the unit carries no assignment" as NonEmptyStr }) {
+          let unread = match binding_with_invocation(bound: b, id: id, facts: clean, reading: UnitAttemptBindingUnread { reason: "the unit carries no assignment" as NonEmptyStr }) {
             TeardownReadbackSubjectUnobservable { subject: SubjectInvocation, reason: _ } => true
             _ => false
           }
-          let foreign = match binding_with_invocation(bound: b, id: id, facts: clean, reading: UnitInvocationRead { invocation_id: "inv-somebody-else" as NonEmptyStr }) {
+          let foreign = match binding_with_invocation(bound: b, id: id, facts: clean, reading: UnitAttemptBindingRead { attempt_token: "inv-somebody-else" as NonEmptyStr }) {
             TeardownReadbackForeignSubject { subject: SubjectInvocation, expected: _, observed: _ } => true
             _ => false
           }
@@ -422,7 +422,7 @@ test fn an_unreadable_unit_invocation_settles_nothing() -> Bool {
             bound: b,
             id: id,
             facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty),
-            reading: UnitInvocationUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
+            reading: UnitAttemptBindingUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
           ) {
             TeardownReadbackBound { readback: _ } => false
             _ => true
@@ -438,7 +438,7 @@ fn binding_with_invocation(
   bound: CellBoundAttempt,
   id: AttemptIdentity,
   facts: HostFacts?,
-  reading: UnitInvocationReading,
+  reading: UnitAttemptBindingReading,
 ) -> TeardownReadbackBinding {
   match facts {
     Absent => TeardownReadbackForeignSubject { subject: SubjectSlotNetwork, expected: "a readable fixture", observed: "no subject" }
@@ -447,12 +447,12 @@ fn binding_with_invocation(
   }
 }
 
-fn observed_with_invocation(id: AttemptIdentity, facts: HostFacts, reading: UnitInvocationReading) -> ObservedTeardown {
+fn observed_with_invocation(id: AttemptIdentity, facts: HostFacts, reading: UnitAttemptBindingReading) -> ObservedTeardown {
   let base = observed_for(id: id, facts: facts)
   ObservedTeardown {
     host: base.host,
     generation: base.generation,
-    stop: ObservedStop { unit: base.stop.unit, invocation_id: reading, outcome: base.stop.outcome },
+    stop: ObservedStop { unit: base.stop.unit, attempt_binding: reading, outcome: base.stop.outcome },
     cgroup: base.cgroup,
     mounts: base.mounts,
     attempt_storage: base.attempt_storage,
@@ -485,7 +485,7 @@ test fn an_unreadable_unit_invocation_leaves_the_cell_owing_recovery() -> Bool {
             bound: b,
             id: id,
             facts: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty),
-            reading: UnitInvocationUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
+            reading: UnitAttemptBindingUnread { reason: "the unit's Environment could not be read" as NonEmptyStr },
           ) {
             TeardownReadbackBound { readback: _ } => false
             _ => true

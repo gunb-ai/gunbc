@@ -35,6 +35,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding
 }
 import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.http.client
+import gunbc.harness.harness_operator_route { OperatorRoundFault, operator_round_fault, operator_round_fault_text, operator_pinned_post_request }
 import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io
 import extdeps.filesystem.filesystem_io { Filesystem,
@@ -62,7 +63,7 @@ import gunbc.harness.harness_wire {
 import gunbc.harness.harness_tool {
   HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused,
   harness_execute_tool_use, harness_outcome_text, harness_outcome_is_error,
-  harness_run_command_schema,
+  harness_run_command_schema, HarnessValidationRoute, ValidationNotOffered, ValidationRoutedTo, harness_validate_worktree_schema, harness_validate_worktree_description,
 }
 import gunbc.harness.harness_tool_kind { harness_tool_of_wire_name, harness_tool_read_item_type }
 import extdeps.llm.anthropic_messages_api {
@@ -725,7 +726,7 @@ fn harness_messages_request_json(
     json_kv(key: "max_tokens", value: json_int(n: config.max_tokens)),
     json_kv(key: "system", value: json_string(s: config.system_prompt)),
     json_kv(key: "messages", value: json_array(elements: messages)),
-    json_kv(key: "tools", value: harness_tool_contract_json(shape: AnthropicMessagesShape)),
+    json_kv(key: "tools", value: harness_tool_contract_json(shape: AnthropicMessagesShape, validation: config.environment.validation)),
   ], reasoning_kwargs))
 }
 
@@ -745,7 +746,7 @@ fn harness_chat_request_json(
         json_kv(key: "content", value: json_string(s: config.system_prompt)),
       ]),
     ], messages))),
-    json_kv(key: "tools", value: harness_tool_contract_json(shape: OpenAiChatCompletionsShape)),
+    json_kv(key: "tools", value: harness_tool_contract_json(shape: OpenAiChatCompletionsShape, validation: config.environment.validation)),
   ], reasoning_kwargs))
 }
 
@@ -753,34 +754,41 @@ fn harness_chat_request_json(
 // it is part of the normalized request identity a turn is placed under (gunbc.harness.harness_cli
 // harness_model_request_inputs), so the identity cannot drift from what the model is actually
 // offered. One schema, two envelopes.
-fn harness_tool_contract_json(shape: HarnessWireShape) -> JsonValue {
+fn harness_tool_contract_json(shape: HarnessWireShape, validation: HarnessValidationRoute) -> JsonValue {
+  json_array(elements: concat(
+    [harness_tool_declaration_json(shape: shape, name: "run_command", description: harness_run_command_description, schema: harness_run_command_schema())],
+    match validation {
+      ValidationNotOffered => []
+      ValidationRoutedTo { repo_root: _ } =>
+        [harness_tool_declaration_json(shape: shape, name: "validate_worktree", description: harness_validate_worktree_description, schema: harness_validate_worktree_schema())]
+    },
+  ))
+}
+
+fn harness_tool_declaration_json(shape: HarnessWireShape, name: String, description: String, schema: JsonValue) -> JsonValue {
   match shape {
     AnthropicMessagesShape =>
-      json_array(elements: [
-        json_object([
-          json_kv(key: "name", value: json_string(s: "run_command")),
-          json_kv(key: "description", value: json_string(s: harness_run_command_description)),
-          json_kv(key: "input_schema", value: harness_run_command_schema()),
-        ]),
+      json_object([
+        json_kv(key: "name", value: json_string(s: name)),
+        json_kv(key: "description", value: json_string(s: description)),
+        json_kv(key: "input_schema", value: schema),
       ])
     OpenAiChatCompletionsShape =>
-      json_array(elements: [
-        json_object([
-          json_kv(key: "type", value: json_string(s: "function")),
-          json_kv(key: "function", value: json_object([
-            json_kv(key: "name", value: json_string(s: "run_command")),
-            json_kv(key: "description", value: json_string(s: harness_run_command_description)),
-            json_kv(key: "parameters", value: harness_run_command_schema()),
-          ])),
-        ]),
+      json_object([
+        json_kv(key: "type", value: json_string(s: "function")),
+        json_kv(key: "function", value: json_object([
+          json_kv(key: "name", value: json_string(s: name)),
+          json_kv(key: "description", value: json_string(s: description)),
+          json_kv(key: "parameters", value: schema),
+        ])),
       ])
   }
 }
 
 data harness_run_command_description: String = "Run a shell command in the attempt's working directory and return its combined output and exit code."
 
-fn harness_tool_contract_wire(shape: HarnessWireShape) -> String {
-  serialize_json(v: harness_tool_contract_json(shape: shape))
+fn harness_tool_contract_wire(shape: HarnessWireShape, validation: HarnessValidationRoute) -> String {
+  serialize_json(v: harness_tool_contract_json(shape: shape, validation: validation))
 }
 
 // INLINE REASONING IS DECODED, NOT REFUSED. When the serving unit carries no reasoning parser, a
@@ -1308,7 +1316,9 @@ fn harness_send_round(
       HarnessPostedRound {
         read: HarnessResponseUnreadable {
           cause: join([
-            "the backend refused the request or the transport failed; ", harness_refusal_body_text(config: config, body: posted.body),
+            "the backend refused the request or the transport failed; ",
+            match posted.fault { Present { value: f } => operator_round_fault_text(fault: f)  Absent => "" },
+            harness_refusal_body_text(config: config, body: posted.body),
           ], ""),
         },
         wire_log_detail: wire_log_detail,
@@ -1341,6 +1351,7 @@ type HarnessPostOutcome {
   body: String
   success: Bool
   headers: HttpHeaderDump?
+  fault: OperatorRoundFault?
 }
 
 // HOSTED FAILURES ARE CLASSIFIED ONCE (gunbc.harness.hosted_failure) and never retried. A fleet
@@ -1380,23 +1391,62 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
         request_body_file: config.request_scratch_path as String as NonEmptyStr,
         max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
       )
-      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none }
+      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none, fault: none }
     }
-    Present { value: hf } => {
-      let posted = http.Client.PostJsonFromFileWithHeaderFile(
-        url: config.backend_url as NonEmptyStr,
-        request_body_file: config.request_scratch_path as String as NonEmptyStr,
-        header_file: hf,
-        response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
-        max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
-      )
-      let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
-      HarnessPostOutcome {
-        body: posted.body,
-        success: posted.success,
-        headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+    Present { value: hf } =>
+      match config.backend_access {
+        BackendAdmittedByOperatorEndpoint { header_file: _ } => harness_post_json_pinned(config: config, hf: hf)
+        BackendAdmittedBySeat => harness_post_json_with_header(config: config, hf: hf)
+        BackendAdmittedByHostedQuota { header_file: _, quota: _ } => harness_post_json_with_header(config: config, hf: hf)
       }
-    }
+  }
+}
+
+fn harness_post_json_with_header(config: HarnessTurnConfig, hf: NonEmptyStr) -> HarnessPostOutcome {
+  let posted = http.Client.PostJsonFromFileWithHeaderFile(
+    url: config.backend_url as NonEmptyStr,
+    request_body_file: config.request_scratch_path as String as NonEmptyStr,
+    header_file: hf,
+    response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
+    max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+  )
+  let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+  HarnessPostOutcome {
+    body: posted.body,
+    success: posted.success,
+    headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+    fault: none,
+  }
+}
+
+// THE OPERATOR ENDPOINT IS POSTED ONLY OVER THE PINNED CERTIFICATE. The request is built once from
+// gunbc.harness.harness_operator_route operator_pinned_post_request (the pin files sit beside the header file
+// operator_open_header wrote after it had checked the custody certificate against the pin), and curl verifies
+// both the certificate and its public key in the handshake, so a different certificate sends no request byte.
+// The exit code is read into the typed fault: a refused certificate is never retried as an unreachable server.
+fn harness_post_json_pinned(config: HarnessTurnConfig, hf: NonEmptyStr) -> HarnessPostOutcome {
+  let r = operator_pinned_post_request(
+    url: config.backend_url as NonEmptyStr,
+    request_body_file: config.request_scratch_path as String as NonEmptyStr,
+    response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
+    max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+    hf: hf,
+  )
+  let posted = http.Client.PostJsonFromFileWithHeaderFilePinned(
+    url: r.url,
+    request_body_file: r.request_body_file,
+    header_file: r.header_file,
+    response_headers_file: r.response_headers_file,
+    ca_file: r.ca_file,
+    pinned_pubkey_file: r.pinned_pubkey_file,
+    max_seconds: r.max_seconds,
+  )
+  let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+  HarnessPostOutcome {
+    body: posted.body,
+    success: posted.success,
+    headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+    fault: operator_round_fault(success: posted.success, curl_exit: posted.exit_code),
   }
 }
 

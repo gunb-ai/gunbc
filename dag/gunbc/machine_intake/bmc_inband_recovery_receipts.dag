@@ -17,6 +17,9 @@ module gunbc.machine_intake.bmc_inband_recovery_receipts
 // is not a receipt; it does not name a host, a hostname, or an operator.
 
 import extdeps.bmc.capability { BmcFirmwareVersion }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoReading, McInfoReported, McInfoUnreadable, ipmitool_mc_info_of }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import std.content_hash { sha256_hex_of_text }
 import extdeps.bmc.ipmi {
   IpmiCompletionCode,
   IpmiDeviceIdentity,
@@ -131,6 +134,36 @@ data asrock_altrad8ud_1l2t_inband_device_identity: IpmiDeviceIdentity = IpmiDevi
   manufacturer_name: "ASRock Rack Incorporation",
   product_id: 8245,
   product_name: "Unknown (0x2035)",
+}
+
+// THE SAME READING, RE-DERIVED THROUGH THE PARSER RATHER THAN RE-TYPED. The data above is hand-authored
+// from this capture, and a hand-authored reading is a claim about bytes nobody re-read. This function opens
+// the capture named by `asrock_altrad8ud_inband_recovery_capture`, checks its digest, and puts the bytes
+// through the family-neutral `ipmitool mc info` reader in extdeps.bmc.ipmitool_mc_info; the witness
+// (test.claim.machine_intake.bmc_first_contact_reading_witness) then claims the derived reading and the
+// hand-authored one are the SAME identity. If the capture is missing, altered, or no longer parses, this
+// returns no identity — and the claim below fails loudly instead of quietly agreeing with itself.
+fn asrock_altrad8ud_inband_mc_info_reading() -> IpmiMcInfoReading uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt" as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => McInfoUnreadable { cause: e as NonEmptyStr }
+    FilesystemReadSucceeded { content: text } => bmc_inband_checked_reading(row_text: text)
+  }
+}
+
+fn bmc_inband_checked_reading(row_text: String) -> IpmiMcInfoReading {
+  if sha256_hex_of_text(text: row_text) != (asrock_altrad8ud_inband_recovery_capture.hex as String) {
+    McInfoUnreadable { cause: "the in-band recovery capture is not the bytes the receipt's digest names" as NonEmptyStr }
+  } else {
+    ipmitool_mc_info_of(stdout: row_text)
+  }
+}
+
+fn asrock_altrad8ud_inband_device_identity_from_capture() -> IpmiDeviceIdentity? uses fs: std.resources.Filesystem {
+  match asrock_altrad8ud_inband_mc_info_reading() {
+    McInfoReported { report: report } => Present { value: report.identity }
+    McInfoUnreadable { cause: cause } => none
+  }
 }
 
 // THE ONE MEASURED ROW. An ALTRAD8UD-1L2T (mc info Product ID 0x2035), OpenBMC Firmware Revision

@@ -109,6 +109,7 @@ import gunbc.scm.target_reference {
   TargetReferenceNotOneArm,
   TargetReferenceUncontainedDigestInvalid,
   decode_target_reference,
+  target_reference_load_standing,
 }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
 import extdeps.languages.json.parse {
@@ -178,6 +179,7 @@ import gunbc.scm.object_store {
   object_id_eq,
   scm_object_identity,
   store_records_in_dependency_order,
+  node_target_of,
 }
 
 

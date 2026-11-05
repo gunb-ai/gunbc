@@ -4,8 +4,13 @@ import extdeps.boards.types { HeldManualRevision,
   BaseboardCatalogRow, DimmPopulation,
   BaseboardPhysicalProfile,
   PowerInputPopulationStanding, PowerInputMinimumOneStated,
+  BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling,
+  BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
+  OnboardEthernetPort, OnboardEthernetPortRow, BmcSharingStated, BmcSharingNotStated, PortRowsStated,
+  BoardExpansionSlot, BoardExpansionSlots, SlotLaneObstacle,
 }
 import extdeps.vendor.asrock_rack { asrock_rack }
+import extdeps.boards.asrock_altrad8ud_setup_varstore { ras_menu, ras_pcie_aer_firmware_first_item }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
 import extdeps.bmc.types {
   BmcRedfishSurfaceRow,
@@ -91,11 +96,20 @@ data asrock_altrad8ud_board_authority: BoardAuthorityRef = BoardAuthorityRef {
   }
 }
 
+// The rear-panel LAN ports (manual v1.20 section 1.6, I/O panel items 2, 3 and 5; controllers from
+// section 1.2): LAN1 and LAN2 are the X550's two 10GbE ports, ALTRAD8UD-1L2T only, and LAN1 is marked
+// "shared NIC"; LAN3 is the I210's one 1GbE port. The UEFI setup chapter states no item that disables
+// an onboard LAN controller, so every port's switch is SwitchNotStated.
+data asrock_altrad8ud_1l2t_lan1: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN1", controller: "Intel X550", bmc_sharing: BmcSharingStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 3: 10G LAN RJ-45 Port (LAN1, shared NIC)" }
+data asrock_altrad8ud_1l2t_lan2: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN2", controller: "Intel X550", bmc_sharing: BmcSharingNotStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 2: 10G LAN RJ-45 Port (LAN2)" }
+data asrock_altrad8ud_1l2t_lan3: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN3", controller: "Intel i210", bmc_sharing: BmcSharingNotStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 5: 1G LAN RJ-45 Port (LAN3)" }
+
 data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model: asrock_altrad8ud_board_authority,
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   vendor: asrock_rack,
   bmc_firmware: OpenBmc,
+  onboard_ethernet_ports: PortRowsStated { rows: [asrock_altrad8ud_1l2t_lan1, asrock_altrad8ud_1l2t_lan2, asrock_altrad8ud_1l2t_lan3] },
 }
 
 data asrock_altrad8ud_redfish_system_id: NonEmptyStr = "system"
@@ -969,8 +983,55 @@ data asrock_altrad8ud_manual_held: HeldManualRevision = HeldManualRevision {
   version_label: "1.20",
   published_label: "Jul. 2025",
   page_count: 95,
-  sha256_hex: Absent,
+  sha256_hex: Present { value: "2160675a09583bbd62e4d1223628f38cbf6c59b8fecc1cc32ec3b8be1f953848" },
   authority: extdeps_external_authority_anchor,
+}
+
+// The digest above is of the operator's copy read again on 2026-11-02 (Version 1.20, Jul. 2025, 95
+// pages, so the same revision as the 2026-10-04 reading); the earlier reading recorded none.
+
+// ---- 1.2 Specifications and 2.5 Expansion Slots: the four PCIe slots, PCIE4 to PCIE7, SLOT7 nearest
+// the CPU. Section 1.2: "SLOT7: PCIe4.0 x16*, SLOT6: PCIe4.0 x16*, SLOT5: PCIe4.0 x16, SLOT4: PCIe4.0
+// x16**", with "*Supports PCIe4.0 x8 when using Ampere Altra processors" and "**SLOT4 does not support
+// full-length card". Section 1.4's layout draws the four slots as an evenly spaced run with no empty
+// position between them.
+//
+// THE POSITIONS ARE AN INFERENCE, and they are typed as one. The manual numbers the slots 4 to 7, which
+// is the numbering of the four ATX expansion positions a micro-ATX board keeps, and that makes them
+// adjacent positions one CEM pitch apart. The manual prints no slot dimension. Scaled against its own
+// printed board dimensions (26.7 cm and 24.4 cm, read off the section 1.4 drawing's vector layer on
+// 2026-11-02), the slot outlines sit 22.54, 22.60 and 22.65 points apart, about 20.9 mm, against 20.32 mm
+// for one CEM pitch: consistent with adjacency to about 3 %, and a drawing that is not dimensioned cannot
+// do better. A ruler settles it, so the standing names that reading.
+// THE RTC COIN CELL, read by the operator on 2026-11-04 on the board in the A2 chassis after a blower design
+// that ignored it had already been drawn: the cell stands vertically, its holder 17 mm above the board, in
+// PCIE4's lane -- the slot farthest from the CPU (SLOT7 is nearest, above) -- in the row of the FAN headers near
+// the front edge, and it is the tallest component in that row. It was read 66.44 mm beyond the far end of an
+// NVIDIA A2 in PCIE4; with the A2's stated 167.6 mm length (extdeps.gpu.nvidia_a2) that is 234.04 mm from the
+// bracket plane. Whether 66.44 mm is to the cell's near face or its centre was not said, so half_extent is
+// generous (a 20 mm cell in a holder, either side, plus the ambiguity).
+data asrock_altrad8ud_coin_cell: SlotLaneObstacle = SlotLaneObstacle {
+  label: "RTC coin cell (vertical holder)",
+  slot: "PCIE4",
+  depth_from_bracket_plane: micrometer(count: 234040),
+  half_extent: micrometer(count: 13000),
+  height_above_board: micrometer(count: 17000),
+  standing: TranscribedUncited {
+    read_obligation: "operator, on the board: the coin-cell holder's footprint and its centre's depth from the rear bracket plane, read directly (this row is 66.44 mm read beyond an installed A2's far end plus the A2's stated length), and its designator from the manual's section 1.4 layout",
+  },
+}
+
+data asrock_altrad8ud_expansion_slots: BoardExpansionSlots = BoardExpansionSlots {
+  lane_obstacles: [asrock_altrad8ud_coin_cell],
+  slots: [
+    BoardExpansionSlot { designator: "PCIE4", position: 4 },
+    BoardExpansionSlot { designator: "PCIE5", position: 5 },
+    BoardExpansionSlot { designator: "PCIE6", position: 6 },
+    BoardExpansionSlot { designator: "PCIE7", position: 7 },
+  ],
+  positions: TranscribedUncited {
+    read_obligation: "operator, on the board, with a caliper: the centre-to-centre distance from PCIE4 to PCIE7 (or across the four card brackets). Adjacent positions predict 60.96 mm (three CEM pitches of 20.32 mm); the manual's undimensioned section 1.4 drawing scales to about 62.7 mm.",
+  },
 }
 
 // ---- 1.2 Specifications, the comparison profile. Moved here from extdeps.boards.gigabyte, where
@@ -1088,6 +1149,30 @@ type RearIoPort
   | RearIpmiLan
   | RearUidSwitch
 data asrock_altrad8ud_rear_io_ports: List<RearIoPort> = [RearVga, RearLan2TenGbe, RearLan1TenGbeSharedNic, RearUsb3Pair12, RearLan3OneGbe, RearUsb3Pair34, RearIpmiLan, RearUidSwitch]
+
+// ---- Switching a board function off (manual v1.20). Section 2.6 states one jumper, the 3-pin
+// BMC_DIS (layout item 22), "BMC Enabled (Default)" / "BMC Disabled": it removes the whole AST2500,
+// so for the controller's graphics function it is a COARSER switch, not this function's switch. No
+// section states a graphics-only disable, and section 3.3.3's PCIE Link Width/Speed items name the
+// slots, Slimline, OCuLink and M.2 ports, not the controller's link. Section 3.3.2 (RAS Configuration)
+// states: "PCIe AER Firmware First: Use this item to enable firmware to detect PCIe AER first.
+// Otherwise OS detects AER." The setting's value labels are not printed, so the off arm is carried
+// as the manual's own words rather than a guessed label.
+fn asrock_altrad8ud_function_switch(f: BoardFunction) -> BoardFunctionSwitch {
+  match f {
+    BmcManagementFunction => JumperSwitch { designator: "BMC_DIS", off_position: "BMC Disabled (BMC Enabled is the default)", citation: "manual v1.20 section 2.6, layout item 22" }
+    BmcGraphicsController => SwitchNotStated { coarser: Present { value: "BMC_DIS (section 2.6, layout item 22) disables the whole BMC" } }
+    PcieErrorFirmwareFirstHandling => FirmwareSetupSwitch {
+      menu: ras_menu,
+      item: ras_pcie_aer_firmware_first_item,
+      off_meaning: "Otherwise OS detects AER",
+      citation: "manual v1.20 section 3.3.2",
+    }
+    OnboardEthernetPort { port } => port.switch
+  }
+}
+
+
 
 // Which rear ports carry an Ethernet cable in service. The 1L2T has two 10GbE (LAN1 shared with
 // the BMC NC-SI path), one 1GbE and one dedicated IPMI port; how many a deployment plugs is a

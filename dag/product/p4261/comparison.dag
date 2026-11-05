@@ -1,0 +1,279 @@
+module product.p4261.comparison
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import extdeps.electronic_component.types { ElectronicComponentRow , Designator, designator_eq }
+import extdeps.nvidia.p4261.population { P4261DesignPosition, p4261_e1_positions, p4261_k1_positions }
+import product.electrical.connectivity { component_identity_eq }
+import product.electrical.bench_session { alteration_refitted, removals_of }
+import product.electrical.identification { InstalledComponent, ObservedPresence, PartPresent, PartAbsent, PresenceUnobserved, observed_presence }
+import product.p4261.carrier { CarrierLayoutObservation, CorrespondenceAdmission, CorrespondenceRefusal, SpecimenPosition, admit_correspondence }
+import extdeps.external_authority { CitedFigureStanding }
+import product.p4261.evidence {
+  AttributionGap,
+  PopulationAssessment,
+  PositionStanding,
+  assess_population,
+  ScopedObservations,
+  common_rows,
+  established_rows,
+  layout_record,
+  p4261_e1_population_standings,
+  p4261_k1_population_standings,
+  read_on_our_board,
+  readings_conflict,
+  rows_disjoint,
+  rows_equal,
+  same_position,
+  unattributed,
+}
+import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.k1_a { p4261_k1_layout }
+
+// THE E1 AGAINST THE K1, POSITION BY POSITION. The first consumer of the moved population facts and of
+// their assessments.
+//
+// LABEL-ALIGNED, AND SAYS SO. Two positions are put side by side when the two revisions' catalogues
+// list the same silkscreen designator (extdeps.nvidia.p4261.population). A shared label on two
+// revisions of one design is a reason to compare the parts read there; it does not establish that the
+// positions are the same circuit position, so no electrical reading is compared across them, and a
+// terminal of one is never taken for a terminal of the other.
+//
+// EACH SIDE IS ONE PHYSICAL BOARD, AND THREE RESULTS ARE KEPT APART. A side names its board, its admitted
+// correspondence at that position, and then:
+//   - what its readings establish of the part as received (the scope product.p4261.evidence assesses:
+//     before any recorded removal there), only when the board is established as its revision;
+//   - the revision's reconstructed claim with its assessment on that board, as the assessment folds
+//     returned it (TranscribedUncited unless the board's own readings support it -- never a
+//     manufacturer's expected population);
+//   - where the record leaves the position: the part removed by a named event, a removal and refit the
+//     record cannot tell apart, a part seen with no removal recorded since, an absence seen, or unknown.
+// The observed relation between the two boards is one result; each claim's assessment is another; the
+// snapshot a third. Two boards both reading B against claims of A is SameIdentifiedPart(B) beside two
+// contradicted assessments, never a successful comparison of the claims; and parts that read alike
+// and have since been lifted are historically alike and now removed, never "both populated".
+//
+// THE OBSERVED RELATION IS CONSERVATIVE. A side establishes a row set only from in-scope readings made
+// on its own board (not the seller's listing) that agree with one another: their sets' common rows.
+//   {A} / {A}           the same identified part
+//   disjoint sets       different parts
+//   equal shared sets   the same candidate constraint -- not proof the fitted parts are the same
+//   overlapping sets    the difference is undetermined
+//   a side with none    incomplete, never "unpopulated" and never "different"
+// A board whose own in-scope readings disagree (present and absent, or disjoint rows) stops the
+// comparison at that position.
+type InstallationSnapshot
+  = RemovedBy { key: NonEmptyStr }
+  | RemovalRefitIndistinguishable
+  | SeenWithNoLaterRemoval
+  | SeenAbsent
+  | InstallationUnknown
+
+// A side's claim assessment is computed from the side's own admitted context, in the same evaluation
+// as its observations -- never supplied by a caller -- so the two always describe one body of evidence.
+// A standing (a receipt where the board's readings support the claim) is attached only by
+// p4261_comparison, whose boards are the very records the minting folds read.
+type ComparedSide {
+  asset: PhysicalAssetIdentity
+  position: P4261DesignPosition
+  bindings: List<SpecimenPosition>
+  gap: AttributionGap?
+  scoped: ScopedObservations
+  assessment: PopulationAssessment?
+  standing: CitedFigureStanding?
+  installation: InstallationSnapshot
+}
+
+type SideRows
+  = RowsEstablished { rows: List<ElectronicComponentRow> }
+  | NoRowsEstablished
+  | BoardDisagrees { observations: List<InstalledComponent> }
+
+type ObservedRelation
+  = SameIdentifiedPart { row: ElectronicComponentRow }
+  | DifferentParts { e1: List<ElectronicComponentRow>, k1: List<ElectronicComponentRow> }
+  | SameCandidateConstraint { rows: List<ElectronicComponentRow> }
+  | DifferenceUndetermined { e1: List<ElectronicComponentRow>, k1: List<ElectronicComponentRow> }
+  | ComparisonIncomplete { boards: List<PhysicalAssetIdentity> }
+  | BoardReadingsDisagree { asset: PhysicalAssetIdentity, observations: List<InstalledComponent> }
+
+type PositionComparison {
+  designator: Designator
+  e1: ComparedSide
+  k1: ComparedSide
+  observed: ObservedRelation
+}
+
+// What a board's admitted correspondence does not cover: readings refused, with their causes, and the
+// components observed on the board that no admitted reading places. A comparison over the covered
+// positions is not a census of the board.
+type BoardCoverage {
+  asset: PhysicalAssetIdentity
+  admitted: Nat
+  refused: List<CorrespondenceRefusal>
+  uncovered: List<InstalledComponent>
+}
+
+type P4261Comparison {
+  e1: BoardCoverage
+  k1: BoardCoverage
+  positions: List<PositionComparison>
+}
+
+fn coverage(layout: CarrierLayoutObservation, a: CorrespondenceAdmission) -> BoardCoverage {
+  BoardCoverage {
+    asset: layout.asset,
+    admitted: count(a.admitted),
+    refused: a.refused,
+    uncovered: filter(layout.components, c => !any(a.admitted, s => component_identity_eq(a: s.specimen, b: c.component))),
+  }
+}
+
+fn seen_present(os: List<InstalledComponent>) -> Bool {
+  any(os, o => match observed_presence(i: o.identification) { PartPresent => true, PartAbsent => false, PresenceUnobserved => false })
+}
+
+// Where the record leaves the position, refused rather than guessed. A removal says the position is
+// now empty only when nothing fitted was seen there after it or out of order with it: a part seen
+// later, or unplaced, may be a replacement, and B1 infers none. In-scope readings that conflict settle
+// nothing either.
+fn installation(layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>, scoped: ScopedObservations) -> InstallationSnapshot {
+  let removals = flat_map(bindings, s => removals_of(r: layout_record(layout: layout), asset: layout.asset, c: s.specimen))
+  let conflicted = (count(scoped.present) > 0 && count(scoped.absent) > 0) || readings_conflict(os: scoped.present)
+  if conflicted { InstallationUnknown }
+  else if any(removals, a => alteration_refitted(a: a)) { RemovalRefitIndistinguishable } else {
+    match removals.first() {
+      Present { value: a } => if seen_present(os: scoped.later) || seen_present(os: scoped.unplaced) { InstallationUnknown } else { RemovedBy { key: a.key } }
+      Absent => if count(scoped.present) > 0 { SeenWithNoLaterRemoval } else { if count(scoped.absent) > 0 { SeenAbsent } else { InstallationUnknown } }
+    }
+  }
+}
+
+fn side(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>, position: P4261DesignPosition) -> ComparedSide {
+  let a = assess_population(position: position, layout: layout, admitted: admitted)
+  ComparedSide {
+    asset: layout.asset,
+    position: position,
+    bindings: a.bindings,
+    gap: unattributed(position: position, layout: layout, bindings: a.bindings),
+    scoped: a.scoped,
+    assessment: match position.population { Absent => Absent, Present { value: _ } => Present { value: a } },
+    standing: Absent,
+    installation: installation(layout: layout, bindings: a.bindings, scoped: a.scoped),
+  }
+}
+
+// The fold's standing for this side's position, on the board the fold assessed.
+fn standing_at(standings: List<PositionStanding>, s: ComparedSide) -> CitedFigureStanding? {
+  match (filter(standings, x => same_position(a: x.assessment.position, b: s.position) && physical_asset_identity_eq(a: x.assessment.asset, b: s.asset))).first() {
+    Absent => Absent
+    Present { value: x } => Present { value: x.standing }
+  }
+}
+
+fn with_standing(s: ComparedSide, standing: CitedFigureStanding?) -> ComparedSide {
+  ComparedSide { asset: s.asset, position: s.position, bindings: s.bindings, gap: s.gap, scoped: s.scoped, assessment: s.assessment, standing: standing, installation: s.installation }
+}
+
+fn no_row_sets() -> List<List<ElectronicComponentRow>> {
+  []
+}
+
+fn no_boards() -> List<PhysicalAssetIdentity> {
+  []
+}
+
+fn side_rows(s: ComparedSide) -> SideRows {
+  match s.gap {
+    Present { value: _ } => NoRowsEstablished
+    Absent => if (count(s.scoped.present) > 0 && count(s.scoped.absent) > 0) || readings_conflict(os: s.scoped.present) { BoardDisagrees { observations: concat(s.scoped.present, s.scoped.absent) } } else {
+      let ours = filter(s.scoped.present, o => read_on_our_board(i: o.identification) && count(established_rows(i: o.identification)) > 0)
+      let sets = map(ours, o => established_rows(i: o.identification))
+      match sets.first() {
+        Absent => NoRowsEstablished
+        Present { value: first } => RowsEstablished { rows: common_rows(sets: sets, first: first) }
+      }
+    }
+  }
+}
+
+fn incomplete(e1: ComparedSide, k1: ComparedSide, e1_rows: SideRows, k1_rows: SideRows) -> ObservedRelation {
+  ComparisonIncomplete { boards: concat(match e1_rows { NoRowsEstablished => [e1.asset], _ => no_boards() }, match k1_rows { NoRowsEstablished => [k1.asset], _ => no_boards() }) }
+}
+
+// The one row a set holds, counting distinct rows: [A, A] is the singleton {A}.
+fn single_row(rows: List<ElectronicComponentRow>) -> ElectronicComponentRow? {
+  match rows.first() {
+    Absent => Absent
+    Present { value: r } => if rows_equal(a: rows, b: [r]) { Present { value: r } } else { Absent }
+  }
+}
+
+fn rows_relation(a: List<ElectronicComponentRow>, b: List<ElectronicComponentRow>) -> ObservedRelation {
+  if rows_disjoint(a: a, b: b) { DifferentParts { e1: a, k1: b } }
+  else if rows_equal(a: a, b: b) {
+    match single_row(rows: a) {
+      Present { value: r } => SameIdentifiedPart { row: r }
+      Absent => SameCandidateConstraint { rows: a }
+    }
+  }
+  else { DifferenceUndetermined { e1: a, k1: b } }
+}
+
+fn relate(e1: ComparedSide, k1: ComparedSide) -> ObservedRelation {
+  let e1_rows = side_rows(s: e1)
+  let k1_rows = side_rows(s: k1)
+  match e1_rows {
+    BoardDisagrees { observations } => BoardReadingsDisagree { asset: e1.asset, observations: observations }
+    NoRowsEstablished => match k1_rows {
+      BoardDisagrees { observations } => BoardReadingsDisagree { asset: k1.asset, observations: observations }
+      _ => incomplete(e1: e1, k1: k1, e1_rows: e1_rows, k1_rows: k1_rows)
+    }
+    RowsEstablished { rows: a } => match k1_rows {
+      BoardDisagrees { observations } => BoardReadingsDisagree { asset: k1.asset, observations: observations }
+      NoRowsEstablished => incomplete(e1: e1, k1: k1, e1_rows: e1_rows, k1_rows: k1_rows)
+      RowsEstablished { rows: b } => rows_relation(a: a, b: b)
+    }
+  }
+}
+
+// A shared silkscreen label is matched by the designator authority and nothing else: two positions whose
+// spellings differ only in an underscore are two positions, and a comparison that tidied first would report
+// them as one board agreeing with itself.
+fn labelled_on(positions: List<P4261DesignPosition>, d: Designator) -> P4261DesignPosition? {
+  (filter(positions, p => designator_eq(a: p.position.designator, b: d))).first()
+}
+
+// Two boards over two revisions' position catalogues (the upstream ones in production; a witness may
+// supply others to vary a claim). No assessment is accepted from the caller.
+fn compare_boards(e1_layout: CarrierLayoutObservation, k1_layout: CarrierLayoutObservation, e1_positions: List<P4261DesignPosition>, k1_positions: List<P4261DesignPosition>) -> P4261Comparison {
+  let e1_admission = admit_correspondence(layout: e1_layout)
+  let k1_admission = admit_correspondence(layout: k1_layout)
+  P4261Comparison {
+    e1: coverage(layout: e1_layout, a: e1_admission),
+    k1: coverage(layout: k1_layout, a: k1_admission),
+    positions: flat_map(e1_positions, p => match labelled_on(positions: k1_positions, d: p.position.designator) {
+      Absent => []
+      Present { value: q } => {
+        let e1 = side(layout: e1_layout, admitted: e1_admission.admitted, position: p)
+        let k1 = side(layout: k1_layout, admitted: k1_admission.admitted, position: q)
+        [PositionComparison { designator: p.position.designator, e1: e1, k1: k1, observed: relate(e1: e1, k1: k1) }]
+      }
+    }),
+  }
+}
+
+// The held boards, compared, with each claim's standing from the minting folds. The folds assessed these
+// same committed records (p4261_e1_layout, p4261_k1_layout) over these same catalogues, so a standing
+// attached here describes the evidence its side shows.
+fn p4261_comparison() -> P4261Comparison {
+  let c = compare_boards(e1_layout: p4261_e1_layout, k1_layout: p4261_k1_layout, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  let e1s = p4261_e1_population_standings()
+  let k1s = p4261_k1_population_standings()
+  P4261Comparison {
+    e1: c.e1,
+    k1: c.k1,
+    positions: map(c.positions, p => PositionComparison { designator: p.designator, e1: with_standing(s: p.e1, standing: standing_at(standings: e1s, s: p.e1)), k1: with_standing(s: p.k1, standing: standing_at(standings: k1s, s: p.k1)), observed: p.observed }),
+  }
+}

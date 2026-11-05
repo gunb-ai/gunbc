@@ -1356,7 +1356,7 @@ type CgroupEventsReadRoot
 
 fn retirement_cgroup_events_read_root(control_groups: List<String>) -> CgroupEventsReadRoot {
   let live = filter(control_groups, cg => !control_group_property_means_cgroup_absent(value: cg))
-  let roots = fold(live, init: [], f: (acc, cg) => {
+  let roots: List<String> = fold(live, init: [], f: (acc, cg) => {
     let r = retirement_cgroup_unescaped_root(control_group: cg)
     if any(acc, a => a == r) { acc } else { concat(acc, [r]) }
   })

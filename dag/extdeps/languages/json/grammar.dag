@@ -6,7 +6,7 @@ import std.optional { Absent, Present }
 import extdeps.numeric.base16 { base16_is_digit_code_point }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.algebra { collection_concat_shape }
+import std.algebra { collection_concat_shape, list_reverse }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -415,7 +415,7 @@ fn drop_string_one(xs: List<String>) -> List<String> {
   let result = fold(xs, init: PairAcc { skipped: false, kept: [] }, f: fn(acc, x) {
     if acc.skipped { PairAcc { skipped: true, kept: concat([x], acc.kept) } } else { PairAcc { skipped: true, kept: [] } }
   })
-  reverse(result.kept)
+  list_reverse(xs: result.kept)
 }
 
 type PairAcc { skipped: Bool, kept: List<String> }

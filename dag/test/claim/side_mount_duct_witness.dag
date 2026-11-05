@@ -1,0 +1,90 @@
+module test.claim.side_mount_duct_witness
+
+import std.types { Bool, List, String }
+import product.printed_chassis.assembly_geometry { Printed }
+import std.measure { micrometer, micrometer_count }
+import std.optional { Present, Absent }
+import product.printed_chassis.printable_assembly {
+  PrintableAssembly, PrintableAssemblyReady, PrintableAssemblyRefused, BlowerSideMountDuct, BackFaceSide, FrontFaceSide,
+  CardFaceSide, printed_assembly_root_wire,
+}
+import product.printed_chassis.printable_assembly_selection { select_printable_assembly, duct_card_root, printed_assembly_root_from_wire }
+import product.printed_chassis.duct_card_catalog { a16_duct_card, t4_duct_card }
+import product.printed_chassis.card_cooling_route {
+  admit_home, RouteSubject, AgainstCardSide, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, a16_route_subject,
+}
+import product.printed_chassis.gpu_duct { BlowerDuctDesign, a16_blower_duct_design, a16_duct_design, a16_end_face }
+import product.printed_chassis.side_mount_duct { side_mount_side_spend, side_mount_rear_spend, side_mount_card_gap }
+import product.printed_chassis.blower_outlet_mount { lug_arm_protrusion }
+import extdeps.fans.types { RadialBlowerEnvelope }
+
+fn a16_side_root(side: CardFaceSide) -> String {
+  printed_assembly_root_wire(root: duct_card_root(card: a16_duct_card, kind: BlowerSideMountDuct { side: side }))
+}
+
+fn has(a: PrintableAssembly, id: String) -> Bool { any(a.parts, p => p.id == id) }
+
+// Both faces are roots of one kind, spelled the way the printer is told, and both select through
+// select_printable_assembly as ONE printed part (no lid: the chamber's back wall is part of the duct), the
+// blower, the card and the 8-pin keep-out.
+test fn both_faces_select_one_printed_part_and_the_keepout() -> Bool {
+  a16_side_root(side: BackFaceSide) == "a16-blower-side-mount-back-duct"
+    && a16_side_root(side: FrontFaceSide) == "a16-blower-side-mount-front-duct"
+    && all([BackFaceSide, FrontFaceSide], s => match printed_assembly_root_from_wire(s: a16_side_root(side: s)) {
+      Present { value: r } => match select_printable_assembly(root: r) {
+        PrintableAssemblyReady { assembly: a } =>
+          has(a: a, id: "DUCT") && !has(a: a, id: "LID") && count(filter(a.parts, p => match p.kind { Printed => true _ => false })) == 1 && has(a: a, id: "FAN") && has(a: a, id: "CARD") && has(a: a, id: "POWER-KEEPOUT")
+            && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
+        PrintableAssemblyRefused { reason: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// The home is admitted on the operator's declared single-card allowance, for either face.
+test fn the_home_is_admitted_on_the_operators_side_allowance() -> Bool {
+  all([BackFaceSide, FrontFaceSide], s => match admit_home(s: a16_route_subject(), home: AgainstCardSide { side: s }) {
+    RouteAdmittedOnOperatorBound { home: _, needs: _, on_bound: _, governed_by: _, margin: _ } => true
+    _ => false
+  })
+}
+
+// The RED: the same rule refuses a blower too thick for the allowance beside the card -- the spend the
+// geometry uses is the spend the admission reads, so a fatter housing cannot be admitted by the route and
+// then built by the geometry.
+test fn a_blower_too_thick_for_the_side_allowance_is_refused() -> Bool {
+  let b = a16_blower_duct_design
+  let thick = BlowerDuctDesign {
+    blower: RadialBlowerEnvelope {
+      vendor: b.blower.vendor, model: b.blower.model, housing_length: b.blower.housing_length, housing_depth: b.blower.housing_depth,
+      thickness: micrometer(count: 60000), thickness_tolerance: b.blower.thickness_tolerance,
+      mounting_hole_count: b.blower.mounting_hole_count, mounting_hole_diameter: b.blower.mounting_hole_diameter,
+    },
+    outlet_edge: b.outlet_edge, socket_clearance: b.socket_clearance, socket_depth: b.socket_depth,
+    screw_tool_clearance_radius: b.screw_tool_clearance_radius, card_count: b.card_count, slot_pitch: b.slot_pitch,
+  }
+  micrometer_count(m: side_mount_side_spend(d: a16_duct_design, b: thick)) > 50000
+    && match admit_home(s: RouteSubject { face: a16_end_face, wall: a16_duct_design, fan: thick }, home: AgainstCardSide { side: FrontFaceSide }) {
+      RouteRefusedByChassis { home: _, unmet: _, gap: _ } => true
+      _ => false
+    }
+}
+
+// The trade the home exists for: it spends less behind the end than beside the card.
+test fn the_side_mount_spends_less_behind_the_end_than_beside() -> Bool {
+  micrometer_count(m: side_mount_rear_spend(d: a16_duct_design)) < micrometer_count(m: side_mount_side_spend(d: a16_duct_design, b: a16_blower_duct_design))
+}
+
+// A card whose end face nobody has read refuses both faces rather than borrowing the A16's geometry.
+test fn an_unread_card_refuses_both_faces() -> Bool {
+  all([BackFaceSide, FrontFaceSide], s => match select_printable_assembly(root: duct_card_root(card: t4_duct_card, kind: BlowerSideMountDuct { side: s })) {
+    PrintableAssemblyRefused { reason: _ } => true
+    PrintableAssemblyReady { assembly: _ } => false
+  })
+}
+
+// THE CARD GAP HOLDS THE SCREW ARM: the arm on the blower's label face and the screw head stand beyond the
+// socket wall toward the card, and the gap leaves at least a millimetre between the head and the card face.
+test fn the_card_gap_holds_the_lug_arm_and_screw_head() -> Bool {
+  micrometer_count(m: side_mount_card_gap) as Int - lug_arm_protrusion(wall: a16_duct_design.wall) >= 1000
+}

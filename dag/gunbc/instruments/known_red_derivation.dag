@@ -105,8 +105,7 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 //
 // WHY A DERIVATION AND NOT A LIST. Three things are read and nothing is transcribed:
 //   - the SUBJECTS come from mapping `local_repo_wet_schedule()` (the executing lane's one accessor, the
-//     same rows `gunbc.claim_coverage_census_live` #14368 joins for its source census — read, never
-//     enumerated a second time in-tree) and `floor_expected_red_roster()` (the single enrollment
+//     rows the lane runs — read, never enumerated a second time in-tree) and `floor_expected_red_roster()` (the single enrollment
 //     authority, DESIGN 3);
 //   - each row's EXPECTATION is derived from enrollment, not asserted: enrolled in the roster means
 //     `ExpectedRed`, otherwise `ExpectedToHold`. That is the pair the ledger exists to keep apart —

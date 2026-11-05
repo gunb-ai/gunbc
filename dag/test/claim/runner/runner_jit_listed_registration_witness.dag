@@ -1,5 +1,6 @@
 module test.claim.runner.runner_jit_listed_registration_witness
 
+import gunbc.host.host_boot_id { host_boot_id_of_capture_run }
 import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
@@ -26,7 +27,7 @@ import gunbc.runner.runner_host_unit_slot {
   CurrentServicePopulation, CurrentServicePopulationStanding, CurrentServicePopulationDerived, CurrentServicePopulationRefused,
   CurrentPopulationWidthUnresolved, CurrentPopulationHostNotControlled, CurrentPopulationSlotRefused, CurrentPopulationEmpty,
   host_unit_slot_for, host_unit_slot_over, service_slot_unit, service_slot_name_parse,
-  current_service_population, current_service_population_over, current_population_has_unit, service_boot_id_of, service_slot_selected_workflow,
+  current_service_population, current_service_population_over, current_population_has_unit, service_slot_selected_workflow,
 }
 import gunbc.runner.runner_jit_deregistration {
   ListedCurrentPopulationMember, ListedRecoveredReserved, ListedRegistrationRefused, RecoveredReservedServiceRegistration, ListedNameOutsideServiceGrammar, ListedNameDoesNotRoundTrip,
@@ -59,7 +60,7 @@ data authority: GitHubCredentialAuthority = ManagedAppInstallationCredential {
   app: gunbai_ci_declared, installation: installation, profile: GitHubCredentialProfileRef { name: "fleet-converge" },
 }
 
-// A boot identity exists only through service_boot_id_of over a KernelBootId, so every fixture here
+// A boot identity exists only through host_boot_id_of_capture_run over a KernelBootId, so every fixture here
 // is built that way; the Absent arm is unreachable for a KernelBootId and the control test below
 // pins that the arm is Present.
 fn kernel_boot(id: String) -> HostCaptureRunIdentity {
@@ -70,7 +71,7 @@ fn kernel_boot(id: String) -> HostCaptureRunIdentity {
 }
 
 fn unit(m: ManagedHost, id: String, index: Int) -> String {
-  match service_boot_id_of(run: kernel_boot(id: id)) {
+  match host_boot_id_of_capture_run(run: kernel_boot(id: id)) {
     Present { value: b } => service_slot_unit(host: m.host, boot: b, index: index) as String
     Absent => ""
   }
@@ -81,14 +82,14 @@ fn no_boot(m: ManagedHost) -> HostUnitSlotStanding {
 }
 
 fn service_slot_standing(m: ManagedHost, id: String, index: Int, labels: RunnerRegistrationLabelsResolution) -> HostUnitSlotStanding {
-  match service_boot_id_of(run: kernel_boot(id: id)) {
+  match host_boot_id_of_capture_run(run: kernel_boot(id: id)) {
     Present { value: b } => host_unit_slot_over(host: controlled(m: m), purpose: ServiceSlot { boot: b, index: index }, workflow: service_slot_selected_workflow(), registration_labels: labels)
     Absent => no_boot(m: m)
   }
 }
 
 fn population_over_host(host: HostControlStanding, m: ManagedHost, width: RunnerWidthResolution, labels: RunnerRegistrationLabelsResolution, id: String) -> CurrentServicePopulationStanding admit_callers: [decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "population_over"), decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "the_population_follows_the_width_and_every_underivable_input_refuses")] {
-  match service_boot_id_of(run: kernel_boot(id: id)) {
+  match host_boot_id_of_capture_run(run: kernel_boot(id: id)) {
     Present { value: b } => current_service_population_over(host: host, width: width, registration_labels: labels, boot: b)
     Absent => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: NoOutOfBandRoute { host: m.host } } }
   }
@@ -99,7 +100,7 @@ fn population_over(m: ManagedHost, width: RunnerWidthResolution, labels: RunnerR
 }
 
 fn population_real(m: ManagedHost, id: String) -> CurrentServicePopulationStanding {
-  match service_boot_id_of(run: kernel_boot(id: id)) {
+  match host_boot_id_of_capture_run(run: kernel_boot(id: id)) {
     Present { value: b } => current_service_population(host: controlled(m: m), boot: b, receipt: ReceiptAbsent)
     Absent => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: NoOutOfBandRoute { host: m.host } } }
   }
@@ -298,10 +299,10 @@ test fn the_sweep_selects_stale_incarnations_only() -> Bool {
 // run identity yields the slot's incarnation; the attempt-ordinal arm yields nothing, so a name built
 // from one cannot exist and the parse has nothing to fabricate.
 test fn only_a_kernel_boot_id_becomes_a_service_incarnation() -> Bool {
-  (match service_boot_id_of(run: kernel_boot(id: "00000000-0000-4000-8000-0000000007fa")) {
+  (match host_boot_id_of_capture_run(run: kernel_boot(id: "00000000-0000-4000-8000-0000000007fa")) {
     Present { value: b } => (b.boot_id as String) == "00000000-0000-4000-8000-0000000007fa"
     Absent => false
-  }) && (match service_boot_id_of(run: HistoricalAttemptOrdinal { ordinal: "4" as NonEmptyStr }) {
+  }) && (match host_boot_id_of_capture_run(run: HistoricalAttemptOrdinal { ordinal: "4" as NonEmptyStr }) {
     Present { value: _ } => false
     Absent => true
   })

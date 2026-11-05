@@ -10,7 +10,7 @@ import std.checked_arithmetic { int_inclusive_max }
 import std.integer { int_to_decimal_string }
 import extdeps.access.posix { FileMode, file_mode_bits }
 import extdeps.filesystem.filesystem_io {
-  Filesystem,
+  filesystem_listing_absence, Filesystem,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemFailureKind,   filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
@@ -1200,14 +1200,25 @@ fn file_compare_and_set_windowed(root: NonEmptyStr, publication: CasGenerationPu
 
 // ── Which slots exist ────────────────────────────────────────────────────────────────────────
 // THE STORE OWNS BOTH DIRECTIONS OF ITS LAYOUT. cas_file_slot_path renders "<root>/<key>.<n>", so
-// the inverse over a directory listing strips exactly one trailing ".<digits>" -- the generation
-// is always the LAST dotted component and always numeric, so a key that itself contains "." reads
-// back unchanged. This is the one place a name is parsed back into a key, beside the function
-// that made the name; a consumer that split file names itself would be the second identity
-// authority the head-probe note above refuses. The listing answers WHICH keys have a slot; each
-// key's standing is still read through observe_cas_slot_state.
+// the inverse over a directory listing strips exactly one trailing ".<digits>" -- the generation is
+// always the LAST dotted component and always numeric, so a key that itself contains "." reads back
+// unchanged. This is the one place a name is parsed back into a key, beside the function that made
+// the name; a consumer that split file names itself would be the second identity authority the
+// head-probe note above refuses. The listing answers WHICH keys have a slot; each key's standing is
+// still read through observe_cas_slot_state.
+//
+// THE ABSENT ARM IS A CENSUS ANSWER, NEVER A RELEASE TRIGGER (the guard snappy-carp-24 asked to be
+// written into the declaration itself, not only into a record). A slot is released ONLY through the
+// CAS-fenced transition on the lease reference plus the slot generation READ FROM THE SLOT. An
+// answer saying this store has no slot directory frees no charge, retires no lease, and does not
+// license a mint: absence that releases is hold_recovered_by_age_not_observed_holder_death rebuilt
+// on new substrate -- a holder inferred dead because it could not be found. The arm exists because a
+// consumer that cannot tell "this store was never created" from "I could not read it" cannot PROVE
+// the first case, and a lease whose slots live in a store that no longer exists needs that proof in
+// order to migrate. So ENOENT is distinguished from unreadable, and both are answered.
 type CasSlotKeys
   = CasSlotKeysListed { keys: List<NonEmptyStr> }
+  | CasSlotKeysAbsent { root: NonEmptyStr }
   | CasSlotKeysListingRefused { root: NonEmptyStr, detail: String }
   | CasSlotKeysSubjectRefused { root: NonEmptyStr, cause: String }
 
@@ -1234,7 +1245,10 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasSlotKeysSubjectRefused { root: root, cause: c }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => CasSlotKeysListingRefused { root: root, detail: e }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => match filesystem_listing_absence(directory: root as String, error: e, error_kind: listing.error_kind) {
+      FilesystemDirectoryListingAbsent { directory: _ } => CasSlotKeysAbsent { root: root }
+      FilesystemDirectoryListingUnreadable { directory: _, error: err, error_kind: kind } => CasSlotKeysListingRefused { root: root, detail: join(["the directory is there but could not be read (error_kind ", kind, "): ", err], "") }
+    }
     FilesystemDirectoryListed(listed) => {
       let keys: List<NonEmptyStr> = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
         Absent => acc
@@ -1314,8 +1328,21 @@ fn file_slot_store(root: NonEmptyStr) -> SlotStore {
 // The listing outcome of one store's OWN directory, before any store record is minted. The
 // Listed arm carries the root whose listing the Filesystem answered for: readiness is evidence
 // that THIS directory was observed, not a caller assertion (DESIGN section 4b).
+// READINESS OF A STORE'S OWN DIRECTORY, THREE-VALUED ON PURPOSE.
+// Listed is evidence THIS directory was observed; Refused is a directory that exists but could not be
+// read (or is not admissible at all); ABSENT is a store whose directory was never created, which is a
+// fact about the subject and not a read failure. Before the absent arm, both collapsed into Refused,
+// so a consumer could not tell "this store is not there yet" -- the state a cutover ENDS in -- from a
+// permission failure, and the one place that distinction decides whether work is complete is
+// roadmap_session_attempt_slots_cutover's source store.
+// AS WITH CasSlotKeysAbsent, THIS IS A CENSUS ANSWER AND NEVER A RELEASE TRIGGER. Admitting a store
+// mints a handle; it never frees a charge, retires a lease, or licenses a mint. A slot is released
+// only through the CAS-fenced transition on the lease reference plus the generation read from the
+// slot. A consumer that treats "absent" as permission to release has rebuilt
+// hold_recovered_by_age_not_observed_holder_death on new substrate.
 type SlotStoreAdmission
   = SlotStoreListed { root: NonEmptyStr }
+  | SlotStoreAbsent { member: String, root: NonEmptyStr }
   | SlotStoreRefused { detail: String }
 
 // THE ONE LIST-THEN-FOLD for every sealed slot store (DESIGN section 6b root generalization: a
@@ -1334,7 +1361,17 @@ fn listed_slot_store(member: String, root: NonEmptyStr) -> SlotStoreAdmission {
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotStoreRefused { detail: join(["the ", member, " store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotStoreRefused { detail: join(["the ", member, " store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => match filesystem_listing_absence(directory: root as String, error: e, error_kind: listing.error_kind) {
+      FilesystemDirectoryListingAbsent { directory: _ } => SlotStoreAbsent { member: member, root: root }
+      FilesystemDirectoryListingUnreadable { directory: _, error: err, error_kind: kind } => SlotStoreRefused { detail: join(["the ", member, " store's directory exists but could not be read (error_kind ", kind, "): ", err], "") }
+    }
     FilesystemDirectoryListed(_) => SlotStoreListed { root: root }
   }
+}
+
+// The ONE rendering of an Absent admission for a caller whose refusal is a String: it names the store
+// and its root, as listed_slot_store's own Refused detail does, so two stores admitted in sequence
+// never refuse identically.
+fn slot_store_absent_detail(member: String, root: NonEmptyStr) -> String {
+  join(["the ", member, " store's own directory was never created at ", root as String, " -- admission answers absence, and an absent store is not an empty store"], "")
 }

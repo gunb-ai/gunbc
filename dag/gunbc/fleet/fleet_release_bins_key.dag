@@ -23,6 +23,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_if, bash_build_if_else_from_stmts, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir, bash_build_with_redir_to_file,
   bash_build_exit,
+  bash_build_if_else,
 }
 import std.content_hash { Sha256Family }
 import std.materialization_provider {

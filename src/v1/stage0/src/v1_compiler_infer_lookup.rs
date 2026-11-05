@@ -31,10 +31,11 @@ pub use crate::v1_compiler_infer_emit_info::{
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
     authored_name, borrowed_generic_param_names, census_declaration_type_env,
-    declaration_substitution_basis, global_bare_policy_candidate, is_recursive_type,
-    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_by_name_local,
-    lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
-    symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
+    declaration_substitution_basis, declared_module_owner, global_bare_declarer_in_scope,
+    global_bare_policy_candidate, is_recursive_type, listed_import_required_bare_call_blocked,
+    lookup_binding_by_name, lookup_binding_by_name_local, lookup_type, lookup_type_for,
+    qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup, GlobalBareCandidate,
+    GlobalBareLookupState, TypeBinding, TypeEnv,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ResourceItem, ServiceItem, TypeItem,
@@ -559,12 +560,22 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
                     module_path: mp,
                     binding: b,
                     ..
-                }) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
-                    declaration: Rc::new(BorrowedCensusDecl {
-                        owner_module_path: mp.clone(),
-                        node: b.resolved.clone(),
-                    }),
-                }),
+                }) => {
+                    if crate::v1_compiler_infer_env::global_bare_declarer_in_scope(
+                        type_env.clone(),
+                        name.clone(),
+                        mp.clone(),
+                    ) {
+                        Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                            declaration: Rc::new(BorrowedCensusDecl {
+                                owner_module_path: mp.clone(),
+                                node: b.resolved.clone(),
+                            }),
+                        })
+                    } else {
+                        Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound)
+                    }
+                }
                 Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                     candidates: cands,
                     ..

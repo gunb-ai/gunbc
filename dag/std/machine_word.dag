@@ -918,13 +918,8 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
 // prose is indistinguishable from a dangling declaration to everything except a human reader who
 // happens to look.
 //
-// DECLARING THE ROWS IS HALF OF IT; BEING FOLDED IS THE OTHER HALF, AND THE FIRST CUT OF THIS
-// ROSTER HAD ONLY THE FIRST. It asserted in prose that gunbc.dissolution_census reads these rows
-// while the census folded one roster this was not a member of, so the expiry of every row below
-// was computed by nothing -- an inert lens, and the same 4c violation this roster exists to
-// correct, committed in the sentence claiming to correct it (review 68088). Membership is
-// gunbc.census_closure_frontier census_closure_frontier_row_groups, which this roster is now
-// enrolled in; that enrolment, not this annotation, is what makes the expiry a computed fact.
+// THE ROWS ARE TYPED DATA. The roster fold that once computed their expiry
+// (gunbc.census_closure_frontier) was retired, so nothing now computes it.
 //
 // EVERY ROW IS UNBOUND, AND THE REASON IS A GATE, NOT A PREFERENCE. std.dissolution
 // bound_dissolution takes a DeclarationRef, and a DeclarationRef is a CITATION: the required
