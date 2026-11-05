@@ -187,7 +187,7 @@ test fn handed_in_nothing_continues_from_branch_head() -> Bool {
 test fn owed_capture_refuses_and_never_spawns_from_branch_head() -> Bool {
   let owed = pri(capture: CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }, verification: none, review: none, goal_audit: none)
   (match continuation_plan(obs: Present { value: owed }) {
-    Refuse { reason } => reason.contains("capture is still owed") && reason.contains("roadmap/n1/a1")
+    Refuse { reason } => reason.contains("capture is still owed") && reason.contains("prior attempt a1")
     _ => false
   })
     // RED CONTROL: an owed capture is never continued -- no new attempt is spawned onto a possibly-dirty head.
