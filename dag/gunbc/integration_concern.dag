@@ -564,7 +564,41 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, byte_sequence_search_reimplemented_per_module]
+data typed_argv_allowlist_refuses_a_modeled_format_constant: IntegrationConcern = IntegrationConcern {
+  identity: "typed_argv_allowlist_refuses_a_modeled_format_constant",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_portable_argv_char_allowed"),
+    requirement: "a command word that a modeled constant DECLARES (the stat format gunbc.owned_directory owned_directory_stat_format, spelled %F|%U|%G|%a) is admitted by the typed argv route that carries it over ssh, instead of being refused as an unportable token",
+    standing: RequirementEstablished { by: lab_stat_format_refusal },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.owned_directory", decl_name: "owned_directory_stat_format"),
+    tail: [
+      decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_portable_argv_char_allowed"),
+      decl_ref(module_path: "gunbc.executor_privileged_operation", decl_name: "ReadDirectoryIdentity"),
+    ],
+  },
+  question: "How does a modeled format constant reach a remote typed argv without widening the portable character allowlist by hand: does the format word travel as a typed value the route quotes, or is the route-local allowlist a second authority over what a declared word may spell?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0c283689c72649d1ee996cf3f52ae1949636006f",
+      evidence: FreeSemigroup {
+        head: lab_stat_format_refusal,
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.owned_directory", decl_name: "owned_directory_stat_format") }],
+      },
+      account: "srv1_lab_dashboard_preflight_wet at this head returned the source decision Ready, then refused at step initial-reconcile: the stat of /opt/gunbc-lab was carried over ssh and typed_argv refused the argv token %F|%U|%G|%a as outside the portable allowlist. The word is the one owned_directory_stat_format declares. The srv1 lab no longer reaches this route (its transport is selected local from placement), so the defect stays live for any genuinely remote apply, srv2 next.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data lab_stat_format_refusal: SightingEvidence = CitesArtifact {
+  label: "loyal-deer-449 srv1 preflight log ld449-pf15877.log at head 0c283689c726, step initial-reconcile refusal",
+  sha256: Sha256Digest { hex: "253cedfce9673503494475953815c7ba199dfcb9fd6f71d202fb8abbf4871d21" as Sha256DigestHex },
+}
+
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, byte_sequence_search_reimplemented_per_module]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
