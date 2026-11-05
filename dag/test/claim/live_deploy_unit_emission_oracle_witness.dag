@@ -1182,10 +1182,11 @@ test fn an_in_place_built_serve_binary_emits_the_same_grammar_at_its_own_path() 
     spec: spec, revision: live_revision(), now_epoch: claim_oidc_now_for(spec: spec))
   match emitted {
     LiveDeployServeUnitEmitted { file } =>
-      serialize_systemd_unit_file(file: file)
-        == string_replace(
-             text: serialize_systemd_unit_file(file: serve_file_of(spec: live_spec())),
-             from: "/opt/gunbc/bin/gunbc", to: built_path as String)
+      string_contains(s: serialize_systemd_unit_file(file: file),
+        pattern: join([built_path as String, " run --source-root"], ""))
+        && string_contains(s: serialize_systemd_unit_file(file: file), pattern: "--arg handler=roadmap_serve_handle")
+        && !(string_contains(s: serialize_systemd_unit_file(file: file),
+             pattern: "/opt/gunbc/bin/gunbc run --source-root"))
     _ => false
   }
 }
