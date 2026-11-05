@@ -15,6 +15,7 @@ import v2.extdeps.languages.dag { dag_type_atom_node }
 import v2.std.qualified_name { declaration_reference_node }
 import v2.std.list_introduction { list_introduction_head_path }
 import std.occurrence_identity { OccurrenceSynthetic }
+import std.nat { Nat }
 import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -321,4 +322,157 @@ test fn skp_relation_nested_variable_with_agreeing_siblings_stays_undecided_hold
     declared: skp_pair_of(first: skp_list_of(element: skp_atom(identity: ^skp_t)), second: skp_atom(identity: ^dag_binding_type_int)),
     produced: skp_pair_of(first: skp_list_of(element: skp_atom(identity: ^bool_node_symbol)), second: skp_atom(identity: ^dag_binding_type_int))
   )
+}
+
+// ============================================================================================
+// DIAGNOSTIC MATRIX (separate diagnostic branch — NOT #15903's witness; keen-heron-809 msg_e4d9e874).
+// The v2 --claim-run harness prints only PASS/FAIL per Bool claim, so the refusal VARIANT and the
+// refusal's argument_ordinal_path are recovered as a CANDIDATE MATRIX: one candidate claim per value,
+// the single passing candidate NAMES the answer. Condition (b): per subject there is an is_not_accepted
+// (refused-at-all) gate already present; a subject that refused but matches NO candidate is UNMATCHED,
+// not an answer. Child Edge labels are NOT reachable from a claim (they live in the infer obligation),
+// so they are NOT claimed here — they come from the lowering owner (valiant-deer, msg_62d20725).
+// ============================================================================================
+
+// Nat -> a short token; paths are compared as comma-joined outermost-first strings (String == is proven).
+fn skp_nat_token(n: Nat) -> String {
+  match n {
+    Zero => "0"
+    Succ { prev: a } => match a {
+      Zero => "1"
+      Succ { prev: b } => match b {
+        Zero => "2"
+        Succ { prev: c } => match c {
+          Zero => "3"
+          _ => ">=4"
+        }
+      }
+    }
+  }
+}
+
+fn skp_path_token(path: List<Nat>) -> String {
+  fold_list(xs: path, empty: "", cons: fn(acc, x) {
+    if acc == "" { skp_nat_token(n: x) } else { acc + "," + skp_nat_token(n: x) }
+  })
+}
+
+// Reads the argument_ordinal_path off the inhabitance refusal's direct-call-argument position, whatever
+// reason refused it. Sentinels: "accepted" (infer accepted), "resolve_refused", "none" (no refusal
+// carried a direct-call-argument position), "" (refusal carried one with an EMPTY path = top-pair answer).
+fn skp_diag_path_token(diag: Diagnostic) -> String {
+  match diagnostic_inhabitance_position(d: diag) {
+    Present { value: PositionDirectCallArgument { argument_ordinal_path: path } } => skp_path_token(path: path)
+    _ => "none"
+  }
+}
+
+fn skp_diags_path_token(d: Diagnostics) -> String {
+  match d {
+    None => "none"
+    Some { diagnostics: nds } =>
+      fold_list(xs: nds.tail, empty: skp_diag_path_token(diag: nds.head),
+        cons: fn(acc, diag) { if acc != "none" { acc } else { skp_diag_path_token(diag: diag) } })
+  }
+}
+
+fn skp_call_arg_position_path_token(subject: String) -> String {
+  match rcf_verdict(resolved: skp_resolve_subject(subject: subject)) {
+    RcfInferRefused { diagnostics: d } => skp_diags_path_token(d: d)
+    RcfInferAccepted { diagnostics: _ } => "accepted"
+    RcfResolveRefused => "resolve_refused"
+  }
+}
+
+// Generalized variant probe: refused WITH the given structural reason (the two non-arguments_differ arms
+// are candidates alongside the existing arguments_differ claim; the single passing one names the variant).
+fn skp_call_arg_refuses_with_reason(subject: String, reason: Symbol) -> Bool {
+  match rcf_verdict(resolved: skp_resolve_subject(subject: subject)) {
+    RcfInferRefused { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: reason)
+    RcfInferAccepted { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// ---- DIAGNOSTIC candidate-matrix test fns (variant arms + argument_ordinal_path) ----
+test fn skp_diag_red_refuses_with_roots_differ() -> Bool {
+  skp_call_arg_refuses_with_reason(subject: "gunbc.skp_red", reason: ^inhabitance_structural_roots_differ)
+}
+test fn skp_diag_red_refuses_with_argument_count_differs() -> Bool {
+  skp_call_arg_refuses_with_reason(subject: "gunbc.skp_red", reason: ^inhabitance_structural_argument_count_differs)
+}
+test fn skp_diag_red_path_is_empty() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_red") == ""
+}
+test fn skp_diag_red_path_is_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_red") == "0"
+}
+test fn skp_diag_red_path_is_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_red") == "1"
+}
+test fn skp_diag_red_path_is_z_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_red") == "0,0"
+}
+test fn skp_diag_red_path_is_z_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_red") == "0,1"
+}
+test fn skp_diag_red_path_is_one_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_red") == "1,0"
+}
+test fn skp_diag_red_path_is_one_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_red") == "1,1"
+}
+test fn skp_diag_nvr_refuses_with_roots_differ() -> Bool {
+  skp_call_arg_refuses_with_reason(subject: "gunbc.skp_nested_var_red", reason: ^inhabitance_structural_roots_differ)
+}
+test fn skp_diag_nvr_refuses_with_argument_count_differs() -> Bool {
+  skp_call_arg_refuses_with_reason(subject: "gunbc.skp_nested_var_red", reason: ^inhabitance_structural_argument_count_differs)
+}
+test fn skp_diag_nvr_path_is_empty() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_var_red") == ""
+}
+test fn skp_diag_nvr_path_is_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_var_red") == "0"
+}
+test fn skp_diag_nvr_path_is_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_var_red") == "1"
+}
+test fn skp_diag_nvr_path_is_z_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_var_red") == "0,0"
+}
+test fn skp_diag_nvr_path_is_z_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_var_red") == "0,1"
+}
+test fn skp_diag_nvr_path_is_one_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_var_red") == "1,0"
+}
+test fn skp_diag_nvr_path_is_one_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_var_red") == "1,1"
+}
+test fn skp_diag_nsb_refuses_with_roots_differ() -> Bool {
+  skp_call_arg_refuses_with_reason(subject: "gunbc.skp_nested_sibling_red", reason: ^inhabitance_structural_roots_differ)
+}
+test fn skp_diag_nsb_refuses_with_argument_count_differs() -> Bool {
+  skp_call_arg_refuses_with_reason(subject: "gunbc.skp_nested_sibling_red", reason: ^inhabitance_structural_argument_count_differs)
+}
+test fn skp_diag_nsb_path_is_empty() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_sibling_red") == ""
+}
+test fn skp_diag_nsb_path_is_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_sibling_red") == "0"
+}
+test fn skp_diag_nsb_path_is_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_sibling_red") == "1"
+}
+test fn skp_diag_nsb_path_is_z_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_sibling_red") == "0,0"
+}
+test fn skp_diag_nsb_path_is_z_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_sibling_red") == "0,1"
+}
+test fn skp_diag_nsb_path_is_one_z() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_sibling_red") == "1,0"
+}
+test fn skp_diag_nsb_path_is_one_one() -> Bool {
+  skp_call_arg_position_path_token(subject: "gunbc.skp_nested_sibling_red") == "1,1"
 }
