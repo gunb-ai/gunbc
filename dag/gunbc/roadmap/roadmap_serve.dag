@@ -16,8 +16,8 @@ import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_sou
 import gunbc.site.controls { site_client_path, site_client_source }
 import gunbc.roadmap.roadmap_style { roadmap_styles, roadmap_css }
 
-import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
-import gunbc.roadmap.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
+import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchAutonomous }
+import gunbc.roadmap.roadmap_dispatch_actuator { decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, roadmap_issue_state, roadmap_standing_is_retired }
 
 import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, RetireNode, IssueFormContext, issue_command_apply, issue_operation_nonce }

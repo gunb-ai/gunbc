@@ -2372,7 +2372,7 @@ fn belt_footprint_admission_for_instance(
 // CARRIES the sealed value it took (gunbc.dispatch_attempt_launch SnapshotLaunch, a
 // gunbc.dispatch_credential_snapshot TakenCredentialSnapshot). Exactly one path consumes it: the
 // launched child, whose wrapper removes it before exec. Every other way out of the spawn after
-// selection -- a refused provider preflight, no spawn route, a supervisor route, a placement refusal,
+// selection -- a refused provider preflight, no spawn route, a placement refusal,
 // any SpawnFailed -- never launches that child, so the snapshot would outlive the attempt. The
 // decision is a pure fold over the outcome so every arm is witnessed; the discard is applied once,
 // here, around everything that follows selection, and it removes the snapshot the prepared launch
@@ -5169,8 +5169,8 @@ fn belt_sessions_observe_for_instance(
 // THE REALIZATION-NEUTRAL OCCURRENCE POPULATION (branch review 2026-09-23, blocker 1). The launch
 // census ran the tmux observation alone, so a production attempt held by a systemd transient unit
 // was invisible to AlreadyLive and to capacity. This observer unions the tmux sessions, the
-// system-manager gunbc-attempt-* units and user-manager gunbc-supervisor-* units (each read through the same per-unit
-// observation the convene gate uses), and the durable attempt records (the attempts ledger joined
+// system-manager gunbc-attempt-* units (read through the same per-unit observation the launch gate
+// uses), and the durable attempt records (the attempts ledger joined
 // with each attempt's persisted launch identity), and the pure producer
 // (gunbc.roadmap.roadmap_attempt_occurrence) assigns every discovered container to exactly one
 // arm. Either probe's refusal refuses the population: a census computed over half the population
