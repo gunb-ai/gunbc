@@ -1,0 +1,49 @@
+module gunbc.rung_drop.regen_class_slot_row_above_fleet_row
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED CHANGE (DESIGN 4b(3)) for the fleet-uniform slot row: ONE more slot is granted an
+// envelope above the fleet row, the CANDIDATE class for the heal round. This row exists because
+// gunbc.rung_drop microvm_shakedown_slot_row_above_fleet_row states that a second per-slot arm
+// satisfies neither of its restoration triggers, so the second arm owes its own declaration.
+//
+// WHAT IT DOES. gunbc_runner_slot_desired_for answers gunbc_runner_slot_regen_class_desired for
+// srv3_regen_class_slot: the floor's pinned MemoryMax / MemoryHigh (gunbc.floor.floor_demand
+// gunbc_floor_pinned_memory_max / _high), swap zero, tasks_max and cpu_weight from the fleet row.
+// The slot is an authored member (host_authored_slots), charged its own MemoryMax and no controller
+// slice (authored_slot_charge), so its host's committed width falls by the charge delta rather
+// than the demand being hidden. The conservation property rests on that charge reading the right
+// slot the right size, checked by test.claim.runner.runner_slot_allocation_witness, instead of being
+// unwritable by construction: the class drops one rung on a population of one more slot.
+//
+// WHAT IT DOES NOT DO. No unit exists for the slot, no workflow selects its label, and the number is
+// a candidate from n = 3 readings with the unit's ceiling confounded with its host; a qualification
+// run sets the value. The drift wall is threaded to the per-slot row so a correctly granted slot is
+// not refused as drift while every other slot still is.
+//
+// THE TRIGGER NAMES THE CAPABILITY. The drop ends when the per-slot class is qualified, converged
+// onto a live unit and read back by gunbc.runner.runner_unit_live_read, or when the slot is
+// withdrawn from authored_regen_class_slots. An artifact (a unit file, a workflow label) is not that
+// capability.
+// ============================================================================================
+data regen_class_slot_row_above_fleet_row: RungDrop = RungDrop {
+  identity: "regen_class_slot_row_above_fleet_row" as NonEmptyStr,
+
+  subject: "the fleet-uniform slot row (gunbc.runner.runner_slot_desired gunbc_runner_slot_desired): every committed slot on a host carries the same MemoryMax, so width and slice cap are one quotient",
+
+  declared: "2026-11-03",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.runner.runner_slot_allocation gunbc_runner_slot_desired_for (the floor's pinned MemoryMax/MemoryHigh, swap zero, for srv3_regen_class_slot) and memory_admitted_width_of_envelope charging that slot through authored_slot_charge, checked by test.claim.runner.runner_slot_allocation_witness",
+    },
+    population: Enumerated { members: FreeSemigroup { head: "gunbc.runner.runner_slot_allocation srv3_regen_class_slot (srv3-18): the floor's pinned 27917287424 bytes against the fleet row's 23622320128", tail: [] } },
+    restoration_trigger: "EITHER the regen class is qualified, converged onto a live unit and read back by gunbc.runner.runner_unit_live_read, at which point it is a declared class rather than a differing arm, OR srv3_regen_class_slot leaves authored_regen_class_slots. A third per-slot arm satisfies neither",
+  } }
+}
