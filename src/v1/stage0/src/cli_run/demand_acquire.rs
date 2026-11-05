@@ -103,8 +103,10 @@ pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
 
 /// THE DEMAND-ACQUIRED INDEX FOR AN ENTRY COMPILE: the same layout closure `gunbc run` resolves over,
 /// handed to the compile transaction in place of the whole-tree index (operator, 2026-11-04: the gunbc
-/// subcommands are sugar on one workflow). No provider seeds: the compile's own closure fixpoint runs
-/// over this index, and a provider it would need outside the acquired set is the compile's refusal.
+/// subcommands are sugar on one workflow). No provider seeds: the entry compile never runs the
+/// generated-provider fixed point (`compile_to_provider_fixed_point` belongs to emit_host), so the
+/// whole-tree pool never supplied generated providers to it either; only the authored-reference
+/// closure (`extend_sources_to_both_closure_fixpoint`) runs over this index.
 pub(crate) fn demand_acquired_index_for_entry(
     source_roots: &[String],
     entry_file: &str,
