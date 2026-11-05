@@ -30,7 +30,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_entry_parts, Atte
 import extdeps.systemd.service_exec { exec_word_render, ExecWordRendered, ExecWordRefused }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_lab_dashboard_instance, srv1_dashboard_lab_id }
-import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { SessionAttemptSlotsStore, session_attempt_slot_store_handle, WorkerAttemptSlots, session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready }
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs, FilePath }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import gunbc.systemd_unit_invocation_liveness {
@@ -175,13 +175,27 @@ fn stores_at(dir: String) -> SessionPlacementStores? {
     SessionAttemptSlotsStoreReady { store: slots } => match compute_capacity_store(subject: subject_at(dir: dir)) {
       ComputeCapacityStoreUnready { area: _, detail: _ } => none
       ComputeCapacityStoreReady { store: ledger } => Present { value: SessionPlacementStores {
-        slots: slots,
+        slots: WorkerAttemptSlots(slots),
         records_dir: dir,
         store: ledger,
         partition: subject_at(dir: dir).partition,
       } }
     }
   }
+  }
+}
+
+// THE WORKER LANE'S SEALED STORE UNDER THE TEST'S DIRECTORY, for the cutover census and carry, which take
+// the worker store itself (gunbc.roadmap.roadmap_session_attempt_slots_cutover) rather than the placement
+// record's lane-carrying ref. It provisions the fixture exactly as stores_at does, then reads the one mint.
+fn worker_store_at(dir: String) -> SessionAttemptSlotsStore? {
+  match stores_at(dir: dir) {
+    Absent => none
+    Present { value: _ } =>
+      match session_attempt_slots_store(instance: instance_at(dir: dir)) {
+        SessionAttemptSlotsStoreReady { store } => Present { value: store }
+        SessionAttemptSlotsStoreUnready { detail: _ } => none
+      }
   }
 }
 
@@ -1190,35 +1204,35 @@ fn orphan_launched(dir: String) -> Bool {
 test fn a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads() -> Bool {
   let dir = fresh_dir(tag: "cutover")
   let seeded = orphan_launched(dir: dir)
-  let census_before = match stores_at(dir: dir) {
+  let census_before = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+    Present { value: target_store } => attempt_slots_census(target: target_store, moved: moved_row(dir: dir))
   }
   let counts_before = census_counts(c: census_before)
-  let carry_first = match stores_at(dir: dir) {
+  let carry_first = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+    Present { value: target_store } => attempt_slots_carry(target: target_store, moved: moved_row(dir: dir))
   }
-  let census_after_carry = match stores_at(dir: dir) {
+  let census_after_carry = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+    Present { value: target_store } => attempt_slots_census(target: target_store, moved: moved_row(dir: dir))
   }
   let counts_after_carry = census_counts(c: census_after_carry)
   let settle_first = match stores_at(dir: dir) {
     Absent => SessionSettlementRefused { unit: "", detail: "no store" }
     Present { value: stores } => settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_observed_dead(stores: stores))
   }
-  let carry_second = match stores_at(dir: dir) {
+  let carry_second = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+    Present { value: target_store } => attempt_slots_carry(target: target_store, moved: moved_row(dir: dir))
   }
   let settle_second = match stores_at(dir: dir) {
     Absent => SessionSettlementRefused { unit: "", detail: "no store" }
     Present { value: stores } => settle_with_unit_absent(dir: dir, stores: stores, evidence: holder_observed_dead(stores: stores))
   }
-  let census_after = match stores_at(dir: dir) {
+  let census_after = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+    Present { value: target_store } => attempt_slots_census(target: target_store, moved: moved_row(dir: dir))
   }
   let counts_after = census_counts(c: census_after)
   seeded
@@ -1357,9 +1371,9 @@ test fn the_census_reports_a_slot_it_cannot_read_as_unreadable_and_counts_it() -
     Absent => false
     Present { value: slots } => plant_undecodable_slot(root: slots.root as String, reference: unit_b())
   }
-  let census = match stores_at(dir: dir) {
+  let census = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+    Present { value: target_store } => attempt_slots_census(target: target_store, moved: moved_row(dir: dir))
   }
   seeded
   && planted_old
@@ -1385,9 +1399,9 @@ test fn the_carry_refuses_to_overwrite_a_different_attempt_under_the_same_refere
   let dir = fresh_dir(tag: "cutovercollide")
   let seeded_old = orphan_launched(dir: dir)
   let seeded_new = launched_ok(dir: dir, rec: colliding_slot(opened: 500))
-  let carry = match stores_at(dir: dir) {
+  let carry = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+    Present { value: target_store } => attempt_slots_carry(target: target_store, moved: moved_row(dir: dir))
   }
   seeded_old
   && seeded_new
@@ -1419,9 +1433,9 @@ test fn the_carry_refuses_to_write_over_a_seat_the_current_store_cannot_decode_a
     Absent => false
     Present { value: slots } => plant_undecodable_slot(root: slots.root as String, reference: unit_a())
   }
-  let carry = match stores_at(dir: dir) {
+  let carry = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+    Present { value: target_store } => attempt_slots_carry(target: target_store, moved: moved_row(dir: dir))
   }
   seeded
   && planted_target
@@ -1444,9 +1458,9 @@ test fn the_carry_refuses_to_write_over_a_seat_the_current_store_cannot_decode_a
 test fn a_row_naming_an_instance_the_store_is_not_is_refused_and_writes_nothing() -> Bool {
   let dir = fresh_dir(tag: "cutoverrow")
   let seeded = orphan_launched(dir: dir)
-  let carry = match stores_at(dir: dir) {
+  let carry = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: row_naming_another_instance(dir: dir))
+    Present { value: target_store } => attempt_slots_carry(target: target_store, moved: row_naming_another_instance(dir: dir))
   }
   seeded
   && carry_row_names_another_instance(c: carry)
@@ -1469,10 +1483,10 @@ test fn a_row_naming_an_instance_the_store_is_not_is_refused_and_writes_nothing(
 test fn the_declared_row_meeting_a_store_of_another_instance_is_refused_at_the_top_level() -> Bool {
   let dir = fresh_dir(tag: "cutoverdecl")
   let lookup = replaced_attempt_slots_root_for(instance_id: srv1_dashboard_lab_id)
-  match stores_at(dir: dir) {
+  match worker_store_at(dir: dir) {
     Absent => false
-    Present { value: stores } => {
-      let carry = attempt_slots_carry_for_instance(instance_id: srv1_dashboard_lab_id, target: stores.slots)
+    Present { value: target_store } => {
+      let carry = attempt_slots_carry_for_instance(instance_id: srv1_dashboard_lab_id, target: target_store)
       (match lookup { ReplacedAttemptSlotsRootFound { row: _ } => true  _ => false })
         && carry_row_names_another_instance(c: carry)
         && match carry {
@@ -1489,13 +1503,13 @@ test fn the_declared_row_meeting_a_store_of_another_instance_is_refused_at_the_t
 test fn an_instance_with_no_declared_row_is_refused_by_name_and_reads_nothing() -> Bool {
   let dir = fresh_dir(tag: "cutovernorow")
   let seeded = orphan_launched(dir: dir)
-  let census = match stores_at(dir: dir) {
+  let census = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_census_for_instance(instance_id: "instance-with-no-row" as NonEmptyStr, target: stores.slots)
+    Present { value: target_store } => attempt_slots_census_for_instance(instance_id: "instance-with-no-row" as NonEmptyStr, target: target_store)
   }
-  let carry = match stores_at(dir: dir) {
+  let carry = match worker_store_at(dir: dir) {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
-    Present { value: stores } => attempt_slots_carry_for_instance(instance_id: "instance-with-no-row" as NonEmptyStr, target: stores.slots)
+    Present { value: target_store } => attempt_slots_carry_for_instance(instance_id: "instance-with-no-row" as NonEmptyStr, target: target_store)
   }
   seeded
   && match census { AttemptSlotsCensusNoDeclaredRow { instance_id: i } => (i as String) == "instance-with-no-row"  _ => false }
@@ -1537,8 +1551,10 @@ test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_
   let dir = fresh_dir(tag: "cutover-cross")
   match stores_at(dir: dir) {
     Absent => false
-    Present { value: s } => {
-      let record = attempt_slots_cutover_pass_for_instance(instance_id: srv1_dashboard_lab_id, target: s.slots)
+    Present { value: s } => match worker_store_at(dir: dir) {
+      Absent => false
+      Present { value: target_store } => {
+      let record = attempt_slots_cutover_pass_for_instance(instance_id: srv1_dashboard_lab_id, target: target_store)
       let outcome = belt_attempt_slots_cutover_record_write(stores: s, record: record)
       let path = attempt_slots_cutover_record_path(stores: s, instance_id: srv1_dashboard_lab_id)
       let read_back = Filesystem.Read(path: path as FilePath)
@@ -1561,6 +1577,7 @@ test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_
         && string_contains(s: read_back.content, pattern: "row-refused")
         && !slot_is_launching(dir: dir)
         && !slot_is_terminal(dir: dir)
+      }
     }
   }
 }
@@ -1573,15 +1590,15 @@ test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_
 // and the store the pass reads still holds no slot for that reference.
 test fn a_replaced_root_that_was_never_created_is_proven_absent_to_census_and_carry_and_carries_nothing() -> Bool {
   let dir = fresh_dir(tag: "cutover-absent")
-  let stores = stores_at(dir: dir)
+  let stores = worker_store_at(dir: dir)
   let row = moved_row(dir: dir)
   let census = match stores {
     Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "session-wet" as NonEmptyStr }
-    Present { value: s } => attempt_slots_census(target: s.slots, moved: row)
+    Present { value: s } => attempt_slots_census(target: s, moved: row)
   }
   let carry = match stores {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "session-wet" as NonEmptyStr }
-    Present { value: s } => attempt_slots_carry(target: s.slots, moved: row)
+    Present { value: s } => attempt_slots_carry(target: s, moved: row)
   }
   let old_root = old_slots_dir(dir: dir)
   (old_root != "")
@@ -1591,7 +1608,7 @@ test fn a_replaced_root_that_was_never_created_is_proven_absent_to_census_and_ca
     && !slot_is_terminal(dir: dir)
     && (match stores {
       Absent => false
-      Present { value: s } => match attempt_slot_keys(store: s.slots.slots) {
+      Present { value: s } => match attempt_slot_keys(store: s.slots) {
         AttemptSlotKeysListed { keys: ks } => length(ks) == 0
         _ => false
       }
@@ -1925,10 +1942,10 @@ test fn an_operator_settle_whose_slot_moved_between_read_and_terminate_releases_
         Absent => false
         Present { value: stores } => {
           let key = unit_a() as NonEmptyStr
-          let slot = attempt_slot_read(store: stores.slots.slots, reference: key)
+          let slot = attempt_slot_read(store: session_attempt_slot_store_handle(ref: stores.slots), reference: key)
           let decision = session_operator_settle_decide(key: key, slot: slot, reason: "operator evidence" as NonEmptyStr, release_settled: false)
           let moved = match slot {
-            AttemptSlotHeld { record: _, generation: g } => match attempt_terminate(store: stores.slots.slots, reference: key, expected: g, verdict: AttemptRecovered, detail: "another closer won") {
+            AttemptSlotHeld { record: _, generation: g } => match attempt_terminate(store: session_attempt_slot_store_handle(ref: stores.slots), reference: key, expected: g, verdict: AttemptRecovered, detail: "another closer won") {
               AttemptAdvanced { state: _, generation: _ } => true
               AttemptLostRace { expected: _, observed: _ } => false
               AttemptTransitionRefused { detail: _ } => false
