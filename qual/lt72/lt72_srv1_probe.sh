@@ -26,8 +26,12 @@ sz=256<<10
 while mx()==0 and len(chunks) < (cap>>18)+256:
     chunks.append(bytearray(b"\x01")*sz)
 print("held",len(chunks),cur(),flush=True)
-x=0
-while True:   # CPU-bound: keeps executing interpreter text, never allocates
+import json,re,ast
+src="def f(a,b):\n    return [a*i+b for i in range(100)]\n"*40
+x=0; i=0
+while True:   # alloc-churn at the cap + varied text: each >=1 MiB bytearray is mmap/munmap, charging new pages
+    buf=bytearray(2<<20); buf[::4096]=b"\x01"*len(buf[::4096]); del buf
+    json.dumps({"k":list(range(200))}); re.compile("(a|b)+c%d"%(i%97)); ast.parse(src); i+=1
     x=(x*1103515245+12345)&0xffffffff';;
 cpusteady) PY='
 import os
