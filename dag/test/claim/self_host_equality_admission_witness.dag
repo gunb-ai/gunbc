@@ -109,6 +109,34 @@ data collection_key_inferred_census_row_source: String = "module eq_probe_collec
 
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
+// THE gunbc#15175 WALL, pinned. A member typed as a generic APPLICATION whose applied argument
+// is either the enclosing declaration's OWN type parameter (std.effects CreateEffect { cause:
+// CreateCause<K> } under EffectShape<KeySource> -- host.host_effect's converge-loop evidence,
+// dag/gunbc/host/host_effect.dag) or a declared by-target type (Measure<Q,S,M> { count: M } under
+// the Kibibyte application -- gunbc.compute.compute_seat_ensure's seat_fell_by) refused at main:
+// the by-target judgment read the argument as an unbound global name and said "a routed member
+// inside a generic application". The argument is judged at the spelling declaration instead:
+// its parameter roster first, then the symbol index by declaring identity. The green rows are
+// both admitted shapes; the red control is the same shape with a ROUTED argument, which must keep
+// refusing with the same located cause -- the wall stays closed for routed members.
+data nested_own_param_eq_green_source: String = "module eq_probe_nested_own_param\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<String>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+data nested_declared_argument_eq_green_source: String = "module eq_probe_nested_declared_argument\ntype ProbeKey\n  = KeyA { name: String }\n  | KeyB\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<ProbeKey>\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+data nested_routed_argument_eq_red_source: String = "module eq_probe_nested_routed_argument\nimport v2.std.node { Node }\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<Node>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+test fn nested_own_parameter_equality_stays_admitted() -> Bool {
+  eq_admitted(source: nested_own_param_eq_green_source)
+}
+
+test fn nested_declared_by_target_argument_equality_stays_admitted() -> Bool {
+  eq_admitted(source: nested_declared_argument_eq_green_source)
+}
+
+test fn nested_routed_argument_equality_still_refuses_blocking() -> Bool {
+  eq_wall_refusal_count(source: nested_routed_argument_eq_red_source) >= 1
+}
+
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: interpretation_algebra_eq_red_source) >= 1
 }
