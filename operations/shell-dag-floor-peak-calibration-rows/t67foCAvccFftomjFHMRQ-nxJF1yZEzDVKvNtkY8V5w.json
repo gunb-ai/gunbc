@@ -1,0 +1,1 @@
+{"id": "0cc95abae720582e", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-floor-peak-calibration-rows", "author": "principal:host-account/srv1/gunbc-lab-agent", "parent": "", "kind": "claimed", "recorded_at": "2026-11-05T16:14:22Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:host-account/srv1/gunbc-lab-agent"}}
