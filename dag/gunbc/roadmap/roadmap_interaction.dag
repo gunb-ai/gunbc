@@ -1,4 +1,5 @@
 module gunbc.roadmap.roadmap_interaction
+import extdeps.languages.css.selectors { ClassSelector, ElementSelector }
 
 import std.types { Int, String, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

@@ -9,7 +9,7 @@ use self::WherePredicateMarker::*;
 pub use crate::std_algebra::{
     algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows,
     carrier_container_arity_rows, carrier_container_roster_map, collection_map_shape,
-    kernel_algebra_profile, FinitePowerSet, FinitelySupportedFunction, FreeMonoid,
+    kernel_algebra_profile, map_lookup, FinitePowerSet, FinitelySupportedFunction, FreeMonoid,
 };
 pub use crate::std_optional::{optional_absent, optional_present, Optional};
 pub use crate::std_unicode_types::unicode_scalar;
@@ -39,7 +39,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    match v1_rt::map_get(&kernel_type_set(), name.clone()) {
+    match v1_rt::lookup(&kernel_type_set(), name) {
         Some(_) => true,
         std::option::Option::None => false,
     }
@@ -62,14 +62,14 @@ pub fn is_container_type(name: String) -> bool {
 }
 
 pub fn container_expected_arity(name: String) -> Option<i64> {
-    v1_rt::map_get(&container_type_arity(), name.clone())
+    v1_rt::lookup(&container_type_arity(), name)
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
     if (kind_name.clone() == "Witness".to_string()) {
         Rc::new(vec!["T".to_string()])
     } else {
-        match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
+        match v1_rt::lookup(&kernel_algebra_profile(), kind_name.clone()) {
             Some(p) => crate::std_algebra::algebra_type_param_names(p.clone()),
             std::option::Option::None => Rc::new(vec![]),
         }
@@ -151,11 +151,15 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
-    v1_rt::map_get(&container_template_algebra_rows(), name.clone())
+    v1_rt::lookup(&container_template_algebra_rows(), name)
+}
+
+pub fn container_spelling_is_algebra(name: String, algebra: String) -> bool {
+    (container_template_algebra(name).as_deref() == Some(algebra.clone()).as_deref())
 }
 
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
-    v1_rt::map_get(&container_template_alias_rows(), name.clone())
+    v1_rt::lookup(&container_template_alias_rows(), name)
 }
 
 pub fn container_algebra_carrier_rows() -> Rc<HashMap<String, bool>> {
@@ -345,6 +349,10 @@ pub type GistId = String;
 pub type Secret = std::string::String;
 
 pub type SecretValue = std::string::String;
+
+pub fn secret_of_text(text: String) -> std::string::String {
+    text.clone()
+}
 
 pub type SemVer = String;
 

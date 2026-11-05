@@ -411,15 +411,15 @@ fn attestation_parts(object: List<Int>) -> AttestationPartsRead {
                     if count(x5c) != 2 { AttestationPartsRefused { cause: AttestationChainUntrusted { detail: "x5c carries " + to_string(count(x5c)) + " certificates, not the credential certificate and the intermediate" } } }
                     else {
                       let leaf = match x5c |> get(0) {
-                        null => []
-                        c => match cbor_byte_string_octets(v: c) {
+                        Absent => []
+                        Present { value: c } => match cbor_byte_string_octets(v: c) {
                           Present { value: o } => o
                           Absent => []
                         }
                       }
                       let ca = match x5c |> get(1) {
-                        null => []
-                        c => match cbor_byte_string_octets(v: c) {
+                        Absent => []
+                        Present { value: c } => match cbor_byte_string_octets(v: c) {
                           Present { value: o } => o
                           Absent => []
                         }

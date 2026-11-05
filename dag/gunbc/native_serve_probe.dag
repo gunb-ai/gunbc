@@ -113,6 +113,26 @@ fn native_serve_probe_cases(peer_port: Int) -> List<NativeServeProbeCase> {
 fn native_serve_probe_door_cases() -> List<NativeServeProbeCase> {
   [
     NativeServeProbeCase {
+      identity: "authorization_survives_native_boundary",
+      request: "GET /authorization-present HTTP/1.1\r\naUtHoRiZaTiOn: Bearer native-probe-only\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "credential received\n" },
+    },
+    NativeServeProbeCase {
+      identity: "absent_authorization_is_not_invented",
+      request: "GET /authorization-present HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "credential absent or different\n" },
+    },
+    NativeServeProbeCase {
+      identity: "duplicate_authorization_refuses_without_echo",
+      request: "GET /authorization-present HTTP/1.1\r\nAuthorization: Bearer native-probe-only\r\nauthorization: secret-control\r\n\r\n",
+      expect: ExpectBody { status: 400, body: "bad request: duplicate Authorization header\n" },
+    },
+    NativeServeProbeCase {
+      identity: "malformed_credential_header_is_not_echoed",
+      request: "GET /authorization-present HTTP/1.1\r\nAuthorization Bearer secret-control\r\n\r\n",
+      expect: ExpectBody { status: 400, body: "bad request: malformed header line\n" },
+    },
+    NativeServeProbeCase {
       identity: "handler_route_reads_framed_identity",
       request: "GET /hello HTTP/1.1\r\nHost: probe\r\nTailscale-User-Login: alice@example\r\n\r\n",
       expect: ExpectBody { status: 200, body: "hello, alice@example\n" },

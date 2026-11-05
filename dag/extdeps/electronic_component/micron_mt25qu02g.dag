@@ -41,7 +41,7 @@ data mt25qu02gcbb8e12: ElectronicComponentRow = ElectronicComponentRow {
   vendor: micron,
   ordering_code: "MT25QU02GCBB8E12-0SIT",
   package: "T-PBGA-24, 6 x 8 mm (5 x 5 array), code 12",
-  top_marking: "a lot line over the FBGA code RW251",
+  top_marking: Present { value: "a lot line over the FBGA code RW251" },
   specification: SerialFlashSpec { flash: SerialFlashSpecification {
     capacity_mbit: 2048,
     supply: MillivoltRange { minimum: millivolt(count: 1700), maximum: millivolt(count: 2000) },

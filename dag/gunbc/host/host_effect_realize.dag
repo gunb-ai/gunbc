@@ -544,7 +544,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan, OwnedDirectoryEnsureOutcome,
-  owned_directory_ensure, owned_directory_observe, owned_directory_install_argv,
+  owned_directory_ensure, owned_directory_ensure_observed, owned_directory_observe, owned_directory_install_argv,
   owned_directory_outcome_converged, owned_directory_outcome_detail,
   ObserverRead, ObserverReadOut, ObserverReadFailed,
   ObserverTransportRefused, ObserverExited,
@@ -617,6 +617,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.rust.cargo { cargo_default_release_dir }
+import gunbc.shell_command_text { shell_command_text_of_argv }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -3705,6 +3706,7 @@ fn provision_build_cache_witness_intent() -> HostEffectIntent {
 
 fn provision_build_cache_arch_unknown_host_fixture() -> ComputeHost {
   ComputeHost {
+    bmc_intent: Absent,
     identity: srv1_host.identity,
     baseboard: none,
     processors: [],
@@ -6029,7 +6031,7 @@ fn deploy_apply_directory_observe(path: FilePath, transport: HostEffectTransport
 }
 
 fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, transport: HostEffectTransport) -> OwnedDirectoryEnsureOutcome {
-  owned_directory_ensure(
+  owned_directory_ensure_observed(
     policy: EnsureMayApply,
     target: target,
     observe: p => deploy_apply_directory_observe(path: p, transport: transport),
@@ -9869,29 +9871,26 @@ fn microvm_controller_owned_dir_argv(path: String) -> List<String> {
   )
 }
 
-// A CONTENT WRITE AND ITS INSTALL, AS TWO STEPS. The bytes are the command's
-// stdin payload -- never a quoted word in a command string, which is where the
-// retired `printf '%s' '<content>' > stage` could have had a quoting surface.
-// dd writes the staged sibling (O_TRUNC, so a stale stage cannot survive);
-// install -m -o -g moves it into place with ownership set at creation, so the
-// live path is never briefly world-readable or root-only.
+// A CONTENT WRITE, AS ONE STEP. The bytes are the command's stdin payload -- never a quoted word in a
+// command string, which is where the retired `printf '%s' '<content>' > stage` could have had a quoting
+// surface -- and install -m -o -g reads them from /dev/stdin straight into the live path, with ownership
+// and mode set at creation, so the path is never briefly world-readable or root-only. That is the same
+// property the earlier two-step form bought by staging a sibling with dd and installing from it, minus the
+// sibling: the stage file was never removed, so every install left <dest>.gunbc-stage beside each unit
+// in /etc/systemd/system and each script in the release dir (srv1, read 2026-11-04 after the manual
+// install of e1f753b9). The VMM receipt already installs from /dev/stdin over this same route.
 fn microvm_controller_staged_write_steps(name: String, dest: String, mode: NonEmptyStr, content: String) -> List<MicrovmControllerInstallStep> {
-  let staged = concat(dest, microvm_controller_stage_suffix)
   [
     microvm_controller_stdin_step(
-      name: join([name, " (stage)"], ""),
-      command: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
-      stdin_payload: content,
-    ),
-    microvm_controller_argv_step(
       name: join([name, " (install)"], ""),
       command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
         mode: mode,
         owner: microvm_controller_owner,
         group: microvm_controller_owner,
-        source: staged,
+        source: "/dev/stdin",
         dest: dest,
       )),
+      stdin_payload: content,
     ),
   ]
 }

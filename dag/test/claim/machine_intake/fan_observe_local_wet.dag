@@ -254,3 +254,26 @@ test fn fan_policy_phase_fetch_status_folds_three_arms_by_real_execution() -> Bo
   let bad_clean = Filesystem.Delete(path: bad_path)
   ok_reads_ok && bad_reads_refused && absent_reads_unobserved && ok_clean.success && bad_clean.success
 }
+
+// M2a THE EXECUTED CONTROL (manager msg_cdf72bcc acceptance 2). The hermetic claims in fan_observe_witness
+// prove what each run-scope capture RENDERS; this one proves the BOOT LANE really passes not_taken to the
+// REAL writer -- bytes through fan_write_boot_phase_observation, read back off disk -- on the exact shape
+// of run 41389794851 (host OFF in every round, nothing undecoded). Host-off is the state that made the
+// conditional skip and left the four boot-5 rows unadmitted; the boot phase must STILL skip it (it is not
+// fitted to decide on), while the standalone mode now reads the repository regardless. If the boot phase
+// ever gains the unconditional read, this claim goes red on the written bytes, not on a comment.
+test fn the_boot_phase_still_skips_the_verbose_read_with_the_host_off_by_execution() -> Bool {
+  let o = fan_real_writer_tail_outcome(
+    stem: "jc547-m2a-boot-skip",
+    series: FanObservationTaken {
+      rounds: [host_off_round(index: 0, power_on: false), host_off_round(index: 1, power_on: false), host_off_round(index: 2, power_on: false)],
+      interval: second(5),
+    },
+  )
+  o.exit_code == 0
+    && string_contains(s: o.summary, pattern: "run=0 verbose_sdr=not_taken")
+    && !string_contains(s: o.summary, pattern: "verbose_record=")
+    && !string_contains(s: o.summary, pattern: "verbose_raw=")
+    && !string_contains(s: o.summary, pattern: "verbose_sdr=captured")
+    && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+}

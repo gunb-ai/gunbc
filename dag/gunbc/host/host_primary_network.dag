@@ -21,6 +21,9 @@ import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWrite, RemoteFileM
 import gunbc.runner.runner_host_file_converge {
   FleetHostFileDesired, FleetHostFileStanding, HostFileIdentical, HostFileDiffers, HostFileAbsent, HostFileUnobservable,
 }
+import gunbc.host.host_primary_network_desired {
+  PrimaryAddressing, PrimaryDhcp4, HostPrimaryNetworkDesired, srv1_primary_network_desired, host_primary_network_rows,
+}
 import gunbc.host.host_primary_network_observed {
   OperatorHandNetworkChange, HandChangeReadFromJournal, HandChangeAttestedUnread,
   srv1_primary_network_receipt_2026_10_25, srv1_hand_move_to_1g, hand_network_change_for,
@@ -58,33 +61,6 @@ import gunbc.host.host_primary_network_observed {
 // Moving the uplink to another NIC, or a static address, is a different change: it lands with the
 // first row that needs it, and the try route's fresh-connection readback is what it will rest on.
 
-// DHCP addressing carries its resolver: netplan's default for a dhcp4 definition takes the lease's
-// DNS servers, which is where srv1's resolver comes from today. A static arm, with its own servers,
-// lands with the first row that needs one.
-type PrimaryAddressing = PrimaryDhcp4 { route_metric: Nat? }
-
-type HostPrimaryNetworkDesired {
-  host: HostIdentity
-  nic: Eui48Address
-  renderer: NetplanRenderer
-  addressing: PrimaryAddressing
-  mtu: ByteSize
-  adopted: OperatorHandNetworkChange
-}
-
-// srv1's row is its 2026-10-25 read: the NIC holding the lease, the renderer that rendered it, the
-// route metric the hand file set (200, chosen beside a 10G default route that no longer exists, kept
-// so the first apply changes no route) and the link's MTU.
-data srv1_primary_network_desired: HostPrimaryNetworkDesired = HostPrimaryNetworkDesired {
-  host: srv1_primary_network_receipt_2026_10_25.host,
-  nic: srv1_primary_network_receipt_2026_10_25.lease.holder,
-  renderer: srv1_primary_network_receipt_2026_10_25.renderer,
-  addressing: PrimaryDhcp4 { route_metric: Present { value: srv1_primary_network_receipt_2026_10_25.lease.route_metric } },
-  mtu: srv1_primary_network_receipt_2026_10_25.mtu,
-  adopted: srv1_hand_move_to_1g,
-}
-
-data host_primary_network_rows: List<HostPrimaryNetworkDesired> = [srv1_primary_network_desired]
 
 // A DECLARED ROW CARRIES ITS EMITTED DOCUMENT, so every consumer writes and compares the same bytes
 // and none of them can reach a row whose document the YAML emitter refused.
@@ -316,6 +292,28 @@ fn primary_effective_refusal(v: PrimaryEffectiveVerdict) -> NonEmptyStr? {
     PrimaryMtuDiverges { device: dv, held: m } => Present { value: join([dv as String, " runs mtu ", to_string(byte_size_count(b: m))], "") as NonEmptyStr }
     PrimaryRouteMetricDiverges { held: m } => Present { value: join(["the default route's metric is ", match m { Absent => "unset"  Present { value: v } => to_string(v) }], "") as NonEmptyStr }
     PrimaryEffectiveUnjudged { cause: c } => Present { value: c }
+  }
+}
+
+// WHICH VERDICTS A RECONFIGURE PASSES THROUGH. When a try applies, networkd drops the NIC's lease
+// and asks again, so for a few seconds the row's NIC can lack carrier, hold no IPv4 address, or have
+// no default route, and a leg that crosses the network mid-change can fail to answer; each of those is
+// the network on its way to the row's state, not a judgment of it. A held address that is wrong, an
+// uplink on another device, a missing NIC, a wrong MTU or a wrong route metric is the configuration's
+// answer, so it settles at once. srv1, fleet-converge run 41595676342 (2026-11-03): the readback read
+// enP3p6s0 at 07:48:02Z holding no IPv4 address, one second before its DHCPv4 lease returned at
+// 07:48:03Z, and stopped a try whose configuration was right.
+fn primary_effective_settling(v: PrimaryEffectiveVerdict) -> Bool {
+  match v {
+    PrimaryEffectiveHolds { device: _ } => false
+    PrimaryNicNotPresent => false
+    PrimaryNicNoCarrier { device: _ } => true
+    PrimaryUplinkOnAnotherDevice { device: _, default_device: _ } => false
+    PrimaryNoDefaultRoute => true
+    PrimaryAddressDiverges { device: _, held: h, expected: _ } => h == []
+    PrimaryMtuDiverges { device: _, held: _ } => false
+    PrimaryRouteMetricDiverges { held: _ } => false
+    PrimaryEffectiveUnjudged { cause: _ } => true
   }
 }
 

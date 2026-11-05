@@ -1,6 +1,6 @@
 module product.inventory
 
-import std.types { Bool, Int, List, NonEmptyStr, Map, String }
+import std.types { Bool, Int, List, NonEmptyStr, Map, String, list_length }
 import std.nat { Nat }
 import std.list { list_member }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }

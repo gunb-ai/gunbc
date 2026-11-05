@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.shared_build_cost_charged_to_the_probes_first_caller
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data shared_build_cost_charged_to_the_probes_first_caller: RecurringFailureMode = RecurringFailureMode {
+  identity: "shared_build_cost_charged_to_the_probes_first_caller" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "a footprint probe that replays the measured process's own step order from its fresh state, so a lazily built process-wide structure is charged to the step that first builds it IN PRODUCTION, and that reports for each step whether it built a shared structure or reused one -- the residency read (v1_compiler.cli_run.entry_resolve shared_index_residency_control) sees only the process-shared memo; a per-thread count of every whole-pool build (entry_resolve whole_pool_index_builds_on_this_thread, test-only) also sees a local build_multi_entry_index, and the replay must list every step before the reading point, not only the suspected ones" } },
+
+  receipts: [
+    "**shared build cost charged to the probe's first caller** (a measurement of per-step memory or wall in which several steps share a lazily built, process-wide structure -- a memoized index, a cache, an interpreter pool -- runs the steps in an order other than production's, so the structure's whole cost lands on whichever step the PROBE calls first, and the step production actually builds it in measures as free).",
+
+    "INVALID STATE: a cost attributed to a step that, in the measured process, does not pay it. The repair chosen from it then removes work that was not the cost, and the prediction it carries fails on the real run.",
+
+    "SPECIMEN (gunbc#15752, 2026-11-03/04). A release probe of the heal orchestrator ran convergence_surface_roles first and charged it about 8 GB, and the two interpreted model loads after it measured about 0. The whole-tree shared index (cli_run.entry_resolve process_shared_index_or_refuse over dag and src/v2) had already been built by the first step, and every later resolve reused it. #15752 moved the surface roles out of the orchestrator on that attribution and predicted a low-single-GB orchestrator. The first post-merge heal (run 41748822802, srv4-15) read 10698473472 bytes at generation-0 begin, unchanged from 10692333568. The change ran: revert-to-generation-0 fell from 216 s to 80 s. But in production the re-exec'd orchestrator's FIRST shared-index caller is RegenConvergenceModel::load, and replayed in that order in a fresh process it measured 169 s and 10.13 GB, against 2.9 s and 150 MB for the same 26-module entry resolved from its own closure (resolve_entry_graph_demand_acquired).",
+
+    "SPECIMEN (gunbc#15843, 2026-11-04): the same class in the repair's own probe. #15843's production-order replay covered the three model loads it suspected and predicted under 1 GB at generation 0. The first post-merge heal (run 41899288377, srv4-11) read 7566544896 bytes. A fourth whole-tree build ran before generation 0 and was outside the replay: the convergence checkpoint subject's source digest (required_regen_host current_convergence_checkpoint_subject, over cli_run regen_input_sources, which builds build_multi_entry_index over src/v1 and dag). One round demanded that value in each image, at each install stage and in each refusal arm, and the log shows 3.6 min and 3.0 min silences, one per image. A replay is only as faithful as its step list. The follow-up replays every in-process step before the reading point, and counts whole-pool builds on the thread (test-only, at entry_resolve yield_live_pool_before_building_another, the hook both whole-pool builders pass through) instead of reading one memo.",
+
+    "DISTINGUISHING FACTS: the falsifying reading is the one the change predicted, read at the same line on the real run; the mis-attributed step's own effect is real but small (here wall, not memory); and the step charged as free shares the structure with the step charged as expensive.",
+
+    "RUNG FOUND AT: mitigatable -- the prediction was stated beforehand and read back on the first real run, so the mis-attribution was caught within one merge instead of being cited as delivered.",
+
+    "CEILING: mechanically preventable -- a probe that replays production order and reports build-versus-reuse per step makes the attribution checkable rather than a matter of care.",
+  ],
+
+  evidence: [],
+}

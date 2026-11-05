@@ -932,8 +932,30 @@ fn control_int_set(xs: List<Int>) -> Set<Int> {
   xs |> fold(init: empty_set(), f: (acc, n) => set_insert(acc, n))
 }
 
+// RULE: the fold's expected accumulator carrier is read from the algebra roster too (04_infer
+// spelling_is_collection_carrier, 04_types node_is_set_collection), so an `empty_set()` seed whose
+// declared result is written `FinitePowerSet<Int>` is classified as the set it inhabits -- the
+// spelling is not required to be the literal "Set". Admitted by the roster is not the same as
+// LOWERED by the roster: the lowering is #15569, and without it the fold accumulated into a record
+// of closures and the count was whatever the record's own shape answered. These are the rows
+// 653e61f dropped; they hold now that both halves are in.
+fn control_power_seed(xs: List<Int>) -> FinitePowerSet<Int> {
+  xs |> fold(init: empty_set(), f: (acc, n) => set_insert(acc, n))
+}
+
+fn control_power_seed_size(xs: List<Int>) -> Int {
+  (control_power_seed(xs: xs) |> count)
+}
+
+fn control_power_empty() -> FinitePowerSet<Int> {
+  empty_set()
+}
+
 fn mixed_set_carrier_cases() -> List<NativeEmissionCase> {
   [
+    NativeEmissionCase { identity: "power_set_spelled_seed_collects_each_member_once", held: control_power_seed_size(xs: [1, 2, 2]) == 2 },
+    NativeEmissionCase { identity: "power_set_spelled_canonical_empty", held: (control_power_empty() |> count) == 0 },
+    NativeEmissionCase { identity: "power_set_spelled_seed_red_is_not_empty", held: !(control_power_seed_size(xs: [1]) == 0) },
     NativeEmissionCase { identity: "mixed_set_enum_equal_members_in_another_order", held: ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [2, 1]) } },
     NativeEmissionCase { identity: "mixed_set_enum_red_member_differs", held: !(ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 3]) }) },
     NativeEmissionCase { identity: "mixed_set_record_equal_members_in_another_order", held: ControlMixedSetRecord { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetRecord { sequence: [1], members: control_int_set(xs: [2, 1]) } },
@@ -943,22 +965,42 @@ fn mixed_set_carrier_cases() -> List<NativeEmissionCase> {
   ]
 }
 
-// RULE: a heap reference carries its OWN Clone, so it bounds nothing behind it. Rc<T> and Arc<T>
-// implement Clone for every T (impl<T: ?Sized> Clone for Rc<T>, cited at
-// extdeps.languages.rust.derive_contracts std_rc_clone_impl_authority), so a field written
-// `routes: List<Route<H>>` -- which this emitter lowers to Rc<Vec<Rc<Route<H>>>>, the handle at both
-// levels -- asks NOTHING of H, and the item naming it must be declared bare.
-// v1.compiler.trait_derive_emit v1_type_expr_clone_impl_needs_param used to descend through the handle
-// as if it bounded its argument, so the row was emitted with `H: Clone` in its serde bound clause and
-// in its hand-written Debug and PartialEq impl headers. The shape is the one that reached main and
-// reddened the fleet lane: a generic enum carrying a generic struct whose field is a List of a generic
-// enum (extdeps.http.server ServedRouteTable over ServedRoute), where the emitted approval crate
-// refused with five E0277 and one E0369. The spelling side of that red is pinned in
-// dag/test/claim/generic_item_clone_bound_witness.dag; what these cases hold is the BEHAVIOR through
-// the handle -- the carrier is compared, counted and cloned with the parameter carrying a payload --
-// and the owed side below, whose compile is the guard against relaxing too far: if the repair dropped
-// a demand that is owed, the emitted field `Rc<Vec<Rc<ControlOwedLeaf<H>>>>` is ill-formed at rustc
-// (ControlOwedLeaf's own declaration carries P: Clone) and this instrument stops building.
+// RULE: a trait demand on a carrier reaches a type parameter only through the element type's OWN
+// requirement. Two different sides of that rule are exercised below, and they were conflated in an earlier
+// version of this comment, which credited the second one with the first one's red. They are stated apart.
+//
+// SIDE ONE, the one that reddened the fleet lane, and it never involves a heap reference. The authored
+// field is `routes: List<ControlHeapRoute<H>>`: the element is a DECLARED type, and the walk asked whether
+// the parameter merely APPEARS inside the element instead of what the element's own Clone impl requires.
+// ControlHeapRoute<H> declares no bound of its own, so H owes nothing and the row must be emitted bare --
+// no `H: Clone` in its serde bound clause, none in its hand-written Debug and PartialEq headers. The
+// product shape is identical: extdeps.http.server `ServedRouteTable<H> { routes: List<ServedRoute<H>> }`,
+// emitted at main with `H: Clone` in those headers, and its generic carrier ServedRouteTableBuild<H>, which
+// derives with serde's DEFAULT bounds, could not discharge them for an unbounded H -- five E0277 and one
+// E0369 in v2-emitted-policy-unit-4 of the emitted approval crate. The repair is
+// v1.compiler.trait_derive_emit v1_type_expr_clone_impl_needs_param resolving a declared element through its
+// own declaration, recursively. What these cases hold is the BEHAVIOR through the handle -- the carrier is
+// compared, counted and cloned with the parameter carrying a payload -- plus the owed side below, whose
+// compile guards against relaxing too far: if a demand that IS owed were dropped, the emitted field
+// `Rc<Vec<Rc<ControlOwedLeaf<H>>>>` is ill-formed at rustc (ControlOwedLeaf's own declaration carries
+// P: Clone) and this instrument stops building. The spelling side is pinned in
+// dag/test/claim/generic_item_clone_bound_witness.dag.
+//
+// SIDE TWO, the heap reference, is stated here as REMOVED, with the measurement that decided it, so nobody
+// re-adds it from an old comment. An earlier revision of this work carried a rule for it -- a row per Rc
+// and Arc in extdeps.languages.rust.derive_contracts rust_heap_reference_unconditional_bound_rows, read by
+// v1.compiler.trait_derive_emit v1_type_expr_clone_unconditional_heap_reference -- on the reasoning that a
+// heap reference must not borrow its pointee's traits, which is true of Rust. It has no input. Authoring the
+// shape in this corpus, `leaves: List<Rc<ControlOwedLeaf<H>>>`, makes the EMITTER refuse the item: "generic
+// item 'ControlHeapOwedRow' has a field applying type 'Rc', whose declared parameter list is not readable in
+// this closure", and this instrument stops building WITH that rule in place -- the refusal happens in the
+// walk that resolves a field's applied type against its declared parameter list, before any heap-reference
+// question is asked. Outside the corpus closure, where the spelling Rc resolves to no declared item at all,
+// the same authored field emits and the rule does change the output; inside the corpus, nothing reaches it.
+// A row no fold reads is a dangling declaration (DESIGN section 3c), so the rows, their two std authorities
+// and the arm are deleted, and side one is the whole of what this instrument guards. If a future grammar
+// admits an authored heap reference in a field position, the rule comes back with a control in this file,
+// not on its own.
 type ControlHeapRoute<H>
   = ControlHeapStatic { path_label: String }
   | ControlHeapDynamic { handler: H }
@@ -1223,6 +1265,9 @@ data native_emission_expected_identities: List<String> = [
   "only_set_record_equal_members_in_another_order",
   "only_set_record_red_member_differs",
   "mixed_set_record_red_sequence_differs",
+  "power_set_spelled_seed_collects_each_member_once",
+  "power_set_spelled_seed_red_is_not_empty",
+  "power_set_spelled_canonical_empty",
   "canonical_set_spelling_counts_a_set_built_value",
   "canonical_set_spelling_red_count_is_not_the_element_count",
   "canonical_set_probe_pair_equal",
