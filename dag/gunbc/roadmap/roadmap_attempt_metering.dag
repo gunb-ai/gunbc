@@ -1887,10 +1887,16 @@ fn attempt_metering_adopt_pre_seal_record(
 ) -> AttemptMeteringAdopt {
   match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
     AttemptMeteringStoreUnready { detail: d } => AdoptRefused { error: join(["the attempt's metering store is not ready, so nothing can be adopted: ", d], "") }
-    AttemptMeteringStoreReady { store: store } => match metering_record_head(store: store) {
-    MeteringRecordHeadCommitted { generation: _, content: _ } => AdoptAlreadyHead
-    MeteringRecordHeadRefused { cause: c } => AdoptRefused { error: c }
-    MeteringRecordHeadAbsent =>
+    // THE ACT ASKS THE STORE LIBRARY ABOUT GENERATIONS, NOT THE READER. `metering_record_head` refuses a
+    // plain pre-seal entry (a reader must never resolve through the old layout -- DESIGN 3), so gating this
+    // act on it would make the branch that adopts unreachable. The act is the one place allowed to look at
+    // those bytes, once, and only to move them: so it consults `observe_cas_slot_state` for the generations
+    // directly, and the plain name is read here and nowhere else in the module.
+    AttemptMeteringStoreReady { store: store } => match observe_cas_slot_state(root: store.directory, key: metering_record_slot_key()) {
+      CasObservedReadable { readable: CasReadablePresent { version: _ } } => AdoptAlreadyHead
+      CasObservedUnreadable { cause: c } =>
+        AdoptRefused { error: join(["the metering record slot is not readable, so nothing can be adopted into it: ", cas_unreadable_slot_detail(cause: c)], "") }
+      CasObservedReadable { readable: CasReadableAbsent } =>
       match attempt_metering_read(store: store, entry: metering_record_slot_key()) {
         OptionalFileAbsent => AdoptNothingToAdopt
         OptionalFileRefused { cause: c } => AdoptRefused { error: c }
