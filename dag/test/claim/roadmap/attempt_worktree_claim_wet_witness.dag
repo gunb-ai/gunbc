@@ -56,7 +56,7 @@ fn claim_instance(cd: String) -> HostDashboardInstance {
     listen_port: 18098,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 

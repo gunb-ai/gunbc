@@ -120,7 +120,7 @@ fn instance_at(dir: String) -> HostDashboardInstance {
     listen_port: 18099,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 

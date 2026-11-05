@@ -18,7 +18,7 @@ import gunbc.auth.session { SessionCookieMalformed, SessionCookieValid, SessionC
 // header carrying only other cookies, ever reads as anything but AuthAbsent.
 fn fixture_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(deployment: deployment_id(name: "cookie-seam-fixture" as NonEmptyStr), instance_id: "cookie-seam-fixture", layout: srv1_host_layout(), root: "/fixture-never-read" as FilePath,
-    serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+    serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, actuator_host: srv1_host_layout().host_identity)
 }
 
 fn no_readback() -> TailnetServeReadback {
