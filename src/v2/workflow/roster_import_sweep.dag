@@ -4396,6 +4396,35 @@ fn roster_control_clear_slots(root_dir: String) -> Bool {
   })
 }
 
+// THE LOCK CONTROLS AS AN IDENTITY JOIN: one line per DECLARED control, `<name> HELD` or `<name> FAIL <why>`, plus the
+// scratch check. A reader checks every declared name appears with its verdict; an empty or short answer is no verdict,
+// never "all held". Run as `gunbc run … --function roster_import_sweep_lock_control_verdicts --arg root_dir=<fresh empty dir>`.
+data roster_lock_control_names: List<String> = ["reclaim-dead", "unobservable", "moved", "unheld", "stale", "contend", "traversal", "spellings", "all-or-nothing"]
+
+fn roster_lock_control_verdict(name: String, out: String) -> String {
+  if out == "" { name + " HELD\n" } else { name + " FAIL " + out }
+}
+
+fn roster_import_sweep_lock_control_verdicts(root_dir: String) -> String {
+  let listed = Filesystem.List(path: root_dir)
+  if !roster_root_admitted(root_dir: root_dir) || !listed.success || listed.entries != "" {
+    "precondition FAIL the scratch dir must be an absolute, existing, EMPTY directory the caller just created\n"
+  } else {
+    let lines = roster_lock_control_verdict(name: "reclaim-dead", out: roster_control_reclaim_dead(root_dir: root_dir))
+      + roster_lock_control_verdict(name: "unobservable", out: roster_control_unobservable_holder(root_dir: root_dir))
+      + roster_lock_control_verdict(name: "moved", out: roster_control_moved_report(root_dir: root_dir))
+      + roster_lock_control_verdict(name: "unheld", out: roster_control_unheld(root_dir: root_dir))
+      + roster_lock_control_verdict(name: "stale", out: roster_control_stale(root_dir: root_dir))
+      + roster_lock_control_verdict(name: "contend", out: roster_control_contend(root_dir: root_dir))
+      + roster_lock_control_verdict(name: "traversal", out: roster_control_traversal(root_dir: root_dir))
+      + roster_lock_control_verdict(name: "spellings", out: roster_control_spellings(root_dir: root_dir))
+      + roster_lock_control_verdict(name: "all-or-nothing", out: roster_control_all_or_nothing(root_dir: root_dir))
+    let cleaned = roster_control_clear_slots(root_dir: root_dir)
+    let left = Filesystem.List(path: root_dir)
+    lines + (if cleaned && left.success && left.entries == "" { "scratch-clean HELD\n" } else { "scratch-clean FAIL the scratch dir was not left empty\n" })
+  }
+}
+
 fn roster_lock_controls_report(root_dir: String) -> String {
   roster_control_reclaim_dead(root_dir: root_dir)
     + roster_control_unobservable_holder(root_dir: root_dir)
