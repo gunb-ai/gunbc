@@ -357,22 +357,29 @@ fn heal_round_outcome_seed_step() -> Step {
 }
 
 // A SECOND ARTIFACT, UPLOADED UNCONDITIONALLY, UNDER A NAME THE PUBLICATION STEPS NEVER MATCH.
+// THE RECORD TRAVELS THE SAME TRANSPORT AS THE CANDIDATE, AND ITS ABSENCE IS AN ERROR, NOT A SIGNAL —
+// the one authority for that choice is gunbc.ci.workflow_artifact_upload ArtifactAbsence, whose policy is
+// that an upload finding no files fails (gunbc#15522's own reasoning: an upload that collects a producer's
+// receipt under always() is exactly where a producer that passed without writing it is caught). The seed
+// step runs first and ungated, so a missing record means the record route itself broke; a round that
+// cannot state what it left behind is not a green round. There is therefore no continue_on_error here.
 fn heal_round_outcome_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload the round outcome record" },
     id: none,
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: heal_round_outcome_artifact_name as String)),
-        kv(key: "path", value: yaml_string(s: heal_round_outcome_producer_directory)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-        kv(key: "retention-days", value: yaml_int(n: heal_candidate_artifact_retention_days))
-      ]
+      value: workflow_artifact_upload_with(
+        name: heal_round_outcome_artifact_name as String,
+        path: heal_round_outcome_producer_directory,
+        retention_days: Present { value: heal_candidate_artifact_retention_days },
+        compression_level: none,
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: Present { value: "always()" },
-    continue_on_error: Present { value: true },
+    continue_on_error: none,
     timeout_minutes: none
   }
 }
