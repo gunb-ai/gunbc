@@ -11,6 +11,7 @@ import gunbc.managed_directory {
   ManagedDirectory,
   DeclaredDirectoryMode,
   declared_directory_mode,
+  declared_directory_mode_inheriting_setgid,
   managed_directory_permissions,
   managed_directory_admit,
   ManagedDirectoryAdmitted,
@@ -121,6 +122,36 @@ fn owned_directory_owner(t: OwnedDirectoryTarget) -> PosixOwnerNames {
     OwnedDirectoryDeclared { member: _, path: _, owner, mode: _, group_adoption: _ } => owner
     OwnedDirectoryManaged { directory } =>
       PosixOwnerNames { user: directory.owner.name, group: directory.group_principal.name }
+  }
+}
+
+// A CHILD OF A SETGID PARENT EXPECTS THE PARENT'S GROUP AND THE SETGID BIT, derived, never re-declared.
+// The kernel gives a directory made inside a setgid directory the parent's group and the setgid bit, so
+// the observed truth of every such child is (owner user, parent's group, declared mode + setgid). One
+// rule covers every child of a setgid root (DESIGN section 6b, root generalization): a child declares
+// only its own user and mode, and this derives the rest from the parent it is declared under. A
+// non-setgid parent changes nothing (the child keeps the owner's declared group). Ownership is still
+// never adopted: ForeignOwnershipRefuses stays and no live directory is regrouped; a child whose live
+// group differs from the derived one is refused exactly as before. A managed child is returned as is.
+fn owned_directory_inheriting_from_parent(parent: OwnedDirectoryTarget, child: OwnedDirectoryTarget) -> OwnedDirectoryTarget {
+  match owned_directory_mode(t: parent) {
+    OwnedDirectoryModeRefused { reason: _ } => child
+    OwnedDirectoryModeResolved { mode } =>
+      match mode.setgid {
+        false => child
+        true =>
+          match child {
+            OwnedDirectoryDeclared { member, path, owner, mode: child_mode, group_adoption } =>
+              OwnedDirectoryDeclared {
+                member: member,
+                path: path,
+                owner: PosixOwnerNames { user: owner.user, group: owned_directory_owner(t: parent).group },
+                mode: declared_directory_mode_inheriting_setgid(m: child_mode),
+                group_adoption: group_adoption,
+              }
+            OwnedDirectoryManaged { directory: _ } => child
+          }
+      }
   }
 }
 

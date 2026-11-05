@@ -19,7 +19,10 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_receipt_decode, belt_tick_receipt_identity_hex, belt_tick_receipt_json_value,
   belt_tick_receipt_wire_json_from_read,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun,
+}import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_serve { dashboard_instance_json }
 import gunbc.roadmap.roadmap_launch_deployment_receipt { TickExecuted, StaleBacklog, EventSpoolStalled }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
@@ -43,6 +46,7 @@ fn fixture_v4_tick() -> BeltTickReceipt {
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRecorded,
+    slots_cutover_pass: BeltPassDeferred { reason: "witness fixture: the cutover pass did not run" },
   }
 }
 

@@ -25,7 +25,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardLocalProvision,
   DashboardSshProvision,
   srv1_lab_dashboard_instance,
+  srv1_live_dashboard_instance,
   srv2_lab_dashboard_instance,
+  dashboard_provision_transport,
 }
 import gunbc.roadmap.roadmap_verify {
   VerificationOutcome,
@@ -53,7 +55,7 @@ import gunbc.roadmap.roadmap_verify {
   verify_contract,
 }
 
-// THE DEFECT, STATED AS A CLAIM. verify_node called belt_exec — a local WitnessBin.Run — and never read instance.provision_transport, so selecting srv1_lab changed every path the command was built from and did not change which machine ran it. Verification of an srv1 instance executed on srv2.\n\nThis asserts the routing fact directly: the host a verification executes on is derived from the TRANSPORT, and srv1_lab's transport is ssh to srv1 while srv2_lab's is local. A verifier that ignored the transport would answer the same host for both, which is exactly what the old one did — so this claim goes red against the previous behaviour rather than merely describing the new one.\n\nThe two instances are chosen because they straddle the split: one remote, one local, both actuating. A claim written against only the local instance would pass under the broken code, since a locally-provisioned instance's correct host and the controller happen to coincide — which is precisely why the bug survived on srv2 and surfaced on srv1.
+// THE DEFECT, STATED AS A CLAIM. verify_node called belt_exec — a local WitnessBin.Run — and never read the selected transport, so selecting srv1_lab changed every path the command was built from and did not change which machine ran it. Verification of an srv1 instance executed on srv2.\n\nThis asserts the routing fact directly: the host a verification executes on is derived from the TRANSPORT, and srv1_lab's transport is ssh to srv1 while srv2_lab's is local. A verifier that ignored the transport would answer the same host for both, which is exactly what the old one did — so this claim goes red against the previous behaviour rather than merely describing the new one.\n\nThe two instances are chosen because they straddle the split: one remote, one local, both actuating. A claim written against only the local instance would pass under the broken code, since a locally-provisioned instance's correct host and the controller happen to coincide — which is precisely why the bug survived on srv2 and surfaced on srv1.
 test fn verification_host_follows_the_transport_not_the_controller() -> Bool {
   let srv1_lab = srv1_lab_dashboard_instance()
   let srv2_lab = srv2_lab_dashboard_instance()
@@ -64,16 +66,24 @@ test fn verification_host_follows_the_transport_not_the_controller() -> Bool {
     && !(srv1_host == srv2_host)
 }
 
-test fn the_two_lab_instances_really_do_straddle_the_transport_split() -> Bool {
-  let remote = match srv1_lab_dashboard_instance().provision_transport {
+// THE TRANSPORT IS SELECTED FROM PLACEMENT. The srv1 lab is applied from srv1 itself (actuator and
+// instance on one host), so the selection is local: no ssh hop to oneself. The srv1 live instance is
+// actuated from another host, so the same function still selects ssh to srv1. Both arms are asserted so
+// a selection that always answered one transport goes red.
+test fn the_srv1_lab_selects_local_and_a_remote_placement_still_selects_ssh() -> Bool {
+  let lab_local = match dashboard_provision_transport(instance: srv1_lab_dashboard_instance()) {
+    DashboardLocalProvision => true
+    DashboardSshProvision { host: _ } => false
+  }
+  let remote = match dashboard_provision_transport(instance: srv1_live_dashboard_instance()) {
     DashboardSshProvision { host } => (host as String) == "srv1"
     DashboardLocalProvision => false
   }
-  let local = match srv2_lab_dashboard_instance().provision_transport {
+  let srv2_local = match dashboard_provision_transport(instance: srv2_lab_dashboard_instance()) {
     DashboardSshProvision { host: _ } => false
     DashboardLocalProvision => true
   }
-  remote && local
+  lab_local && remote && srv2_local
 }
 
 // THE THREE-SITE DISAGREEMENT, pinned at the one authority that now decides it.
