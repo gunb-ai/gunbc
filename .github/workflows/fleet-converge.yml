@@ -3243,7 +3243,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 97
+    timeout-minutes: 314
     if: github.event.inputs.mode == 'dashboard_deploy' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3387,7 +3387,7 @@ jobs:
           GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_2: ${{ inputs.plan_artifact_hash }}
           GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_3: expected_revision
           GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_3: ${{ inputs.expected_revision }}
-        timeout-minutes: 32
+        timeout-minutes: 249
       - name: Upload the srv1 root-mutation approval receipt
         id: srv1_root_mutation_approval_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -3487,7 +3487,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 114
+    timeout-minutes: 331
     if: github.event.inputs.mode == 'approval_broker_dark_install' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3612,7 +3612,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
-        timeout-minutes: 32
+        timeout-minutes: 249
       - name: Upload the srv1 root-mutation approval receipt
         id: srv1_root_mutation_approval_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -3635,7 +3635,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 97
+    timeout-minutes: 314
     if: github.event.inputs.mode == 'approval_ntfy_retire' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3760,7 +3760,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
-        timeout-minutes: 32
+        timeout-minutes: 249
       - name: Upload the srv1 root-mutation approval receipt
         id: srv1_root_mutation_approval_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -3799,7 +3799,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         timeout-minutes: 5
-      - name: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean"
+      - name: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the group the account leaves behind, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean"
         id: approval_ntfy_retire
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -3819,7 +3819,7 @@ jobs:
     runs-on: ${{ github.event.inputs.host == 'srv1' && fromJSON('["self-hosted","linux","arm64","srv1","gunbc-deploy"]') || fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 127
+    timeout-minutes: 344
     if: github.event.inputs.mode == 'microvm_controller_install' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3988,7 +3988,7 @@ jobs:
           GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_0: ${{ inputs.workspace_image_run_id }}
           GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_1: revision_job_image_run_id
           GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_1: ${{ inputs.revision_job_image_run_id }}
-        timeout-minutes: 32
+        timeout-minutes: 249
       - name: Upload the srv1 root-mutation approval receipt
         id: srv1_root_mutation_approval_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
