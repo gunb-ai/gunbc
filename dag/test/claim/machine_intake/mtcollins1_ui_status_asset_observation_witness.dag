@@ -16,11 +16,9 @@ module test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { collection_count_shape, collection_join_shape, string_contains }
 import std.bytes { octets_bytes }
-import std.integer { qualified_octet_members }
-import extdeps.crypto.sha2 { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
-// The base16 decode used to read a printed window back. A checked decoder, not a local one: it
-// returns Absent for a malformed or odd-length string instead of silently returning a prefix.
+import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_decode_any }
+import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count }
 import std.optional { Absent, Present }
@@ -145,6 +143,17 @@ fn witness_fields(finding: MegaRacUiStatusExcerpt) -> WitnessExcerptRecord? {
   }
 }
 
+// The fixture's window octets, minted the same way the receipt mints them: through
+// uint8_octets_of_ints, which is the only route to QualifiedOctets from raw Ints. The excerpt record
+// carries that type, so a hand-built excerpt has to mint its own the same way -- which is the point:
+// there is no way to build an excerpt whose published bytes were never checked.
+fn witness_window_bytes(text: String) -> QualifiedOctets? {
+  match uint8_octets_of_ints(values: ui_octets_of(text)) {
+    QualifiedOctetsReady { value: qualified } => Present { value: qualified }
+    QualifiedOctetsRefused { observed: _ } => none
+  }
+}
+
 fn witness_digest(text: String) -> Sha256Digest? {
   sha256_hex_digest(hex: sha256_hex_of_text(text: text))
 }
@@ -194,9 +203,9 @@ test fn w_the_status_read_and_the_zero_label_in_one_span_produce_an_excerpt() ->
   match witness_found(head: "/*", gap: 0) {
     ExcerptFound {
       asset_path: path, served_release: served, read_release: read,
-      asset_sha256: _, excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _,
-      excerpt_text: text, label_text: label, feeding_site_offset: _, zero_key_offset: _,
-    } => label == "Ejected" && path == witness_asset_path() && served == witness_release() && read == witness_release() && string_contains(s: text, pattern: ".redirection_status") && string_contains(s: text, pattern: "media_type")
+      asset_sha256: _, excerpt_sha256: _, excerpt_byte_offset: offset, excerpt_byte_length: _,
+      excerpt_text: text, label_text: label, feeding_site_offset: feeding, zero_key_offset: _,
+    } => label == "Ejected" && path == witness_asset_path() && served == witness_release() && read == witness_release() && text == witness_expected_mapping && byte_size_count(b: feeding) < byte_size_count(b: offset)
     ExcerptRefused { cause: cause } => false
   }
 }
@@ -720,95 +729,109 @@ test fn w_the_printed_window_decodes_back_to_the_fetched_octets() -> Bool {
   // 34 is a double quote and 10 a newline: both survive as themselves in the source text and both
   // wreck any "just print the window" claim, which is why the fixture carries them.
   let window = "redirection_status[0]=\"Stopped\",\n16:" as NonEmptyStr
-  match sha256_hex_digest(hex: sha256_hex_of_text(text: window)) {
+  match witness_window_bytes(text: window) {
+    // A refusal would mean the fixture is not bytes at all; the claim would be about nothing,
+    // so it reports false rather than inventing octets.
     Absent => false
-    Present { value: window_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: "asset")) {
-      Absent => false
-      Present { value: asset_digest } => {
-        let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
-          path: "/ui/source.min.js",
-          path_refusal: none,
-          http_status: 200,
-          excerpt: ExcerptFound {
-            asset_path: witness_asset_path(),
-            served_release: witness_release(),
-            read_release: witness_release(),
-            asset_sha256: asset_digest,
-            excerpt_sha256: window_digest,
-            excerpt_byte_offset: byte_size(count: 34),
-            excerpt_byte_length: byte_size(count: 36),
-            excerpt_text: window,
-            label_text: "Stopped" as NonEmptyStr,
-            feeding_site_offset: byte_size(count: 17),
-            zero_key_offset: byte_size(count: 33),
-          },
-        })
-        let marker = ui_octets_of("window_hex=")
-        match ui_octets_index_of(hay: ui_octets_of(line), needle: marker) {
+    Present { value: window_bytes } =>
+      match sha256_hex_digest(hex: sha256_hex_of_text(text: window)) {
+        Absent => false
+        Present { value: window_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: "asset")) {
           Absent => false
-          Present { value: at } => {
-            let start = at + count(marker)
-            let tail = count(ui_octets_of(line)) - start
-            match base16_decode_any(hex: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail)))) {
+          Present { value: asset_digest } => {
+            let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+              path: "/ui/source.min.js",
+              path_refusal: none,
+              http_status: 200,
+              excerpt: ExcerptFound {
+                asset_path: witness_asset_path(),
+                served_release: witness_release(),
+                read_release: witness_release(),
+                asset_sha256: asset_digest,
+                excerpt_sha256: window_digest,
+                excerpt_byte_offset: byte_size(count: 34),
+                excerpt_byte_length: byte_size(count: 36),
+                excerpt_text: window,
+                excerpt_octets: window_bytes,
+                label_text: "Stopped" as NonEmptyStr,
+                feeding_site_offset: byte_size(count: 17),
+                zero_key_offset: byte_size(count: 33),
+              },
+            })
+            let marker = ui_octets_of("window_hex=")
+            match ui_octets_index_of(hay: ui_octets_of(line), needle: marker) {
               Absent => false
-              Present { value: decoded } => qualified_octet_members(q: decoded) == ui_octets_of(window)
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-test fn w_the_decoded_window_rehashes_to_the_digest_on_the_same_line() -> Bool {
-  let window = "redirection_status[0]=\"Stopped\",\n16:" as NonEmptyStr
-  match sha256_hex_digest(hex: sha256_hex_of_text(text: window)) {
-    Absent => false
-    Present { value: window_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: "asset")) {
-      Absent => false
-      Present { value: asset_digest } => {
-        let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
-          path: "/ui/source.min.js",
-          path_refusal: none,
-          http_status: 200,
-          excerpt: ExcerptFound {
-            asset_path: witness_asset_path(),
-            served_release: witness_release(),
-            read_release: witness_release(),
-            asset_sha256: asset_digest,
-            excerpt_sha256: window_digest,
-            excerpt_byte_offset: byte_size(count: 34),
-            excerpt_byte_length: byte_size(count: 36),
-            excerpt_text: window,
-            label_text: "Stopped" as NonEmptyStr,
-            feeding_site_offset: byte_size(count: 17),
-            zero_key_offset: byte_size(count: 33),
-          },
-        })
-        let marker = ui_octets_of("window_hex=")
-        match ui_octets_index_of(hay: ui_octets_of(line), needle: marker) {
-          Absent => false
-          Present { value: at } => {
-            let start = at + count(marker)
-            let tail = count(ui_octets_of(line)) - start
-            match base16_decode_any(hex: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail)))) {
-              Absent => false
-              // An absent decode is reported as a failure, not folded into an empty octet list: an
-              // empty list would still hash, and the claim would pass on a corrupted print.
-              Present { value: decoded } => {
-                let rehashed = sha256_hex_of_text(text: utf8_decode_bytes(payload: octets_bytes(o: qualified_octet_members(q: decoded))))
-                // The digest the run printed for the excerpt must be the digest of the octets the printed
-                // window decodes to. This is what lets a reader trust the committed bytes later.
-                match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of(concat("excerpt_sha256=", rehashed))) {
+              Present { value: at } => {
+                let start = at + count(marker)
+                let tail = count(ui_octets_of(line)) - start
+                match base16_decode_any(hex: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail)))) {
                   Absent => false
-                  Present { value: _ } => true
+                  Present { value: decoded } => qualified_octet_members(q: decoded) == ui_octets_of(window)
                 }
               }
             }
           }
         }
       }
-    }
+  }
+}
+
+test fn w_the_decoded_window_rehashes_to_the_digest_on_the_same_line() -> Bool {
+  let window = "redirection_status[0]=\"Stopped\",\n16:" as NonEmptyStr
+  match witness_window_bytes(text: window) {
+    // A refusal would mean the fixture is not bytes at all; the claim would be about nothing,
+    // so it reports false rather than inventing octets.
+    Absent => false
+    Present { value: window_bytes } =>
+      match sha256_hex_digest(hex: sha256_hex_of_text(text: window)) {
+        Absent => false
+        Present { value: window_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: "asset")) {
+          Absent => false
+          Present { value: asset_digest } => {
+            let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+              path: "/ui/source.min.js",
+              path_refusal: none,
+              http_status: 200,
+              excerpt: ExcerptFound {
+                asset_path: witness_asset_path(),
+                served_release: witness_release(),
+                read_release: witness_release(),
+                asset_sha256: asset_digest,
+                excerpt_sha256: window_digest,
+                excerpt_byte_offset: byte_size(count: 34),
+                excerpt_byte_length: byte_size(count: 36),
+                excerpt_text: window,
+                excerpt_octets: window_bytes,
+                label_text: "Stopped" as NonEmptyStr,
+                feeding_site_offset: byte_size(count: 17),
+                zero_key_offset: byte_size(count: 33),
+              },
+            })
+            let marker = ui_octets_of("window_hex=")
+            match ui_octets_index_of(hay: ui_octets_of(line), needle: marker) {
+              Absent => false
+              Present { value: at } => {
+                let start = at + count(marker)
+                let tail = count(ui_octets_of(line)) - start
+                match base16_decode_any(hex: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail)))) {
+                  Absent => false
+                  // An absent decode is reported as a failure, not folded into an empty octet list: an
+                  // empty list would still hash, and the claim would pass on a corrupted print.
+                  Present { value: decoded } => {
+                    let rehashed = sha256_hex_of_text(text: utf8_decode_bytes(payload: octets_bytes(o: qualified_octet_members(q: decoded))))
+                    // The digest the run printed for the excerpt must be the digest of the octets the printed
+                    // window decodes to. This is what lets a reader trust the committed bytes later.
+                    match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of(concat("excerpt_sha256=", rehashed))) {
+                      Absent => false
+                      Present { value: _ } => true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
   }
 }
 

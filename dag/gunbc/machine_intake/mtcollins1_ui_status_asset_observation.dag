@@ -40,6 +40,10 @@ import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import std.encoding { utf8_decode_bytes }
 import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.measure { ByteSize, byte_size, byte_size_count, Second, second, second_count }
+// The window octets are carried as a type that cannot hold a non-byte, so the shared base16
+// encoder can render them and no local encoder is needed.
+import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
+import extdeps.numeric.base16 { base16_encode_lower }
 import std.optional { Absent, Present }
 import extdeps.languages.html { canonical_html_spellings }
 
@@ -429,6 +433,11 @@ type MegaRacUiStatusExcerpt
       excerpt_byte_offset: ByteSize
       excerpt_byte_length: ByteSize
       excerpt_text: NonEmptyStr
+      // The published bytes as a QualifiedOctets: minted at this record's own construction site
+      // through uint8_octets_of_ints, so a carrier of this record cannot hold an out-of-range member
+      // and the encoder over it is total. review 90945 asked for exactly this -- construction, not a
+      // validation that prints a plausible hex string anyway.
+      excerpt_octets: QualifiedOctets
       label_text: NonEmptyStr
       feeding_site_offset: ByteSize
       zero_key_offset: ByteSize
@@ -447,6 +456,7 @@ type MegaRacUiStatusExcerptRefusal
   | ExcerptDigestUnrenderable { window_start: ByteSize }
   | CdRowMarkerAbsent { context_start: ByteSize, context_length: ByteSize }
   | ExcerptCarriesNonAsciiOctet { window_start: ByteSize }
+  | ExcerptOctetOutsideByteRange { observed: Int, window_start: ByteSize }
   | AssetDigestUnreadable { hex: String }
 
 // THE CHECK THE REVIEWER ASKED FOR: anyone who re-fetches the asset can confirm the excerpt is the
@@ -686,7 +696,8 @@ fn megarac_ui_window_receipt(
     let label_text = ui_octets_text(label_octets)
     match sha256_hex_digest(sha256_hex_of_text(window_text)) {
       Absent => ExcerptRefused { cause: ExcerptDigestUnrenderable { window_start: byte_size(count: window_start) } }
-      Present { value: computed_excerpt_digest } => ExcerptFound {
+      Present { value: computed_excerpt_digest } => match uint8_octets_of_ints(values: window_octets) {
+        QualifiedOctetsReady { value: window_bytes } => ExcerptFound {
         asset_path: asset_path,
         served_release: served_release,
         read_release: read_release,
@@ -695,9 +706,16 @@ fn megarac_ui_window_receipt(
         excerpt_byte_offset: byte_size(count: window_start),
         excerpt_byte_length: byte_size(count: window_length),
         excerpt_text: window_text as NonEmptyStr,
+        excerpt_octets: window_bytes,
         label_text: label_text as NonEmptyStr,
         feeding_site_offset: byte_size(count: feeding_site),
         zero_key_offset: byte_size(count: zero_key),
+      }
+        // Reachable only if the ASCII gate above is loosened: a non-ASCII octet is already refused, and
+        // every ASCII code point is a byte. It is handled as a refusal rather than as an impossible case
+        // because the conversion is checked, not assumed -- that is what makes the encoder's totality
+        // over QualifiedOctets worth anything.
+        QualifiedOctetsRefused { observed: observed } => ExcerptRefused { cause: ExcerptOctetOutsideByteRange { observed: observed, window_start: byte_size(count: window_start) } }
       }
     }
   }
@@ -840,7 +858,7 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
     ExcerptFound {
       asset_path: _, served_release: served, read_release: _, asset_sha256: asset_sha256,
       excerpt_sha256: excerpt_sha256, excerpt_byte_offset: offset, excerpt_byte_length: length,
-      excerpt_text: window_text, label_text: label, feeding_site_offset: feeding_site, zero_key_offset: zero_key,
+      excerpt_text: window_text, excerpt_octets: window_bytes, label_text: label, feeding_site_offset: feeding_site, zero_key_offset: zero_key,
     } => join([
       "EXCERPT release=", served as String,
       " asset_sha256=", megarac_ui_digest_text(asset_sha256),
@@ -850,7 +868,7 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
       " label=", label as String,
       " feeding_site=", megarac_ui_count_text(byte_size_count(feeding_site)),
       " zero_key=", megarac_ui_count_text(byte_size_count(zero_key)),
-      " window_hex=", ui_octets_to_hex(octets: ui_octets_of(window_text)),
+      " window_hex=", base16_encode_lower(octets: window_bytes),
     ], "")
     ExcerptRefused { cause: cause } => join(["refused: ", megarac_ui_refusal_text(cause)], "")
   }
@@ -900,6 +918,7 @@ fn megarac_ui_refusal_text(cause: MegaRacUiStatusExcerptRefusal) -> NonEmptyStr 
       StatusBranchTooFarApart { gap: g, bound: b } => join(["the status read and the 0 mapping are ", megarac_ui_count_text(byte_size_count(b: g)), " octets apart, beyond the ", megarac_ui_count_text(byte_size_count(b: b)), "-octet window; joining them would be a stray match"], "")
       CdRowMarkerAbsent { context_start: s, context_length: l } => join(["the checked region at octet ", megarac_ui_count_text(byte_size_count(b: s)), " for ", megarac_ui_count_text(byte_size_count(b: l)), " octets never mentions media rows, so the mapping entry is not inside a media-row renderer"], "")
       ExcerptCarriesNonAsciiOctet { window_start: s } => join(["the window at octet ", megarac_ui_count_text(byte_size_count(b: s)), " carries a non-ASCII octet; a byte offset into text that is not ASCII is not checkable"], "")
+      ExcerptOctetOutsideByteRange { observed: observed, window_start: s } => join(["the window at octet ", megarac_ui_count_text(byte_size_count(b: s)), " carries code point ", megarac_ui_count_text(observed), ", which is not a byte, so no octet offset into it is checkable"], "")
       AssetDigestUnreadable { hex: h } => join(["the asset's own sha256 did not parse as 64 lowercase hex: ", h], "")
     },
     "; no excerpt committed",
@@ -1078,66 +1097,16 @@ fn ui_excerpt_window_count(attempts: List<MegaRacUiAssetAttempt>, at: Int) -> In
   }
 }
 
-// THE WINDOW, PRINTED BYTE-FAITHFULLY. The receipt's excerpt is vendor JavaScript, and the corpus has
-// to recover EXACTLY the octets that were fetched: a text rendering would be ambiguous across a quote,
-// a newline or a non-ASCII byte, so the window goes out as lower-case hex pairs. Hex needs no escaping
-// rule of its own -- every octet has exactly one two-digit spelling -- so the round trip is checkable
-// by execution rather than by a promise about escaping.
-//
-// base16_encode_lower is NOT used here, and the
-// reason is a fact about a seal rather than a preference: it takes QualifiedOctets, whose mint
-// std.integer.qualified_octets is caller-sealed to the roster {std.integer.uint8_octets_of_ints,
-// std.machine_word.word_to_octets, extdeps.numeric.base16.base16_decode_any,
-// extdeps.crypto.sha2.sha256_hex}. Reaching the shared encoder from here means minting through
-// uint8_octets_of_ints, whose refusal this renderer has no channel to report -- ui_asset_line returns
-// text and cannot refuse -- so consuming it would either drop the window silently or invent a stand-in
-// string, and both are worse than a local encoder. The out-of-range digit above is unreachable by this
-// file's own gate: megarac_ui_window_receipt refuses a window that is not ASCII before any line is
-// rendered, and an ASCII octet is inside the byte range. It stays a loud marker rather than a silent
-// one so that a future caller that skips the gate is caught instead of papered over.
-fn ui_hex_digit_text(value: Int) -> String {
-  match value {
-    0 => "0"
-    1 => "1"
-    2 => "2"
-    3 => "3"
-    4 => "4"
-    5 => "5"
-    6 => "6"
-    7 => "7"
-    8 => "8"
-    9 => "9"
-    10 => "a"
-    11 => "b"
-    12 => "c"
-    13 => "d"
-    14 => "e"
-    15 => "f"
-    value => "!"
-  }
-}
-
-fn ui_byte_hex_text(byte: Int) -> String {
-  // Both digits are 0..15 by construction for any octet a fetch can produce, so "!" is unreachable for
-  // a real window; it stays loud rather than plausible because "!" is not a hex digit and the reader
-  // below stops at it instead of inventing a byte.
-  join([ui_hex_digit_text(value: byte / 16), ui_hex_digit_text(value: byte % 16)], "")
-}
-
-fn ui_octet_hex_list(octets: List<Int>, at: Int, acc: List<String>) -> List<String> {
-  if at >= count(octets) {
-    acc
-  } else {
-    match octets |> get(at) {
-      null => acc
-      byte => ui_octet_hex_list(octets: octets, at: at + 1, acc: list_push(acc, ui_byte_hex_text(byte: byte)))
-    }
-  }
-}
-
-fn ui_octets_to_hex(octets: List<Int>) -> String {
-  join(ui_octet_hex_list(octets: octets, at: 0, acc: []), "")
-}
+// THE WINDOW IS PRINTED AS HEX, THROUGH THE SHARED ENCODER. The receipt's excerpt is vendor
+// JavaScript and the corpus has to recover EXACTLY the fetched octets, so the published form is
+// lower-case base16 pairs: hex needs no escaping rule of its own, and the round trip is checkable by
+// execution. The encoder is extdeps.numeric.base16.base16_encode_lower, and it takes QualifiedOctets --
+// the type whose mint is caller-sealed -- which is why the bytes are minted once, at the excerpt's own
+// construction site in megarac_ui_window_receipt, and carried on the record. A local encoder was the
+// alternative and is the wrong one: it has to accept raw Int members, so it either invents a stand-in
+// for an out-of-range member (a fabricated default that still renders) or refuses at a site that has
+// no refusal channel. review 90945 named the same defect; §5 -- "correctness by construction, not
+// validation" -- settles it.
 
 // THE DECODER IS NOT HERE. extdeps.numeric.base16 owns base16_decode_any, a checked RFC 4648 base16
 // decode whose result is absent for a malformed or odd-length string, and the witness decodes through
