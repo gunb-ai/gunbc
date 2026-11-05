@@ -607,7 +607,7 @@ import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
 import gunbc.live_deploy.belt_cadence {
   belt_tick_run_bound, instance_obligation_run_bound, belt_attempt_obligation_unit_run_bound,
-  VerifyRunBound, VerifyRunBounded, VerifyRunProvisional, verify_run_bound_note, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_for,
+  VerifyRunBound, VerifyRunBounded, VerifyRunProvisional, verify_run_bound_note, verify_run_bound_derived_line, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_for,
   verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
 }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
@@ -9303,17 +9303,26 @@ fn belt_verify_bound_of(validations: List<ValidationOperation>) -> VerifyRunBoun
   verify_run_bound_for(entries: entries, samples: verify_entry_compile_samples, ceiling: verify_entries_ceiling, headroom_percent: verify_run_headroom_percent, slack: verify_run_slack)
 }
 
-// The bet's receipt line, empty unless the contract closes on validations with an unsampled entry.
+// The bound's receipt line: the derived per-node figure (this is its consumer; it is NOT a run limit, only the unit's
+// outer bound kills) and, when an entry is unsampled, the provisional bet.
 fn belt_verify_provisional_note(contract: WorkItemExecutionContract) -> String {
   match contract_closure(contract: contract) {
-    ContractCloses { validations } => verify_run_bound_note(bound: belt_verify_bound_of(validations: validations))
+    ContractCloses { validations } => {
+      let b = belt_verify_bound_of(validations: validations)
+      match verify_run_bound_note(bound: b) {
+        "" => verify_run_bound_derived_line(bound: b)
+        bet => join([bet, "; ", verify_run_bound_derived_line(bound: b)], "")
+      }
+    }
     _ => ""
   }
 }
 
-// THE VERIFICATION BOUND IS CHECKED BEFORE ANY RUN STARTS. The node's entries are known here, inside the unit, so
-// an entry count past the declared ceiling, or no recorded compile sample at all, is a typed refusal instead of
-// a run (an unsampled entry beside recorded ones runs provisionally and the receipt names the bet) the unit's outer bound would kill (gunbc.live_deploy.belt_cadence verify_run_bound_for).
+// THE ENTRY COUNT AND THE SAMPLES ARE CHECKED BEFORE ANY RUN STARTS; THE DERIVED BOUND IS NOT ENFORCED PER RUN. An
+// entry count past the declared ceiling, or no recorded compile sample at all, is a typed refusal instead of a run
+// the unit's outer bound would kill (gunbc.live_deploy.belt_cadence verify_run_bound_for). The derived per-node
+// figure is carried to the receipt only; the unit's outer bound is the one limit that kills (a per-run deadline
+// is the owed capability, tracked in a_provisional_verify_bound_is_a_bet_until_its_sample_is_recorded).
 fn belt_run_validation_operations(
   instance: HostDashboardInstance,
   subject: VerificationSubject,

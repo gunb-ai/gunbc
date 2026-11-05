@@ -12,7 +12,7 @@ data a_provisional_verify_bound_is_a_bet_until_its_sample_is_recorded: Recurring
   receipts: [
     "INVALID STATE: a verification entry with no recorded compile sample (gunbc.live_deploy.belt_cadence verify_entry_compile_samples) runs under a bound borrowed from the slowest recorded sample (VerifyRunProvisional). The figure is a bet, not a measurement of that entry.",
 
-    "HARM: a borrowed figure below the entry's real compile time lets the unit kill an honest verification at its outer limit, which is the failure the derived bound exists to prevent; a figure far above it widens the window in which a wedged run holds a compute seat. Today only the unit's outer limit is enforced, so the per-node bound is a receipt figure, not a limit.",
+    "HARM: a borrowed figure far above the entry's real compile time inflates the receipt's derived bound and, through the slowest sample, the unit's outer kill limit, which widens the window in which a wedged run holds a compute seat; a figure far below it makes the outer limit kill an honest verification. Only the outer limit is enforced; the per-node bound is a receipt figure, so a low borrowed figure cannot kill a run through the per-node bound.",
 
     "DISTINGUISHING FACT: the attempt receipt line begins ProvisionalUnsampled and names every unsampled entry and the sample it borrowed, so the population is countable per attempt. The recorded samples are the rows of verify_entry_compile_samples (srv1 readings by loyal-deer-449, each row's standing a typed CitedFigureStanding); the count is read there, not copied here.",
 

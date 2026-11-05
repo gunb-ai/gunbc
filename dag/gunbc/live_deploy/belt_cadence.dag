@@ -52,7 +52,7 @@ data audit_obligation_run_bound: Second = second(count: 2700)
 data publish_obligation_run_bound: Second = second(count: 2700)
 data launch_obligation_run_bound: Second = second(count: 2700)
 
-// THE VERIFICATION BOUND IS DERIVED FROM THE ENTRIES IT VERIFIES (DESIGN 6b: the 2700s row it replaces was
+// THE VERIFICATION BOUND IS DERIVED FROM THE ENTRIES IT VERIFIES (the per-node figure is a receipt line; only the unit's outer bound kills a run) (DESIGN 6b: the 2700s row it replaces was
 // one number for a cost that scales with the entry count). One claim_batch per entry pays one full entry
 // compile, so the obligation costs the sum of its entries' compile times. Each entry's figure is a
 // RECORDED OBSERVATION; an entry with no sample runs under a typed provisional bet (VerifyRunProvisional, below); with no sample at all it refuses typed (DESIGN 4d, 5).
@@ -148,6 +148,14 @@ fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>
 }
 
 // The receipt line for a provisional bet; empty when the bound rests on recorded samples only. Countable by prefix.
+fn verify_run_bound_derived_line(bound: VerifyRunBound) -> String {
+  match bound {
+    VerifyRunBounded { bound: b, entries } => join(["derived verify bound ", to_string(value: nat_to_int(n: second_count(s: b))), " s for ", to_string(value: entries), " entries (a receipt figure; the enforced kill limit is the unit's outer ", to_string(value: nat_to_int(n: second_count(s: verify_unit_outer_run_bound()))), " s)"], "")
+    VerifyRunProvisional { bound: b, entries, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } => join(["derived verify bound ", to_string(value: nat_to_int(n: second_count(s: b))), " s for ", to_string(value: entries), " entries (a receipt figure; the enforced kill limit is the unit's outer ", to_string(value: nat_to_int(n: second_count(s: verify_unit_outer_run_bound()))), " s)"], "")
+    _ => ""
+  }
+}
+
 fn verify_run_bound_note(bound: VerifyRunBound) -> String {
   match bound {
     VerifyRunProvisional { bound: _, entries: _, unsampled, borrowed_entry, borrowed_seconds } =>
