@@ -131,7 +131,7 @@ test fn s3_claim_5_past_the_resume_bound_the_lineage_ends_with_every_cause() -> 
 // the shape the classifier reads (headers came back, so the engine answered), and only the fleet's own
 // routes qualify.
 test fn s3_claim_6_the_real_post_path_shape_for_the_empty_400_is_classified_not_retried() -> Bool {
-  let posted = HarnessPostOutcome { body: "", success: false, headers: Present { value: receipt_headers() } }
+  let posted = HarnessPostOutcome { body: "", success: false, headers: Present { value: receipt_headers() }, fault: none }
   (match harness_unexplained_refusal(route_qualifies: true, success: posted.success, body: posted.body, headers: posted.headers, request_body: validated_request()) {
       Present { value: r } => r.status == 400 && r.request_id == Present { value: "req_2ae5021ab9c56e6eb7fe1707af067e27" }
       Absent => false
