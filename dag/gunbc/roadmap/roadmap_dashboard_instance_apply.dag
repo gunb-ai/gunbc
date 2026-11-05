@@ -94,7 +94,7 @@ import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, Leg
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
-  ServeBinarySource,
+  DashboardServeBinaryOrigin,
   DeclaredBuiltBinary,
   BuildInPlaceFromAdmittedRevision,
   dashboard_provision_transport,
@@ -569,12 +569,12 @@ fn dashboard_stage_bundle(
 fn dashboard_ensure_serve_binary(
   instance: HostDashboardInstance,
   apply_workdir: FilePath,
-  serve_binary_source: ServeBinarySource,
+  serve_binary_origin: DashboardServeBinaryOrigin,
   path: FilePath,
 ) -> DashboardExecResult {
-  match serve_binary_source {
+  match serve_binary_origin {
     BuildInPlaceFromAdmittedRevision => dashboard_build_serve_binary_in_place(instance: instance, path: path)
-    DeclaredBuiltBinary { path: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, serve_binary_source: declared, path: path)
+    DeclaredBuiltBinary { path: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, serve_binary_origin: declared, path: path)
   }
 }
 
@@ -694,18 +694,18 @@ fn dashboard_restore_previous_after_refused_install(instance: HostDashboardInsta
 fn dashboard_ensure_declared_serve_binary(
   instance: HostDashboardInstance,
   apply_workdir: FilePath,
-  serve_binary_source: FilePath,
+  serve_binary_origin: FilePath,
   path: FilePath,
 ) -> DashboardExecResult {
   let present = dashboard_local_exec(
     workdir: apply_workdir,
     program: instance.toolchain.path_test,
-    args: ["-f", serve_binary_source as String],
+    args: ["-f", serve_binary_origin as String],
   )
   if !present.success {
     dashboard_exec_refused(detail: join([
       "declared serve binary artifact absent: ",
-      serve_binary_source as String,
+      serve_binary_origin as String,
       " — build it before apply; this step copies, it never builds",
     ], ""))
   } else {
@@ -728,7 +728,7 @@ fn dashboard_ensure_declared_serve_binary(
         let copied = dashboard_copy_to_target_atomically(
           instance: instance,
           controller_workdir: apply_workdir,
-          local_path: serve_binary_source,
+          local_path: serve_binary_origin,
           remote_path: path,
         )
         if !copied.success {
@@ -1031,11 +1031,11 @@ fn dashboard_apply_provision_op(
         staged_bundle: staged_bundle,
         temp_bundle: temp_bundle,
       )
-    DashboardEnsureServeBinary { apply_workdir, serve_binary_source, path } =>
+    DashboardEnsureServeBinary { apply_workdir, serve_binary_origin, path } =>
       dashboard_ensure_serve_binary(
         instance: instance,
         apply_workdir: apply_workdir,
-        serve_binary_source: serve_binary_source,
+        serve_binary_origin: serve_binary_origin,
         path: path,
       )
     DashboardEnsureOwnershipMarker { path, instance_id: _ } =>
@@ -1885,7 +1885,7 @@ fn dashboard_instance_observe(
   )
   let bundle_present = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
-    DashboardSeededByConvergence { serve_binary_source: _, apply_workdir: _ } => true
+    DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => true
     DashboardGitBundle {
       controller_repo: _,
       staged_bundle,
@@ -2303,7 +2303,7 @@ fn dashboard_instance_apply_preflight(
             step: "source-seed",
             detail: "isolated instance apply requires a modeled Git-bundle seed",
           )
-        DashboardSeededByConvergence { serve_binary_source: _, apply_workdir: _ } => {
+        DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => {
           let source = dashboard_convergence_source_preflight_decision(
             instance: instance,
             ref_read: dashboard_target_exec(
@@ -2774,7 +2774,7 @@ fn dashboard_bootstrap_only_ops(
 ) -> List<DashboardInstanceProvisionOp> {
   dashboard_instance_provision_plan(instance: instance)
     |> filter(op => match op {
-      DashboardEnsureServeBinary { apply_workdir: _, serve_binary_source: _, path: _ } => true
+      DashboardEnsureServeBinary { apply_workdir: _, serve_binary_origin: _, path: _ } => true
       DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => false
       DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => false
       DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => false
