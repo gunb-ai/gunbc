@@ -500,7 +500,66 @@ data cas_fold_claims_have_no_executing_witness: IntegrationConcern = Integration
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness]
+// THE SERVED-OBSERVATION WRITE IS HAND-ROLLED BESIDE THE STORE LIBRARY. `served_observation_index_put` and
+// `served_observation_body_put` each issue a plain `Filesystem.Write` into the instance's `served-observations`
+// directory (the body first, the index last, so a reader never sees an index naming a body that is not there --
+// the module's own header says so), while every other durable record this lane sealed is put through
+// `gunbc.durable_cas_file_store`'s committed generations. One question -- who may put bytes where a record
+// stands, and what happens when two writers try -- is answered twice, and the two answers are kept in agreement
+// by nothing: the library refuses a lost race, the hand route cannot see one. Recorded here rather than closed:
+// the PR that sealed this store's census left both writes in place, so its finding row is narrowed to them and
+// this row is filed beside it (DESIGN section 4c: an unfinished reconciliation lives in its owning record or in
+// `gunbc.integration_concern`, never only in prose).
+data served_observation_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
+  identity: "served_observation_written_by_hand_beside_the_store",
+  kind: SuspectedFork {
+    authorities: FreeSemigroup {
+      head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      tail: [
+        decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put"),
+        decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_write_for_instance"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put"),
+      decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put"),
+    ],
+  },
+  question: "Who owns a durable write of a kept served-observation index or body record -- gunbc.durable_cas_file_store's committed generations, or this module's own Filesystem.Write into <instance_root>/served-observations?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8d7634470095bdac5307cf31af73ea60d92753fa" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put") },
+          CitesArtifact {
+            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_served_observation|storage|served_observation_write_for_instance|1 that PR 1 of the sealed-store lane narrowed rather than deleted",
+            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Read at 8d7634470095: `served_observation_index_put` (dag/gunbc/roadmap/roadmap_served_observation.dag:239) and `served_observation_body_put` (:248) each call `Filesystem.Write` on a path built from the instance root, with no expectation about what stands there; `served_observation_write_for_instance` (:258) composes them. The sealed stores in the same lane write generation-suffixed slots through `file_compare_and_set`, where a stale expectation is a typed refusal. A mutation of the library's expectation rule reddens a row for every sealed store and no row here, because the writes bypass the library -- which is the test that says the rule is kept twice. srv1's observation directories hold plain `index.json` and body files written by this route (captured under dag/test/fixture/c_roadmap2_srv1_bytes), so migrating means adopting those bytes, not replacing them.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_write_for_instance"),
+        control: decl_ref(module_path: "test.claim.c_roadmap2_old_bytes_wet_witness", decl_name: "the_served_observation_index_bytes_survive_the_seal"),
+        statement: "the bytes the hand route wrote stand: an srv1 observation directory's kept index and body files are read back unchanged by the sealed reader, and a migration that cannot read them has replaced the population rather than migrated it",
+      },
+    ],
+    next: climbs_when(capability: "the index and the body are put through the store library's committed generations, the readers read the head, srv1's plain files are adopted -- verified before they are moved and retired by the act that moves them -- and a mutation of the library's expectation rule reddens a served-observation row, which today it does not"),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, served_observation_written_by_hand_beside_the_store]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

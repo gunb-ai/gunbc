@@ -128,6 +128,18 @@ test fn the_legacy_verification_receipt_writer_is_gone() -> ProcessExit {
   census_exit(verdict: census_verdict(census: missing_export(source: deleted_verification_receipt_writer_source, subject: "persist_verification_receipt"), holds: fn(n) { n == 1 }))
 }
 
+data deleted_credential_recovery_writer_source: String = "module probe_r9\nimport std.types { ProcessExit }\nimport gunbc.roadmap.roadmap_belt_tick_cli { belt_credential_recovery_cli }\nfn f() -> ProcessExit { belt_credential_recovery_cli() }\n"
+
+// THE OTHER RETIRED WRITER, PINNED THE SAME WAY (review 90974's five-row audit). main's census row
+// `gunbc.roadmap.roadmap_belt_tick_cli|storage|belt_credential_recovery_cli|1` named a raw
+// `credential-acquisition-recovery.json` write behind an env-read path. The writer is retired (nothing reads the
+// file; DESIGN section 2 retires a writer nobody reads rather than migrating it), so the row goes with it --
+// pinned here so the retirement cannot silently revert: a probe importing the export must refuse with exactly
+// that one error.
+test fn the_retired_credential_recovery_writer_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_credential_recovery_writer_source, subject: "belt_credential_recovery_cli"), holds: fn(n) { n == 1 }))
+}
+
 // ── the lawful routes are admitted ─────────────────────────────────────────────────────────────────────
 
 data lawful_view_preference_route_source: String = "module probe_g1\nimport std.types { NonEmptyStr, FilePath }\nimport gunbc.roadmap.roadmap_view_preference_store { issue_view_preference_store, issue_view_preference_read }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> Int {\n  let i = isolated_dashboard_instance(deployment: deployment_id(name: \"witness\" as NonEmptyStr), instance_id: \"witness\" as NonEmptyStr, layout: srv1_host_layout(), root: \"/tmp/witness\" as FilePath, serve_function: \"roadmap_serve_handle_srv1_lab\" as NonEmptyStr, listen_port: 18097, source_anchor_ref: \"refs/heads/main\" as NonEmptyStr, actuation: DashboardActuating, provision_transport: DashboardLocalProvision)\n  match issue_view_preference_store(instance: i) {\n    IssueViewPreferenceStoreReady { store } => match issue_view_preference_read(store: store, key: \"v0\" as NonEmptyStr) { _ => 0 }\n    IssueViewPreferenceStoreUnready { detail: _ } => 2\n  }\n}\n"
