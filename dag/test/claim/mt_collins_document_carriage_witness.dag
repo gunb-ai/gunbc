@@ -1,7 +1,8 @@
 module test.claim.mt_collins_document_carriage_witness
 
 import std.logic { Bool }
-import std.types { String, list_length }
+import std.types { String }
+import std.algebra { length }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, external_model_scope_citations }
 import extdeps.uri { Uri, Https }
 import extdeps.publication {
@@ -104,5 +105,5 @@ test fn w_a_document_that_states_no_terms_is_public_and_admits() -> Bool {
 test fn w_red_scope_cites_is_false_for_an_authority_the_scope_does_not_carry() -> Bool {
   !scope_cites(scope: mt_collins_memory_population_model_scope, authority: ampere_absent_probe_authority)
     && !scope_cites(scope: mt_collins_platform_model_scope, authority: ampere_absent_probe_authority)
-    && list_length(items: external_model_scope_citations(scope: mt_collins_memory_population_model_scope)) == 2
+    && length(xs: external_model_scope_citations(scope: mt_collins_memory_population_model_scope)) == 2
 }

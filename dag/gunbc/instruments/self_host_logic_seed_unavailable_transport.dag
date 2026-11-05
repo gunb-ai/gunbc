@@ -7,10 +7,10 @@ import extdeps.rust.cargo_build
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
-import std.types { NonEmptyStr, list_length }
+import std.types { NonEmptyStr }
 import std.logic { Bool }
 import std.integer { Int }
-import std.algebra { fold_list }
+import std.algebra { fold_list, length }
 import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
 import gunbc.instruments.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,
@@ -96,7 +96,7 @@ fn slbu_check_no_seed_crate_refs(src_dir: String, writes_ok: Bool) -> Bool {
   let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
   let ok = found.success
   let files = filter(split(s: found.stdout, delimiter: "\n"), p: fn(s) { s != "" })
-  let subject_present = list_length(items: filter(files, p: fn(f) { string_contains(s: f, pattern: "std_logic.rs") })) > 0
+  let subject_present = length(xs: filter(files, p: fn(f) { string_contains(s: f, pattern: "std_logic.rs") })) > 0
   fold_list(
     xs: files,
     empty: true,

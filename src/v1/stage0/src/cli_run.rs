@@ -106,8 +106,8 @@ pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrate
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
-    run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_census_verb,
-    run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
+    run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_native_cli,
+    run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
     NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
     NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     V2NativeCliHeld,
@@ -34399,6 +34399,10 @@ pub use required_regen_host::{
 
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
+pub use required_regen_host::{
+    run_checkpoint_subject, run_partition_move_explanation, CheckpointSubjectReceipt,
+    PartitionMoveExplanationReceipt,
+};
 
 /// The affected-set bound of the floor's diff range — see
 /// `required_regen_host::run_regen_affected_set` and `gunbc.regen_affected_set`.

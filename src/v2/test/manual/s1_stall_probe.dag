@@ -1,5 +1,6 @@
 module v2.test.manual.s1_stall_probe
 import std.optional { Absent, Optional, Present }
+import std.algebra { list_head }
 
 
 

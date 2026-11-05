@@ -1,6 +1,7 @@
 module test.claim.endpoint_authority_replacement_cut_witness
 
-import std.types { String, Bool, Int, List, list_length }
+import std.types { String, Bool, Int, List }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.replacement_cut {
   BoundaryConsumerKey,
@@ -71,8 +72,8 @@ fn count_matching(causes: List<CutRefusalCause>, p: fn(CutRefusalCause) -> Bool)
 
 test fn the_endpoint_cut_refuses_only_for_missing_coverage() -> Bool {
   let causes = causes_of(admission: endpoint_authority_cut_admission())
-  list_length(items: causes) > 0
-    && count_matching(causes: causes, p: is_uncovered_surviving) == list_length(items: causes)
+  length(xs: causes) > 0
+    && count_matching(causes: causes, p: is_uncovered_surviving) == length(xs: causes)
 }
 
 // The count is pinned to the census rather than to a literal measured off the current tree: every
@@ -80,14 +81,14 @@ test fn the_endpoint_cut_refuses_only_for_missing_coverage() -> Bool {
 // must move both sides together.
 test fn every_censused_relation_produces_exactly_one_coverage_cause() -> Bool {
   let causes = causes_of(admission: endpoint_authority_cut_admission())
-  list_length(items: causes) == list_length(items: endpoint_authority_cut_consumers())
+  length(xs: causes) == length(xs: endpoint_authority_cut_consumers())
 }
 
 // Both endpoint functions leave together. The helper contributes no production boundary of its own,
 // which is exactly why a region assertion is needed: nothing else would notice it being dropped.
 test fn the_region_is_exactly_the_two_endpoint_projections() -> Bool {
   let region = endpoint_authority_cut_region()
-  list_length(items: region) == 2
+  length(xs: region) == 2
     && fold(region, init: false, f: fn(acc, r) {
          acc || declaration_ref_eq(a: r, b: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"))
        })
@@ -115,7 +116,7 @@ fn evidence_named(rows: List<EvidenceDisposition>, name: String) -> Bool {
 // with no disposition for the eventual evidence-population join to report.
 test fn all_four_evidence_declarations_are_dispositioned() -> Bool {
   let rows = endpoint_authority_cut_evidence()
-  list_length(items: rows) == 4
+  length(xs: rows) == 4
     && evidence_named(rows: rows, name: "test.claim.host.host_reach_identity_probe_witness spark_probe_targets_are_modeled_addresses_not_names")
     && evidence_named(rows: rows, name: "test.claim.host.host_reach_identity_probe_witness undecided_spark_slot_projects_no_endpoint")
     && evidence_named(rows: rows, name: "test.claim.host.host_reach_identity_probe_witness probe_endpoint_agrees_with_the_projection_it_consumes")
