@@ -11928,49 +11928,56 @@ fn infer_admission_root_module_symbol(root: Node) -> Optional<Symbol> {
 // tree-level fault, it is unreadable only where a judgment needs it, so the refusal fires at the
 // application being judged (module_unreadable, located at the call), never as a root-level
 // precondition that would refuse every fn-rooted context wholesale.
-// A CALL TO A SERVICE OPERATION THE REALIZATION CANNOT LOWER IS REFUSED AT THE CALL. The service lowering
-// keeps the interface and every realizable operation, and records an operation whose argv this lowering
-// does not evaluate as OperationUnrealizable (symbol_index_fill, keyed by the operation's declaration
-// path, the key resolved_declarations uses). This is the one reader: infer_caller_admission_diags folds
-// every node of the resolved tree, so every call whose head is a declaration reference reaches it.
-// Located at the call, with the operation's offending element as the correction. A callee declared in a
-// marked service payload (symbol_index_declares_service_payload_at, the service's own mark) with NO entry
-// is realization-unknown and refuses too; a callee outside a service (a resource capability, a plain fn)
-// imposes nothing here.
-fn infer_service_operation_realizability_diags(application: Node, declarations: SymbolIndex) -> Diagnostics {
-  match list_at_optional(xs: positional_child_target_nodes(node: application), index: 0) {
-    Absent => None
-    Present { value: child0 } =>
-      match resolved_reference_body_kind(target: child0) {
-        NotMarkedReference => None
-        MarkedReference { kind: DeclarationReferenceKind } =>
-          match declaration_reference_path_optional(node: child0) {
-            Absent => None
-            Present { value: qn } =>
-              match symbol_index_operation_realization_at(index: declarations, qualified_path: qn) {
-                Absent =>
-                  if symbol_index_declares_service_payload_at(index: declarations, qualified_path: qualified_name_init(qn: qn)) {
-                    infer_admission_diags_of([
-                      Diagnostic {
-                        reason: ^infer_reason_service_operation_realization_unknown,
-                        at: node_locus(node: application),
-                        correction: Unavailable { reason: CorrectionNotModeled }
-                      }
-                    ])
-                  } else { None }
-                Present { value: OperationRealizable } => None
-                Present { value: OperationUnrealizable { reason: _, at: element } } =>
-                  infer_admission_diags_of([
-                    Diagnostic {
-                      reason: ^infer_reason_service_operation_unrealizable,
-                      at: node_locus(node: application),
-                      correction: Suggested { node: element }
-                    }
-                  ])
-              }
+// A REFERENCE TO A SERVICE OPERATION THE REALIZATION CANNOT LOWER IS REFUSED AT THE REFERENCE. The service
+// lowering keeps the interface and every realizable operation, and records an operation whose argv this
+// lowering does not evaluate as OperationUnrealizable (symbol_index_fill, keyed by the operation's
+// DECLARATION path). This is the one reader: infer_caller_admission_diags folds every node of the resolved
+// tree, and every node marked as a declaration reference is judged -- a call head, an operation used as a
+// value, the same operation through an import or alias. The mention's path is first resolved to its declaring
+// path (symbol_index_declaring_path_of over the bindings index, resolve's own decision), never read as carried:
+// an alias path has no record, so the carried path would admit it. An unavailable or contested mention is
+// resolution's refusal, not this reader's. The correction is the operation's offending element. A declaring
+// path in a marked service payload (symbol_index_declares_service_payload_at, the service's own mark) with NO
+// entry is realization-unknown and refuses too; a declaration outside a service (a resource capability, a
+// plain fn) imposes nothing here.
+fn infer_service_operation_reference_diags(node: Node, bindings: SymbolIndex, declarations: SymbolIndex) -> Diagnostics {
+  match resolved_reference_body_kind(target: node) {
+    NotMarkedReference => None
+    MarkedReference { kind: DeclarationReferenceKind } =>
+      match declaration_reference_path_optional(node: node) {
+        Absent => None
+        Present { value: qn } =>
+          match symbol_index_declaring_path_of(index: bindings, target: qn) {
+            MentionDeclaringUnique { declaring: declaring } => infer_service_operation_declared_diags(node: node, declaring: declaring, declarations: declarations)
+            MentionDeclaringUnavailable => None
+            MentionDeclaringContested { claimants: _ } => None
           }
-        MarkedReference { kind: _ } => None
       }
+    MarkedReference { kind: _ } => None
+  }
+}
+
+fn infer_service_operation_declared_diags(node: Node, declaring: QualifiedName, declarations: SymbolIndex) -> Diagnostics {
+  match symbol_index_operation_realization_at(index: declarations, qualified_path: declaring) {
+    Absent =>
+      if symbol_index_declares_service_payload_at(index: declarations, qualified_path: qualified_name_init(qn: declaring)) {
+        infer_admission_diags_of([
+          Diagnostic {
+            reason: ^infer_reason_service_operation_realization_unknown,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: CorrectionNotModeled }
+          }
+        ])
+      } else { None }
+    Present { value: OperationRealizable } => None
+    Present { value: OperationUnrealizable { reason: _, at: element } } =>
+      infer_admission_diags_of([
+        Diagnostic {
+          reason: ^infer_reason_service_operation_unrealizable,
+          at: node_locus(node: node),
+          correction: Suggested { node: element }
+        }
+      ])
   }
 }
 
@@ -11991,7 +11998,7 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: Map<Node, List<Infe
                 entries: entries,
                 declarations: tree.resolved_declarations
               ),
-              inner: infer_service_operation_realizability_diags(application: self, declarations: tree.resolved_declarations)
+              inner: infer_service_operation_reference_diags(node: self, bindings: tree.symbol_index, declarations: tree.resolved_declarations)
             )
           },
           child_context: fn(self, ctx, edge) { infer_admission_child_context(self: self, ctx: ctx, edge: edge) },

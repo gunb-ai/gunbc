@@ -648,9 +648,9 @@ fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: St
 // name. Each other shape refuses with that module's ArgvRefusalCause: not a list (BindingMalformed),
 // empty (ArgvEmpty), a non-literal executable (ExecutablePositionNotLiteral), a name the operation
 // does not declare (UndeclaredInputBound), or any other expression (ArgvExpressionUnsupported).
-fn shell_argv_refusal(op: Node, argv: Node) => Optional<RealizationRefusal> {
+fn shell_argv_refusal(op: Node, argv: Node) -> Optional<RealizationRefusal> {
   match shell_argv_cause(inputs: operation_input_names(op: op), argv: argv) {
-    Present { value: cause } => 
+    Present { value: cause } =>
       optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: argv, argv: optional_present(value: cause) })
     Absent => optional_absent()
   }
