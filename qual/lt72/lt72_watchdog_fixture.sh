@@ -5,12 +5,17 @@
 #        burst     (alloc 95% of cap 8 s, free, then CPU work)                         EXPECT: LIVES
 #        cachechurn(reads a file larger than the cap in a loop at 100% CPU; file pages at cap => high events + high CPU) EXPECT: LIVES
 # Slot shape: transient USER unit (flat leaf), MemoryMax=MemoryHigh=$ENV, swap 0, holding a fake Runner.Listener (sleep copy named so) and a fake Runner.Worker tree.
-# Env: SUDO=sudo if the verb must write /run/gunbc-slot-watchdog. The verb gets the ABSOLUTE slot cgroup dir (user units sit >3 levels down).
+# Env: verb runs UNPRIVILEGED; /run/gunbc-slot-watchdog must be pre-created and writable. The job runs a private fadvised copy of python (py-job) in ALL modes. The verb gets the ABSOLUTE slot cgroup dir (user units sit >3 levels down).
 set -u
 MODE=${1:?mode}; BIN=${2:?gunbc}; CHK=${3:?checkout}; ENV=${4:-2G}; SECS=${5:-420}
 OUT=/var/tmp/lt72-wd-$MODE-$(date -u +%Y%m%dT%H%M%SZ); mkdir -p "$OUT/bin"
 cp "$(command -v sleep)" "$OUT/bin/Runner.Listener"
 cp "$(command -v python3)" "$OUT/bin/Runner.Worker" 2>/dev/null || ln -s "$(command -v python3)" "$OUT/bin/Runner.Worker"
+# private interpreter copy for the JOB (new inodes, page cache evicted) so its text is charged to the slot, as in probe run 4
+REAL=$(readlink -f "$(command -v python3)"); mkdir -p "$OUT/lib"; cp --reflink=never "$REAL" "$OUT/bin/py-job"
+ldd "$REAL" | awk '/libpython/{print $3}' | while read -r L; do [ -n "$L" ] && cp --reflink=never "$(readlink -f "$L")" "$OUT/lib/$(basename "$L")"; done
+sync; for F in "$OUT"/bin/py-job "$OUT"/lib/*; do [ -f "$F" ] && python3 -c 'import os,sys; fd=os.open(sys.argv[1],os.O_RDONLY); os.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)' "$F"; done
+ls -l "$OUT/bin" "$OUT/lib" >"$OUT/copies.txt"
 CAPB=$(numfmt --from=iec "$ENV"); UNIT=lt72-slot-$MODE-$$
 case $MODE in
 livelock) PY='
@@ -46,10 +51,10 @@ while True:
 *) echo bad mode; exit 2;; esac
 # slot: Listener + Worker tree (Worker spawns a child shell that spawns the workload, so the tree is >1 deep)
 systemd-run --user --unit="$UNIT" --collect -p MemoryMax="$ENV" -p MemoryHigh="$ENV" -p MemorySwapMax=0 -p KillMode=control-group \
-  -E CAP="$CAPB" -E OUT="$OUT" -E PY="$PY" bash -c "$OUT/bin/Runner.Listener 100000 & exec $OUT/bin/Runner.Worker -c 'import os,subprocess; subprocess.run([\"bash\",\"-c\",\"python3 -c \\\"\$PY\\\"\"])'" >"$OUT/launch.txt" 2>&1
+  -E CAP="$CAPB" -E OUT="$OUT" -E PY="$PY" -E LD_LIBRARY_PATH="$OUT/lib" bash -c "$OUT/bin/Runner.Listener 100000 & echo \$! >$OUT/listener.pid; exec $OUT/bin/Runner.Worker -c 'import os,subprocess; subprocess.run([\"bash\",\"-c\",\"$OUT/bin/py-job -c \\\"\$PY\\\"\"])'" >"$OUT/launch.txt" 2>&1
 sleep 2
 CG=/sys/fs/cgroup$(systemctl --user show "$UNIT" -p ControlGroup --value); echo "$CG" >"$OUT/cgroup.txt"
-LPID=$(pgrep -f "$OUT/bin/Runner.Listener" | head -1); echo "listener pid $LPID" >>"$OUT/cgroup.txt"
+LPID=$(cat "$OUT/listener.pid"); echo "listener pid $LPID" >>"$OUT/cgroup.txt"
 sleep 3; BASE=$(cat "$CG/memory.current"); echo "baseline_with_worker_at_3s $BASE" >>"$OUT/cgroup.txt"
 # sampler (independent of the verb): t, members, current, high+max, user_usec
 ( T0=$(date +%s); printf 't\tprocs\tcurrent\tev_high\tev_max\tev_oom_kill\tuser_usec\tlistener_alive\n' >"$OUT/samples.tsv"
