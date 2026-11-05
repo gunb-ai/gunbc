@@ -3,6 +3,7 @@ module test.claim.c_roadmap2_store_seal_witness
 import std.types { Bool, Int, String }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.realization_census_rows { realization_census_finding_rows }
 import std.process { ProcessExit }
 
 // THE C-ROADMAP-2 STORES ARE MINTED FROM THEIR DECLARATIONS AND CANNOT BE SPELLED FROM A PATH, AND THE
@@ -128,16 +129,30 @@ test fn the_legacy_verification_receipt_writer_is_gone() -> ProcessExit {
   census_exit(verdict: census_verdict(census: missing_export(source: deleted_verification_receipt_writer_source, subject: "persist_verification_receipt"), holds: fn(n) { n == 1 }))
 }
 
-data deleted_credential_recovery_writer_source: String = "module probe_r9\nimport std.types { ProcessExit }\nimport gunbc.roadmap.roadmap_belt_tick_cli { belt_credential_recovery_cli }\nfn f() -> ProcessExit { belt_credential_recovery_cli() }\n"
+// THE OTHER RETIRED WRITER, PINNED AGAINST THE REAL AUTHORITY (review 90974's five-row audit). main's
+// census row `gunbc.roadmap.roadmap_belt_tick_cli|storage|belt_credential_recovery_cli|1` recorded a raw
+// `credential-acquisition-recovery.json` write behind an env-read path inside belt_credential_recovery_cli.
+// The write was retired inline (nothing reads the file; DESIGN section 2 retires a writer nobody reads
+// rather than migrating it) and its census row was deleted with it. The write is an inline Filesystem.Write,
+// not a symbol, so no probe census can key on it; the CLI export itself was NEVER deleted (it is the
+// recovery entry point), so an earlier revision of this claim that expected a MissingExport on
+// `belt_credential_recovery_cli` asserted a falsehood and could never have held. What IS discriminable is
+// the row: the claim compares, by equality, against the real authority the row lives in -- the declared
+// realization census -- and requires that no finding row for the retired write remains. If the write is
+// ever re-added together with its row, this claim goes red; if the write is re-added WITHOUT its row, the
+// realization census witness that re-observes rows against code is the instrument that refuses.
+data retired_credential_recovery_writer_finding_id: String = "gunbc.roadmap.roadmap_belt_tick_cli|storage|belt_credential_recovery_cli|1"
 
-// THE OTHER RETIRED WRITER, PINNED THE SAME WAY (review 90974's five-row audit). main's census row
-// `gunbc.roadmap.roadmap_belt_tick_cli|storage|belt_credential_recovery_cli|1` named a raw
-// `credential-acquisition-recovery.json` write behind an env-read path. The writer is retired (nothing reads the
-// file; DESIGN section 2 retires a writer nobody reads rather than migrating it), so the row goes with it --
-// pinned here so the retirement cannot silently revert: a probe importing the export must refuse with exactly
-// that one error.
-test fn the_retired_credential_recovery_writer_is_gone() -> ProcessExit {
-  census_exit(verdict: census_verdict(census: missing_export(source: deleted_credential_recovery_writer_source, subject: "belt_credential_recovery_cli"), holds: fn(n) { n == 1 }))
+fn retired_writer_row_count() -> Int {
+  fold(realization_census_finding_rows |> filter(r => (r.finding_id as String) == retired_credential_recovery_writer_finding_id), init: 0, f: (acc, r) => acc + 1)
+}
+
+test fn the_retired_credential_recovery_writer_row_is_gone() -> ProcessExit {
+  if retired_writer_row_count() == 0 {
+    exit_success()
+  } else {
+    exit_failure(reason: "the retired credential-acquisition-recovery.json writer row is back in the realization census")
+  }
 }
 
 // ── the lawful routes are admitted ─────────────────────────────────────────────────────────────────────
