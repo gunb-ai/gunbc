@@ -45,7 +45,7 @@ import std.measure {
   Micrometer, micrometer, ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count,
   Watt, watt, Millimeter, millimeter, Celsius, Ampere, Volt, volt,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, TranscribedUncited, CelsiusLimit, LimitUnstated }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
@@ -1190,3 +1190,11 @@ data asrock_altrad8ud_operating_ambient_max: Celsius = celsius(count: 35)
 // PMBus supply; a supply shared by several boards can be monitored by at most one of them through
 // this header, which is a station design fact rather than a board one.
 data asrock_altrad8ud_psu_smbus_header_pin_count: Nat = 5
+
+// VOLTAGE-REGULATOR TEMPERATURE LIMIT of the ALTRAD8UD board (the CPU0_SOC_VRDTemp / CPU0_DIMMVRDTemp
+// sensors). The board manual held here (v1.20) states no regulator ceiling, so none is authored.
+// Consumer: declared frontier, the P5 hard constraints and the B5 guard, whose VoltageRegulator ceiling in
+// gunbc.machine_intake.megarac_fan_thermal_guard is Absent today (trigger: P5 landing).
+data asrock_altrad8ud_vrd_temperature_limit: CelsiusLimit = LimitUnstated {
+  read_obligation: "Read the VRM controller and power-stage datasheets for the ALTRAD8UD-1L2T SoC and DIMM regulators (identify the parts from the board's BOM or ASRock Rack support) for their maximum junction temperature, and relate it to the CPU0_SOC_VRDTemp and CPU0_DIMMVRDTemp sensor locations; the manual v1.20 gives no regulator limit."
+}

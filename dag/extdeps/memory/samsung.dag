@@ -3,7 +3,7 @@ module extdeps.memory.samsung
 import std.measure { ByteSize, byte_size, bit_width }
 import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, DualDiePackage, ThreeDimensionalStacked }
 import extdeps.vendor.samsung { samsung }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CelsiusLimit, LimitUnstated }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
@@ -113,4 +113,12 @@ data m393a8g40d40_crb0q_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   chip_width: bit_width(4),
 
   rank_count: 8,
+}
+
+// PART-SPECIFIC TEMPERATURE LIMIT of the srv3/srv4 incident part. No Samsung datasheet for
+// M393A8G40D40-CRB0Q was reachable (see above), so the part's own TCASE ceiling and whether it supports
+// the extended band are unstated rather than assumed equal to the JEDEC bands in extdeps.memory.jedec.
+// Consumer: declared frontier, the P5 decision subject (trigger: P5 landing).
+data m393a8g40d40_crb0q_tcase_limit: CelsiusLimit = LimitUnstated {
+  read_obligation: "Read Samsung's module datasheet or product-selection guide for M393A8G40D40-CRB0Q: its maximum operating TCASE, whether the extended (85-95 C, doubled refresh) range is supported, and the sensor part fitted. Until then only the JEDEC DDR4 bands (extdeps.memory.jedec) apply, and they are themselves uncited."
 }
