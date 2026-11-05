@@ -1,0 +1,76 @@
+module v2.test.claim.service_operation_unrealizable
+
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
+import v2.compiler.infer { infer_service_operation_realizability_diags }
+import v2.test.claim.caller_admission_native_wall { wall_decl_ref_target, wall_unreadable_callee_application }
+import v2.std.node_query { declaration_reference_path_optional }
+import v2.std.symbol_index { OperationRealization, OperationRealizable, OperationUnrealizable, SymbolIndex, empty_symbol_index, symbol_index_mark_operation_realization }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Node, TypeNode }
+
+// THE CALL-SITE READER (v2.compiler.infer infer_service_operation_realizability_diags), judged over
+// values: the index carries the realization record the fill writes (symbol_index_fill, keyed by the
+// operation's declaration path), and the application is the same hand-built call the caller-admission
+// wall's witnesses use. The real-path inhabitance (lowering -> fill -> record) is the lowering claims in
+// v2.test.claim.normalize.service_realization_lowering; deleting the reader or the fill turns one red.
+
+data suo_element_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 940 } }
+
+fn suo_element() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: suo_element_locus }
+}
+
+fn suo_index_with(realization: OperationRealization) -> SymbolIndex {
+  match declaration_reference_path_optional(node: wall_decl_ref_target()) {
+    Absent => empty_symbol_index()
+    Present { value: qn } => symbol_index_mark_operation_realization(index: empty_symbol_index(), qualified_path: qn, realization: realization)
+  }
+}
+
+// RED: a call to an operation recorded unrealizable refuses, typed, at the call, with the operation's
+// offending element as the correction.
+test fn a_call_to_an_unrealizable_operation_refuses_at_the_call_holds() -> Bool {
+  match infer_service_operation_realizability_diags(
+    application: wall_unreadable_callee_application(),
+    declarations: suo_index_with(realization: OperationUnrealizable { reason: ^service_realization_argv_refused, at: suo_element() })
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_service_operation_unrealizable)
+        && match d.head.correction {
+          Suggested { node: el } =>
+            match el.occurrence_id {
+              OccurrenceMinted { id: kid } => kid.value == 940
+              OccurrenceProjected { id: kid, caused_by: _ } => kid.value == 940
+              OccurrencePending { caused_by: _ } => false
+              OccurrenceSynthetic => false
+            }
+          Unavailable { reason: _ } => false
+        }
+  }
+}
+
+// POSITIVE: a call to a realizable operation is not refused by this reader.
+test fn a_call_to_a_realizable_operation_is_admitted_holds() -> Bool {
+  match infer_service_operation_realizability_diags(
+    application: wall_unreadable_callee_application(),
+    declarations: suo_index_with(realization: OperationRealizable)
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+// CONTROL: the reader refuses on the RECORD, not on the callee's spelling -- the same call over an index
+// with no record is not refused by this reader (the unknown-realization rule is the PR's open item).
+test fn a_call_with_no_realization_record_is_not_refused_by_this_reader_holds() -> Bool {
+  match infer_service_operation_realizability_diags(
+    application: wall_unreadable_callee_application(),
+    declarations: empty_symbol_index()
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
