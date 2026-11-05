@@ -3085,8 +3085,10 @@ fn belt_spawn_stage(
         AttemptWorktreeUnobserved { path, cause } =>
           Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the worktree at ", path, " could not be observed before resuming: ", cause], ""), provider: provider_wire_label, launch: launch } }
       }
-    DispatchWorkerFirst =>
-      DispatchWorkerContinuedFrom { branch: _ } =>
+    // Both a first attempt and a CONTINUED (NextAttempt) attempt add a worktree here; only a RESUME
+    // does not (handled above). The catch-all covers DispatchWorkerFirst and DispatchWorkerContinuedFrom
+    // alike -- the worktree-add start ref already differs between them via dispatch_worker_run_start_ref.
+    _ =>
       match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
         WorktreeClaimNotRecorded { detail } => Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-claim", detail: detail, provider: provider_wire_label, launch: launch } }
         WorktreeClaimRecorded =>
