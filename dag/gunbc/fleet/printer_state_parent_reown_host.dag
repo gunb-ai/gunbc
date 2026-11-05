@@ -1,0 +1,47 @@
+module gunbc.fleet.printer_state_parent_reown_host
+
+// THE HOST BOUND OF THE PRINTER-STARTS PARENT RE-OWN. The transition itself -- the pinned prior, the
+// compare-and-set, the typed refusals -- is owned by gunbc.fleet.printer_state_parent_reown and reads no
+// transport. This module is the one place that binds those reads and that apply to a real host, which is why
+// it is separate: a witness of the transition does not pay to typecheck gunbc.host.host_effect_realize, and a
+// change to how privileged effects reach a host lands here and nowhere else.
+//
+// WHAT THE PRINTER PASS DOES ABOUT ITS PARENT, in the shape the pass already carries: none means the pass may
+// go on, a Present reason stops it. The reads are the same privileged reads the provider makes for this path,
+// and the apply is the target's declared install elevated through the one projection that names it, so the
+// words this leg runs are exactly the words the host's sudoers already grants for this target -- no grant of
+// its own, and none needed (see the DEPLOY ORDERING note in gunbc.fleet.printer_workflow_artifact for the
+// coreutils reading that establishes install -d re-owns and re-modes an EXISTING directory).
+
+import std.types { NonEmptyStr }
+import std.optional { Present }
+import gunbc.owned_directory { owned_directory_path }
+import gunbc.host_state_root { HostStateTree }
+import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.host.host_effect_realize {
+  deploy_apply_directory_observe, run_argv_over_host_effect_transport, run_argv_transport_succeeded,
+}
+import gunbc.executor_privileged_operation { EnsureOwnedDirectory, executor_privileged_operation_elevated_command }
+import gunbc.fleet.printer_state_parent_reown {
+  printer_state_parent_reown, printer_state_parent_reown_target, printer_state_parent_reown_prior,
+  printer_state_parent_identity_leg_plan, ParentAlreadyAtTheDeclaredIdentity, ParentReownLegRuns,
+  printer_state_parent_reown_refusal_text,
+  PrinterStartsParentReowned, PrinterStartsParentReownPreconditionFailed, PrinterStartsParentReownRefused,
+}
+
+fn printer_state_parent_identity_leg_on_host(tree: HostStateTree, transport: HostEffectTransport) -> String? {
+  let target = printer_state_parent_reown_target(tree: tree)
+  match printer_state_parent_identity_leg_plan(target: target, observation: deploy_apply_directory_observe(path: owned_directory_path(t: target), transport: transport)) {
+    ParentAlreadyAtTheDeclaredIdentity => none
+    ParentReownLegRuns => match printer_state_parent_reown(
+      target: target,
+      prior: printer_state_parent_reown_prior(),
+      observe: path => deploy_apply_directory_observe(path: path, transport: transport),
+      apply: plan => run_argv_transport_succeeded(outcome: run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory { path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode }), transport: transport)),
+    ) {
+      PrinterStartsParentReowned { path: _, before: _, after: _ } => none
+      PrinterStartsParentReownPreconditionFailed { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
+      PrinterStartsParentReownRefused { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
+    }
+  }
+}
