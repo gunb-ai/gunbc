@@ -78,7 +78,10 @@ import gunbc.roadmap.roadmap_belt_actuate {
   TickExecuted,
   belt_tick_receipt_decode,
 }
-import gunbc.roadmap.roadmap_launch_deployment_cli {
+
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun,
+}import gunbc.roadmap.roadmap_launch_deployment_cli {
   rlm1_contract_digest_frozen,
   rlm1_merge_commit,
   rlm_workflow_file_path,
@@ -271,6 +274,7 @@ fn rlm_tick(instance_id: String, revision: String, mode: SpawnMode, observed_at:
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRecorded,
+    slots_cutover_pass: BeltPassDeferred { reason: "witness fixture: the cutover pass did not run" },
   }
 }
 

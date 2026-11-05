@@ -4,15 +4,16 @@ import std.types { Int, List, String }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.native_serve_probe_plan {
-  NativeServePhase, native_serve_phase_refusals, NativeServeWire, native_serve_wire_parse, native_serve_probe_not_held_code,
+  NativeServePhase, native_serve_phase_refusals, NativeServeWire, native_serve_wire_parse, native_serve_probe_not_held_code, native_serve_probe_launch,
 }
 
 // THE READER FOR `gunbc test //gunbc/instruments:native-serve-startup-slow`. The service
 // (gunbc.instruments.native_serve_startup_slow_fixture) is launched with a 100 ms request deadline; its startup is a
 // spin of about 0.6 to 2.4 s (see the fixture for the margins) inside the default startup bound. The observation: it
-// announced a bound address and answered the one request with 200 and the spin's value, which a launch that bounded
-// its startup by the request deadline could not (it would have exited before the bind, so there would be no
-// announcement and no response).
+// announced a bound address and answered the one request with 200, the spin's value and the clock reading the startup
+// took, which a launch that bounded its startup by the request deadline could not (it would have exited before the bind,
+// so there would be no announcement and no response), nor a main that left the startup's effect unbound (it would not
+// build), nor one that ran the homonym twin's startup or handler by bare name (the twin refuses, or answers 418).
 
 fn native_serve_probe_phases() -> List<NativeServePhase> {
   []
@@ -26,15 +27,15 @@ fn native_serve_probe_release_revision() -> String {
   "0123456789abcdef0123456789abcdef01234567"
 }
 
-fn native_serve_probe_request_deadline_ms() -> String {
-  "100"
+fn native_serve_probe_launch_argv() -> List<String> {
+  native_serve_probe_launch(handler: "slow_handle", release_revision: native_serve_probe_release_revision(), cpu_limit_ms: 100, wall_limit_ms: 100)
 }
 
 fn native_serve_probe_requests(peer_port: Int) -> List<String> {
   ["GET /slow HTTP/1.1\r\nHost: probe\r\n\r\n"]
 }
 
-fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: the service did not bind and announce; a startup slower than the request deadline was refused [", concat(announcement, "]")) }
   } else if (responses |> count) != 1 {
@@ -43,7 +44,7 @@ fn native_serve_probe_standing(announcement: String, peer_announcement: String, 
     match native_serve_wire_parse(response: first_or_empty(items: responses)) {
       Absent => ExitFailure { code: native_serve_probe_not_held_code, reason: "not held: the response is not an HTTP/1.1 status line and body" }
       Present { value: w } =>
-        if w.status == 200 && (split(s: w.body, delimiter: "served after a startup that spun ") |> count) == 2 { ExitSuccess }
+        if w.status == 200 && (split(s: w.body, delimiter: "served after a startup that spun ") |> count) == 2 && (split(s: w.body, delimiter: " at 20") |> count) == 2 { ExitSuccess }
         else { ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: status ", concat(to_string(value: w.status), concat(" [", concat(w.body, "]")))) } }
     }
   }

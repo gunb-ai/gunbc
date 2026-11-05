@@ -807,7 +807,7 @@ fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
     listen_port: live.listen_port,
     tmux_server: live.tmux_server,
     actuation: live.actuation,
-    provision_transport: live.provision_transport,
+    actuator_host: live.actuator_host,
     source_seed: live.source_seed,
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,

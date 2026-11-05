@@ -1,7 +1,9 @@
 module gunbc.runner.runner_revision_job_request
 
-import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
-import std.types { String, CommitSha }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import std.types { String, Int, CommitSha }
 import std.error_primitives { Ok, Err }
 import extdeps.http.server { ServeWireResponse }
 import extdeps.languages.json.emit { JsonNull }
@@ -15,9 +17,26 @@ import gunbc.durable_handoff_rest { host_request_outcome_response, OutcomeUnknow
 // Native submission/readback only. Durable acceptance is not execution authority:
 // the worker still owes staging, root approval and fabric grant enforcement.
 // Tailscale-User-Login is ignored; only the API key selects the stable user.
-data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+// Served natively by its own deployment binding (gunbc.plans.converged_ingress M2a): the descriptor below names this
+// module's constructor and handler, and the NativeIngressDriver row selects the native realization.
+data runner_revision_job_request_program: NativeIngressProgram = NativeIngressProgram {
+  binding: DeclarationRef { module_path: "gunbc.runner.runner_revision_job_request", decl_name: "runner_revision_job_request_ingress", field: WholeDeclaration },
+  handler: DeclarationRef { module_path: "gunbc.runner.runner_revision_job_request", decl_name: "runner_revision_job_request_handle", field: WholeDeclaration },
+  startup: Absent,
+}
 
-fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha) -> ServeWireResponse {
+data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver {
+  program: DeclarationRef { module_path: "gunbc.runner.runner_revision_job_request", decl_name: "runner_revision_job_request_program", field: WholeDeclaration },
+}
+
+fn runner_revision_job_request_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
+  http_ingress_binding(
+    handler_module: runner_revision_job_request_program.handler.module_path as String, handler: handler, listener: listener,
+    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+  )
+}
+
+fn runner_revision_job_request_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha) -> ServeWireResponse {
   let context = match revision_request_context(tree: host_state_tree()) {
     Err { value: _ } => { return host_request_outcome_response(request_id: "", outcome: OutcomeUnknown { detail: "request stores unavailable" }, result: JsonNull) }
     Ok { value: context } => context
