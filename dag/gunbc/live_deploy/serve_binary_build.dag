@@ -131,32 +131,35 @@ fn serve_binary_pre_install_verdict(build: ServeBinaryBuild, head_before: String
 // After the install: the installed bytes are the built bytes, and the binary names the admitted revision.
 // The digest comparison has its own outcome: "ready to install" is the pre-install verdict's meaning and is
 // false after the rename. An empty digest is a failed read, never a value: two failed reads must not agree.
+type ServeBinaryDigestFault
+  = ServeBinaryDigestUnread
+  | ServeBinaryDigestsDiffer
+
 type ServeBinaryDigestCheck
   = ServeBinaryDigestsAgree
-  | ServeBinaryDigestUnread
-  | ServeBinaryDigestsDiffer
+  | ServeBinaryDigestFaulted { fault: ServeBinaryDigestFault }
 
 fn serve_binary_digest_check(built_sha256: String, installed_sha256: String) -> ServeBinaryDigestCheck {
   if trim(s: built_sha256) == "" || trim(s: installed_sha256) == "" {
-    ServeBinaryDigestUnread
+    ServeBinaryDigestFaulted { fault: ServeBinaryDigestUnread }
   } else if trim(s: built_sha256) != trim(s: installed_sha256) {
-    ServeBinaryDigestsDiffer
+    ServeBinaryDigestFaulted { fault: ServeBinaryDigestsDiffer }
   } else {
     ServeBinaryDigestsAgree
   }
 }
 
-fn serve_binary_digest_refusal(outcome: ServeBinaryDigestCheck) -> ServeBinaryBuildVerdict {
-  match outcome {
+fn serve_binary_digest_refusal(fault: ServeBinaryDigestFault) -> ServeBinaryBuildVerdict {
+  match fault {
     ServeBinaryDigestUnread => ServeBinaryRefusedDigestUnread
-    _ => ServeBinaryRefusedInstalledDigestDiffers
+    ServeBinaryDigestsDiffer => ServeBinaryRefusedInstalledDigestDiffers
   }
 }
 
 fn serve_binary_post_install_verdict(build: ServeBinaryBuild, built_sha256: String, installed_sha256: String, version_text: String) -> ServeBinaryBuildVerdict {
   match serve_binary_digest_check(built_sha256: built_sha256, installed_sha256: installed_sha256) {
     ServeBinaryDigestsAgree => serve_binary_version_verdict(build: build, version_text: version_text)
-    refused => serve_binary_digest_refusal(outcome: refused)
+    ServeBinaryDigestFaulted { fault: f } => serve_binary_digest_refusal(fault: f)
   }
 }
 
