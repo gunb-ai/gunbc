@@ -282,9 +282,12 @@ fn runner_lifecycle_realize_observe_github_runner_registration(
 // that used to run the old reconcile stays DISABLED; nothing in this function binds a timer, the network, or a
 // shell -- it is pure over boundary-supplied observations.
 //
-// The ACTUATION is the modeled runner_slot_actuation.restart_runner_slot_over(target, context, unit, before),
-// invoked by the wet caller with the observed main as `before` so its readback can require a changed MainPID;
-// it refuses (SlotActuationRefused) if the unit is not loaded-and-active on a changed MainPID after restart.
+// The ACTUATION is the modeled runner_slot_actuation.restart_runner_slot_over(target, context, unit, before,
+// standing, lost), invoked by the wet caller with the observed main as `before` so its readback can require a
+// changed MainPID, and with the busy standing and its job id read ONCE, atomically, immediately before the
+// mutation (SlotBusyStanding: Idle | Busy{job_id} | Unreadable) so busy-ness and the job the restart is for can
+// never describe different moments; it refuses (SlotActuationRefused) if the unit is not loaded-and-active on a
+// changed MainPID after restart, or if the standing is Busy with a job other than the corroborated orphaned one.
 //
 // FRONTIER (DESIGN section 3c, declared not dangling). This is the restart capability's frontier entry: it is
 // bound to no timer, no CI job, and no network in this PR (the runner-liveness-reconcile timer stays DISABLED,

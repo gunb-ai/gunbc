@@ -8,13 +8,12 @@ import extdeps.systemd { UnitLoadError, Failed }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess, NoMainProcess, MainProcessUnread, StartObserved, StartUnread, ProcessAbsoluteStart }
-import gunbc.runner.runner_disk_reclaim { SlotIdle, SlotHasLiveWorker, SlotActivityUnobserved }
 import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
 import std.measure { second }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationReading, SlotReadingTyped, SlotReadingUnknownWord, slot_actuation_reading_typed,
   SlotRestartPlan, RestartSteps, RestartRefused, slot_restart_plan, slot_restart_read_back_holds,
-  proc_absolute_start_of, SlotRunningJobId, RunningJobObserved, RunningJobUnread,
+  proc_absolute_start_of, SlotBusyStanding, Idle, Busy, Unreadable,
 }
 
 // Every claim is a function of a supplied reading and supplied main-process observations; nothing reads
@@ -38,8 +37,9 @@ fn with_pid(pid: Nat, boot: String) -> RunnerUnitMainProcess {
 fn not_lost() -> LostAgentObservation { JobNotLost { job_id: 126894416098, reason: "the job is progressing" } }
 fn orphaned() -> LostAgentObservation { LostAgentDetected { job_id: 126894416098, over_by: second(count: 3600) } }
 fn read_refused_lost() -> LostAgentObservation { LostAgentReadRefused { job_id: 126894416098, reason: "the jobs read was refused" } }
-fn slot_job(id: Int) -> SlotRunningJobId { RunningJobObserved { job_id: id } }
-fn no_slot_job() -> SlotRunningJobId { RunningJobUnread { cause: "the worker _diag log was unreadable" } }
+fn idle_standing() -> SlotBusyStanding { Idle }
+fn busy(job: Int) -> SlotBusyStanding { Busy { job_id: job } }
+fn unreadable_standing() -> SlotBusyStanding { Unreadable { cause: "the worker busy standing and its job id could not be read" } }
 
 // ── The restart plan is narrower than activation on load, broader on active ────────────────────────
 
@@ -47,11 +47,11 @@ fn no_slot_job() -> SlotRunningJobId { RunningJobUnread { cause: "the worker _di
 // already calls it active or not — the restart leg cycles a running runner, which activation would
 // no-op.
 test fn a_loaded_slot_restarts_with_the_restart_argv() -> Bool {
-  (match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, slot_job: no_slot_job(), lost: not_lost()) {
+  (match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: idle_standing(), lost: not_lost()) {
     RestartSteps { steps: ss } => ss == [systemctl_restart_argv(unit: slot_u)]
     RestartRefused { reason: _ } => false
   })
-    && (match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "inactive"), worker: SlotIdle, slot_job: no_slot_job(), lost: not_lost()) {
+    && (match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "inactive"), standing: idle_standing(), lost: not_lost()) {
       RestartSteps { steps: ss } => ss == [systemctl_restart_argv(unit: slot_u)]
       RestartRefused { reason: _ } => false
     })
@@ -61,19 +61,19 @@ test fn a_loaded_slot_restarts_with_the_restart_argv() -> Bool {
 // not restarted: a masked slot is a drained slot (a re-provision, not a restart) and error/not-found is
 // an unreadable or absent state that the fail-closed leg must not act on.
 test fn an_uninstalled_masked_bad_or_error_unit_is_never_restarted() -> Bool {
-  (match slot_restart_plan(r: reading(load: "not-found", file: "", active: "inactive"), worker: SlotIdle, slot_job: no_slot_job(), lost: not_lost()) {
+  (match slot_restart_plan(r: reading(load: "not-found", file: "", active: "inactive"), standing: idle_standing(), lost: not_lost()) {
     RestartSteps { steps: _ } => false
     RestartRefused { reason: _ } => true
   })
-    && (match slot_restart_plan(r: reading(load: "masked", file: "masked", active: "inactive"), worker: SlotIdle, slot_job: no_slot_job(), lost: not_lost()) {
+    && (match slot_restart_plan(r: reading(load: "masked", file: "masked", active: "inactive"), standing: idle_standing(), lost: not_lost()) {
       RestartSteps { steps: _ } => false
       RestartRefused { reason: _ } => true
     })
-    && (match slot_restart_plan(r: reading(load: "bad-setting", file: "bad", active: "inactive"), worker: SlotIdle, slot_job: no_slot_job(), lost: not_lost()) {
+    && (match slot_restart_plan(r: reading(load: "bad-setting", file: "bad", active: "inactive"), standing: idle_standing(), lost: not_lost()) {
       RestartSteps { steps: _ } => false
       RestartRefused { reason: _ } => true
     })
-    && (match slot_restart_plan(r: reading(load: "error", file: "", active: "failed"), worker: SlotIdle, slot_job: no_slot_job(), lost: not_lost()) {
+    && (match slot_restart_plan(r: reading(load: "error", file: "", active: "failed"), standing: idle_standing(), lost: not_lost()) {
       RestartSteps { steps: _ } => false
       RestartRefused { reason: _ } => true
     })
@@ -84,7 +84,7 @@ test fn an_uninstalled_masked_bad_or_error_unit_is_never_restarted() -> Bool {
 // POSITIVE CONTROL (Detached + IDLE): a loaded slot with no live worker restarts — the ordinary case the
 // busy consult must never block.
 test fn a_detached_idle_slot_is_restarted() -> Bool {
-  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, slot_job: no_slot_job(), lost: not_lost()) {
+  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: idle_standing(), lost: not_lost()) {
     RestartSteps { steps: ss } => ss == [systemctl_restart_argv(unit: slot_u)]
     RestartRefused { reason: _ } => false
   }
@@ -94,7 +94,7 @@ test fn a_detached_idle_slot_is_restarted() -> Bool {
 // the orphaned one must REFUSE -- a Detached verdict (offline registration) does not imply idle, and a
 // restart would kill a live job (the #15819 class). This is the whole defect review 91071 named.
 test fn a_detached_busy_slot_without_corroboration_is_never_restarted() -> Bool {
-  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, slot_job: slot_job(126894416098), lost: not_lost()) {
+  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: busy(126894416098), lost: not_lost()) {
     RestartSteps { steps: _ } => false
     RestartRefused { reason: _ } => true
   }
@@ -103,7 +103,7 @@ test fn a_detached_busy_slot_without_corroboration_is_never_restarted() -> Bool 
 // POSITIVE CONTROL (Detached + busy, CORROBORATED orphaned): when the lost-agent reading names the running
 // job orphaned (in_progress, runner null, past timeout), killing it IS the remedy, so the restart proceeds.
 test fn a_detached_busy_slot_with_a_corroborated_orphaned_job_is_restarted() -> Bool {
-  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, slot_job: slot_job(126894416098), lost: orphaned()) {
+  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: busy(126894416098), lost: orphaned()) {
     RestartSteps { steps: ss } => ss == [systemctl_restart_argv(unit: slot_u)]
     RestartRefused { reason: _ } => false
   }
@@ -113,7 +113,7 @@ test fn a_detached_busy_slot_with_a_corroborated_orphaned_job_is_restarted() -> 
 // running job does (the BusyStandingUnavailable arm of the contract), and corroboration cannot override it
 // -- could-not-see is never permission (DESIGN section 5).
 test fn a_slot_whose_busy_standing_is_unreadable_is_never_restarted() -> Bool {
-  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotActivityUnobserved { cause: "the worker read was refused" }, slot_job: slot_job(126894416098), lost: orphaned()) {
+  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: unreadable_standing(), lost: orphaned()) {
     RestartSteps { steps: _ } => false
     RestartRefused { reason: _ } => true
   }
@@ -122,7 +122,7 @@ test fn a_slot_whose_busy_standing_is_unreadable_is_never_restarted() -> Bool {
 // DISCRIMINATING RED (busy + lost-agent read REFUSED): a running job is not presumed orphaned when the
 // lost-agent reading itself was refused; refusal, not a guessed permit.
 test fn a_busy_slot_with_a_refused_lost_agent_reading_is_never_restarted() -> Bool {
-  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, slot_job: slot_job(126894416098), lost: read_refused_lost()) {
+  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: busy(126894416098), lost: read_refused_lost()) {
     RestartSteps { steps: _ } => false
     RestartRefused { reason: _ } => true
   }
@@ -132,19 +132,28 @@ test fn a_busy_slot_with_a_refused_lost_agent_reading_is_never_restarted() -> Bo
 // bound to the slot's OWN running job id -- a lost job X does not authorize killing an unrelated job Y.
 // The orphaned job id matches the permit's, but the slot is running a DIFFERENT job -> refuse.
 test fn a_busy_slot_running_a_different_job_than_the_orphaned_one_is_never_restarted() -> Bool {
-  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, slot_job: slot_job(999), lost: orphaned()) {
+  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: busy(999), lost: orphaned()) {
     RestartSteps { steps: _ } => false
     RestartRefused { reason: _ } => true
   }
 }
 
-// DISCRIMINATING RED (BINDING, review 91071): if the slot's running job id cannot be read, the permit cannot
-// be bound and the restart is refused -- never a guessed "it is probably the orphaned job" (DESIGN section 5).
-test fn a_busy_slot_whose_job_id_is_unreadable_is_never_restarted() -> Bool {
-  match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, slot_job: no_slot_job(), lost: orphaned()) {
+// DISCRIMINATING RED (THE STALE SEAM, side-chat review 7a1f96ec, the §5 TOCTOU): busy-ness and its job
+// identity are ONE atomic reading, so the permit keys on the standing's OWN id, never a separately joined
+// one. Under a fixed lost evidence (orphaned job 126894416098), the ONLY thing that changes the outcome is
+// the job id carried by the busy standing: a fresh busy read of 999 (some OTHER job started after the lost
+// one was observed) refuses, while a fresh busy read of 126894416098 permits. The old bug -- a stale
+// boundary id X joined to a fresh "busy" read, killing the unrelated job Y now running -- is inexpressible
+// because there is no separate id to be stale: Idle | Busy{job_id} | Unreadable is read in one pass.
+test fn the_busy_standing_own_job_id_governs_never_a_joined_stale_id() -> Bool {
+  (match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: busy(999), lost: orphaned()) {
     RestartSteps { steps: _ } => false
     RestartRefused { reason: _ } => true
-  }
+  })
+    && (match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active"), standing: busy(126894416098), lost: orphaned()) {
+      RestartSteps { steps: ss } => ss == [systemctl_restart_argv(unit: slot_u)]
+      RestartRefused { reason: _ } => false
+    })
 }
 
 // ── The readback proves a PROCESS CYCLE, not a systemctl exit code ─────────────────────────────────
