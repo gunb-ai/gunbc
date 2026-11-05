@@ -28,7 +28,7 @@ module gunbc.serving.serving_relocation
 import std.types { Int, Bool, NonEmptyStr, List, String, brand }
 import std.nat { Nat }
 import std.integer { nat_to_int }
-import extdeps.languages.json.emit { JsonValue, json_kv, json_int, json_string, json_bool, json_object, serialize_json }
+import extdeps.languages.json.emit { JsonValue, json_kv, json_int, json_string, json_object, serialize_json }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval }
@@ -90,13 +90,6 @@ fn reconstruction_is_complete(e: ReconstructionEvidence) -> Bool {
 // re-establishes the continuation on the destination; it does NOT evacuate the retained KV still on
 // the source, and must never claim memory was freed. Only a fully established restore could move
 // retained state, and it has no admitted case.
-fn method_evacuates_retained_state(method: StateEstablishmentMethod) -> Bool {
-  match method {
-    RestoreCompatibleSavedState => false
-    ReconstructFromCompleteRequest => false
-  }
-}
-
 type MethodAdmission = MethodAdmitted { method: StateEstablishmentMethod } | MethodNotAdmitted { reason: NonEmptyStr }
 
 fn admit_state_method(method: StateEstablishmentMethod, evidence: ReconstructionEvidence) -> MethodAdmission {
@@ -132,6 +125,9 @@ data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_r
 data id_field: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_field")
 data id_constraints: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_constraints")
 data id_evidence: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_evidence")
+data id_objective: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_objective")
+data id_domain: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_domain")
+data id_parameter: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_parameter")
 data id_policy_stay: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_policy_stay")
 data id_term: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_term")
 data id_var: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_var")
@@ -142,10 +138,10 @@ data id_stay: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relo
 data rloc_variable: DecisionVariable = DecisionVariable { identity: id_var }
 data rloc_term: ObjectiveTerm = ObjectiveTerm { identity: id_term, ground: CitedToAuthority { authority: rloc_authority } }
 data rloc_constraint: DecisionConstraint = DecisionConstraint { identity: id_constraints }
-data rloc_parameter: ContextParameter = ContextParameter { identity: id_evidence }
+data rloc_parameter: ContextParameter = ContextParameter { identity: id_parameter }
 data rloc_decision_region: DecisionRegion = DecisionRegion { identity: id_region }
-data rloc_objective: ObjectiveMeasure = ObjectiveMeasure { identity: id_constraints, goal: HigherIsBetter, terms: [rloc_term] }
-data rloc_domain: ChoiceDomain = ChoiceDomain { identity: id_evidence, variables: [rloc_variable] }
+data rloc_objective: ObjectiveMeasure = ObjectiveMeasure { identity: id_objective, goal: HigherIsBetter, terms: [rloc_term] }
+data rloc_domain: ChoiceDomain = ChoiceDomain { identity: id_domain, variables: [rloc_variable] }
 data rloc_subject_value: DecisionSubject = DecisionSubject {
   identity: id_subject,
   question: "relocate this conversation's continuation to the most admissible placement, or stay" as NonEmptyStr,
@@ -158,7 +154,7 @@ fn rloc_assessment(closed: Bool) -> DecisionAssessment {
       subject: rloc_subject_value,
       sensitivities: [VariesAlong { term: id_term, variable: id_var, region: rloc_decision_region, relation: MonotoneDecreasing, coupling: CitedToAuthority { authority: rloc_authority } }],
       constraints: [ConstraintSatisfied { constraint: id_constraints, evidence: "affected source-and-destination schedule over the known ready backlog" as NonEmptyStr }],
-      parameters: [ParameterBound { parameter: id_evidence, evidence: "fixed resource grant" as NonEmptyStr }],
+      parameters: [ParameterBound { parameter: id_parameter, evidence: "fixed resource grant" as NonEmptyStr }],
       selected_candidate: Absent, term_drops: [],
       physical_model: PhysicalModelEstablished { terms: [id_term] },
       causal_model: CausalModelEstablished { couplings: [FleetObservedCoupling { receipt: id_coupling, term: id_term, variable: id_var, subject: id_subject }] },
@@ -233,7 +229,7 @@ type RelocationDecision
   | NotEstablished { reason: NonEmptyStr }
   | DeferredToPolicy
   | NoAdmissibleTransition
-  | Evacuate { destination_label: NonEmptyStr }
+  | Evacuate { destination_label: NonEmptyStr, receipt: SelectionReceipt }
   | ReconciliationRequired { obligation: NonEmptyStr }
 
 fn decide_relocation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecision {
@@ -267,9 +263,19 @@ fn decide_relocation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecisi
 }
 
 // Drain / failure removes "stay" as a feasible candidate: the question becomes which admissible
-// transition satisfies the drain. Mandatory evacuation follows feasibility, never an economic margin.
-fn decide_evacuation(destination_label: NonEmptyStr) -> RelocationDecision {
-  Evacuate { destination_label: destination_label }
+// transition satisfies the drain, and it is answered by the same std.decision selection over the same
+// funded axes and hard bound, with the stay candidate removed from the field. Mandatory evacuation follows
+// feasibility, never an economic margin: a destination worse than staying is still selected.
+fn decide_evacuation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecision {
+  match decide_relocation(field: filter(field, e => !declaration_ref_eq(a: e.identity, b: id_stay)), closed: closed) {
+    Move { destination_label: d, receipt: r } => Evacuate { destination_label: d, receipt: r }
+    Stay => NoAdmissibleTransition
+    NotEstablished { reason: why } => NotEstablished { reason: why }
+    DeferredToPolicy => DeferredToPolicy
+    NoAdmissibleTransition => NoAdmissibleTransition
+    Evacuate { destination_label: d, receipt: r } => Evacuate { destination_label: d, receipt: r }
+    ReconciliationRequired { obligation: o } => ReconciliationRequired { obligation: o }
+  }
 }
 
 // A dormant conversation (awaiting a person or tool) has no runnable demand at this boundary, so the
@@ -280,9 +286,14 @@ fn defer_when_demand_not_ready(ready: Bool, field: List<ParetoEntry>, closed: Bo
   if ready { decide_relocation(field: field, closed: closed) } else { DeferredToPolicy }
 }
 
-// A source over its retained-capacity promise is an obligation to reconcile, never "moving is free".
-fn note_source_over_retain_promise() -> RelocationDecision {
-  ReconciliationRequired { obligation: "the source is over its retained-capacity promise; reconcile the obligation, do not treat relocation as free" as NonEmptyStr }
+// A source over its retained-capacity promise is an obligation to reconcile, never "moving is free": the
+// guard runs before the economic decision, which is reached only when the source is within its promise.
+fn decide_with_retain_promise(source_over_promise: Bool, field: List<ParetoEntry>, closed: Bool) -> RelocationDecision {
+  if source_over_promise {
+    ReconciliationRequired { obligation: "the source is over its retained-capacity promise; reconcile the obligation, do not treat relocation as free" as NonEmptyStr }
+  } else {
+    decide_relocation(field: field, closed: closed)
+  }
 }
 
 // ── THE RENDERED MOVE INTENT (the model's output; the router verifies it, never re-decides) ──────
@@ -338,13 +349,12 @@ fn render_move_intent(
         authorization: authorization,
         allowance: allowance,
         receipt: r,
-        retained_state_evacuated: method_evacuates_retained_state(method: method),
       })
     Stay => NoIntent { reason: "stay preferred: no move intent" as NonEmptyStr }
     NotEstablished { reason: reason } => NoIntent { reason: reason }
     DeferredToPolicy => NoIntent { reason: "deferred: no runnable demand at this boundary" as NonEmptyStr }
     NoAdmissibleTransition => NoIntent { reason: "no admissible transition" as NonEmptyStr }
-    Evacuate { destination_label: _ } => NoIntent { reason: "evacuation is a separate mandatory-drain path, not an economic move intent" as NonEmptyStr }
+    Evacuate { destination_label: _, receipt: _ } => NoIntent { reason: "evacuation is a separate mandatory-drain path, not an economic move intent" as NonEmptyStr }
     ReconciliationRequired { obligation: o } => NoIntent { reason: o }
   }
 }
@@ -361,7 +371,6 @@ type MoveIntent {
   authorization: NonEmptyStr
   allowance: TransitionAllowance
   receipt: SelectionReceipt
-  retained_state_evacuated: Bool
 }
 
 // The /router/relocate wire form: MoveIntent's JSON encoding. The router decodes it with cjson and checks
@@ -380,7 +389,6 @@ fn move_intent_json(i: MoveIntent) -> JsonValue {
     ])),
     json_kv(key: "receipt_selected", value: json_string(s: declaration_ref_display_key(ref: i.receipt.selected_identity))),
     json_kv(key: "receipt_policy", value: json_string(s: declaration_ref_display_key(ref: policy_identity_of(policy: i.receipt.applied_policy)))),
-    json_kv(key: "retained_state_evacuated", value: json_bool(b: i.retained_state_evacuated)),
   ])
 }
 

@@ -13,7 +13,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.algebra { string_contains }
 import gunbc.serving.serving_relocation {
   decide_relocation, defer_when_demand_not_ready, move_candidate, stay_candidate, excluded_candidate, decide_evacuation,
-  note_source_over_retain_promise, claim_move, attempt_dispatch, render_move_intent, TransitionAllowance,
+  decide_with_retain_promise, claim_move, attempt_dispatch, render_move_intent, TransitionAllowance,
   Move, Stay, DeferredToPolicy, Evacuate, ReconciliationRequired,
   MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
   HandoffRecord, Dispatched, ConversationId, ReconstructFromCompleteRequest,
@@ -101,12 +101,19 @@ test fn many_tool_returns_at_once_the_second_decision_sees_the_first_reservation
   }
 }
 
-// 6. Drain or failure right after a move -> EVACUATE despite the recent move; mandatory evacuation
-//    follows feasibility, never an economic cooldown or the last move. MUTATION: gate evacuation on an
-//    economic margin -> a just-moved session would not re-evacuate -> red.
+// 6. Drain or failure right after a move -> EVACUATE despite the recent move. Stay is removed from the
+//    field and the destination is selected by the same std.decision selection: a destination WORSE than
+//    staying (net -40 vs stay's +20) is still selected, because evacuation follows feasibility, never an
+//    economic margin. The control: the same field under decide_relocation stays. MUTATION: leave stay in
+//    the evacuation field -> it dominates and the drain stays -> red.
 test fn drain_right_after_a_move_evacuates() -> Bool {
-  match decide_evacuation(destination_label: "owned-fleet-b" as NonEmptyStr) {
-    Evacuate { destination_label: d } => d == "owned-fleet-b" as NonEmptyStr
+  let field = [stay_candidate(net: 20), move_candidate(id: w_move_id, label: "owned-fleet-b" as NonEmptyStr, net: -40, service_class: 0)]
+  let economic_stays = match decide_relocation(field: field, closed: true) {
+    Stay => true
+    _ => false
+  }
+  economic_stays && match decide_evacuation(field: field, closed: true) {
+    Evacuate { destination_label: d, receipt: _ } => d == "owned-fleet-b" as NonEmptyStr
     _ => false
   }
 }
@@ -138,11 +145,17 @@ test fn cold_prefill_beside_active_decoding_excludes_before_pareto() -> Bool {
   }
 }
 
-// 9. A source over its retained-capacity promise -> an OBLIGATION to reconcile, never "free".
-//    MUTATION: make this return Move with no obligation -> the case that a move is not free is lost -> red.
+// 9. A source over its retained-capacity promise -> an OBLIGATION to reconcile, never "free", even when the
+//    field holds a dominating move; within its promise the same field moves (the control).
+//    MUTATION: drop the guard -> the dominating move is selected while over promise -> red.
 test fn a_source_over_its_retain_promise_is_an_obligation_not_free() -> Bool {
-  match note_source_over_retain_promise() {
+  let field = [stay_candidate(net: -50), move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)]
+  let over = match decide_with_retain_promise(source_over_promise: true, field: field, closed: true) {
     ReconciliationRequired { obligation: _ } => true
+    _ => false
+  }
+  over && match decide_with_retain_promise(source_over_promise: false, field: field, closed: true) {
+    Move { destination_label: _, receipt: _ } => true
     _ => false
   }
 }
