@@ -2,7 +2,8 @@ module gunbc.machine_intake.dimm_physical_orientation
 
 import extdeps.board_authority { BoardAuthorityRef, BoardAuthorityLookup }
 import gunbc.board_authority_binding { observed_board_authority }
-import std.types { String, List, list_length }
+import std.types { String, List }
+import std.algebra { length }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { FrontierRow, DeclSubject }
@@ -143,8 +144,8 @@ fn host_dimm_slot_map(oriented: DimmOrientedHost, tech_end: ChassisEnd, history:
               } }
             })
             let lines = fold(resolved, init: [] as List<DimmSlotMapLine>, f: (acc, r) => match r { Present { value: l } => concat(acc, [l])  Absent => acc })
-            if list_length(items: lines) != list_length(items: order) || list_length(items: readback_unresolved(population: population, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)) > 0 {
-              SlotMapRefused { refusal: SlotMapConnectorUnresolved { connector: list_length(items: lines) } }
+            if length(xs: lines) != length(xs: order) || length(xs: readback_unresolved(population: population, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)) > 0 {
+              SlotMapRefused { refusal: SlotMapConnectorUnresolved { connector: length(xs: lines) } }
             } else {
               let damage = population_damage_standing(population: population, candidates: candidates)
               let readback = expected_firmware_readback(connectors: population.connectors, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)

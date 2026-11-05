@@ -13,6 +13,7 @@ import extdeps.bmc.capability {
   bmc_firmware_capability_row_for,
 }
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog }
 import extdeps.firmware.types { firmware_semantic_version }
 import gunbc.fleet.fleet_bmc_observation {
   srv3_bmc_firmware_observation,
@@ -136,3 +137,6 @@ data srv3_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserv
 data srv4_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserved {
   observation: srv4_bmc_firmware_observation,
 }
+
+data fleet_bmc_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
+

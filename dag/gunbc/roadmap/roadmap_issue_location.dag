@@ -14,6 +14,10 @@ fn issue_assign_path(node_id: String) -> String { concat(issue_page_path(node_id
 
 fn issue_comment_path(node_id: String) -> String { concat(issue_page_path(node_id: node_id), "/comment") }
 
+fn issue_close_path(node_id: String) -> String { concat(issue_page_path(node_id: node_id), "/close") }
+
+fn issue_retire_path(node_id: String) -> String { concat(issue_page_path(node_id: node_id), "/retire") }
+
 fn issue_anchor_path(node_id: String, anchor: String) -> String { join([issue_page_path(node_id: node_id), "#", anchor], "") }
 
 // THE WORK TAB AND ITS FAILURE EVENTS. The Work tab's panel carries the tab's own anchor, and each

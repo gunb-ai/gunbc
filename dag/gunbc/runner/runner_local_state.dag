@@ -1,6 +1,6 @@
 module gunbc.runner.runner_local_state
 
-import std.types { String, NonEmptyStr, Bool, List, Timestamp }
+import std.types { String, NonEmptyStr, Bool, List, Timestamp, EpochSecs }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd {
@@ -73,11 +73,24 @@ type RunnerMaterializationObservation
 // is emphatically not a resolved identity. It keeps the raw pid because the number is real and
 // diagnostically useful, and it is typed so that nothing can compare it as though it were an
 // identity: there is no arm in which a bare pid reaches a consumer expecting one.
+//
+// THE ABSOLUTE START IS OBSERVED HERE, NOT COMPUTED IN A DECISION. A pid is reused across a reboot,
+// and a JIT registration name carries only the wrapper's MINT EPOCH (a wall clock). To tell a live
+// registration from a recycled pid the join needs the process's own wall-clock start — and a wall
+// clock belongs at the observation boundary, never inside the pure decision. So the same FleetSsh
+// probe that reads /proc/PID/stat also reads /proc/stat's btime and the clock tick rate, and supplies
+// the main process's absolute start. An unread btime or tick rate is StartUnread, never a zero — a
+// zero would make every pid-matched row look either fresh or ancient depending on the sign of the
+// comparison.
+type ProcessAbsoluteStart
+  = StartObserved { started_at: EpochSecs }
+  | StartUnread { cause: NonEmptyStr }
+
 type RunnerUnitMainProcess
   = MainProcessUnread { cause: NonEmptyStr }
   | NoMainProcess
   | MainProcessUngrounded { pid: Nat, cause: NonEmptyStr }
-  | MainProcess { process: ProcessIdentity }
+  | MainProcess { process: ProcessIdentity, absolute_start: ProcessAbsoluteStart }
 
 type RunnerUnitObservation
   = UnitUnobserved { cause: NonEmptyStr }

@@ -1,6 +1,7 @@
 module test.claim.legacy_binding_tap_coverage_witness
 
-import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { length }
 import gunbc.rust_item_identity { RustItemDeclarationRef, RustItemWhole }
 import gunbc.legacy_binding_tap_coverage {
   TapCoverageCensus, TapCoverageStanding,
@@ -191,13 +192,13 @@ test fn a_site_measured_at_another_revision_refuses() -> Bool {
     target_identity: exact_target(),
   }
   let s = admit_tap_coverage_census(c: census_of(sites: [stale]))
-  count_causes(s: s, p: is_revision_mismatch) == 1 && list_length(items: causes_of(s: s)) == 1
+  count_causes(s: s, p: is_revision_mismatch) == 1 && length(xs: causes_of(s: s)) == 1
 }
 
 test fn a_site_with_no_families_refuses_rather_than_counting_as_out_of_scope() -> Bool {
   let empty = probe(name: "empty", occurrence: OccurrenceIdentityExact, target: exact_target(), families: [])
   let s = admit_tap_coverage_census(c: census_of(sites: [empty]))
-  list_length(items: causes_of(s: s)) == 1
+  length(xs: causes_of(s: s)) == 1
 }
 
 test fn duplicate_sites_yield_one_cause_per_excess_row() -> Bool {
@@ -207,7 +208,7 @@ test fn duplicate_sites_yield_one_cause_per_excess_row() -> Bool {
 }
 
 test fn an_empty_census_refuses() -> Bool {
-  list_length(items: causes_of(s: admit_tap_coverage_census(c: census_of(sites: [])))) == 1
+  length(xs: causes_of(s: admit_tap_coverage_census(c: census_of(sites: [])))) == 1
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +230,7 @@ fn site_named(name: String) -> Bool {
 }
 
 test fn the_five_measured_sites_are_the_callable_resolution_surfaces() -> Bool {
-  list_length(items: tap_coverage_sites()) == 5
+  length(xs: tap_coverage_sites()) == 5
     && site_named(name: "callable_lookup_over_candidates")
     && site_named(name: "lookup_func_sig")
     && site_named(name: "func_sig_from_global_bare")
@@ -284,7 +285,7 @@ test fn no_surveyed_site_receives_the_parser_minted_occurrence_identity() -> Boo
 // THE UNSURVEYED FAMILIES ARE COUNTED. A one-family census whose roster is its only output reads as
 // a whole-compiler one.
 test fn the_four_unsurveyed_decision_surfaces_are_counted_refusals() -> Bool {
-  list_length(items: tap_coverage_refusals()) == 4
+  length(xs: tap_coverage_refusals()) == 4
     && fold(tap_coverage_refusals(), init: true, f: fn(acc, r) {
          acc && match r {
            DecisionSurfaceUnsurveyed { surface: s, cause: _ } => (s as String) != ""

@@ -76,8 +76,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //    gunbc.host.host_primary_network_apply does FleetHostFileSubject core writes then netplan try
 //    in a transient unit with on-disk rollback and a readback from a host OTHER than the target) is
 //    DRAFT in PR gunbc#15100 and NOT on main as of 2026-10-25 -- citing it as existing would be
-//    fabrication. The route is not arch-bound, but the try wrapper renders a wait-online command
-//    from the row's renderer, so this host's row must state the renderer the hand install used --
+//    fabrication. The route is not arch-bound, but the owned netplan file renders the row's renderer
+//    (gunbc.host.host_primary_network), so this host's row must state the renderer the hand install used --
 //    which the receipt holds NotRelayed (network_config_report). For H11SSL unit 1: none exists --
 //    neither the observed NIC/netplan/lease receipt, nor a derived desired row, nor the LAN record.
 //
@@ -220,8 +220,7 @@ data h11ssl_install_to_disk_frontier: FrontierRow = frontier_row_decl(
   dissolution: h11ssl_install_to_disk_dissolution,
 )
 
-// THE FOLD (DESIGN §3c): gunbc.census_closure_frontier enrolls these rows into the dissolution
-// census; the hand-install receipt names this module as where its install's missing route lives;
+// DESIGN §3c: the roster fold that enrolled these rows (gunbc.census_closure_frontier) was retired; the hand-install receipt names this module as where its install's missing route lives;
 // test.claim.supermicro_h11ssl_x86_bringup_frontier_witness exercises the roster.
 data h11ssl_x86_bringup_frontier_rows: List<FrontierRow> = [
   h11ssl_virtual_media_frontier,

@@ -1,12 +1,15 @@
 module v2.test.claim.bash_command_fold
 
 
+import v2.compiler.emit_orchestration { orch_emit_cmdsubst_word_spelling }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.bash {
+  bash_cmdsubst_body_spelling,
   bash_stmt_env_prefixed_emitted,
   bash_stmt_heredoc_emitted,
   bash_stmt_negation_emitted,
   bash_stmt_with_redir_emitted,
+  bash_word_cmdsubst_source_text,
   bash_word_pass_emitted
 }
 import v2.extdeps.languages.bash_build {
@@ -21,6 +24,10 @@ import v2.extdeps.languages.bash_build {
   bash_build_or_else,
   bash_build_pipe,
   bash_build_subshell_from_stmts,
+  bash_build_assign,
+  bash_build_word_cmdsubst,
+  bash_build_word_lit,
+  bash_build_word_concat_from_nodes,
   bash_build_with_redir,
   bash_build_with_redir_to_file,
   bash_build_with_redir_from_file,
@@ -83,6 +90,21 @@ data bash_fold_and_or_negation_grouped_golden: String = "('true' || 'true') && (
 data bash_fold_assign_foo_golden: String = "FOO='bar'"
 data bash_fold_assign_home_golden: String = "X=\"$HOME\""
 data bash_fold_assign_quote_golden: String = "VAR='a'\\''b'"
+// THE SUBSTITUTION'S TWO OPENERS NEVER TOUCH, AND NO CALLER CAN MAKE THEM. `$((` is bash's arithmetic
+// opener: `$(('cd' '..'; 'pwd'))` dies at run time with `syntax error: operand expected`, while
+// `$( ('cd' '..'; 'pwd'))` prints what the caller asked for -- both checked against bash, not reasoned about.
+// The renderer never emits the colliding bytes: the substitution's own text is spelled with the separating
+// space (bash_fold_cmdsubst_source_text_separates_the_openers_holds), and the doors that spell a
+// substitution from their grammar row -- a command, a concatenation -- refuse a subshell operand instead of
+// emitting bytes bash cannot read (the three *_refuses_* rows). The goldens are hand-authored bytes, as every
+// golden in this file is, so they cannot be written by the renderer they test.
+data bash_fold_cmdsubst_subshell_assign_golden: String = "PRIVATE_ROOT=$( ('cd' '..'; 'pwd'))"
+data bash_fold_cmdsubst_operand_golden: String = "$('realpath' '..')"
+// The same ordinary operand through the WORD path (an assignment's value), where the spacing rule is read
+// from the binding: conditionality must hold there too, not only inside the rule itself.
+data bash_fold_cmdsubst_assign_operand_golden: String = "PRIVATE_ROOT=$('realpath' '..')"
+data bash_fold_cmdsubst_in_concat_golden: String = "'overlay='$('realpath' '..')'/'"
+
 data bash_fold_cmd_echo_hi_golden: String = "'echo' 'hi'"
 data bash_fold_cmd_grep_golden: String = "'grep' '-rn' 'foo_bar.baz'"
 data bash_fold_cmd_home_golden: String = "\"$HOME\""
@@ -182,6 +204,150 @@ fn bash_fold_if_stmt(node: Node) -> BashEmitStmt {
     production_binding: ^bash_production_fold_if,
     rule_name: ^bash_relation_rule_fold_if
   }
+}
+
+// THE SAME SUBSTITUTION, ON EVERY PATH TO THE BYTES. Where the substitution's own text spelling is used -- a
+// word in a statement, an assignment value, a redirection target -- the valid spaced form RENDERS: the space is
+// a spelling matter and the language module owns it, so nothing is forbidden (DESIGN §4d). Where the bytes come
+// from a GRAMMAR ROW -- a command, a concatenation -- `$(` and the body are separate tokens that no rule can
+// separate, and the row renderer refuses that operand with one typed reason: the only bytes it could emit are
+// ones bash rejects. The rows then hold both halves to their evidence: non-colliding substitutions, including
+// one inside a concatenation, still render, so neither half can be satisfied by banning command substitution.
+// Removing the spacing rule reddens exactly the spaced-form and spelling rows; removing the row-render guard
+// reddens exactly the command and concatenation refusal rows.
+fn cmdsubst_subshell_body_word() -> Node {
+  bash_build_word_cmdsubst(
+    body: bash_build_subshell_from_stmts(
+      stmts: [
+        bash_build_command_from_lits(lits: ["cd", ".."]),
+        bash_build_command_from_lits(lits: ["pwd"])
+      ]
+    )
+  )
+}
+
+fn cmdsubst_operand_body_word() -> Node {
+  bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["realpath", ".."]))
+}
+
+fn cmdsubst_rendered_text_renders_spaced(rendered: Outcome<String>) -> Bool {
+  match rendered {
+    Accepted { value: t, diagnostics: _ } =>
+      string_contains(s: t, pattern: "$( (") && !string_contains(s: t, pattern: "$((")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cmdsubst_subshell_refusal_holds(rendered: Outcome<String>) -> Bool {
+  match rendered {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^bash_fold_serialize_cmdsubst_subshell_operand_refused
+  }
+}
+
+test fn bash_fold_command_door_refuses_a_substitution_carrying_a_subshell_holds() -> Bool {
+  cmdsubst_subshell_refusal_holds(
+    rendered: bash_fold_serialize_node(
+      stmt: bash_build_command_from_word_nodes([cmdsubst_subshell_body_word()])
+    )
+  )
+}
+
+// WHERE THE SUBSTITUTION'S TEXT IS SPELLING IT, THE VALID SHAPE RENDERS. This is the mirror's compose-step
+// shape, and it is not refused: the space is a spelling matter, and the language module owns that spelling.
+test fn bash_fold_cmdsubst_subshell_body_renders_spaced_through_the_word_path_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_assign_stmt(
+      node: bash_build_assign(name: "PRIVATE_ROOT", value: cmdsubst_subshell_body_word())
+    ),
+    golden: bash_fold_cmdsubst_subshell_assign_golden
+  )
+}
+
+test fn bash_fold_concat_door_refuses_a_substitution_carrying_a_subshell_holds() -> Bool {
+  cmdsubst_subshell_refusal_holds(
+    rendered: bash_fold_serialize_node(
+      stmt: bash_build_command_from_word_nodes([
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "overlay="),
+          cmdsubst_subshell_body_word()
+        ])
+      ])
+    )
+  )
+}
+
+// A SUBSTITUTION REACHED AS A REDIRECTION TARGET IS SPELLED BY THE WORD PATH TOO, so it renders the spaced
+// form and never the arithmetic openers. Asserted as a property rather than a golden because the surrounding
+// redirection spelling is this row's subject, not its claim.
+test fn bash_fold_cmdsubst_subshell_body_renders_spaced_as_a_redirection_target_holds() -> Bool {
+  cmdsubst_rendered_text_renders_spaced(
+    rendered: bash_fold_serialize_node(
+      stmt: bash_build_with_redir_to_file(
+        inner: bash_build_command_from_lits(lits: ["echo", "x"]),
+        path: cmdsubst_subshell_body_word()
+      )
+    )
+  )
+}
+
+test fn bash_fold_cmdsubst_ordinary_operand_gains_no_space_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(node: bash_build_command_from_word_nodes([cmdsubst_operand_body_word()])),
+    golden: bash_fold_cmdsubst_operand_golden
+  )
+}
+
+// CONDITIONALITY ON THE WORD PATH: the spacing rule reads the body, and a body that opens with a command
+// name must reach the renderer's bytes unchanged -- the counterweight to the two spaced goldens.
+test fn bash_fold_cmdsubst_ordinary_operand_gains_no_space_through_the_word_path_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_assign_stmt(node: bash_build_assign(name: "PRIVATE_ROOT", value: cmdsubst_operand_body_word())),
+    golden: bash_fold_cmdsubst_assign_operand_golden
+  )
+}
+
+test fn bash_fold_cmdsubst_inside_a_concatenation_still_renders_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(
+      node: bash_build_command_from_word_nodes([
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "overlay="),
+          cmdsubst_operand_body_word(),
+          bash_build_word_lit(text: "/")
+        ])
+      ])
+    ),
+    golden: bash_fold_cmdsubst_in_concat_golden
+  )
+}
+
+// THE SPACING RULE THE LANGUAGE MODULE OWNS, AT THE POINT THE SUBSTITUTION'S OWN TEXT IS SPELLING IT: the
+// space appears before a body that opens with `(` and nowhere else, and it reaches both text surfaces of the
+// production (its source text and the binding's own text), so a caller that reaches the substitution through
+// its tokens and one that reaches it through its target model cannot disagree about the bytes.
+test fn bash_fold_cmdsubst_source_text_separates_the_openers_holds() -> Bool {
+  string_eq(
+    a: bash_word_cmdsubst_source_text(body: "('cd' '..'; 'pwd')"),
+    b: "$( ('cd' '..'; 'pwd'))"
+  )
+}
+
+test fn bash_cmdsubst_body_spelling_pads_only_a_body_opening_with_a_paren_holds() -> Bool {
+  string_eq(a: bash_cmdsubst_body_spelling(body: "('cd' '..'; 'pwd')"), b: " ('cd' '..'; 'pwd')") &&
+    string_eq(a: bash_cmdsubst_body_spelling(body: "'realpath' '..'"), b: "'realpath' '..'") &&
+    string_eq(a: bash_cmdsubst_body_spelling(body: ""), b: "")
+}
+
+// THE THIRD SPELLING SURFACE for the same substitution: the orchestration emitter spells a body itself, and
+// it takes the same rule -- separated when the body opens with `(`, untouched otherwise. Without these two
+// rows the rule could rot in one spelling site while the others silently diverge.
+test fn orch_cmdsubst_word_spelling_separates_a_body_opening_with_a_paren_holds() -> Bool {
+  string_eq(a: orch_emit_cmdsubst_word_spelling(callee: "('cd'", args: ["'..'"]), b: "$( ('cd' '..')")
+}
+
+test fn orch_cmdsubst_word_spelling_leaves_an_ordinary_body_untouched_holds() -> Bool {
+  string_eq(a: orch_emit_cmdsubst_word_spelling(callee: "realpath", args: ["'..'"]), b: "$(realpath '..')")
 }
 
 fn bash_fold_with_redir_stmt(node: Node) -> BashEmitStmt {

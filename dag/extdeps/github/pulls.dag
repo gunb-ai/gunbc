@@ -1,4 +1,5 @@
 module extdeps.github.pulls
+import std.types { Bearer }
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, AuthScheme }
@@ -41,6 +42,34 @@ type PullRequestState = Open | Closed
 // of the filter and of no resource. Reusing PullRequestState for the filter made `all`
 // unexpressible. The arms carry a ListState prefix because Open and Closed already name
 // PullRequestState's arms in this module; the wire contract strips it.
+// The pull-object state WORD exactly as the upstream returns it (DESIGN §3: extdeps models
+// what the API actually returns). Two carriers are real: the gh CLI view answers the merged
+// state directly ("MERGED"), the REST pull object says only "closed" and mergedAt — null until
+// merged — carries the merge fact. Both spellings decode; an unrecognised word is typed
+// unknown, never a defaulted pass.
+type PullRequestViewState
+  = PullRequestViewOpen
+  | PullRequestViewClosed
+  | PullRequestViewMerged
+  | PullRequestViewUnknown { word: NonEmptyStr }
+
+fn github_pull_request_view_state(word: NonEmptyStr) -> PullRequestViewState {
+  if word == "OPEN" || word == "open" { PullRequestViewOpen }
+  else if word == "CLOSED" || word == "closed" { PullRequestViewClosed }
+  else if word == "MERGED" { PullRequestViewMerged }
+  else { PullRequestViewUnknown { word: word } }
+}
+
+// The canonical word an operator sees in a refusal.
+fn github_pull_request_view_state_text(state: PullRequestViewState) -> NonEmptyStr {
+  match state {
+    PullRequestViewOpen => "OPEN" as NonEmptyStr
+    PullRequestViewClosed => "CLOSED" as NonEmptyStr
+    PullRequestViewMerged => "MERGED" as NonEmptyStr
+    PullRequestViewUnknown { word: w } => w
+  }
+}
+
 type PullRequestListStateFilter = ListStateOpen | ListStateClosed | ListStateAll
 
 data list_pull_requests_authority: ExternalAuthority = ExternalAuthority {
@@ -179,6 +208,33 @@ service github.CliPulls {
         "--state", "open",
         "--limit", "1000",
         "--json", "author,number,title,url,headRefName,headRefOid,isDraft,state,changedFiles",
+      ]
+    }
+  }
+
+  // THE CLOSE ROUTE'S MERGED READBACK (operator close, 2026-11-04): one pull request, its state,
+  // its merge instant and its head sha, read from GitHub at close time. The close route never trusts
+  // a bare operator claim that a PR merged — it reads this back and refuses (including when the read
+  // itself fails) unless the pull is verifiably merged. `mergedAt` is GitHub's own fact: null until
+  // merged. readonly, and it refuses honestly: gh exits nonzero when the pull does not exist, which
+  // is a RESULT the caller maps — never a silent pass.
+  operation ViewMergedJson {
+    requires Network
+    input {
+      repo: NonEmptyStr
+      pull_number: Int
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "gh", "pr", "view", "{pull_number}",
+        "--repo", "{repo}",
+        "--json", "number,state,mergedAt,url,headRefOid",
       ]
     }
   }
