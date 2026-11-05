@@ -19,7 +19,7 @@ ls -l "$OUT/bin" "$OUT/lib" >"$OUT/copies.txt"
 CAPB=$(numfmt --from=iec "$ENV"); UNIT=lt72-slot-$MODE-$$
 case $MODE in
 livelock) PY='
-import os,json,re,ast
+import os,json,re,ast,mmap
 cap=int(os.environ["CAP"]); cg="/sys/fs/cgroup"+open("/proc/self/cgroup").read().split("::")[1].strip()
 def ev():
     d=dict(l.split() for l in open(cg+"/memory.events")); return int(d["high"])+int(d["max"])
@@ -28,7 +28,9 @@ while ev()==0: ch.append(bytearray(b"\x01")*(256<<10))
 src="def f(a,b):\n    return [a*i+b for i in range(100)]\n"*40
 i=0
 while True:
-    b=bytearray(2<<20); b[::4096]=b"\x01"*len(b[::4096]); del b
+    m=mmap.mmap(-1,2<<20)
+    for o in range(0,2<<20,4096): m[o]=1
+    m.close()
     json.dumps({"k":list(range(200))}); re.compile("(a|b)+c%d"%(i%97)); ast.parse(src); i+=1';;
 cpusteady) PY='
 import os
@@ -63,6 +65,16 @@ sleep 3; BASE=$(cat "$CG/memory.current"); echo "baseline_with_worker_at_3s $BAS
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(( $(date +%s)-T0 ))" "$(wc -l <"$CG/cgroup.procs")" "$(cat $CG/memory.current)" "$ev" "$(awk '/user_usec/{print $2}' $CG/cpu.stat)" "$(kill -0 "$LPID" 2>/dev/null && echo 1 || echo 0)" >>"$OUT/samples.tsv"
     sleep 5
   done ) & SAMP=$!
+# PRECONDITION (livelock only): the stall must be established before the verb starts, else a non-livelock reads as "watchdog did nothing"
+if [ "$MODE" = livelock ]; then
+  evsum() { awk '$1=="high"||$1=="max"{s+=$2} END{print s}' "$CG/memory.events"; }
+  E0=$(evsum); U0=$(awk '/user_usec/{print $2}' "$CG/cpu.stat"); sleep 20
+  E1=$(evsum); U1=$(awk '/user_usec/{print $2}' "$CG/cpu.stat")
+  echo "precondition ev_delta=$((E1-E0)) user_usec_delta=$((U1-U0)) over 20s" | tee "$OUT/precondition.txt"
+  if [ $((E1-E0)) -le 1000 ] || [ $((U1-U0)) -ge 4000000 ]; then
+    echo "livelock not established" | tee -a "$OUT/precondition.txt"; kill $SAMP 2>/dev/null; systemctl --user stop "$UNIT"; exit 3
+  fi
+fi
 # the verb under test, with a hard stop at $SECS (fixture, not production)
 /usr/bin/time -v -o "$OUT/verb.time" timeout "$SECS" ${SUDO:-} "$BIN" slot-watchdog --slot-cgroup "$CG" --source-root "$CHK/dag" --source-root "$CHK/src/v2" >"$OUT/verb.out" 2>&1
 echo "verb_rc=$?" >"$OUT/verdict.txt"
