@@ -140,7 +140,7 @@ fn find_tree_regular_files_sha256_command(root: String) -> ArgvCommand {
 // find_symlink_targets_command is NOT this read: it enumerates only the links, so the entries it
 // cannot see drop out of the comparison silently -- the exact defect this carrier exists to close.
 fn find_tree_entry_metadata_command(root: String) -> ArgvCommand {
-  argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", "%P|%y|%m|%u|%g|%s|t=%l\\n"])
+  argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", "%P|%y|%m|%u|%g|%l|%s\\n"])
 }
 
 // THE DIRECT CHILDREN OF A DIRECTORY WHOSE NAME MATCHES A GLOB, one bare name per line (-maxdepth 1,

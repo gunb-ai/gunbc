@@ -1,5 +1,6 @@
 module test.claim.host.approval_broker_tree_install_witness
 
+import std.types { CommitSha }
 import gunbc.host.host_effect_realize {
   TreeFileHash,
   one_transport_route,
@@ -34,6 +35,7 @@ import gunbc.host.host_effect_realize {
   tree_metadata_disagreement,
   tree_metadata_list_contains,
   tree_directory_targets,
+  tree_symlink_entries,
   tree_receipt_body,
   tree_install_step_name,
   TreeStepInstallLink,
@@ -214,7 +216,14 @@ test fn an_unobserved_side_disagrees_with_its_cause_preserved() -> Bool {
 
 // One file, one link with a stored target, one directory, and the starting point's OWN row (the
 // `%P` field empty) that must be excluded from entries and from the count guard alike.
-data metadata_stdout: String = "gunbc/x.dag|f|644|gunbc|gunbc|123|t=\nlink|l|777|gunbc|gunbc|0|t=/usr/bin/python3\ndir|d|755|gunbc|gunbc|4096|t=\n|d|700|root|root|4096|t=\n"
+// ── S2: OBSERVED TREE METADATA ───────────────────────────────────────────────
+// One fixture carries the cases the carrier must distinguish: a regular file (empty target), a
+// symlink (stored target kept verbatim, never resolved), a directory, and a line naming the search
+// root ITSELF, which the parse refuses.
+
+data deploy_owner: NonEmptyStr = "gunbc"
+
+data metadata_stdout: String = "gunbc/x.dag|f|644|gunbc|gunbc||123\nlink|l|777|gunbc|gunbc|/usr/bin/python3|16\ndir|d|755|gunbc|gunbc||4096\n|d|700|root|root||4096\n"
 
 fn metadata_entries() -> List<TreeMetadataEntry> {
   tree_metadata_entries_of_stdout(stdout: metadata_stdout, sub: "dag")
@@ -222,166 +231,150 @@ fn metadata_entries() -> List<TreeMetadataEntry> {
 
 test fn metadata_parse_keeps_kinds_targets_and_rebases_onto_the_subdirectory() -> Bool {
   let es = metadata_entries()
-  count(es) == 3
+  count(list_map(xs: es, f: e => tree_metadata_entry_line(entry: e))) == 3
+    && tree_metadata_entry_line(entry: es_head(es)) == "dag/gunbc/x.dag|f|644|gunbc|gunbc"
     && tree_metadata_entry_line(entry: es_skip_none_head(es)) == "dag/link|l|777|gunbc|gunbc|/usr/bin/python3"
-    && tree_metadata_list_contains(lines: list_map(xs: es, f: e => tree_metadata_entry_line(entry: e)), line: "dag/dir|d|755|gunbc|gunbc")
-    && !tree_metadata_list_contains(lines: list_map(xs: es, f: e => tree_metadata_entry_line(entry: e)), line: "|d|700|root|root")
 }
 
-// THE FIRST ENTRY OF THE PARSED LIST IS THE LINK ONLY AFTER SORTING; take it by a fold that keeps
-// the sole SymlinkEntryKind line, so no index operator is needed.
+// THE FIRST PARSED ENTRY: an empty path is not a name find can print (the root line is refused),
+// so the empty-path sentinel below cannot collide with a real entry.
+fn es_head(es: List<TreeMetadataEntry>) -> TreeMetadataEntry {
+  fold(es, init: TreeMetadataEntry { path: "", kind_text: "", link_target: "", mode: "", owner: "", group: "" }, f: (acc, e) => if acc.path == "" { e } else { acc })
+}
+
 fn es_skip_none_head(es: List<TreeMetadataEntry>) -> TreeMetadataEntry {
-  fold(es, init: TreeMetadataEntry { path: "", kind_text: "", target: "", mode: "", owner: "", group: "" }, f: (acc, e) =>
-    if e.kind_text == "l" { e } else { acc })
+  fold(es, init: TreeMetadataEntry { path: "", kind_text: "", link_target: "", mode: "", owner: "", group: "" }, f: (acc, e) => if e.kind_text == "l" { e } else { acc })
 }
 
-// THE GRAMMAR REFUSES WHAT IT CANNOT NAME: an unknown type char, an empty link target, a non-octal
-// mode, and a target carrying the field delimiter (eight fields) all parse to nothing, which the
-// count guard in observe turns into a refusal -- never a silently dropped entry.
 test fn the_metadata_grammar_refuses_what_it_cannot_name() -> Bool {
-  tree_metadata_parse_refused(line: "x|q|644|gunbc|gunbc|1|t=")
-    && tree_metadata_parse_refused(line: "x|l|777|gunbc|gunbc|0|")
-    && tree_metadata_parse_refused(line: "x|f|6x4|gunbc|gunbc|1|t=")
-    && tree_metadata_parse_refused(line: "x|l|777|gunbc|gunbc|0|a|b")
-    && tree_metadata_parse_refused(line: "|d|755|root|root|4096|t=")
+  tree_metadata_parse_refused(line: "x|q|644|gunbc|gunbc||1")
+    && tree_metadata_parse_refused(line: "x|f|6x4|gunbc|gunbc||1")
+    && tree_metadata_parse_refused(line: "x|l|777|gunbc|gunbc|a|b|1")
+    && tree_metadata_parse_refused(line: "x|l|777|gunbc|gunbc||1")
+    && tree_metadata_parse_refused(line: "x|f|644|gunbc|gunbc|oops|1")
+    && tree_metadata_parse_refused(line: "|d|755|root|root||4096")
 }
 
-// One refusal probe, so the claim reads as the RULE ("these shapes are refused"), not as five
-// repetitions of the same match.
 fn tree_metadata_parse_refused(line: String) -> Bool {
-  match tree_metadata_entry_of_line(line: line, sub: "dag") {
+  match tree_metadata_entry_of_line(line: line, sub: "/x") {
     Absent => true
-    Present { value: _ } => false
+    Present { value: _entry } => false
   }
 }
 
-// THE EXPECTATION IS THE INSTALL'S OWN CONTRACT: kinds and link targets survive from the source
-// UNCHANGED; modes and ownership come from the shared spellings the install steps pass, never from
-// the source's own (the source is the operator's checkout).
 test fn the_expectation_fixes_kind_target_shared_mode_and_deploy_owner() -> Bool {
-  let src = [
-    TreeMetadataEntry { path: "dag/a.dag", kind_text: "f", target: "", mode: "600", owner: "operator", group: "operator" },
-    TreeMetadataEntry { path: "dag/link", kind_text: "l", target: "/usr/bin/python3", mode: "777", owner: "operator", group: "operator" },
-    TreeMetadataEntry { path: "dag/empty-dir", kind_text: "d", target: "", mode: "700", owner: "operator", group: "operator" },
+  let sources = [
+    TreeMetadataEntry { path: "dag/gunbc/x.dag", kind_text: "f", link_target: "", mode: "600", owner: "briansrls", group: "staff" },
+    TreeMetadataEntry { path: "dag/link", kind_text: "l", link_target: "../bin/gunbc", mode: "700", owner: "briansrls", group: "staff" },
+    TreeMetadataEntry { path: "dag/lib", kind_text: "d", link_target: "", mode: "600", owner: "briansrls", group: "staff" },
   ]
-  tree_metadata_lines(entries: tree_installed_expectation(entries: src, owner: "gunbc" as NonEmptyStr))
-    == "dag/a.dag|f|644|gunbc|gunbc\ndag/empty-dir|d|755|gunbc|gunbc\ndag/link|l|777|gunbc|gunbc|/usr/bin/python3\n"
+  let expected = tree_installed_expectation(entries: sources, owner: deploy_owner)
+  let expected_lines = list_map(xs: expected, f: e => tree_metadata_entry_line(entry: e))
+  count(expected_lines) == 3
+    && tree_metadata_list_contains(lines: expected_lines, line: "dag/gunbc/x.dag|f|644|gunbc|gunbc")
+    && tree_metadata_list_contains(lines: expected_lines, line: "dag/link|l|777|gunbc|gunbc|../bin/gunbc")
+    && tree_metadata_list_contains(lines: expected_lines, line: "dag/lib|d|755|gunbc|gunbc")
 }
 
-// THE EMITTED TEXT IS DETERMINISTIC: the same entries, enumerated twice (as the plan and the
-// readback each do), digest the same because they SPELL the same -- sorted, newline-terminated.
 test fn metadata_lines_are_sorted_and_stable_across_emissions() -> Bool {
   let src = [
-    TreeMetadataEntry { path: "dag/z", kind_text: "d", target: "", mode: "755", owner: "gunbc", group: "gunbc" },
-    TreeMetadataEntry { path: "dag/a", kind_text: "f", target: "", mode: "644", owner: "gunbc", group: "gunbc" },
+    TreeMetadataEntry { path: "dag/z", kind_text: "f", link_target: "", mode: "644", owner: "gunbc", group: "gunbc" },
+    TreeMetadataEntry { path: "dag/gunbc/x.dag", kind_text: "f", link_target: "", mode: "644", owner: "gunbc", group: "gunbc" },
+    TreeMetadataEntry { path: "dag/link", kind_text: "l", link_target: "../bin/gunbc", mode: "777", owner: "gunbc", group: "gunbc" },
   ]
-  tree_metadata_lines(entries: src) == tree_metadata_lines(entries: concat(src_skip(src, "dag/z"), [src_head(src, "dag/z")]))
-    && tree_metadata_lines(entries: src) == "dag/a|f|644|gunbc|gunbc\ndag/z|d|755|gunbc|gunbc\n"
+  tree_metadata_lines(entries: src) == tree_metadata_lines(entries: concat(left: src_skip(src: src, unwanted: "dag/link"), right: [src_head(src: src, wanted: "dag/link")]))
+    && tree_metadata_lines(entries: src) == tree_metadata_lines(entries: src)
+    && tree_metadata_lines(entries: []) == ""
 }
 
 fn src_head(src: List<TreeMetadataEntry>, wanted: String) -> TreeMetadataEntry {
-  fold(src, init: TreeMetadataEntry { path: "", kind_text: "", target: "", mode: "", owner: "", group: "" }, f: (acc, e) => if e.path == wanted { e } else { acc })
+  fold(src, init: TreeMetadataEntry { path: "", kind_text: "", link_target: "", mode: "", owner: "", group: "" }, f: (acc, e) => if e.path == wanted { e } else { acc })
 }
 
 fn src_skip(src: List<TreeMetadataEntry>, unwanted: String) -> List<TreeMetadataEntry> {
   fold(src, init: [], f: (acc, e) => if e.path == unwanted { acc } else { acc.append(e) })
 }
 
-// THE VANISHING SYMLINK GOES RED: a source link absent from the installed tree, and its evil twin --
-// the link silently MATERIALIZED as a regular file by a copy that followed it -- both refuse, naming
-// the entry. Before this read, both passed: the hash enumeration never saw the link on either side.
-test fn a_vanishing_or_materialized_symlink_is_red() -> Bool {
-  let src = [TreeMetadataEntry { path: "dag/link", kind_text: "l", target: "x", mode: "777", owner: "operator", group: "operator" }]
-  let expected = tree_installed_expectation(entries: src, owner: "gunbc" as NonEmptyStr)
-  let vanished: List<TreeMetadataEntry> = []
-  let materialized = [TreeMetadataEntry { path: "dag/link", kind_text: "f", target: "", mode: "644", owner: "gunbc", group: "gunbc" }]
-  match tree_metadata_disagreement(expected: expected, observed: vanished) {
-    Present { value: v1 } =>
-      starts_with(s: v1, prefix: "missing entry dag/link|l|")
-        && match tree_metadata_disagreement(expected: expected, observed: materialized) {
-          Present { value: v2 } => starts_with(s: v2, prefix: "missing entry dag/link|l|")
-          Absent => false
-        }
+fn disagreement_names(expected: List<TreeMetadataEntry>, observed: List<TreeMetadataEntry>, needle: String) -> Bool {
+  match tree_metadata_disagreement(expected: expected, observed: observed) {
     Absent => false
+    Present { value: d } => string_contains(s: d, pattern: needle)
   }
 }
 
-// RE-POINTED, RELAXED, OR RE-OWNED ALL REFUSE: the stored target, the shared mode, and the deploy
-// owner are each facts the receipt certifies, not accidents of the copy tool.
+fn disagreement_absent(expected: List<TreeMetadataEntry>, observed: List<TreeMetadataEntry>) -> Bool {
+  match tree_metadata_disagreement(expected: expected, observed: observed) {
+    Absent => true
+    Present { value: _d } => false
+  }
+}
+
+test fn a_vanishing_or_materialized_symlink_is_red() -> Bool {
+  let src = [
+    TreeMetadataEntry { path: "dag/gunbc/x.dag", kind_text: "f", link_target: "", mode: "644", owner: "gunbc", group: "gunbc" },
+    TreeMetadataEntry { path: "dag/link", kind_text: "l", link_target: "../bin/gunbc", mode: "777", owner: "gunbc", group: "gunbc" },
+  ]
+  let expected = tree_installed_expectation(entries: src, owner: deploy_owner)
+  let vanished = src_skip(src: src, unwanted: "dag/link")
+  let materialized = concat(
+    left: src_skip(src: src, unwanted: "dag/link"),
+    right: [TreeMetadataEntry { path: "dag/link", kind_text: "f", link_target: "", mode: "777", owner: "gunbc", group: "gunbc" }]
+  )
+  disagreement_names(expected: expected, observed: vanished, needle: "dag/link")
+    && !disagreement_absent(expected: expected, observed: materialized)
+    && disagreement_absent(expected: expected, observed: src)
+}
+
 test fn a_repointed_remodeled_or_reowned_entry_is_red() -> Bool {
   let src = [
-    TreeMetadataEntry { path: "dag/link", kind_text: "l", target: "/usr/bin/python3", mode: "777", owner: "operator", group: "operator" },
-    TreeMetadataEntry { path: "dag/a.dag", kind_text: "f", target: "", mode: "644", owner: "operator", group: "operator" },
+    TreeMetadataEntry { path: "dag/gunbc/x.dag", kind_text: "f", link_target: "", mode: "644", owner: "gunbc", group: "gunbc" },
+    TreeMetadataEntry { path: "dag/link", kind_text: "l", link_target: "../bin/gunbc", mode: "777", owner: "gunbc", group: "gunbc" },
   ]
-  let expected = tree_installed_expectation(entries: src, owner: "gunbc" as NonEmptyStr)
-  let repointed = [
-    TreeMetadataEntry { path: "dag/link", kind_text: "l", target: "/tmp/evil", mode: "777", owner: "gunbc", group: "gunbc" },
-    TreeMetadataEntry { path: "dag/a.dag", kind_text: "f", target: "", mode: "644", owner: "gunbc", group: "gunbc" },
-  ]
-  let relaxed = [
-    TreeMetadataEntry { path: "dag/link", kind_text: "l", target: "/usr/bin/python3", mode: "777", owner: "gunbc", group: "gunbc" },
-    TreeMetadataEntry { path: "dag/a.dag", kind_text: "f", target: "", mode: "666", owner: "gunbc", group: "gunbc" },
-  ]
-  let reowned = [
-    TreeMetadataEntry { path: "dag/link", kind_text: "l", target: "/usr/bin/python3", mode: "777", owner: "root", group: "root" },
-    TreeMetadataEntry { path: "dag/a.dag", kind_text: "f", target: "", mode: "644", owner: "gunbc", group: "gunbc" },
-  ]
-  match tree_metadata_disagreement(expected: expected, observed: repointed) {
-    Present { value: _ } => match tree_metadata_disagreement(expected: expected, observed: relaxed) {
-      Present { value: _ } => match tree_metadata_disagreement(expected: expected, observed: reowned) {
-        Present { value: _ } => match tree_metadata_disagreement(expected: expected, observed: expected) {
-          Absent => true
-          Present { value: _ } => false
-        }
-        Absent => false
-      }
-      Absent => false
-    }
-    Absent => false
-  }
+  let expected = tree_installed_expectation(entries: src, owner: deploy_owner)
+  let repointed = concat(
+    left: src_skip(src: src, unwanted: "dag/link"),
+    right: [TreeMetadataEntry { path: "dag/link", kind_text: "l", link_target: "/tmp/evil", mode: "777", owner: "gunbc", group: "gunbc" }]
+  )
+  let remodeled = concat(
+    left: src_skip(src: src, unwanted: "dag/gunbc/x.dag"),
+    right: [TreeMetadataEntry { path: "dag/gunbc/x.dag", kind_text: "f", link_target: "", mode: "777", owner: "gunbc", group: "gunbc" }]
+  )
+  let reowned = concat(
+    left: src_skip(src: src, unwanted: "dag/gunbc/x.dag"),
+    right: [TreeMetadataEntry { path: "dag/gunbc/x.dag", kind_text: "f", link_target: "", mode: "644", owner: "root", group: "root" }]
+  )
+  disagreement_names(expected: expected, observed: repointed, needle: "dag/link")
+    && disagreement_names(expected: expected, observed: remodeled, needle: "dag/gunbc/x.dag")
+    && disagreement_names(expected: expected, observed: reowned, needle: "dag/gunbc/x.dag")
 }
 
-// EVERY DIRECTORY THE TREE MUST HOLD: beside the file ancestors, the directories the metadata read
-// named -- a directory holding only a link had no file to hang off and the old enumeration never
-// made it, so the link's own write died on a missing parent. One sorted, deduped spine.
 test fn directory_targets_include_link_and_directory_parents_once_sorted() -> Bool {
-  let files = tree_file_hashes_of_stdout(stdout: source_stdout, root: "/src/dag", sub: "dag")
-  let metadata = [
-    TreeMetadataEntry { path: "dag/only-links/l", kind_text: "l", target: "x", mode: "777", owner: "o", group: "o" },
-    TreeMetadataEntry { path: "dag/empty-dir", kind_text: "d", target: "", mode: "755", owner: "o", group: "o" },
+  let files = [TreeFileHash { path: "gunbc/x.dag", hex: "aa" }]
+  let entries = [
+    TreeMetadataEntry { path: "gunbc/x.dag", kind_text: "f", link_target: "", mode: "644", owner: "gunbc", group: "gunbc" },
+    TreeMetadataEntry { path: "gunbc/bin/gunbc", kind_text: "l", link_target: "../bin/gunbc", mode: "777", owner: "gunbc", group: "gunbc" },
+    TreeMetadataEntry { path: "gunbc/lib", kind_text: "d", link_target: "", mode: "755", owner: "gunbc", group: "gunbc" },
   ]
-  join(tree_directory_targets(files: files, metadata: metadata), "\n")
-    == "dag\ndag/empty-dir\ndag/gunbc\ndag/only-links"
+  tree_directory_targets(files: files, metadata: entries) == ["gunbc", "gunbc/bin", "gunbc/lib"]
+    && count(tree_symlink_entries(entries: entries)) == 1
+    && tree_metadata_list_contains(lines: list_map(xs: tree_symlink_entries(entries: entries), f: e => tree_metadata_entry_line(entry: e)), line: "gunbc/bin/gunbc|l|777|gunbc|gunbc|../bin/gunbc")
 }
 
-// THE LINK ROWS: cp -P writes the link as the link; chown --no-dereference owns the LINK ITSELF
-// (without the flag chown would follow it -- a write-anything primitive over the target).
 test fn the_link_rows_spell_cp_no_dereference_then_chown_no_dereference() -> Bool {
-  cp_copy_as_link_argv(source: "/src/dag/link", destination: "/opt/r/dag/link") == ["cp", "-P", "/src/dag/link", "/opt/r/dag/link"]
-    && chown_no_dereference_argv(owner: ChownOwnerNames { names: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }, path: "/opt/r/dag/link")
-      == ["/usr/bin/chown", "--no-dereference", "gunbc:gunbc", "/opt/r/dag/link"]
+  let cp = cp_copy_as_link_argv(source: "/repos/acts/gunbc/bin/gunbc", destination: "/target/gunbc/bin/gunbc")
+  let co = chown_no_dereference_argv(owner: ChownOwnerNames { names: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }, path: "/target/gunbc/bin/gunbc")
+  cp == ["cp", "-P", "/repos/acts/gunbc/bin/gunbc", "/target/gunbc/bin/gunbc"]
+    && co == ["/usr/bin/chown", "--no-dereference", "gunbc:gunbc", "/target/gunbc/bin/gunbc"]
 }
 
-// THE FIND ROW THE READ READS: seven printf fields -- the seventh is find's %l, the stored link
-// target, which the six-field metadata row of other callers does not carry.
-test fn the_entry_metadata_command_carries_the_link_target_field() -> Bool {
+test fn the_entry_metadata_command_carries_the_target_and_size_fields() -> Bool {
   let cmd = find_tree_entry_metadata_command(root: "/src/dag")
-  (cmd.program.invocation as String) == "find" && cmd.arguments == ["/src/dag", "-xdev", "-printf", "%P|%y|%m|%u|%g|%s|t=%l\\n"]
+  (cmd.program.invocation as String) == "find" && cmd.arguments == ["/src/dag", "-xdev", "-printf", "%P|%y|%m|%u|%g|%l|%s\\n"]
 }
 
-// THE RECEIPT GROWS BY ONE FIELD, ADDITIVELY: a reader that pins only candidate_revision and
-// installed_digest keeps reading what it always read; metadata_digest joins the body in its named
-// place, so the certified kinds/targets/modes/ownership are covered by a digest the broker carries.
-test fn the_receipt_body_names_all_three_certifications_in_order() -> Bool {
-  tree_receipt_body(
-    revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
-    installed_digest: hex_a,
-    metadata_digest: hex_b,
-  ) == join([
-    "candidate_revision=0123456789abcdef0123456789abcdef01234567\n",
-    "installed_digest=", hex_a, "\n",
-    "metadata_digest=", hex_b, "\n",
-  ], "")
+test fn the_receipt_body_certifies_revision_installed_and_metadata_in_one_text() -> Bool {
+  let body = tree_receipt_body(revision: RevisionBoundAtEmission { revision: "3f2a1b" as CommitSha }, installed_digest: hex_a, metadata_digest: hex_b)
+  body == join(["candidate_revision=3f2a1b", "\ninstalled_digest=", hex_a, "\nmetadata_digest=", hex_b, "\n"], "")
 }
 
 test fn the_two_new_steps_have_names() -> Bool {

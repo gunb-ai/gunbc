@@ -6550,7 +6550,7 @@ fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectEl
 type TreeMetadataEntry {
   path: String
   kind_text: String
-  target: String
+  link_target: String
   mode: String
   owner: String
   group: String
@@ -6561,7 +6561,7 @@ type TreeMetadataEntry {
 // comparison, derived from both sources of truth by the same rule.
 fn tree_mode_canonical(text: String) -> String {
   if text != "0" && starts_with(s: text, prefix: "0") {
-    tree_mode_canonical(text: substring(s: text, start: 1, end: text.length()))
+    tree_mode_canonical(text: substring(s: text, start: 1, end: string_length(s: text)))
   } else {
     text
   }
@@ -6581,6 +6581,20 @@ fn tree_metadata_all_octal_digits(text: String) -> Bool {
   }
 }
 
+// find prints %s in DECIMAL (only %m is octal); conflating the two would name every ordinary
+// size that carries an 8 or 9 -- the 4096 of a directory entry -- a foreign grammar and refuse it.
+fn tree_metadata_text_is_decimal_digits(text: String) -> Bool {
+  text != "" && tree_metadata_all_decimal_digits(text: text)
+}
+
+fn tree_metadata_all_decimal_digits(text: String) -> Bool {
+  if text == "" { true }
+  else {
+    string_contains(s: "0123456789", pattern: substring(s: text, start: 0, end: 1))
+      && tree_metadata_all_decimal_digits(text: substring(s: text, start: 1, end: string_length(s: text)))
+  }
+}
+
 // THE SEVEN FIELDS OF ONE METADATA LINE. The language names no index operator, so they are taken by
 // a fold that consumes them positionally and refuses an eighth: a line whose stored link target
 // itself carries a `|` yields more fields than the grammar has, and is refused, never mis-split.
@@ -6592,29 +6606,29 @@ type TreeMetadataFieldWalk {
   owner: String
   group: String
   size: String
-  target: String
+  link_target: String
   ok: Bool
 }
 
 fn tree_metadata_fields_of(fields: List<String>) -> Optional<TreeMetadataFieldWalk> {
   let walked = fold(
     fields,
-    init: TreeMetadataFieldWalk { i: 0, rel: "", kind: "", mode: "", owner: "", group: "", size: "", target: "", ok: true },
+    init: TreeMetadataFieldWalk { i: 0, rel: "", kind: "", mode: "", owner: "", group: "", size: "", link_target: "", ok: true },
     f: (acc, field) =>
       if !acc.ok { acc }
-      else if acc.i == 0 { TreeMetadataFieldWalk { i: 1, rel: field, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, target: acc.target, ok: true } }
-      else if acc.i == 1 { TreeMetadataFieldWalk { i: 2, rel: acc.rel, kind: field, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, target: acc.target, ok: true } }
-      else if acc.i == 2 { TreeMetadataFieldWalk { i: 3, rel: acc.rel, kind: acc.kind, mode: field, owner: acc.owner, group: acc.group, size: acc.size, target: acc.target, ok: true } }
-      else if acc.i == 3 { TreeMetadataFieldWalk { i: 4, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: field, group: acc.group, size: acc.size, target: acc.target, ok: true } }
-      else if acc.i == 4 { TreeMetadataFieldWalk { i: 5, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: field, size: acc.size, target: acc.target, ok: true } }
-      else if acc.i == 5 { TreeMetadataFieldWalk { i: 6, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: field, target: acc.target, ok: true } }
-      else if acc.i == 6 { TreeMetadataFieldWalk { i: 7, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, target: field, ok: true } }
-      else { TreeMetadataFieldWalk { i: acc.i, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, target: acc.target, ok: false } }
+      else if acc.i == 0 { TreeMetadataFieldWalk { i: 1, rel: field, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 1 { TreeMetadataFieldWalk { i: 2, rel: acc.rel, kind: field, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 2 { TreeMetadataFieldWalk { i: 3, rel: acc.rel, kind: acc.kind, mode: field, owner: acc.owner, group: acc.group, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 3 { TreeMetadataFieldWalk { i: 4, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: field, group: acc.group, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 4 { TreeMetadataFieldWalk { i: 5, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: field, size: acc.size, link_target: acc.link_target, ok: true } }
+      else if acc.i == 5 { TreeMetadataFieldWalk { i: 6, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, link_target: field, ok: true } }
+      else if acc.i == 6 { TreeMetadataFieldWalk { i: 7, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: field, link_target: acc.link_target, ok: true } }
+      else { TreeMetadataFieldWalk { i: acc.i, rel: acc.rel, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, size: acc.size, link_target: acc.link_target, ok: false } }
   )
   if walked.i == 7 && walked.ok { Present { value: walked } } else { Absent }
 }
 
-// One `<rel>|<y>|<m>|<u>|<g>|<size>|<link>` line, rebased under `sub`, or Absent for a line the
+// One `<rel>|<y>|<m>|<u>|<g>|<link>|<size>` line, rebased under `sub`, or Absent for a line the
 // grammar refuses -- the count guard turns Absent parses into a refusal, exactly as the hash
 // parser's does. The starting point's own row (find %P prints the empty string for it) is not an
 // entry of the tree: refused here AND excluded from the counted lines, the same rule stated once.
@@ -6629,24 +6643,27 @@ fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetada
   }
 }
 
-// THE GRAMMAR, ONE FLAT DECISION CHAIN: mode and size are octal digits; rel, owner, and group are
-// non-empty; the type letter is one of f/d/l AND agrees with the target field -- f/d carry the bare
-// sentinel `t=`, an l carries `t=` followed by the stored target, which is kept WITHOUT the prefix.
-// Anything else the filesystem can name (a device, a fifo, a socket) has no letter here and falls
-// through to Absent, which the count guard turns into a refusal.
+// THE GRAMMAR, ONE FLAT DECISION CHAIN: mode is octal digits (%m); the size field is decimal digits
+// (%s -- find prints the target length for a symlink and the byte size for a file, so an l's is
+// never empty);
+// rel, owner, and group are non-empty; and the type letter AGREES WITH THE TARGET FIELD -- an f or a
+// d carries an empty target, an l carries a non-empty one. A field-count mismatch, a foreign type
+// letter, or a target that embeds the delimiter refuses through the same Absent path, which the
+// observation count guard turns into a refusal. Targets are kept exactly as the filesystem stored
+// them: no prefix, no escaping, no dereference.
 fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optional<TreeMetadataEntry> {
   if !tree_metadata_text_is_octal_digits(text: f.mode) {
     Absent
-  } else if !tree_metadata_text_is_octal_digits(text: f.size) {
+  } else if !tree_metadata_text_is_decimal_digits(text: f.size) {
     Absent
   } else if f.rel == "" || f.owner == "" || f.group == "" {
     Absent
-  } else if f.kind == "f" && f.target == "t=" {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "f", target: "", mode: f.mode, owner: f.owner, group: f.group } }
-  } else if f.kind == "d" && f.target == "t=" {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "d", target: "", mode: f.mode, owner: f.owner, group: f.group } }
-  } else if f.kind == "l" && string_length(s: f.target) > 1 && starts_with(s: f.target, prefix: "t=") {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "l", target: substring(s: f.target, start: 2, end: string_length(s: f.target)), mode: f.mode, owner: f.owner, group: f.group } }
+  } else if f.kind == "f" && f.link_target == "" {
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "f", link_target: "", mode: f.mode, owner: f.owner, group: f.group } }
+  } else if f.kind == "d" && f.link_target == "" {
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "d", link_target: "", mode: f.mode, owner: f.owner, group: f.group } }
+  } else if f.kind == "l" && f.link_target != "" {
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "l", link_target: f.link_target, mode: f.mode, owner: f.owner, group: f.group } }
   } else {
     Absent
   }
@@ -6661,7 +6678,7 @@ fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMeta
 // is a different canonical text, and agreement is spelled once.
 fn tree_metadata_entry_line(entry: TreeMetadataEntry) -> String {
   let head = join([entry.path, "|", entry.kind_text, "|", entry.mode, "|", entry.owner, "|", entry.group], "")
-  if entry.kind_text == "l" { join([head, "|", entry.target], "") } else { head }
+  if entry.kind_text == "l" { join([head, "|", entry.link_target], "") } else { head }
 }
 
 fn sort_tree_metadata(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
@@ -6689,7 +6706,7 @@ fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyS
     f: e => TreeMetadataEntry {
       path: e.path,
       kind_text: e.kind_text,
-      target: e.target,
+      link_target: e.link_target,
       mode: match e.kind_text {
         "f" => tree_mode_canonical(text: install_file_shared_mode as String)
         "d" => tree_mode_canonical(text: coreutils_directory_mode_operand(mode: install_d_shared_mode))
