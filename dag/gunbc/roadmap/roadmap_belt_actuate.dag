@@ -9261,11 +9261,17 @@ fn belt_claim_function_names(covered: List<ValidationOperation>) -> List<String>
 fn belt_claim_lines(document: String, function: NonEmptyStr) -> List<String> {
   let f = function as String
   filter(split(s: document, delimiter: "\n"), l =>
-    l == join(["PASS ", f], "")
-      || starts_with(s: l, prefix: join(["PASS ", f, " "], ""))
-      || starts_with(s: l, prefix: join(["FAIL ", f], ""))
-      || starts_with(s: l, prefix: join(["UNOBSERVED ", f], ""))
-      || starts_with(s: l, prefix: join(["PANICKED ", f], "")))
+    belt_line_is_status_of(line: l, status: "PASS", name: f)
+      || belt_line_is_status_of(line: l, status: "FAIL", name: f)
+      || belt_line_is_status_of(line: l, status: "UNOBSERVED", name: f)
+      || belt_line_is_status_of(line: l, status: "PANICKED", name: f))
+}
+
+// A status line belongs to a claim only on the whole name: the bare line, or the name then a space.
+// A name that merely begins with another claim's name (holds / holds_after_merge) is not that claim.
+fn belt_line_is_status_of(line: String, status: String, name: String) -> Bool {
+  line == join([status, " ", name], "")
+    || starts_with(s: line, prefix: join([status, " ", name, " "], ""))
 }
 
 fn belt_claim_passed(document: String, function: NonEmptyStr) -> Bool {

@@ -3638,4 +3638,16 @@ test fn claims_of_one_entry_are_one_unit_and_each_keeps_its_own_verdict() -> Boo
     && !string_contains(s: belt_claim_stdout(document: doc, function: "b" as NonEmptyStr), pattern: "PASS a")
     && !belt_covered_claims_all_passed(covered: belt_claims_of_entry(validations: all, entry: e), document: doc)
     && belt_covered_claims_all_passed(covered: [a], document: doc)
+    && belt_claim_passes_beside_a_longer_name_that_fails()
+}
+
+// A claim whose name is the prefix of a sibling's keeps its own verdict: `holds` passed, `holds_after_merge`
+// failed, and neither line belongs to the other (the bare FAIL form included).
+fn belt_claim_passes_beside_a_longer_name_that_fails() -> Bool {
+  let doc = "PASS holds\nFAIL holds_after_merge (returned `false`)\nFAIL bare\nPASS bare_two"
+  belt_claim_passed(document: doc, function: "holds" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "holds_after_merge" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "bare" as NonEmptyStr)
+    && belt_claim_passed(document: doc, function: "bare_two" as NonEmptyStr)
+    && !string_contains(s: belt_claim_stdout(document: doc, function: "holds" as NonEmptyStr), pattern: "FAIL")
 }
