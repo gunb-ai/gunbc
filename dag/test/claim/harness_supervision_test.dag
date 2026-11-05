@@ -101,16 +101,21 @@ test fn a_supervision_stop_is_a_named_refusal() -> Bool {
     && (match harness_turn_exit(outcome: undecided) { ExitSuccess => false  ExitFailure { code, reason: _ } => code != 3 })
 }
 
-// A WORKER IS SUPERVISED EXACTLY WHEN IT CARRIES A CHAIN, and its round is the worker step budget.
-test fn a_worker_is_supervised_exactly_when_it_carries_a_chain() -> Bool {
+// A DISPATCHED WORKER CARRIES A CHAIN OR IS REFUSED: a chain yields supervised rounds at the worker step budget,
+// and a lost (empty) fingerprint yields no supervision value, which the worker entry refuses on.
+test fn a_dispatched_worker_is_supervised_or_refused() -> Bool {
   let chained = match harness_worker_supervision(chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state") {
-    Unsupervised => false
-    SupervisedRounds { chain_fingerprint: f, check_prompt: p, check_directory: d, round_steps: n } =>
-      f == "fp" && p == "chain" && d == "/state" && n == harness_worker_step_budget
+    Present { value: supervised } =>
+      match supervised {
+        Unsupervised => false
+        SupervisedRounds { chain_fingerprint: f, check_prompt: p, check_directory: d, round_steps: n } =>
+          f == "fp" && p == "chain" && d == "/state" && n == harness_worker_step_budget
+      }
+    none => false
   }
   let chainless = match harness_worker_supervision(chain_fingerprint: "", check_prompt: "chain", check_directory: "/state") {
-    Unsupervised => true
-    SupervisedRounds { chain_fingerprint: _, check_prompt: _, check_directory: _, round_steps: _ } => false
+    none => true
+    Present { value: _ } => false
   }
   chained && chainless
 }
