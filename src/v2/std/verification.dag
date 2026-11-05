@@ -230,7 +230,7 @@ fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
 
 fn locus_evaluation_nodes(at: Locus) -> List<Node> {
   match at {
-    NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
+    NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at.node)
     Textual { file: _, extent: _ } => Empty
     SourcePortLocus { anchor: _, file: _, extent: _ } => Empty
     InvariantPortLocus { anchor: _, invariant: _ } => Empty
