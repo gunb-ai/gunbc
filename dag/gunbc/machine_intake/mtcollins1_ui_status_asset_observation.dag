@@ -445,7 +445,7 @@ type MegaRacUiStatusExcerptRefusal
   | StatusBranchTooFarApart { gap: ByteSize, bound: ByteSize }
   | WindowOutsideAsset { window_start: ByteSize, label_after: ByteSize, asset_length: ByteSize }
   | ExcerptDigestUnrenderable { window_start: ByteSize }
-  | CdRowMarkerAbsent { window_start: ByteSize, window_length: ByteSize }
+  | CdRowMarkerAbsent { context_start: ByteSize, context_length: ByteSize }
   | ExcerptCarriesNonAsciiOctet { window_start: ByteSize }
   | AssetDigestUnreadable { hex: String }
 
@@ -644,9 +644,13 @@ fn megarac_ui_zero_key_in_window(
   }
 }
 
-// The window is [feeding_site, label_after): it starts at the read of the row's status and ends
-// after the quoted label, so what is committed is exactly the span that carries the claim -- not a
-// fixed-size grab around one of the two sites.
+// WHAT IS PUBLISHED, AND WHAT IS ONLY CHECKED. The excerpt is the mapping entry itself:
+// [zero_key, label_after), which for the vendor's minified form is exactly `0:"Stopped"`. Everything
+// BETWEEN the located status-branch read and that key -- up to the gap bound, which in a minified
+// bundle can be kilobytes of unrelated code -- is checked but NOT published: it is where a
+// session-specific value could sit, and the claim needs none of it. The gap bound stays as the
+// structural relation between the two located sites, so a key that lives across the bundle still
+// refuses rather than being quietly joined to a distant branch.
 fn megarac_ui_window_receipt(
   asset_octets: List<Int>,
   asset_path: NonEmptyStr,
@@ -659,10 +663,15 @@ fn megarac_ui_window_receipt(
   label_octets: List<Int>,
   label_after: Int
 ) -> MegaRacUiStatusExcerpt {
-  let window_start = if feeding_site <= zero_key { feeding_site } else { zero_key }
+  let window_start = zero_key
   let window_length = label_after - window_start
   let gap = zero_key - feeding_site
   let window_octets = ui_octets_slice(asset_octets, window_start, window_length)
+  // The context span is the unpublished region the marker has to be found in: from the earlier of the
+  // two located sites up to the key. It is measured, never printed.
+  let context_start = if feeding_site <= zero_key { feeding_site } else { zero_key }
+  let context_length = zero_key - context_start
+  let context_octets = ui_octets_slice(asset_octets, context_start, context_length)
   let marker = ui_octets_of(megarac_ui_cd_row_marker_token)
   if window_length <= 0 || label_after > count(asset_octets) {
     ExcerptRefused { cause: WindowOutsideAsset { window_start: byte_size(count: window_start), label_after: byte_size(count: label_after), asset_length: byte_size(count: count(asset_octets)) } }
@@ -670,8 +679,8 @@ fn megarac_ui_window_receipt(
     ExcerptRefused { cause: StatusBranchTooFarApart { gap: byte_size(count: gap), bound: megarac_ui_status_branch_window_octets } }
   } else if !ui_octets_are_ascii(octets: window_octets) {
     ExcerptRefused { cause: ExcerptCarriesNonAsciiOctet { window_start: byte_size(count: window_start) } }
-  } else if (match ui_octets_index_of(window_octets, marker) { Present { value: _ } => false Absent => true }) {
-    ExcerptRefused { cause: CdRowMarkerAbsent { window_start: byte_size(count: window_start), window_length: byte_size(count: window_length) } }
+  } else if (match ui_octets_index_of(context_octets, marker) { Present { value: _ } => false Absent => true }) {
+    ExcerptRefused { cause: CdRowMarkerAbsent { context_start: byte_size(count: context_start), context_length: byte_size(count: context_length) } }
   } else {
     let window_text = ui_octets_text(window_octets)
     let label_text = ui_octets_text(label_octets)
@@ -889,7 +898,7 @@ fn megarac_ui_refusal_text(cause: MegaRacUiStatusExcerptRefusal) -> NonEmptyStr 
       WindowOutsideAsset { window_start: s, label_after: a, asset_length: n } => join(["the excerpt would start at octet ", megarac_ui_count_text(byte_size_count(b: s)), " and run past octet ", megarac_ui_count_text(byte_size_count(b: a)), ", while the asset ends at ", megarac_ui_count_text(byte_size_count(b: n)), "; there is no such span to quote"], "")
       ExcerptDigestUnrenderable { window_start: s } => join(["the excerpt at octet ", megarac_ui_count_text(byte_size_count(b: s)), " could not be rendered as hex text, so no digest was compared and nothing is claimed about these bytes"], "")
       StatusBranchTooFarApart { gap: g, bound: b } => join(["the status read and the 0 mapping are ", megarac_ui_count_text(byte_size_count(b: g)), " octets apart, beyond the ", megarac_ui_count_text(byte_size_count(b: b)), "-octet window; joining them would be a stray match"], "")
-      CdRowMarkerAbsent { window_start: s, window_length: l } => join(["the window at octet ", megarac_ui_count_text(byte_size_count(b: s)), " for ", megarac_ui_count_text(byte_size_count(b: l)), " octets never mentions media rows, so this is not the row renderer"], "")
+      CdRowMarkerAbsent { context_start: s, context_length: l } => join(["the checked region at octet ", megarac_ui_count_text(byte_size_count(b: s)), " for ", megarac_ui_count_text(byte_size_count(b: l)), " octets never mentions media rows, so the mapping entry is not inside a media-row renderer"], "")
       ExcerptCarriesNonAsciiOctet { window_start: s } => join(["the window at octet ", megarac_ui_count_text(byte_size_count(b: s)), " carries a non-ASCII octet; a byte offset into text that is not ASCII is not checkable"], "")
       AssetDigestUnreadable { hex: h } => join(["the asset's own sha256 did not parse as 64 lowercase hex: ", h], "")
     },
@@ -1073,8 +1082,19 @@ fn ui_excerpt_window_count(attempts: List<MegaRacUiAssetAttempt>, at: Int) -> In
 // to recover EXACTLY the octets that were fetched: a text rendering would be ambiguous across a quote,
 // a newline or a non-ASCII byte, so the window goes out as lower-case hex pairs. Hex needs no escaping
 // rule of its own -- every octet has exactly one two-digit spelling -- so the round trip is checkable
-// by execution rather than by a promise about escaping. Digit values are plain Int with -1 for "not a
-// hex digit" rather than an optional, because a non-digit must stop the reader loudly, not silently.
+// by execution rather than by a promise about escaping.
+//
+// base16_encode_lower is NOT used here, and the
+// reason is a fact about a seal rather than a preference: it takes QualifiedOctets, whose mint
+// std.integer.qualified_octets is caller-sealed to the roster {std.integer.uint8_octets_of_ints,
+// std.machine_word.word_to_octets, extdeps.numeric.base16.base16_decode_any,
+// extdeps.crypto.sha2.sha256_hex}. Reaching the shared encoder from here means minting through
+// uint8_octets_of_ints, whose refusal this renderer has no channel to report -- ui_asset_line returns
+// text and cannot refuse -- so consuming it would either drop the window silently or invent a stand-in
+// string, and both are worse than a local encoder. The out-of-range digit above is unreachable by this
+// file's own gate: megarac_ui_window_receipt refuses a window that is not ASCII before any line is
+// rendered, and an ASCII octet is inside the byte range. It stays a loud marker rather than a silent
+// one so that a future caller that skips the gate is caught instead of papered over.
 fn ui_hex_digit_text(value: Int) -> String {
   match value {
     0 => "0"
@@ -1119,53 +1139,11 @@ fn ui_octets_to_hex(octets: List<Int>) -> String {
   join(ui_octet_hex_list(octets: octets, at: 0, acc: []), "")
 }
 
-fn ui_hex_digit_value(octet: Int) -> Int {
-  match octet {
-    48 => 0
-    49 => 1
-    50 => 2
-    51 => 3
-    52 => 4
-    53 => 5
-    54 => 6
-    55 => 7
-    56 => 8
-    57 => 9
-    97 => 10
-    98 => 11
-    99 => 12
-    100 => 13
-    101 => 14
-    102 => 15
-    octet => -1
-  }
-}
-
-fn ui_hex_scan(hex_octets: List<Int>, at: Int, acc: List<Int>) -> List<Int> {
-  if at + 1 >= count(hex_octets) {
-    acc
-  } else {
-    match hex_octets |> get(at) {
-      null => acc
-      hi_octet => match hex_octets |> get(at + 1) {
-        null => acc
-        lo_octet => {
-          let hi = ui_hex_digit_value(octet: hi_octet)
-          let lo = ui_hex_digit_value(octet: lo_octet)
-          if hi < 0 || lo < 0 {
-            acc
-          } else {
-            ui_hex_scan(hex_octets: hex_octets, at: at + 2, acc: list_push(acc, hi * 16 + lo))
-          }
-        }
-      }
-    }
-  }
-}
-
-fn ui_hex_to_octets(hex_text: String) -> List<Int> {
-  ui_hex_scan(hex_octets: ui_octets_of(hex_text), at: 0, acc: [])
-}
+// THE DECODER IS NOT HERE. extdeps.numeric.base16 owns base16_decode_any, a checked RFC 4648 base16
+// decode whose result is absent for a malformed or odd-length string, and the witness decodes through
+// it. A local copy of the same rule would be a second authority over what counts as valid base16, and
+// a partial local decode could silently truncate. A local copy of the same rule would be a second
+// authority over what counts as valid base16, and a partial local decode could silently truncate.
 
 // ONE SESSION, OWED ON EVERY EXIT. The arms differ because what was allocated differs: a failed
 // session POST allocated nothing, while a session whose token could not be read is allocated and

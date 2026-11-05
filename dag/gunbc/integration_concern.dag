@@ -551,12 +551,12 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
     preserve: [
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
-        control: Present { value: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation_witness", decl_name: "w_an_asset_that_never_reads_the_rows_status_has_nothing_to_quote") },
+        control: Present { value: decl_ref(module_path: "test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness", decl_name: "w_an_asset_that_never_reads_the_rows_status_has_nothing_to_quote") },
         statement: "no match is an ABSENT optional, never a zero offset, and every caller distinguishes the two by matching the optional rather than comparing it to none -- the PR's evidence gate failed open exactly once when a no-match reading was inverted, so a shared helper must carry Absent through unchanged and a migration is only done when a no-match input still refuses",
       },
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
-        control: Present { value: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation_witness", decl_name: "w_the_excerpt_is_not_checkable_when_the_offset_moves_by_one") },
+        control: Present { value: decl_ref(module_path: "test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness", decl_name: "w_the_excerpt_is_not_checkable_when_the_offset_moves_by_one") },
         statement: "the offset it reports is an index into OCTETS, not into characters or UTF-16 units, because the committed excerpt records are byte offsets and byte lengths within the asset",
       },
     ],

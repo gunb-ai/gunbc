@@ -16,7 +16,11 @@ module test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { collection_count_shape, collection_join_shape, string_contains }
 import std.bytes { octets_bytes }
-import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
+import std.integer { qualified_octet_members }
+import extdeps.crypto.sha2 { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
+// The base16 decode used to read a printed window back. A checked decoder, not a local one: it
+// returns Absent for a malformed or odd-length string instead of silently returning a prefix.
+import extdeps.numeric.base16 { base16_decode_any }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count }
 import std.optional { Absent, Present }
@@ -55,7 +59,6 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_octets_of,
   ui_asset_line,
   MegaRacUiAssetAttempt,
-  ui_hex_to_octets,
   ui_octets_slice,
   mtcollins1_ui_page_web_root,
   ui_page_line,
@@ -235,7 +238,7 @@ test fn w_an_asset_that_never_reads_the_rows_status_has_nothing_to_quote() -> Bo
 test fn w_a_marker_outside_the_window_is_not_the_row_renderer() -> Bool {
   match witness_extract("e.media_type===1&&function(r)\{return r.redirection_status===0?0:\"Ejected\":1:\"Inserted\"\}") {
     ExcerptRefused { cause: cause } => match cause {
-      CdRowMarkerAbsent { window_start: start, window_length: length } => byte_size_count(b: length) > 0
+      CdRowMarkerAbsent { context_start: start, context_length: length } => byte_size_count(b: length) > 0
       another_cause => false
     }
     ExcerptFound {
@@ -293,7 +296,7 @@ test fn w_a_status_table_that_never_names_a_media_row_is_refused() -> Bool {
   match witness_extract(
     "function r(e)\{return e.redirection_status===0&&e.vusb_cd===1?0:\"Stopped - Device Ejected\":1:\"Inserted\"\}"
   ) {
-    ExcerptRefused { cause: CdRowMarkerAbsent { window_start: start, window_length: length } } =>
+    ExcerptRefused { cause: CdRowMarkerAbsent { context_start: start, context_length: length } } =>
       byte_size_count(b: start) >= 0 && byte_size_count(b: length) > 0
     ExcerptRefused { cause: another_cause } => false
     ExcerptFound {
@@ -746,8 +749,10 @@ test fn w_the_printed_window_decodes_back_to_the_fetched_octets() -> Bool {
           Present { value: at } => {
             let start = at + count(marker)
             let tail = count(ui_octets_of(line)) - start
-            let decoded = ui_hex_to_octets(hex_text: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail))))
-            decoded == ui_octets_of(window)
+            match base16_decode_any(hex: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail)))) {
+              Absent => false
+              Present { value: decoded } => qualified_octet_members(q: decoded) == ui_octets_of(window)
+            }
           }
         }
       }
@@ -786,8 +791,12 @@ test fn w_the_decoded_window_rehashes_to_the_digest_on_the_same_line() -> Bool {
           Present { value: at } => {
             let start = at + count(marker)
             let tail = count(ui_octets_of(line)) - start
-            let decoded = ui_hex_to_octets(hex_text: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail))))
-            let rehashed = sha256_hex_of_text(text: utf8_decode_bytes(payload: octets_bytes(o: decoded)))
+            match base16_decode_any(hex: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: tail)))) {
+              Absent => false
+              // An absent decode is reported as a failure, not folded into an empty octet list: an
+              // empty list would still hash, and the claim would pass on a corrupted print.
+              Present { value: decoded } => {
+                let rehashed = sha256_hex_of_text(text: utf8_decode_bytes(payload: octets_bytes(o: qualified_octet_members(q: decoded))))
             // The digest the run printed for the excerpt must be the digest of the octets the printed
             // window decodes to. This is what lets a reader trust the committed bytes later.
             match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of(concat("excerpt_sha256=", rehashed))) {
@@ -828,5 +837,153 @@ test fn w_a_refused_excerpt_prints_no_window_bytes() -> Bool {
       excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
       label_text: _, feeding_site_offset: _, zero_key_offset: _,
     } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THE RECEIPT PUBLISHES, AND WHAT IT ONLY CHECKS. The excerpt is the mapping entry itself, not
+// the span between the two located sites: everything between them can be kilobytes of unrelated
+// minified code, and a session-specific value can sit there. These claims are the discriminating
+// controls for that narrowing: a credential-bearing value injected INSIDE the old span (between the
+// status read and the zero key) and one injected ADJACENT to the mapping (after its closing quote)
+// must both be absent from the receipt, and the published excerpt must be exactly the mapping entry.
+// On the previous shape -- a window from the earlier of the two sites to the end of the label -- the
+// first test goes red, because that value was inside what got printed.
+// ---------------------------------------------------------------------------------------------
+
+// A media-row table with an injected payload between the status read and the mapping, and another
+// after the label. The payloads are shaped like what a real bundle carries in those positions.
+fn witness_asset_with_payloads(filler: String, tail: String) -> String {
+  join([
+    "/*",
+    "function r(e)\{return e",
+    ".redirection_status",
+    filler,
+    "===0&&e.media_type===1",
+    filler,
+    "?0:",
+    "\"Ejected\"",
+    tail,
+  ], "")
+}
+
+data witness_injected_credential: NonEmptyStr = "session_token=\"aB3xQ7pZr0\"" as NonEmptyStr
+data witness_expected_mapping: NonEmptyStr = "0:\"Ejected\"" as NonEmptyStr
+
+// The credential sits strictly between the two located sites, so the old window published it and the
+// narrowed one cannot. Both halves are asserted: the value really is in the fetched bytes (otherwise
+// the absence below proves nothing), and it really is between the offsets the receipt names.
+test fn w_a_credential_between_the_sites_never_reaches_the_receipt() -> Bool {
+  let asset = witness_asset_with_payloads(
+    filler: concat(";e.headers.push({", concat(witness_injected_credential, "});")),
+    tail: ":1:\"Inserted\"}",
+  )
+  let found = witness_extract(asset)
+  match ui_octets_index_of(hay: ui_octets_of(asset), needle: ui_octets_of(witness_injected_credential)) {
+    Absent => false
+    Present { value: credential_at } => match found {
+      ExcerptRefused { cause: _ } => false
+      ExcerptFound {
+        asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+        excerpt_sha256: _, excerpt_byte_offset: offset, excerpt_byte_length: length,
+        excerpt_text: text, label_text: _,
+        feeding_site_offset: feeding, zero_key_offset: zero,
+      } => {
+        let inside_the_old_span =
+          credential_at > byte_size_count(b: feeding) && credential_at < byte_size_count(b: zero)
+        // The line is rendered from the extraction itself, so the claim is about the bytes the run
+        // would publish, not about a record this test hand-wrote.
+        let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+          path: witness_asset_path(),
+          path_refusal: none,
+          http_status: 200,
+          excerpt: found,
+        })
+        let credential_absent = match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of(witness_injected_credential)) {
+          Absent => true
+          Present { value: _ } => false
+        }
+        // And the bytes that ARE published decode back, byte for byte, to exactly the mapping entry:
+        // the narrowing is checked on the emitted line, not only on the in-memory record.
+        let published_decodes = match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of("window_hex=")) {
+          Absent => false
+          Present { value: at } => {
+            let start = at + count(ui_octets_of("window_hex="))
+            match base16_decode_any(hex: utf8_decode_bytes(payload: octets_bytes(o: ui_octets_slice(octets: ui_octets_of(line), at: start, n: count(ui_octets_of(line)) - start)))) {
+              Absent => false
+              Present { value: decoded } => qualified_octet_members(q: decoded) == ui_octets_of(text)
+            }
+          }
+        }
+        inside_the_old_span && credential_absent && text == witness_expected_mapping && published_decodes
+      }
+    }
+  }
+}
+
+// The same value placed AFTER the label's closing quote: outside the mapping on the other side, and
+// still inside the asset. It must be excluded by length, not by luck.
+test fn w_a_credential_adjacent_to_the_mapping_is_outside_the_excerpt() -> Bool {
+  let asset = witness_asset_with_payloads(
+    filler: "",
+    tail: concat(concat(":1:\"Inserted\";document.cookie=", witness_injected_credential), "}"),
+  )
+  let found = witness_extract(asset)
+  match ui_octets_index_of(hay: ui_octets_of(asset), needle: ui_octets_of(witness_injected_credential)) {
+    Absent => false
+    Present { value: credential_at } => match found {
+      ExcerptRefused { cause: _ } => false
+      ExcerptFound {
+        asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+        excerpt_sha256: _, excerpt_byte_offset: offset, excerpt_byte_length: length,
+        excerpt_text: text, label_text: _,
+        feeding_site_offset: _, zero_key_offset: _,
+      } => {
+        let after_the_excerpt = credential_at > byte_size_count(b: offset) + byte_size_count(b: length)
+        let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
+          path: witness_asset_path(),
+          path_refusal: none,
+          http_status: 200,
+          excerpt: found,
+        })
+        let credential_absent = match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of(witness_injected_credential)) {
+          Absent => true
+          Present { value: _ } => false
+        }
+        after_the_excerpt && credential_absent && text == witness_expected_mapping
+      }
+    }
+  }
+}
+
+// A non-ASCII octet in the label refuses, and the refusal is what proves the contract runs BEFORE
+// printing: the refused line carries no window at all.
+test fn w_a_non_ascii_octet_refuses_before_any_window_is_printed() -> Bool {
+  match megarac_ui_status_excerpt_of_asset(
+    asset_text: witness_asset_with_non_ascii_label(),
+    asset_path: witness_asset_path(),
+    served_release: witness_release(),
+    read_release: witness_release(),
+    http_status: 200,
+  ) {
+    ExcerptFound {
+      asset_path: _, served_release: _, read_release: _, asset_sha256: _,
+      excerpt_sha256: _, excerpt_byte_offset: _, excerpt_byte_length: _, excerpt_text: _,
+      label_text: _, feeding_site_offset: _, zero_key_offset: _,
+    } => false
+    ExcerptRefused { cause: cause } => {
+      match ui_octets_index_of(
+        hay: ui_octets_of(ui_asset_line(attempt: MegaRacUiAssetAttempt {
+          path: witness_asset_path(),
+          path_refusal: none,
+          http_status: 200,
+          excerpt: ExcerptRefused { cause: cause },
+        })),
+        needle: ui_octets_of("window_hex="),
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
   }
 }
