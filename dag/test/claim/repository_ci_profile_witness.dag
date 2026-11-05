@@ -30,6 +30,7 @@ import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloo
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
+import std.algebra { list_head }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }

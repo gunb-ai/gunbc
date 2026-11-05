@@ -1,6 +1,6 @@
 module product.compute_board.verilog_projection
 
-import std.types { String, NonEmptyStr, List, list_length, Map }
+import std.types { String, NonEmptyStr, List, Map }
 import v2.std.node { Node, Symbol }
 
 import v2.extdeps.languages.verilog {

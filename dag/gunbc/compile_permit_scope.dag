@@ -1,6 +1,7 @@
 module gunbc.compile_permit_scope
 
-import std.types { String, NonEmptyStr, List, Bool, list_length }
+import std.types { String, NonEmptyStr, List, Bool }
+import std.algebra { length }
 import std.materialization_ladder { string_list_contains }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
@@ -166,10 +167,10 @@ fn finalize_fleet_standing(
     init: [],
     f: (u, h) => if string_list_contains(xs: map(eligible_hosts, e => e as String), wanted: h as String) { u } else { concat(u, [h]) },
   )
-  let blocking = list_length(items: concat(acc.unsafe_hosts, acc.unobserved_hosts))
-  let eligible_count = list_length(items: eligible_hosts)
-  let safe_count = list_length(items: acc.safe_hosts)
-  let joined = (list_length(items: missing) == 0) && (list_length(items: unexpected) == 0)
+  let blocking = length(xs: concat(acc.unsafe_hosts, acc.unobserved_hosts))
+  let eligible_count = length(xs: eligible_hosts)
+  let safe_count = length(xs: acc.safe_hosts)
+  let joined = (length(xs: missing) == 0) && (length(xs: unexpected) == 0)
   let no_duplicates = safe_count == eligible_count
   let fleet_is_safe = (blocking == 0) && (eligible_count > 0) && joined && no_duplicates
   match fleet_is_safe {
