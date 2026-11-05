@@ -25,14 +25,14 @@ fn violation_count(source: String) -> Int {
 }
 
 // a matching outer boot id over an anchor of ANY other provenance (ScannedFirstContact, IndependentlyAnchored)
-data forged_other_provenance_source: String = "module forge_other_provenance\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }\nimport gunbc.host.anchored_host_transport { PerBootHostPin }\nfn forged(scanned_anchor: KnownHostKeyRow, boot: NonEmptyStr) -> PerBootHostPin { PerBootHostPin { boot_id: boot, anchor: scanned_anchor } }\n"
+data forged_other_provenance_source: String = "module forge_other_provenance\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }\nimport gunbc.host.per_boot_console_pin { PerBootHostPin }\nfn forged(scanned_anchor: KnownHostKeyRow, boot: NonEmptyStr) -> PerBootHostPin { PerBootHostPin { boot_id: boot, anchor: scanned_anchor } }\n"
 
 test fn a_pin_over_a_scanned_anchor_cannot_be_constructed() -> Bool {
   violation_count(source: forged_other_provenance_source) >= 1
 }
 
 // a ConsolePerBoot anchor whose embedded boot id differs from the outer one
-data forged_split_boot_source: String = "module forge_split_boot\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }\nimport gunbc.host.anchored_host_transport { PerBootHostPin }\nfn forged(console_anchor_of_other_boot: KnownHostKeyRow, outer_boot: NonEmptyStr) -> PerBootHostPin { PerBootHostPin { boot_id: outer_boot, anchor: console_anchor_of_other_boot } }\n"
+data forged_split_boot_source: String = "module forge_split_boot\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }\nimport gunbc.host.per_boot_console_pin { PerBootHostPin }\nfn forged(console_anchor_of_other_boot: KnownHostKeyRow, outer_boot: NonEmptyStr) -> PerBootHostPin { PerBootHostPin { boot_id: outer_boot, anchor: console_anchor_of_other_boot } }\n"
 
 test fn a_pin_whose_outer_boot_id_differs_from_its_anchors_cannot_be_constructed() -> Bool {
   violation_count(source: forged_split_boot_source) >= 1

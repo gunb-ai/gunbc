@@ -33,7 +33,7 @@ import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow, ScannedFirstContact, ConsolePerBoot, ProvisionedInstall, known_hosts_line, fleet_name_at_ssh_port,
 }
 import gunbc.provisioning.network_install_receipt { NetworkInstallReceipt, InstalledToDisk, InstallNotEstablished, network_install_client, CurrentInstallForHost, CurrentInstallEstablished, CurrentInstallUnestablished }
-import extdeps.ssh.keys { Ed25519, ssh_key_algorithm_token, ssh_key_blob_parses_for, ssh_key_blob_sha256_fingerprint }
+import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin }
 import extdeps.network.mac { mac_addresses_are_equal }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_bound_transport {
@@ -84,19 +84,6 @@ import std.human_intervention {
 // NOT a fork of the route. Booting mtcollins1 is ruled not sensitive.
 
 // ── 1. The rows: one per anchored machine, the machine's name lives HERE and nowhere else ─────────
-
-// WHAT IS ANCHORED: a managed host, the trusted statement about the key it presents (Absent until that
-// statement is authored -- see mtcollins1's row), the read obligation the statement carries as a VALUE,
-// the Secret holding the private half (so the scan's argv check can assert the name never renders), and
-// the address the statement is stated at, built by the registry's own constructor so the anchor, the scan
-// and the registry cannot spell one endpoint twice (§3).
-type AnchoredHostRow {
-  host: HostIdentity
-  anchor: KnownHostKeyRow?
-  read_obligation: NonEmptyStr
-  host_key_secret: SecretRef
-  address: SocketAddress
-}
 
 // THE ANCHORED HOSTS. mtcollins1's row is the only entry today; adding a second anchored machine adds a
 // ROW here, not a module and not a branch.
@@ -230,7 +217,7 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
     )
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "per_boot_console_marker"),
+    ref: decl_ref(module_path: "gunbc.host.per_boot_console_pin", decl_name: "per_boot_console_marker"),
     reason: "the console-line grammar (GUNBC-HOST-KEY boot_id=<id> ssh-ed25519 <base64> SHA256:<fingerprint>) is a SUPPLIED boundary value with no producer: no runner-medium stage generates a host key at boot, prints this line or starts sshd with that key, so the pairing obligation (the real image emits exactly this shape) is open",
     dissolution: unbound_dissolution(
       description: "dissolves when the runner medium (gunbc.runner.runner_host_medium) has a stage that generates the host key at boot, prints exactly this line on the console and starts sshd with that HostKey, and a claim over the real stage's rendered output parses through per_boot_pin_from_console_line; the line shape in this module is then derived from that stage, not retyped. OPEN: the boot_id character set is not yet restricted (control characters in a console-read id could contaminate a refusal diagnostic); the restriction lands with the live SOL reader, which is the first place such text can arrive"
@@ -397,119 +384,6 @@ fn anchored_host_transport_against(
 // The comparison is unchanged -- anchored_host_transport_against, the known_hosts-line equality -- so a
 // per-boot pin is one more source of an anchor, not a second trust algorithm (§3).
 //
-// THE PIN IS SEALED (sole_constructor): its only mint is per_boot_pin_from_console_line, which builds the anchor
-// with ConsolePerBoot provenance naming the SAME boot id as the pin's own, after the line's blob and fingerprint
-// are verified. A caller-built pin (a matching outer boot id over a ScannedFirstContact anchor, or a
-// ConsolePerBoot whose embedded boot id differs) has no expression, so the binding does not re-check either
-// (DESIGN 4b: construction over validation).
-type PerBootHostPin sole_constructor {
-  boot_id: NonEmptyStr
-  anchor: KnownHostKeyRow
-}
-
-// THE CONSOLE LINE THE IMAGE PRINTS: `GUNBC-HOST-KEY boot_id=<id> <key_type> <base64> <SHA256:fingerprint>`,
-// five space-separated fields, a public key and nothing secret. Anything else is no pin: a malformed or
-// truncated console read is an Absent pin and every transport refuses at AnchoredBindingAnchorAbsent,
-// never a partial key.
-data per_boot_console_marker: String = "GUNBC-HOST-KEY"
-
-// THE PARSED LINE, policy-free. One grammar, two consumption policies keyed on the boot that printed it
-// (#15664's provisioned-install enrolment reads the same record; a runtime-boot line pins per boot here).
-// The parser holds no trust decision: it only says what a well-formed line carried.
-type HostKeyConsoleLine {
-  boot_id: NonEmptyStr
-  key_type: String
-  public_key_base64: String
-  sha256_fingerprint: String
-}
-
-fn host_key_console_line_parse(line: String) -> HostKeyConsoleLine? {
-  let fields = filter(split(s: trim(s: line), delimiter: " "), f => f != "")
-  match fields |> skip(n: 5) |> first {
-    Present { value: _ } => none
-    Absent => host_key_console_line_of_fields(fields: fields)
-  }
-}
-
-fn host_key_console_line_of_fields(fields: List<String>) -> HostKeyConsoleLine? {
-  match fields |> first {
-    Absent => none
-    Present { value: marker } => match fields |> skip(n: 1) |> first {
-      Absent => none
-      Present { value: boot_field } => match fields |> skip(n: 2) |> first {
-        Absent => none
-        Present { value: key_type } => match fields |> skip(n: 3) |> first {
-          Absent => none
-          Present { value: key_b64 } => match fields |> skip(n: 4) |> first {
-            Absent => none
-            Present { value: fingerprint } =>
-              if marker == per_boot_console_marker && key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && fingerprint_names_blob(blob: key_b64, fingerprint: fingerprint) {
-                host_key_console_line_of(boot_field: boot_field, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint)
-              } else { none }
-          }
-        }
-      }
-    }
-  }
-}
-
-// "boot_id=a=b" is not "boot_id=a": a piece beyond the second is refused, never dropped (§5).
-fn has_no_third_piece(s: String) -> Bool {
-  match split(s: s, delimiter: "=") |> skip(n: 2) |> first {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-fn host_key_console_line_of(boot_field: String, key_type: String, key_b64: String, fingerprint: String) -> HostKeyConsoleLine? {
-  match split(s: boot_field, delimiter: "=") |> first {
-    Absent => none
-    Present { value: tag } => match split(s: boot_field, delimiter: "=") |> skip(n: 1) |> first {
-      Absent => none
-      Present { value: id } =>
-        if tag == "boot_id" && id != "" && has_no_third_piece(s: boot_field) {
-          Present { value: HostKeyConsoleLine {
-            boot_id: id as NonEmptyStr,
-            key_type: key_type,
-            public_key_base64: key_b64,
-            sha256_fingerprint: fingerprint,
-          } }
-        } else { none }
-    }
-  }
-}
-
-// THE PER-BOOT POLICY over a parsed line: the pin's anchor is the line's key, with the ConsolePerBoot
-// provenance naming the boot that printed it.
-fn per_boot_pin_from_console_line(row: AnchoredHostRow, line: String) -> PerBootHostPin? {
-  match host_key_console_line_parse(line: line) {
-    Absent => none
-    Present { value: parsed } => Present { value: PerBootHostPin {
-      boot_id: parsed.boot_id,
-      anchor: KnownHostKeyRow {
-        host: row.host,
-        address: row.address,
-        key_type: parsed.key_type,
-        public_key_base64: parsed.public_key_base64,
-        sha256_fingerprint: parsed.sha256_fingerprint,
-        provenance: ConsolePerBoot {
-          boot_id: parsed.boot_id,
-          channel: join(["the BMC serial console (SOL), printed by the image from the host key it generated at that boot; read obligation: ", row.read_obligation as String], "") as NonEmptyStr
-        },
-      },
-    } }
-  }
-}
-
-// The console's fingerprint is accepted only when it IS the fingerprint of the blob beside it, derived by
-// extdeps.ssh.keys; a line whose two fields disagree is no pin (§5), never a row whose fingerprint lies.
-fn fingerprint_names_blob(blob: String, fingerprint: String) -> Bool {
-  match ssh_key_blob_sha256_fingerprint(material: blob as NonEmptyStr) {
-    Absent => false
-    Present { value: derived } => derived == fingerprint
-  }
-}
-
 // THE PER-BOOT BINDING. The pin is a SUPPLIED VALUE (the console read mints it); the expected boot id is
 // the boot the caller is acting on (the subject's boot id), so a pin captured at boot A can never vouch
 // for boot B's sshd. Order: no pin refuses; a pin from another boot refuses before any key is compared;

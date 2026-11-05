@@ -16,7 +16,6 @@ import gunbc.provisioning.network_install_receipt { ClientClassUnread, NetworkIn
 import test.claim.provisioning.network_install_receipt_witness { all_fetches, client, good, installed_host, other_client, readings, subject }
 import extdeps.network.mac { Eui48Address }
 import gunbc.host.anchored_host_transport {
-  AnchoredHostRow,
   AnchoredBindingBound,
   AnchoredBindingNotTheAnchoredHost,
   AnchoredBindingAnchorNotForRow,
@@ -34,7 +33,6 @@ import gunbc.host.anchored_host_transport {
   anchored_host_transport_of,
   anchored_host_transport_against,
   anchored_host_transport_per_boot,
-  per_boot_pin_from_console_line,
   anchored_host_transport_provisioned,
   anchored_host_binding_refusal_reason,
   anchored_host_key_scan_effect,
@@ -46,6 +44,7 @@ import gunbc.host.anchored_host_transport {
   mtcollins1_host_key_anchor,
   mtcollins1_host_key_read_obligation,
 }
+import gunbc.host.per_boot_console_pin { AnchoredHostRow, per_boot_pin_from_console_line }
 import gunbc.host.mtcollins1_ssh_host_key_mint { mtcollins1_host_key_mint_receipt_path }
 import gunbc.host.fleet_keypair_mint { mtcollins1_host_keypair_mint_subject }
 import extdeps.dns.domain_name { DnsLabel }
