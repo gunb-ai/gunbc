@@ -244,14 +244,17 @@ data gunbc_runner_slot_job_cgroup_ownership: SlotJobCgroupOwnership = JobOwnsNoB
 // admitted, the verdict says what is live under it. All three are KEYED ON RATES OVER A WINDOW, never
 // on memory.current or memory.peak (good runs reach 24.8-25.2 GiB including reclaimable cache).
 //
-// STANDING: the three numbers are POLICY WITH ONE SPECIMEN, and the specimen is incomplete. The only
-// measured stall is srv1 drift-peak-e1f753b9 (2026-11-04/05, a 28 GiB user unit, memory.high=max, swap
-// 0): memory.events max 18744469 over 9459 s, about 1982/s averaged, with the file holding ONE
-// cumulative reading and no series; anon 27.9 GiB, file 128 KiB, oom 0 for ~2.6 h. The lines are set
-// two orders of magnitude from both ends of what is known (a livelock refuses at ~100/s of max events
-// with near-zero user CPU; a healthy cache-cycling run is separated by its CPU, not its events), and
-// the srv1 fixtures (livelock dies; CPU-heavy steady lives; short burst lives) either ground or move
-// them -- the receipts are filed beside these rows.
+// STANDING: the three numbers are POLICY GROUNDED BY ONE MEASURED STALL AND THREE MEASURED LIVES, all
+// on srv1 under a 2 GiB user unit, swap 0, memory.high infinity (session lively-tern-72, 2026-11-05).
+// STALL (alloc churn at the cap with a varied text working set; the unit's own interpreter text is
+// evicted and refaulted, out dir srv1:/var/tmp/lt72-probe-anonfullcopy-20261105T183349Z): memory.events
+// max about 860/s = 51600/min, pgmajfault about 1500/s, user CPU 4.1% of one core, oom 0, oom_kill 0
+// for 150 s. LIVES at the same cap (same fill, no churn): memory.events max 1 then flat, user CPU one
+// full core (probe runs 1-3). The earlier srv1 drift-peak-e1f753b9 reading (memory.events max 18744469
+// over 9459 s, anon-full, oom 0) is the same shape at 28 GiB. ONE stall specimen at one scale: the
+// lines sit 8.6x below the stall's event rate and 2.4x above its user CPU, and 10x below a healthy
+// run's, and the conjunction (both must hold for the whole window) is what keeps either alone from
+// refusing a healthy cache-cycling run. Moving a line needs another measured specimen, filed here.
 //
 // The events line counts memory.events high + max together: with memory.high == memory.max only `max`
 // climbs, with a throttle line below it only `high` does, and the watchdog must not depend on which
@@ -259,9 +262,9 @@ data gunbc_runner_slot_job_cgroup_ownership: SlotJobCgroupOwnership = JobOwnsNoB
 data gunbc_runner_slot_watchdog_envelope_event_rate_line: EventsPerMinute = events_per_minute(count: 6000)
 
 // The progress floor: user CPU (cpu.stat user_usec growth) below this share of the window's wall, in
-// basis points of ONE core (500 = 5%), counts as no progress. A livelocked process retires almost no
+// basis points of ONE core (1000 = 10%), counts as no progress. A livelocked process retires almost no
 // user instructions; a CPU-heavy steady job is far above any small fraction of a core.
-data gunbc_runner_slot_watchdog_user_cpu_share_floor: BasisPoint = basis_point(count: 500)
+data gunbc_runner_slot_watchdog_user_cpu_share_floor: BasisPoint = basis_point(count: 1000)
 
 // The whole window the two conditions must hold over. Short enough that a livelock dies in minutes,
 // long enough that a startup or allocation burst (seconds) cannot fill it.
