@@ -3412,8 +3412,8 @@ type DashboardInstanceProvisionOp
     }
   // THE RETIREMENT OF THE LEGACY WRITER UNITS, before any entry moves: each declared unit is read (LoadState,
   // ActiveState, FragmentPath) and, when it can still start, retired by typed privileged operations: an /etc
-  // fragment is stopped and renamed into the rollback store with the manager reloaded; a vendor fragment is
-  // masked. The unit is read again and must be excluded, else the retained bytes are restored and the apply refuses.
+  // fragment is stopped and renamed into the rollback store with the manager reloaded; any other fragment, a vendor one included,
+  // refuses (no mask is granted). The unit is read again and must be excluded, else the retained bytes are restored and the apply refuses.
   | DashboardRetireLegacyWriters { fence: LegacyWriterFence }
   // THE ACTIVATION GATE, last in the plan: the exclusion is re-observed before the new dispatcher may start.
   | DashboardAssertLegacyWriterExcluded { fence: LegacyWriterFence }
@@ -3637,7 +3637,7 @@ fn dashboard_instance_provision_op_row(
       DashboardInstanceProvisionPlanRow {
         kind: "retire-legacy-writers" as NonEmptyStr,
         target: "legacy dispatcher units" as String,
-        detail: "read each declared legacy writer unit; an /etc fragment is stopped and renamed into the rollback store (digest recorded) and the manager reloaded, a vendor fragment is masked; read again and refused unless excluded, retained bytes restored on refusal",
+        detail: "read each declared legacy writer unit; an /etc fragment is stopped and renamed into the rollback store (digest recorded) and the manager reloaded, a vendor fragment refuses (no mask is granted); read again and refused unless excluded, retained bytes restored on refusal",
       }
     DashboardAssertLegacyWriterExcluded { fence: _ } =>
       DashboardInstanceProvisionPlanRow {
