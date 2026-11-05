@@ -7,8 +7,9 @@ module gunbc.serving.serving_relocation
 // that re-places a conversation's continuation, through fabric, when an admissible transition
 // improves useful fleet throughput, while preserving its execution and retention obligations. The
 // between-turn handoff is the first supported boundary; it is not a preference for inactive
-// conversations. Realization: gunbc.serving.router_dev_policy (a manually invoked operation);
-// falsifier: //gunbc/instruments:router-proxy-falsifier.
+// conversations. Realization: gunbc.serving.router_dev_policy (a manually invoked operation, shipped
+// uncommissioned: /router/relocate refuses until a relocation token is placed). Its falsifier cases in
+// //gunbc/instruments:router-proxy-falsifier are a declared frontier (plan R durability row), not yet executed.
 //
 // REUSE, DO NOT RE-MINT. Placement/residency live in gunbc.serving.turn_admission; the durable move
 // fence lives in gunbc.serving.caller_backlog's rebinding spine. The CHOICE goes through std.decision
