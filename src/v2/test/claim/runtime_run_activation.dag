@@ -658,3 +658,54 @@ test fn rr_p_structural_views_refuse_at_the_parallelism_lens_holds() -> Bool {
       Violates { diagnostic: _ } => false
     }
 }
+
+// ---- the statement-form else-less if (#15876) ----
+
+// A TWO-positional Branch (condition, then arm; no else slot) and the binder-absent Bind (value, body) the
+// lowering produces around it. Both are typed i64 so the tree carries facts for them.
+data rr_else_less_site: Node = rr_node(behavior: Branch, children: [
+  rr_positional(target: program_kw_false()),
+  rr_positional(target: program_effect_io_roundtrip)
+])
+data rr_else_less_statement: Node = rr_node(behavior: Bind, children: [
+  rr_positional(target: rr_else_less_site),
+  rr_positional(target: program_literal_two())
+])
+
+fn rr_facts_else_less(node: Node) -> Optional<InferredFacts> {
+  if node_same_occurrence(a: node, b: rr_else_less_site) || node_same_occurrence(a: node, b: rr_else_less_statement) {
+    optional_present(value: program_facts_typed(node: node, algebra: program_i64_type()))
+  } else {
+    rr_facts_everywhere(node: node)
+  }
+}
+
+fn rr_run_else_less(root: Node) -> RuntimeRunResult {
+  runtime_run(tree: rr_tree_with(root: root, lookup: rr_facts_else_less), root: root, context: rr_context())
+}
+
+// (iv) THE STATEMENT THROUGH THE RUN ROUTE: the false condition selects no arm, the untaken effect leaves no
+// receipt, and the root answer is the body's value, equal to eval's.
+test fn rr_iv_a_false_condition_statement_else_less_if_yields_the_body_value_holds() -> Bool {
+  let root = rr_else_less_statement
+  match rr_root_of(result: rr_run_else_less(root: root)) {
+    Present { value: outcome } =>
+      rr_accepted(o: outcome)
+        && rr_outcomes_equal(a: outcome, b: rr_eval(tree: rr_tree_with(root: root, lookup: rr_facts_else_less), root: root, context: rr_context()))
+        && rr_no_receipt_for(log: rr_log_of(result: rr_run_else_less(root: root)), node: program_effect_io_roundtrip)
+    Absent => false
+  }
+}
+
+// (iv-b) THE SAME BRANCH AS THE RUN'S ROOT SITE (value position): the walk completes a frame that owes a
+// value, selects none, and refuses with the fact's own reason.
+test fn rr_iv_an_else_less_branch_as_the_root_site_refuses_with_the_branch_reason_holds() -> Bool {
+  match rr_root_of(result: rr_run_else_less(root: rr_else_less_site)) {
+    Present { value: outcome } =>
+      match outcome {
+        Rejected { diagnostics: d } => d.head.reason == ^eval_reason_branch_else_less_as_value
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
