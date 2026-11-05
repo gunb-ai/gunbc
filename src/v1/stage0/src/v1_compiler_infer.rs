@@ -6334,7 +6334,9 @@ pub fn equality_table_with_module(
     Rc::new({
         let mut __result = Vec::new();
         for item in typed.items.clone().iter().cloned() {
-            if equality_declaration_is_walked(item.clone()) {
+            if (equality_declaration_is_walked(item.clone())
+                || equality_declaration_is_marker(item.clone(), source_indices.clone()))
+            {
                 __result.push(item);
             }
         }
@@ -6377,6 +6379,41 @@ pub fn equality_declaration_is_walked(item: Rc<Node>) -> bool {
         && (item.transport.clone() == std::option::Option::None))
 }
 
+pub fn equality_declaration_is_marker(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let head = match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+            _ => item.clone(),
+        };
+        (((((((head.connective.clone() == Connective::NoConnective)
+            && ((head.children.clone().len() as i64) == 0))
+            && (head.transport.clone() == std::option::Option::None))
+            && (head.type_annotation.clone() == std::option::Option::None))
+            && ((Rc::new({
+                let mut __result = Vec::new();
+                for p in head.properties.clone().iter().cloned() {
+                    if !type_head_preserving_property(p.clone()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .len() as i64)
+                == 0))
+            && !crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                head.clone(),
+            )))
+            && (crate::v1_compiler_infer_types::node_declaration_identity(
+                item.clone(),
+                source_indices.clone(),
+            ) != "::".to_string()))
+    }
+}
+
 pub fn build_equality_by_target(
     items: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
@@ -6406,12 +6443,36 @@ pub fn build_equality_by_target(
                 )
             },
         );
-        equality_by_target_rounds(
+        let settled = equality_by_target_rounds(
             declarations.clone(),
             env.clone(),
             module_name,
             seed,
             v1_rt::int_add((declarations.clone().len() as i64), 1),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                if equality_declaration_is_marker(item.clone(), source_indices.clone()) {
+                    __result.push(item);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(
+            settled.clone(),
+            |acc: Rc<HashMap<String, bool>>, d: Rc<Node>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    crate::v1_compiler_infer_types::node_declaration_identity(
+                        d.clone(),
+                        source_indices.clone(),
+                    ),
+                    true,
+                )
+            },
         )
     }
 }
