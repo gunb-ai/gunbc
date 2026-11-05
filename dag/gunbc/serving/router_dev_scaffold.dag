@@ -119,3 +119,23 @@ data router_dev_uncapped_inflight_shell_scaffold: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+
+
+// 7. RELOCATION HANDOFF SEMANTICS IN PROXY LUA, bound to router_dev_relocate_lines, the /router/relocate
+// control; its access-phase check (router_dev_relocation_access_lines), log-phase commit
+// (router_dev_relocation_log_lines) and init replay of handoffs.json (in router_dev_init_lines) are the same
+// debt. The handoff rules -- the pending handoff is the one authoritative record, the revision advances once
+// on commit, a pending record with no later done record is repopulated as unreconciled after a restart --
+// are modeled in gunbc.serving.serving_relocation (HandoffPhase, reconcile_after_restart) and realized here
+// by hand as Lua strings. The realization ships uncommissioned: /router/relocate refuses until a relocation
+// token is placed. Dissolves when the S3 callout service (gunbc.serving.serving_router) realizes relocation
+// with its durable handoff on caller_backlog's rebinding spine (plan gunbc.plans.fabric_serving_router, R
+// durability row), and the proxy carries no relocation Lua.
+data router_dev_relocation_lua_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.serving.router_dev_policy",
+    decl_name: "router_dev_relocate_lines",
+    field: WholeDeclaration
+  }
+}

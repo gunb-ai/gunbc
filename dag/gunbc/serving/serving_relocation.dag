@@ -25,7 +25,10 @@ module gunbc.serving.serving_relocation
 // the choice runs through std.decision today; when S3's native serving_router admits owned replicas
 // through capacity_admission this rewires to select_supply, keeping the same funded axes and receipt.
 
-import std.types { Int, Bool, NonEmptyStr, List, brand }
+import std.types { Int, Bool, NonEmptyStr, List, String, brand }
+import std.nat { Nat }
+import std.integer { nat_to_int }
+import extdeps.languages.json.emit { JsonValue, json_kv, json_int, json_string, json_bool, json_object, serialize_json }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval }
@@ -291,7 +294,17 @@ fn note_source_over_retain_promise() -> RelocationDecision {
 // re-decide (DESIGN 3d: one decision authority). Because the falsifier obtains this payload by calling
 // render_move_intent, deleting this module removes the payload and breaks the falsifier control that
 // posts it — supplying inputs never removes the last execution of the real path.
-type RenderedIntent = IntentPayload { payload: NonEmptyStr } | NoIntent { reason: NonEmptyStr }
+// The transition allowance is what the plan's first ResourceBudgetPolicy trial declares: one bounded
+// reconstruction plus one handoff's temporary overlap -- a count of operations the trial may spend, not a
+// duration and not a price (the plan fabricates no pricing). The replay/measurement study retires it.
+type TransitionAllowance {
+  reconstructions: Nat
+  overlapping_handoffs: Nat
+}
+
+// The rendered intent carries the MoveIntent it was rendered from; the payload is that record's JSON
+// encoding (move_intent_json), the one wire form the router parses.
+type RenderedIntent = IntentPayload { intent: MoveIntent, payload: String } | NoIntent { reason: NonEmptyStr }
 
 fn method_name(method: StateEstablishmentMethod) -> NonEmptyStr {
   match method {
@@ -300,31 +313,33 @@ fn method_name(method: StateEstablishmentMethod) -> NonEmptyStr {
   }
 }
 
+fn intent_payload(i: MoveIntent) -> RenderedIntent {
+  IntentPayload { intent: i, payload: serialize_json(v: move_intent_json(i: i)) }
+}
+
 fn render_move_intent(
   conversation: ConversationId,
   from_launch: NonEmptyStr,
   current_revision: PlacementRevision,
   authorization: NonEmptyStr,
-  transition_allowance_micros: Int,
+  allowance: TransitionAllowance,
   method: StateEstablishmentMethod,
   field: List<ParetoEntry>,
   closed: Bool,
 ) -> RenderedIntent {
   match decide_relocation(field: field, closed: closed) {
     Move { destination_label: dest, receipt: r } =>
-      IntentPayload {
-        payload: join([
-          concat("conversation=" as NonEmptyStr, conversation),
-          concat("from=" as NonEmptyStr, from_launch),
-          concat("revision=" as NonEmptyStr, to_string(current_revision)),
-          concat("destination=" as NonEmptyStr, dest),
-          concat("method=" as NonEmptyStr, method_name(method: method)),
-          concat("authorization=" as NonEmptyStr, authorization),
-          concat("allowance_micros=" as NonEmptyStr, to_string(transition_allowance_micros)),
-          concat("receipt_selected=" as NonEmptyStr, declaration_ref_display_key(ref: r.selected_identity)),
-          concat("receipt_policy=" as NonEmptyStr, declaration_ref_display_key(ref: policy_identity_of(policy: r.applied_policy))),
-        ], ";" as NonEmptyStr),
-      }
+      intent_payload(i: MoveIntent {
+        conversation: conversation,
+        from_launch: from_launch,
+        current_revision: current_revision,
+        destination_label: dest,
+        method: method,
+        authorization: authorization,
+        allowance: allowance,
+        receipt: r,
+        retained_state_evacuated: method_evacuates_retained_state(method: method),
+      })
     Stay => NoIntent { reason: "stay preferred: no move intent" as NonEmptyStr }
     NotEstablished { reason: reason } => NoIntent { reason: reason }
     DeferredToPolicy => NoIntent { reason: "deferred: no runnable demand at this boundary" as NonEmptyStr }
@@ -344,9 +359,29 @@ type MoveIntent {
   destination_label: NonEmptyStr
   method: StateEstablishmentMethod
   authorization: NonEmptyStr
-  transition_allowance_micros: Int
+  allowance: TransitionAllowance
   receipt: SelectionReceipt
   retained_state_evacuated: Bool
+}
+
+// The /router/relocate wire form: MoveIntent's JSON encoding. The router decodes it with cjson and checks
+// its shape and placement revision; the receipt is carried by identity, never re-decided by the router.
+fn move_intent_json(i: MoveIntent) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "conversation", value: json_string(s: i.conversation)),
+    json_kv(key: "from", value: json_string(s: i.from_launch)),
+    json_kv(key: "revision", value: json_int(n: i.current_revision)),
+    json_kv(key: "destination", value: json_string(s: i.destination_label)),
+    json_kv(key: "method", value: json_string(s: method_name(method: i.method))),
+    json_kv(key: "authorization", value: json_string(s: i.authorization)),
+    json_kv(key: "allowance", value: json_object(members: [
+      json_kv(key: "reconstructions", value: json_int(n: nat_to_int(n: i.allowance.reconstructions))),
+      json_kv(key: "overlapping_handoffs", value: json_int(n: nat_to_int(n: i.allowance.overlapping_handoffs))),
+    ])),
+    json_kv(key: "receipt_selected", value: json_string(s: declaration_ref_display_key(ref: i.receipt.selected_identity))),
+    json_kv(key: "receipt_policy", value: json_string(s: declaration_ref_display_key(ref: policy_identity_of(policy: i.receipt.applied_policy)))),
+    json_kv(key: "retained_state_evacuated", value: json_bool(b: i.retained_state_evacuated)),
+  ])
 }
 
 type HandoffRecord {

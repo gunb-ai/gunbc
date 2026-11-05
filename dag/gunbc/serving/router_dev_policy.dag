@@ -804,14 +804,17 @@ fn router_dev_relocate_lines(state_dir: String) -> List<String> {
     "if h ~= 'Bearer ' .. want_token then return refuse(401, 'authentication_error', 'relocate requires the relocation token') end",
     "ngx.req.read_body()",
     "local raw = ngx.req.get_body_data() or ''",
-    // Parse the rendered key=value;key=value payload into a table.
-    "local intent = \{}",
-    "for kv in raw:gmatch('[^;]+') do local k, v = kv:match('^([^=]+)=(.*)$') if k then intent[k] = v end end",
+    // The intent is gunbc.serving.serving_relocation move_intent_json: MoveIntent's JSON encoding.
+    "local intent = cjson.decode(raw)",
+    "if type(intent) ~= 'table' then return refuse(400, 'invalid_request_error', 'intent is not a JSON object') end",
     // Shape: every field the model renders must be present. A missing field is a malformed intent, not a
     // decision to move.
-    "for _, k in ipairs(\{'conversation','from','revision','destination','method','authorization','allowance_micros','receipt_selected','receipt_policy'}) do",
-    "  if intent[k] == nil or intent[k] == '' then return refuse(400, 'invalid_request_error', 'intent missing field: ' .. k) end",
+    "for _, k in ipairs(\{'conversation','from','destination','method','authorization','receipt_selected','receipt_policy'}) do",
+    "  if type(intent[k]) ~= 'string' or intent[k] == '' then return refuse(400, 'invalid_request_error', 'intent missing field: ' .. k) end",
     "end",
+    "if type(intent.revision) ~= 'number' or intent.revision % 1 ~= 0 then return refuse(400, 'invalid_request_error', 'intent missing field: revision') end",
+    "local a = intent.allowance",
+    "if type(a) ~= 'table' or type(a.reconstructions) ~= 'number' or type(a.overlapping_handoffs) ~= 'number' then return refuse(400, 'invalid_request_error', 'intent missing field: allowance') end",
     // Method: only reconstruct is admitted today; restore has no admitted case.
     "if intent.method ~= 'reconstruct' then return refuse(400, 'invalid_request_error', 'state-establishment method not admitted: ' .. intent.method) end",
     // Destination must be a live in-service row.
@@ -824,13 +827,13 @@ fn router_dev_relocate_lines(state_dir: String) -> List<String> {
     "local cur = tonumber(state:get('rev:' .. session) or '0')",
     "local want = tonumber(intent.revision)",
     "if want == nil then return refuse(400, 'invalid_request_error', 'intent revision is not a number') end",
-    "if want ~= cur then return refuse(409, 'invalid_request_error', 'stale placement revision: intent names ' .. intent.revision .. ', current is ' .. tostring(cur)) end",
+    "if want ~= cur then return refuse(409, 'invalid_request_error', 'stale placement revision: intent names ' .. tostring(intent.revision) .. ', current is ' .. tostring(cur)) end",
     // Idempotency: one outstanding handoff per conversation. A duplicate move command sees the existing
     // handoff and is refused rather than starting a second one.
     "if state:get('handoff:' .. session) then return refuse(409, 'invalid_request_error', 'a handoff is already pending for this conversation') end",
     // Record the handoff (dict, survives HUP) and the durable fact (file, survives restart). The dict
     // entry is the live record; the file only says a handoff was pending.
-    "local rec = cjson.encode(\{dest = intent.destination, revision = want, method = intent.method, allowance = tonumber(intent.allowance_micros), reconciled = true})",
+    "local rec = cjson.encode(\{dest = intent.destination, revision = want, method = intent.method, allowance = a, reconciled = true})",
     "state:set('handoff:' .. session, rec)",
     "local f = io.open(dir .. '/handoffs.json', 'a') if f then f:write(cjson.encode(\{session = session, dest = intent.destination, revision = want}) .. '\\n') f:close() end",
     "ngx.header['Content-Type'] = 'application/json'",

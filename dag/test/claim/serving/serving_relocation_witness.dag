@@ -13,7 +13,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.algebra { string_contains }
 import gunbc.serving.serving_relocation {
   decide_relocation, defer_when_demand_not_ready, move_candidate, stay_candidate, excluded_candidate, decide_evacuation,
-  note_source_over_retain_promise, claim_move, attempt_dispatch, render_move_intent,
+  note_source_over_retain_promise, claim_move, attempt_dispatch, render_move_intent, TransitionAllowance,
   Move, Stay, DeferredToPolicy, Evacuate, ReconciliationRequired,
   MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
   HandoffRecord, Dispatched, ConversationId, ReconstructFromCompleteRequest,
@@ -147,9 +147,12 @@ test fn a_source_over_its_retain_promise_is_an_obligation_not_free() -> Bool {
   }
 }
 
+// The plan's first ResourceBudgetPolicy trial: one bounded reconstruction plus one handoff's overlap.
+fn trial_allowance() -> TransitionAllowance { TransitionAllowance { reconstructions: 1, overlapping_handoffs: 1 } }
+
 // 10. The model RENDERS the /router/relocate payload from a real decision: a dominating move yields an
 //     IntentPayload carrying conversation, revision, destination, method, allowance and the receipt
-//     identities. This is the model's output the falsifier posts. MUTATION: render a literal instead of
+//     identities, as JSON encoded from the MoveIntent it carries. MUTATION: render a literal instead of
 //     running decide_relocation -> the receipt identities are absent -> red.
 test fn render_move_intent_emits_the_router_payload_from_a_real_decision() -> Bool {
   let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)
@@ -158,19 +161,21 @@ test fn render_move_intent_emits_the_router_payload_from_a_real_decision() -> Bo
     from_launch: "srv3" as NonEmptyStr,
     current_revision: 7,
     authorization: "trial-allowance-1" as NonEmptyStr,
-    transition_allowance_micros: 1000000,
+    allowance: trial_allowance(),
     method: ReconstructFromCompleteRequest,
     field: [stay_candidate(net: -50), move],
     closed: true,
   ) {
-    IntentPayload { payload: p } =>
-      string_contains(s: p, pattern: "conversation=conv-9")
-        && string_contains(s: p, pattern: "revision=7")
-        && string_contains(s: p, pattern: "destination=free-engine")
-        && string_contains(s: p, pattern: "method=reconstruct")
-        && string_contains(s: p, pattern: "allowance_micros=1000000")
-        && string_contains(s: p, pattern: "receipt_selected=")
-        && string_contains(s: p, pattern: "receipt_policy=")
+    IntentPayload { intent: i, payload: p } =>
+      i.destination_label == "free-engine"
+        && i.current_revision == 7
+        && string_contains(s: p, pattern: "\"conversation\": \"conv-9\"")
+        && string_contains(s: p, pattern: "\"revision\": 7")
+        && string_contains(s: p, pattern: "\"destination\": \"free-engine\"")
+        && string_contains(s: p, pattern: "\"method\": \"reconstruct\"")
+        && string_contains(s: p, pattern: "\"allowance\": \{\"reconstructions\": 1, \"overlapping_handoffs\": 1}")
+        && string_contains(s: p, pattern: "\"receipt_selected\": \"")
+        && string_contains(s: p, pattern: "\"receipt_policy\": \"")
     NoIntent { reason: _ } => false
   }
 }
@@ -184,12 +189,12 @@ test fn render_move_intent_emits_no_intent_when_the_model_stays() -> Bool {
     from_launch: "srv3" as NonEmptyStr,
     current_revision: 2,
     authorization: "trial-allowance-1" as NonEmptyStr,
-    transition_allowance_micros: 1000000,
+    allowance: trial_allowance(),
     method: ReconstructFromCompleteRequest,
     field: [stay_candidate(net: -5), move],
     closed: true,
   ) {
     NoIntent { reason: _ } => true
-    IntentPayload { payload: _ } => false
+    IntentPayload { intent: _, payload: _ } => false
   }
 }
