@@ -28,7 +28,10 @@ module gunbc.roadmap.roadmap_attempt_continuation
 // wearing six faces. ContinuationPlan collapses them: a live or in-flight attempt is JOINED
 // (AlreadyRunning -- never doubled by a second attempt beside it), and a lineage that stopped short
 // of an approved candidate is CONTINUED (NextAttempt -- a new attempt from the existing branch head,
-// the work kept), which is exactly what the operator's CONTINUE means. A fence, a FencedAttempt or a
+// the work kept), which is exactly what the operator's CONTINUE means -- but ONLY once the prior
+// submission capture is SETTLED; a lineage whose capture is still OWED (the belt's commit step has not
+// run) is refused and waits for it, never continued onto an unread submission (bright-moth-475: 'owed'
+// is not 'handed in nothing'). A fence, a FencedAttempt or a
 // per-attempt skip state stays out: the fence was the supervisor's -- it fenced a lane that no longer
 // exists -- and a lineage whose session is dead has no live attempt to fence, so the live-attempt
 // check IS the double-spawn guard. A session that died is resumed by the decision, not fenced out.
