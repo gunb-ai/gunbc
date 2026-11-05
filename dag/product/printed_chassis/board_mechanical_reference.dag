@@ -5,7 +5,7 @@ import extdeps.external_authority {ExternalAuthority,CitedFigureStanding,CitedTo
 import extdeps.uri {uri_wire}
 import extdeps.ocp.mt_jade.platform {mt_jade_motherboard_mechanical}
 import extdeps.ocp.mt_jade.subject {mt_jade_subject_authority_anchor}
-import extdeps.boards.types {BoardLocationStanding,HolePositionEstimatedFromImage,BoardStandardLocationRoster,standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.boards.types {BoardLocationStanding,HoleCorrespondenceInferred,HolePositionEstimatedFromImage,HoleAbsenceExplicitlyDirected,HoleNotObservedInDrawing,HolePhysicallyConfirmedPresent,HolePhysicallyConfirmedAbsent,BoardStandardLocationRoster,board_standard_location_roster,board_location_correspondence,standoff_placement,StandoffAdmitted,StandoffProhibited}
 import std.optional {Present,Absent}
 import extdeps.standards.motherboard_mounting_grid {standard_mounting_grid_locations,standard_mounting_grid_label}
 import extdeps.standards.motherboard_mounting_location {MountingLocationId,LocA,LocB,LocC,LocF,LocG,LocH,LocJ,LocK,LocL,LocM,LocR,LocS}
@@ -43,6 +43,32 @@ fn standard_location_reference(roster:BoardStandardLocationRoster?) -> BoardMoun
  match roster {
  Present {value:r}=>StandardLocationReference {roster:r}
  Absent=>MountingReferencePending {read_obligation:"The board's standard-location roster refused: a corresponding letter does not resolve to exactly one location in the grid it names, or is listed twice. Correct the correspondence or the grid in the board's extdeps module."}
+ }
+}
+
+// A HOLE THE BOARD IN HAND TOOK A FIT GAUGE AT. A row the vendor's figure implied
+// (HoleCorrespondenceInferred) becomes HolePhysicallyConfirmedPresent; every other row keeps its standing.
+// A gauged location the roster does not admit a standoff at (absent, directed empty, or undrawn) is the board
+// contradicting its reading, and the roster refuses rather than picking one of the two.
+fn confirm_holes_present_by_fit(roster:BoardStandardLocationRoster?,gauged:List<MountingLocationId>) -> BoardStandardLocationRoster? {
+ match roster {
+ Absent=>Absent
+ Present {value:r}=>if all(gauged,g=>count(filter(r.locations,x=>x.location==g && placement_admitted(standing:x.standing)))==1) {
+ board_standard_location_roster(grid:r.grid,locations:map(r.locations,x=>if count(filter(gauged,g=>g==x.location))>0 {board_location_correspondence(location:x.location,standing:confirmed_present(standing:x.standing))} else {x}))
+ } else {Absent}
+ }
+}
+fn confirmed_present(standing:BoardLocationStanding) -> BoardLocationStanding {
+ match standing {HoleCorrespondenceInferred=>HolePhysicallyConfirmedPresent _=>standing}
+}
+fn location_standing_label(standing:BoardLocationStanding) -> String {
+ match standing {
+ HoleCorrespondenceInferred=>"inferred from the vendor's figure"
+ HolePositionEstimatedFromImage=>"estimated from an image"
+ HoleAbsenceExplicitlyDirected=>"vendor directs no standoff"
+ HoleNotObservedInDrawing=>"not drawn by the vendor"
+ HolePhysicallyConfirmedPresent=>"confirmed present by fit"
+ HolePhysicallyConfirmedAbsent=>"confirmed absent by fit"
  }
 }
 
@@ -94,6 +120,7 @@ fn mounting_reference_json(reference:BoardMountingReference) -> JsonValue {
  json_kv(key:"locations",value:json_array(elements:map(roster.locations,r=>json_object(members:[
  json_kv(key:"location",value:json_string(s:standard_location_label(id:r.location))),
  json_kv(key:"standoff_admitted",value:json_bool(b:placement_admitted(standing:r.standing))),
+ json_kv(key:"standing",value:json_string(s:location_standing_label(standing:r.standing))),
  json_kv(key:"standard_coordinates",value:json_array(elements:map(filter(standard_mounting_grid_locations(grid:roster.grid),m=>m.id==r.location),m=>json_object(members:[json_kv(key:"along_rear_edge_um",value:json_int(n:micrometer_count(m:m.along_rear_edge))),json_kv(key:"depth_from_rear_edge_um",value:json_int(n:micrometer_count(m:m.depth_from_rear_edge)))]))))
  ]))))])
  ImageLocationReference {reading:r}=>json_object(members:[

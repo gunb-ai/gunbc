@@ -96,3 +96,37 @@ data bfb1012m_received_reading: RecordedFact<ReceivedBlowerProposition> = Record
 data bfb1012m_received_reading_provenance: EvidenceProvenance = EvidenceProvenance {
  entity:"operator-conversation/bfb1012m-received-reading-2026-11-04",activity:"caliper-reading-of-received-units",agent:"operator",
 }
+
+// THE ALTRA FIT GAUGES SEAT. Operator, 2026-11-05: "yes all the gauges are fine, we have the altra holes
+// modeled correctly already" -- the F-C gauge (product.printed_chassis.standoff_gauge altrad8ud_standoff_gauge)
+// and the five follow-on pairs (product.printed_chassis.fit_gauges follow_on_fit_gauge_pairs), all printed and
+// tried on the board in hand. What this establishes: every gauged hole is present on that board, and every
+// gauged pair's spacing holds. What it does not: the whole map's relative angles (fit_gauges records that the
+// connected pairs do not fix them), the board's hole diameter, standoff height or any underside clearance.
+// Mounting the board on a tray discharges those (extdeps.boards.asrock_rack asrock_altrad8ud_open_mounting_unknowns).
+type AltraFitGaugeSetProposition { every_gauge_seats: Bool }
+data altra_fit_gauge_set_fit: RecordedFact<AltraFitGaugeSetProposition> = RecordedFact {
+ id:"altra-fit-gauge-set-fit-2026-11-05",value:AltraFitGaugeSetProposition {every_gauge_seats:true},
+}
+data altra_fit_gauge_set_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/altra-fit-gauge-set-fit-2026-11-05",activity:"manual-print-and-hand-fit",agent:"operator",
+}
+
+// THE R06 ALTRA CASSETTE, PRINTED. Operator, 2026-11-05: "the print was fine"; the tray "had no actual
+// standoffs", and "we need to have space cut out for the backplate of the socket because it gets hot". So the
+// r06 panels print as generated, and the next revision owes the two features r06 never carried: standoffs at
+// the board's holes, and an opening under the socket's retention backplate. No board was mounted on it, so
+// nothing here reads a fit of the board to the tray.
+type CassetteR06PrintProposition { printed_without_defect: Bool, carries_board_standoffs: Bool, clears_socket_backplate: Bool }
+data cassette_r06_print: RecordedFact<CassetteR06PrintProposition> = RecordedFact {
+ id:"cassette-r06-print-2026-11-05",value:CassetteR06PrintProposition {printed_without_defect:true,carries_board_standoffs:false,clears_socket_backplate:false},
+}
+data cassette_r06_print_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/cassette-r06-print-2026-11-05",activity:"manual-print-and-inspection",agent:"operator",
+}
+fn cassette_r06_print_display() -> String {
+ let v=cassette_r06_print.value
+ join([if v.printed_without_defect {"Operator reports the r06 tray printed without defect (5 November 2026)."} else {"The r06 tray did not print cleanly."},
+  if v.carries_board_standoffs {""} else {" It carries no board standoffs, so the board cannot be fastened to it."},
+  if v.clears_socket_backplate {""} else {" It has no opening under the CPU socket's retention backplate, which runs hot; the next revision owes one."}],"")
+}

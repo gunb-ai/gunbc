@@ -1,16 +1,16 @@
 module test.claim.cassette_platform_projects_witness
 import std.types {Bool}
-import extdeps.boards.types {BoardStandardLocationRoster,board_standard_location_roster,BoardLocationStanding,standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.boards.types {BoardStandardLocationRoster,board_standard_location_roster,BoardLocationStanding,HolePhysicallyConfirmedPresent,standoff_placement,StandoffAdmitted,StandoffProhibited}
 import extdeps.standards.motherboard_mounting_grid {MicroAtxMountingGrid,Atx22MountingGrid}
-import extdeps.standards.motherboard_mounting_location {LocJ}
-import extdeps.boards.asrock_rack {asrock_altrad8ud_standard_location_correspondence}
+import extdeps.standards.motherboard_mounting_location {LocC,LocF,LocJ,LocS}
+import extdeps.boards.asrock_rack {asrock_altrad8ud_standard_location_correspondence,asrock_altrad8ud_standard_location_roster}
 import extdeps.boards.supermicro_h11ssl {supermicro_h11ssl_standard_location_correspondence}
 import std.measure {micrometer,micrometer_count}
 import extdeps.portwell.aptsa_627211_b4 {collins_datasheet_mechanicals}
 import std.optional {Present,Absent}
 import product.printed_chassis.cassette_profile {board_grid_tiles,RetainPlatformPowerAssembly,IndependentPowerCassette}
 import product.printed_chassis.cassette_profiles {cassette_profiles,altra_profile,h11ssl_i_profile,gh200_p4261_profile,mt_jade_profile,mt_collins_profile}
-import product.printed_chassis.board_mechanical_reference {StandardLocationReference,ImageLocationReference,MountingReferencePending}
+import product.printed_chassis.board_mechanical_reference {StandardLocationReference,ImageLocationReference,MountingReferencePending,confirm_holes_present_by_fit}
 import extdeps.standards.atx_2_2 {atx_board_width_along_rear_io_exact,atx_full_size_depth_exact}
 import product.printed_chassis.cassette_layout {layout_for,current_layout,LayoutKnown,LayoutNeedsBoardOutline}
 test fn unknown_board_refuses_and_collins_uses_its_own_provisional_outline() -> Bool {
@@ -49,6 +49,28 @@ test fn h11ssl_profile_reads_its_holes_against_atx_and_its_outline_is_full_atx()
  ImageLocationReference {reading:_}=>false MountingReferencePending {read_obligation:_}=>false}
  let outline=match layout_for(profile:h11ssl_i_profile,edge_margin:micrometer(count: 0)) {LayoutKnown {layout:l}=>l.board_width==atx_board_width_along_rear_io_exact && l.board_depth==atx_full_size_depth_exact LayoutNeedsBoardOutline=>false}
  red && h && altra && outline && micrometer_count(m:atx_board_width_along_rear_io_exact)>micrometer_count(m:atx_full_size_depth_exact)
+}
+
+// The Altra profile reads its roster through the operator's gauge-fit report (product.printed_chassis
+// .fit_observations altra_fit_gauge_set_fit): the seven holes the gauges were cut for are confirmed present,
+// J keeps the vendor's direction to leave it empty, S stays undrawn, and the confirmation changes no placement decision.
+// Reds: a gauge reported at a hole the vendor says to leave empty (J), or at one it does not draw (S), is a
+// contradiction and refuses; no report confirms nothing; one gauge confirms its own two holes only.
+fn confirmed(s:BoardLocationStanding) -> Bool {match s {HolePhysicallyConfirmedPresent=>true _=>false}}
+test fn altra_holes_the_fit_gauges_seated_are_confirmed_present_and_only_those() -> Bool {
+ let roster=asrock_altrad8ud_standard_location_roster
+ let profile=match altra_profile.mounting {
+ StandardLocationReference {roster:r}=>count(r.locations)==9
+  && count(filter(r.locations,c=>confirmed(s:c.standing)))==7
+  && count(filter(r.locations,c=>admits(s:c.standing)))==7
+  && all(filter(r.locations,c=>c.location==LocJ),c=>!admits(s:c.standing) && !confirmed(s:c.standing))
+ ImageLocationReference {reading:_}=>false MountingReferencePending {read_obligation:_}=>false}
+ let red=refused(r:confirm_holes_present_by_fit(roster:roster,gauged:[LocJ]))
+  && refused(r:confirm_holes_present_by_fit(roster:roster,gauged:[LocS]))
+  && refused(r:confirm_holes_present_by_fit(roster:Absent,gauged:[]))
+ let unreported=match confirm_holes_present_by_fit(roster:roster,gauged:[]) {Present {value:r}=>count(filter(r.locations,c=>confirmed(s:c.standing)))==0 Absent=>false}
+ let one=match confirm_holes_present_by_fit(roster:roster,gauged:[LocF,LocC]) {Present {value:r}=>count(filter(r.locations,c=>confirmed(s:c.standing)))==2 Absent=>false}
+ profile && red && unreported && one
 }
 
 test fn one_layout_kernel_preserves_altra_and_derives_jade() -> Bool {
