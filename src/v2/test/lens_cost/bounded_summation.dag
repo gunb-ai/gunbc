@@ -16,7 +16,6 @@ import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   TypeNode,
-  NodeOccurrence
 }
 import v2.std.verification {
   EqualsClaim,
@@ -38,7 +37,7 @@ data bounded_summation_bound_leaf: Node = Node {
 }
 
 data bounded_summation_binder: SizeVariable = SizeVariable {
-  source: NodeOccurrence { node: bounded_summation_bound_leaf }
+  source: bounded_summation_bound_leaf
 }
 
 fn bounded_unit_summation_expr() -> CostExpr {
@@ -58,7 +57,7 @@ fn bounded_summation_is_representable() -> Bool {
 
 fn bounded_summation_projects_to_linear() -> Bool {
   match normalize_cost_expr_to_symbolic(expr: bounded_unit_summation_expr()) {
-    LinearCost { variable: v } => node_same_occurrence(a: v.source.node, b: bounded_summation_bound_leaf)
+    LinearCost { variable: v } => node_same_occurrence(a: v.source, b: bounded_summation_bound_leaf)
     _ => false
   }
 }

@@ -46,14 +46,13 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  fold_node,
-  NodeOccurrence
+  fold_node
 }
 import std.nat { Nat, Succ, Zero, nat_add, nat_compare }
 import v2.std.witness { Holds, Violates, Witness }
 
 type SizeVariable {
-  source: NodeOccurrence
+  source: Node
 }
 
 type PolynomialDegree {
@@ -136,7 +135,7 @@ fn polylog_exponent_two() -> PolyLogExponent {
 }
 
 fn size_of_node(n: Node) -> SizeVariable {
-  SizeVariable { source: NodeOccurrence { node: n } }
+  SizeVariable { source: n }
 }
 
 fn linear_in_node(n: Node) -> SymbolicCost {

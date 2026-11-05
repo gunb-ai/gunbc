@@ -311,18 +311,18 @@ fn runner_dispatch_job<V>(
   store: NodeKeyedStore<V>,
   value: V
 ) -> RunnerDispatchOutcome<V> {
-  if runner_node_ready(dependencies: dependencies, store: store, candidate: job.node.node) {
+  if runner_node_ready(dependencies: dependencies, store: store, candidate: job.node) {
     RunnerDispatchOk {
-      store: node_keyed_store_put(store: store, node: job.node.node, value: value)
+      store: node_keyed_store_put(store: store, node: job.node, value: value)
     }
   } else {
     RunnerDispatchBlocked {
       evidence: RunnerMissingDependency {
-        node: job.node.node,
+        node: job.node,
         prerequisite: runner_first_missing_dependency(
           dependencies: dependencies,
           store: store,
-          candidate: job.node.node
+          candidate: job.node
         )
       }
     }

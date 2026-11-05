@@ -3281,7 +3281,6 @@ pub fn resolve_expr_types(
                 op,
                 algebra_field: af,
                 operand: od,
-                derived: eqp,
                 ..
             } => {
                 let ch = texpr.children.clone();
@@ -3306,7 +3305,6 @@ pub fn resolve_expr_types(
                             op: op.clone(),
                             algebra_field: af.clone(),
                             operand: od.clone(),
-                            derived: eqp.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),
