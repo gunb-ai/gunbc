@@ -226,7 +226,7 @@ test fn a_rest_uri_template_unclosed_brace_refuses_located_holds() -> Bool {
     && srl_refused_as(o: srl_uri_template_query_unclosed(), reason: ^service_realization_argv_refused)
 }
 
-// PER-OPERATION UNREALIZABLE (v2.compiler.service_realization service_realization_verdict). An operation
+// PER-OPERATION UNREALIZABLE (v2.compiler.service_realization service_realization_judgment). An operation
 // whose executable is not a literal does not reject the service: it lowers as a marker entry and its
 // sibling lowers as a transport entry.
 fn srl_mixed() -> Outcome<CensusTree> { srl_census(text: srl_mixed_source) }

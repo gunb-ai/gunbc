@@ -1,7 +1,7 @@
 module v2.compiler.body_lowering_fold
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_landed_after_typed_census }
-import v2.compiler.service_realization { UnrealizableOperation, realization_refusal_diagnostic, service_realization_unrealizable, service_realization_verdict }
+import v2.compiler.service_realization { UnrealizableOperation, realization_refusal_diagnostic, RealizationJudgment, service_realization_judgment }
 import v2.std.service_realization_labels {
   realization_arm_doc_label,
   realization_arm_pattern_label,
@@ -12274,10 +12274,15 @@ fn body_lower_service_decl(shell: Node) -> Outcome<BodyLowering> {
                     )
                   )
                 Absent =>
-              match body_lower_service_realization_refusal_optional(shell: shell, a: a) {
-                Present { value: refused } => Rejected { diagnostics: diagnostics_singleton(d: refused) }
+              match body_lower_service_realization_judgment_optional(shell: shell, a: a) {
+                Present { value: j } =>
+                  match j.fatal {
+                    Present { value: refused } => Rejected { diagnostics: diagnostics_singleton(d: realization_refusal_diagnostic(r: refused)) }
+                    Absent =>
+                      body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_marked_leaf_optional(a: a, j: j))))
+                  }
                 Absent =>
-                  body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_marked_leaf_optional(shell: shell, a: a))))
+                  body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: optional_absent())))
               }
               }
           }
@@ -12359,19 +12364,13 @@ fn body_lower_service_realization_leaf_optional(a: BodyLowerServiceAcc) -> Optio
 
 // The authored leaf with each operation-grain-unrealizable entry replaced by its marker entry, so the
 // mirror says WHICH operations cannot be realized and why (located at the offending argv element). The
-// wall judged the authored leaf (service_realization_verdict), so only conforming-or-demotable entries
+// wall judged the authored leaf (service_realization_judgment), so only conforming-or-unrealizable entries
 // reach here.
-fn body_lower_service_realization_marked_leaf_optional(shell: Node, a: BodyLowerServiceAcc) -> Optional<Node> {
+fn body_lower_service_realization_marked_leaf_optional(a: BodyLowerServiceAcc, j: RealizationJudgment) -> Optional<Node> {
   match body_lower_service_realization_leaf_optional(a: a) {
     Absent => optional_absent()
     Present { value: leaf } =>
-      optional_present(value: node_synthetic(
-        kind: TypeNode { connective: Conj },
-        children: body_lower_service_marked_entries(
-          edges: leaf.children,
-          unrealizable: service_realization_unrealizable(interface: body_lower_payload_node(edges: a.operations, source: shell), realization: leaf)
-        )
-      ))
+      optional_present(value: node_synthetic(kind: TypeNode { connective: Conj }, children: body_lower_service_marked_entries(edges: leaf.children, unrealizable: j.unrealizable)))
   }
 }
 
@@ -12418,14 +12417,10 @@ fn body_lower_service_entry_with(entries: List<Edge>, op: BodyLowerOperation) ->
 // THE REALIZATION WALL RUNS ON EVERY LOWERED SERVICE (v2.compiler.service_realization
 // service_realization_refusal): a leaf that does not conform refuses the service, located at the
 // offending node, on every route.
-fn body_lower_service_realization_refusal_optional(shell: Node, a: BodyLowerServiceAcc) -> Optional<Diagnostic> {
+fn body_lower_service_realization_judgment_optional(shell: Node, a: BodyLowerServiceAcc) -> Optional<RealizationJudgment> {
   match body_lower_service_realization_leaf_optional(a: a) {
     Absent => optional_absent()
-    Present { value: leaf } =>
-      match service_realization_verdict(interface: body_lower_payload_node(edges: a.operations, source: shell), realization: leaf) {
-        Present { value: r } => optional_present(value: realization_refusal_diagnostic(r: r))
-        Absent => optional_absent()
-      }
+    Present { value: leaf } => optional_present(value: service_realization_judgment(interface: body_lower_payload_node(edges: a.operations, source: shell), realization: leaf))
   }
 }
 
