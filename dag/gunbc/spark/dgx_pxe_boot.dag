@@ -2,7 +2,7 @@ module gunbc.spark.dgx_pxe_boot
 
 import extdeps.pci.identity { PciVendorId, PciDeviceId }
 
-import std.types { NonEmptyStr, String, List, Bool, list_length }
+import std.types { NonEmptyStr, String, List, Bool }
 import std.decl_ref { DeclarationRef }
 import std.human_intervention {
   HumanIntervention,
@@ -39,6 +39,7 @@ import extdeps.os.ubuntu_kernel_nic_coverage {
   Noble2404HweLinux617,
   r8169_claims_pci_device,
 }
+import std.algebra { length }
 
 type PxeNetworkObservation {
   dhcp_offers_bootloader: Bool
@@ -223,7 +224,7 @@ fn evaluate_pxe_network_standing(
         http_endpoint: http_endpoint,
         isolation: isolation,
       )
-      if list_length(items: gaps) != 0 {
+      if length(xs: gaps) != 0 {
         PxeNetworkGapped { gaps: gaps }
       } else {
         match pxe_network_present_authorities(
@@ -307,7 +308,7 @@ fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFi
 }
 
 fn evaluate_spark_pxe_firmware_standing(config: SparkUefiPxeConfiguration) -> SparkPxeFirmwareStanding {
-  if list_length(items: spark_pxe_firmware_gaps(config: config)) != 0 {
+  if length(xs: spark_pxe_firmware_gaps(config: config)) != 0 {
     SparkPxeFirmwareHumanInterventionRequired {
       intervention: spark_pxe_firmware_enablement_intervention(),
     }

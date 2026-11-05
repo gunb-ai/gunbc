@@ -1,7 +1,8 @@
 module gunbc.runner.runner_connectivity_recovery
 
 import std.nat { nat_to_decimal_string }
-import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, list_length }
+import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration }
+import std.algebra { length }
 import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
@@ -296,7 +297,7 @@ fn classify_control_plane_standing(
   snapshots: List<RunnerSlotConnectivitySnapshot>,
   degraded_threshold_percent: Int,
 ) -> RunnerControlPlaneStanding {
-  let total = list_length(items: snapshots)
+  let total = length(xs: snapshots)
   let offline = fold(
     snapshots,
     init: 0,

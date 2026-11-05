@@ -1,8 +1,8 @@
 module gunbc.machine_intake.mtcollins1_dimm_admission
 
 import std.optional { Absent, Present }
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { trim }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim, length }
 import extdeps.memory.types { DimmBuffering, Registered, LoadReduced, DramDieStacking, DramModuleClass, dram_module_class_eq }
 import extdeps.memory.micron { mta36asf2g72pz_2g1a2_catalog }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
@@ -236,7 +236,7 @@ fn dimm_population_covers(whole: List<ObservedDimm>, part: List<ObservedDimm>) -
 
 // Positions are distinct within a firmware table, so mutual cover at equal length is multiset equality.
 fn dimm_population_identical(a: List<ObservedDimm>, b: List<ObservedDimm>) -> Bool {
-  list_length(a) == list_length(b) && dimm_population_covers(whole: a, part: b) && dimm_population_covers(whole: b, part: a)
+  length(a) == length(b) && dimm_population_covers(whole: a, part: b) && dimm_population_covers(whole: b, part: a)
 }
 
 // Same type means the same DramModuleClass (dram_module_class_eq) and the same non-volatile backing, with
@@ -285,7 +285,7 @@ fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmi
   let platform = mtcollins1_platform_prediction(modules: modules)
   DimmAdmissionReading {
     platform: platform
-    policy: if list_length(modules) == 0 {
+    policy: if length(modules) == 0 {
       PolicyEmptyPopulationRefused
     } else if dimm_population_is_uniform(modules: modules) {
       PolicyPermitsAttempt { basis: OperatorDefaultSameRankSameType }

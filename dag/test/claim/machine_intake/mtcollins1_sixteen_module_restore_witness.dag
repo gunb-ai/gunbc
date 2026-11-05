@@ -1,6 +1,7 @@
 module test.claim.machine_intake.mtcollins1_sixteen_module_restore_witness
 
-import std.types { Bool, List, NonEmptyStr, String, list_length }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.process { exit_ok }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -114,7 +115,7 @@ test fn every_transcribed_sel_event_is_in_the_capture() -> Bool {
 // record the transcription dropped is red as well as one it invented.
 test fn the_capture_carries_exactly_the_transcribed_record_count() -> Bool {
   let record_lines = filter(sel_content().split(sep: "\n"), l => contains(l, " | 09/12/2026 | "))
-  list_length(items: record_lines) == list_length(items: mtcollins1_stable_boot_window_capture.events)
+  length(xs: record_lines) == length(xs: mtcollins1_stable_boot_window_capture.events)
 }
 
 // ── the console readings, folded from the bytes ───────────────────────────────────────────────

@@ -66,7 +66,7 @@ import gunbc.parse_compiler_identity_seed_growth { parse_compiler_identity_seed_
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
-import gunbc.native_census_verb_seed_growth { native_census_verb_seed_growth_justification }
+import gunbc.native_ingress_emission_seed_growth { native_ingress_emission_seed_growth_justification }
 import gunbc.self_host_frontier_seed_growth { self_host_frontier_seed_growth_justification }
 import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
 import gunbc.bootstrap_witness_diagnostic_count_seed_growth { bootstrap_witness_diagnostic_count_seed_growth_justification }
@@ -332,7 +332,6 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
     native_serve_program_seed_growth_justification,
-    native_census_verb_seed_growth_justification,
     self_host_frontier_seed_growth_justification,
     generic_identity_census_seed_growth_justification,
     bootstrap_witness_diagnostic_count_seed_growth_justification,
@@ -347,6 +346,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     census_rendered_pair_seed_growth_justification,
     fixture_closure_union_emit_seed_growth_justification,
     http_ingress_host_seed_growth_justification,
+    native_ingress_emission_seed_growth_justification,
     data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     declaration_lookup_index_seed_growth_justification,

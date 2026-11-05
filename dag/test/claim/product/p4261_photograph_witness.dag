@@ -700,10 +700,29 @@ test fn the_real_e1_judges_every_image_reading() -> Bool {
       // exhaustive over Checkable | Gap | Broken). The four DesignatorReading rows are untouched --
       // three of them are still gaps and are the next PR's re-citation targets, which will move this
       // line again; D2_P5's designator row is checkable on p089 and stays.
-      read == 522
-        && checkable == 379
+      //
+      // The 2026-11-04 C3_F1 correction REMOVES two readings, and both were gaps: read 522 -> 520 and
+      // gaps 143 -> 141, checkable untouched at 379. C3_F1's DesignatorReading cited
+      // e1_unlocated_frame_closing -- a frame no receipt of its designator registers -- and its
+      // InstalledComponent carried a MarkingReading under MarkingUnresolved whose text was the three
+      // neighbours' marking, copied and stored as if read. Neither rested on bytes the store holds, so
+      // removing them lowers the frontier rather than raising it: a row that should never have existed
+      // was counting as a reading. Deleted rows move this number DOWN, which is the direction that
+      // catches a quiet deletion today. Measured at probe, one candidate per family, with
+      // checkable + count(broken) + count(gaps) == read holding at 520.
+      //
+      // The same day's stored-frame evidence for J3 did not add a reading, it replaced one: grain A
+      // allows one modelled reading per part, so the bench row whose bytes never arrived (a gap) gives
+      // way to a row citing frame _22, boxed, which the store holds. read stays 520 -- one out, one in
+      // -- while checkable 379 -> 380 and gaps 141 -> 140. That is the movement worth pinning: a
+      // citation invented rather than read would have landed back in gaps, a second reading for J3
+      // would have raised read, and a quiet deletion would have lowered it. The other two frames the
+      // operator named are carried by the receipts' authority rather than by extra rows, which is where
+      // corroboration belongs when the board is allowed one reading per part.
+      read == 520
+        && checkable == 380
         && count(broken) == 0
-        && count(gaps) == 143
+        && count(gaps) == 140
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0

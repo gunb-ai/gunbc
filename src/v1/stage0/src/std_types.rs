@@ -225,10 +225,6 @@ pub type Set<Element> = Rc<BTreeSet<Element>>;
 
 pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;
 
-pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _| v1_rt::int_add(acc, 1))
-}
-
 pub type CommitSha = String;
 
 pub fn commit_sha_text_holds(head: String) -> bool {

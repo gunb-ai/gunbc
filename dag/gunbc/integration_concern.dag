@@ -250,6 +250,13 @@ data unconnected_routes: List<String> = [
 
 data duct_print_source_revision: CommitSha = "799697f5c76b2e86dc34f3408878aef9e0d3d750"
 
+// The revisions the CAS rows beside were measured at: the head whose six store rows were run against two
+// mutant heads, and the base entry compile of the fold's own witness file.
+data d6_witness_measurement_revision: CommitSha = "eae15daee5d175a5abca6f3c380d98b351e2c7ab"
+
+data d6_witness_base_revision: CommitSha = "bbec474015b0127181893ec2850b1f94d376cc22"
+
+
 data duct_print_plate: SightingEvidence = CitesArtifact {
   label: "a16-blower-flat-on-end-duct plate 3MF prepared by product.printed_chassis.print_workflow prepare_request_plate, printed on printer-01 2026-11-01",
   sha256: Sha256Digest { hex: "7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb" as Sha256DigestHex },
@@ -385,7 +392,115 @@ data target_syntax_built_by_hand_in_application_modules: IntegrationConcern = In
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules]
+// THE CAS GENERATION RULE IS DECIDED TWICE. Whether an attempt's expectation is admissible against what
+// a compare-and-set slot holds is answered by std.durable_compare_and_set's cas_expectation_admits AND,
+// independently, by the ProbedAbsent arm of gunbc.durable_cas_file_store's cas_compare_and_set_outcome.
+// The fork is measured, not inferred: a mutation that makes the std arm admit ExpectSlotGeneration against
+// an absent observation leaves EVERY row of test.claim.durable_cas_file_store_wet_witness green (branch
+// sharp-otter-429/d6-witness-main-mutant-stdfold at 2167708a09307e9c24dc0718401e02570d4b690f, six rows
+// PASS), while the same retired ordering restored in the store's own arm turns exactly the empty-store row
+// red and leaves the other five green (505c4b6e2839beefe999a13cea3502b1d7822df2). A mutation of the std
+// rule cannot reach the store's rows at all, which is what a duplicated rule looks like in execution. The
+// std fold's only consumer is gunbc.roadmap.roadmap_event_carrier's roadmap_event_parent_admitted.
+data cas_generation_expectation_admitted_twice: IntegrationConcern = IntegrationConcern {
+  identity: "cas_generation_expectation_admitted_twice",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+      second: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+    tail: [
+      decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+      decl_ref(module_path: "gunbc.roadmap.roadmap_event_carrier", decl_name: "roadmap_event_parent_admitted"),
+      decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution"),
+    ],
+  },
+  question: "Which declaration decides whether an attempt's generation expectation is admissible against what a compare-and-set slot holds, and in particular who refuses ExpectSlotGeneration against a slot that was never created?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: d6_witness_measurement_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution") },
+        ],
+      },
+      account: "Six rows of the store's wet witness were run at two heads. Mutating the std fold's absent arm to admit a generation expectation: six green, no row moved. Mutating the store's own ProbedAbsent arm to commit a generation expectation at the successor of the EXPECTED generation -- the ordering the store's header retires -- reddened exactly the empty-store row. The store reads the slot and decides inline; it never calls the std fold. So the rule the store enforces and the rule the std fold enforces are two rules, kept in agreement by nothing.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+        control: decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution"),
+        statement: "an ExpectSlotGeneration attempt against a store holding nothing refuses, the refusal names the absence rather than a competing version, and the store is left with no slot file at all",
+      },
+    ],
+    next: climbs_when(capability: "the file store's absent-slot arm consumes std.durable_compare_and_set's cas_expectation_admits and its inline copy is deleted, so a mutation of that one rule reddens a store row -- measured today, a mutation of that rule reddens none"),
+  },
+}
+
+// THE FOLD'S OWN CLAIMS HAVE NO EXECUTING WITNESS. test.claim.durable_compare_and_set states the fold's
+// decision table, including the superseded-generation refusal the store relies on, but its module resolves
+// none of its own types: it imports neither std.types (which declares NonEmptyStr) nor
+// std.durable_compare_and_set. Measured at base bbec474015b with the same compiler used for the runs beside
+// the row above: the entry refuses with 134 hard errors, the first an unresolved type 'LiveTreeDisposition'
+// at the file's first data declaration, and the same 134 with src/v1 added as a source root. The claim lane
+// discovers rows by the test fn marker in the file and runs them by name, so an entry that never resolves
+// has zero executable rows: its nine rows are unevaluated claims, and they have been silently rotting. A row
+// of mine added there was reverted for exactly this reason -- it could not go red.
+data cas_fold_claims_have_no_executing_witness: IntegrationConcern = IntegrationConcern {
+  identity: "cas_fold_claims_have_no_executing_witness",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+    requirement: "a generation-expectation rule that the store enforces has a witness row that executes at the entry it is claimed from, so a change to the rule cannot land without a row going red",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.durable_compare_and_set", decl_name: "an_update_from_a_superseded_generation_refuses_and_reports_the_current_head"),
+    tail: [
+      decl_ref(module_path: "test.claim.durable_compare_and_set", decl_name: "an_attempt_against_the_last_generation_refuses_as_exhausted_and_one_below_commits_to_it"),
+      decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+      decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution"),
+    ],
+  },
+  question: "Does any claim in test.claim.durable_compare_and_set lack a witness elsewhere -- and if none does, is that entry revived (given its imports, its rows re-checked against the current fold) or retired with each claim named against the row that now covers it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: d6_witness_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.durable_compare_and_set", decl_name: "an_update_from_a_superseded_generation_refuses_and_reports_the_current_head") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_generation_exhausted") }],
+      },
+      account: "Compiling the file as its own entry produced 134 hard errors, the first an unresolved type at the file's first data declaration; adding src/v1 as a source root changed nothing. The row I had added there was reverted rather than left as an unexecutable claim. The same rule is witnessed today only at the store surface, by the row named in the requirement above.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "revive the entry beside std.durable_compare_and_set's own claims, or retire it and name where each of its nine claims is witnessed",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "test.claim.durable_compare_and_set", decl_name: "an_update_from_a_superseded_generation_refuses_and_reports_the_current_head"),
+        control: Absent,
+        statement: "an update attempted from a generation the store no longer holds refuses and reports the generation the store does hold; wherever that claim is witnessed, it must go red if the refusal stops naming the current head",
+      },
+    ],
+    next: climbs_when(capability: "the entry compiles at its own entry and its rows execute, or the file is retired with every claim named against the row that covers it"),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
