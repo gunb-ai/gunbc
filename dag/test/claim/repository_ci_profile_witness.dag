@@ -93,6 +93,8 @@ import gunbc.ci.repository_seed_steps {
 }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_stmt_list_from_nodes }
+import gunbc.ci.workflow_artifact_upload { ArtifactAbsence, AbsenceRefused, artifact_absence_behavior }
+import extdeps.github.action.upload_artifact { missing_files_behavior_wire }
 import extdeps.github.expressions { ContextAccess, Expression, ExpressionContext, Needs, Steps, interpolate }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
@@ -2121,6 +2123,9 @@ fn publisher_row_with_unfoldable_seed_build() -> RepositoryCiProfile {
 //   answer a record-script render refusal with an empty or no-op script, or drop the reasons that ride
 //   behind the marker
 //     -> `a_refused_record_script_is_a_loud_marker_never_an_empty_script`
+//   let the record upload warn instead of refuse when it finds no record (the hand-spelled
+//   if-no-files-found: warn that this route replaced)
+//     -> `the_record_travels_the_same_transport_as_the_candidate`
 
 // THE GATE A STEP CARRIES, rendered, or the empty string for a step that carries none. Read from the step
 // itself: a witness that re-derived the gate from the step's NAME would keep passing when the gate moved.
@@ -2280,6 +2285,11 @@ test fn the_record_travels_the_same_transport_as_the_candidate() -> Bool {
   step_action_repo(step: heal_round_outcome_upload_step()) == step_action_repo(step: heal_candidate_upload_step())
     && step_action_repo(step: heal_publisher_round_outcome_download_step()) == step_action_repo(step: heal_publisher_download_step())
     && step_action_repo(step: heal_round_outcome_upload_step()) != ""
+    // AND IT REFUSES TO UPLOAD NOTHING, through the one absence authority. The record is seeded first and
+    // ungated, so an upload that finds no record means the record route broke -- "warn" there is how a
+    // missing record becomes invisible again, and this step may not spell that input by hand.
+    && step_with_entry(step: heal_round_outcome_upload_step(), key: "if-no-files-found")
+      == missing_files_behavior_wire(behavior: artifact_absence_behavior(absence: AbsenceRefused))
 }
 
 // A REFUSED RECORD SCRIPT IS A LOUD MARKER, NEVER AN EMPTY SCRIPT. Both record scripts go through a
