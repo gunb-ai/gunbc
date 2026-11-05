@@ -29,7 +29,7 @@ import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefuse
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventId }
-import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim }
+import gunbc.roadmap.roadmap_attempt_request_binding { LaunchForClaim }
 
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
