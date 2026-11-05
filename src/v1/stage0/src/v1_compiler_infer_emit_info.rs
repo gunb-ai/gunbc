@@ -1013,6 +1013,7 @@ pub struct EmitGraphInfo {
     pub tco_cursor_params: Rc<Vec<String>>,
     pub tco_cursor_tails: Rc<HashMap<String, i64>>,
     pub trmc_out: bool,
+    pub names_callee_type_arguments: bool,
     pub dying_base_sites: Rc<HashMap<String, String>>,
     pub item_leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
@@ -1060,6 +1061,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         tco_cursor_params: Rc::new(vec![]),
         tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         trmc_out: false,
+        names_callee_type_arguments: false,
         dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
     })
 }
@@ -1101,7 +1103,8 @@ pub fn emit_info_with_fn_type_context(
         let __rb_28_0 = emit_info.tco_cursor_params.clone();
         let __rb_29_0 = emit_info.tco_cursor_tails.clone();
         let __rb_30_0 = emit_info.trmc_out.clone();
-        let __rb_31_0 = emit_info.dying_base_sites.clone();
+        let __rb_31_0 = emit_info.names_callee_type_arguments.clone();
+        let __rb_32_0 = emit_info.dying_base_sites.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1136,7 +1139,8 @@ pub fn emit_info_with_fn_type_context(
                 __rb_r.tco_cursor_params = __rb_28_0;
                 __rb_r.tco_cursor_tails = __rb_29_0;
                 __rb_r.trmc_out = __rb_30_0;
-                __rb_r.dying_base_sites = __rb_31_0;
+                __rb_r.names_callee_type_arguments = __rb_31_0;
+                __rb_r.dying_base_sites = __rb_32_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1171,7 +1175,8 @@ pub fn emit_info_with_fn_type_context(
                     tco_cursor_params: __rb_28_0,
                     tco_cursor_tails: __rb_29_0,
                     trmc_out: __rb_30_0,
-                    dying_base_sites: __rb_31_0,
+                    names_callee_type_arguments: __rb_31_0,
+                    dying_base_sites: __rb_32_0,
                 });
             }
         }
@@ -1215,7 +1220,8 @@ pub fn emit_info_with_fn_return(
         let __rb_28_0 = emit_info.tco_cursor_params.clone();
         let __rb_29_0 = emit_info.tco_cursor_tails.clone();
         let __rb_30_0 = emit_info.trmc_out.clone();
-        let __rb_31_0 = emit_info.dying_base_sites.clone();
+        let __rb_31_0 = emit_info.names_callee_type_arguments.clone();
+        let __rb_32_0 = emit_info.dying_base_sites.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1250,7 +1256,8 @@ pub fn emit_info_with_fn_return(
                 __rb_r.tco_cursor_params = __rb_28_0;
                 __rb_r.tco_cursor_tails = __rb_29_0;
                 __rb_r.trmc_out = __rb_30_0;
-                __rb_r.dying_base_sites = __rb_31_0;
+                __rb_r.names_callee_type_arguments = __rb_31_0;
+                __rb_r.dying_base_sites = __rb_32_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1285,7 +1292,8 @@ pub fn emit_info_with_fn_return(
                     tco_cursor_params: __rb_28_0,
                     tco_cursor_tails: __rb_29_0,
                     trmc_out: __rb_30_0,
-                    dying_base_sites: __rb_31_0,
+                    names_callee_type_arguments: __rb_31_0,
+                    dying_base_sites: __rb_32_0,
                 });
             }
         }
@@ -1329,7 +1337,8 @@ pub fn emit_info_with_expected_type(
         let __rb_28_0 = emit_info.tco_cursor_params.clone();
         let __rb_29_0 = emit_info.tco_cursor_tails.clone();
         let __rb_30_0 = emit_info.trmc_out.clone();
-        let __rb_31_0 = emit_info.dying_base_sites.clone();
+        let __rb_31_0 = emit_info.names_callee_type_arguments.clone();
+        let __rb_32_0 = emit_info.dying_base_sites.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1364,7 +1373,8 @@ pub fn emit_info_with_expected_type(
                 __rb_r.tco_cursor_params = __rb_28_0;
                 __rb_r.tco_cursor_tails = __rb_29_0;
                 __rb_r.trmc_out = __rb_30_0;
-                __rb_r.dying_base_sites = __rb_31_0;
+                __rb_r.names_callee_type_arguments = __rb_31_0;
+                __rb_r.dying_base_sites = __rb_32_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1399,12 +1409,27 @@ pub fn emit_info_with_expected_type(
                     tco_cursor_params: __rb_28_0,
                     tco_cursor_tails: __rb_29_0,
                     trmc_out: __rb_30_0,
-                    dying_base_sites: __rb_31_0,
+                    names_callee_type_arguments: __rb_31_0,
+                    dying_base_sites: __rb_32_0,
                 });
             }
         }
         __rb_h
     }
+}
+
+pub fn emit_info_names_callee_type_arguments(emit_info: Rc<EmitGraphInfo>) -> Rc<EmitGraphInfo> {
+    Rc::new(EmitGraphInfo {
+        names_callee_type_arguments: true,
+        ..(*emit_info).clone()
+    })
+}
+
+pub fn emit_info_callee_type_arguments_spent(emit_info: Rc<EmitGraphInfo>) -> Rc<EmitGraphInfo> {
+    Rc::new(EmitGraphInfo {
+        names_callee_type_arguments: false,
+        ..(*emit_info).clone()
+    })
 }
 
 pub fn variant_has_fields(
