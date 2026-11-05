@@ -39,7 +39,7 @@ fn fresh_instance(tag: String) -> HostDashboardInstance {
     listen_port: 18106,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 
