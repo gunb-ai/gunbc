@@ -1,0 +1,49 @@
+module gunbc.roadmap.roadmap_node_terminality
+
+// THE ONE TERMINALITY RULE, read at one place by everyone: the lineage of a CLOSED node (a live
+// acceptance receipt in the merged history) or a RETIRED node (the event log's retirement standing)
+// is terminal, and nothing is owed for it. The operator ruling keeps this OFF the operator surface:
+// there is no separate lineage state to see — a closed or retired NODE is simply terminal, and
+// dispatch's CONTINUE / START FRESH refuse on it with that reason. UNREADABLE IS NOT OPEN: when
+// either durable record cannot be read the answer is LineageTerminalUnreadable and every consumer
+// must treat unreadable as terminal (no spawns, no obligations) rather than guessing. This module is
+// deliberately neutral — neither belt-internal nor dispatch-internal: both sides import THIS read,
+// so the reviewer-launch decision and the dispatch refusal read the same derived fact.
+import std.types { String, NonEmptyStr }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, EventsRead, EventsReadRefused }
+import gunbc.roadmap.roadmap_event_log { roadmap_issue_state, roadmap_standing_is_retired }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history, roadmap_operator_node_closed, AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable }
+
+// THE TERMINALITY FACT THE OBLIGATION QUESTION READS (one rule, read at one place): the lineage of
+// a CLOSED node (a live acceptance receipt in the merged history) or a RETIRED node (the event log's
+// retirement standing) is terminal, and nothing is owed for it. UNREADABLE IS NOT OPEN: when either
+// record cannot be read the answer is LineageTerminalUnreadable, and the belt refuses to launch
+// anything it cannot prove still owed (fail closed) rather than guessing.
+type BeltNodeLineageTerminal
+  = LineageOpen
+  | LineageTerminal { why: String }
+  | LineageTerminalUnreadable { reason: String }
+
+fn belt_node_lineage_terminal_read(instance: HostDashboardInstance, node_id: String, store: FabricStorageBinding = fabric_state_storage_binding()) -> BeltNodeLineageTerminal {
+  let node = node_id as NonEmptyStr as RoadmapNodeId
+  match roadmap_operator_node_closed(node: node, history: roadmap_operator_close_history(store: store)) {
+    AcceptanceFound => LineageTerminal { why: "the node is closed (a live acceptance receipt names it)" }
+    ClosedStatusUnreadable { reason: r } => LineageTerminalUnreadable { reason: join(["acceptance history: ", r as String], "") }
+    AcceptanceAbsent =>
+      match roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node) {
+        CarrierClosed { result: EventsRead { node: _, envelopes: envs }, close: _ } =>
+          if roadmap_standing_is_retired(standing: roadmap_issue_state(envs: envs).standing) {
+            LineageTerminal { why: "the node is retired (the operator ended its lineage)" }
+          } else {
+            LineageOpen
+          }
+        CarrierClosed { result: EventsReadRefused { node: _, step: st, reason: r }, close: _ } =>
+          LineageTerminalUnreadable { reason: join(["event log ", st, ": ", r], "") }
+      }
+  }
+}
+

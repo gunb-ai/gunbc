@@ -52,6 +52,7 @@ fn request_api_key_store(tree: HostStateTree) -> Result<RequestApiKeyStore, Stri
   match listed_slot_store(member: request_api_key_store_member as String, root: request_api_key_store_path(tree: tree)) {
     SlotStoreAbsent { member: _, root: _ } => Err { value: "the store's own directory was never created -- admission answers absence, and an absent store is not an empty store" }
     SlotStoreRefused { detail: why } => Err { value: why }
+    SlotStoreAbsent { member: _, root: _ } => Err { value: "the store's own directory was never created -- admission answers absence, and an absent store is not an empty store" }
     SlotStoreListed { root: root } => Ok { value: RequestApiKeyStore { slots: file_slot_store(root: root), publication: publication } }
   }
 }
