@@ -17,8 +17,13 @@ cap=int(os.environ["CAP"])
 cg="/sys/fs/cgroup"+open("/proc/self/cgroup").read().split("::")[1].strip()
 cur=lambda: int(open(cg+"/memory.current").read())
 chunks=[]; sz=1<<20
-# fill anon until memory.current is within ~1 MiB of max (less than the interpreter text working set)
-while cur() < cap-(1<<20) and len(chunks) < (cap>>20)+64:
+# fill anon in 256 KiB steps until memory.events max starts incrementing, then stop allocating
+def mx():
+    for l in open(cg+"/memory.events"):
+        k,v=l.split()
+        if k=="max": return int(v)
+sz=256<<10
+while mx()==0 and len(chunks) < (cap>>18)+256:
     chunks.append(bytearray(b"\x01")*sz)
 print("held",len(chunks),cur(),flush=True)
 x=0
