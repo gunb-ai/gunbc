@@ -211,6 +211,8 @@ fn attempt_slots_cutover_run_ref() -> DeclarationRef {
 // (AttemptSlotHeld { record, generation: CasGeneration }) and through the CAS commit
 // (CasCommitted { committed.generation }); the carry outcome and the record below carry exactly those, as
 // the CasGeneration carrier, and the Int appears only at that wire edge.
+type AttemptSlotsSlotReading
+  = SlotRead { state: AttemptState, payload: String }
   | SlotAbsent
   | SlotUnreadable { detail: String }
 
