@@ -2,7 +2,7 @@ module test.claim.shared_pool_encoding_control
 
 import std.logic { Bool }
 import std.nat { Nat }
-import std.types { List, list_length }
+import std.types { List }
 import std.measure { byte_size, byte_size_count, hardware_thread_count }
 import std.machine_shape {
   DomainId,

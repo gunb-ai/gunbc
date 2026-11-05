@@ -834,8 +834,9 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
 // WHY THE REFUSAL IS NAMED BY WHAT DECIDED IT. v2.std.find_witness folds a Bool, so on refusal it can
 // only report "no candidate matched"; the old code renamed that by the POSITION it was asked at, which
 // told a reader where the question was asked and nothing about which question answered no. Nine
-// gunbc.recurring_failure_mode rows then cited `arrow_body_does_not_inhabit_declared_return` for nine
-// different mechanisms, and no row could say which shape refused for which reason. The decision comes
+// gunbc.recurring_failure_mode rows then cited one position-named reason -- the old
+// `arrow body does not inhabit the declared return` symbol, retired by this change -- for nine different
+// mechanisms, and no row could say which shape refused for which reason. The decision comes
 // from the same two nodes the fold just compared, through the one verdict in
 // v2.std.exact_structural_equality_zip_fold_predicate, so there is one decision and not two. The class of
 // the refusal travels with the reason it produced: nothing re-derives it from the symbol later.
@@ -861,7 +862,7 @@ fn declared_type_inhabitance_refusal_decision(
   find_witness_reason: Symbol
 ) -> InhabitanceStructuralDecision {
   if find_witness_reason == ^find_witness_reason_no_candidate {
-    inhabitance_structural_decision(comparison: exact_structural_comparison(source_facts: obligation.produced, algebra: obligation.produced, candidate: obligation.declared))
+    inhabitance_structural_decision(comparison: exact_structural_comparison(source_facts: obligation.produced, algebra: obligation.produced, candidate: obligation.declared, type_variables: obligation.type_variables))
   } else {
     InhabitanceStructuralDecision { refusal_class: RefusalWitnessSearchDecision, reason: find_witness_reason, argument_ordinal_path: [] }
   }
@@ -939,6 +940,13 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
       InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_argument_count_differs, argument_ordinal_path: argument_ordinal_path }
     ComparisonArgumentsDiffer { argument_ordinal_path: argument_ordinal_path } =>
       InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_arguments_differ, argument_ordinal_path: argument_ordinal_path }
+    // The comparison ran out at a position it holds no instance for. The relation answers Undecidable for
+    // that today through its own variable check; this arm is the same fact coming out of the ONE decision,
+    // and #15903 turns that check into a consumer of it (its separate fold over the argument list is the
+    // same rule twice, which keen-heron-809 ruled a fork to delete). Classed as could-not-run because that
+    // is exactly what happened: no pair at that position could be compared.
+    ComparisonUndecidedTypeVariable { argument_ordinal_path: argument_ordinal_path } =>
+      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_pair_undecided_type_variable, argument_ordinal_path: argument_ordinal_path }
   }
 }
 

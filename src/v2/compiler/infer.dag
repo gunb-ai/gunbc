@@ -5510,7 +5510,7 @@ fn infer_judge_generic_formal(
               find_witness_reason: shape_decision.reason,
               // the shape decision names the argument it was decided at; the position carries it into the
               // diagnostic, so a nested mismatch is located at the nested argument
-              position: inhabitance_position_with_argument_path(position: obligation.position, argument_ordinal_path: shape_decision.argument_ordinal_path)
+              position: inhabitance_position_with_argument_path(position: position, argument_ordinal_path: shape_decision.argument_ordinal_path)
             )
           )
         InferFormalMatched { instances: matched } =>

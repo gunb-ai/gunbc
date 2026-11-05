@@ -211,6 +211,7 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witne
           match locus {
             Textual { file: _, extent: _ } => Holds { value: locus }
             NodeLocus { anchor: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            InhabitanceJudgmentLocus { position: _, anchor: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
             SourcePortLocus { anchor: _, file: _, extent: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
             InvariantPortLocus { anchor: _, invariant: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
             DeclarationLocus { declaration: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }

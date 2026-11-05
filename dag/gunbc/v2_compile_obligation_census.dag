@@ -1,6 +1,7 @@
 module gunbc.v2_compile_obligation_census
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.guarantee_stall { NextRungTrigger, climbs_when, next_rung_trigger_render }
@@ -275,7 +276,7 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
 }
 
 fn native_standing(o: V2CompileObligation) -> PathExecution {
-  if list_length(items: o.witnesses) == 0 {
+  if length(xs: o.witnesses) == 0 {
     NoWitnessNamesIt {
       note: "no witness names this obligation, so the native lane has no identity to execute for it" as NonEmptyStr
     }
@@ -854,25 +855,25 @@ fn obligation_has_a_home(o: V2CompileObligation) -> Bool {
 }
 
 fn obligations_claimed() -> Int {
-  list_length(items: v2_compile_obligation_census)
+  length(xs: v2_compile_obligation_census)
 }
 
 fn obligations_executing_interpreted() -> Int {
-  list_length(items: filter(v2_compile_obligation_census, o => obligation_executes_interpreted(o: o)))
+  length(xs: filter(v2_compile_obligation_census, o => obligation_executes_interpreted(o: o)))
 }
 
 fn obligations_executing_natively() -> Int {
-  list_length(items: filter(v2_compile_obligation_census, o => obligation_executes_natively(o: o)))
+  length(xs: filter(v2_compile_obligation_census, o => obligation_executes_natively(o: o)))
 }
 
 fn obligations_with_open_seed_escape() -> Int {
-  list_length(items: filter(v2_compile_obligation_census, o => obligation_seed_escape_is_open(o: o)))
+  length(xs: filter(v2_compile_obligation_census, o => obligation_seed_escape_is_open(o: o)))
 }
 
 // An obligation with no home is not a check that is failing; it is a model that does not exist, and
 // it ranks against modeling work rather than against enforcement work.
 fn obligations_without_a_home() -> Int {
-  list_length(items: filter(v2_compile_obligation_census, o => !obligation_has_a_home(o: o)))
+  length(xs: filter(v2_compile_obligation_census, o => !obligation_has_a_home(o: o)))
 }
 
 // ROUTE COVERAGE IS NOT QUALIFICATION, AND THE NAME SAYS SO BECAUSE AN EARLIER NAME DID NOT. This
@@ -968,7 +969,7 @@ fn obligation_is_pending_on(o: V2CompileObligation, premise: DeclarationRef) -> 
 
 
 fn obligations_executing_on_an_unverified_entry() -> Int {
-  list_length(
+  length(
     items: filter(v2_compile_obligation_census, o => obligation_executes_on_an_unverified_entry(o: o))
   )
 }
@@ -1004,7 +1005,7 @@ fn obligation_rung_is_inflated(o: V2CompileObligation) -> Bool {
 }
 
 fn obligations_with_inflated_rung() -> Int {
-  list_length(items: filter(v2_compile_obligation_census, o => obligation_rung_is_inflated(o: o)))
+  length(xs: filter(v2_compile_obligation_census, o => obligation_rung_is_inflated(o: o)))
 }
 
 // A CEILING BELOW THE CLAIM IS AN INCOHERENT ROW, and it is checkable where emptiness was not. DESIGN
@@ -1016,7 +1017,7 @@ fn obligation_claim_exceeds_its_ceiling(o: V2CompileObligation) -> Bool {
 }
 
 fn obligations_claiming_above_their_ceiling() -> Int {
-  list_length(
+  length(
     items: filter(v2_compile_obligation_census, o => obligation_claim_exceeds_its_ceiling(o: o))
   )
 }
@@ -1053,7 +1054,7 @@ fn obligation_report_line(o: V2CompileObligation) -> String {
             concat(
               concat(" ceiling=", guarantee_rung_label(r: o.ceiling)),
               concat(
-                concat(" related_drops=", to_string(list_length(items: o.related_drops))),
+                concat(" related_drops=", to_string(length(xs: o.related_drops))),
                 concat(" trigger=", next_rung_trigger_render(t: o.next_trigger))
               )
             )

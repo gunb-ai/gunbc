@@ -1168,8 +1168,8 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   },
   // REMOVED 2026-10-23 (manager ruling msg_adddb844 item 3, witness_deferral_freeze_population
   // drop PR): the src/v2/test/manual/ownership_movable.dag schedule row's five entries left the
-  // frozen list with it. The file stays in the tree -- it is a typed subject of
-  // gunbc.emit_stage_blocking_population_census -- but its coverage does NOT sit in rust_tests:
+  // frozen list with it. The file stays in the tree -- it was a typed subject of
+  // a since-retired census -- but its coverage does NOT sit in rust_tests:
   // the required job runs no v1 unit tests (DESIGN, Building & checks). Its coverage of the
   // read-then-consume movability rule stands under gunbc.rung_drop
   // v1_required_lanes_withdrawn, which is where the withdrawal of that lane is declared.

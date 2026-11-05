@@ -113,7 +113,7 @@ fn sth_authored_cause_optional(node: Node) -> Optional<OccurrenceId> {
 fn sth_locus_starts_within(index: SpanIndex, at: Locus, start: Int, end: Int) -> Bool {
   match at {
     NodeLocus { anchor: a } =>
-      match sth_authored_cause_optional(node: a.at) {
+      match sth_authored_cause_optional(node: a.at.node) {
         Present { value: id } =>
           match span_index_textual_locus_optional(index: index, id: id) {
             Present { value: locus } => sth_textual_starts_within(locus: locus, start: start, end: end)

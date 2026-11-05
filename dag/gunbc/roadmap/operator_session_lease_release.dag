@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementStores, session_placement_stores, SessionStoresResolved, SessionStoresUnresolved,
   session_operator_settle_one, session_settlement_wire,
-  SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
+  SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, SessionSettlementRetiredUncharged,
 }
 import gunbc.compute.host_capacity { ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -52,6 +52,12 @@ fn operator_release_succeeded(s: SessionSettlement) -> Bool {
     SessionSettlementDone { unit: _, why: _ } => true
     SessionSettlementKept { unit: _, why: _ } => false
     SessionSettlementRefused { unit: _, detail: _ } => false
+    // A RETIREMENT WITHOUT A RELEASE: the ledger had already returned this charge (its own history showed
+    // acquire-then-return) and the slot is now closed. Read by the same rule that makes
+    // ComputeNothingToRelease a success -- the desired state, no held seat and a closed slot, holds -- this
+    // is success; the receipt line session_settlement_wire renders says it was not a release and that no
+    // holder-death claim was made.
+    SessionSettlementRetiredUncharged { unit: _, attempt: _, detail: _ } => true
   }
 }
 

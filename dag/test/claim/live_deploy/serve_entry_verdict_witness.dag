@@ -1,0 +1,378 @@
+module test.claim.live_deploy.serve_entry_verdict_witness
+
+import std.types { Bool, Int, List, String }
+import std.algebra { string_contains }
+import gunbc.live_deploy.pre_swap_admission {
+  deployment_requires_plan_serve_entry_verdict,
+  ServeEntryVerdictRecord,
+  ServeEntryVerdictDecode,
+  ServeEntryVerdictDecoded,
+  ServeEntryVerdictUndecoded,
+  ServeEntryVerdictConsumption,
+  Consumed,
+  ConsumedAbsent,
+  ConsumedIdentityMismatch,
+  ServeEntryCompileVerdict,
+  ServeEntryCompileAdmitted,
+  ServeEntryCompileBlocked,
+  ServeEntryCompileUnobserved,
+  serve_entry_verdict_json,
+  serve_entry_verdict_decode,
+  serve_entry_argv_identity_text,
+  serve_entry_argv_digest_of_text,
+  admit_plan_serve_entry_verdict,
+  serve_entry_verdict_as_compile_verdict,
+}
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.live_deploy.desired { srv1_production_desired_deployment, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.apply { operator_local_deploy_dissolved_refusal }
+
+// THE PLAN'S SERVE-ENTRY VERDICT, WITNESSED AT THE DISTINCTIONS IT EXISTS FOR. The rule this
+// document carries is: the swap consumes the plan's compile answer ONLY under a four-way identity
+// match -- source revision, entry, serve argv, and the release binary the swap admits -- and every
+// other case refuses by name with no cold resolve behind it. Each witness flips exactly one thing.
+// The record is ONE PRODUCT (identity fields + the carried ServeEntryCompileVerdict): the
+// witnesses that used to prove the parallel three-arm copy now prove the carried list survives
+// the round trip unchanged -- the loss the copy hid is the property under test.
+
+data fixture_revision: String = "0123456789abcdef0123456789abcdef01234567"
+data fixture_entry: String = "dag/gunbc/roadmap/roadmap_serve.dag"
+data fixture_argv_digest: String = "argv-digest-aaa"
+data fixture_bin_hex: String = "bin-digest-bbb"
+
+fn fixture_admitted() -> ServeEntryVerdictRecord {
+  ServeEntryVerdictRecord {
+    source_revision: fixture_revision,
+    entry: fixture_entry,
+    argv_digest: fixture_argv_digest,
+    compiler_bin_sha256_hex: fixture_bin_hex,
+    compile: ServeEntryCompileAdmitted,
+  }
+}
+
+fn fixture_blocked() -> ServeEntryVerdictRecord {
+  ServeEntryVerdictRecord {
+    source_revision: fixture_revision,
+    entry: fixture_entry,
+    argv_digest: fixture_argv_digest,
+    compiler_bin_sha256_hex: fixture_bin_hex,
+    compile: ServeEntryCompileBlocked {
+      blocking: 2,
+      diagnostics: ["type error at roadmap_serve.dag:1", "unresolved import x"] as List<String>,
+    },
+  }
+}
+
+fn fixture_unobserved() -> ServeEntryVerdictRecord {
+  ServeEntryVerdictRecord {
+    source_revision: fixture_revision,
+    entry: fixture_entry,
+    argv_digest: fixture_argv_digest,
+    compiler_bin_sha256_hex: fixture_bin_hex,
+    compile: ServeEntryCompileUnobserved { detail: "spawn refused" },
+  }
+}
+
+fn record_tag(record: ServeEntryVerdictRecord) -> String {
+  compile_verdict_tag(verdict: record.compile)
+}
+
+fn consumption_tag(consumption: ServeEntryVerdictConsumption) -> String {
+  match consumption {
+    Consumed { compile } => compile_verdict_tag(verdict: compile)
+    ConsumedAbsent { detail: _ } => "absent"
+    ConsumedIdentityMismatch { field: _, expected: _, seen: _ } => "mismatch"
+  }
+}
+
+fn mismatch_field(consumption: ServeEntryVerdictConsumption) -> String {
+  match consumption {
+    ConsumedIdentityMismatch { field: field, expected: _, seen: _ } => field
+    _ => "not-mismatch"
+  }
+}
+
+fn compile_verdict_tag(verdict: ServeEntryCompileVerdict) -> String {
+  match verdict {
+    ServeEntryCompileAdmitted => "admitted"
+    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => "blocked"
+    ServeEntryCompileUnobserved { detail: _ } => "unobserved"
+  }
+}
+
+fn compile_verdict_detail(verdict: ServeEntryCompileVerdict) -> String {
+  match verdict {
+    ServeEntryCompileUnobserved { detail: detail } => detail
+    _ => ""
+  }
+}
+
+fn string_has_prefix(text: String, prefix: String) -> Bool {
+  text.length() >= prefix.length() && text.substring(start: 0, end: prefix.length()) == prefix
+}
+
+// Flip one identity field of the admitted product, keeping the carried verdict.
+fn admitted_with(field: String, value: String) -> ServeEntryVerdictRecord {
+  if field == "source_revision" {
+    ServeEntryVerdictRecord {
+      source_revision: value,
+      entry: fixture_entry,
+      argv_digest: fixture_argv_digest,
+      compiler_bin_sha256_hex: fixture_bin_hex,
+      compile: ServeEntryCompileAdmitted,
+    }
+  } else if field == "entry" {
+    ServeEntryVerdictRecord {
+      source_revision: fixture_revision,
+      entry: value,
+      argv_digest: fixture_argv_digest,
+      compiler_bin_sha256_hex: fixture_bin_hex,
+      compile: ServeEntryCompileAdmitted,
+    }
+  } else if field == "argv_digest" {
+    ServeEntryVerdictRecord {
+      source_revision: fixture_revision,
+      entry: fixture_entry,
+      argv_digest: value,
+      compiler_bin_sha256_hex: fixture_bin_hex,
+      compile: ServeEntryCompileAdmitted,
+    }
+  } else {
+    ServeEntryVerdictRecord {
+      source_revision: fixture_revision,
+      entry: fixture_entry,
+      argv_digest: fixture_argv_digest,
+      compiler_bin_sha256_hex: value,
+      compile: ServeEntryCompileAdmitted,
+    }
+  }
+}
+
+// Flip one identity field of the blocked product, keeping the carried diagnostics list.
+fn blocked_with_bin(bin_hex: String) -> ServeEntryVerdictRecord {
+  ServeEntryVerdictRecord {
+    source_revision: fixture_revision,
+    entry: fixture_entry,
+    argv_digest: fixture_argv_digest,
+    compiler_bin_sha256_hex: bin_hex,
+    compile: ServeEntryCompileBlocked {
+      blocking: 2,
+      diagnostics: ["type error at roadmap_serve.dag:1", "unresolved import x"] as List<String>,
+    },
+  }
+}
+
+// ───────────────────────────── encode / decode round-trips ─────────────────────────────
+
+test fn witness_round_trip_admitted() -> Bool {
+  match serve_entry_verdict_decode(raw: serialize_json(v: serve_entry_verdict_json(record: fixture_admitted()))) {
+    ServeEntryVerdictDecoded { record } => record_tag(record) == "admitted"
+    ServeEntryVerdictUndecoded { detail: _ } => false
+  }
+}
+
+// THE LOSS THE OLD FORK HID: the plan observed TWO diagnostics; the swap must see two, in order,
+// byte for byte -- not one joined text. This is the §2 consolidation's executing proof.
+test fn witness_round_trip_blocked_keeps_the_diagnostics_list() -> Bool {
+  match serve_entry_verdict_decode(raw: serialize_json(v: serve_entry_verdict_json(record: fixture_blocked()))) {
+    ServeEntryVerdictDecoded { record } =>
+      match record.compile {
+        ServeEntryCompileBlocked { blocking, diagnostics } =>
+          blocking == 2
+            && diagnostics.length() == 2
+            && join(diagnostics, " || ") == "type error at roadmap_serve.dag:1 || unresolved import x"
+            && record.source_revision == fixture_revision
+        _ => false
+      }
+    ServeEntryVerdictUndecoded { detail: _ } => false
+  }
+}
+
+test fn witness_round_trip_unobserved_keeps_detail() -> Bool {
+  match serve_entry_verdict_decode(raw: serialize_json(v: serve_entry_verdict_json(record: fixture_unobserved()))) {
+    ServeEntryVerdictDecoded { record } =>
+      match record.compile {
+        ServeEntryCompileUnobserved { detail } => detail == "spawn refused"
+        _ => false
+      }
+    ServeEntryVerdictUndecoded { detail: _ } => false
+  }
+}
+
+// ───────────────────────────── decode refusals, named ─────────────────────────────
+
+fn raw_with_schema(schema: String) -> String {
+  join(["{\"schema\": \"", schema, "\", \"source_revision\": \"", fixture_revision, "\", \"entry\": \"", fixture_entry, "\", \"argv_digest\": \"", fixture_argv_digest, "\", \"compiler_bin_sha256_hex\": \"", fixture_bin_hex, "\", \"compile_arm\": \"admitted\"}"], "")
+}
+
+test fn witness_foreign_schema_undecoded() -> Bool {
+  match serve_entry_verdict_decode(raw: raw_with_schema(schema: "live-deploy-apply-receipt/v4")) {
+    ServeEntryVerdictUndecoded { detail } => string_has_prefix(text: detail, prefix: "verdict schema is not ")
+    ServeEntryVerdictDecoded { record: _ } => false
+  }
+}
+
+test fn witness_missing_entry_member_undecoded() -> Bool {
+  match serve_entry_verdict_decode(raw: "{\"schema\": \"live-deploy-serve-entry-verdict/v1\", \"source_revision\": \"r\", \"argv_digest\": \"a\", \"compiler_bin_sha256_hex\": \"b\", \"compile_arm\": \"admitted\"}") {
+    ServeEntryVerdictUndecoded { detail: _ } => true
+    ServeEntryVerdictDecoded { record: _ } => false
+  }
+}
+
+test fn witness_plain_admitted_document_decodes() -> Bool {
+  match serve_entry_verdict_decode(raw: raw_with_schema(schema: "live-deploy-serve-entry-verdict/v1")) {
+    ServeEntryVerdictDecoded { record } => record_tag(record) == "admitted"
+    ServeEntryVerdictUndecoded { detail: _ } => false
+  }
+}
+
+// The blocked arm's diagnostics ARRAY is required: a blocked document without it is not a
+// verdict with zero diagnostics -- it is an unreadable verdict.
+test fn witness_blocked_missing_diagnostics_undecoded() -> Bool {
+  match serve_entry_verdict_decode(raw: join(["{\"schema\": \"live-deploy-serve-entry-verdict/v1\", \"source_revision\": \"", fixture_revision, "\", \"entry\": \"", fixture_entry, "\", \"argv_digest\": \"", fixture_argv_digest, "\", \"compiler_bin_sha256_hex\": \"", fixture_bin_hex, "\", \"compile_arm\": \"blocked\", \"compile_blocking\": \"2\"}"], "")) {
+    ServeEntryVerdictUndecoded { detail } => detail == "compile_diagnostics is not an array"
+    ServeEntryVerdictDecoded { record: _ } => false
+  }
+}
+
+// A diagnostics array of non-strings is unreadable, named.
+test fn witness_blocked_non_string_diagnostics_undecoded() -> Bool {
+  match serve_entry_verdict_decode(raw: join(["{\"schema\": \"live-deploy-serve-entry-verdict/v1\", \"source_revision\": \"", fixture_revision, "\", \"entry\": \"", fixture_entry, "\", \"argv_digest\": \"", fixture_argv_digest, "\", \"compiler_bin_sha256_hex\": \"", fixture_bin_hex, "\", \"compile_arm\": \"blocked\", \"compile_blocking\": \"1\", \"compile_diagnostics\": [3]}"], "")) {
+    ServeEntryVerdictUndecoded { detail } => detail == "a compile diagnostics entry is not a string"
+    ServeEntryVerdictDecoded { record: _ } => false
+  }
+}
+
+// ───────────────────────── identity: one field flipped at a time ─────────────────────────
+
+fn admit_with(record: ServeEntryVerdictRecord) -> ServeEntryVerdictConsumption {
+  admit_plan_serve_entry_verdict(
+    record: record,
+    expected_source_revision: fixture_revision,
+    expected_entry: fixture_entry,
+    expected_argv_digest: fixture_argv_digest,
+    admitted_bin_sha256_hex: fixture_bin_hex,
+  )
+}
+
+test fn witness_identity_full_match_admits() -> Bool {
+  consumption_tag(admit_with(record: fixture_admitted())) == "admitted"
+}
+
+test fn witness_foreign_revision_names_revision() -> Bool {
+  mismatch_field(admit_with(record: admitted_with(field: "source_revision", value: "ffffffffffffffffffffffffffffffffffffffff"))) == "source_revision"
+}
+
+test fn witness_foreign_entry_names_entry() -> Bool {
+  mismatch_field(admit_with(record: admitted_with(field: "entry", value: "dag/gunbc/some/other_serve.dag"))) == "entry"
+}
+
+test fn witness_foreign_argv_names_argv_digest() -> Bool {
+  mismatch_field(admit_with(record: admitted_with(field: "argv_digest", value: "argv-digest-other"))) == "argv_digest"
+}
+
+test fn witness_foreign_binary_names_compiler_bin() -> Bool {
+  mismatch_field(admit_with(record: admitted_with(field: "compiler_bin_sha256_hex", value: "bin-digest-other"))) == "compiler_bin_sha256_hex"
+}
+
+// A blocked verdict about DIFFERENT bytes is named as foreign, not laundered into a compile
+// answer: identity is checked first on every arm.
+test fn witness_blocked_foreign_binary_is_mismatch_not_blocked() -> Bool {
+  consumption_tag(admit_with(record: blocked_with_bin(bin_hex: "bin-digest-other"))) == "mismatch"
+}
+
+// Identity-clean consumption CARRIES the observed list -- the same ServeEntryCompileVerdict the
+// plan's spawn observed, diagnostics and all.
+test fn witness_blocked_matching_identity_carries_diagnostics() -> Bool {
+  match admit_with(record: fixture_blocked()) {
+    Consumed { compile } =>
+      match compile {
+        ServeEntryCompileBlocked { blocking, diagnostics } =>
+          blocking == 2
+            && diagnostics.length() == 2
+            && string_contains(s: join(diagnostics, " | "), pattern: "type error at roadmap_serve.dag:1")
+            && string_contains(s: join(diagnostics, " | "), pattern: "unresolved import x")
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_unobserved_matching_identity_names_detail() -> Bool {
+  match admit_with(record: fixture_unobserved()) {
+    Consumed { compile } => compile_verdict_tag(verdict: compile) == "unobserved" && compile_verdict_detail(verdict: compile) == "spawn refused"
+    _ => false
+  }
+}
+
+// ─────────────────── the no-fallback surface, projected onto the swap ───────────────────
+
+test fn witness_absent_maps_to_named_unobserved_no_cold_resolve() -> Bool {
+  let verdict = serve_entry_verdict_as_compile_verdict(consumption: ConsumedAbsent { detail: "could not read /tmp/x: no such file" })
+  compile_verdict_tag(verdict: verdict) == "unobserved"
+    && string_has_prefix(text: compile_verdict_detail(verdict: verdict), prefix: "the plan run published no serve-entry verdict")
+    && string_contains(s: compile_verdict_detail(verdict: verdict), pattern: "refusing without a cold resolve")
+}
+
+test fn witness_mismatch_maps_to_named_unobserved_no_fallback() -> Bool {
+  let verdict = serve_entry_verdict_as_compile_verdict(consumption: ConsumedIdentityMismatch { field: "entry", expected: "e", seen: "other" })
+  compile_verdict_tag(verdict: verdict) == "unobserved"
+    && string_has_prefix(text: compile_verdict_detail(verdict: verdict), prefix: "plan serve-entry verdict identity mismatch on entry")
+    && string_contains(s: compile_verdict_detail(verdict: verdict), pattern: "no cold resolve fallback")
+}
+
+test fn witness_blocked_projection_stays_blocked() -> Bool {
+  compile_verdict_tag(
+    verdict: serve_entry_verdict_as_compile_verdict(consumption: Consumed { compile: ServeEntryCompileBlocked { blocking: 1, diagnostics: ["one line"] as List<String> } }),
+  ) == "blocked"
+}
+
+test fn witness_admitted_projection_stays_admitted() -> Bool {
+  compile_verdict_tag(verdict: serve_entry_verdict_as_compile_verdict(consumption: Consumed { compile: ServeEntryCompileAdmitted })) == "admitted"
+}
+
+// ─────────────────────────── the serve argv identity itself ───────────────────────────
+
+test fn witness_argv_identity_binds_the_real_serve_entry() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_production_desired_deployment())
+  string_contains(s: serve_entry_argv_identity_text(spec: spec), pattern: spec.service.serve_entry as String)
+}
+
+test fn witness_argv_identity_binds_port_and_budgets() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_production_desired_deployment())
+  let svc = spec.service
+  let text = serve_entry_argv_identity_text(spec: spec)
+  string_contains(s: text, pattern: " --entry ")
+    && string_contains(s: text, pattern: " --function ")
+    && string_contains(s: text, pattern: " --arg handler=")
+    && string_contains(s: text, pattern: " --arg listener=tcp:")
+    && string_contains(s: text, pattern: to_string(value: svc.listen.port))
+}
+
+test fn witness_argv_digest_is_deterministic_and_text_sensitive() -> Bool {
+  serve_entry_argv_digest_of_text(text: "serve --x 1") == serve_entry_argv_digest_of_text(text: "serve --x 1")
+    && serve_entry_argv_digest_of_text(text: "serve --x 1") != serve_entry_argv_digest_of_text(text: "serve --x 2")
+}
+
+// ── THE OPERATOR-LOCAL DEPLOY ROUTE, DISSOLVED (review 90661, prod gap 1 F1) ─────────────────
+// The route ends in a typed refusal that must (a) name the retired route and its verb, (b) name
+// the ONE surviving deploy path, (c) state that nothing was mutated, and (d) not offer a
+// fix-it-yourself verdict path (the verdict travels with the plan artifact only).
+
+test fn the_operator_local_route_refusal_names_the_dissolution_and_the_surviving_path() -> Bool {
+  let text = operator_local_deploy_dissolved_refusal()
+  string_contains(s: text, pattern: "OperatorLocalDeployDissolved")
+    && string_contains(s: text, pattern: "--mode deploy")
+    && string_contains(s: text, pattern: "dashboard_deploy")
+    && string_contains(s: text, pattern: "Nothing was mutated")
+}
+
+// ── THE VERDICT REQUIREMENT IS SCOPED TO THE FLEET PROD-ROLE (STAGE) ROW ─────────────────────
+// The plan job mints the verdict for the prod-role spec only, so only that row's swap may demand
+// it: the stage row's swap must, a lab row's swap must not (its route has no plan job and keeps
+// the pre-gap cold compile -- the manager's rule that the lab's wet route is left alone).
+
+test fn the_stage_row_demands_the_plan_verdict_and_the_lab_row_does_not() -> Bool {
+  deployment_requires_plan_serve_entry_verdict(deployment: srv1_production_desired_deployment())
+    && !deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
+}

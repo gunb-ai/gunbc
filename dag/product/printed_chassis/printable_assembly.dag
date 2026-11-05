@@ -140,7 +140,7 @@ fn fastener_display(f: FastenerKind) -> String {
 }
 fn status_display(s: InterfaceStatus) -> String {match s {Proposed=>"proposed" OriginalPlateFitOnly=>"original plate fit passed; new stack proposed" Unresolved=>"unresolved"}}
 fn interface_json(i: MechanicalInterface) -> JsonValue {
- json_object(members:[json_kv(key:"id",value:text(s:i.id)),json_kv(key:"members",value:json_array(elements:i.members |> map(x=>text(s:x)))),json_kv(key:"fastener",value:text(s:fastener_display(f:i.fastener))),json_kv(key:"quantity",value:json_int(n:i.quantity)),json_kv(key:"status",value:text(s:status_display(s:i.status))),json_kv(key:"requirement",value:text(s:i.requirement))])
+ json_object(members:[json_kv(key:"id",value:text(s:i.id)),json_kv(key:"members",value:json_array(elements:i.members |> map(x=>text(s:x)))),json_kv(key:"fastener",value:text(s:fastener_display(f:i.fastener))),json_kv(key:"quantity",value:json_int(n:i.quantity)),json_kv(key:"status",value:text(s:status_display(s:i.status))),json_kv(key:"requirement",value:text(s:i.requirement)),json_kv(key:"intended_overlap",value:json_array(elements:i.intended_overlap |> map(x=>text(s:x))))])
 }
 
 // THE ONE MANIFEST THE CHECK ADAPTER READS. A root's presentation members are nested under their own

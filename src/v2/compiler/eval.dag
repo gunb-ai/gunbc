@@ -454,6 +454,16 @@ fn locus_cache_digest(at: Locus) -> Hash {
     NodeLocus { anchor: a } =>
       combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_node_tag),
+        b: content_hash(n: a.at.node)
+      )
+    // A judgment locus digests its own anchored node under its OWN tag, so it never collides with a
+    // NodeLocus over the same node. The declared-type position is deliberately NOT in the digest: this
+    // cache keys on what is evaluated, which is the node; the position names where a judgment was made
+    // about it. Recorded as a limit, not smuggled past: if a cached verdict ever comes to depend on the
+    // position without depending on the node, this arm has to grow.
+    InhabitanceJudgmentLocus { position: _, anchor: a } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_inhabitance_judgment_tag),
         b: content_hash(n: a.at)
       )
     SourcePortLocus { anchor: a, file: f, extent: e } =>
