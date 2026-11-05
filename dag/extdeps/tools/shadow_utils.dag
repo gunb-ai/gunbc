@@ -1,0 +1,25 @@
+module extdeps.tools.shadow_utils
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// shadow-utils useradd(8), as shipped in Ubuntu 24.04 (the passwd package).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/useradd.8.html"
+  }
+}
+
+fn useradd_program() -> ProgramIdentity = uncataloged_program(invocation: "useradd")
+
+// A SYSTEM ACCOUNT THAT CANNOT LOG IN: `--system` takes the uid from the system range and creates no mail spool and
+// no aging, `--no-create-home` creates no home directory, and `--shell /usr/sbin/nologin` refuses an interactive
+// login. useradd exits 9 when the name is already in use, so a caller that re-runs it on a host that persisted the
+// account reads that status rather than assuming success.
+fn useradd_system_nologin_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: useradd_program(), arguments: ["--system", "--no-create-home", "--shell", "/usr/sbin/nologin", name as String])
+}

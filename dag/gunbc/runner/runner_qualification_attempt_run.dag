@@ -31,7 +31,7 @@ import gunbc.github_effect_perform {
   ControllerInstallationToken, stage_controller_app_key, ControllerKeyStaged, ControllerKeyNotStaged, remove_staged_controller_key,
   mint_controller_installation_token, ControllerTokenMinted, ControllerTokenNotMinted,
 }
-import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.runner.runner_host_listener_account { host_unit_slot_runner_user, RunnerUserSelected, RunnerUserUndeclared }
 import gunbc.runner.runner_host_unit_slot {
   HostUnitSlot, ListenerOwnLifetime, AttemptSlot, HostUnitSlotBound, HostUnitSlotRefused, host_unit_slot_for, host_unit_slot_root,
   host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt,
@@ -320,10 +320,10 @@ fn qualification_attempt_wet() -> ProcessExit
         match qualification_attempt_control(host: host) {
           Absent => exit_failure(reason: concat("qualification attempt: not a managed host: ", host_name))
           Present { value: control } =>
-            match runner_host_spec_for(host: host) {
-              RunnerHostSpecAbsent { host: _ } => exit_failure(reason: concat("qualification attempt: no runner user is declared for ", host_name))
-              RunnerHostSpecFound { spec } =>
-                qualification_attempt_under_hold(host: host, control: control, attempt: attempt, revision: revision as CommitSha, user: spec.runner_user, wif: wif as Secret, key_path: join([temp, "/", qualification_attempt_key_file_name], "") as NonEmptyStr)
+            match host_unit_slot_runner_user(host: host) {
+              RunnerUserUndeclared { host: _ } => exit_failure(reason: concat("qualification attempt: no runner user is declared for ", host_name))
+              RunnerUserSelected { user: user } =>
+                qualification_attempt_under_hold(host: host, control: control, attempt: attempt, revision: revision as CommitSha, user: user, wif: wif as Secret, key_path: join([temp, "/", qualification_attempt_key_file_name], "") as NonEmptyStr)
             }
         }
     }
@@ -332,5 +332,5 @@ fn qualification_attempt_wet() -> ProcessExit
 
 // WHAT REMAINS BEFORE THE ROUTE IS EXECUTABLE, carried as this module's frontier (DESIGN section 3c).
 data qualification_attempt_run_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the qualification_attempt fleet-converge mode, whose step runs qualification_attempt_wet. NOT ESTABLISHED, deferred: (1) the revision is the run's own GITHUB_SHA; gunbc.fleet.fleet_revision_acceptance is not yet consulted, so the run may qualify a revision whose required CI did not succeed; (2) mtcollins1 has no gunbc.runner.runner_host_deploy runner_host_spec_for row, so the run refuses with no runner user declared, the same refusal the service slot gives; (3) the anchored transport refuses until the host-key anchor is read back on a live boot under the operator's go; (4) the collect leg's instruments are G3's; (5) the host-side teardown observation. TRIGGER: the first wet run, on merry-fox-82's go after mtcollins1 boots the runner image with network and sshd, with (1) and (2) landed."
+  description: "NAMED CONSUMER: the qualification_attempt fleet-converge mode, whose step runs qualification_attempt_wet. NOT ESTABLISHED, deferred: (1) the revision is the run's own GITHUB_SHA; gunbc.fleet.fleet_revision_acceptance is not yet consulted, so the run may qualify a revision whose required CI did not succeed; (3) the anchored transport refuses until the host-key anchor is read back on a live boot under the operator's go; (4) the collect leg's instruments are G3's; (5) the host-side teardown observation. TRIGGER: the first wet run, on merry-fox-82's go after mtcollins1 boots the runner image with network and sshd, with (1) landed."
 )
