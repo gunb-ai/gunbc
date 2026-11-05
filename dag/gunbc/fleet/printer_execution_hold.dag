@@ -7,7 +7,7 @@ import gunbc.host_state_root {HostStateTree}
 import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
 import gunbc.owned_directory {OwnedDirectoryTarget}
 import gunbc.durable_cas_file_store {listed_slot_store,SlotStoreListed,SlotStoreAbsent,SlotStoreRefused}
-import std.process {ProcessExit,ExitSuccess,exit_failure}
+import std.process {ProcessExit,ExitSuccess,exit_failure,ExitFailure}
 import std.integer { int_to_decimal_string }
 import std.durable_compare_and_set {CasGeneration,cas_generation_count,CasStoreFailure,CasSlotObservationRefused,CasGenerationPublicationRefused,CasGenerationSpaceExhausted,cas_unreadable_slot_detail}
 import std.durable_exclusive_hold {DurableHoldOwnerRef,DurableHoldReleaseRef,HoldSlotHeld,durable_hold_owner_equal}
@@ -555,6 +555,50 @@ fn printer_hold_release_request(tree:HostStateTree) -> PrinterHoldReleaseRequest
     PrinterExecutionHoldStoreReady {store:store}=>printer_hold_release_request_at(store:store,approvals_root:approval_decision_store_root)
   }
 }
+
+// THE FILER MEETS THE HOLD WHERE IT LIVES. Before the layout move, the hold is the flat-layout slot in the parent
+// (printer_execution_hold_legacy_state LegacyHoldLive), and the member store above is Unready for as long as it is, so a
+// request filed only through the member store could never be filed for the one hold that needed it (run 41949183448).
+// The legacy slot is a hold store rooted at the parent: same slot key, same pinned operator-observation card (the root
+// is part of the card's escalation id), same refusals -- a holder that names a process is refused, not carded.
+// Every other unready state still refuses.
+fn printer_hold_release_request_for_tree(tree:HostStateTree,approvals_root:NonEmptyStr) -> PrinterHoldReleaseRequest {
+  match printer_execution_hold_legacy_state(tree:tree) {
+    LegacyHoldLive {names:_}=>printer_hold_release_request_at(store:printer_execution_hold_legacy_store(tree:tree),approvals_root:approvals_root)
+    LegacyHoldAbsent=>printer_hold_release_request(tree:tree)
+    LegacyHoldFenced {generation:_}=>printer_hold_release_request(tree:tree)
+    LegacyHoldUnreadable {detail:_}=>printer_hold_release_request(tree:tree)
+  }
+}
+
+fn printer_execution_hold_legacy_store(tree:HostStateTree) -> PrinterExecutionHoldStore { PrinterExecutionHoldStore {root:printer_starts_path(tree:tree)} }
+
+// THE LEGACY SLOT'S RELEASE, taken by the layout step BEFORE it fences (gunbc.fleet.printer_state_layout
+// legacy_writer_exclusion_causes). It IS printer_hold_enter against the flat slot, so the dead-holder recovery, the live
+// refusal and the operator-observation release are the ones a converge meets, with no second copy of them: a holder
+// observed dead is recovered, one observed live refuses, and one that names no process is released only on the
+// operator's approved observation of THIS root, slot, holder and generation (the card the request above files). The
+// body handed to the hold does nothing, so a won slot is released at once and left Free for the fence to take.
+// A slot the fence already holds is not released here (the layout step resumes it).
+type LegacyHoldRelease = LegacyHoldReleased | LegacyHoldReleaseRefused {cause:String}
+
+data printer_legacy_hold_release_escalation: NonEmptyStr = "printer-state-layout-legacy-hold-release" as NonEmptyStr
+
+fn printer_legacy_hold_release_noop(hold:PrinterExecutionHold) -> ProcessExit { ExitSuccess }
+
+fn printer_legacy_hold_release(tree:HostStateTree,approvals_root:NonEmptyStr) -> LegacyHoldRelease {
+  let store = printer_execution_hold_legacy_store(tree:tree)
+  match printer_execution_hold_legacy_state(tree:tree) {
+    LegacyHoldFenced {generation:_}=>LegacyHoldReleased
+    LegacyHoldAbsent=>LegacyHoldReleased
+    LegacyHoldUnreadable {detail:d}=>LegacyHoldReleaseRefused {cause:d}
+    LegacyHoldLive {names:_}=>match printer_hold_enter(store:store,escalation_id:printer_legacy_hold_release_escalation,use:printer_legacy_hold_release_noop,approvals_root:approvals_root) {
+      ExitSuccess=>LegacyHoldReleased
+      ExitFailure {code:_,reason:r}=>LegacyHoldReleaseRefused {cause:r}
+    }
+  }
+}
+
 
 // ROOT-, SLOT- AND STORE-PARAMETERIZED (DESIGN.md §6b: one generalization, not a copy per root), so
 // the witnesses run THIS code against throwaway roots exactly as `printer_hold_enter` does.
