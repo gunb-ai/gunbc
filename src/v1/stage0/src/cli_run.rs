@@ -263,6 +263,33 @@ pub fn run_slot_watchdog_verb(slot_cgroup: String, source_roots: Vec<String>) ->
             return 2;
         }
     };
+    // THE CHECKOUT ROOT COMES FROM THE DECLARED SOURCE ROOTS, NOT FROM THE CWD: a unit's cwd is
+    // `/`, and the verb's correctness may not depend on a cwd nothing declares. The root is the
+    // nearest `.git` ancestor of the first --source-root (the same walk `workspace_root_from`
+    // performs, started from the declared root); the identity check in `run_slot_watchdog` then
+    // proves that checkout is the binary's revision.
+    let first = match source_roots.first() {
+        Some(r) => r,
+        None => {
+            eprintln!("REFUSED: slot-watchdog needs at least one --source-root");
+            return 2;
+        }
+    };
+    let start = std::fs::canonicalize(first).unwrap_or_else(|_| PathBuf::from(first));
+    match start.ancestors().find(|d| d.join(".git").exists()) {
+        Some(root) => {
+            let root = root.to_path_buf();
+            let _ = PROCESS_WORKSPACE_ROOT.set((root.clone(), WorkspaceRootBasis::Declared));
+            bind_checkout_root(root);
+        }
+        None => {
+            eprintln!(
+                "REFUSED: SlotWatchdogSourceRootNotInCheckout: {} has no .git ancestor",
+                start.display()
+            );
+            return 2;
+        }
+    }
     required_regen_host::run_slot_watchdog(required_regen_host::SlotWatchdogConfig {
         slot_cgroup,
         source_roots,
