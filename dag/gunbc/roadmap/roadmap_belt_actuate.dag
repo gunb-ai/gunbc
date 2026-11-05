@@ -565,7 +565,6 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   ContinuationPlan, StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Resume,
   continuation_plan,
-  WorktreeStanding, WorktreeHere, WorktreeAbsent,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
@@ -687,7 +686,6 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation,
   filesystem_listing_names_entry,
   filesystem_entry_presence,
-  listed_entry_presence,
   FilesystemReadOutcome,
   FilesystemReadRefused,
   FilesystemReadSucceeded,
@@ -2748,7 +2746,7 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
   // next (DESIGN §5). The capture and recovery below are still read honestly; when the worktree is absent the
   // decision ignores them (it routes on the read BRANCH standing instead), so no 'absent'/'none' default is
   // ever fabricated over a read that did not happen.
-  let worktree = belt_worktree_standing(instance: instance, node_id: node.node, attempt_key: progress.attempt_key)
+  let worktree = belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: progress.attempt_key)
   let branch_head = belt_branch_standing(instance: instance, branch: progress.branch)
   continuation_plan(
     obs: Present { value: PriorExecutionObservation {
@@ -2813,42 +2811,9 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
   }
 }
 
-// HOW THE PRIOR WORKTREE STANDS, projected from the same belt_worktree_head_observe the capture read uses,
-// into the decision's OWN vocabulary. Observed -> here (with the head revision); unobserved -> absent. This
-// is the honest input that separates 'the worktree is here, read its capture' from 'the worktree is gone,
-// decide on the branch' -- it is never inferred from what the caller wants next.
-fn belt_worktree_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> WorktreeStanding {
-  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  // Absence is ESTABLISHED by a SUCCEEDED listing of the worktree root, never inferred from a failed head
-  // read -- that is filesystem_io's absence-adoption rule, and the exact shape the reviewer flagged: a
-  // failed read is unknown, not 'gone'. The entry name is precisely what dispatch_worktree_path_for_instance
-  // builds: the node-and-attempt directory under the dispatch worktree root.
-  let worktree_name = join([node_id as String, "-a", attempt_key], "")
-  match listed_entry_presence(
-    directory: dashboard_instance_dispatch_worktree_root(instance: instance) as String,
-    name: worktree_name,
-  ) {
-    FilesystemEntryListed { directory: _, name: _ } =>
-      // The listing NAMES the directory: the worktree is PRESENT. Read its head honestly. A present worktree
-      // whose head cannot be read is a git FAULT on a live directory -- NOT a reaping -- so it is Unknown and
-      // the decision refuses rather than restoring (git worktree add, no --force, over live uncommitted work).
-      match belt_worktree_head_observe(instance: instance, worktree: worktree) {
-        WorktreeHeadObserved { revision: _ } => WorktreeHere
-        WorktreeHeadUnobserved { reason } =>
-          WorktreeUnknown { reason: join(["the worktree directory is present but its head could not be read -- a git fault on a live worktree, not a reaping, so the lineage refuses rather than restoring over it: ", reason], "") }
-      }
-    FilesystemEntryAbsent(_established) =>
-      // A SUCCEEDED listing of the root did NOT name this attempt's directory: its absence is ESTABLISHED,
-      // so the worktree is genuinely gone (reaped). Its branch may still hold the committed work; the decision
-      // decides on the branch standing, read against the shared object store that survives reaping.
-      WorktreeAbsent { reason: join(["the worktree directory ", worktree, " is absent from a succeeded listing of the dispatch worktree root (reaped)"], "") }
-    FilesystemEntryPresenceIndeterminate { cause } =>
-      // The root could not be listed, so the directory's absence is NOT established -- unknown, refused.
-      WorktreeUnknown { reason: join(["whether the worktree directory is present is not established (the dispatch worktree root could not be listed): ", cause], "") }
-    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
-      WorktreeUnknown { reason: join(["the worktree listing subject ", d, "/", n, " was refused: ", c], "") }
-  }
-}
+// THE PRIOR WORKTREE STANDING IS NOT READ HERE -- the decision assembly above calls belt_attempt_worktree_observe
+// DIRECTLY, the same observer the resume arm uses, so the continuation plan and the resume arm cannot disagree
+// about whether an attempt's worktree stands (review 91395).
 
 // HOW THE PRIOR BRANCH STANDS, projected from belt_branch_head_observe (read against the shared object
 // store at instance.repo_root, which survives the worktree being reaped) into the decision's vocabulary.
@@ -3191,75 +3156,80 @@ fn belt_spawn_stage(
   let instance = addressing.instance
   let node = addressing.node
   let attempt_key = addressing.attempt_key
-  match run {
-    DispatchWorkerResumed { ordinal: _ } =>
-      match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
-        AttemptWorktreePresent { path: _ } => none
-        AttemptWorktreeAbsent { path } =>
-          Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the session to resume has no worktree at ", path, "; its work is not where the resume would continue it"], ""), provider: provider_wire_label, launch: launch } }
-        AttemptWorktreeUnobserved { path, cause } =>
-          Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the worktree at ", path, " could not be observed before resuming: ", cause], ""), provider: provider_wire_label, launch: launch } }
-      }
-    // Both a first attempt and a CONTINUED (NextAttempt) attempt add a worktree here; only a RESUME
-    // does not (handled above). The catch-all covers DispatchWorkerFirst and DispatchWorkerContinuedFrom
-    // alike -- the worktree-add start ref already differs between them via dispatch_worker_run_start_ref.
-    _ =>
-      match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
-        WorktreeClaimNotRecorded { detail } => Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-claim", detail: detail, provider: provider_wire_label, launch: launch } }
-        WorktreeClaimRecorded =>
-          match belt_exec_steps(
-            steps: concat(
-              [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
+  // EXHAUSTIVELY name every DispatchWorkerRun variant so a future variant is a COMPILE error, never a silent
+  // fall-through into the worktree-add path (review 91395, DESIGN §4b closed-variant elimination; the prior
+  // `_ =>` catch-all would have swallowed any new variant into the add path unchecked). Only a RESUME skips the
+  // worktree add; the add-path start ref still differs First-vs-ContinuedFrom via dispatch_worker_run_start_ref.
+  let run_adds_worktree = match run {
+    DispatchWorkerResumed { ordinal: _ } => false
+    DispatchWorkerFirst => true
+    DispatchWorkerContinuedFrom { branch: _ } => true
+  }
+  if run_adds_worktree {
+    match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
+      WorktreeClaimNotRecorded { detail } => Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-claim", detail: detail, provider: provider_wire_label, launch: launch } }
+      WorktreeClaimRecorded =>
+        match belt_exec_steps(
+          steps: concat(
+            [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
+            concat(
               concat(
-                concat(
-                  map(cmds.worker_git_entry_grant, command => BeltExecStep { step: "worker-git-entry-grant", command: command }),
-                  map(cmds.worker_worktree_grant, command => BeltExecStep { step: "worker-worktree-grant", command: command }),
-                ),
-                map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
+                map(cmds.worker_git_entry_grant, command => BeltExecStep { step: "worker-git-entry-grant", command: command }),
+                map(cmds.worker_worktree_grant, command => BeltExecStep { step: "worker-worktree-grant", command: command }),
               ),
+              map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
             ),
-            workdir: workdir,
-          ) {
-            ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-            ExecStepsOk =>
-              match belt_worker_git_entry_grant_readback(cmds: cmds, workdir: workdir, group: fleet_posix_worker_shared_group_name) {
-                ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-                ExecStepsOk =>
-                  match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
-                    AttemptWorktreeAbsent { path } =>
-                      Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-establish", detail: join(["git worktree add reported success and no worktree is present at ", path], ""), provider: provider_wire_label, launch: launch } }
-                    AttemptWorktreeUnobserved { path, cause } =>
-                      Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-establish", detail: join(["the worktree at ", path, " could not be observed after git worktree add: ", cause], ""), provider: provider_wire_label, launch: launch } }
-                    AttemptWorktreePresent { path: _ } =>
-                      match belt_worker_traversal_before_spawn(instance: instance, container: cmds.session_container) {
-                        ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-                        ExecStepsOk =>
-                          match belt_attempt_state_initialize_for_instance(
-                            instance: instance,
-                            node: node,
-                            attempt_key: attempt_key,
-                            admission_receipt: admission_receipt,
-                            launch: launch,
-                            binding: binding,
-                            request: request,
-                            process_fingerprint: process_fingerprint,
-                            executor: prepared_attempt_executor_origin(prepared: prepared),
-                          ) {
-                            AttemptStateInitializationFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-                            AttemptStateInitialized =>
-                              match belt_exec_steps(
-                                steps: [BeltExecStep { step: "attempt-current-publish", command: cmds.attempt_current_pointer }],
-                                workdir: workdir,
-                              ) {
-                                ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
-                                ExecStepsOk => none
-                              }
-                          }
-                      }
-                  }
-              }
-          }
-      }
+          ),
+          workdir: workdir,
+        ) {
+          ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+          ExecStepsOk =>
+            match belt_worker_git_entry_grant_readback(cmds: cmds, workdir: workdir, group: fleet_posix_worker_shared_group_name) {
+              ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+              ExecStepsOk =>
+                match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+                  AttemptWorktreeAbsent { path } =>
+                    Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-establish", detail: join(["git worktree add reported success and no worktree is present at ", path], ""), provider: provider_wire_label, launch: launch } }
+                  AttemptWorktreeUnobserved { path, cause } =>
+                    Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-establish", detail: join(["the worktree at ", path, " could not be observed after git worktree add: ", cause], ""), provider: provider_wire_label, launch: launch } }
+                  AttemptWorktreePresent { path: _ } =>
+                    match belt_worker_traversal_before_spawn(instance: instance, container: cmds.session_container) {
+                      ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+                      ExecStepsOk =>
+                        match belt_attempt_state_initialize_for_instance(
+                          instance: instance,
+                          node: node,
+                          attempt_key: attempt_key,
+                          admission_receipt: admission_receipt,
+                          launch: launch,
+                          binding: binding,
+                          request: request,
+                          process_fingerprint: process_fingerprint,
+                          executor: prepared_attempt_executor_origin(prepared: prepared),
+                        ) {
+                          AttemptStateInitializationFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+                          AttemptStateInitialized =>
+                            match belt_exec_steps(
+                              steps: [BeltExecStep { step: "attempt-current-publish", command: cmds.attempt_current_pointer }],
+                              workdir: workdir,
+                            ) {
+                              ExecStepFailed { step, detail } => Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+                              ExecStepsOk => none
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  } else {
+    match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+      AttemptWorktreePresent { path: _ } => none
+      AttemptWorktreeAbsent { path } =>
+        Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the session to resume has no worktree at ", path, "; its work is not where the resume would continue it"], ""), provider: provider_wire_label, launch: launch } }
+      AttemptWorktreeUnobserved { path, cause } =>
+        Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the worktree at ", path, " could not be observed before resuming: ", cause], ""), provider: provider_wire_label, launch: launch } }
+    }
   }
 }
 

@@ -49,6 +49,9 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
   WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
+import gunbc.roadmap.roadmap_workflow_progress {
+  AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
+}
 
 // THE PRIOR EXECUTION, EXACTLY AS READ -- not what someone wants it to be. Every member is an
 // observation of a past execution the decision is allowed to read, and NOTHING else is. There is no
@@ -63,23 +66,21 @@ import gunbc.roadmap.roadmap_workflow_stage {
 // node-terminal read (gunbc.roadmap.roadmap_node_terminality belt_node_lineage_terminal_read), for
 // BOTH verbs and every other verb, not by a member any action path can leave unset (ruling
 // gunbc.design_ruling dispatch_is_continue_or_start_fresh).
-// HOW THE PRIOR ATTEMPT'S WORKTREE STANDS, AS READ. The submission capture and the recovery record live
-// INSIDE the worktree; when it is not present they were NOT read, and the plan must not pretend they are
-// 'absent' or 'none' (DESIGN §5: a fabricated default is a hard reject). The three states are read, not
-// inferred from what the caller wants next, and are NOT two names for one thing:
-//   WorktreeHere   -- present and readable; the decision never consumes the head revision, so none is carried.
-//   WorktreeAbsent -- a SUCCEEDED listing of the worktree root did not name the directory, so its absence
-//                     is ESTABLISHED (filesystem_io's absence-adoption rule: absence comes from a listing
-//                     that succeeded, never from a failed read). Genuinely gone (reaped); its branch may
-//                     still hold the committed work, and the branch standing decides whether that is a restore.
-//   WorktreeUnknown-- presence could NOT be established: the root could not be listed, the subject was
-//                     refused, OR the directory lists but its head could not be read (a git fault on a live
-//                     worktree, NOT a reaping). Unknown is refused, never restored onto -- restoring over a
-//                     present-but-unreadable worktree would clobber or omit uncommitted live work.
-type WorktreeStanding
-  = WorktreeHere
-  | WorktreeAbsent { reason: String }
-  | WorktreeUnknown { reason: String }
+// THE WORKTREE STANDING IS THE SHARED ATTEMPT-WORKTREE OBSERVER (AttemptWorktreeObservation, from
+// gunbc.roadmap.roadmap_workflow_progress) -- there is exactly ONE observer of "does this attempt's worktree
+// stand, and is it usable", reused verbatim by the belt's resume arm and by this plan so the two can never
+// disagree about the same directory (review 91395, DESIGN §3 nicknaming: a fork is a correctness concern).
+// The submission capture and the recovery record live INSIDE the worktree; when it is not present they were NOT
+// read, and the plan must not pretend they are 'absent' or 'none' (DESIGN §5: a fabricated default is a hard
+// reject). The observer's three states, read not inferred:
+//   AttemptWorktreePresent    -- present and usable; the decision never consumes the path, so it is ignored.
+//   AttemptWorktreeAbsent     -- its absence is ESTABLISHED from a SUCCEEDED observation (filesystem_io's
+//                                absence-adoption rule: never inferred from a failed read). Genuinely gone
+//                                (reaped); its branch may still hold the committed work, and the branch
+//                                standing decides whether that is a restore.
+//   AttemptWorktreeUnobserved -- presence could NOT be established (indeterminate/disagree/refused). Refused,
+//                                never restored onto -- restoring over a present-but-unreadable worktree would
+//                                clobber or omit uncommitted live work.
 
 // HOW THE PRIOR ATTEMPT'S BRANCH STANDS, AS READ against the shared object store. Consulted only when the
 // worktree is absent: a live branch is a restore target (its head is the durable committed work), a gone
@@ -100,7 +101,7 @@ type PriorExecutionObservation = {
   // is absent the capture and recovery below were NOT read and are inert here -- the decision routes on the
   // branch standing instead. This is the general restore the CONTINUE verb needs (lab bug #2: a reaped
   // worktree must not block the decision).
-  worktree: WorktreeStanding,
+  worktree: AttemptWorktreeObservation,
   branch_head: BranchStanding,
   worker_terminal: Bool,
   capture: SubmissionCaptureObservation,
@@ -164,7 +165,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
         // worktree is absent they were NOT read, so the plan decides on the BRANCH standing (read against
         // the shared object store, which survives reaping) instead of pretending the capture is 'absent'.
         match prior.worktree {
-          WorktreeAbsent { reason } =>
+          AttemptWorktreeAbsent { path: _ } =>
             // LAB BUG #2 (a reaped worktree must not block the decision): the worktree is gone -- reaped
             // after the work was committed -- but the durable fact is the BRANCH. The capture was NOT read
             // (it lived inside the gone worktree); the decision reads the LEDGER instead, which survives the
@@ -181,7 +182,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
               BranchUnknown { reason: why } =>
                 Refuse { reason: join(["could not determine whether the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present; a failed branch check is not an absent branch and is never restored onto: ", why], "") }
             }
-          WorktreeUnknown { reason } =>
+          AttemptWorktreeUnobserved { path: _, cause } =>
             // PRESENCE COULD NOT BE ESTABLISHED -- the root was unlistable, the subject refused, or the
             // directory lists but its head could not be read (a git fault on a LIVE worktree). This is not
             // the reaped case: it must never be restored onto, because a still-present worktree may hold
@@ -189,8 +190,8 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
             // failed is unknown, and unknown is refused (DESIGN §5: runtime uncertainty -> typed refusal;
             // filesystem_io: absence is established only by a listing that succeeded). The belt's own
             // re-observe is the remedy, not a guessed spawn.
-            Refuse { reason: join(["could not establish how the prior attempt ", prior.attempt_key, "'s worktree stands, so the lineage decides nothing rather than restoring onto a possibly-live directory: ", reason], "") }
-          WorktreeHere =>
+            Refuse { reason: join(["could not establish how the prior attempt ", prior.attempt_key, "'s worktree stands, so the lineage decides nothing rather than restoring onto a possibly-live directory: ", cause], "") }
+          AttemptWorktreePresent { path: _ } =>
         match prior.capture {
           CaptureUnreadable { reason } =>
             Refuse { reason: join(["the prior attempt ", prior.attempt_key, "'s submission store is unreadable, so what it holds is unknown and the lineage decides nothing: ", reason], "") }

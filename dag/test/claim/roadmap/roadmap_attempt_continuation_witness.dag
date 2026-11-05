@@ -12,8 +12,10 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, AlreadyComplete, Refuse,
   continuation_plan,
-  WorktreeHere, WorktreeAbsent, WorktreeUnknown,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
+}
+import gunbc.roadmap.roadmap_workflow_progress {
+  AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
 }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import gunbc.roadmap.roadmap_submission {
@@ -40,7 +42,7 @@ fn pri(
     branch: "roadmap/n1/a1",
     // PRESENT by default: the whole existing partition is read from the CAPTURE, so the worktree is here.
     // The reaped-worktree cases build their own observation (they exercise the branch standing instead).
-    worktree: WorktreeHere,
+    worktree: AttemptWorktreePresent { path: "/wt" },
     branch_head: BranchLive,
     worker_terminal: true,
     capture: capture,
@@ -60,7 +62,7 @@ fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
     node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    worktree: WorktreeAbsent { reason: "git could not read the worktree head: no such directory" },
+    worktree: AttemptWorktreeAbsent { path: "/wt" },
     branch_head: branch_head,
     worker_terminal: true,
     capture: CaptureUnreadable { reason: "the worktree is not present; the submission capture was not read" },
@@ -280,7 +282,7 @@ fn pri_reaped_ledger(
     node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    worktree: WorktreeAbsent { reason: "git could not read the worktree head: no such directory" },
+    worktree: AttemptWorktreeAbsent { path: "/wt" },
     branch_head: BranchLive,
     worker_terminal: true,
     capture: CaptureUnreadable { reason: "the worktree is not present; the submission capture was not read" },
@@ -380,7 +382,7 @@ fn pri_worktree_unknown() -> PriorExecutionObservation {
     node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    worktree: WorktreeUnknown { reason: "the dispatch worktree root could not be listed" },
+    worktree: AttemptWorktreeUnobserved { path: "/wt", cause: "the dispatch worktree root could not be listed" },
     // Even a LIVE branch does not license a restore when the worktree's presence is unknown -- that is the
     // whole point of separating Unknown from Absent.
     branch_head: BranchLive,
@@ -399,8 +401,9 @@ test fn worktree_unknown_refuses_never_restores_onto_a_possibly_live_worktree() 
     Refuse { reason } => reason.contains("prior attempt a1") && reason.contains("could not establish")
     _ => false
   })
-    // RED CONTROL: presence-not-established must NOT restore. With a LIVE branch, if WorktreeUnknown were
-    // ever collapsed into WorktreeAbsent this would take the restore arm and spawn -- failing here. This is
+    // RED CONTROL: presence-not-established must NOT restore. With a LIVE branch, if the worktree standing
+    // were collapsed from AttemptWorktreeUnobserved into AttemptWorktreeAbsent this would take the restore
+    // arm and spawn -- failing here. This is
     // the exact discriminator between 'established gone (restorable)' and 'could not tell (refuse)'.
     && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
     // And it must not be mistaken for a resumable in-place session either.
