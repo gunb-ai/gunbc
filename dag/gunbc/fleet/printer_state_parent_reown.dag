@@ -145,18 +145,18 @@ fn printer_state_parent_reown(
   apply: fn(OwnedDirectoryInstallPlan) -> Bool,
 ) -> PrinterStartsParentReown {
   let path = owned_directory_path(t: target)
-  match printer_state_parent_prior_match(prior: prior, observation: observe(path: path)) {
+  match printer_state_parent_prior_match(prior: prior, observation: observe(path)) {
     PriorRefuses { cause } => PrinterStartsParentReownPreconditionFailed { path: path as String, cause: cause }
     PriorMatches { reading } => match owned_directory_install_plan_of(t: target) {
       EnsurePlanUnavailable { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownTargetHasNoInstall { reason: reason } }
       EnsurePlanAvailable { plan } =>
-        if !apply(plan: plan) {
+        if !apply(plan) {
           PrinterStartsParentReownRefused { path: path as String, cause: ReownInstallRefused }
         } else {
           // THE READ-BACK IS ITS OWN READ, not the install's exit status: a second observation of the path,
           // asked of the host after the command, tested against the DECLARED target by the provider's own
           // satisfaction test. An install that succeeded and left some other identity here refuses.
-          let after = observe(path: path)
+          let after = observe(path)
           if owned_directory_satisfied(t: target, o: after) {
             match after {
               EnsureObserved { evidence } => PrinterStartsParentReowned { path: path as String, before: reading, after: evidence }
