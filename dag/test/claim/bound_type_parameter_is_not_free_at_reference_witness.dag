@@ -6,11 +6,13 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A REFERENCE TO A NON-GENERIC TYPE MUST NOT INHERIT THE PARAMETERS OF A GENERIC TYPE ITS FIELDS NAME.
-// render_named_type_base infers a reference's type arguments from the free type variables of what it resolves
-// to. A field `sites: Seq<Site>` reaches Seq's declaration, whose leaves are Seq's OWN bound `T`; once a
-// declaration's fields resolve under its own parameters those leaves are TypeVariable-stamped, and a free-
-// variable fold that does not subtract the declaration's binders renders `Holder<T>` for a type that declares no
-// parameter (rustc E0107, heal run 41336512917, std_generated_provider.rs).
+// render_named_type_base used to infer a reference's type arguments from the free type variables of what it
+// resolves to. A field `sites: Seq<Site>` reaches Seq's declaration, whose leaves are Seq's OWN bound `T`; once a
+// declaration's fields resolve under its own parameters those leaves are TypeVariable-stamped, and the fold
+// rendered `Holder<T>` for a type that declares no parameter (rustc E0107, std_generated_provider.rs). The repair
+// taken is to DELETE the fold: a name reference now renders exactly its explicit type arguments. It is not a
+// binder subtraction. Whether any reference position ever needed an inferred argument is not established by
+// these two arms; see the review of the emit change for that open question.
 //
 // THE ARMS ARE A PAIR. The first is the discriminating red: a non-generic Holder whose field is a generic
 // type applied to a record, referenced by a function, must emit with zero type arguments. The second is the
