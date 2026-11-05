@@ -245,7 +245,7 @@ fn carries_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
 test fn the_review_audit_and_supervisor_units_carry_the_worker_confinement() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   carries_privilege_confinement(props: dispatch_review_unit_properties(
-    instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr))
+    instance: lab, granted: lab.dispatch_worker_memory_max, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr))
 }
 
 // CLAIM 3: the lab worker's User= is derived as gunbc-worker and applied on the system-manager path;
