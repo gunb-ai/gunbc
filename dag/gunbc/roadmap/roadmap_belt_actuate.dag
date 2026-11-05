@@ -2751,19 +2751,18 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
-      recovery:
-        // A REAPED WORKTREE CANNOT BE RESUMED IN PLACE. The Resume spawn (SpawnRouteResume) drives the worker
-        // into its own worktree directory and assumes it still exists; only the NextAttempt restore
-        // (DispatchWorkerContinuedFrom) re-adds the worktree from the branch head. So when the worktree is
-        // gone the prior session's recovery standing is NOT read as resumable -- the decision falls through to
-        // NextAttempt, which keeps the committed branch work by starting the new attempt from that head. When
-        // the worktree is still present, the recovery standing is read normally and a validated session resumes
-        // in place as before.
-        if belt_worktree_present(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
-          belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key)
-        } else {
-          SessionRecoveryNone
-        },
+      // A REAPED WORKTREE CANNOT BE RESUMED IN PLACE. The Resume spawn (SpawnRouteResume) drives the worker
+      // into its own worktree directory and assumes it still exists; only the NextAttempt restore
+      // (DispatchWorkerContinuedFrom) re-adds the worktree from the branch head. So when the worktree is
+      // gone the prior session's recovery standing is NOT read as resumable -- the decision falls through to
+      // NextAttempt, which keeps the committed branch work by starting the new attempt from that head. When
+      // the worktree is still present, the recovery standing is read normally and a validated session resumes
+      // in place as before.
+      recovery: if belt_worktree_present(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
+        belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key)
+      } else {
+        SessionRecoveryNone
+      },
     } },
   )
 }
