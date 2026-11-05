@@ -92,6 +92,9 @@ import extdeps.languages.json.parse { json_text_parseable }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  ServeBinarySource,
+  DeclaredBuiltBinary,
+  BuildInPlaceFromAdmittedRevision,
   dashboard_provision_transport,
   prod_role_realization,
   dashboard_instance_health_identity_prefix,
@@ -564,12 +567,12 @@ fn dashboard_stage_bundle(
 fn dashboard_ensure_serve_binary(
   instance: HostDashboardInstance,
   apply_workdir: FilePath,
-  built_binary: Optional<FilePath>,
+  serve_binary_source: ServeBinarySource,
   path: FilePath,
 ) -> DashboardExecResult {
-  match built_binary {
-    Absent => dashboard_build_serve_binary_in_place(instance: instance, path: path)
-    Present { value: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, built_binary: declared, path: path)
+  match serve_binary_source {
+    BuildInPlaceFromAdmittedRevision => dashboard_build_serve_binary_in_place(instance: instance, path: path)
+    DeclaredBuiltBinary { path: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, serve_binary_source: declared, path: path)
   }
 }
 
@@ -602,43 +605,58 @@ fn dashboard_build_serve_binary_in_place(instance: HostDashboardInstance, path: 
   }
 }
 
+// EACH STEP RUNS ONLY AFTER ITS PREDECESSOR SUCCEEDED, so a failed mkdir or chmod leaves no .new or .prev
+// behind and the installed binary stays untouched until the one rename.
 fn dashboard_install_built_serve_binary(instance: HostDashboardInstance, build: ServeBinaryBuild) -> DashboardExecResult {
-  let made = dashboard_target_exec(instance: instance, program: "/usr/bin/mkdir" as FilePath, args: ["-p", trim(dashboard_target_exec(instance: instance, program: "/usr/bin/dirname" as FilePath, args: [build.install_path]).stdout)])
-  let staged = dashboard_target_exec(instance: instance, program: "/usr/bin/cp" as FilePath, args: serve_binary_stage_argv(build: build))
-  if !made.success {
-    made
-  } else if !staged.success {
-    staged
+  let dir = dashboard_target_exec(instance: instance, program: "/usr/bin/dirname" as FilePath, args: [build.install_path])
+  if !dir.success {
+    dir
   } else {
-    let chmodded = dashboard_target_exec(instance: instance, program: chmod_binary_path as String as FilePath, args: ["0755", serve_binary_staged_path(build: build)])
-    let built_sum = dashboard_target_digest(instance: instance, path: serve_binary_built_path(build: build))
-    // The previous bin is kept as a hard link only when one exists; the rename then replaces atomically.
-    let had_previous = dashboard_target_exec(instance: instance, program: instance.toolchain.path_test, args: ["-f", build.install_path])
-    let kept = if had_previous.success {
-      dashboard_target_exec(instance: instance, program: "/usr/bin/ln" as FilePath, args: serve_binary_keep_previous_argv(build: build))
+    let made = dashboard_target_exec(instance: instance, program: "/usr/bin/mkdir" as FilePath, args: ["-p", trim(dir.stdout)])
+    if !made.success {
+      made
     } else {
-      had_previous
-    }
-    if !chmodded.success {
-      chmodded
-    } else if had_previous.success && !kept.success {
-      kept
-    } else {
-      let renamed = dashboard_target_exec(instance: instance, program: "/usr/bin/mv" as FilePath, args: serve_binary_rename_argv(build: build))
-      if !renamed.success {
-        renamed
+      let staged = dashboard_target_exec(instance: instance, program: "/usr/bin/cp" as FilePath, args: serve_binary_stage_argv(build: build))
+      if !staged.success {
+        staged
       } else {
-        let installed_sum = dashboard_target_digest(instance: instance, path: build.install_path)
-        let version = dashboard_target_exec(instance: instance, program: build.install_path as FilePath, args: ["--version"])
-        match serve_binary_post_install_verdict(
-          build: build,
-          built_sha256: built_sum,
-          installed_sha256: installed_sum,
-          version_text: version.stdout,
-        ) {
-          ServeBinaryBuilt { revision: _ } => version
-          refused => dashboard_exec_refused(detail: serve_binary_refusal_detail(verdict: refused))
+        let chmodded = dashboard_target_exec(instance: instance, program: chmod_binary_path as String as FilePath, args: ["0755", serve_binary_staged_path(build: build)])
+        if !chmodded.success {
+          chmodded
+        } else {
+          dashboard_keep_previous_and_rename(instance: instance, build: build)
         }
+      }
+    }
+  }
+}
+
+// The previous bin is kept as a hard link only when one exists; the rename then replaces atomically.
+fn dashboard_keep_previous_and_rename(instance: HostDashboardInstance, build: ServeBinaryBuild) -> DashboardExecResult {
+  let built_sum = dashboard_target_digest(instance: instance, path: serve_binary_built_path(build: build))
+  let had_previous = dashboard_target_exec(instance: instance, program: instance.toolchain.path_test, args: ["-f", build.install_path])
+  let kept = if had_previous.success {
+    dashboard_target_exec(instance: instance, program: "/usr/bin/ln" as FilePath, args: serve_binary_keep_previous_argv(build: build))
+  } else {
+    had_previous
+  }
+  if had_previous.success && !kept.success {
+    kept
+  } else {
+    let renamed = dashboard_target_exec(instance: instance, program: "/usr/bin/mv" as FilePath, args: serve_binary_rename_argv(build: build))
+    if !renamed.success {
+      renamed
+    } else {
+      let installed_sum = dashboard_target_digest(instance: instance, path: build.install_path)
+      let version = dashboard_target_exec(instance: instance, program: build.install_path as FilePath, args: ["--version"])
+      match serve_binary_post_install_verdict(
+        build: build,
+        built_sha256: built_sum,
+        installed_sha256: installed_sum,
+        version_text: version.stdout,
+      ) {
+        ServeBinaryBuilt { revision: _ } => version
+        refused => dashboard_exec_refused(detail: serve_binary_refusal_detail(verdict: refused))
       }
     }
   }
@@ -647,18 +665,18 @@ fn dashboard_install_built_serve_binary(instance: HostDashboardInstance, build: 
 fn dashboard_ensure_declared_serve_binary(
   instance: HostDashboardInstance,
   apply_workdir: FilePath,
-  built_binary: FilePath,
+  serve_binary_source: FilePath,
   path: FilePath,
 ) -> DashboardExecResult {
   let present = dashboard_local_exec(
     workdir: apply_workdir,
     program: instance.toolchain.path_test,
-    args: ["-f", built_binary as String],
+    args: ["-f", serve_binary_source as String],
   )
   if !present.success {
     dashboard_exec_refused(detail: join([
       "declared serve binary artifact absent: ",
-      built_binary as String,
+      serve_binary_source as String,
       " — build it before apply; this step copies, it never builds",
     ], ""))
   } else {
@@ -681,7 +699,7 @@ fn dashboard_ensure_declared_serve_binary(
         let copied = dashboard_copy_to_target_atomically(
           instance: instance,
           controller_workdir: apply_workdir,
-          local_path: built_binary,
+          local_path: serve_binary_source,
           remote_path: path,
         )
         if !copied.success {
@@ -984,11 +1002,11 @@ fn dashboard_apply_provision_op(
         staged_bundle: staged_bundle,
         temp_bundle: temp_bundle,
       )
-    DashboardEnsureServeBinary { apply_workdir, built_binary, path } =>
+    DashboardEnsureServeBinary { apply_workdir, serve_binary_source, path } =>
       dashboard_ensure_serve_binary(
         instance: instance,
         apply_workdir: apply_workdir,
-        built_binary: built_binary,
+        serve_binary_source: serve_binary_source,
         path: path,
       )
     DashboardEnsureOwnershipMarker { path, instance_id: _ } =>
@@ -1838,7 +1856,7 @@ fn dashboard_instance_observe(
   )
   let bundle_present = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
-    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => true
+    DashboardSeededByConvergence { anchor_ref: _, serve_binary_source: _, apply_workdir: _ } => true
     DashboardGitBundle {
       controller_repo: _,
       staged_bundle,
@@ -2256,7 +2274,7 @@ fn dashboard_instance_apply_preflight(
             step: "source-seed",
             detail: "isolated instance apply requires a modeled Git-bundle seed",
           )
-        DashboardSeededByConvergence { anchor_ref, built_binary: _, apply_workdir: _ } => {
+        DashboardSeededByConvergence { anchor_ref, serve_binary_source: _, apply_workdir: _ } => {
           let source = dashboard_convergence_source_preflight_decision(
             instance: instance,
             ref_read: dashboard_target_exec(
@@ -2727,7 +2745,7 @@ fn dashboard_bootstrap_only_ops(
 ) -> List<DashboardInstanceProvisionOp> {
   dashboard_instance_provision_plan(instance: instance)
     |> filter(op => match op {
-      DashboardEnsureServeBinary { apply_workdir: _, built_binary: _, path: _ } => true
+      DashboardEnsureServeBinary { apply_workdir: _, serve_binary_source: _, path: _ } => true
       DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => false
       DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => false
       DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => false
