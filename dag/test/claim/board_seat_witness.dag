@@ -1,12 +1,13 @@
 module test.claim.board_seat_witness
 import std.types {Bool,Int,List,String}
+import product.printed_chassis.printable_assembly {PrintableAssemblySelection}
 import product.printed_chassis.board_seat {SeatPost,SeatWindow,altra_seat,BoardSeatReady,BoardSeatRefused,seat_posts,seat_windows,admitted_posts,seat_nub_diameter}
 import product.printed_chassis.cassette {lap_joints,LapJoint,SeamSpan,span_laps,seam_spans,vent_spans,window_keepout,printed_parts,interfaces,lap_seam_length}
 import extdeps.standards.micro_atx {micro_atx_standard_hole_diameter}
 import std.measure {micrometer_count}
 import product.printed_chassis.cassette {board_support_interface_for,cassette_revision}
-import product.printed_chassis.printable_assembly_selection {select_printable_assembly}
-import product.printed_chassis.printable_assembly {PrintableAssemblyReady,PrintableAssemblyRefused,ResidentialCassette}
+import product.printed_chassis.printable_assembly_selection {select_printable_assembly,cassette_root_selection}
+import product.printed_chassis.printable_assembly {PrintableAssemblyReady,PrintableAssemblyRefused,ResidentialCassette,CassetteRackReview}
 import extdeps.languages.json.emit {serialize_json}
 import product.printed_chassis.residential_review {residential_assembly_for,residential_assembly,ResidentialAssemblyReady,ResidentialAssemblyRefused}
 import product.printed_chassis.assembly_geometry {Unresolved,Proposed}
@@ -98,4 +99,15 @@ test fn the_selected_cassette_manifest_names_one_revision() -> Bool {
  }
  PrintableAssemblyRefused {reason:_}=>false
  }
+}
+
+// Both cassette roots pass the seat: with a supplied refusal each refuses naming the seat's cause, and with
+// the real seat each is ready (review 5789766315).
+fn refuses_with(sel:PrintableAssemblySelection,cause:String) -> Bool {match sel {PrintableAssemblyRefused {reason:r}=>string_contains(s:r,pattern:cause) PrintableAssemblyReady {assembly:_}=>false}}
+fn ready(sel:PrintableAssemblySelection) -> Bool {match sel {PrintableAssemblyReady {assembly:_}=>true PrintableAssemblyRefused {reason:_}=>false}}
+test fn both_cassette_roots_refuse_a_refused_seat() -> Bool {
+ let refused=BoardSeatRefused {cause:"seat-red-control"}
+ refuses_with(sel:cassette_root_selection(root:ResidentialCassette,seat:refused),cause:"seat-red-control")
+  && refuses_with(sel:cassette_root_selection(root:CassetteRackReview,seat:refused),cause:"seat-red-control")
+  && ready(sel:select_printable_assembly(root:ResidentialCassette)) && ready(sel:select_printable_assembly(root:CassetteRackReview))
 }
