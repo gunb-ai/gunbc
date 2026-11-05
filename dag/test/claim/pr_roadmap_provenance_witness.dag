@@ -1,0 +1,66 @@
+module test.claim.pr_roadmap_provenance_witness
+
+import std.types { String, Bool, List }
+import gunbc.roadmap.pr_roadmap_provenance {
+  PrDeclarationVerdict, DeclarationAdmitted, DeclarationRefusedUnreadable, DeclarationRefusedUndeclaredId,
+  PrDeclarationRead, NoDeclaration, AmbiguousDeclaration, EmptyIdList, EmptyReason,
+  Advances, CandidateCloses, NoRoadmapImpact,
+  pr_declaration_verdict,
+}
+
+// Supplied values at this boundary: the declared ids are given, not derived from the authority.
+fn declared() -> List<String> { ["main-recovery", "native-seven"] }
+
+test fn an_advances_line_naming_declared_ids_is_admitted() -> Bool {
+  match pr_declaration_verdict(body: "Title\n\nAdvances: main-recovery, native-seven\n", declared_ids: declared()) {
+    DeclarationAdmitted { declaration: Advances { ids: ids } } => true
+    other => false
+  }
+}
+
+test fn a_candidate_closes_line_is_admitted_and_is_not_an_advance() -> Bool {
+  match pr_declaration_verdict(body: "Candidate-Closes: main-recovery", declared_ids: declared()) {
+    DeclarationAdmitted { declaration: CandidateCloses { ids: ids } } => true
+    other => false
+  }
+}
+
+test fn a_no_impact_line_with_a_reason_is_admitted() -> Bool {
+  match pr_declaration_verdict(body: "No-Roadmap-Impact: typo fix", declared_ids: declared()) {
+    DeclarationAdmitted { declaration: NoRoadmapImpact { reason: r } } => r == "typo fix"
+    other => false
+  }
+}
+
+test fn an_undeclared_id_is_refused_naming_the_id() -> Bool {
+  match pr_declaration_verdict(body: "Advances: main-recovery, not-a-node", declared_ids: declared()) {
+    DeclarationRefusedUndeclaredId { id: i } => i == "not-a-node"
+    other => false
+  }
+}
+
+test fn a_body_with_no_declaration_is_refused() -> Bool {
+  match pr_declaration_verdict(body: "just prose", declared_ids: declared()) {
+    DeclarationRefusedUnreadable { read: NoDeclaration } => true
+    other => false
+  }
+}
+
+test fn two_declarations_are_refused_as_ambiguous() -> Bool {
+  match pr_declaration_verdict(body: "Advances: main-recovery\nNo-Roadmap-Impact: x", declared_ids: declared()) {
+    DeclarationRefusedUnreadable { read: AmbiguousDeclaration { lines: n } } => n == 2
+    other => false
+  }
+}
+
+test fn an_empty_id_list_and_an_empty_reason_are_refused() -> Bool {
+  let ids = match pr_declaration_verdict(body: "Advances:   ", declared_ids: declared()) {
+    DeclarationRefusedUnreadable { read: EmptyIdList { form: f } } => f == "Advances"
+    other => false
+  }
+  let reason = match pr_declaration_verdict(body: "No-Roadmap-Impact:", declared_ids: declared()) {
+    DeclarationRefusedUnreadable { read: EmptyReason } => true
+    other => false
+  }
+  ids && reason
+}
