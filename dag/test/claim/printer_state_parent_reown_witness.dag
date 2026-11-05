@@ -1,7 +1,7 @@
 module test.claim.printer_state_parent_reown_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
-import std.algebra { trim, join, string_contains }
+import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.shell.exec
