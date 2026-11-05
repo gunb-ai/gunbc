@@ -1,6 +1,6 @@
 module test.claim.host.host_build_cache_daemon_ensure_contract_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
 import extdeps.cache.sccache { sccache_fatal_error_log_fragment, sccache_installed_binary_path, sccache_release_0_15_0 }
 import extdeps.sudo.elevation { sudo_elevate_command, sudo_non_interactive_flag, sudo_program }
@@ -107,7 +107,7 @@ import gunbc.host.verified_binary_install {
 }
 import gunbc.shell_command_text { shell_command_text_of_argv }
 import extdeps.exec.command { argv_words }
-import std.algebra { string_contains }
+import std.algebra { string_contains, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // THE CONTRACT OF THE BUILD-CACHE DAEMON ENSURE, ON THE HOST IT EXISTS FOR.
@@ -290,7 +290,7 @@ fn build_cache_contract_plan_derives_the_ensure_legs() -> Bool {
     )
   match plan {
     EnsureOps { ops: steps } =>
-      list_length(items: steps) == 5
+      length(xs: steps) == 5
         && build_cache_op_is_elevated_to(index: 0, want: "dd", steps: steps)
         && build_cache_op_is_elevated_to(index: 1, want: "install", steps: steps)
         && build_cache_op_is_elevated_to(index: 2, want: "daemon-reload", steps: steps)
@@ -725,10 +725,10 @@ test fn a_digest_mismatch_refuses_before_any_install_leg_runs() -> Bool {
       // NOTHING INSTALLS, asserted as a computed list rather than as prose: no leg that extracts, no leg
       // that moves a binary into /usr/local/bin, no leg that touches the unit or the daemon. The fetch and
       // the read remain, because both ran and it is honest to report them.
-      list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 0
-        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 0
-        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
-        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+      length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 0
+        && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 0
+        && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+        && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
         // BOTH DIGESTS ARE CARRIED: the pinned one and the one the download reported. A refusal that
         // collapsed them could not distinguish a corrupt download from a swapped archive.
         && build_cache_digest_refusal_names(refusal: why, expected: sccache_release_0_15_0.digest_x86_64.hex as String, observed: "0000000000000000000000000000000000000000000000000000000000000000")
@@ -765,11 +765,11 @@ test fn the_pinned_digest_permits_every_leg_and_the_gate_is_not_vacuous() -> Boo
   match build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: Present { value: line }) {
     RefusedBeforeInstall { legs: _, op: _, refusal: _ } => false
     Runs { legs: permitted } =>
-      list_length(items: permitted) == list_length(items: ops)
-        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
-        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
-        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 5
-        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 5
+      length(xs: permitted) == length(xs: ops)
+        && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+        && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+        && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 5
+        && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 5
   }
 }
 
@@ -781,16 +781,16 @@ test fn a_binary_that_is_already_installed_is_never_fetched_and_never_hashed() -
   let ops = build_cache_contract_plan_legs(install: Present {
     value: AlreadyInstalled { dest_path: sccache_installed_binary_path as String },
   })
-  list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: FetchArchive)) == 0
-    && list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: ReadDigest)) == 0
+  length(xs: build_cache_plan_legs_of_kind(ops: ops, kind: FetchArchive)) == 0
+    && length(xs: build_cache_plan_legs_of_kind(ops: ops, kind: ReadDigest)) == 0
     // And the gate is genuinely inapplicable, not merely unsatisfied: an absent line, and a mismatched
     // one, both permit the full plan, because there is no gate to apply.
-    && list_length(
+    && length(
       items: build_cache_ensure_run_legs(
         run: build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: none),
       ),
-    ) == list_length(items: ops)
-    && list_length(
+    ) == length(xs: ops)
+    && length(
       items: build_cache_ensure_run_legs(
         run: build_cache_ensure_run(
           ops: ops,
@@ -798,7 +798,7 @@ test fn a_binary_that_is_already_installed_is_never_fetched_and_never_hashed() -
           observed_digest_line: Present { value: "0000000000000000000000000000000000000000000000000000000000000000  /tmp/x" },
         ),
       ),
-    ) == list_length(items: ops)
+    ) == length(xs: ops)
 }
 
 // THE PLAN FOR A HOST THAT HAS TO INSTALL, built once so the three gate claims ask about the same
@@ -863,14 +863,14 @@ test fn a_digest_that_was_never_read_never_admits_an_install_leg() -> Bool {
   let permitted = build_cache_ensure_run_legs(
     run: build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: none),
   )
-  list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 0
-    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 0
-    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
-    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+  length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 0
+    && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 0
+    && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+    && length(xs: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
     // AND THE UNREAD CASE IS NOT THE REFUSED CASE. Nothing has been refused yet, so the effect is still
     // progressing rather than stopped: reporting a digest refusal for a read that has not happened would
     // accuse a download of being corrupt before it was downloaded.
-    && list_length(items: permitted) < list_length(items: ops)
+    && length(xs: permitted) < length(xs: ops)
 }
 
 // --------------------------------------------------------------------------------
@@ -999,7 +999,7 @@ test fn a_supplied_matching_digest_lets_the_fold_reach_every_leg() -> Bool {
   let matched = sccache_release_0_15_0.digest_x86_64.hex as String
     + "  /tmp/sccache-download/sccache"
   match build_cache_contract_dry_fold(ops: ops, line: Present { value: matched }).executed {
-    EnsureCompleted => list_length(items: ops) > 2
+    EnsureCompleted => length(xs: ops) > 2
     // A refusal on a MATCHING digest is not conservative, it is a broken comparator: the operator gets a host
     // that never receives its cache and a reason text that blames the host for it.
     EnsureDigestRefused { op: _, refusal: _ } => false
@@ -1096,7 +1096,7 @@ test fn the_fold_runs_no_leg_after_a_leg_has_stopped_the_sequence() -> Bool {
     digest: sccache_release_0_15_0.digest_x86_64,
   )
   // There has to BE a later leg for this to mean anything.
-  list_length(items: ops) > 1
+  length(xs: ops) > 1
     && match stopped.executed {
          EnsureTransportBlocked { op: blocked, reason: why } =>
            // The leg that stopped the sequence is the fetch, and only the fetch — and the fold handed back
@@ -1260,7 +1260,7 @@ test fn a_leg_that_exited_zero_is_reported_as_progress_and_the_plan_completes() 
   )
   match done.executed {
     // Completion, and there was actually a plan to complete -- an empty plan would "complete" trivially.
-    EnsureCompleted => list_length(items: ops) > 2
+    EnsureCompleted => length(xs: ops) > 2
     EnsureFailed { op: _, observed: _ } => false
     EnsureSkipped => false
     EnsurePlanRefused { reason: _ } => false
@@ -1385,27 +1385,27 @@ test fn a_fold_that_never_read_a_digest_is_never_permitted_the_whole_plan() -> B
       value: "0000000000000000000000000000000000000000000000000000000000000000  /tmp/sccache-download/sccache",
     },
   )
-  list_length(items: ops) > 2
+  length(xs: ops) > 2
     && match unread {
          // NOTHING WAS REFUSED, so this must not be the refused arm — but it is still not permission.
          Runs { legs: legs } =>
-           list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: InstallStep)) == 0
-             && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: UnitStep)) == 0
-             && list_length(items: legs) < list_length(items: ops)
+           length(xs: build_cache_plan_legs_of_kind(ops: legs, kind: InstallStep)) == 0
+             && length(xs: build_cache_plan_legs_of_kind(ops: legs, kind: UnitStep)) == 0
+             && length(xs: legs) < length(xs: ops)
              // THE PREFIX IS THE PREFIX: the fetch is not silently dropped along with the install legs, or
              // "only the prefix ran" would be satisfiable by running nothing.
-             && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: FetchArchive))
-               == list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: FetchArchive))
-             && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: ReadDigest))
-               == list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: ReadDigest))
+             && length(xs: build_cache_plan_legs_of_kind(ops: legs, kind: FetchArchive))
+               == length(xs: build_cache_plan_legs_of_kind(ops: ops, kind: FetchArchive))
+             && length(xs: build_cache_plan_legs_of_kind(ops: legs, kind: ReadDigest))
+               == length(xs: build_cache_plan_legs_of_kind(ops: ops, kind: ReadDigest))
          RefusedBeforeInstall { legs: _, op: _, refusal: _ } => false
        }
     && match mismatch {
          RefusedBeforeInstall { legs: legs, op: gate, refusal: why } =>
            // NOTHING INSTALLABLE IS PERMITTED, the gate is the digest read itself, and BOTH digests are
            // carried -- the expected one and the one the host reported.
-           list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: InstallStep)) == 0
-             && list_length(items: build_cache_plan_legs_of_kind(ops: legs, kind: UnitStep)) == 0
+           length(xs: build_cache_plan_legs_of_kind(ops: legs, kind: InstallStep)) == 0
+             && length(xs: build_cache_plan_legs_of_kind(ops: legs, kind: UnitStep)) == 0
              && gate.kind == ReadDigest
              && match why {
                   Unverifiable { observed_line: _ } => false

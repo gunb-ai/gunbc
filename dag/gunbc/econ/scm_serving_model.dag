@@ -19,7 +19,8 @@ import std.measure {
   money_rate_micros,
 }
 import std.nat { Nat, nat_max, nat_min, nat_ceil_div }
-import std.types { Bool, List, NonEmptyStr, list_length }
+import std.types { Bool, List, NonEmptyStr }
+import std.algebra { length }
 
 // How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly
 // number. Four axes, each derived from the profile and each priced by its own cited vendor row
@@ -303,7 +304,7 @@ fn storage_ladder(rows: List<ObjectStorageClassRow>) -> List<RateTier>? {
       Absent => TierLadderAcc { ok: false, tiers: a.tiers }
     }
   })
-  if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
+  if acc.ok && (length(xs: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
 }
 
 fn egress_ladder(rows: List<ObjectStorageEgressRow>) -> List<RateTier>? {
@@ -317,7 +318,7 @@ fn egress_ladder(rows: List<ObjectStorageEgressRow>) -> List<RateTier>? {
       Absent => TierLadderAcc { ok: false, tiers: a.tiers }
     }
   })
-  if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
+  if acc.ok && (length(xs: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
 }
 
 // Two vendors here state that requests are not billed at all (Wasabi: 'No fees for egress or API
