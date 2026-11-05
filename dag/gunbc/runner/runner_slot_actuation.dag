@@ -1,6 +1,7 @@
 module gunbc.runner.runner_slot_actuation
 
-import std.types { String, List, Bool, Int, Nat, NonEmptyStr, EpochSecs }
+import std.types { String, List, Bool, Int, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.algebra { trim }
 import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread }
