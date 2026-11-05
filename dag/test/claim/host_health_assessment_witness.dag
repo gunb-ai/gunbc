@@ -2,6 +2,8 @@ module test.claim.host_health_assessment_witness
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { celsius }
+import extdeps.cited_temperature { CitedCelsiusFigure, LimitStated, LimitUnstated }
+import extdeps.external_authority { TranscribedUncited }
 import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachWindow }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
@@ -52,9 +54,7 @@ import product.host_health {
   NoPriorBaseline,
   PriorAdmittedBaseline,
   TemperatureExpectation,
-  TemperatureLimitCited,
   TemperatureLimitExceeded,
-  TemperatureLimitUnestablished,
   TemperatureReadingNeverPresent,
   TemperatureReadingPresent,
   TemperatureReadingUnavailable,
@@ -126,7 +126,7 @@ fn window(host: HostIdentity, open_ce: Int, close_ce: Int) -> CumulativeCounterW
 fn cited(sensor: NonEmptyStr, critical: Int) -> TemperatureExpectation {
   TemperatureExpectation {
     sensor: sensor,
-    limit: TemperatureLimitCited { critical: celsius(critical), authority: "witness-supplied limit" },
+    limit: LimitStated { figure: CitedCelsiusFigure { value: celsius(critical), standing: TranscribedUncited { read_obligation: "witness-supplied limit" } } },
   }
 }
 
@@ -327,7 +327,7 @@ test fn an_unestablished_limit_is_never_green_and_a_cited_one_diverges_above_it(
   let unestablished = host_health_goal(
     host: operator_host_srv2,
     fans: fan_tach_goal(expectation: srv2_fan_tach_expectation, minimum_rotating: rotating_floor),
-    temperatures: TemperatureRosterDeclared { sensors: [TemperatureExpectation { sensor: "TEMP_SOC", limit: TemperatureLimitUnestablished }] },
+    temperatures: TemperatureRosterDeclared { sensors: [TemperatureExpectation { sensor: "TEMP_SOC", limit: LimitUnstated { read_obligation: "witness: limit unread" } }] },
     baseline: NoPriorBaseline,
   )
   let cool = srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: srv2_soc_ok)
