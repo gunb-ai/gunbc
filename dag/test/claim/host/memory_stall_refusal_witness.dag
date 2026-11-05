@@ -32,6 +32,7 @@ import gunbc.host.memory_stall_refusal {
   SupervisedSubjectSilentWithoutEnvelopeEvidence,
   SupervisedSubjectRefusedEnvelopeThrottle,
   SupervisedSubjectRefusedPageThrash,
+  SupervisedSubjectRefusedReclaimLivelock,
   supervised_subject_verdict,
   supervised_subject_verdict_refuses,
   supervised_subject_refusal_text,
@@ -267,6 +268,7 @@ test fn a_recent_progress_mark_admits_whatever_the_pressure() -> Bool {
     SupervisedSubjectSilentWithoutEnvelopeEvidence { since_progress_wall: _, pressure: _, envelope_events_in_window: _, page_thrash: _ } => false
     SupervisedSubjectRefusedEnvelopeThrottle { since_progress_wall: _, pressure_full_share: _, pressure_full_share_floor: _, envelope_events_in_window: _ } => false
     SupervisedSubjectRefusedPageThrash { since_progress_wall: _, page_thrash: _ } => false
+    SupervisedSubjectRefusedReclaimLivelock { window_wall: _, envelope_event_rate: _, envelope_event_rate_line: _, user_cpu_share: _, user_cpu_share_floor: _ } => false
   }
 }
 
@@ -331,6 +333,7 @@ test fn without_psi_the_page_thrash_arm_still_refuses_and_silence_alone_admits()
     SupervisedSubjectProgressing { since_progress_wall: _, minimum_wall: _ } => false
     SupervisedSubjectSilentWithoutEnvelopeEvidence { since_progress_wall: _, pressure: _, envelope_events_in_window: _, page_thrash: _ } => false
     SupervisedSubjectRefusedEnvelopeThrottle { since_progress_wall: _, pressure_full_share: _, pressure_full_share_floor: _, envelope_events_in_window: _ } => false
+    SupervisedSubjectRefusedReclaimLivelock { window_wall: _, envelope_event_rate: _, envelope_event_rate_line: _, user_cpu_share: _, user_cpu_share_floor: _ } => false
   }
   thrash_refused && !supervised_subject_verdict_refuses(v: silence) && supervised_subject_refusal_text(v: silence) == ""
 }
