@@ -7501,7 +7501,8 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
     // (operator, 2026-11-04), and a tree-scale pool is memory the closure never reads (receipt:
     // gunbc PR "compile --entry resolves over the demand-acquired closure"). A whole-root subject
     // still indexes its root: that subject IS the tree.
-    let index: Rc<MultiEntryIndex> = if let CompileSubject::Entry(path) = &request.subject {
+    let mut entry_closure: Option<Vec<Rc<v1_compiler_compile::SourceFile>>> = None;
+    let index: Option<Rc<MultiEntryIndex>> = if let CompileSubject::Entry(path) = &request.subject {
         if let Some(cause) = source_roots.iter().find_map(|r| admit_source_root(r).err()) {
             return compile_not_executed(&request.subject, started, "source-discovery", cause);
         }
@@ -7510,12 +7511,15 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         } else {
             demand_acquire::CustomRootDuplicate::Refuse
         };
-        match demand_acquire::demand_acquired_index_for_entry(source_roots, path, duplicates) {
-            Ok(index) => index,
+        // The run path's provider loop, shared: generated providers the entry demands join the
+        // closure exactly as `gunbc run` acquires them.
+        match demand_acquire::demand_acquired_entry_sources(source_roots, path, duplicates) {
+            Ok(sources) => entry_closure = Some(sources),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "demand-acquire", cause)
             }
         }
+        None
     } else if residency == IndexResidency::OwnedByThisCompile {
         let built = if primary_precedence {
             try_build_module_index_primary_precedence(source_roots)
@@ -7523,14 +7527,17 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
             try_build_module_index(source_roots)
         };
         match built {
-            Ok(module_index) => Rc::new(new_multi_entry_index_shell(module_index, source_roots)),
+            Ok(module_index) => Some(Rc::new(new_multi_entry_index_shell(
+                module_index,
+                source_roots,
+            ))),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
         }
     } else if primary_precedence {
         match try_process_shared_index_for_pool(source_roots, true) {
-            Ok(idx) => idx,
+            Ok(idx) => Some(idx),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
@@ -7539,24 +7546,16 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
         // Strict routes through the process-shared index, so a second `--entry` compile in
         // one process is a cache hit rather than a rebuild.
         match try_process_shared_index(source_roots) {
-            Ok(idx) => idx,
+            Ok(idx) => Some(idx),
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
         }
     };
     let closure = match &request.subject {
-        CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
-            Ok(closure) => closure,
-            Err(e) => {
-                return compile_not_executed(
-                    &request.subject,
-                    started,
-                    "closure-load",
-                    format!("reference-derived closure load failed: {e}"),
-                );
-            }
-        },
+        CompileSubject::Entry(_) => {
+            entry_closure.expect("the entry arm computed its closure above")
+        }
         // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY, so the closure is those modules
         // plus their transitive IMPORT edges -- the walk `main.rs` performed before this
         // transaction absorbed it. Reference derivation IS used here, and an earlier revision
@@ -7588,7 +7587,10 @@ fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResiden
                 .subject
                 .population_root()
                 .expect("both population arms name a root");
-            match primary_root_subject_closure(&index, root) {
+            let index = index
+                .as_ref()
+                .expect("a population subject builds its index above");
+            match primary_root_subject_closure(index, root) {
                 Ok(closure) => closure,
                 Err(PrimaryRootSubjectRefusal { phase, cause }) => {
                     return compile_not_executed(&request.subject, started, phase, cause);

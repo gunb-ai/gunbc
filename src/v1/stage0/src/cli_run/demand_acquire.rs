@@ -62,30 +62,54 @@ pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
     ),
     String,
 > {
-    // GENERATED PROVIDERS ON THE DEMAND-ACQUIRED PATH. The acquired closure holds only what the entry's
-    // authored references reach, so a provider a generated reference demands is outside it. The index
-    // carries the layout's answer for such a module (provider_layout); the resolve core records every
-    // provider the model asks to acquire that the layout holds and the index does not, and this loop
-    // rebuilds the closure seeded with them. The seeds only grow and the layout is finite, so the loop
-    // ends at a resolve that needs nothing outside, or at a refusal that names nothing new.
     let custom = Rc::new(custom_root_module_census(source_roots)?);
+    let (_, _, resolved) = demand_acquired_provider_fixed_point(
+        source_roots,
+        entry_file,
+        &custom,
+        CustomRootDuplicate::Refuse,
+    )?;
+    Ok(resolved)
+}
+
+/// THE ONE PROVIDER LOOP, FOR RUN AND FOR COMPILE.
+/// GENERATED PROVIDERS ON THE DEMAND-ACQUIRED PATH. The acquired closure holds only what the entry's
+/// authored references reach, so a provider a generated reference demands is outside it. The index
+/// carries the layout's answer for such a module (provider_layout); the resolve core records every
+/// provider the model asks to acquire that the layout holds and the index does not, and this loop
+/// rebuilds the closure seeded with them. The seeds only grow and the layout is finite, so the loop
+/// ends at a resolve that needs nothing outside, or at a refusal that names nothing new.
+/// Returns the index the final resolve ran over, the seeds it needed, and that resolve's outputs.
+#[allow(clippy::type_complexity)]
+pub(crate) fn demand_acquired_provider_fixed_point(
+    source_roots: &[String],
+    entry_file: &str,
+    custom: &Rc<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>>,
+    duplicates: CustomRootDuplicate,
+) -> Result<
+    (
+        Rc<MultiEntryIndex>,
+        Vec<(String, Rc<v1_compiler_compile::SourceFile>)>,
+        (
+            Rc<v1_compiler_compile::ResolvedGraph>,
+            Rc<HashMap<String, Rc<NewlineIndex>>>,
+            Rc<im::Vector<Rc<crate::v1_std_core::ErrorNode>>>,
+        ),
+    ),
+    String,
+> {
     let mut seeds: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = Vec::new();
     loop {
-        let index = build_demand_acquired_index(
-            source_roots,
-            entry_file,
-            &custom,
-            &seeds,
-            CustomRootDuplicate::Refuse,
-        )?;
+        let index =
+            build_demand_acquired_index(source_roots, entry_file, custom, &seeds, duplicates)?;
         let roots = source_roots.to_vec();
         let census = custom.clone();
         *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
-            layout_provider_answer(&roots, &census, module, CustomRootDuplicate::Refuse)
+            layout_provider_answer(&roots, &census, module, duplicates)
         }));
         match super::entry_resolve::resolve_entry_typed(&index, entry_file)? {
             super::entry_resolve::CoreResolve::Resolved(graph, si, diags) => {
-                return Ok((graph, si, diags))
+                return Ok((index, seeds, (graph, si, diags)))
             }
             super::entry_resolve::CoreResolve::NeedsAcquisition(providers) => {
                 let fresh: Vec<_> = providers
@@ -101,25 +125,29 @@ pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
     }
 }
 
-/// THE DEMAND-ACQUIRED INDEX FOR AN ENTRY COMPILE: the same layout closure `gunbc run` resolves over,
-/// handed to the compile transaction in place of the whole-tree index (operator, 2026-11-04: the gunbc
-/// subcommands are sugar on one workflow). No provider seeds: the entry compile never runs the
-/// generated-provider fixed point (`compile_to_provider_fixed_point` belongs to emit_host), so the
-/// whole-tree pool never supplied generated providers to it either; only the authored-reference
-/// closure (`extend_sources_to_both_closure_fixpoint`) runs over this index.
-pub(crate) fn demand_acquired_index_for_entry(
+/// The sources an ENTRY COMPILE emits over: the entry's reference-derived closure in the index the
+/// run path's provider loop settled on, plus each acquired provider's own closure (the same
+/// `provider_closure_of` the resolve core extends with). Compile now acquires generated providers
+/// exactly as `gunbc run` does.
+pub(crate) fn demand_acquired_entry_sources(
     source_roots: &[String],
     entry_file: &str,
     duplicates: CustomRootDuplicate,
-) -> Result<Rc<MultiEntryIndex>, String> {
-    let custom = custom_root_module_census_under(source_roots, duplicates)?;
-    let index = build_demand_acquired_index(source_roots, entry_file, &custom, &[], duplicates)?;
-    let roots = source_roots.to_vec();
-    let census = Rc::new(custom);
-    *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
-        layout_provider_answer(&roots, &census, module, duplicates)
-    }));
-    Ok(index)
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let custom = Rc::new(custom_root_module_census_under(source_roots, duplicates)?);
+    let (index, seeds, _resolved) =
+        demand_acquired_provider_fixed_point(source_roots, entry_file, &custom, duplicates)?;
+    let mut sources = super::entry_resolve::load_sources_for_entry_with_pool(&index, entry_file)?;
+    for (module, _) in &seeds {
+        let closure = super::entry_resolve::provider_closure_of(&index, module)
+            .map_err(|e| format!("acquired provider {module}: {e:?}"))?;
+        for s in closure {
+            if !sources.iter().any(|x| x.path == s.path) {
+                sources.push(s);
+            }
+        }
+    }
+    Ok(sources)
 }
 
 fn build_demand_acquired_index(
@@ -593,9 +621,14 @@ fn module_graph_facts_from_acquired(
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_entry_graph_demand_acquired;
+    use super::{
+        build_demand_acquired_index, custom_root_module_census_under,
+        demand_acquired_entry_sources, resolve_entry_graph_demand_acquired, CustomRootDuplicate,
+    };
+    use crate::v1_compiler_compile;
     use std::fs;
     use std::path::PathBuf;
+    use std::rc::Rc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static FIXTURE: AtomicUsize = AtomicUsize::new(0);
@@ -864,7 +897,7 @@ mod tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn layout_provider_answer_keeps_unreadable_distinct_from_absent() {
         use super::super::entry_resolve::ProviderLayoutAnswer;
-        let ws = super::super::process_workspace_root();
+        let ws = crate::cli_run::process_workspace_root();
         let roots = vec![ws.join("dag").to_string_lossy().to_string()];
         let custom = std::collections::HashMap::new();
         let name = format!("test.fixture.gp_layout_probe_{}", std::process::id());
@@ -952,7 +985,7 @@ mod tests {
     /// RED: the census-first read picked custom in all four cells.
     #[test]
     fn a_governed_custom_duplicate_obeys_root_order_and_policy() {
-        let ws = super::super::process_workspace_root();
+        let ws = crate::cli_run::process_workspace_root();
         let pid = std::process::id();
         let name = format!("test.fixture.gc_dup_{pid}");
         let gfile = ws.join(format!("dag/test/fixture/gc_dup_{pid}.dag"));
@@ -1049,5 +1082,49 @@ mod tests {
             index["probe_provider"].content.contains("fn route"),
             "the rebuild must hold the snapshot's bytes"
         );
+    }
+
+    /// CONTROL FOR THE COMPILE PROVIDER LOOP: `host_text_crossing_entry_witness` imports only
+    /// `v2.std.text`, so its authored closure lacks the coercion route its text crossing demands;
+    /// only the provider loop acquires it. RED: the unseeded authored closure (what the entry
+    /// compile resolved over before it shared run's loop) is strictly smaller and lacks the route.
+    #[test]
+    fn an_entry_compile_acquires_the_generated_provider_a_crossing_demands() {
+        let ws = crate::cli_run::process_workspace_root();
+        let entry = ws
+            .join("dag/test/claim/host_text_crossing_entry_witness.dag")
+            .to_string_lossy()
+            .to_string();
+        let roots = vec![
+            ws.join("dag").to_string_lossy().to_string(),
+            ws.join("src/v2").to_string_lossy().to_string(),
+        ];
+        let acquired =
+            demand_acquired_entry_sources(&roots, &entry, CustomRootDuplicate::FirstRootWins)
+                .expect("the loop settles");
+        let custom = custom_root_module_census_under(&roots, CustomRootDuplicate::FirstRootWins)
+            .expect("census");
+        let unseeded_index = build_demand_acquired_index(
+            &roots,
+            &entry,
+            &custom,
+            &[],
+            CustomRootDuplicate::FirstRootWins,
+        )
+        .expect("index");
+        let unseeded = crate::cli_run::entry_resolve::load_sources_for_entry_with_pool(
+            &unseeded_index,
+            &entry,
+        )
+        .expect("authored closure");
+        let has_route = |v: &[Rc<v1_compiler_compile::SourceFile>]| {
+            v.iter().any(|s| s.path.ends_with("coercion.dag"))
+        };
+        assert!(
+            !has_route(&unseeded),
+            "authored closure must lack the route"
+        );
+        assert!(has_route(&acquired), "the provider loop must acquire it");
+        assert!(acquired.len() > unseeded.len());
     }
 }
