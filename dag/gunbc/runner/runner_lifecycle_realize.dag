@@ -265,10 +265,14 @@ fn runner_lifecycle_realize_observe_github_runner_registration(
 // was short-circuited to IncarnationRegistrationUnresolved on every slot.
 //
 // The DECIDE itself is delegated to the single authority restart_leg_decision (gunbc.runner.runner_connectivity_restart):
-// a slot is permitted only when the verdict names it Detached or Orphaned, or a full lost-agent detection
-// reclaims it; Unknown / Unresolved / Unreadable / UnexpectedRegistration are refused, located. DESIGN section
-// 5: could-not-see is never a permission. The timer that used to run the old reconcile stays DISABLED; nothing
-// in this function binds a timer, the network, or a shell -- it is pure over boundary-supplied observations.
+// a slot is permitted ONLY when the verdict itself names it Detached or Orphaned -- the verdict is the only
+// structure that carries the slot identity. A lost-agent detection is CORROBORATION that deepens the reclaim
+// reason, never an independent permission: detection requires a null runner, so it names no slot and cannot
+// turn a Healthy or Unknown slot into a restartable one (review 90967). Unknown / Unresolved / Unreadable /
+// UnexpectedRegistration / Healthy / LabelsDiverge are all refused, located. DESIGN section 5: could-not-see
+// is never a permission, and a slot-less stranded-job signal is not permission to cycle every slot. The timer
+// that used to run the old reconcile stays DISABLED; nothing in this function binds a timer, the network, or a
+// shell -- it is pure over boundary-supplied observations.
 //
 // The ACTUATION is the modeled runner_slot_actuation.restart_runner_slot_over(target, context, unit, before),
 // invoked by the wet caller with the observed main as `before` so its readback can require a changed MainPID;

@@ -21,8 +21,10 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 // question — "a job was opened against a slot and never reached any agent" — answered from a different
 // source with a different failure mode. Collapsing it into the roster join would let a roster row that
 // happens to look online (a stale keep-alive from a DIFFERENT job) mask the fact that THIS job is
-// stranded, which is the whole defect. The restart leg (runner_lifecycle_realize) reclaims the slot for
-// this observation only when it is a full, over-the-timeout detection, never on a partial read.
+// stranded, which is the whole defect. This observation is CORROBORATION the restart leg uses on a slot the
+// connectivity verdict has ALREADY named Detached or Orphaned; it names no slot itself (detection requires a
+// null runner), so it is never an independent permission to restart, and never acts on a partial/refused read
+// (review 90967, DESIGN section 5).
 
 data runner_lost_agent_authority_disposition: ConstructionMechanism = SingleAuthority
 
@@ -106,10 +108,12 @@ fn classify_lost_agent(job: LostAgentJob) -> LostAgentObservation {
   }
 }
 
-// THE RESTART LEG RECLAIMS ONLY A FULL DETECTION. NotLost refuses with a located reason, and a refused
-// read refuses too: neither may be read as permission to restart, because a lost agent that was merely
-// not-yet-over-timeout may still be picked up by a late-binding agent, and a job whose fields could not
-// be read is a job we have not actually seen.
+// A NECESSARY-BUT-NOT-SUFFICIENT CORROBORATION GATE. This predicate is consulted only for a slot the
+// connectivity verdict has already named Detached or Orphaned; it is never on its own a permission to restart
+// (review 90967 -- the observation names no slot). NotLost refuses with a located reason, and a refused read
+// refuses too: neither may be read as corroboration, because a lost agent that was merely not-yet-over-timeout
+// may still be picked up by a late-binding agent, and a job whose fields could not be read is a job we have
+// not actually seen.
 fn lost_agent_slot_is_reclaimable(obs: LostAgentObservation) -> Bool {
   match obs {
     LostAgentDetected { job_id: _, over_by: _ } => True
