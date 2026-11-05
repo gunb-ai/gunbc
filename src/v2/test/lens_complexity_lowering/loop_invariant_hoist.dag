@@ -1,4 +1,5 @@
 module v2.test.lens_complexity_lowering.loop_invariant_hoist
+import v2.std.node { NodeOccurrence }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -8,13 +9,13 @@ fn leaf(id: Symbol) -> Node {
 }
 
 data quadratic_cost: SymbolicCost = ProductCost {
-  lhs: LinearCost { variable: SizeVariable { source: leaf(id: ^outer) } },
-  rhs: LinearCost { variable: SizeVariable { source: leaf(id: ^inner) } }
+  lhs: LinearCost { variable: SizeVariable { source: NodeOccurrence { node: leaf(id: ^outer) } } },
+  rhs: LinearCost { variable: SizeVariable { source: NodeOccurrence { node: leaf(id: ^inner) } } }
 }
-data linear_cost: SymbolicCost = LinearCost { variable: SizeVariable { source: leaf(id: ^single) } }
+data linear_cost: SymbolicCost = LinearCost { variable: SizeVariable { source: NodeOccurrence { node: leaf(id: ^single) } } }
 data sum_cost: SymbolicCost = SumCost {
-  lhs: LinearCost { variable: SizeVariable { source: leaf(id: ^a) } },
-  rhs: LinearCost { variable: SizeVariable { source: leaf(id: ^b) } }
+  lhs: LinearCost { variable: SizeVariable { source: NodeOccurrence { node: leaf(id: ^a) } } },
+  rhs: LinearCost { variable: SizeVariable { source: NodeOccurrence { node: leaf(id: ^b) } } }
 }
 
 test fn quadratic_is_lowerable() -> Bool {
