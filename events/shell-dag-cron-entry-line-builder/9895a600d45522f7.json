@@ -1,0 +1,1 @@
+{"id": "9895a600d45522f7", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-cron-entry-line-builder", "author": "principal:host-account/srv1/gunbc-lab-agent", "parent": "5878697686e96027", "kind": "claimed", "recorded_at": "2026-11-05T16:12:05Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:host-account/srv1/gunbc-lab-agent"}}
