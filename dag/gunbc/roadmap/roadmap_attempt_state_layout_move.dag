@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_state_layout_move
 
 import std.types { String, NonEmptyStr, List, Int, Bool }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, SystemdStopUnit, SystemdDaemonReload, SystemdMaskNowUnit, RetireUnitFragment }
 import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldOwnerRef }
 import std.durable_compare_and_set { cas_generation_first }
 import gunbc.durable_cas_file_store { cas_file_slot_name }
@@ -122,18 +123,29 @@ fn move_readback_refusal(row: MoveRow, before_parent: String, after_parent: Stri
 // first create-only claim on a node succeeds again and re-mints an ordinal the member already holds (a
 // duplicate attempt key). The old binary takes the first free ordinal per node, so a filesystem fence would have
 // to cover every node and ordinal, which is unbounded; the exclusion is therefore the old writer's own units,
-// read from host authority: each stopped now (is-active) AND masked (is-enabled), because a unit that is only
-// stopped or only disabled can be started again by a person, a dependency or a .path/.timer trigger (a masked
-// unit refuses every start). A move over a non-excluded writer is refused before any entry is touched.
+// read from host authority: EXCLUDED means "this unit cannot run", which is LoadState plus ActiveState from
+// `systemctl show`: stopped (inactive/failed) AND not loadable (not-found, or masked). A unit that is only stopped
+// or only disabled can be started again by a person, a dependency or a .path/.timer trigger.
+//
+// WHY NOT is-enabled == masked (the reading this replaced). systemd cannot mask a unit whose fragment lives in
+// /etc/systemd/system ("File ... already exists"), so that predicate was UNSATISFIABLE for an /etc fragment: the
+// apply refused forever at the entry move (srv1 lab, 2026-11-05). The exclusion is reached by a RETIREMENT, chosen
+// from the same reading: an /etc fragment is renamed into the apply's rollback store (bytes and digest kept, so a
+// refused apply restores it) and the manager reloaded; a vendor fragment (/usr/lib, /lib) is masked. After the act
+// the unit is read again and must be excluded, or the apply refuses. An unreadable unit never reads as excluded.
 //
 // Two fence kinds:
 //   LegacyWriterUnits           the units whose ExecStart entry reaches the identity mint (the set is data,
-//                               traced by symbol; see legacy_writer_units in roadmap_dashboard_instance);
+//                               traced by symbol; see legacy_writer_units in roadmap_dashboard_instance), each
+//                               with the one /etc fragment path the grant and the rename are pinned to, and the
+//                               rollback store the retired bytes move into;
 //   LegacyWriterUndeclared      nothing is declared: refuses, never reads as excluded;
 //   LegacyWriterFenceConflict   more than one row is declared for one instance: refuses on every route, since
 //                               neither row is the authority and a silent pick would be a first- or last-wins fork.
+type LegacyWriterUnit { name: NonEmptyStr, etc_fragment: NonEmptyStr }
+
 type LegacyWriterFence
-  = LegacyWriterUnits { systemctl: NonEmptyStr, units: List<NonEmptyStr> }
+  = LegacyWriterUnits { systemctl: NonEmptyStr, units: List<LegacyWriterUnit>, rollback_store: NonEmptyStr }
   | LegacyWriterUndeclared
   | LegacyWriterFenceConflict { instance_id: NonEmptyStr, rows: Int }
 
@@ -141,18 +153,105 @@ type LegacyWriterExclusion
   = LegacyWriterExcluded
   | LegacyWriterNotExcluded { reason: String }
 
-// The unit state words systemctl is-active prints for a unit that is not running.
+// What `systemctl show -p LoadState -p ActiveState -p FragmentPath <unit>` read. An empty string is a property
+// the output did not carry (distinct from an empty value only in that no reading is acceptable either way).
+type LegacyWriterUnitReading { load_state: String, active_state: String, fragment_path: String }
+
+// The unit state words for a unit that is not running.
 fn legacy_writer_state_is_stopped(active_state: String) -> Bool {
   active_state == "inactive" || active_state == "failed"
 }
 
-fn legacy_writer_exclusion(unit: String, active_state: String, enabled_state: String) -> LegacyWriterExclusion {
-  if !legacy_writer_state_is_stopped(active_state: active_state) {
-    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is not stopped (is-active read '", active_state, "')"], "") }
-  } else if enabled_state != "masked" {
-    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is not masked (is-enabled read '", enabled_state, "'), so it can be started again"], "") }
+// The load states in which the manager will refuse to start the unit.
+fn legacy_writer_load_state_cannot_start(load_state: String) -> Bool {
+  load_state == "not-found" || load_state == "masked"
+}
+
+fn legacy_writer_exclusion(unit: String, reading: LegacyWriterUnitReading) -> LegacyWriterExclusion {
+  if reading.load_state == "" || reading.active_state == "" {
+    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " could not be read (LoadState '", reading.load_state, "', ActiveState '", reading.active_state, "')"], "") }
+  } else if !legacy_writer_state_is_stopped(active_state: reading.active_state) {
+    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is not stopped (ActiveState read '", reading.active_state, "')"], "") }
+  } else if !legacy_writer_load_state_cannot_start(load_state: reading.load_state) {
+    LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is stopped but still loadable (LoadState read '", reading.load_state, "'), so it can be started again"], "") }
   } else {
     LegacyWriterExcluded
+  }
+}
+
+// THE RETIREMENT THE READING CALLS FOR. One decision over one unit's reading and its declared /etc fragment.
+type LegacyWriterRetirement
+  = LegacyWriterAlreadyExcluded
+  | LegacyWriterRetireEtcFragment
+  | LegacyWriterMaskVendorFragment
+  | LegacyWriterRetirementRefused { reason: String }
+
+fn legacy_writer_fragment_is_vendor(path: String) -> Bool {
+  starts_with(s: path, prefix: "/usr/lib/systemd/system/") || starts_with(s: path, prefix: "/lib/systemd/system/")
+}
+
+// A loaded unit is acted on only when its fragment is the one the fence declares (the /etc case) or a vendor
+// path (mask). Any other fragment (a drop-in dir, a transient or runtime unit, an unread path) refuses: the
+// grant covers exactly the declared fragment, so no other path has a modeled route.
+fn legacy_writer_retirement(unit: LegacyWriterUnit, reading: LegacyWriterUnitReading) -> LegacyWriterRetirement {
+  match legacy_writer_exclusion(unit: unit.name as String, reading: reading) {
+    LegacyWriterExcluded => LegacyWriterAlreadyExcluded
+    LegacyWriterNotExcluded { reason: r } =>
+      if reading.load_state == "" || reading.active_state == "" {
+        LegacyWriterRetirementRefused { reason: r }
+      } else if reading.load_state != "loaded" {
+        LegacyWriterRetirementRefused { reason: join([r, "; LoadState '", reading.load_state, "' has no modeled retirement"], "") }
+      } else if reading.fragment_path == unit.etc_fragment as String {
+        LegacyWriterRetireEtcFragment
+      } else if legacy_writer_fragment_is_vendor(path: reading.fragment_path) {
+        LegacyWriterMaskVendorFragment
+      } else {
+        LegacyWriterRetirementRefused { reason: join([r, "; its FragmentPath '", reading.fragment_path, "' is neither the declared '", unit.etc_fragment as String, "' nor a vendor path"], "") }
+      }
+  }
+}
+
+// Where a unit's retired fragment bytes are kept: the rollback store, one file per unit. The suffix is not a unit
+// type, so a store that is itself a unit search path (the declared one is /etc/systemd/system, which needs no
+// directory created and so no further grant) never loads the retained bytes.
+data legacy_writer_retained_suffix: String = ".retired-by-gunbc-apply"
+
+fn legacy_writer_retained_path(rollback_store: NonEmptyStr, unit: LegacyWriterUnit) -> NonEmptyStr {
+  join([rollback_store as String, "/", unit.name as String, legacy_writer_retained_suffix], "") as NonEmptyStr
+}
+
+// THE PRIVILEGED OPERATIONS A RETIREMENT RUNS, in order, as typed operations of gunbc.executor_privileged_operation
+// (the one place that renders both the argv the host executes and the sudoers grant that authorizes it). The /etc case
+// stops the unit, renames its fragment into the rollback store (the bytes survive; the apply records their digest
+// before and after) and reloads the manager; the vendor case stops and masks. Nothing here deletes a byte.
+fn legacy_writer_retirement_operations(rollback_store: NonEmptyStr, unit: LegacyWriterUnit, plan: LegacyWriterRetirement) -> List<ExecutorPrivilegedOperation> {
+  match plan {
+    LegacyWriterAlreadyExcluded => []
+    LegacyWriterRetirementRefused { reason: _ } => []
+    LegacyWriterRetireEtcFragment => [
+      SystemdStopUnit { unit: unit.name },
+      RetireUnitFragment { fragment: unit.etc_fragment, retained: legacy_writer_retained_path(rollback_store: rollback_store, unit: unit) },
+      SystemdDaemonReload,
+    ]
+    LegacyWriterMaskVendorFragment => [
+      SystemdStopUnit { unit: unit.name },
+      SystemdMaskNowUnit { unit: unit.name },
+    ]
+  }
+}
+
+// THE ROLLBACK of a retirement that did not reach exclusion (or of a later refused step): the retained bytes go
+// back to the declared fragment and the manager reloads. A vendor mask has no inverse operation modeled (nothing
+// declares an unmask grant), so its rollback is empty and the apply reports the mask it could not undo.
+fn legacy_writer_restore_operations(rollback_store: NonEmptyStr, unit: LegacyWriterUnit, plan: LegacyWriterRetirement) -> List<ExecutorPrivilegedOperation> {
+  match plan {
+    LegacyWriterRetireEtcFragment => [
+      RetireUnitFragment { fragment: legacy_writer_retained_path(rollback_store: rollback_store, unit: unit), retained: unit.etc_fragment },
+      SystemdDaemonReload,
+    ]
+    LegacyWriterAlreadyExcluded => []
+    LegacyWriterMaskVendorFragment => []
+    LegacyWriterRetirementRefused { reason: _ } => []
   }
 }
 
