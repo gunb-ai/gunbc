@@ -219,9 +219,21 @@ fn native_effect_declared(module_path: String, decl_name: String) -> NativeEffec
 // not the proof that the set is complete -- that proof is the emission refusal at the v2-native-cli entry,
 // which walks the entry's whole closure, and what these greps do NOT cover is call sites inside generated
 // mirrors and services reached only through a lens or a trait demand. The four std.resources resources and extdeps.clock Clock that D11 excluded fall out by
-// not being listed, and NativeOutgoingHttp stays refused by admit_native_service_effect's rest rule. What
-// JOINS the set is the one declared build effect, extdeps.rust.cargo_build_service CargoBuild, so no route
-// needs the generic-exec service extdeps.shell.exec -- which stays out.
+// not being listed, and NativeOutgoingHttp stays refused by admit_native_service_effect's rest rule.
+//
+// THE BUILD EFFECT IS MODELLED BY THIS CUT AND ADMITTED BY THE NEXT ONE, AND THAT IS AN INTENTIONAL C1
+// BEHAVIOUR, NOT AN IMPLEMENTED H1. extdeps.rust.cargo_build_service CargoBuild joins this list together
+// with the binding its ruling requires -- an explicitly declared cargo program, working root and dry-run
+// mode, with no Default fallback at v1.compiler.emit_rust native_effect_binding_of -- because admitting it
+// before that binding exists would open the ambient-cwd class this PR files as
+// gunbc.recurring_failure_mode.admitted_shell_effect_spawned_at_an_ambient_working_root: the emitted
+// handler takes only a dry-run mode, the emitted main passes Default::default(), the emitted constructor
+// sets working_dir to None and the spawn renders current_dir(unwrap_or(".")). DESIGN 5 says a failure arm
+// refuses and never widens, and a dissolution condition does not authorize creating the debt -- so the
+// effect stays OUT of this list and the refusal that already executes is the guard. The claim module
+// dag/test/claim/cargo_build_native_route_witness.dag asserts exactly that refusal against the REAL module,
+// not a fixture. Nothing about the ruling changes: the route's declared build effect is admitted once its
+// binding lands, and no cut needs the generic-exec service extdeps.shell.exec, which stays out either way.
 //
 // WHAT THIS ROW DOES NOT JUDGE, STATED SO IT IS NOT READ AS A CLEAN BILL ON BOTH compiler-route subjects.
 // The admission walk (v1.compiler.emit_rust native_entry_effects) runs only for an entry named by
@@ -235,8 +247,7 @@ data native_compiler_route_denominator: NativeEffectDenominator = NativeEffectDe
   route: NativeCompilerRoute,
   ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_compiler_route_admits_the_declared_cargo_build"),
   scope: NativeAdmitOnly { admitted: [
-    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
-    native_effect_declared(module_path: "extdeps.rust.cargo_build_service", decl_name: "CargoBuild")
+    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem")
   ] }
 }
 
