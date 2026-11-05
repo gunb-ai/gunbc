@@ -25,7 +25,6 @@ import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEm
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.host_effect_realize {
   TreeMetadataEntry,
-  TreeEntryKind,
   RegularEntryKind,
   SymlinkEntryKind,
   DirectoryEntryKind,
@@ -36,7 +35,6 @@ import gunbc.host.host_effect_realize {
   tree_installed_expectation,
   tree_metadata_disagreement,
   tree_metadata_list_contains,
-  tree_mode_canonical,
   tree_directory_targets,
   tree_receipt_body,
   tree_install_step_name,
@@ -227,7 +225,7 @@ fn metadata_entries() -> List<TreeMetadataEntry> {
 test fn metadata_parse_keeps_kinds_targets_and_rebases_onto_the_subdirectory() -> Bool {
   let es = metadata_entries()
   count(es) == 3
-    && tree_metadata_entry_line(entry: es_skip_none_head(es)) == "dag/link|l|777|gunbc|gunbc|0|/usr/bin/python3"
+    && tree_metadata_entry_line(entry: es_skip_none_head(es)) == "dag/link|l|777|gunbc|gunbc|/usr/bin/python3"
     && tree_metadata_list_contains(lines: list_map(xs: es, f: e => tree_metadata_entry_line(entry: e)), line: "dag/dir|d|755|gunbc|gunbc")
     && !tree_metadata_list_contains(lines: list_map(xs: es, f: e => tree_metadata_entry_line(entry: e)), line: "|d|700|root|root")
 }
@@ -361,7 +359,7 @@ test fn the_link_rows_spell_cp_no_dereference_then_chown_no_dereference() -> Boo
 // target, which the six-field metadata row of other callers does not carry.
 test fn the_entry_metadata_command_carries_the_link_target_field() -> Bool {
   let cmd = find_tree_entry_metadata_command(root: "/src/dag")
-  cmd.program.invocation == "find" && cmd.arguments == ["/src/dag", "-xdev", "-printf", "%P|%y|%m|%u|%g|%s|%l\\n"]
+  (cmd.program.invocation as String) == "find" && cmd.arguments == ["/src/dag", "-xdev", "-printf", "%P|%y|%m|%u|%g|%s|%l\\n"]
 }
 
 // THE RECEIPT GROWS BY ONE FIELD, ADDITIVELY: a reader that pins only candidate_revision and

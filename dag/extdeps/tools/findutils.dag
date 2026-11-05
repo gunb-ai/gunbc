@@ -135,6 +135,8 @@ fn find_tree_regular_files_sha256_command(root: String) -> ArgvCommand {
 // row a caller needs when a link must be verified AS A LINK -- the readback that refuses a source
 // symlink silently materialized as a regular file, or re-pointed, reads through this builder and
 // never through find_tree_metadata_command, whose six-field lines carry no target to compare.
+// find_symlink_targets_command is NOT this read: it enumerates only the links, so the entries it
+// cannot see drop out of the comparison silently -- the exact defect this carrier exists to close.
 fn find_tree_entry_metadata_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", "%P|%y|%m|%u|%g|%s|%l\\n"])
 }

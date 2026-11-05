@@ -6554,11 +6554,19 @@ type TreeMetadataEntry {
 // three-digit operands ("0644"; coreutils_directory_mode_operand). One canonical spelling for every
 // comparison, derived from both sources of truth by the same rule.
 fn tree_mode_canonical(text: String) -> String {
-  text.trim(chars: "0")
+  if text != "0" && starts_with(s: text, prefix: "0") {
+    tree_mode_canonical(text: substring(s: text, start: 1, end: text.length()))
+  } else {
+    text
+  }
 }
 
 fn tree_metadata_text_is_octal_digits(text: String) -> Bool {
-  string_length(s: text) > 0 && text.chars().all(c => c >= "0" && c <= "9")
+  if text == "" { false }
+  else {
+    string_contains(s: "01234567", pattern: substring(s: text, start: 0, end: 1))
+      && tree_metadata_text_is_octal_digits(text: substring(s: text, start: 1, end: text.length()))
+  }
 }
 
 // THE SEVEN FIELDS OF ONE METADATA LINE. The language names no index operator, so they are taken by
@@ -6639,7 +6647,7 @@ fn tree_metadata_entry_line(entry: TreeMetadataEntry) -> String {
 }
 
 fn sort_tree_metadata(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
-  sort(list: entries, by: (a, b) => tree_path_total_order(left: a.path, right: b.path))
+  list_sort_by_key(xs: entries, key: e => e.path, order: tree_path_total_order)
 }
 
 fn tree_metadata_lines(entries: List<TreeMetadataEntry>) -> String {
@@ -6731,7 +6739,7 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
 fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadataEntry>) -> List<String> {
   let from_files = tree_ancestor_directories(files: files)
   let from_entries = fold(metadata, init: [], f: (acc, e) => concat(acc, tree_path_prefixes(path: e.path)))
-  let sorted_paths = sort(list: concat(from_files, from_entries), by: (a, b) => tree_path_total_order(left: a, right: b))
+  let sorted_paths = list_sort_by_key(xs: concat(from_files, from_entries), key: p => p, order: tree_path_total_order)
   let walked = fold(sorted_paths, init: TreePathDedupWalk { kept: [], last: Absent }, f: (w, p) =>
     match w.last {
       Present { value: l } => if l == p { TreePathDedupWalk { kept: w.kept, last: Present { value: l } } } else { TreePathDedupWalk { kept: concat(w.kept, [p]), last: Present { value: p } } }
@@ -6744,6 +6752,13 @@ fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadata
 type TreePathDedupWalk {
   kept: List<String>
   last: Optional<String>
+}
+
+// THE SOURCES' SYMBOLIC LINKS, in the order the metadata read gave them (they are written after the
+// regular files and binaries, and folded AGAIN over the same order at readback -- a stable order,
+// from one read of the source, is what makes the two passes comparable).
+fn tree_symlink_entries(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
+  fold(entries, init: [], f: (acc, e) => match e.kind { SymlinkEntryKind { target: _ } => acc.append(e), _ => acc })
 }
 
 fn approval_broker_tree_install(
@@ -6938,15 +6953,17 @@ fn approval_broker_tree_install_observed(
   // materialization this stage exists to refuse), then chown --no-dereference gives the LINK ITSELF
   // to the deploy owner, because cp leaves the link root-owned and the readback below names the
   // installed ownership as a certified fact.
-  let after_links = fold(list_filter(xs: source_metadata, predicate: e => match e.kind { SymlinkEntryKind { target: _ } => true, _ => false }), init: after_binary, f: (st, e) =>
+  let after_links = fold(tree_symlink_entries(entries: source_metadata), init: after_binary, f: (st, e) =>
     if st.failed { st }
     else {
       let link_target = join([locus, "/", e.path], "")
       let copied = tree_run_step(state: st, step: TreeStepInstallLink, transport: transport, command: sudo_elevate_command(
         command: cp_copy_as_link_argv(source: join([source_root, "/", e.path], ""), destination: link_target)))
       if copied.failed { copied }
-      else tree_run_step(state: copied, step: TreeStepInstallLink, transport: transport, command: sudo_elevate_command(
-        command: chown_no_dereference_argv(owner: ChownOwnerNames(names: PosixOwnerNames(user: owner, group: owner)), path: link_target)))
+      else {
+        tree_run_step(state: copied, step: TreeStepInstallLink, transport: transport, command: sudo_elevate_command(
+          command: chown_no_dereference_argv(owner: ChownOwnerNames(names: PosixOwnerNames(user: owner, group: owner)), path: link_target)))
+      }
     })
   match after_links {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
