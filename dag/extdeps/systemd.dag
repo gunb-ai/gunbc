@@ -371,38 +371,73 @@ type SystemdUnitFileState
   | UnitFileBad
   | UnitFileNotFound
 
+// THE ONE SPELLING OF THE VOCABULARY: variant and wire word bound ONCE per row, so the parse below
+// (lookup by word) and the label below (lookup by variant) read the SAME table and can never drift --
+// §4, one grammar read in both directions. A thirteenth is-enabled word reaches this table or it has no
+// name and no parse anywhere; adding a variant without a row leaves it untabled, which the round-trip
+// witness (test.claim.c_roadmap2_systemd_file_state_table_witness) refuses, and the table's distinctness
+// and length claims refuse a duplicated word or a silently dropped row.
+type SystemdUnitFileStateRow {
+  state: SystemdUnitFileState,
+  word: NonEmptyStr,
+}
+
+data systemd_unit_file_state_table: List<SystemdUnitFileStateRow> = [
+  SystemdUnitFileStateRow { state: UnitFileEnabled, word: "enabled" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileEnabledRuntime, word: "enabled-runtime" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileLinked, word: "linked" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileLinkedRuntime, word: "linked-runtime" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileMasked, word: systemd_unit_file_state_masked_wire },
+  SystemdUnitFileStateRow { state: UnitFileDisabled, word: "disabled" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileStatic, word: "static" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileIndirect, word: "indirect" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileGenerated, word: "generated" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileTransient, word: "transient" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileBad, word: "bad" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileNotFound, word: "not-found" as NonEmptyStr },
+]
+
+fn systemd_unit_file_state_row_by_word(
+  raw: String,
+  remaining: List<SystemdUnitFileStateRow>,
+) -> SystemdUnitFileStateRow? {
+  match remaining {
+    Empty => none
+    Cons { head: row, tail: rest } =>
+      if (row.word as String) == raw { Present { value: row } }
+      else { systemd_unit_file_state_row_by_word(raw: raw, remaining: rest) }
+  }
+}
+
+fn systemd_unit_file_state_row_by_state(
+  state: SystemdUnitFileState,
+  remaining: List<SystemdUnitFileStateRow>,
+) -> SystemdUnitFileStateRow? {
+  match remaining {
+    Empty => none
+    Cons { head: row, tail: rest } =>
+      if row.state == state { Present { value: row } }
+      else { systemd_unit_file_state_row_by_state(state: state, remaining: rest) }
+  }
+}
+
 fn parse_systemd_unit_file_state(raw: String) -> SystemdUnitFileState? {
-  if raw == "enabled" { Present { value: UnitFileEnabled } }
-  else { if raw == "enabled-runtime" { Present { value: UnitFileEnabledRuntime } }
-  else { if raw == "linked" { Present { value: UnitFileLinked } }
-  else { if raw == "linked-runtime" { Present { value: UnitFileLinkedRuntime } }
-  else { if raw == (systemd_unit_file_state_masked_wire as String) { Present { value: UnitFileMasked } }
-  else { if raw == "disabled" { Present { value: UnitFileDisabled } }
-  else { if raw == "static" { Present { value: UnitFileStatic } }
-  else { if raw == "indirect" { Present { value: UnitFileIndirect } }
-  else { if raw == "generated" { Present { value: UnitFileGenerated } }
-  else { if raw == "transient" { Present { value: UnitFileTransient } }
-  else { if raw == "bad" { Present { value: UnitFileBad } }
-  else { if raw == "not-found" { Present { value: UnitFileNotFound } }
-  else { none } } } } } } } } } } } }
+  match systemd_unit_file_state_row_by_word(raw: raw, remaining: systemd_unit_file_state_table) {
+    none => none
+    Present { value: row } => Present { value: row.state }
+  }
 }
 
 // The word systemd prints for a file state, so a gate that wants to NAME what it saw in a refusal gets the
-// word from the module that owns the vocabulary instead of re-spelling it.
+// word from the module that owns the vocabulary instead of re-spelling it. THE GRAMMAR IS READ BACKWARD
+// HERE AND FORWARD BY THE PARSER ABOVE -- both directions walk the one table, so a label can never name a
+// word the parser would refuse. The none arm is unreachable while the table covers every variant (the
+// round-trip witness pins that); should a variant ever be added untabled, it answers a word no parse
+// accepts and the witness goes red rather than the label lying quietly.
 fn systemd_unit_file_state_wire_label(s: SystemdUnitFileState) -> String {
-  match s {
-    UnitFileEnabled => "enabled"
-    UnitFileEnabledRuntime => "enabled-runtime"
-    UnitFileLinked => "linked"
-    UnitFileLinkedRuntime => "linked-runtime"
-    UnitFileMasked => systemd_unit_file_state_masked_wire as String
-    UnitFileDisabled => "disabled"
-    UnitFileStatic => "static"
-    UnitFileIndirect => "indirect"
-    UnitFileGenerated => "generated"
-    UnitFileTransient => "transient"
-    UnitFileBad => "bad"
-    UnitFileNotFound => "not-found"
+  match systemd_unit_file_state_row_by_state(state: s, remaining: systemd_unit_file_state_table) {
+    none => "untabled-unit-file-state"
+    Present { value: row } => row.word as String
   }
 }
 
