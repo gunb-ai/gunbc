@@ -242,7 +242,7 @@ data eight_module_population: PopulationOption = PopulationOption {
 // which no claim below can mistake for a wattage.
 fn node_wall(inputs: NodeElectricalInputs) -> Int {
   match node_draw(inputs: inputs) {
-    NodeDrawDerived { dc_load: _, wall_draw: w, memory_standing: _ } => watt_count(w: w)
+    NodeDrawDerived { dc_load: _, wall_draw: w, memory_standing: _, cpu_standing: _ } => watt_count(w: w)
     NodeDrawRefused { cause: _ } => 0 - 1
   }
 }
@@ -561,7 +561,7 @@ test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool 
         MemoryPowerUnresolved { cause: _ } => false
         CpuPowerUnresolved { utilisation_permille: _, read_obligation: _ } => false
       }
-    NodeDrawDerived { dc_load: _, wall_draw: _, memory_standing: _ } => false
+    NodeDrawDerived { dc_load: _, wall_draw: _, memory_standing: _, cpu_standing: _ } => false
   }
 }
 
@@ -628,7 +628,7 @@ data qualified_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInput
 
 test fn the_same_node_derives_its_draw_once_the_part_is_read() -> Bool {
   match node_draw(inputs: qualified_altrad8ud_m12830_node) {
-    NodeDrawDerived { dc_load: dc, wall_draw: w, memory_standing: _ } => watt_count(w: dc) == 360 && watt_count(w: w) == 400
+    NodeDrawDerived { dc_load: dc, wall_draw: w, memory_standing: _, cpu_standing: _ } => watt_count(w: dc) == 360 && watt_count(w: w) == 400
     NodeDrawRefused { cause: _ } => false
   }
 }
@@ -754,4 +754,23 @@ test fn cpu_design_power_is_250_and_usage_power_is_183() -> Bool {
 test fn a_power_cap_bounds_cpu_power_and_partial_utilisation_refuses() -> Bool {
   cpu_watts(load: CpuDesignWorstCase, cap: Present { value: watt(count: 200) }) == 200
     && cpu_watts(load: CpuPartialUtilisation { utilisation_permille: 500 }, cap: Absent) == 0 - 1
+}
+
+// §4d: the CPU term's bet-standing reaches the node draw; it is not promoted to deduced.
+test fn the_node_draw_carries_the_cpu_standing_as_a_bet() -> Bool {
+  match node_draw(inputs: q8030_node) {
+    NodeDrawDerived { dc_load: _, wall_draw: _, memory_standing: _, cpu_standing: s } =>
+      match s {
+        TranscribedUncited { read_obligation: _ } => true
+        _ => false
+      }
+    NodeDrawRefused { cause: _ } => false
+  }
+}
+
+test fn class_bound_path_also_refuses_traffic_beyond_peak() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 60, read: 30000000000, write: 30000000000)) {
+    DimmPowerRefused { cause: TrafficExceedsModulePeak { demanded: _, peak: _ } } => true
+    _ => false
+  }
 }
