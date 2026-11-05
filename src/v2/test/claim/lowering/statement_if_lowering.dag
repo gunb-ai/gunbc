@@ -1,0 +1,207 @@
+module v2.test.claim.lowering.statement_if_lowering
+
+import v2.compiler.source_root_eval {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeCensusModuleOutcome,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, fold_list }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE STATEMENT-FORM ELSE-LESS IF, ON THE NATIVE LANE.
+//
+// THE SUBJECT is v2.compiler.body_lowering_fold's statement fold (body_lower_stmt_spine,
+// body_lower_else_less_if_statement) together with v2.compiler.infer's judgment of the no-value fact
+// (ruling keen-heron-809, option 2c), driven on the route the namespace_xl0 claims use:
+// native_test_context_from_ingest then native_census_module_resolution.
+//
+// `fallthrough` IS THE FLIP and the admit control: `if c { i }` as a statement followed by another
+// statement. On main it refused at lowering with else_less_if_unlowered; the statement fold now lowers it
+// to a Bind with NO BINDER whose value is a two-positional Branch, and the Bind row is the one site that
+// admits a value producing no value, so the module resolves.
+//
+// `arm_und` proves THE THEN ARM IS NOT SKIPPED: the arm names an undeclared identifier and the refusal is
+// located AT THAT ATOM, which is only reachable if the arm was folded into the statement. On a substrate
+// that infers no body effects for any construct, this is the observable form of the condition that the
+// arm's consequences belong to the Branch (ruling keen-heron-809: the effect control was withdrawn as
+// presuming a lattice that does not exist; nothing here claims effect soundness).
+//
+// `let_binder` and `tail` are the two REDS the fact must keep: a Bind that NAMES a binder owes that
+// binder a value, and a function's return demand owes a value to its tail. Both refuse with
+// infer_branch_else_less_as_value -- the same reason at both sites, coming from the fact's consumers, not
+// from a shape check that would report a well-formed node as malformed. The third RED (a no-value node
+// applied as a callee) is pinned at the fact reader in v2.compiler.infer
+// infer_application_callee_arrow_with_facts; a surface spelling of applying an if-expression is not
+// surface syntax.
+
+data sil_fallthrough_source: String = "module v2.test.sil_fallthrough\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
+
+data sil_arm_und_source: String = "module v2.test.sil_arm_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { sil_undeclared_arm }\n  i\n}\n"
+
+data sil_let_binder_source: String = "module v2.test.sil_let_binder\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  let x = if c { i }\n  i\n}\n"
+
+data sil_tail_source: String = "module v2.test.sil_tail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn sil_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n}\n"
+
+fn sil_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data sil_ingest: SourceRootIngest = Cons {
+    head: sil_read(source: sil_fallthrough_source, id: ^sil_fallthrough_artifact, unit: ^sil_fallthrough_cu, path: "src/v2/test/fixture/lowering/sil_fallthrough.dag"),
+    tail: Cons {
+    head: sil_read(source: sil_arm_und_source, id: ^sil_arm_und_artifact, unit: ^sil_arm_und_cu, path: "src/v2/test/fixture/lowering/sil_arm_und.dag"),
+    tail: Cons {
+    head: sil_read(source: sil_let_binder_source, id: ^sil_let_binder_artifact, unit: ^sil_let_binder_cu, path: "src/v2/test/fixture/lowering/sil_let_binder.dag"),
+    tail: Cons {
+    head: sil_read(source: sil_tail_source, id: ^sil_tail_artifact, unit: ^sil_tail_cu, path: "src/v2/test/fixture/lowering/sil_tail.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+
+type SilVerdict
+  = SilResolved
+  | SilRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | SilFileRefused { fatal_reason: Optional<Symbol> }
+  | SilAbsent
+
+type SilOutcomes
+  = SilContextRefused
+  | SilOutcomesDecided {
+      fallthrough: SilVerdict
+      arm_und: SilVerdict
+      let_binder: SilVerdict
+      tail: SilVerdict
+    }
+
+fn sil_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional<Symbol> {
+  fold_list(
+    xs: context.file_refusals,
+    empty: optional_absent(),
+    cons: fn(acc, refusal) {
+      if refusal.path == unit { optional_present(value: native_test_file_refusal_fatal_reason(fr: refusal)) } else { acc }
+    }
+  )
+}
+
+fn sil_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensusModuleOutcome) -> SilVerdict {
+  match outcome {
+    NativeCensusModuleResolved => SilResolved
+    NativeCensusModuleFileRefused =>
+      SilFileRefused { fatal_reason: sil_file_refusal_reason(context: context, unit: unit) }
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      SilRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn sil_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> SilVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: sil_ingest),
+    empty: SilAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        sil_verdict_of(
+          context: context,
+          unit: unit,
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          ).outcome
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn sil_outcomes() -> SilOutcomes {
+  match native_test_context_from_ingest(ingest: sil_ingest) {
+    Rejected { diagnostics: _ } => SilContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      SilOutcomesDecided {
+        fallthrough: sil_verdict_in(context: context, module_name: "v2.test.sil_fallthrough", unit: ^sil_fallthrough_cu),
+        arm_und: sil_verdict_in(context: context, module_name: "v2.test.sil_arm_und", unit: ^sil_arm_und_cu),
+        let_binder: sil_verdict_in(context: context, module_name: "v2.test.sil_let_binder", unit: ^sil_let_binder_cu),
+        tail: sil_verdict_in(context: context, module_name: "v2.test.sil_tail", unit: ^sil_tail_cu)
+      }
+  }
+}
+
+// A REFUSAL BY REASON, AT EITHER STAGE. The lowering refusals the namespace_xl0 claims pin arrive as file
+// refusals; the infer refusals this change adds arrive wherever the fold that produced them is driven. The
+// claim pins the CAUSE, which is what the change decides, and stays silent about the stage, which it does
+// not.
+fn sil_refuses_as(v: SilVerdict, reason: Symbol) -> Bool {
+  match v {
+    SilRefused { reason: r, at_atom: _ } => r == reason
+    SilFileRefused { fatal_reason: Present { value: r } } => r == reason
+    _ => false
+  }
+}
+
+fn sil_unbound_at(v: SilVerdict, atom: Symbol) -> Bool {
+  match v {
+    SilRefused { reason: r, at_atom: Present { value: id } } => (r == ^resolve_reason_unbound_symbol) && (id == atom)
+    _ => false
+  }
+}
+
+test fn a_statement_form_else_less_if_before_a_statement_is_admitted() -> Bool {
+  match sil_outcomes() {
+    SilOutcomesDecided { fallthrough: v, arm_und: _, let_binder: _, tail: _ } => v == SilResolved
+    SilContextRefused => false
+  }
+}
+
+test fn the_else_less_if_arm_is_folded_and_its_refusal_reaches_the_function() -> Bool {
+  match sil_outcomes() {
+    SilOutcomesDecided { fallthrough: _, arm_und: v, let_binder: _, tail: _ } => sil_unbound_at(v: v, atom: ^sil_undeclared_arm)
+    SilContextRefused => false
+  }
+}
+
+test fn an_else_less_if_as_a_named_binders_value_refuses_with_the_no_value_reason() -> Bool {
+  match sil_outcomes() {
+    SilOutcomesDecided { fallthrough: _, arm_und: _, let_binder: v, tail: _ } => sil_refuses_as(v: v, reason: ^infer_branch_else_less_as_value)
+    SilContextRefused => false
+  }
+}
+
+test fn an_else_less_if_as_the_function_tail_refuses_with_the_no_value_reason() -> Bool {
+  match sil_outcomes() {
+    SilOutcomesDecided { fallthrough: _, arm_und: _, let_binder: _, tail: v } => sil_refuses_as(v: v, reason: ^infer_branch_else_less_as_value)
+    SilContextRefused => false
+  }
+}
