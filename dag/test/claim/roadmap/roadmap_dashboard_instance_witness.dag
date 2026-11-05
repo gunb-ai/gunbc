@@ -50,6 +50,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
   DashboardEnsureSourceRepo,
+  DashboardResetConvergedSourceRepo,
   DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
   DashboardInstanceObserved,
@@ -203,6 +204,7 @@ fn plan_binds_instance_paths(
   let source_bound = any(plan, op => match op {
     DashboardEnsureSourceRepo { origin, repo, anchor_ref: _ } =>
       origin == instance.local_origin_root && repo == instance.repo_root
+    DashboardResetConvergedSourceRepo { repo, anchor_ref: _ } => repo == instance.repo_root
     _ => false
   })
   let marker_bound = any(plan, op => match op {
@@ -254,6 +256,8 @@ fn plan_binds_source_ref_translation(
     && any(plan, op => match op {
       DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref } =>
         anchor_ref == instance.dispatch_base_ref
+      DashboardResetConvergedSourceRepo { repo: _, anchor_ref } =>
+        anchor_ref == instance.dispatch_base_ref
       _ => false
     })
 }
@@ -280,6 +284,7 @@ test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && any(plan, op => match op {
       DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref } => anchor_ref == lab.dispatch_base_ref
+      DashboardResetConvergedSourceRepo { repo: _, anchor_ref } => anchor_ref == lab.dispatch_base_ref
       _ => false
     })
 }
@@ -480,10 +485,11 @@ test fn the_lab_plan_has_no_controller_anchor_read_and_the_bundling_lab_keeps_it
     DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => true
     DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => true
     DashboardEnsureLocalOrigin { bundle: _, origin: _, source_ref: _, publish_ref: _ } => true
+    DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => true
     _ => false
   })
     && any(lab, op => match op {
-      DashboardEnsureSourceRepo { origin: _, repo, anchor_ref } =>
+      DashboardResetConvergedSourceRepo { repo, anchor_ref } =>
         repo == srv1_lab_dashboard_instance().repo_root
           && (anchor_ref as String) == (srv1_lab_admitted_revision_source.ref_name as String)
       _ => false

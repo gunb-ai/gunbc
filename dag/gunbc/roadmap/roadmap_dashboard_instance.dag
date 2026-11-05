@@ -3328,6 +3328,10 @@ type DashboardInstanceProvisionOp
       repo: FilePath,
       anchor_ref: NonEmptyStr,
     }
+  | DashboardResetConvergedSourceRepo {
+      repo: FilePath,
+      anchor_ref: NonEmptyStr,
+    }
   | DashboardVerifyProviderRuntime {
       executable: FilePath,
       state_root: FilePath,
@@ -3440,8 +3444,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   let source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
     DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => [
-      DashboardEnsureSourceRepo {
-        origin: instance.local_origin_root,
+      DashboardResetConvergedSourceRepo {
         repo: instance.repo_root,
         anchor_ref: instance.dispatch_base_ref,
       },
@@ -3565,6 +3568,12 @@ fn dashboard_instance_provision_op_row(
         kind: "ensure-source-repo" as NonEmptyStr,
         target: repo as String,
         detail: join([origin as String, " @ ", anchor_ref as String], ""),
+      }
+    DashboardResetConvergedSourceRepo { repo, anchor_ref } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "reset-converged-source-repo" as NonEmptyStr,
+        target: repo as String,
+        detail: join(["convergence-written ", anchor_ref as String], ""),
       }
     DashboardVerifyProviderRuntime { executable, state_root } =>
       DashboardInstanceProvisionPlanRow {
