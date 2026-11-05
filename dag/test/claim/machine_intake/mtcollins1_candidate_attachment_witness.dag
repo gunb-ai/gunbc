@@ -1,6 +1,7 @@
 module test.claim.machine_intake.mtcollins1_candidate_attachment_witness
 
-import std.types { Bool, list_length }
+import std.types { Bool }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import extdeps.storage.types { Gen3 }
 import extdeps.standards.nic_attachment { OcpNic2, OcpNic3, PcieCem, VendorDaughterCard }
@@ -50,7 +51,7 @@ test fn real_candidates_reach_typed_verdicts() -> Bool {
   let rows = mtcollins1_candidate_verdicts()
   let each_identity_once = fold(["mcx4411a_acan_attachment", "mcx4421a_acan_attachment", "dell_0r887v_attachment", "mcx4621a_acab_attachment", "mcx4121a_acat"], init: true, f: (acc, name) =>
     acc && fold(rows, init: 0, f: (count, row) => if row.candidate.catalog_scope.subject.declaration.decl_name == name { count + 1 } else { count }) == 1)
-  each_identity_once && list_length(items: rows) == 5 && fold(rows, init: true, f: (acc, row) => {
+  each_identity_once && length(xs: rows) == 5 && fold(rows, init: true, f: (acc, row) => {
     let name = row.candidate.catalog_scope.subject.declaration.decl_name
     let correct = match row.verdict {
       Refused { cause: WrongOcpGeneration { candidate_generation: generation, bay_generation: bay } } =>
@@ -109,7 +110,7 @@ test fn matching_generation_does_not_establish_physical_variant() -> Bool {
 test fn unknown_unit_never_borrows_mtcollins1_observation() -> Bool {
   let other = DeclarationRef { module_path: "test.claim.machine_intake.mtcollins1_candidate_attachment_witness", decl_name: "unknown_unit_never_borrows_mtcollins1_observation", field: WholeDeclaration }
   let rows = candidate_verdicts(unit: other)
-  list_length(items: rows) == 5 && fold(rows, init: true, f: (acc, row) => acc && match row.verdict {
+  length(xs: rows) == 5 && fold(rows, init: true, f: (acc, row) => acc && match row.verdict {
     Refused { cause: NoObservationForUnit { requested_unit: unit } } => declaration_ref_eq(a: unit, b: other)
     _ => false
   })

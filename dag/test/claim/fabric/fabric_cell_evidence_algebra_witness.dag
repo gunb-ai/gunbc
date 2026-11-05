@@ -1,6 +1,6 @@
 module test.claim.fabric.fabric_cell_evidence_algebra_witness
 
-import std.types { Bool, String, Int, NonEmptyStr, list_length }
+import std.types { Bool, String, Int, NonEmptyStr }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.fabric.fabric_cell_converge {

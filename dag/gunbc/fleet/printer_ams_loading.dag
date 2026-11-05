@@ -1,0 +1,58 @@
+module gunbc.fleet.printer_ams_loading
+
+import std.types { Int, List, NonEmptyStr, String }
+import extdeps.printing.fdm { FilamentMaterial, Pla, Petg }
+import extdeps.printing.bambu_lab_lan_protocol { BambuAmsTray, bambu_ams_tray_of_slot }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
+
+// WHAT EACH PRINTER'S AMS HOLDS IS A DECLARED OPERATOR READING, NOT A REPORT FIELD.
+//
+// The printers report the loaded tray (tray 3, slot 4) with an EMPTY tray_type, so the machine cannot
+// say what is in it; the material is whatever the operator who loaded the spool declares. A row is
+// therefore a reading with a date and an operator, replaced when the spool is changed, and a tray
+// with no row holds nothing this route may use. Slot is the operator's 1-based number;
+// bambu_ams_tray_of_slot is the one conversion to the wire's tray.
+type AmsSlotReading {
+  printer: PhysicalAssetIdentity
+  slot: Int
+  material: FilamentMaterial
+  read_on: NonEmptyStr
+}
+
+// 2026-11-04, operator to wise-tern-646: PETG in AMS slot 4 and PLA in slot 1 on both printers.
+data ams_slot_readings: List<AmsSlotReading> = [
+  AmsSlotReading { printer: printer_01, slot: 1, material: Pla, read_on: "2026-11-04" },
+  AmsSlotReading { printer: printer_01, slot: 4, material: Petg, read_on: "2026-11-04" },
+  AmsSlotReading { printer: printer_02, slot: 1, material: Pla, read_on: "2026-11-04" },
+  AmsSlotReading { printer: printer_02, slot: 4, material: Petg, read_on: "2026-11-04" },
+]
+
+// SELECTION PRECEDES CONVERGENCE (DESIGN 3d): the start command receives a tray chosen here by
+// matching the recipe's material to what the printer's AMS holds. There is no default tray. No match
+// refuses, and so does more than one match, because two spools of one material is a choice the
+// declared readings do not make and a guessed one would start from the wrong spool.
+type AmsTraySelection
+  = AmsTraySelected { tray: BambuAmsTray, slot: Int }
+  | AmsTrayRefused { cause: NonEmptyStr }
+
+fn select_ams_tray_from(readings: List<AmsSlotReading>, printer: PhysicalAssetIdentity, material: FilamentMaterial) -> AmsTraySelection {
+  let held = filter(readings, r => r.printer == printer && r.material == material)
+  if length(held) == 0 {
+    return AmsTrayRefused { cause: "No AMS slot of this printer is declared to hold the recipe's material; nothing is started and no other slot is substituted" }
+  }
+  if length(held) > 1 {
+    return AmsTrayRefused { cause: "More than one AMS slot of this printer is declared to hold the recipe's material; the readings do not choose between them" }
+  }
+  match held.first() {
+    Absent => AmsTrayRefused { cause: "No AMS slot of this printer is declared to hold the recipe's material" }
+    Present { value: r } => match bambu_ams_tray_of_slot(slot: r.slot) {
+      Absent => AmsTrayRefused { cause: "The declared AMS slot is outside the AMS lite's four slots" }
+      Present { value: t } => AmsTraySelected { tray: t, slot: r.slot }
+    }
+  }
+}
+
+fn select_ams_tray(printer: PhysicalAssetIdentity, material: FilamentMaterial) -> AmsTraySelection {
+  select_ams_tray_from(readings: ams_slot_readings, printer: printer, material: material)
+}

@@ -1,6 +1,7 @@
 module gunbc.mt_collins_dimm_physical_identity
 
-import std.types { NonEmptyStr, List, list_length }
+import std.types { NonEmptyStr, List }
+import std.algebra { length }
 import gunbc.specification_citation_read_provenance { SpecificationCitationReadByteComparison, mt_collins_2u_citation_read_comparison }
 import extdeps.ampere.mt_collins_2u_user_guide.subject {
   MtCollins2uMemoryTopologyCitation, memory_topology_citation,
@@ -133,13 +134,13 @@ fn tally_dimm_identity(acc: MtCollinsDimmIdentityTally, outcome: MtCollinsDimmId
 
 fn population_diagram_identity(population: MtCollinsDimmPopulationRow) -> MtCollinsDimmPopulationIdentity {
   let repeated = filter(population.connectors, c => connector_occurrences(connectors: population.connectors, connector: c) != 1)
-  if list_length(items: population.connectors) != population.dimm_count {
-    PopulationCountDisagrees { declared: population.dimm_count, listed: list_length(items: population.connectors) }
-  } else { if list_length(items: repeated) > 0 {
+  if length(xs: population.connectors) != population.dimm_count {
+    PopulationCountDisagrees { declared: population.dimm_count, listed: length(xs: population.connectors) }
+  } else { if length(xs: repeated) > 0 {
     PopulationConnectorRepeated { connectors: repeated }
   } else {
   let tally = fold(population.connectors, init: MtCollinsDimmIdentityTally { slots: [], unresolved: [] }, f: (acc, c) => tally_dimm_identity(acc: acc, outcome: resolve_dimm_diagram_identity(connector: c, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)))
-  if list_length(items: tally.unresolved) == 0 {
+  if length(xs: tally.unresolved) == 0 {
     PopulationDiagramResolved {
       population: population,
       slots: tally.slots,

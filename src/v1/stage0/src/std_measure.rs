@@ -66,6 +66,7 @@ pub enum Quantity {
     Frequency,
     Count,
     HardwareThreadTime,
+    CalendarTime,
     Currency,
     Power,
     ApparentPower,
@@ -545,6 +546,8 @@ pub type Millivolt = Rc<Measure<ElectricPotentialDifference, Milli, Nat>>;
 
 pub type Ampere = Rc<Measure<ElectricCurrent, One, Nat>>;
 
+pub type Ohm = Rc<Measure<Resistance, One, Nat>>;
+
 pub type Nanometer = Rc<Measure<Length, Nano, Nat>>;
 
 pub type Micrometer = Rc<Measure<Length, Micro, Nat>>;
@@ -922,6 +925,17 @@ pub fn volt(count: Nat) -> Volt {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
+}
+
+pub fn ohm(count: Nat) -> Ohm {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn ohm_count(r: Ohm) -> Nat {
+    measure_count(r)
 }
 
 pub fn volt_count(v: Volt) -> Nat {
@@ -1935,6 +1949,19 @@ pub fn second_displacement_count(d: SecondDisplacement) -> i64 {
     measure_count(d)
 }
 
+pub type CalendarDayDisplacement = Rc<Measure<CalendarTime, One, i64>>;
+
+pub fn calendar_day_displacement(count: i64) -> CalendarDayDisplacement {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn calendar_day_displacement_count(d: CalendarDayDisplacement) -> i64 {
+    measure_count(d)
+}
+
 pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
     joule(v1_rt::int_mul(watt_count(power), second_count(time)))
 }
@@ -2534,6 +2561,8 @@ pub struct Frequency;
 pub struct Count;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HardwareThreadTime;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CalendarTime;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Currency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

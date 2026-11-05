@@ -36,6 +36,7 @@ import extdeps.bmc.redfish {
   redfish_password_change_verdict, RedfishPasswordChangeRequired,
   redfish_manager_account_collection_from_json, RedfishAccountCollection, RedfishAccountCollectionUnreadable,
 }
+import std.algebra { length }
 
 data factory_password: String = "openbmc"
 data managed_password: String = "correct-horse-battery-staple"
@@ -281,14 +282,14 @@ test fn the_typed_surface_read_keeps_unmodeled_separate_from_serving_none() -> B
     Present { value: _ } => false
   }
   let serves_none = match bmc_redfish_surface(world: world_with([])) {
-    Present { value: accounts } => list_length(items: accounts) == 0
+    Present { value: accounts } => length(xs: accounts) == 0
     Absent => false
   }
   let the_two_are_distinguishable = bmc_redfish_surface(world: bmc_world(power: BmcPowerOn))
     != bmc_redfish_surface(world: world_with([]))
   // the RED: the plain census collapses them -- proves WHY the surface read must be the consumed surface.
-  let census_cannot_distinguish = list_length(items: bmc_redfish_census(world: bmc_world(power: BmcPowerOn))) == 0
-    && list_length(items: bmc_redfish_census(world: world_with([]))) == 0
+  let census_cannot_distinguish = length(xs: bmc_redfish_census(world: bmc_world(power: BmcPowerOn))) == 0
+    && length(xs: bmc_redfish_census(world: world_with([]))) == 0
   unmodeled && serves_none && the_two_are_distinguishable && census_cannot_distinguish
 }
 
