@@ -905,8 +905,8 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
     Absent => "admitted" as NonEmptyStr,
   }
   let subject = join([
-    "asset_ref length=", megarac_ui_count_text(count(path_octets)),
-    " sha256=", sha256_hex_of_text(text: attempt.path),
+    "asset_ref ref_length=", megarac_ui_count_text(count(path_octets)),
+    " ref_sha256=", sha256_hex_of_text(text: attempt.path),
     " disposition=", disposition as String,
   ], "")
   let detail = match attempt.excerpt {
@@ -919,7 +919,7 @@ fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
       " asset_sha256=", megarac_ui_digest_text(asset_sha256),
       " excerpt_sha256=", megarac_ui_digest_text(excerpt_sha256),
       " offset=", megarac_ui_count_text(byte_size_count(offset)),
-      " length=", megarac_ui_count_text(byte_size_count(length)),
+      " excerpt_length=", megarac_ui_count_text(byte_size_count(length)),
       " label=", label as String,
       " feeding_site=", megarac_ui_count_text(byte_size_count(feeding_site)),
       " zero_key=", megarac_ui_count_text(byte_size_count(zero_key)),

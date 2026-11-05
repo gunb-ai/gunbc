@@ -1165,7 +1165,7 @@ test fn w_a_plain_vendor_path_is_also_published_as_length_digest_and_disposition
     http_status: 200,
     excerpt: ExcerptRefused { cause: StatusBranchNotForMediaRows { property_name_present: false } },
   })
-  match ui_octets_index_of(ui_octets_of(line), ui_octets_of("asset_ref length=")) {
+  match ui_octets_index_of(ui_octets_of(line), ui_octets_of("asset_ref ref_length=")) {
     Absent => false
     Present { value: at } => at == 0 &&
       !string_contains(s: line, pattern: "/ui/source.min.js") &&
