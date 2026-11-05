@@ -89,21 +89,6 @@ fn fx_lab_instance(tag: String) -> HostDashboardInstance {
 }
 
 // A fixture instance under /tmp, in the shape the apply route's own wet witnesses build one.
-fn fx_instance(tag: String) -> HostDashboardInstance {
-  isolated_dashboard_instance(
-    deployment: deployment_id(name: join(["c-roadmap2-cutover-", tag], "") as NonEmptyStr),
-    instance_id: join(["c-roadmap2-cutover-", tag], "") as NonEmptyStr,
-    layout: srv1_host_layout(),
-    root: shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_c_roadmap2_cutover_", tag, ".XXXXXX"], "")).path as FilePath,
-    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
-    listen_port: 18121,
-    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
-    actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
-  )
-}
-
-
 // 1. THE FENCE NAMES THE UNIT THE OBLIGATION ENQUEUE LAUNCHES -- for both instances that declare one. The unit
 // is spelled by the same call `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes
 // as the unit to start, and the fence holds that

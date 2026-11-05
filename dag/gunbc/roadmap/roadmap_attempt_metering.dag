@@ -61,6 +61,7 @@ import gunbc.durable_cas_file_store {
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, DefaultAccessCreateOnly,
 }
+import gunbc.harness.harness_wire { IntRead,
  IntAbsent, IntDuplicated, IntNotAnObject, IntNotANumber, IntNotAnInteger, harness_member_int, harness_int_read_gap }
 import gunbc.harness.harness_throughput {
   RoundObservation, UsageRowIsOurs, UsageRowIsAnotherEvent, UsageRowUnreadable, RoundReadOk, RoundReadUnclocked, RoundReadGap,

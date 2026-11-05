@@ -2,8 +2,8 @@ module test.claim.c_roadmap2_metering_record_cas_wet_witness
 
 import std.types { Bool, String, Int, List, NonEmptyStr, FilePath, EpochSecs }
 import std.measure { TokenCount, token_count }
-import gunbc.harness.harness_seat_ledger { HarnessSeatPointer }
-import gunbc.product.capacity.quota { PartitionId }
+import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
+import product.capacity.event_chain { PartitionId }
 import std.algebra { string_contains }
 import extdeps.shell
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
@@ -11,8 +11,8 @@ import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.durable_cas_file_store { ExpectSlotAbsent, cas_generation_first }
-import std.durable_compare_and_set { cas_generation_count }
+import gunbc.durable_cas_file_store { ExpectSlotAbsent, ExpectSlotGeneration }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
 import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringCommitted, AttemptMeteringCommitLostRace,
   MeteredWorker,
