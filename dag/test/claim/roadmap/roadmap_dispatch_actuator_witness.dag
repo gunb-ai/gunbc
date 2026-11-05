@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_dispatch_actuator_witness
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryPublication, AttemptDirectoryRoot, AttemptDirectoryWire, AttemptWorkerEvents, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, GunbcHarnessProvider }
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider }
 import gunbc.roadmap.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
 }
@@ -121,6 +121,7 @@ import gunbc.dispatch_attempt_launch {
   SnapshotFreeExecutor,
   SnapshotFreeLaunch,
   CodexWithoutSnapshot,
+  HarnessWithoutSnapshot,
   PreparedAttemptLaunch,
 }
 import gunbc.dispatch_pipe_pane_emit {
@@ -1359,12 +1360,12 @@ test fn a_harness_spawn_hands_the_rendered_chain_to_supervision_and_not_to_the_b
   match resolution {
     AlignmentUnresolved { cause: _ } => false
     AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
-      match dispatch_spawn_commands_for_resolved_instance(
+      match fx_snapshot_free_plan(
         instance: srv1_lab_dashboard_instance(),
         node: sized_derivable(id: "ts-alignment-deep", prs: [], title: "Supervised harness spawn"),
         session_uuid: "00000000-0000-4000-8000-000000000003",
         attempt_key: "feedfacefeedface",
-        provider: GunbcHarnessProvider,
+        executor: HarnessWithoutSnapshot,
         effort: ReasoningMedium,
         model: ProviderAccountDefaultModel,
         resolution: resolution,
