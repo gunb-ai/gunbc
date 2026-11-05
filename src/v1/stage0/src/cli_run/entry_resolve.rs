@@ -1230,6 +1230,21 @@ fn spawn_live_pool_thread() -> (
     (tx, handle)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many whole-pool index builds THIS thread has started. Test-only: every whole-pool build
+    /// passes through `yield_live_pool_before_building_another`, so this one counter sees both
+    /// builders (`build_multi_entry_index` and the process-shared index), and a test that replays a
+    /// production route on its own thread can assert the route builds none.
+    static WHOLE_POOL_INDEX_BUILDS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Whole-pool index builds started on this thread (test-only discriminator).
+#[cfg(test)]
+pub(crate) fn whole_pool_index_builds_on_this_thread() -> u64 {
+    WHOLE_POOL_INDEX_BUILDS.with(|builds| builds.get())
+}
+
 /// THE PROCESS HOLDS ONE LIVE WHOLE-POOL INDEX AT A TIME. Called by every whole-pool index build
 /// (`try_process_shared_index_for_pool`, `build_multi_entry_index`): before any other thread builds
 /// one, the live-pool thread's pool is released -- the thread exits, which drops its index and
@@ -1240,6 +1255,7 @@ fn spawn_live_pool_thread() -> (
 /// thread itself, and any thread a running claim spawned (`LIVE_POOL_BUSY`).
 #[cfg(test)]
 pub(crate) fn yield_live_pool_before_building_another() {
+    WHOLE_POOL_INDEX_BUILDS.with(|builds| builds.set(builds.get() + 1));
     if std::thread::current().name() == Some("live-pool") || LIVE_POOL_BUSY.load(Ordering::SeqCst) {
         return;
     }

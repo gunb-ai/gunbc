@@ -1,6 +1,7 @@
 module gunbc.provider_standing
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length, EpochSecs }
+import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
+import std.algebra { length }
 import std.claim_evidence { RecordedFactId, RecordedFact }
 import std.measure { BasisPoint }
 import std.optional { optional_absent, optional_present }
@@ -442,7 +443,7 @@ fn limit_observations_are_selection_eligible(
   observations: List<ProviderLimitObservation>,
   draw: ProviderLimitDispatchDraw,
 ) -> Bool {
-  if list_length(items: observations) == 0 {
+  if length(xs: observations) == 0 {
     false
   } else {
     !any(

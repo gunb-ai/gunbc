@@ -660,6 +660,7 @@ fn fx_family_member_row(node_id: String, headline: String, activity: ActivityVie
     standing: none,
     attempt_stale: false,
     profiles: base.profiles,
+      retired_blockers: [] as List<String>,
   }
 }
 
@@ -1700,6 +1701,7 @@ fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> Wo
     standing: Present { value: NodeOpen },
     attempt_stale: false,
     profiles: [],
+      retired_blockers: [] as List<String>,
   }
 }
 
@@ -1977,6 +1979,7 @@ fn fx_visibility_row(scheduling: WorkScheduling, activity: ActivityView, node_id
     standing: base.standing,
     attempt_stale: base.attempt_stale,
     profiles: base.profiles,
+      retired_blockers: [] as List<String>,
   }
 }
 

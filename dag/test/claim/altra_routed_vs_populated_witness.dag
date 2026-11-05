@@ -1,6 +1,7 @@
 module test.claim.altra_routed_vs_populated_witness
 
-import std.types { Bool, List, list_length }
+import std.types { Bool, List }
+import std.algebra { length }
 import std.integer { Int }
 import product.altra_motherboard.minimal_design {
   RevARoutedMemoryDesign, RoutedDdrTopology, ActiveDdrTopology,
@@ -188,7 +189,7 @@ test fn w_the_admitted_design_retains_the_routed_topology() -> Bool {
   match admit(routed: all_eight_routed(), l: ships(p: four_active())) {
     RoutedDesignRefused { causes: _ } => false
     RoutedDesignAdmitted { admitted: d, pcie_lanes_broken_out: _ } =>
-      list_length(items: d.routed.routed_channels) == 8
+      length(xs: d.routed.routed_channels) == 8
   }
 }
 
@@ -227,5 +228,5 @@ test fn w_the_refusal_names_which_channel_was_unrouted() -> Bool {
 // NON-VACUITY: a clean design yields no subset causes at all, so the reds above are discriminating
 // rather than a law that refuses everything.
 test fn w_RED_a_clean_routed_design_yields_no_subset_causes() -> Bool {
-  list_length(items: population_subset_causes(routed: all_eight_routed(), populated: four_active())) == 0
+  length(xs: population_subset_causes(routed: all_eight_routed(), populated: four_active())) == 0
 }

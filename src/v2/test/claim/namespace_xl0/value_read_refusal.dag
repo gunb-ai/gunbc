@@ -125,9 +125,9 @@ fn vrr_observe_refusal(d: Diagnostic) -> VrrObserved {
     NodeLocus { anchor: a } =>
       VrrRefusedAt {
         reason: d.reason,
-        locus_holds_fn_literal: vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_fn_literal),
-        locus_holds_arrow_lambda: vrr_subtree_has_production(root: a.at, emitted: ^dag_surface_arrow_lambda),
-        locus_holds_enclosing_token: vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_match) || vrr_subtree_has_token(root: a.at, token: ^dag_token_fat_arrow) || vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_if) || vrr_subtree_has_token(root: a.at, token: ^dag_token_kw_let)
+        locus_holds_fn_literal: vrr_subtree_has_production(root: a.at.node, emitted: ^dag_surface_fn_literal),
+        locus_holds_arrow_lambda: vrr_subtree_has_production(root: a.at.node, emitted: ^dag_surface_arrow_lambda),
+        locus_holds_enclosing_token: vrr_subtree_has_token(root: a.at.node, token: ^dag_token_kw_match) || vrr_subtree_has_token(root: a.at.node, token: ^dag_token_fat_arrow) || vrr_subtree_has_token(root: a.at.node, token: ^dag_token_kw_if) || vrr_subtree_has_token(root: a.at.node, token: ^dag_token_kw_let)
       }
     _ =>
       VrrRefusedAt {

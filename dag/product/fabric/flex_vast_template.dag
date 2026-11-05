@@ -1,6 +1,7 @@
 module product.fabric.flex_vast_template
 
-import std.types { String, NonEmptyStr, Bool, Int, List, Port, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, Port }
+import std.algebra { length }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.list { first_where }
@@ -243,7 +244,7 @@ type FlexTemplateDecision
 // that differs is Refuse, never an in-place edit, because a template's hash changes with its content
 // and others depend on hashes.
 fn flex_template_decide(spec: FlexTemplateSpec, named: List<VastAiTemplateRow>) -> FlexTemplateDecision {
-  if list_length(named) > 1 {
+  if length(named) > 1 {
     FlexTemplateRefuse { cause: "more than one template carries the declared name" }
   } else {
     match first_where(named, r => true) {

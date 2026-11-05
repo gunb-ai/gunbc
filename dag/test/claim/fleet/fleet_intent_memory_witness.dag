@@ -1,7 +1,7 @@
 module test.claim.fleet.fleet_intent_memory_witness
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.algebra { length }
 import std.measure {
   byte_size_count,
   gibibyte,
@@ -69,7 +69,7 @@ test fn srv3_population_matches_bmc_memory_summary() -> Bool {
 test fn srv3_host_memory_derives_from_cited_population() -> Bool {
   let host_ram = byte_size_count(compute_host_ram_bytes_total(host: srv3_host))
   let nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
-  host_ram == nominal && list_length(items: srv3_host.memory) == 1
+  host_ram == nominal && length(xs: srv3_host.memory) == 1
 }
 
 test fn srv3_observed_catalog_rows_are_jedec_realizable() -> Bool {
@@ -125,8 +125,8 @@ test fn srv1_srv2_host_memory_derives_from_cited_population() -> Bool {
   let srv1_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv1_memory_population))
   let srv2_ram = byte_size_count(compute_host_ram_bytes_total(host: srv2_host))
   let srv2_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv2_memory_population))
-  srv1_ram == srv1_nominal && list_length(items: srv1_host.memory) == 1
-    && srv2_ram == srv2_nominal && list_length(items: srv2_host.memory) == 1
+  srv1_ram == srv1_nominal && length(xs: srv1_host.memory) == 1
+    && srv2_ram == srv2_nominal && length(xs: srv2_host.memory) == 1
 }
 
 // SEVEN OF THE CURRENT MODULE, NOT SEVEN OF THE OLD ONE. This control previously constructed seven

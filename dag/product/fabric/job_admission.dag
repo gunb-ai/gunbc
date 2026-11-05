@@ -1,6 +1,5 @@
 module product.fabric.job_admission
 
-import std.types { List }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -62,13 +61,6 @@ data job_admission_mutation_harness_frontier: FrontierRow = frontier_row_decl(
   reason: "The invoice bypass is authorable as fixture source, but its mutation proof has no permanent expected-red consumer. Temporary known-red quarantine is for feature gaps that must become green; it cannot enroll this deliberately broken fixture as permanent evidence. The ordinary invoice witnesses do not establish that the mutation is executed.",
   dissolution: unbound_dissolution(description: "A scheduled permanent source-mutation consumer runs the unchanged invoice controls against submit_invoice_fixture with the net_due == money_amount_micro(count: 0) arm calling classify_job directly and the paid arm retaining admit_job. It requires the zero-dollar other-job-receipt control to fail by assertion and paid_invoice_does_not_supply_an_admission_receipt to pass in the same mutated run, refuses unexpected green or a pre-verdict failure, and runs the original controls on restored source. The mutation and both expectations remain enrolled after this frontier dissolves; a one-off run, copied receipt, temporary known-red row, or declared harness alone does not close it."),
 )
-
-data job_admission_frontier_rows: List<FrontierRow> = [
-  classification_receipt_issuer_frontier,
-  job_admission_billing_frontier,
-  job_admission_runner_frontier,
-  job_admission_mutation_harness_frontier,
-]
 
 type JobAdmission<P>
   = JobAdmitted { receipt: JobClassificationReceipt<P> }

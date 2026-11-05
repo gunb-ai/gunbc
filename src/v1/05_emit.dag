@@ -2,7 +2,7 @@ module v1.compiler.emit
 
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.compiler_entry {
-  CompilerEntryDriver, RetainedHostCliKernel, DirectIngestDriver, SourceRootEvalDriver, NativeCliDriver, NativeClaimDriver, NativeServeDriver,
+  NativeEffectRoute, NativeCompilerRoute, NativeClaimRoute, NativeIngressRoute,
   NativeEffectClass, NativeEffectDeclaration, NativeOutgoingHttp, NativeEffectScope, NativeAdmitAllExcept, NativeAdmitOnly, NativeEffectDenominator
 }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -256,7 +256,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: empty_map(), unit_variant_index_observed: false },
+    type_env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: empty_map(), unit_variant_index_observed: false, equality_by_target: empty_map() },
     func_env: ResolvedFuncEnv { name: "", local: empty_map(), parents: [] },
     locals: empty_map(),
     body_locals: empty_map(),
@@ -1549,8 +1549,8 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
 
 // ── NATIVE EFFECT REALIZATION ADMISSION ────────────────────────────────────────────────────────
 // `gunbc.plans.demand_engine_program` section 2.9, GAP A, carrier E3. A native entry (a
-// NativeCliDriver or NativeServeDriver main) hands its entry function one handle per effect the
-// function demands: a reference per `uses` resource and per service it reaches (the parameter list
+// NativeCliDriver, NativeClaimDriver or NativeIngressDriver main) hands each function it calls one
+// handle per effect that function demands: a reference per `uses` resource and per service it reaches (the parameter list
 // v1.compiler.emit_rust emit_func_params renders). Before this verdict existed the rendered main
 // wrote those handles by hand, and an effect it did not write was found by rustc at the handler
 // call -- or, for a resource trait with no implementor, by the linker -- which is evidence of the
@@ -1559,7 +1559,7 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
 //
 // SCOPE (two rulings, cited): the operator's 2026-09-16 ruling (plan D11) kept Clock, Network,
 // Entropy and AuthContext out of the native COMPILER route. gentle-dove-36's 2026-10-04 ruling
-// extends it for native SERVICE entries: a NativeServeDriver entry (first consumer, the approval
+// extends it for native SERVICE entries: a NativeIngressDriver program (first consumer, the approval
 // broker) needs a clock reading and outgoing HTTP. That extension adds NO transport. The broker's
 // clock is extdeps.clock Clock, a service bound to the existing shell transport, and its outgoing
 // HTTP is a `transport rest` service bound to the existing REST lowering (RestResult). So a service
@@ -1711,14 +1711,11 @@ fn native_effect_contract_label(c: NativeEffectContract) -> String {
   }
 }
 
-fn native_route_label(route: CompilerEntryDriver) -> String {
+fn native_route_label(route: NativeEffectRoute) -> String {
   match route {
-    NativeCliDriver => "NativeCliDriver"
-    NativeClaimDriver => "NativeClaimDriver"
-    NativeServeDriver => "NativeServeDriver"
-    SourceRootEvalDriver => "SourceRootEvalDriver"
-    DirectIngestDriver => "DirectIngestDriver"
-    RetainedHostCliKernel => "RetainedHostCliKernel"
+    NativeCompilerRoute => "NativeCompilerRoute"
+    NativeClaimRoute => "NativeClaimRoute"
+    NativeIngressRoute => "NativeIngressRoute"
   }
 }
 

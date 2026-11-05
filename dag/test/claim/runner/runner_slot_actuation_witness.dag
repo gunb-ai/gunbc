@@ -6,15 +6,18 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.procps.ps { ps_unit_runs_command }
 import extdeps.systemd { UnitLoadError, Failed }
+import gunbc.runner.runner_local_state { MainProcessUngrounded, NoMainProcess, StartUnread, ProcessAbsoluteStart }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv }
 import gunbc.runner.runner_slot_actuation {
+  SlotLocalObservation, SlotLocalObserved, SlotLocalUnobserved, slot_local_observation_settled, slot_main_process_of, slot_main_process_wire,
   SlotActuationReading,
   DrainWaitForStop, DrainPendingJobRunning, DrainPendingStopInProgress,
   SlotActivationPlan, ActivationAlreadyActive, ActivationSteps, ActivationRefused,
   SlotDrainPlan, DrainAlreadyMasked, DrainSteps, DrainWaitForJob, DrainRefused,
   slot_activation_plan, slot_activation_read_back_holds,
   slot_drain_plan, slot_drain_read_back_holds,
+  slot_drain_plan_under, MaskWhileRunning, NeverMaskARunningUnit,
   slot_actuation_reading_of,
   slot_activity_of_listing,
   slot_task_count_of_show,
@@ -44,6 +47,9 @@ import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, No
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data slot_u: NonEmptyStr = "actions-runner@srv3-18.service" as NonEmptyStr
+
+// The absolute-start leg is not under test in the MainPID/worker/grounding cases; supply it unread.
+fn abs_na() -> ProcessAbsoluteStart { StartUnread { cause: "not under test" as NonEmptyStr } }
 
 // Readings are built through the same boundary parse the effect uses, so a fixture word the parse
 // does not admit cannot become a reading; a word it refuses fails the fixture loudly.
@@ -111,6 +117,32 @@ test fn an_idle_slot_is_masked_then_stopped() -> Bool {
   steps_of_drain(p: slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle))
     == [systemctl_mask_argv(unit: slot_u), systemctl_stop_argv(unit: slot_u)]
     && slot_drain_read_back_holds(r: reading(load: "masked", file: "masked", active: "inactive"))
+}
+
+// NEVER MASK A RUNNING UNIT (the slot-tree rebuild's admission). `systemctl mask` reloads the manager and a
+// masked unit loads none of its drop-ins, so a unit still running when masked loses its cap drop-ins and
+// its slice mid-job (fleet-converge run 41861708547 on srv4, 2026-11-04). Under NeverMaskARunningUnit a
+// busy or stopping unit gets NO leg, and an idle one is STOPPED BEFORE it is masked, so the mask's reload
+// lands on an inactive unit. RED: drop the admission from slot_drain_plan_running and the busy plan
+// carries the mask, and the idle plan masks first.
+test fn never_mask_a_running_unit_leaves_a_busy_slot_untouched_and_stops_an_idle_one_before_masking() -> Bool {
+  let busy = slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, admission: NeverMaskARunningUnit)
+  let stopping = slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "deactivating"), worker: SlotIdle, admission: NeverMaskARunningUnit)
+  let idle = slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, admission: NeverMaskARunningUnit)
+  let stopped = slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "inactive"), worker: SlotIdle, admission: NeverMaskARunningUnit)
+  (match busy { DrainWaitForJob { mask: m } => m == [] _ => false })
+    && (match stopping { DrainWaitForStop { mask: m } => m == [] _ => false })
+    && steps_of_drain(p: idle) == [systemctl_stop_argv(unit: slot_u), systemctl_mask_argv(unit: slot_u)]
+    && steps_of_drain(p: stopped) == [systemctl_mask_argv(unit: slot_u)]
+}
+
+// THE CAP BRACKET'S ADMISSION IS UNCHANGED: MaskWhileRunning is what slot_drain_plan answers, mask first,
+// on a busy unit too. Its exposure is an open integration concern on the bracket, not changed here.
+test fn mask_while_running_is_the_unchanged_default() -> Bool {
+  (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker) { DrainWaitForJob { mask: m } => m == [systemctl_mask_argv(unit: slot_u)] _ => false })
+    && (match slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker, admission: MaskWhileRunning) { DrainWaitForJob { mask: m } => m == [systemctl_mask_argv(unit: slot_u)] _ => false })
+    && steps_of_drain(p: slot_drain_plan_under(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, admission: MaskWhileRunning))
+      == [systemctl_mask_argv(unit: slot_u), systemctl_stop_argv(unit: slot_u)]
 }
 
 // IDEMPOTENT: masked and stopped, or absent, issues no leg; a masked slot whose job ended needs only
@@ -305,4 +337,38 @@ test fn an_unattributed_listing_refuses_and_does_not_stop() -> Bool {
       DrainUnitNotInstalled => false
     })
     && (match slot_activity_of_listing(listing: "actions-runner@srv3-18.service Runner.Listener\n", unit: slot_u) { SlotIdle => true SlotActivityUnobserved { cause: _ } => false SlotHasLiveWorker => false })
+}
+
+// ObserveRunnerLocalState settles only when every leg was read. POSITIVE CONTROL: unit, worker and a grounded
+// main process read; the pid is a ProcessIdentity, never a bare number.
+test fn a_fully_read_local_observation_is_settled_and_carries_the_grounded_main_process() -> Bool {
+  let m = slot_main_process_of(raw: "333", boot: Present { value: "boot-a\n" }, stat: Present { value: "333 (runner) S 1 333 333 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 987654 0 0" }, abs: abs_na())
+  let o = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main: m }
+  slot_local_observation_settled(o: o) && slot_main_process_wire(m: m) == "main=pid 333 boot=boot-a start=987654"
+}
+
+// RED (the review's case): MainPID `0` is NoMainProcess ("supervises nothing"), NOT a pid reading; an unread or
+// unintelligible answer is MainProcessUnread and never settles.
+test fn a_zero_main_pid_is_no_main_process_and_an_unread_one_never_settles() -> Bool {
+  let idle = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main: slot_main_process_of(raw: "0", boot: none, stat: none, abs: abs_na()) }
+  let unread = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main: slot_main_process_of(raw: "unread:ssh refused", boot: none, stat: none, abs: abs_na()) }
+  let junk = SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle, main: slot_main_process_of(raw: "abc", boot: none, stat: none, abs: abs_na()) }
+  slot_main_process_wire(m: slot_main_process_of(raw: "0", boot: none, stat: none, abs: abs_na())) == "main=none"
+    && slot_local_observation_settled(o: idle)
+    && !slot_local_observation_settled(o: unread)
+    && !slot_local_observation_settled(o: junk)
+}
+
+// A pid whose boot id or start time was not read is MainProcessUngrounded, never a MainProcess identity.
+test fn a_pid_without_its_grounding_is_ungrounded_not_an_identity() -> Bool {
+  match slot_main_process_of(raw: "333", boot: none, stat: Present { value: "333 (runner) S 1 333 333 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 987654 0 0" }, abs: abs_na()) {
+    MainProcessUngrounded { pid: _, cause: _ } => true
+    _ => false
+  }
+}
+
+// An unread worker leg or a refused unit read never settles.
+test fn an_unobserved_worker_or_unit_leg_never_settles_the_local_observation() -> Bool {
+  !slot_local_observation_settled(o: SlotLocalObserved { unit: slot_u, reading: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotActivityUnobserved { cause: "ps refused" as NonEmptyStr }, main: NoMainProcess })
+    && !slot_local_observation_settled(o: SlotLocalUnobserved { unit: slot_u, step: "unit-read", reason: "ssh refused" })
 }

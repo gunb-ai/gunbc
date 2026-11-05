@@ -7,7 +7,7 @@ import extdeps.boards.types { HeldManualRevision,
   BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling,
   BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
   OnboardEthernetPort, OnboardEthernetPortRow, BmcSharingStated, BmcSharingNotStated, PortRowsStated,
-  BoardExpansionSlot, BoardExpansionSlots,
+  BoardExpansionSlot, BoardExpansionSlots, SlotLaneObstacle,
 }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.boards.asrock_altrad8ud_setup_varstore { ras_menu, ras_pcie_aer_firmware_first_item }
@@ -51,7 +51,13 @@ import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.board_authority { BoardAuthorityRef }
-import extdeps.standards.micro_atx { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
+import extdeps.standards.motherboard_mounting_location { LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
+import extdeps.boards.types {
+  HoleCorrespondenceInferred, HoleAbsenceExplicitlyDirected, HoleNotObservedInDrawing,
+  BoardStandardLocationCorrespondence, board_location_correspondence,
+  BoardStandardLocationRoster, board_standard_location_roster,
+}
+import extdeps.standards.motherboard_mounting_grid { MicroAtxMountingGrid }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
 import extdeps.uri { Uri, Https }
@@ -763,54 +769,9 @@ data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAut
   }
 }
 
-// WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
-// route, so the grade is readable from the constructor rather than from prose beside it.
-// Image-position estimates (used by Jade review) do not establish a location; unlike
-// a correspondence to exact standard coordinates, they cannot admit a standoff.
-type BoardLocationStanding
-  = HoleCorrespondenceInferred
-  | HolePositionEstimatedFromImage
-  | HoleAbsenceExplicitlyDirected
-  | HoleNotObservedInDrawing
-  | HolePhysicallyConfirmedPresent
-  | HolePhysicallyConfirmedAbsent
-
-// WHY a location must stay empty. Distinct from the standing that established it.
-type StandoffProhibitionCause
-  = ProductSaysRemove
-  | NoAdmittedBoardHole
-
-// WHAT IS DONE at a standard location by a chassis built for this board.
-type StandoffPlacementDecision
-  = StandoffAdmitted
-  | StandoffProhibited { cause: StandoffProhibitionCause }
-
-// The join, and the reason the two types are worth separating: this is total, so a new standing arm
-// cannot be added without deciding what a chassis does about it. FIT will add exactly that — the
-// physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
-fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
-  match standing {
-    HolePositionEstimatedFromImage => StandoffProhibited { cause: NoAdmittedBoardHole }
-    HoleCorrespondenceInferred => StandoffAdmitted
-    HolePhysicallyConfirmedPresent => StandoffAdmitted
-    HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }
-    HoleNotObservedInDrawing => StandoffProhibited { cause: NoAdmittedBoardHole }
-    HolePhysicallyConfirmedAbsent => StandoffProhibited { cause: NoAdmittedBoardHole }
-  }
-}
-
-type BoardStandardLocationCorrespondence sole_constructor {
-  location: MountingLocationId
-  standing: BoardLocationStanding
-}
-
-fn board_location_correspondence(
-  location: MountingLocationId,
-  standing: BoardLocationStanding,
-) -> BoardStandardLocationCorrespondence {
-  BoardStandardLocationCorrespondence { location: location, standing: standing }
-}
-
+// THE CORRESPONDENCE VOCABULARY (BoardLocationStanding, standoff_placement,
+// BoardStandardLocationCorrespondence) moved to extdeps.boards.types when a second vendor's board
+// needed it: a Supermicro row must not import an ASRock module to say which standard holes it has.
 // Coordinates are deliberately ABSENT from these rows. A correspondence names a location; the
 // location owns its position. Copying the coordinates here would fork the grid — the exact defect
 // this session already paid for once, where the coupon's holes were computed a second time instead
@@ -839,6 +800,12 @@ data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocati
   board_location_correspondence(location: LocJ, standing: HoleAbsenceExplicitlyDirected),
   board_location_correspondence(location: LocS, standing: HoleNotObservedInDrawing),
 ]
+
+// The roster binds this correspondence to the microATX grid its letters are read against.
+data asrock_altrad8ud_standard_location_roster: BoardStandardLocationRoster? = board_standard_location_roster(
+  grid: MicroAtxMountingGrid,
+  locations: asrock_altrad8ud_standard_location_correspondence,
+)
 
 
 // THE DEEP EXTENSION, and the cassette requirement that falls out of it.
@@ -1003,7 +970,26 @@ data asrock_altrad8ud_manual_held: HeldManualRevision = HeldManualRevision {
 // 2026-11-02), the slot outlines sit 22.54, 22.60 and 22.65 points apart, about 20.9 mm, against 20.32 mm
 // for one CEM pitch: consistent with adjacency to about 3 %, and a drawing that is not dimensioned cannot
 // do better. A ruler settles it, so the standing names that reading.
+// THE RTC COIN CELL, read by the operator on 2026-11-04 on the board in the A2 chassis after a blower design
+// that ignored it had already been drawn: the cell stands vertically, its holder 17 mm above the board, in
+// PCIE4's lane -- the slot farthest from the CPU (SLOT7 is nearest, above) -- in the row of the FAN headers near
+// the front edge, and it is the tallest component in that row. It was read 66.44 mm beyond the far end of an
+// NVIDIA A2 in PCIE4; with the A2's stated 167.6 mm length (extdeps.gpu.nvidia_a2) that is 234.04 mm from the
+// bracket plane. Whether 66.44 mm is to the cell's near face or its centre was not said, so half_extent is
+// generous (a 20 mm cell in a holder, either side, plus the ambiguity).
+data asrock_altrad8ud_coin_cell: SlotLaneObstacle = SlotLaneObstacle {
+  label: "RTC coin cell (vertical holder)",
+  slot: "PCIE4",
+  depth_from_bracket_plane: micrometer(count: 234040),
+  half_extent: micrometer(count: 13000),
+  height_above_board: micrometer(count: 17000),
+  standing: TranscribedUncited {
+    read_obligation: "operator, on the board: the coin-cell holder's footprint and its centre's depth from the rear bracket plane, read directly (this row is 66.44 mm read beyond an installed A2's far end plus the A2's stated length), and its designator from the manual's section 1.4 layout",
+  },
+}
+
 data asrock_altrad8ud_expansion_slots: BoardExpansionSlots = BoardExpansionSlots {
+  lane_obstacles: [asrock_altrad8ud_coin_cell],
   slots: [
     BoardExpansionSlot { designator: "PCIE4", position: 4 },
     BoardExpansionSlot { designator: "PCIE5", position: 5 },

@@ -46,6 +46,7 @@ import extdeps.cpu.ampere_altra_package {
   altra_reserved_pin_count,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -172,7 +173,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
     && undecided_carriage_blocker() == "redistribution"
     && match reference_board_collateral_standing() {
       FactAccessGated { subject: sub, access_route: route } =>
-        list_length(items: split(s: sub as String, delimiter: "Mt. Jade")) > 1
+        length(xs: split(s: sub as String, delimiter: "Mt. Jade")) > 1
           && (route.uri.locator as String) == "amperecomputing.com/home/customer-reference-boards"
       FactEstablished { authority: _, subject: _ } => false
       FactUnresolved { what_is_missing: _ } => false

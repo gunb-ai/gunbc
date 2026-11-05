@@ -28,6 +28,13 @@ type DesignRuling {
   provenance: String
 }
 
+data printer_start_hold_lifted_2026_11_04: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "printer_start_hold_lifted_2026_11_04"),
+  decided: "2026-11-04",
+  section: "6",
+  provenance: "Operator, relayed by wise-tern-646 to witty-tern-466 on 2026-11-04: the 2026-10-21 standing hold on printer starts (do not touch /var/lib/gunbc/printer-starts) is LIFTED. It is released through the modeled route, the fleet-converge printer mode's hold-release-request operation (gunbc.fleet.printer_execution_hold printer_hold_release_request), which files the operator card and releases nothing by hand. The same day's two PETG prints were started out of band (a hand-run prepare_request_plate and a hand-written MQTT publish after a pasted token); that path is not the modeled route and is superseded by print_converge, whose start now takes its AMS tray from gunbc.fleet.printer_ams_loading select_ams_tray.",
+}
+
 data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bmc_secure_goes_live_per_controller_family"),
   decided: "2026-10-28",
@@ -487,6 +494,17 @@ data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
   provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router, S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
 }
 
+// THE COMPILER ROUTE'S NATIVE DENOMINATOR IS A DECLARED SET, AND THE ONE BUILD EFFECT IT DECLARES IS A
+// NAMED CARGO OPERATION, NOT A GENERIC EXEC. Recorded here so the denominator row in std.compiler_entry
+// cites a ruling the way the claim route's does, rather than inheriting the 2026-09-16 D11 citation while
+// its meaning changes from exclusions to a closed set.
+data native_compiler_route_admits_the_declared_cargo_build: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_compiler_route_admits_the_declared_cargo_build"),
+  decided: "2026-11-01",
+  section: "Building & checks",
+  provenance: "Operator ruling (keen-otter-392 via root), relayed by clever-crane-830 (msg_1ffaef45 scope, msg_d9c63929 binding conditions, msg_8d4b7f4e placement), on D11's unbuilt half: an emitted (native) compiler program needs to run a Cargo build, and today only the host does. (a) A new performing service extdeps.rust.cargo_build_service CargoBuild is the fixed-argv twin of extdeps.rust.cargo_build -- its own module for the reason extdeps.docker.cli_service gives: emission is per module, so a native program must not take the argv-and-JSON module's closure; the word 'cargo' is minted once, in the performing module, and cargo_build cargo_program() delegates to it. (b) std.compiler_entry native_compiler_route_denominator moves from NativeAdmitAllExcept to NativeAdmitOnly, and the ruled set is [extdeps.filesystem.filesystem_io Filesystem, extdeps.rust.cargo_build_service CargoBuild] -- ADMITTED IN TWO CUTS, agreed by the operator 2026-11-02 (msg_998d2bf2): this cut's list is [Filesystem] alone, and CargoBuild joins it together with the binding this ruling requires (an explicitly declared cargo program, working root and dry-run mode, no Default fallback), because an admitted effect whose ruled guard does not exist yet must not be admittable at all and the unlisted-effect emission refusal IS that guard, already executing. The set was DERIVED BY READ, reproducibly: run 2026-11-02 at 5b0b26d9b399 over the roots the two compiler-route subjects compile ([dag, src/v2], gunbc.instrument_targets), git grep -h -o -E 'Filesystem[.](Read|Write|Delete|List|WriteCreateNew)[(]' 5b0b26d9b399 -- src/v2 | sort | uniq -c gives 82 call sites (Read 49, Write 17, Delete 7, List 5, WriteCreateNew 4), and the same scan over every other service name declared in dag (83 service declarations) gives zero call sites in src/v2 -- so Filesystem is the only service the route demands today, and no clock, network, entropy, auth-context or rest transport is reached. Those counts are supporting detail about which services the route demands, not the completeness proof: the completeness evidence is v2-native-cli's emission refusal over the entry's whole closure, stated below, and the reads do not cover call sites inside generated mirrors or services reached only through a lens or a trait demand. (c) The program position is not open: CargoProgramWord is sole_constructor and the only route to it is cargo_build_program_word, which resolves the parameter against the declared identity under extdeps.exec.program's roster and yields a refusal arm otherwise -- the program resolves to cargo under the toolchain authority (gunbc.toolchain_workflow_steps per-job CARGO_HOME/RUSTUP_HOME, gunbc.toolchain_home_standing's obligation, src.v2.workflow.ci_workflow_run_emit ci_pin_rustup_cargo_bin_resolve_command refusing through ci_pin_rustup_cargo_bin_missing_command when neither the isolated shim nor PATH carries one), never because a path or a string was written at a call site. WHAT THIS DOES NOT LICENSE, stated at what was measured: it is the declared Cargo build operation, NOT the absence of subprocess execution -- cargo runs build.rs and proc macros; extdeps.shell.exec generic exec and every other spawn service stay OUTSIDE the set; the operation declares no environment of its own, so the process inherits exactly the seed-build preamble's, and the working root must be an explicitly declared binding with no ambient Default fallback, which is the ruled-but-unbuilt half (v1.compiler.emit_rust native_effect_binding_of constructs every admitted service with Default today, leaving extdeps.transports.shell ShellTransportConfig.working_dir None and the process in '.'; measured in an emitted crate from this tree, the emitted handler constructor takes only a dry-run mode, the emitted main passes Default::default() for it and the spawn renders current_dir(unwrap_or('.')) -- so the cut that admits the effect must declare program, working root AND dry-run mode at the binding, with no default in either position); and the self-host compiler-route subject is NOT judged by this denominator at all, because the admission walk runs only for an entry named by native_entry_function_name and its pipeline entry declares SourceRootEvalDriver -- v2-native-cli is the subject that judges the list, and its emission refusal is the completeness evidence. In this cut CargoBuild is NOT in the list, so an entry that reaches it gets the unlisted-effect refusal instead of a spawn: that refusal is INTENTIONAL C1 behaviour asserted against the real module by dag/test/claim/cargo_build_native_route_witness.dag, not an implemented H1 handler.",
+}
+
 data a16_rear_clearance_and_sides_are_operator_declared_bounds: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_rear_clearance_and_sides_are_operator_declared_bounds"),
   decided: "2026-10-26",
@@ -617,14 +635,23 @@ data belt_concurrency_is_a_per_instance_fact: DesignRuling = DesignRuling {
 }
 
 
+data operator_may_arbitrarily_retire_any_work_item: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_may_arbitrarily_retire_any_work_item"),
+  decided: "2026-11-04",
+  section: "6",
+  provenance: "Operator, relayed by silent-bee-845 on the daily-workspace close/advance slice: \"I should be allowed to arbitrarily retire any work item\". The operator RETIRE route (gunbc.roadmap.roadmap_serve, POST /issue/\{node\}/retire) ends any work item in any state and is recorded honestly as retired by <principal>, never as accepted; its only refusals are unknown node, already terminal, unauthenticated, and stale revision — never a lineage-state precondition; the lab-only lineage-retire route's \"only a ContinuationEnded lineage\" admission dies with that route (deleted per the same-day dispatch ruling, START FRESH superseding it) and is not carried to main. A closed or retired NODE is terminal — and terminality is never a separate operator-facing lineage state: the operator ruling of the same day (dispatch collapses to CONTINUE and START FRESH, retire-LINEAGE deleted, START FRESH superseding it) keeps the standing node-level, while the belt computes terminality internally from the node's own standing and durable acceptance (gunbc.roadmap.roadmap_belt_obligation and gunbc.roadmap.roadmap_belt_actuate read that one rule: no further verify/review/re-delivery spawns, fail closed on unreadable). Dispatch verbs CONTINUE and START FRESH refuse on a retired node with that reason; retired does not satisfy dependents, and a child held by a retired parent surfaces the reason visibly as 'blocked by retired <id>' (derived from the blocker's standing, no new label type) — the same use-found defect class as a_write_control_renders_disabled_with_no_visible_reason.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     belt_concurrency_is_a_per_instance_fact,
+    operator_may_arbitrarily_retire_any_work_item,
     bad_process_is_worse_than_no_process,
     the_mint_of_a_fleet_ssh_keypair_is_account_creation,
     macos_operator_terminal_runs_without_a_memory_bound,
     cross_tree_admission_is_namespace_membership,
     native_claim_route_admits_the_docker_cli,
+    native_compiler_route_admits_the_declared_cargo_build,
     emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
     runner_listener_admission_is_mask_roster_and_no_worker,
@@ -691,6 +718,7 @@ fn design_rulings() -> List<DesignRuling> {
     one_serving_context_cap,
     installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
+    printer_start_hold_lifted_2026_11_04,
   ]
 }
 
