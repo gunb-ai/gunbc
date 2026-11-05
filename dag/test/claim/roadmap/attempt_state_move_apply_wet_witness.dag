@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated_argv }
 import gunbc.roadmap.roadmap_attempt_state_layout_move {
   LegacyWriterUnitReading, legacy_writer_exclusion, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations,
-  LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterMaskVendorFragment, LegacyWriterRetirementRefused, LegacyWriterExcluded, LegacyWriterNotExcluded,
+  LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, LegacyWriterExcluded, LegacyWriterNotExcluded,
 }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnit, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, LegacyWriterFenceRow, legacy_writer_fence_for, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
 import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
@@ -488,24 +488,25 @@ test fn an_etc_fragment_is_retired_by_stop_rename_and_reload_then_reads_excluded
   let plan = legacy_writer_retirement(unit: u, reading: reading(load: "loaded", active: "active", fragment: u.etc_fragment as String))
   let ops = legacy_writer_retirement_operations(rollback_store: "/etc/systemd/system" as NonEmptyStr, unit: u, plan: plan)
   let after = match legacy_writer_exclusion(unit: u.name as String, reading: reading(load: "not-found", active: "inactive", fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
-  let is_etc = match plan { LegacyWriterRetireEtcFragment => true, LegacyWriterAlreadyExcluded => false, LegacyWriterMaskVendorFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
+  let is_etc = match plan { LegacyWriterRetireEtcFragment => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetirementRefused { reason: _ } => false }
   is_etc && after
     && ops_text(ops: ops) == "/usr/bin/sudo -n /usr/bin/systemctl stop gunbc-srv1-lab-codex-feedback-v0.service ; /usr/bin/sudo -n /usr/bin/mv -n -- /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service.retired-by-gunbc-apply ; /usr/bin/sudo -n /usr/bin/systemctl daemon-reload"
 }
 
-test fn a_vendor_fragment_is_masked_after_stop() -> Bool {
+test fn a_vendor_fragment_refuses_because_no_mask_is_granted() -> Bool {
   let u = lab_unit()
-  let plan = legacy_writer_retirement(unit: u, reading: reading(load: "loaded", active: "inactive", fragment: "/usr/lib/systemd/system/x.service"))
-  let ops = legacy_writer_retirement_operations(rollback_store: "/etc/systemd/system" as NonEmptyStr, unit: u, plan: plan)
-  let is_vendor = match plan { LegacyWriterMaskVendorFragment => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
-  is_vendor && ops_text(ops: ops) == "/usr/bin/sudo -n /usr/bin/systemctl stop gunbc-srv1-lab-codex-feedback-v0.service ; /usr/bin/sudo -n /usr/bin/systemctl mask --now gunbc-srv1-lab-codex-feedback-v0.service"
+  match legacy_writer_retirement(unit: u, reading: reading(load: "loaded", active: "inactive", fragment: "/usr/lib/systemd/system/x.service")) {
+    LegacyWriterRetirementRefused { reason: r } => string_contains(s: r, pattern: "no mask is granted")
+    LegacyWriterAlreadyExcluded => false
+    LegacyWriterRetireEtcFragment => false
+  }
 }
 
 test fn an_unreadable_unit_or_a_foreign_fragment_refuses_and_an_excluded_one_needs_nothing() -> Bool {
   let u = lab_unit()
-  let unreadable = match legacy_writer_retirement(unit: u, reading: reading(load: "", active: "", fragment: "")) { LegacyWriterRetirementRefused { reason: _ } => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false, LegacyWriterMaskVendorFragment => false }
-  let foreign = match legacy_writer_retirement(unit: u, reading: reading(load: "loaded", active: "inactive", fragment: "/run/systemd/system/x.service")) { LegacyWriterRetirementRefused { reason: r } => string_contains(s: r, pattern: "neither the declared"), LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false, LegacyWriterMaskVendorFragment => false }
-  let nothing = match legacy_writer_retirement(unit: u, reading: reading(load: "not-found", active: "inactive", fragment: "")) { LegacyWriterAlreadyExcluded => true, LegacyWriterRetireEtcFragment => false, LegacyWriterMaskVendorFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
+  let unreadable = match legacy_writer_retirement(unit: u, reading: reading(load: "", active: "", fragment: "")) { LegacyWriterRetirementRefused { reason: _ } => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false }
+  let foreign = match legacy_writer_retirement(unit: u, reading: reading(load: "loaded", active: "inactive", fragment: "/run/systemd/system/x.service")) { LegacyWriterRetirementRefused { reason: r } => string_contains(s: r, pattern: "not the declared"), LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false }
+  let nothing = match legacy_writer_retirement(unit: u, reading: reading(load: "not-found", active: "inactive", fragment: "")) { LegacyWriterAlreadyExcluded => true, LegacyWriterRetireEtcFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
   unreadable && foreign && nothing
 }
 
@@ -530,7 +531,7 @@ test fn the_retirement_leg_passes_an_excluded_writer_and_refuses_the_rest() -> B
   let unreadable = retire_with(i: i, f: LegacyWriterUnits { systemctl: "/nonexistent/systemctl" as NonEmptyStr, units: [lab_unit()], rollback_store: "/unused-store" as NonEmptyStr })
   let undeclared = retire_with(i: i, f: LegacyWriterUndeclared)
   ready && ok.success && string_contains(s: ok.stdout, pattern: "already excluded")
-    && !loadable.success && string_contains(s: loadable.stderr, pattern: "neither the declared")
+    && !loadable.success && string_contains(s: loadable.stderr, pattern: "not the declared")
     && !unreadable.success && string_contains(s: unreadable.stderr, pattern: "could not be read")
     && !undeclared.success && string_contains(s: undeclared.stderr, pattern: "nothing can be retired")
 }
