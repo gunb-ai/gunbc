@@ -277,6 +277,15 @@ fn runner_lifecycle_realize_observe_github_runner_registration(
 // The ACTUATION is the modeled runner_slot_actuation.restart_runner_slot_over(target, context, unit, before),
 // invoked by the wet caller with the observed main as `before` so its readback can require a changed MainPID;
 // it refuses (SlotActuationRefused) if the unit is not loaded-and-active on a changed MainPID after restart.
+//
+// FRONTIER (DESIGN section 3c, declared not dangling). This is the restart capability's frontier entry: it is
+// bound to no timer, no CI job, and no network in this PR (the runner-liveness-reconcile timer stays DISABLED,
+// and nothing here runs live against a host). Its CONSUMER is that reconcile -- the wet realize arm the runner
+// timer re-enables (and PR 3's placement leg, which reads a permitted verdict before placing a replacement) --
+// which calls this pure decide with the observed main, the roster and the lost-agent observation it read at the
+// boundary, and on RestartLegPermit carries out the actuation above. Its WITNESSES supply those boundary values
+// (runner_restart_leg_witness) so the decide + the real-main join are exercised without a live host. DISSOLVES
+// when the reconcile timer is re-enabled and drives this in production.
 // ============================================================================================
 fn runner_lifecycle_restart_leg(
   incarnation: LocalRunnerSlotIncarnation,

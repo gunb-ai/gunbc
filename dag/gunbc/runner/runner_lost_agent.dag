@@ -84,6 +84,15 @@ type LostAgentObservation
 // observed in_progress exceeds the job's own timeout — the bound is EXCLUSIVE, equal-to-timeout is not
 // yet over it, because a job at exactly its timeout may still bind an agent in its final instant. A
 // single unreadable field drops to the refusal arm rather than being silently treated as null.
+//
+// FRONTIER (DESIGN section 3c, declared not dangling). This is the lost-agent detector (brief item 4): its
+// CONSUMER is the wet observe/reconcile arm, which reads each running job's state over the typed REST route
+// (the same admitted token source the roster read uses), calls this on every in_progress job, and folds the
+// resulting LostAgentObservation into the slot verdict as the restart leg's `lost` corroboration argument
+// (runner_lifecycle_restart_leg above). Its TRIGGER is the same runner-liveness-reconcile pass, which stays
+// DISABLED here. Its WITNESS (runner_lost_agent_witness) supplies the job at the boundary and discriminates
+// the three symptoms and the exclusive timeout bound. DISSOLVES when the reconcile timer is re-enabled and the
+// wet observe arm calls it in production.
 fn classify_lost_agent(job: LostAgentJob) -> LostAgentObservation {
   match job.status {
     JobStatusUnread { reason: r } => LostAgentReadRefused { job_id: job.job_id, reason: r }

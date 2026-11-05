@@ -612,6 +612,15 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
 // caller (runner_lifecycle_realize) supplies it only for a verdict that says detached/orphaned/lost;
 // this effect never re-reads a token and never runs blind: it reads the unit, refuses on an unreadable
 // or uninstalled or masked load, restarts once, and re-reads to a process cycle.
+//
+// FRONTIER (DESIGN section 3c, declared not dangling). This is the modeled restart actuation the restart leg
+// performs on a permitted verdict. Its CONSUMER is the wet realize arm that calls runner_lifecycle_restart_leg
+// above — on RestartLegPermit it invokes this with the observed main as `before`, and on the SlotActuationOutcome
+// records the readback; it is refused before it can be reached on any Unknown/Unresolved/Unreadable verdict,
+// because runner_lifecycle_restart_leg never returns Permit for those. Its TRIGGER is the same DISABLED
+// runner-liveness-reconcile timer; nothing here runs live in this PR. Its WITNESS (runner_slot_restart_witness)
+// supplies the target, context, unit and `before` at the boundary and discriminates the refuse arms and the
+// changed-MainPID readback. DISSOLVES when the reconcile timer is re-enabled and the wet arm drives it.
 fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, before: RunnerUnitMainProcess) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
