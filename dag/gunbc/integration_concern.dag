@@ -364,7 +364,15 @@ data presentation_witness_effect_join_callees: IntegrationConcern = IntegrationC
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.roadmap.roadmap_workflow_stage", decl_name: "workflow_segment_state_key"),
     requirement: "a test claim that compiles or renders through workflow_segment_state_key and try_serialize_html_source has those calls' effects joined, so the entry test.claim.roadmap.roadmap_presentation_witness compiles at emit without an effect-summary refusal",
-    standing: RequirementUnestablished { decided_by: "reproduced on origin/main (a git archive of main compiled with the same binary produced the identical four diagnostics) and at the #15856 head, where the only difference is line offsets by the three retired_blockers fields that change set adds to the witness file; neither callee's name appears anywhere in that change set" },
+    // The gap is established, not open: the origin/main baseline compile (cited artifact) settled
+    // attribution with the identical four diagnostics. What remains open is the FIX, and that
+    // reading lives in `question` below.
+    standing: RequirementEstablished {
+      by: CitesArtifact {
+        label: "origin/main baseline compile of the same entry (git archive of main, same gunbc binary): the identical 4 hard effect-summary diagnostics",
+        sha256: Sha256Digest { hex: "d97d6959031570dc2400e76946b59fe024be6488580dc8c776274bcd42a8d6af" as Sha256DigestHex },
+      },
+    },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "gunbc.roadmap.roadmap_workflow_stage", decl_name: "workflow_segment_state_key"),
