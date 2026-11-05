@@ -53,7 +53,7 @@ data launch_obligation_run_bound: Second = second(count: 2700)
 // THE VERIFICATION BOUND IS DERIVED FROM THE ENTRIES IT VERIFIES (DESIGN 6b: the 2700s row it replaces was
 // one number for a cost that scales with the entry count). One claim_batch per entry pays one full entry
 // compile, so the obligation costs the sum of its entries' compile times. Each entry's figure is a
-// RECORDED OBSERVATION; an entry with no sample refuses typed rather than defaulting (DESIGN 5).
+// RECORDED OBSERVATION; an entry with no sample runs under a typed provisional bet (VerifyRunProvisional, below); with no sample at all it refuses typed (DESIGN 4d, 5).
 type EntryCompileSample {
   entry: String
   seconds: Second
@@ -85,10 +85,10 @@ data verify_run_slack: Second = second(count: 900)
 // entries still verifies, the bet is carried to the attempt's receipt line, and it is countable there.
 // DISSOLUTION TRIGGER: the measured compile time of an unsampled entry's first run is recorded as its sample
 // (verify_entry_compile_samples is a hand-authored data row today, so the write-back is not modeled; owed
-// follow-up). With no recorded sample at all there is nothing to borrow, so the entry refuses typed.
+// follow-up, tracked at gunbc.recurring_failure_mode a_provisional_verify_bound_is_a_bet_until_its_sample_is_recorded). With no recorded sample at all there is nothing to borrow, so the entry refuses typed.
 type VerifyRunBound
   = VerifyRunBounded { bound: Second, entries: Int }
-  | VerifyRunProvisional { bound: Second, entries: Int, unsampled: List<String>, borrowed_entry: String, borrowed_seconds: Int }
+  | VerifyRunProvisional { bound: Second, entries: Int, unsampled: List<String>, borrowed_entry: String, borrowed_seconds: Second }
   | VerifyRunOverCeiling { entries: Int, ceiling: Int }
   | VerifyRunUnsampled { entry: String }
 
@@ -132,7 +132,7 @@ fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>
         let bound = second(count: total + total * headroom_percent / 100 + second_count(s: slack))
         match missing {
           Empty {} => VerifyRunBounded { bound: bound, entries: length(entries) }
-          Cons { head: _, tail: _ } => VerifyRunProvisional { bound: bound, entries: length(entries), unsampled: missing, borrowed_entry: slowest.entry, borrowed_seconds: nat_to_int(n: borrowed) }
+          Cons { head: _, tail: _ } => VerifyRunProvisional { bound: bound, entries: length(entries), unsampled: missing, borrowed_entry: slowest.entry, borrowed_seconds: second(count: borrowed) }
         }
       }
     }
@@ -143,7 +143,7 @@ fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>
 fn verify_run_bound_note(bound: VerifyRunBound) -> String {
   match bound {
     VerifyRunProvisional { bound: _, entries: _, unsampled, borrowed_entry, borrowed_seconds } =>
-      join(["ProvisionalUnsampled: ", to_string(value: length(unsampled)), " entries ran under a bound borrowed from the sample of ", borrowed_entry, " (", to_string(value: borrowed_seconds), " s each): ", join(unsampled, ", ")], "")
+      join(["ProvisionalUnsampled: ", to_string(value: length(unsampled)), " entries ran under a bound borrowed from the sample of ", borrowed_entry, " (", to_string(value: nat_to_int(n: second_count(s: borrowed_seconds))), " s each): ", join(unsampled, ", ")], "")
     _ => ""
   }
 }
