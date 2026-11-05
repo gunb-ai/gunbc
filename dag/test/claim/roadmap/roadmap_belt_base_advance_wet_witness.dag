@@ -12,6 +12,7 @@ module test.claim.roadmap.roadmap_belt_base_advance_wet_witness
 // against whatever git resolves instead.
 
 import std.logic { Bool }
+import std.algebra { trim }
 import std.types { String, FilePath, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
