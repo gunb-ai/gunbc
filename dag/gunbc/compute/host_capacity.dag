@@ -710,7 +710,12 @@ fn seat_charge_scan_step(state: SeatChargeScan, wrapped: ChainEnvelope<PoolEvent
       } else { state }
     PoolSettled { reference: r, actual: _ } =>
       if (r as String) == (reference as String) { SeatChargeScan { acquired_at: state.acquired_at, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: "settled" } } } else { state }
-    // A lapse clears every hold in the partition, so this reference's acquisition is gone with it.
+    // A lapse clears every hold in the partition, so from the lapse forward the partition holds no
+    // acquisition for this reference at all, and the scan restarts empty. That is what
+    // SeatChargeNeverAcquired says — "the partition holds no acquisition for it" — and it is the true
+    // statement about the history AFTER the lapse, not a claim that none was ever written. The settle
+    // decision treats that answer exactly as it treats a still-held or unproven one (the ordinary
+    // trigger, never a retirement), so a lapsed charge is never retired on the strength of the lapse.
     PoolLapsed => SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }
     PoolUpstreamObserved { remaining: _, term_seconds: _ } => state
     PoolResetObserved { reset_at: _ } => state
@@ -731,6 +736,16 @@ fn compute_seat_charge_returned(store: FabricStorageBinding, partition: Partitio
         ChainBudgetExhausted { at: a } =>
           SeatChargeUnproven { detail: join(["the partition chain exceeded the read budget at ", a as String, "; the history was not read to its end"], "") }
         ChainWalked { oldest_first: xs } =>
+          // THE GENERATION THE RETURN SITS AT IS PART OF THE PROOF, not decoration: it is the number the
+          // settlement detail quotes when it says a charge was already returned. So it is read before the
+          // fold is consulted, and a walked chain that cannot name its generation refuses instead of
+          // handing back a number that looks like one (DESIGN 5: a path that cannot answer gives a typed,
+          // located diagnostic). chain_generation reports Present for every ChainWalked, so the refusal
+          // arm is a door that does not open today; it is written because a fabricated default is the kind
+          // of thing that quietly becomes true the day someone widens the walk.
+          match chain_generation(walk: walk) {
+            Absent => SeatChargeUnproven { detail: "the walked chain reported no generation; a charge whose ledger generation cannot be read is not something this reading will call returned" }
+            Present { value: generation } =>
           match fold(xs, init: SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }, f: fn(acc, wrapped) { seat_charge_scan_step(state: acc, wrapped: wrapped, reference: reference) }) {
             SeatChargeScan { acquired_at: Absent, returned_at: _, release_reason: _ } => SeatChargeNeverAcquired { reference: reference }
             SeatChargeScan { acquired_at: Present { value: at }, returned_at: Absent, release_reason: _ } => SeatChargeStillHeld { reference: reference, acquired_at: at }
@@ -739,9 +754,14 @@ fn compute_seat_charge_returned(store: FabricStorageBinding, partition: Partitio
                 reference: reference,
                 acquired_at: at,
                 returned_at: back,
+                // Every step that can set a return also names it: gunbc.product.capacity.pool_events PoolReleased
+                // carries reason: NonEmptyStr, and seat_charge_scan_step writes "settled" for PoolSettled. So the
+                // Absent arm cannot be reached from a real history; it stands only because the coproduct demands
+                // it, and it is named here rather than left to read as a fallback that fires.
                 release_reason: match why { Present { value: w } => w as NonEmptyStr  Absent => "not named" as NonEmptyStr },
-                generation: match chain_generation(walk: walk) { Present { value: g } => g  Absent => 0 },
+                generation: generation,
               }
+          }
           }
       }
   }
