@@ -528,18 +528,25 @@ fn executor_privileged_principal_is_root_group(name: NonEmptyStr) -> Bool {
 // principal that is not root: the OWNER class with a non-root owner, the GROUP class with a non-root group,
 // or the OTHER class at all (world-write is never exempt -- its principal is everyone). Testing only the
 // group class -- this predicate's earlier shape -- is narrower than the ruling it enforces: a parent the
-// grantee OWNS with owner-write, or one that is world-writable, is the same symlink-swap hazard, and DESIGN 5
-// forbids a check that is satisfiable by re-declaring the parent's mode (group-write -> user-write) while the
-// hazard stays. A target whose mode cannot be resolved is NOT counted here -- it is refused on its own cause
-// by executor_privileged_owned_directory_plan, and that refusal withholds the whole artifact
-// (runner_host_sudoers_body_guard), so the tree is never granted.
+// grantee OWNS with owner-write, or one writable another way, is the same hazard, and DESIGN 5 forbids a
+// check satisfiable by re-declaring the parent's mode (group-write -> user-write) while the hazard stays.
+//
+// AN UNRESOLVABLE MODE FAILS CLOSED (refused is treated as WRITABLE, not safe). gunbc.managed_directory
+// managed_directory_admit refuses to derive a mode for a directory that declares a writer who is neither its
+// owner nor in its group (a stranger wanting Write is exactly the other-write hazard), so owned_directory_mode
+// returns OwnedDirectoryModeRefused. We cannot then PROVE that no non-root principal can create an entry in it,
+// so we must NOT treat it as safe -- the install beneath it is refused. Returning false here (the earlier
+// shape) failed OPEN: it granted a privileged install under a parent of unknown writability. Note that on
+// today's model an ADMITTED ManagedDirectory can never carry other.write (admit forbids a Write-needing
+// OtherClass writer) and no DeclaredDirectoryMode sets it, so the other.write clause above is forward-looking;
+// the real other-write hazard reaches us precisely as this unresolvable-mode case.
 fn owned_directory_caller_can_write(t: OwnedDirectoryTarget) -> Bool {
   match owned_directory_mode(t: t) {
     OwnedDirectoryModeResolved { mode } =>
       (mode.owner.write && !executor_privileged_principal_is_root_user(owned_directory_owner(t: t).user))
         || (mode.group.write && !executor_privileged_principal_is_root_group(owned_directory_owner(t: t).group))
         || (mode.other.write)
-    OwnedDirectoryModeRefused { reason: _ } => false
+    OwnedDirectoryModeRefused { reason: _ } => true
   }
 }
 
@@ -548,16 +555,18 @@ fn owned_directory_caller_can_write(t: OwnedDirectoryTarget) -> Bool {
 // parent components are created by the privileged invoker, root (gunbc.host_state_root
 // host_state_tree_root's comment; extdeps.tools.gnu_coreutils coreutils_install_directory_owned_arguments).
 // But when the model ALSO declares the parent as one of these same install targets, and a NON-ROOT principal
-// can WRITE that parent (owner-write, group-write, or world-write -- owned_directory_caller_can_write), the
-// de-privileged grantee can create an entry (a symlink) in the parent, and root's install -d of the child
-// under it FOLLOWS that symlink and chowns its target: a symlink-swap ownership escalation. So a target is
-// refused when its immediate parent is ANOTHER declared target that a non-root principal can write. The fix is
-// the parent ruling host_state_tree_root already states for /var/lib/gunbc itself: a directory that hosts
-// privileged installs is root-owned and traverse-only, writable by no principal other than root. This is the
-// SHAPE check -- it fires on the layout, independent of any one host -- so the projection stops granting an
-// install -d whose parent the caller can write (the finding's /var/lib/gunbc/printer-starts and every member
-// under it), and admits the corrected layout where the parent is root:root 0755
-// (gunbc.fleet.printer_workflow_artifact printer_state_parent_directory).
+// can WRITE that parent (owner-write, group-write, or an unresolvable mode -- owned_directory_caller_can_write),
+// the de-privileged grantee can create an entry (a symlink) in the parent that root's install -d of the child
+// may then act on: if install follows the final named component, it would chown the symlink's TARGET -- a
+// symlink-swap ownership escalation. The model does NOT rely on confirming install's exact follow behaviour to
+// decide safety; it rules the shape out regardless, so the hazard needs no live confirmation to be refused.
+// So a target is refused when its immediate parent is ANOTHER declared target that a non-root principal can
+// write. The fix is the parent ruling host_state_tree_root already states for /var/lib/gunbc itself: a
+// directory that hosts privileged installs is root-owned and traverse-only, writable by no principal other
+// than root. This is the SHAPE check -- it fires on the layout, independent of any one host -- so the
+// projection stops granting an install -d whose parent the caller can write (the finding's
+// /var/lib/gunbc/printer-starts and every member under it), and admits the corrected layout where the parent is
+// root:root 0755 (gunbc.fleet.printer_workflow_artifact printer_state_parent_directory).
 fn executor_privileged_writable_parent_refusal(
   targets: List<OwnedDirectoryTarget>,
   t: OwnedDirectoryTarget,
@@ -574,8 +583,9 @@ fn executor_privileged_writable_parent_refusal(
       reason: join([
         "privileged install -d of ", owned_directory_path(t: t) as String, " is refused: its parent ",
         parent as String, " is a declared directory a non-root principal can write it, so that principal",
-        " could plant a symlink the privileged install would follow and chown -- the parent must be root-owned",
-        " and writable by no principal other than root (the host_state_tree_root parent ruling)",
+        " could plant a symlink that the privileged install could be made to act on (a risk, not a confirmed",
+        " install behaviour) -- the parent must be root-owned and writable by no principal other than root",
+        " (the host_state_tree_root parent ruling)",
       ], " ") as NonEmptyStr,
     }]
   }

@@ -545,11 +545,12 @@ fn owner_writable_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
   ]
 }
 
-// THE WORLD-WRITE SHAPE (review 91167): a world-writable parent, with no owner/group angle at all. A
-// ManagedDirectory whose sole writer falls in the OTHER class (uid/gid match neither owner nor group) resolves
-// other.write=true (gunbc.managed_directory managed_directory_permissions gives an OtherClass dependent needing
-// Write the o+w it asked for), so any account can write the parent.
-fn world_writable_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
+// THE UNRESOLVABLE-MODE SHAPE (review 91167 fail-open, and the model-native other-write hazard). A
+// ManagedDirectory that declares a writer who is neither its owner nor in its group (a stranger wanting Write)
+// is REFUSED a derived mode by managed_directory_admit, so owned_directory_mode returns OwnedDirectoryModeRefused.
+// The old predicate read that as "not writable" and ADMITTED the install beneath it -- fail-open. It must fail
+// closed: an unknown-writability parent cannot be proven safe, so the install under it is refused.
+fn unresolvable_mode_parent_and_member_targets() -> List<OwnedDirectoryTarget> {
   let parent = printer_starts_path(tree: host_state_tree()) as String
   [
     managed_at(path: parent, writers: [stranger_user()]),
@@ -586,9 +587,11 @@ test fn an_owner_writable_parent_of_a_privileged_install_is_refused() -> Bool {
     }
 }
 
-// THE RED (other class, review 91167). A world-writable parent is refused with no owner/group angle at all.
-test fn a_world_writable_parent_of_a_privileged_install_is_refused() -> Bool {
-  let refusals = executor_privileged_writable_parent_refusals(targets: world_writable_parent_and_member_targets())
+// THE FAIL-CLOSED RED (review 91167). A parent whose mode cannot be resolved is refused AS A PARENT, so the
+// install beneath it is refused. Under the earlier fail-open predicate this would have been 0 refusals (the
+// parent treated as unwritable) and the privileged install granted -- the exact defect.
+test fn a_parent_with_unresolvable_mode_fails_closed() -> Bool {
+  let refusals = executor_privileged_writable_parent_refusals(targets: unresolvable_mode_parent_and_member_targets())
   length(xs: refusals) == 1
     && match refusals.first() {
       Absent => false
