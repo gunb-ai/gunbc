@@ -1,7 +1,7 @@
 module gunbc.runner.runner_slot_desired
 
 import std.types { Int, String, List }
-import std.measure { ByteSize, byte_size, HardwareThreadCount }
+import std.measure { ByteSize, byte_size, HardwareThreadCount, EventsPerMinute, events_per_minute, Millisecond, millisecond, BasisPoint, basis_point }
 
 // THE PER-SLOT ROW, APART FROM THE FLEET ALLOCATION THAT CONSUMES IT. What one runner slot is
 // granted is a leaf fact; gunbc.runner.runner_slot_allocation derives widths, walls and floor-outcome
@@ -236,3 +236,33 @@ type SlotJobCgroupOwnership
 data gunbc_runner_slot_job_cgroup_ownership: SlotJobCgroupOwnership = JobOwnsNoBoundedCgroup {
   why: "a fleet job runs as the setpriv'd job user under a root unit (gunbc.runner.runner_host_deploy unit_user and job_user) and memory_governor apply_memory_cgroup_bind creates its leaf at the cgroup root, so no process of a job can create or join a bounded cgroup; the first required run that asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused)"
 }
+
+// ── THE SLOT PROGRESS WATCHDOG'S THRESHOLDS (PR B of the 2026-11-04 ruling) ─────────────────────
+//
+// Read by gunbc.host.memory_stall_refusal supervised_subject_verdict, the ONE verdict. They are rows
+// of the slot because they are what the slot's envelope means by "alive": the slot says what is
+// admitted, the verdict says what is live under it. All three are KEYED ON RATES OVER A WINDOW, never
+// on memory.current or memory.peak (good runs reach 24.8-25.2 GiB including reclaimable cache).
+//
+// STANDING: the three numbers are POLICY WITH ONE SPECIMEN, and the specimen is incomplete. The only
+// measured stall is srv1 drift-peak-e1f753b9 (2026-11-04/05, a 28 GiB user unit, memory.high=max, swap
+// 0): memory.events max 18744469 over 9459 s, about 1982/s averaged, with the file holding ONE
+// cumulative reading and no series; anon 27.9 GiB, file 128 KiB, oom 0 for ~2.6 h. The lines are set
+// two orders of magnitude from both ends of what is known (a livelock refuses at ~100/s of max events
+// with near-zero user CPU; a healthy cache-cycling run is separated by its CPU, not its events), and
+// the srv1 fixtures (livelock dies; CPU-heavy steady lives; short burst lives) either ground or move
+// them -- the receipts are filed beside these rows.
+//
+// The events line counts memory.events high + max together: with memory.high == memory.max only `max`
+// climbs, with a throttle line below it only `high` does, and the watchdog must not depend on which
+// shape a drifted slot carries.
+data gunbc_runner_slot_watchdog_envelope_event_rate_line: EventsPerMinute = events_per_minute(count: 6000)
+
+// The progress floor: user CPU (cpu.stat user_usec growth) below this share of the window's wall, in
+// basis points of ONE core (500 = 5%), counts as no progress. A livelocked process retires almost no
+// user instructions; a CPU-heavy steady job is far above any small fraction of a core.
+data gunbc_runner_slot_watchdog_user_cpu_share_floor: BasisPoint = basis_point(count: 500)
+
+// The whole window the two conditions must hold over. Short enough that a livelock dies in minutes,
+// long enough that a startup or allocation burst (seconds) cannot fill it.
+data gunbc_runner_slot_watchdog_window_minimum_wall: Millisecond = millisecond(count: 120000)

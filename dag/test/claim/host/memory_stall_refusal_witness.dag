@@ -379,3 +379,39 @@ test fn an_absent_pressure_file_is_unmeasurable_and_a_reset_counter_is_zero() ->
     && string_contains(s: text, pattern: "major_faults_in_window=0")
     && string_contains(s: text, pattern: "user_cpu_ms_in_window=0")
 }
+
+// ── THE RECLAIM-LIVELOCK ARM (slot progress watchdog, 2026-11-04 ruling) ────────────────────────
+// The three srv1 fixtures' VERDICT halves, over the same ONE verdict function: a livelock refuses; a
+// CPU-heavy steady job admits (events high, CPU high); a short allocation burst admits (window below
+// the watchdog minimum). The srv1 receipts carry the EXECUTED halves; these pin the decision.
+fn livelock_window(wall_ms: Int, events: Int, user_cpu_ms: Int) -> SupervisedSubjectWindow {
+  SupervisedSubjectWindow {
+    since_progress: MemoryStallObservation {
+      window_wall: millisecond(count: wall_ms),
+      major_faults_in_window: 0,
+      self_user_cpu_in_window: millisecond(count: user_cpu_ms),
+      cache_evictions_in_window: 0,
+      cache_readmissions_in_window: 0,
+    },
+    pressure: PsiStallUnmeasurable { cause: "memory.pressure is absent" },
+    envelope_events_in_window: events,
+  }
+}
+
+test fn RED_a_slot_pinned_at_its_envelope_with_no_user_cpu_refuses_as_a_livelock() -> Bool {
+  let v = supervised_subject_verdict(w: livelock_window(wall_ms: 120000, events: 20000, user_cpu_ms: 1000))
+  supervised_subject_verdict_refuses(v: v)
+    && string_contains(s: supervised_subject_refusal_text(v: v), pattern: "MemoryStallRefusedReclaimLivelock")
+}
+
+test fn a_cpu_heavy_steady_job_at_the_same_event_rate_lives() -> Bool {
+  !supervised_subject_verdict_refuses(v: supervised_subject_verdict(w: livelock_window(wall_ms: 120000, events: 20000, user_cpu_ms: 100000)))
+}
+
+test fn a_short_allocation_burst_below_the_window_minimum_lives() -> Bool {
+  !supervised_subject_verdict_refuses(v: supervised_subject_verdict(w: livelock_window(wall_ms: 20000, events: 50000, user_cpu_ms: 0)))
+}
+
+test fn few_envelope_events_with_idle_cpu_is_a_sleeping_job_not_a_livelock() -> Bool {
+  !supervised_subject_verdict_refuses(v: supervised_subject_verdict(w: livelock_window(wall_ms: 120000, events: 3, user_cpu_ms: 0)))
+}

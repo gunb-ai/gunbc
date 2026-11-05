@@ -235,7 +235,7 @@ type CgroupMemoryStatReading
   = CgroupMemoryStatRead { stat: CgroupMemoryStat }
   | CgroupMemoryStatIncomplete { missing: List<String> }
 
-fn cgroup_memory_stat_value(body: String, key: String) -> Nat? {
+fn cgroup_flat_keyed_value(body: String, key: String) -> Nat? {
   list_at_optional(xs: flat_map(split(s: body, delimiter: "\n"), line => {
     let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
     match list_at_optional(xs: words, index: 0) {
@@ -256,16 +256,16 @@ fn cgroup_memory_stat_value(body: String, key: String) -> Nat? {
 
 fn parse_cgroup_memory_stat(body: String) -> CgroupMemoryStatReading {
   let keys = ["anon", "file", "file_mapped", "workingset_refault_file", "pgmajfault"]
-  let missing = filter(keys, k => match cgroup_memory_stat_value(body: body, key: k) { Present { value: _ } => false  Absent => true })
-  match cgroup_memory_stat_value(body: body, key: "anon") {
+  let missing = filter(keys, k => match cgroup_flat_keyed_value(body: body, key: k) { Present { value: _ } => false  Absent => true })
+  match cgroup_flat_keyed_value(body: body, key: "anon") {
     Absent => CgroupMemoryStatIncomplete { missing: missing }
-    Present { value: anon } => match cgroup_memory_stat_value(body: body, key: "file") {
+    Present { value: anon } => match cgroup_flat_keyed_value(body: body, key: "file") {
       Absent => CgroupMemoryStatIncomplete { missing: missing }
-      Present { value: file } => match cgroup_memory_stat_value(body: body, key: "file_mapped") {
+      Present { value: file } => match cgroup_flat_keyed_value(body: body, key: "file_mapped") {
         Absent => CgroupMemoryStatIncomplete { missing: missing }
-        Present { value: mapped } => match cgroup_memory_stat_value(body: body, key: "workingset_refault_file") {
+        Present { value: mapped } => match cgroup_flat_keyed_value(body: body, key: "workingset_refault_file") {
           Absent => CgroupMemoryStatIncomplete { missing: missing }
-          Present { value: refault } => match cgroup_memory_stat_value(body: body, key: "pgmajfault") {
+          Present { value: refault } => match cgroup_flat_keyed_value(body: body, key: "pgmajfault") {
             Absent => CgroupMemoryStatIncomplete { missing: missing }
             Present { value: majfault } => CgroupMemoryStatRead { stat: CgroupMemoryStat {
               anon: byte_size(count: anon),
@@ -295,10 +295,19 @@ fn parse_cgroup_memory_stat(body: String) -> CgroupMemoryStatReading {
 // question above, not a field of the record, and it is the question that decides whether an oom_kill
 // is this level's or a descendant's.
 //
-// NO READER OF AN EVENTS BODY EXISTS IN THE CORPUS YET, and this record does not pretend otherwise:
-// it carries no parse and no refusal shape, because a typed refusal with nothing producing it reads as
-// a modeled parse that was never built. The record exists because the endpoint observation already
-// declares the field; a parse joins the authority when a consumer actually reads a body.
+// THE READER IS THE SAME FLAT-KEY READER memory.stat USES (cgroup_flat_keyed_value): the kernel
+// documents both files as flat "key value" lines, so one reader serves both and a second line
+// scanner here would be a nickname for it (DESIGN 3). Its consumer is the slot progress watchdog
+// (gunbc.host.memory_stall_refusal supervised_subject_verdict), which differences two readings of
+// `high` and `max` into an events RATE.
+//
+// WHICH KEY CLIMBS DEPENDS ON THE SLOT SHAPE, and the corpus has been wrong about it once. cgroup-v2:
+// `high` counts times the cgroup was throttled and put under reclaim because usage went over
+// memory.high; `max` counts times usage was about to go over memory.max and reclaim was invoked. With
+// memory.high == memory.max (the 2026-11-04 slot shape) no usage can exceed high, so `high` stays 0
+// and `max` is the key that climbs; the srv1 drift-peak receipt read `high 0 max 18744469 oom 0
+// oom_kill 0` on a cgroup with memory.high=max. Neither key alone is "the" envelope counter, so the
+// watchdog sums both rather than choosing one.
 type CgroupMemoryEventCounters {
   low: Nat
   high: Nat
@@ -324,3 +333,32 @@ type CgroupMemoryEventCounters {
 // 3c treats a declaration nothing consumes as the red it is. That is the reason this module carries
 // the gap note instead of the keys.
 
+
+type CgroupMemoryEventsReading
+  = CgroupMemoryEventsRead { counters: CgroupMemoryEventCounters }
+  | CgroupMemoryEventsIncomplete { missing: List<String> }
+
+// All five keys or a typed Incomplete naming the missing ones; a body that lacks `max` is a malformed
+// read, never a zero count -- a zero would read "no envelope events" as a fact.
+fn parse_cgroup_memory_events(body: String) -> CgroupMemoryEventsReading {
+  let keys = ["low", "high", "max", "oom", "oom_kill"]
+  let missing = filter(keys, k => match cgroup_flat_keyed_value(body: body, key: k) { Present { value: _ } => false  Absent => true })
+  match cgroup_flat_keyed_value(body: body, key: "low") {
+    Absent => CgroupMemoryEventsIncomplete { missing: missing }
+    Present { value: low } => match cgroup_flat_keyed_value(body: body, key: "high") {
+      Absent => CgroupMemoryEventsIncomplete { missing: missing }
+      Present { value: high } => match cgroup_flat_keyed_value(body: body, key: "max") {
+        Absent => CgroupMemoryEventsIncomplete { missing: missing }
+        Present { value: max } => match cgroup_flat_keyed_value(body: body, key: "oom") {
+          Absent => CgroupMemoryEventsIncomplete { missing: missing }
+          Present { value: oom } => match cgroup_flat_keyed_value(body: body, key: "oom_kill") {
+            Absent => CgroupMemoryEventsIncomplete { missing: missing }
+            Present { value: oom_kill } => CgroupMemoryEventsRead { counters: CgroupMemoryEventCounters {
+              low: low, high: high, max: max, oom: oom, oom_kill: oom_kill,
+            } }
+          }
+        }
+      }
+    }
+  }
+}
