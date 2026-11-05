@@ -65,7 +65,7 @@ type CombinerArrowCitation {
 fn cost_linear_in_node(cost: SymbolicCost, n: Node) -> Bool {
   match cost {
     ConstantCost { value: _ } => false
-    LinearCost { variable: sv } => node_same_occurrence(a: sv.source, b: n)
+    LinearCost { variable: sv } => node_same_occurrence(a: sv.source.node, b: n)
     LogCost { variable: _ } => false
     PolynomialCost { variable: _, degree: _ } => false
     PolyLogCost { variable: _, exponent: _ } => false

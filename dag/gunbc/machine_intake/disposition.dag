@@ -1,6 +1,7 @@
 module gunbc.machine_intake.disposition
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.content_hash { ContentHash, content_hash_equal }
 import gunbc.machine_intake.subject {
   QualificationSubject,
@@ -184,9 +185,9 @@ fn derive_fleet_admission(
         }
       },
     )
-    if list_length(items: folded.missing) == 0
-        && list_length(items: folded.refused) == 0
-        && list_length(items: folded.subject_mismatched) == 0 {
+    if length(xs: folded.missing) == 0
+        && length(xs: folded.refused) == 0
+        && length(xs: folded.subject_mismatched) == 0 {
       FleetAdmissible {
         receipt: FleetAdmissionReceipt {
           subject: observed_subject,
@@ -319,7 +320,7 @@ fn derive_disposition(
             Present { value: r } =>
               PartsHold { reason: QualificationUnestablished { phase: r.phase, owner: r.owner, cause: r.cause }, next_action: "resolve the refusal at its owner and re-run the phase" }
             Absent =>
-              if list_length(items: mismatched) > 0 {
+              if length(xs: mismatched) > 0 {
                 PartsHold { reason: QualificationSubjectStale { currency: currency }, next_action: "start a new intake attempt for the current subject" }
               } else if missing |> all(p => intake_phase_transaction(phase: p) == PlacementCommissioning) {
                 PartsHold { reason: PlacementQualificationPending, next_action: "run placement commissioning in the serving location" }

@@ -1302,7 +1302,7 @@ fn fleet_converge_fabric_cell_family(
           ownership_of: fabric_cell_member_ownership,
         )
       )
-      if list_length(items: planned.actions) == 0 {
+      if length(xs: planned.actions) == 0 {
         FabricCellFamilyConvergedNoActions
       } else {
         FabricCellFamilyPlanned { planned: planned }
@@ -1385,7 +1385,7 @@ fn fabric_cell_effect_plan_line(effect: FabricCellEffect) -> String {
     FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
       join([
         "REALIZE fabric-cell ensure-slice ", u as String,
-        " directives=", to_string(list_length(items: ds)),
+        " directives=", to_string(length(xs: ds)),
       ], "")
   }
 }
@@ -1418,13 +1418,13 @@ fn fleet_converge_fabric_cell_refusal_count(
   observed_fabric_cells: FabricCellObservationDecision,
 ) -> Int {
   match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
-    FabricCellFamilyObservationRefused { blocked: b } => list_length(items: b)
+    FabricCellFamilyObservationRefused { blocked: b } => length(xs: b)
     FabricCellFamilyNotApplicable => 0
     FabricCellFamilyConvergedNoActions => 0
     FabricCellFamilyPlanned { planned: p } =>
       match fabric_cell_realization(actions: p.actions) {
         CellPlanRealizable { effects: _ } => 0
-        CellPlanRefused { refusals: _ } => list_length(items: p.actions)
+        CellPlanRefused { refusals: _ } => length(xs: p.actions)
       }
     FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } => 1
   }

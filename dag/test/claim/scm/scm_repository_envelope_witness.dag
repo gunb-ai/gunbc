@@ -8,7 +8,8 @@ module test.claim.scm.scm_repository_envelope_witness
 // identity, re-derived from structure on load -- so the round-trip claims assert on the derived
 // commit id, not on bytes and not on a stored field, because there is no stored field to assert on.
 
-import std.types { Bool, Int, List, String, NonEmptyStr, list_length }
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.algebra { length }
 import std.minted_identity { MintedId, MintedIdAllocator }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -1922,7 +1923,7 @@ fn scm_env_object_json_at(members: List<JsonKeyValue>, index: Int) -> String {
 type ScmEnvIndexedJson { at: Int, found: String }
 
 fn scm_env_object_count(members: List<JsonKeyValue>) -> Int {
-  list_length(items: scm_env_objects_of(members: members))
+  length(xs: scm_env_objects_of(members: members))
 }
 
 fn scm_env_reversed_wire_of(store: ObjectStore) -> List<JsonKeyValue> {

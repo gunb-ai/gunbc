@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, FilePath, List }
 import gunbc.durable_handoff_host { host_request_directory_members, host_request_child_path }
 import std.error_primitives { Result, Ok, Err }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
-import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreRefused }
+import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, slot_store_absent_detail }
 import gunbc.auth.request_api_key_store { RequestApiKeyStore, request_api_key_store }
 
 import std.effect_grant { Read, Write, Execute }
@@ -29,7 +29,14 @@ fn revision_request_context(tree: HostStateTree) -> Result<RevisionRequestContex
     Err { value: why } => { return Err { value: why } }
     Ok { value: keys } => keys
   }
-  match listed_slot_store(member: revision_request_store_member as String, root: revision_request_store_path(tree: tree)) {
+  revision_request_context_admitted(keys: keys,
+    admission: listed_slot_store(member: revision_request_store_member as String, root: revision_request_store_path(tree: tree)))
+}
+
+// The request store's admission, supplied so a witness can hand each arm in hermetically.
+fn revision_request_context_admitted(keys: RequestApiKeyStore, admission: SlotStoreAdmission) -> Result<RevisionRequestContext, String> {
+  match admission {
+    SlotStoreAbsent { member: m, root: r } => Err { value: slot_store_absent_detail(member: m, root: r) }
     SlotStoreRefused { detail: why } => Err { value: why }
     SlotStoreListed { root: root } => Ok { value: RevisionRequestContext { keys: keys, request_root: root } }
   }

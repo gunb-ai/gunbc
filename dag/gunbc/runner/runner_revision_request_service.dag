@@ -11,7 +11,7 @@ import gunbc.durable_handoff_rest { host_request_rest, host_request_outcome_resp
 import gunbc.fabric.fabric_writer_admission { fabric_door_principal_from_api_key, fabric_door_writer_admission_over, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
 
 // Shared request policy has no compiler entry. Both native entries consume it,
-// so the fixture closure contains only its own NativeServeDriver declaration.
+// so the fixture closure contains only its own NativeIngressDriver declaration.
 fn revision_job_request_payload(text: String) -> Result<NonEmptyStr, String> {
   match decode_revision_job_spec(text: text) {
     RevisionJobSpecDecoded { spec: _ } => Ok { value: text as NonEmptyStr }

@@ -6,8 +6,8 @@ import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.uri { Uri, Https }
 import std.measure { ByteSize, Gibibyte, HardwareThreadCount, Second, gibibyte_to_byte_size, second, watt, watt_count }
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishAccountRole, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor, redfish_account_role_from_wire, redfish_account_role_wire }
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length, range }
-import std.algebra { list_head, skip }
+import std.types { Bool, Int, List, NonEmptyStr, String, range }
+import std.algebra { list_head, skip, length }
 import std.optional { Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.languages.json.parse {
@@ -227,7 +227,7 @@ fn redfish_extended_info_message_id(holder: JsonValue) -> RedfishExtendedInfoSca
             }
           }) {
             Present { value: found } => RedfishExtendedInfoNamesTheMessage { message_id: found }
-            Absent => RedfishExtendedInfoHoldsNothing { scanned: list_length(items: elements) }
+            Absent => RedfishExtendedInfoHoldsNothing { scanned: length(xs: elements) }
           }
         JsonNull => RedfishExtendedInfoHoldsNothing { scanned: 0 }
         JsonBool { value: _ } => RedfishExtendedInfoUnreadable { cause: "the annotation is a boolean, not the array the registry publishes" }
@@ -501,7 +501,7 @@ fn redfish_manager_account_collection_from_json(body: String) -> RedfishAccountC
 // account name, and inventing one would name an account the device never listed.
 fn redfish_manager_account_name_from_odata_id(id: String) -> String? {
   let segments = split(s: id, delimiter: "/")
-  let count = list_length(items: segments)
+  let count = length(xs: segments)
   if count == 0 {
     Absent
   } else {
@@ -565,7 +565,7 @@ fn redfish_manager_account_collection_body(member_odata_ids: List<String>) -> St
     json_kv(key: "Members", value: json_array(elements: map(member_odata_ids, id =>
       json_object(members: [json_kv(key: "@odata.id", value: json_string(s: id))])
     ))),
-    json_kv(key: "Members@odata.count", value: json_int(n: list_length(items: member_odata_ids))),
+    json_kv(key: "Members@odata.count", value: json_int(n: length(xs: member_odata_ids))),
   ]))
 }
 

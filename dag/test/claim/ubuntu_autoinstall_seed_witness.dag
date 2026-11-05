@@ -8,8 +8,8 @@ module test.claim.ubuntu_autoinstall_seed_witness
 // thing this cut can do is install onto the wrong disk of an 8-bay board) and the credential posture
 // (a headless box nobody can log into must be unrepresentable as valid).
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { Cons, Empty, list_append, trim }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { Cons, Empty, list_append, trim, length }
 import std.measure { byte_size }
 import std.optional { Optional, Absent, Present }
 import extdeps.debian.debconf {
@@ -959,7 +959,7 @@ test fn no_malformed_key_reaches_the_seed_through_the_builder() -> Bool {
   match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Absent => false
     Present { value: _ } =>
-      list_length(items: [key_not_base64_length, key_trailing_octets, key_declared_wrong_length, keys_rsa, keys_ecdsa]) == 5
+      length(xs: [key_not_base64_length, key_trailing_octets, key_declared_wrong_length, keys_rsa, keys_ecdsa]) == 5
         && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_not_base64_length, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
             Absent => true
             Present { value: _ } => false
@@ -1351,7 +1351,7 @@ test fn an_architecture_with_no_package_rows_refuses_at_the_door_and_the_gate() 
       match reason {
         PlatformUnsupported { architecture: _ } =>
           // WITH NO ROWS, NO SEED BUILDS: the same emptiness the door reads, read again where a seed would.
-          list_length(items: package_rows_for_architecture(architecture: Riscv64)) == 0
+          length(xs: package_rows_for_architecture(architecture: Riscv64)) == 0
         _ => false
       }
   }
@@ -1766,8 +1766,8 @@ test fn the_crypt_figures_are_cited_and_the_door_reads_them() -> Bool {
             && salt_min == char_count(1) && salt_max == char_count(16)
             && width == char_count(86)
             && cost_min == char_count(4) && cost_max == char_count(9)
-            && list_length(items: alphabet) == 64
-            && list_length(items: forbidden) == 4
+            && length(xs: alphabet) == 64
+            && length(xs: forbidden) == 4
           {
             False => false
             True =>
@@ -2798,7 +2798,7 @@ test fn the_two_unlock_kinds_are_distinguishable_in_the_render() -> Bool {
 }
 
 fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {
-  list_length(items: candidates) == expected
+  length(xs: candidates) == expected
 }
 
 // ---------------------------------------------------------------------------
@@ -3719,7 +3719,7 @@ test fn the_produced_seed_installs_the_altra_late_package_set() -> Bool {
   match built_seed_and_binding() {
     Absent => false
     Present { value: pair } =>
-      list_length(items: pair.seed.late_packages) >= 4
+      length(xs: pair.seed.late_packages) >= 4
         && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("nvme-cli"))
         && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("ipmitool"))
         && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("dmidecode"))
@@ -3837,7 +3837,7 @@ test fn a_salt_that_merely_contains_the_cost_marker_is_still_accepted() -> Bool 
 // all), and re-adding it, or adding anything else nobody has verified, fails here.
 test fn the_prompting_package_table_is_the_verified_set_exactly() -> Bool {
   let names = known_prompting_packages().map(row => known_prompting_package_name(package: row))
-  list_length(items: names) == 7
+  length(xs: names) == 7
     && names.any(row => row == ("console-setup" as NonEmptyStr))
     && names.any(row => row == ("keyboard-configuration" as NonEmptyStr))
     && names.any(row => row == ("tzdata" as NonEmptyStr))
@@ -3950,8 +3950,8 @@ test fn different_key_material_at_equal_count_moves_the_digest() -> Bool {
       ) {
         Absent => false
         Present { value: with_other } =>
-          list_length(items: with_first.entry.authorised_keys)
-            == list_length(items: with_other.entry.authorised_keys)
+          length(xs: with_first.entry.authorised_keys)
+            == length(xs: with_other.entry.authorised_keys)
             && !content_hash_eq_structural(
               left: ubuntu_autoinstall_seed_digest(seed: with_first),
               right: ubuntu_autoinstall_seed_digest(seed: with_other),
@@ -4069,8 +4069,8 @@ test fn the_authorised_key_line_counts_the_keys_it_was_given() -> Bool {
       ) {
         Absent => false
         Present { value: two } =>
-          list_length(items: one.entry.authorised_keys) == 1
-            && list_length(items: two.entry.authorised_keys) == 2
+          length(xs: one.entry.authorised_keys) == 1
+            && length(xs: two.entry.authorised_keys) == 2
             && render_ubuntu_autoinstall_seed(seed: one).contains("keys=")
             && render_ubuntu_autoinstall_seed(seed: one).contains("count=1")
             && render_ubuntu_autoinstall_seed(seed: two).contains("count=2")
@@ -4347,11 +4347,11 @@ test fn everything_the_shipping_library_accepted_is_accepted_here_too() -> Bool 
   // is in the mutation harness. The three per-arm counts partition the row set, so a row MOVED between arms —
   // the cheapest way to make one of these sweeps pass by accident — reddens this line.
   disagreements == 0
-    && list_length(items: crypt_library_verdicts()) == 24
+    && length(xs: crypt_library_verdicts()) == 24
     && accepted_row_count() == 7
     && stored_hash_gap_row_count() == 4
     && refused_row_count() == 13
-    && list_length(items: crypt_library_acceptance.observed_on) == 3
+    && length(xs: crypt_library_acceptance.observed_on) == 3
     && crypt_library_acceptance.observed_build.contains("4.4.36-4build1")
 }
 
@@ -5293,7 +5293,7 @@ fn flag_for_area_plus_answered_zone() -> List<DebconfSelectionRecord> {
 test fn a_seen_flag_closes_nothing_and_the_seed_is_refused_as_prompting() -> Bool {
   match flag_for_area_plus_answered_zone() {
     records =>
-      match list_length(items: records) {
+      match length(xs: records) {
         // BOTH RECORDS MINTED: the flag is legal, so a refusal to mint it here would silently turn this row into a
         // test of a two-record seed with one record missing.
         2 =>
@@ -5381,7 +5381,7 @@ test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_ref
   // refusal below: an audit that credited an owner-mismatched record would still refuse THIS seed (its own
   // owner is "tzdata extra", which never matches tzdata's question), so the refusal alone cannot tell a
   // well-formed refusal from an accepted-but-ignored record. The two claims together pin the whole path.
-  match list_length(items: debconf_answer(
+  match length(xs: debconf_answer(
     owner: "tzdata extra" as NonEmptyStr,
     kind: AnswerSelect,
     label: "tzdata/Areas" as NonEmptyStr,
@@ -5666,7 +5666,7 @@ fn refusals_from_both_doors(members: List<String>, missing: Int) -> Bool {
 }
 
 test fn perl_whitespace_class_is_six_members_and_both_doors_know_all_six() -> Bool {
-  match list_length(items: perl_whitespace_members) {
+  match length(xs: perl_whitespace_members) {
     // THE CLAIMED SIZE OF PERL's \s. If upstream's reader ever decodes Unicode whitespace, the row grows and this
     // number moves with it — but never silently, and never in one door only.
     6 => refusals_from_both_doors(members: perl_whitespace_members, missing: 0)
@@ -5704,7 +5704,7 @@ fn nothing_arm_refuses(members: List<String>) -> Bool {
 data perl_added_whitespace: List<String> = ["\u{c}", "\u{b}", "\r"]
 
 test fn the_three_perl_added_separators_are_refused_by_the_nothing_arm() -> Bool {
-  match list_length(items: perl_added_whitespace) {
+  match length(xs: perl_added_whitespace) {
     3 => nothing_arm_refuses(members: perl_added_whitespace)
     _ => false
   }
@@ -5716,7 +5716,7 @@ test fn the_three_perl_added_separators_are_refused_by_the_nothing_arm() -> Bool
 // different list than the one it enforces, and this is the row that forbids that. Compared by length AND by
 // containment of each member in both directions, so a member substituted for another (say 0x85 for 0x0b) reddens.
 test fn the_mint_separator_authority_is_the_six_ascii_class_it_proclaims() -> Bool {
-  match list_length(items: debconf_perl_whitespace) {
+  match length(xs: debconf_perl_whitespace) {
     6 =>
       fold(
         perl_whitespace_members,
@@ -5910,7 +5910,7 @@ test fn a_trailing_continuation_never_swallows_the_record_below_it() -> Bool {
           // THE TWO-RECORD BATCH: the swallowing record and a clean one below it. The swallowing record mints to
           // no records at all, so the joined file is the clean answer alone — the swallowing record has no line
           // with which to reach the record below it, and there is no trailing `\` anywhere in what is served.
-          match list_length(items: debconf_answer_for(
+          match length(xs: debconf_answer_for(
             package: TzdataPackage,
             kind: AnswerSelect,
             label: "tzdata/Areas" as NonEmptyStr,
