@@ -10070,22 +10070,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let resolved_base = base_expansion.resolved
       let resolved_base_diags = base_expansion.diagnostics
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
-      if scope.caller_decl_name == "generated_provider_unavailable_diagnostics" {
-        InferResult {
-          typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: "PROBE3", span: span),
-          emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(
-            message: concat("PROBE3 field=", field_name,
-              " base_var=", match base_expr.expr_data { ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base_expr, source_indices: scope.type_env.source_indices)  _ => "non-var" },
-              " base_typed.inferred=", probe3_inferred_kind(i: base_typed.inferred, source_indices: scope.type_env.source_indices),
-              " base_rt=", probe3_node_shape(n: base_rt, source_indices: scope.type_env.source_indices),
-              " deferred=", match is_deferred_field_access_base(n: base_rt, env: scope.type_env) { true => "yes" false => "no" },
-              " expansion=", probe3_node_shape(n: resolved_base, source_indices: scope.type_env.source_indices),
-              " expansion_diags=", to_string(resolved_base_diags |> count)),
-            span: span,
-            module_name: scope.module_name
-          )])
-        }
-      } else
       if resolved_base_is_error {
         InferResult {
           typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: "error type cascade", span: span),
@@ -10905,7 +10889,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope)))])
+        emissions: infer_emissions_concat_all(chunks: [probe3_call_site_emissions(method_name: method_name, recv_typed: recv_typed, recv_rt: recv_rt, recv_elem_type: recv_elem_type, scope: scope, span: span), recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope)))])
       }
       }
 
@@ -12147,6 +12131,29 @@ fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: St
   } else {
     expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, seen: seen)
   }
+}
+
+fn probe3_call_site_emissions(method_name: String, recv_typed: Node, recv_rt: Node, recv_elem_type: Node, scope: InferScope, span: SourceSpan) -> InferEmissions {
+  if scope.caller_decl_name == "generated_provider_unavailable_diagnostics" && method_name == "flat_map" {
+    let si = scope.type_env.source_indices
+    let child0 = match recv_rt.children |> first {
+      Present { value: c } => probe3_node_shape(n: c, source_indices: si)
+      Absent => "nochild"
+    }
+    let same_as_child0 = match recv_rt.children |> first {
+      Present { value: c } => if rc_ptr_eq(c, recv_elem_type) { "yes" } else { "no" }
+      Absent => "n/a"
+    }
+    infer_emissions_of_diagnostics(diagnostics: [inference_error(
+      message: concat("PROBE5 flat_map recv_typed.inferred=", probe3_inferred_kind(i: recv_typed.inferred, source_indices: si),
+        " recv_rt=", probe3_node_shape(n: recv_rt, source_indices: si),
+        " recv_rt.child0=", child0,
+        " recv_elem_type=", probe3_node_shape(n: recv_elem_type, source_indices: si),
+        " recv_elem_same_as_child0=", same_as_child0),
+      span: span,
+      module_name: scope.module_name
+    )])
+  } else { infer_emissions_empty() }
 }
 
 fn probe3_inferred_kind(i: InferredNode?, source_indices: Map<String, NewlineIndex>) -> String {
