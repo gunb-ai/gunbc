@@ -735,9 +735,13 @@ fn mint_publication_helper_installation_token() -> PublisherTokenMint uses net: 
   )
 }
 
-fn mint_publisher_installation_token(wif_access_token: Secret, key_path: NonEmptyStr, repository_name: String) -> PublisherTokenMint uses net: Network {
+// `cloud_access_token` is the credential heal_publisher_cloud_credential minted moments ago, NOT a step
+// environment token: the parameter used to be named wif_access_token because the workflow's federation
+// step handed one down, and that name became false the moment the exchange moved into the seed. The token
+// authorizes exactly one read, the App private key, and is dropped as soon as the JWT is signed.
+fn mint_publisher_installation_token(cloud_access_token: Secret, key_path: NonEmptyStr, repository_name: String) -> PublisherTokenMint uses net: Network {
   match gcp.SecretManager.AccessVersion(
-    access_token: wif_access_token,
+    access_token: cloud_access_token,
     project_id: gunbai_bot_app_pem_secret.project,
     secret: gunbai_bot_app_pem_secret.secret,
     version: gunbai_bot_app_pem_secret.version,

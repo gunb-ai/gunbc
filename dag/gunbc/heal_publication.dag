@@ -7,6 +7,16 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import std.bytes { utf8_encode_bytes }
 import std.optional { Present, Absent }
+import std.resources { Network }
+import extdeps.cloud.gcp.sts
+import extdeps.cloud.gcp.iam
+import extdeps.github.actions { github_actions_runtime }
+import gunbc.auth.heal_publisher_federation {
+  heal_publisher_assertion_audience,
+  heal_publisher_exchange_audience,
+  heal_publisher_service_account,
+  heal_publisher_cloud_token_lifetime,
+}
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.git
@@ -588,9 +598,63 @@ fn post_receipt_wet(subject: HealPublicationSubject, pull_number: Int, text: Str
 }
 
 data github_token_env_name: NonEmptyStr = "GITHUB_TOKEN"
-data heal_publisher_wif_access_token_env_name: NonEmptyStr = "WIF_ACCESS_TOKEN"
 data runner_temp_env_name: NonEmptyStr = "RUNNER_TEMP"
 data heal_publisher_app_key_file_name: String = "heal-publisher-app-key"
+
+type PublisherCloudCredential
+  = PublisherCloudCredentialMinted { cloud: Secret }
+  | PublisherCloudCredentialNotMinted { cause: String }
+
+// THE CLOUD CREDENTIAL, ACQUIRED AT THE POINT OF USE AND NOWHERE EARLIER. Three calls, each the one the
+// pinned google-github-actions/auth client performs for the same identity: the runner's OIDC sidecar for
+// an assertion, Cloud STS to exchange it for a federated token, and iamcredentials to impersonate the
+// publisher service account for exactly heal_publisher_cloud_token_lifetime. What makes this a fix rather
+// than a relocation is the ORDER: a token's age starts at its own mint, and the mint now sits one call
+// above the Secret Manager read that spends it. The specimen that motivated this (run 41951465805) minted
+// at 02:07:18Z inside a workflow step and first used the credential at 02:14:54.435Z, 456 s against a
+// 300 s lifetime, because 273.6 s of interpreter front-end and 71 s of git fetch sat in between. Nothing
+// that can fail before the mint may be moved below it, and nothing here may write the token: it lives in
+// this process's memory only, never in the environment (the step env entry this replaces was masked in
+// the log but real in every child process), never in argv, never in a file, never in a receipt.
+fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Network
+{
+  match env_value(name: github_actions_runtime.oidc_request_url_env) {
+    Absent =>
+      PublisherCloudCredentialNotMinted { cause: "HealPublisherFederationMissing: ACTIONS_ID_TOKEN_REQUEST_URL is unset, so the runner has no sidecar to mint the assertion the federation starts from" }
+    Present { value: url } =>
+      match env_value(name: github_actions_runtime.oidc_request_token_env) {
+        Absent =>
+          PublisherCloudCredentialNotMinted { cause: "HealPublisherFederationMissing: ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset, so the sidecar at that URL cannot be authenticated to" }
+        Present { value: request_token } =>
+          match github.OIDC.GetToken(
+            audience: heal_publisher_assertion_audience(),
+            request_url: url,
+            request_token: request_token as Secret,
+          ) {
+            RestRefused { refusal } =>
+              PublisherCloudCredentialNotMinted { cause: concat("HealPublisherAssertionRefused: the runner sidecar refused the assertion: ", rest_refusal_text(o: refusal)) }
+            RestAnswered { answer } =>
+              match gcp.STS.Exchange(
+                subject_token: answer.subject_token,
+                audience: heal_publisher_exchange_audience(),
+              ) {
+                RestRefused { refusal } =>
+                  PublisherCloudCredentialNotMinted { cause: concat("HealPublisherFederationRefused: Cloud STS refused the assertion: ", rest_refusal_text(o: refusal)) }
+                RestAnswered { answer: federated } =>
+                  match gcp.IAM.GenerateAccessToken(
+                    access_token: federated.access_token,
+                    target_sa: heal_publisher_service_account,
+                    lifetime: heal_publisher_cloud_token_lifetime,
+                  ) {
+                    RestRefused { refusal } =>
+                      PublisherCloudCredentialNotMinted { cause: concat("HealPublisherImpersonationRefused: iamcredentials refused the publisher service account: ", rest_refusal_text(o: refusal)) }
+                    RestAnswered { answer: issued } => PublisherCloudCredentialMinted { cloud: issued.access_token }
+                  }
+              }
+          }
+      }
+  }
+}
 
 fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
 {
@@ -601,14 +665,14 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
       match ensure_pull_request_open_wet(subject: subject, pull_number: pull_number, expected_head_ref: admitted.head_ref as String, expected_base_ref: admitted.base_ref as String) {
         PullRequestOpenCheckRefused { reason } => exit_failure(reason: reason)
         PullRequestOpenCheckPassed =>
-          match env_value(name: heal_publisher_wif_access_token_env_name) {
-            Absent => exit_failure(reason: "HealPublisherFederationMissing: the workflow federation step supplied no access token")
-            Present { value: wif } =>
-              match env_value(name: runner_temp_env_name) {
-                Absent => exit_failure(reason: "HealPublisherKeyStageMissing: RUNNER_TEMP is unset, so the App key has nowhere owner-only to stage")
-                Present { value: temp } =>
+          match env_value(name: runner_temp_env_name) {
+            Absent => exit_failure(reason: "HealPublisherKeyStageMissing: RUNNER_TEMP is unset, so the App key has nowhere owner-only to stage")
+            Present { value: temp } =>
+              match heal_publisher_cloud_credential() {
+                PublisherCloudCredentialNotMinted { cause } => exit_failure(reason: cause)
+                PublisherCloudCredentialMinted { cloud } =>
                   match mint_publisher_installation_token(
-                    wif_access_token: wif as Secret,
+                    cloud_access_token: cloud,
                     key_path: join([temp, "/", heal_publisher_app_key_file_name], "") as NonEmptyStr,
                     repository_name: subject.repository.name
                   ) {

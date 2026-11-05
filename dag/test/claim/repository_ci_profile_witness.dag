@@ -49,7 +49,12 @@ import gunbc.ci.repository_ci_profile {
   profile_with_compiler_source,
   profile_with_publisher_runner, profile_with_required_context,
 }
-import gunbc.auth.heal_publisher_federation { public_heal_publisher_federation }
+import gunbc.auth.heal_publisher_federation {
+  public_heal_publisher_federation, heal_publisher_wif_provider_resource,
+  heal_publisher_exchange_audience, heal_publisher_assertion_audience, heal_publisher_cloud_token_lifetime,
+}
+import gunbc.action_use_admission { google_auth_action }
+import gunbc.heal_workflow { step_uses_action }
 import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep, Job, RunnerSpec, HostedRunner, UbuntuLatest }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
@@ -505,6 +510,78 @@ test fn the_candidate_directory_is_anchored_only_where_a_phase_leaves_the_worksp
       }
   }
 }
+
+// ── THE PUBLISHER HOLDS ITS CREDENTIALS INSIDE THE PROCESS THAT SPENDS THEM ───────────────
+//
+// Run 41951465805 is the specimen. The publisher job federated through an action step, which exported a
+// 300 s access token into the publication step's environment; the seed then paid 273.6 s of front-end and
+// a 71 s fetch before its first credential call at 02:14:54.435Z -- 456 s after the mint, so Secret
+// Manager answered 401 UNAUTHENTICATED / ACCESS_TOKEN_EXPIRED. Masking in the log made the token
+// invisible, not absent: a value in a step's environment is in every child process the step spawns.
+//
+// The fix is ORDER, and order is exactly what a text claim cannot prove -- so these arms ask the narrower
+// question they CAN answer, and the executing route is the publisher job itself, which no lane under
+// .github/workflows runs on demand. What is executed here is the SHAPE: the credential must not be
+// reachable from the step at all, so the only place left to mint it is inside the subject.
+//
+// The claim goes RED in the two ways that matter: someone re-adds an exported credential row, or someone
+// puts the federation back into an action step -- which is also what puts the mint back upstream of the
+// front-end, restoring the race this exists to close.
+test fn the_publish_phase_holds_no_credential_of_any_kind() -> Bool {
+  let row = gunbc_repository_ci_profile()
+  match row.publisher {
+    Absent => false
+    Present { value: job } =>
+      match profile_publisher_compiler_source(profile: row) {
+        Absent => false
+        Present { value: source } =>
+          match heal_publisher_publish_step(profile: row, job: job, source: source) {
+            Accepted { value: step, diagnostics: _ } =>
+              // The job token stays: it answers the openness check, which is a job-token call and is not
+              // time-limited in the way the two minted credentials are. The runner supplies the OIDC
+              // request pair itself when the job carries id-token permission, so an env row for it would
+              // be a second, workflow-rendered spelling of something the runner already owns.
+              step_env_entry(step: step, key: "WIF_ACCESS_TOKEN") == ""
+                && step_env_entry(step: step, key: "GOOGLE_ACCESS_TOKEN") == ""
+                && step_env_entry(step: step, key: "GITHUB_ACCESS_TOKEN") == ""
+                && step_env_entry(step: step, key: "ACTIONS_ID_TOKEN_REQUEST_TOKEN") == ""
+                && step_env_entry(step: step, key: "GITHUB_TOKEN") != ""
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+test fn no_publisher_step_delegates_federation_to_an_action() -> Bool {
+  let row = gunbc_repository_ci_profile()
+  match row.publisher {
+    Absent => false
+    Present { value: job } =>
+      match profile_publisher_compiler_source(profile: row) {
+        Absent => false
+        Present { value: source } =>
+          match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
+            Accepted { value: steps, diagnostics: _ } =>
+              !any(steps, b => step_uses_action(step: b.step, action: google_auth_action))
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+// THE TWO AUDIENCE SPELLINGS AND THE LIFETIME, PINNED TO THE CONTRACT THEY COME FROM. The provider resource
+// is one authority fact (heal_publisher_wif_provider_resource); the PREFIXES are not ours to invent -- they
+// are what google-github-actions/auth 7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 sends (src/main.ts:80-81 for
+// the assertion audience, src/client/workload_identity_federation.ts:60 for the exchange audience). The
+// 300 s is the operator's ruling, not a preference: an earlier proposal to widen it to 900 s was rejected,
+// so widening it here must be as loud as removing it.
+test fn the_federation_audiences_are_two_spellings_of_one_resource_and_the_lifetime_stays_ruled() -> Bool {
+  let resource = heal_publisher_wif_provider_resource()
+  heal_publisher_exchange_audience() as String == join(["//iam.googleapis.com/", resource], "")
+    && heal_publisher_assertion_audience() as String == join(["https://iam.googleapis.com/", resource], "")
+    && heal_publisher_cloud_token_lifetime == "300s"
+}
+
 
 fn with_roster_timeout(limit: Minute) -> RepositoryCiProfile {
   let base = public_profile()
