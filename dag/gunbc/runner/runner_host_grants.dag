@@ -11,7 +11,8 @@ import gunbc.fleet.fleet_converge_state_path { fleet_converge_state_root }
 import gunbc.workspace_allocation_operations { workspace_launch_operations }
 import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.fleet.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, executor_bootstrap_principal }
-import std.types { String, NonEmptyStr, List, FilePath, list_length }
+import std.types { String, NonEmptyStr, List, FilePath }
+import std.algebra { length }
 import gunbc.live_deploy.desired { ProdRoleDeployment, prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
@@ -250,7 +251,7 @@ fn fabric_cell_host_slots(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> 
 
 fn fabric_cell_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let slots = fabric_cell_host_slots(deploy: deploy)
-  if list_length(items: slots) == 0 {
+  if length(xs: slots) == 0 {
     []
   } else {
     concat(
@@ -286,7 +287,7 @@ fn fabric_allocation_store_effect_operations(
 }
 
 fn fabric_allocation_store_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  if list_length(items: fabric_cell_host_slots(deploy: deploy)) == 0 {
+  if length(xs: fabric_cell_host_slots(deploy: deploy)) == 0 {
     []
   } else {
     fabric_allocation_store_effect_operations(

@@ -4,7 +4,7 @@ import std.types { List }
 import std.nat { Nat }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, fold_list }
+import std.algebra { Cons, Empty, fold_list, length }
 import std.types { brand }
 
 // THE PHYSICAL CONSTRAINT FILE, OWNED BY THE FORMAT RATHER THAN BY A PRODUCT. A .pcf is what
@@ -43,7 +43,7 @@ data pcf_forbidden_name_characters: List<String> = [
 
 fn pcf_name_contains_forbidden(spelling: String) -> Bool {
   fold(pcf_forbidden_name_characters, init: false, f: fn(acc, ch) {
-    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
+    acc || length(xs: split(s: spelling, delimiter: ch)) > 1
   })
 }
 

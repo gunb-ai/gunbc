@@ -53,6 +53,7 @@ import gunbc.spark.dgx_pxe_boot {
   UnattendedPxeBootKernelDoesNotClaimNic,
   PciDeviceIdentity,
 }
+import std.algebra { length }
 
 data witness_tftp_root: Uri = Uri {
   scheme: Tftp,
@@ -230,7 +231,7 @@ test fn w_red_reachability_without_isolation_not_ready() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: none,
   ) {
-    PxeNetworkGapped { gaps: gs } => list_length(items: gs) == 1
+    PxeNetworkGapped { gaps: gs } => length(xs: gs) == 1
     PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
     PxeNetworkUnobserved => false
   }
@@ -400,7 +401,7 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
     },
   ) {
     SparkUnattendedPxeBootRefused { reason: UnattendedPxeBootNetworkStandingIncomplete { gaps: gs } } =>
-      list_length(items: gs) == 1
+      length(xs: gs) == 1
     SparkUnattendedPxeBootRefused { reason: _ } => false
     SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
