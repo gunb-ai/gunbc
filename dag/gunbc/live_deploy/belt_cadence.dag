@@ -2,6 +2,8 @@ module gunbc.live_deploy.belt_cadence
 
 import std.measure { Second, second, second_count }
 import std.integer { nat_to_int }
+import std.types { NonEmptyStr }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
   belt_attempt_obligation_order,
@@ -57,6 +59,7 @@ data launch_obligation_run_bound: Second = second(count: 2700)
 type EntryCompileSample {
   entry: String
   seconds: Second
+  standing: CitedFigureStanding
 }
 
 // Reproduce: `gunbc compile --source-root dag --source-root src/v2 --entry <entry> --output-dir <dir>`;
@@ -65,12 +68,12 @@ data verify_entry_compile_samples: List<EntryCompileSample> = [
   EntryCompileSample {
     entry: "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag",
     seconds: second(count: 4143),
-    // loyal-deer-449 2026-11-05, srv1 at 4a5b8feb, systemd-run scope, 2 runs 4142.6 s and 3987.4 s, the slower recorded; local -j8 readings were ~6x faster and are NOT used
+    standing: TranscribedUncited { read_obligation: "transcribed from loyal-deer-449's srv1 report (2026-11-05, origin/main 4a5b8feb, own systemd-run scope, runs 4142.6 s and 3987.4 s, the slower kept); re-derive by running the compile command above on srv1 and reading process_invocation_total; throttling of the original scopes is unrecoverable and a re-run reads memory.events and memory.pressure" as NonEmptyStr },
   },
   EntryCompileSample {
     entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag",
     seconds: second(count: 4018),
-    // loyal-deer-449 2026-11-05, srv1 at 4a5b8feb, systemd-run scope, 2 runs 3903.0 s and 4017.8 s, the slower recorded
+    standing: TranscribedUncited { read_obligation: "transcribed from loyal-deer-449's srv1 report (2026-11-05, origin/main 4a5b8feb, own systemd-run scope, runs 3903.0 s and 4017.8 s, the slower kept); re-derive by running the compile command above on srv1 and reading process_invocation_total; throttling of the original scopes is unrecoverable and a re-run reads memory.events and memory.pressure" as NonEmptyStr },
   },
 ]
 

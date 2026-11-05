@@ -3,6 +3,8 @@ module test.claim.live_deploy_verify_run_bound_witness
 import std.types { Bool, String, Int, List }
 import std.measure { Second, second, second_count }
 import std.algebra { string_contains }
+import std.types { NonEmptyStr }
+import extdeps.external_authority { TranscribedUncited }
 import gunbc.live_deploy.belt_cadence {
   EntryCompileSample, VerifyRunBound, VerifyRunBounded, VerifyRunProvisional, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_note,
   verify_run_bound_for, verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
@@ -10,8 +12,8 @@ import gunbc.live_deploy.belt_cadence {
 }
 
 data fixture_samples: List<EntryCompileSample> = [
-  EntryCompileSample { entry: "a.dag", seconds: second(count: 100) },
-  EntryCompileSample { entry: "b.dag", seconds: second(count: 200) },
+  EntryCompileSample { entry: "a.dag", seconds: second(count: 100), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
+  EntryCompileSample { entry: "b.dag", seconds: second(count: 200), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
 ]
 
 // A normal node: two sampled entries run within the sum of their figures plus 50% headroom plus the slack.
