@@ -1216,6 +1216,7 @@ test fn witness_inner_argv_carries_pinned_model_for_codex() -> Bool {
             worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
             brief: "brief",
             alignment_chain_fingerprint: "fp",
+            supervision_prompt: "the rendered chain",
             run: DispatchWorkerFirst,
           ),
         ),
