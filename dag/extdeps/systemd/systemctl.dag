@@ -375,17 +375,12 @@ fn systemctl_list_all_service_units_argv() -> List<String> {
 // with the same next-rung trigger (a scope input that makes `--user` a value rather than a spelling);
 // not repaired here, because it would touch every caller of the system-scope rows and that migration
 // is not this witness's cleanup duty.
-// Naming follows this module's convention: `_argv` rows hand back word lists for the elevation and
-// plan routes to wrap, `_command` rows hand back a sealed ArgvCommand for a transport to run -- and a
-// producer of the latter is enumerated in extdeps.exec.command's admit_callers, as
-// `systemctl_list_all_service_units_command` already is. These are host-model rows, not test
-// declarations: the witness obtains its retirement argv from the host model exactly as production does.
-// These are argv TAILS, like `systemd_run_command_argument_words`: argv[0] is the caller's
-// `systemctl_path_resolved_program()`, which the transport supplies. They are not built with
-// `argv_command`, because minting a sealed ArgvCommand is gated behind a caller roster in
-// extdeps.exec.command that this project does not grow (operator ruling: no allowlists as
-// architecture); a caller that needs to RUN one hands the program identity and these words to
-// shell.Exec.RunArgv, which is how the rest of the fleet runs a modeled argv.
+// These three are argv TAILS, the shape `systemd_run_command_argument_words` uses in the sibling
+// module: the verb and its flags, with no argv[0]. The caller supplies the program from this module's
+// existing `systemctl_path_resolved_program()` row and hands program + words to `shell.Exec.RunArgv`,
+// the seam the rest of the fleet runs a modeled argv through. Consumers, so none of the three is
+// dangling: `wet_retire_unit` calls the two verbs that put a transient away, and the post-run listing
+// reads the third -- all three in test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness.
 fn systemctl_stop_user_argv(unit: NonEmptyStr) -> List<String> {
   ["--user", "stop", unit as String]
 }

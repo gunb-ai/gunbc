@@ -286,6 +286,12 @@ fn wet_plant_guest_sources(instance: HostDashboardInstance) -> Bool {
     // an intention. The copy is the fleet's OWN route, `shell.Copy.Recursive` (extdeps/shell.dag,
     // transport shell { argv: ["cp", "-r", "{source}", "{destination}"] }); a `-r` argv tail
     // beside it was a fork and is deleted (review 90943, the same defect the printenv rows had).
+    // WHAT THAT argv BUYS, measured on coreutils 9.7: `-r` with NEITHER `-H` nor `-L` copies each
+    // symbolic link in the source as a LINK, so a tree holding a relative link and a dangling one
+    // comes back with both still `symbolic link` under `stat -c %F`, where `-rL` turns the first into
+    // a copied directory and fails outright on the second ("cannot stat ...: No such file or
+    // directory"). The plant therefore cannot be used to pull the target of a link into the root it is
+    // planting into: links arrive inert, and the guest reads only what it actually opens.
     && wet_ok(command: mkdir_parents_command(path: repo))
     && shell.Copy.Recursive(
       source: join([checkout, "/dag"], "") as FilePath,

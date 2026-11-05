@@ -157,25 +157,6 @@ fn cp_command(source: String, destination: String) -> ArgvCommand {
   argv_command(program: cp_program(), arguments: [source, destination])
 }
 
-// A RECURSIVE COPY IS ITS OWN OPERATION, THE WAY `rm` AND `rm -rf` ARE SEPARATE ROWS HERE. The
-// plain `cp_command` above deliberately takes no flags: a directory argument there fails rather
-// than silently descending, which is the right default for a caller that names files. A caller
-// that genuinely means "put this tree over there" -- a witness planting a guest tree inside a root
-// it owns -- says so in the name, and gets the one argv `cp -r` spells.
-//
-// MODELLED AGAINST coreutils 9.7 (`cp --help`, "cp invocation"), whose flag rows are:
-//   -R, -r, --recursive   copy directories recursively
-//   -P, --no-dereference  never follow symbolic links in SOURCE
-//   -H                    follow command-line symbolic links in SOURCE
-//   -L, --dereference     always follow symbolic links in SOURCE
-// `-P` is NOT passed and that is the behaviour this row means to have: with `-r` and neither `-H`
-// nor `-L`, coreutils copies each symbolic link in the source as a LINK. Measured on 9.7 -- a tree
-// holding a relative link and a dangling one comes out with both still `symbolic link` (`stat -c
-// %F`), where the same tree under `-rL` turns the first into a copied directory and fails outright
-// on the second ("cannot stat ...: No such file or directory"). So the plant cannot be used to
-// pull the target of a link into the root it is planting into: a link arrives inert, and the guest
-// reads only what it actually opens. A caller that wants the OTHER default has to ask for it in
-// its own name; this row does not take a flag list, for the same reason `cp_command` does not.
 // `--update=none` (coreutils 9.3+, "cp invocation"): copy only when the destination does not exist,
 // and exit 0 either way -- a postinst's "install from default if absent", not an overwrite.
 fn cp_preserve_if_absent_command(source: String, destination: String) -> ArgvCommand {
