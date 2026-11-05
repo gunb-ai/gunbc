@@ -64,13 +64,23 @@ fn standing_count_for(host: HostIdentity) -> Int {
 // A STANDING RATHER THAN AN OMISSION. A refused host that vanished from the roster would make the
 // fleet look complete over the hosts that survived -- so srv2 must still be counted exactly once
 // here, and it is counted as a standing, not as an allocation.
+// STALE PIN, RE-DERIVED AS AN IDENTITY JOIN: the literal 3 counted the admitted rows of a four-host roster; the
+// roster has since grown (mtcollins1 and the CAX guests are CI-enrolled), so a count is a change detector. The
+// claim is that srv1/srv3/srv4 are admitted and refused srv2 is not.
+fn admitted_has(host: HostIdentity) -> Bool {
+  any(gunbc_admitted_runner_slot_allocations(), a => (a.host as String) == (host as String))
+}
+
 test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() -> Bool {
   standing_count_for(host: operator_host_srv1) == 1
     && standing_count_for(host: operator_host_srv2) == 1
     && standing_count_for(host: operator_host_srv3) == 1
     && standing_count_for(host: operator_host_srv4) == 1
     && standing_count_for(host: "srv-does-not-exist") == 0
-    && (gunbc_admitted_runner_slot_allocations() |> count) == 3
+    && admitted_has(host: operator_host_srv1)
+    && admitted_has(host: operator_host_srv3)
+    && admitted_has(host: operator_host_srv4)
+    && !admitted_has(host: operator_host_srv2)
 }
 
 // MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY, AND AS OF 2026-08-23 THEY FINALLY
@@ -139,7 +149,7 @@ test fn srv1_runner_host_deploy_count_is_the_derived_width() -> Bool {
   match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
     RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
     RunnerHostDeployAdmitted { deploy } =>
-      deploy.runner_count == 4
+      deploy.runner_count == 3
         && deploy.runner_count == host_memory_admitted_width(host: operator_host_srv1)
   }
 }
@@ -751,11 +761,11 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      w == 4
+      w == 3
         && srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
         && srv1_membership_is(slot_index: 14, expect_member: true, expect_fabric: true)
-        && srv1_membership_is(slot_index: w - 2, expect_member: true, expect_fabric: false)
-        && srv1_membership_is(slot_index: w - 1, expect_member: false, expect_fabric: false)
+        && srv1_membership_is(slot_index: 2, expect_member: true, expect_fabric: false)
+        && srv1_membership_is(slot_index: 1, expect_member: false, expect_fabric: false)
   }
 }
 
