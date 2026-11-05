@@ -6,6 +6,10 @@ import product.printed_chassis.cassette {lap_joints,LapJoint,SeamSpan,span_laps,
 import extdeps.standards.micro_atx {micro_atx_standard_hole_diameter}
 import std.measure {micrometer_count}
 import product.printed_chassis.cassette {board_support_interface_for,cassette_revision}
+import product.printed_chassis.cassette_review {review_main_for}
+import product.printed_chassis.review_realization {program_main_for,bundle_main_for}
+import gunbc.cli_wire {CliWireResponse,CliWirePrintable,CliWireUnprintable}
+import std.process {ExitSuccess,ExitFailure}
 import product.printed_chassis.printable_assembly_selection {select_printable_assembly,cassette_root_selection}
 import product.printed_chassis.printable_assembly {PrintableAssemblyReady,PrintableAssemblyRefused,ResidentialCassette,CassetteRackReview}
 import extdeps.languages.json.emit {serialize_json}
@@ -110,4 +114,17 @@ test fn both_cassette_roots_refuse_a_refused_seat() -> Bool {
  refuses_with(sel:cassette_root_selection(root:ResidentialCassette,seat:refused),cause:"seat-red-control")
   && refuses_with(sel:cassette_root_selection(root:CassetteRackReview,seat:refused),cause:"seat-red-control")
   && ready(sel:select_printable_assembly(root:ResidentialCassette)) && ready(sel:select_printable_assembly(root:CassetteRackReview))
+}
+
+// Every direct rack emitter reads the seat too: the review manifest, the realization program and the bundle
+// each refuse a supplied refused seat with its cause and a failing exit, so no emitter outside the selector
+// can produce a post-less r07 package (review 5789986322).
+fn emitter_refuses(r:CliWireResponse,cause:String) -> Bool {
+ match r {CliWirePrintable {bytes:b,exit:e}=>string_contains(s:b,pattern:cause) && match e {ExitSuccess=>false ExitFailure {code:_,reason:_}=>true} CliWireUnprintable {cause:_}=>false}
+}
+test fn every_rack_emitter_refuses_a_refused_seat() -> Bool {
+ let refused=BoardSeatRefused {cause:"seat-red-control"}
+ emitter_refuses(r:review_main_for(seat:refused),cause:"seat-red-control")
+  && emitter_refuses(r:program_main_for(seat:refused),cause:"seat-red-control")
+  && emitter_refuses(r:bundle_main_for(seat:refused),cause:"seat-red-control")
 }

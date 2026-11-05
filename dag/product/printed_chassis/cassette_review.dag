@@ -6,7 +6,8 @@ import std.measure { micrometer_count, millimeter_count, Micrometer }
 import std.affine_space { Point3, signed_frame_component_count }
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import extdeps.languages.json.emit { JsonValue,JsonKeyValue,json_object,json_kv,json_string,json_int,json_array,json_bool,json_null,serialize_json }
-import product.printed_chassis.printable_assembly { PrintedAssemblyRoot,CassetteRackReview,PrintableAssembly,printable_manifest,review_release,text }
+import product.printed_chassis.printable_assembly { PrintedAssemblyRoot,CassetteRackReview,PrintableAssembly,PrintableAssemblySelection,PrintableAssemblyReady,PrintableAssemblyRefused,printable_manifest,review_release,text }
+import product.printed_chassis.board_seat { BoardSeat,altra_seat,BoardSeatReady,BoardSeatRefused }
 import gunbc.cli_wire { CliWireResponse,CliWirePrintable }
 import std.process { ExitSuccess,exit_failure }
 import product.printed_chassis.assembly_review_checks {review_model_checks}
@@ -61,8 +62,23 @@ data cassette_readme:String=join(["Cassette r",cassette_revision," review packag
 fn cassette_printable(root:PrintedAssemblyRoot,parts:List<AssemblyPart>,joints:List<MechanicalInterface>,keepouts:List<String>) -> PrintableAssembly {
  PrintableAssembly {root:root,parts:parts,interfaces:joints,required_keepouts:keepouts,assembly_members:cassette_scope_members(parts:parts),package:"cassette",schema:"gunbc.cassette-review.v1",readme:cassette_readme,presentation:cassette_presentation_members()}
 }
-fn rack_review_assembly() -> PrintableAssembly {cassette_printable(root:CassetteRackReview,parts:all_parts(),joints:interfaces(),keepouts:[])}
-fn manifest() -> JsonValue {printable_manifest(a:rack_review_assembly())}
-fn main() -> CliWireResponse {
- if review_model_checks(parts:all_parts(),interfaces:interfaces()) {CliWirePrintable {bytes:serialize_json(v:manifest()),exit:ExitSuccess}} else {CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
+// THE RACK REVIEW EXISTS ONLY BEHIND A READY SEAT. The rack's panels are the r07 panels, so there is no
+// unseated way to build it: the bare constructor was deleted, every emitter (this module's main, the
+// printable-root selector, review_realization's program and bundle) reads this selection, and a refused seat
+// refuses each of them with its cause instead of emitting a post-less tray labelled r07 (reviews 91282,
+// 5789766315, 5789986322).
+fn rack_review_selection_for(seat:BoardSeat) -> PrintableAssemblySelection {
+ match seat {
+  BoardSeatRefused {cause:c}=>PrintableAssemblyRefused {reason:concat("The board seat refused, so the cassette panels would carry no posts and no socket window: ",c as String)}
+  BoardSeatReady {posts:_,window:_}=>PrintableAssemblyReady {assembly:cassette_printable(root:CassetteRackReview,parts:all_parts(),joints:interfaces(),keepouts:[])}
+ }
+}
+fn rack_review_selection() -> PrintableAssemblySelection {rack_review_selection_for(seat:altra_seat())}
+fn main() -> CliWireResponse {review_main_for(seat:altra_seat())}
+fn review_main_for(seat:BoardSeat) -> CliWireResponse {
+ match rack_review_selection_for(seat:seat) {
+ PrintableAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+ PrintableAssemblyReady {assembly:a}=>
+ if review_model_checks(parts:a.parts,interfaces:a.interfaces) {CliWirePrintable {bytes:serialize_json(v:printable_manifest(a:a)),exit:ExitSuccess}} else {CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
+ }
 }

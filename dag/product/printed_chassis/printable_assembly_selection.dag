@@ -11,7 +11,7 @@ import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased
 import product.printed_chassis.residential_review { residential_assembly, ResidentialAssemblyReady, ResidentialAssemblyRefused }
 import product.printed_chassis.cassette { rear_socket_bolt_clearances }
 import product.printed_chassis.board_seat { BoardSeat, altra_seat, BoardSeatReady, BoardSeatRefused }
-import product.printed_chassis.cassette_review { cassette_printable, rack_review_assembly }
+import product.printed_chassis.cassette_review { cassette_printable, rack_review_selection_for }
 import product.printed_chassis.gpu_duct {
   GpuDuctAdmitted, GpuDuctInsertReadingsDisagree, GpuDuctFinsAtTheWindowFace, GpuDuctFanMountRefused,
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, DuctCardMount, DuctExtent, PlugAndFlange, SleeveOverCardEnd,
@@ -84,7 +84,7 @@ fn cassette_root_selection(root: PrintedAssemblyRoot, seat: BoardSeat) -> Printa
           PrintableAssemblyReady { assembly: cassette_printable(root: root, parts: parts, joints: joints, keepouts: map(rear_socket_bolt_clearances(), p => p.id)) }
         ResidentialAssemblyRefused { reason: r } => PrintableAssemblyRefused { reason: r }
       }
-      CassetteRackReview => PrintableAssemblyReady { assembly: rack_review_assembly() }
+      CassetteRackReview => rack_review_selection_for(seat: seat)
       DuctCardRoot { card: _, kind: _ } => PrintableAssemblyRefused { reason: "not a cassette root" }
       CardGroupRoot { plan: _, kind: _ } => PrintableAssemblyRefused { reason: "not a cassette root" }
     }
