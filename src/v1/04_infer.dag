@@ -16291,7 +16291,7 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope, service
         // type and emits no diagnostic, because there is nothing to refuse.
         let bound_input_type =
           if field == service_config_field_property_name(field: SvcEndpoint) {
-            match service_endpoint_supply(service: service, operations: service_operation_items(service: service), data_values: data_values, source_indices: scope.type_env.source_indices) {
+            match service_endpoint_answer(service: service, operations: service_operation_items(service: service), data_values: data_values, imported_data_values: [], source_indices: scope.type_env.source_indices) {
               EndpointOperationParameter { name: input_name, declared_type: declared } =>
                 if authored_name_at(source_indices: scope.type_env.source_indices, node: val) == input_name { Present { value: declared } } else { none }
               _ => none

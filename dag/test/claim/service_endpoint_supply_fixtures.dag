@@ -298,3 +298,65 @@ data emitted_module_data_endpoint_source: String = fixture_lines(lines: [
   "  }",
   "}"
 ])
+
+// The corpus's own spelling, as one authored source: the host lives in
+// `test.fixture.endpoint_authority.api` and arrives through a by-name import. This is what
+// `extdeps.github.gists` writes (`endpoint: default_api_base`), and the fixture module is a REAL
+// file on disk so the emit vehicle resolves the import the way production does -- the interpreter
+// has always walked this edge through module scope; the controls here demand the constructor does
+// too. `unimported_api_base` in the same provider is NOT imported, and its own control below
+// demands that it answers nothing.
+data imported_endpoint_source: String = fixture_lines(lines: [
+  "module sepa_imported_endpoint",
+  "",
+  "import extdeps.transports.rest { RestResult }",
+  "",
+  "import test.fixture.endpoint_authority.api { default_api_base }",
+  "",
+  "service test.Svc {",
+  "  config {",
+  "    endpoint: default_api_base",
+  "  }",
+  "  operation GetItems {",
+  "    output {",
+  "      items: List<String>",
+  "    }",
+  "    transport rest { method: GET, path: \"/items\" }",
+  "    response {",
+  "      200 => List<String>",
+  "    }",
+  "    mock_response {",
+  "      200 => [\"a\"] \"items\"",
+  "    }",
+  "  }",
+  "}"
+])
+
+// The same provider, the name its import does NOT list. A datum that merely exists somewhere in the
+// tree is not in scope, and a name nothing brings in and no operation binds has no reading -- the
+// emit control demands the constructor REFUSE that item rather than compile a host for it.
+data unimported_name_endpoint_source: String = fixture_lines(lines: [
+  "module sepa_unimported_endpoint",
+  "",
+  "import extdeps.transports.rest { RestResult }",
+  "",
+  "import test.fixture.endpoint_authority.api { default_api_base }",
+  "",
+  "service test.Svc {",
+  "  config {",
+  "    endpoint: unimported_api_base",
+  "  }",
+  "  operation GetItems {",
+  "    output {",
+  "      items: List<String>",
+  "    }",
+  "    transport rest { method: GET, path: \"/items\" }",
+  "    response {",
+  "      200 => List<String>",
+  "    }",
+  "    mock_response {",
+  "      200 => [\"a\"] \"items\"",
+  "    }",
+  "  }",
+  "}"
+])
