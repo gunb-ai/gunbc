@@ -3149,6 +3149,7 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
         prepared: prepared,
         session_uuid: "00000000-0000-4000-8000-000000000009",
         resolution: fixture_ready_resolution(node_id: "belt-addressing-node", project_ids: []),
+        run: DispatchWorkerFirst,
       ) {
         DispatchSpawnRefused { step: _, detail: _ } => false
         DispatchSpawnReady { commands } =>
