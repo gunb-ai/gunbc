@@ -31,7 +31,7 @@ import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_lost_agent { LostAgentObservation }
 import gunbc.runner.runner_connectivity_restart { RestartLegDecision, restart_leg_decision }
-import gunbc.auth.access_token_source { select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
+import gunbc.auth.access_token_source { AccessTokenSourceSelection, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
 import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
 import std.types { NonEmptyStr, String }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -196,14 +196,16 @@ fn runner_lifecycle_realize_observe_runner_local_state(
 }
 
 // THE ADMITTED-SOURCE GATE, located and typed. The roster read is an org runners:read REST call, so it
-// runs only over an ADMITTED access-token source (gunbc.auth.access_token_source). When none is admitted
-// this returns RosterReadUnavailable carrying the source's own cause -- an honest refusal that keeps the
-// realization NotConverged, never a silent converged receipt, and never a token read from an ad-hoc env
-// var or file. It reuses the same selector the wet observe entry gates on; it does not mint or read a
-// token here (that is the wet boundary's job, over the net resource), it only refuses when no source is
-// admitted, and converges when the boundary has supplied a roster that settles the slot.
-fn runner_lifecycle_registration_roster_refusal(organization: NonEmptyStr) -> OrganizationRunnerRosterEvidence {
-  match select_access_token_source() {
+// runs only over an ADMITTED access-token source -- the SAME selector the wet observe entry gates on
+// (gunbc.auth.access_token_source.select_access_token_source), resolved at the WET boundary over the net
+// resource and handed in here as `source`. This gate is PURE: it never reads the environment, never mints
+// a token, and never fabricates a roster -- which is exactly what keeps the pure realization and its
+// witnesses hermetic (no shell.Env.Get, no ad-hoc token file). Whatever the boundary resolved it returns
+// RosterReadUnavailable carrying a located reason: the source's own cause when none is admitted, or -- when
+// one IS admitted -- that the roster itself is read only at the wet boundary over the REST route. The
+// realization converges only when the boundary then supplies a roster that settles the slot.
+fn runner_lifecycle_registration_roster_refusal(organization: NonEmptyStr, source: AccessTokenSourceSelection) -> OrganizationRunnerRosterEvidence {
+  match source {
     AccessTokenSourceUnavailable { cause: cause } =>
       RosterReadUnavailable { reason: concat("no admitted org runners:read source for organization ", concat(organization as String, concat(": ", cause as String))) }
     AccessTokenSourceSelected { source: _ } =>
@@ -251,7 +253,13 @@ fn runner_lifecycle_realize_observe_github_runner_registration(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match intent.effect {
     ObserveGitHubRunnerRegistration { slot: _, organization: organization } =>
-      runner_lifecycle_realize_observe_github_runner_registration_with_roster(intent: intent, roster: runner_lifecycle_registration_roster_refusal(organization: organization))
+      runner_lifecycle_realize_observe_github_runner_registration_with_roster(
+        intent: intent,
+        roster: runner_lifecycle_registration_roster_refusal(
+          organization: organization,
+          source: AccessTokenSourceUnavailable { cause: "the pure host_effect_apply realization admits no org runners:read source; the roster is read only at the wet boundary over the REST route" }
+        )
+      )
     _ => NotConverged { reason: "host_effect_apply: observe-registration realization reached with a different effect", applied: intent }
   }
 }

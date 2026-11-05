@@ -10,6 +10,7 @@ import gunbc.runner.runner_lifecycle_realize {
   RegistrationRealizeOutcome, RegistrationConverged, RegistrationNotConverged,
   runner_lifecycle_registration_realize_outcome, runner_lifecycle_registration_roster_refusal,
 }
+import gunbc.auth.access_token_source { AccessTokenSourceSelected, AccessTokenSourceUnavailable, WorkloadIdentityToken }
 
 // Boundary values, supplied here; no other test file is imported. This witnesses the registration-observe
 // realization's decide: it CONVERGES on a roster that settles the slot and refuses, located, when the
@@ -47,14 +48,22 @@ test fn a_partial_roster_never_converges_the_registration_observe() -> Bool {
   }
 }
 
-// POSITIVE CONTROL on the admitted-source gate: whether or not a source is admitted, the PURE realization
-// can only ever obtain RosterReadUnavailable from it -- it never mints or reads a token, so it can never
-// fabricate an observed roster and can never converge on its own. The roster arrives only from the wet
-// boundary that reads it under an admitted org runners:read source.
+// POSITIVE CONTROL on the admitted-source gate: whether or not a source is admitted, the PURE gate yields
+// only RosterReadUnavailable. It is handed the boundary-resolved source (the same selector the wet observe
+// entry gates on, gunbc.auth.access_token_source) and NEVER reads the environment or mints a token itself,
+// so it can never fabricate an observed roster or converge on its own -- which is exactly what keeps this
+// realization and its witnesses hermetic (no shell.Env.Get, no ad-hoc token file). The roster arrives only
+// from the wet boundary that reads it over the REST route under an admitted org runners:read source.
 test fn the_admitted_source_gate_never_yields_an_observed_roster() -> Bool {
-  match runner_lifecycle_registration_roster_refusal(organization: org()) {
+  let refused_when_unavailable = match runner_lifecycle_registration_roster_refusal(organization: org(), source: AccessTokenSourceUnavailable { cause: "witness supplies no admitted source" }) {
     RosterReadUnavailable { reason: r } => r != ""
     RosterObserved { observed_on: _, registrations: _ } => false
     RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => false
   }
+  let refused_when_selected = match runner_lifecycle_registration_roster_refusal(organization: org(), source: AccessTokenSourceSelected { source: WorkloadIdentityToken }) {
+    RosterReadUnavailable { reason: r } => r != ""
+    RosterObserved { observed_on: _, registrations: _ } => false
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => false
+  }
+  if refused_when_unavailable && refused_when_selected { true } else { false }
 }

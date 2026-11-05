@@ -725,7 +725,7 @@ fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incar
             Present { value: n } =>
               if n.minted_epoch > s {
                 IncarnationRegistrationUnresolved { reason: "the pid-matched registration was minted AFTER the running process started: a recycled pid, not this incarnation" }
-              } else if match mint_to_exec_gap(started_at: s, minted_epoch: n.minted_epoch as EpochSecs) {
+              } else if match mint_to_exec_gap(started_at: s, minted_epoch: n.minted_epoch) {
                   // The minted-after-start case is already taken above, so the gap is non-negative here;
                   // a none (unreachable in this arm) is NOT read as "within the bound" — it falls through
                   // to the same found path only because it cannot occur, never because a gap was guessed.

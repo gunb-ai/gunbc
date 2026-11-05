@@ -68,7 +68,7 @@ fn leg(main: RunnerUnitMainProcess, roster: OrganizationRunnerRosterEvidence, lo
   )
 }
 
-fn no_lost() -> LostAgentObservation { JobNotLost }
+fn no_lost() -> LostAgentObservation { JobNotLost { job_id: 126894416098, reason: "the job is progressing" } }
 fn lost_job() -> LostAgentObservation { LostAgentDetected { job_id: 126894416098, over_by: second(count: 3600) } }
 
 // POSITIVE CONTROL (item 1 + item 5 together): with the REAL main read, the join names pid 333's row, which
