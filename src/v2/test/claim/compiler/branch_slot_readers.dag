@@ -495,7 +495,9 @@ test fn bsr_infer_accepts_an_else_less_branch_with_no_value_facts() -> Bool {
   bsr_infer_accepts(root: bsr_branch_two_positional_value())
 }
 
-// Control: a one-positional Branch is malformed, and keeps the shape reason.
+// Control: a one-positional Branch is malformed. Infer's admission wall (v2.std.node well_formed) refuses
+// the tree before any Branch row is read, so the reason is infer_reason_malformed_tree (probed at 4dea79ef),
+// not the Branch row's own shape reason.
 test fn bsr_infer_refuses_a_one_positional_branch_with_the_shape_reason() -> Bool {
-  bsr_infer_reason_is(root: bsr_branch_one_positional_value(), reason: ^infer_branch_shape_invalid)
+  bsr_infer_reason_is(root: bsr_branch_one_positional_value(), reason: ^infer_reason_malformed_tree)
 }
