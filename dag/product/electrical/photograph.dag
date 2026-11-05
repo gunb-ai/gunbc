@@ -6,6 +6,8 @@ import std.measure { FiniteByteSize }
 import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.types { Bool, List, NonEmptyStr }
+import v2.std.text { string_eq }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
 
 // WHAT A PHOTOGRAPH IS IN THE MODEL. A reading of a board is read off an image, and the image is what
@@ -152,6 +154,87 @@ fn same_boxed_frame(a: PhotographCitation, b: PhotographCitation) -> Bool {
         BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
       }
     BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
+}
+
+// WHETHER TWO CITATIONS DENOTE THE ONE SIGHTING. This answers the question a DUPLICATE test asks -- did
+// this row write the same reading twice, so that a frame cannot be copied into a list to give it weight --
+// and it is deliberately not `same_boxed_frame`. A frame cited without a region still DENOTES that frame,
+// so two unboxed citations of the same bytes are one sighting, and demanding a box here would let through
+// the exact inflation the duplicate test exists to stop. The join asks the other question -- that a
+// reading was read off THESE pixels -- and refuses an absent box for that reason; conflating the two
+// questions is how one of them silently stops being checked. Across arms it is false: bytes that were
+// never supplied are a sighting of nothing, and two sentences about a frame are two statements even when
+// they agree, which is why the unstored arms compare the fields a reader would compare.
+fn same_sighting(a: PhotographCitation, b: PhotographCitation) -> Bool {
+  match a {
+    InStore { content: ca, region: ra } =>
+      match b {
+        InStore { content: cb, region: rb } =>
+          content_hash_eq_cryptographic(left: ca, right: cb) && regions_agree_or_both_unstated(ra: ra, rb: rb)
+        BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+      }
+    BytesNotInStore { taken_on: ta, locator: la, obligation: oa } =>
+      match b {
+        InStore { content: _, region: _ } => false
+        BytesNotInStore { taken_on: tb, locator: lb, obligation: ob } =>
+          string_eq(a: ta as String, b: tb as String)
+            && string_eq(a: la as String, b: lb as String)
+            && string_eq(a: oa as String, b: ob as String)
+      }
+  }
+}
+
+// Two regions that both state pixels must state the same ones; two that state none agree, because the
+// absence is the same statement on both sides. Split out so `same_sighting` says what it means about
+// bytes and this says what it means about pixels.
+fn regions_agree_or_both_unstated(ra: PixelRegion?, rb: PixelRegion?) -> Bool {
+  match ra {
+    Present { value: pa } =>
+      match rb {
+        Present { value: pb } => pixel_region_eq(a: pa, b: pb)
+        Absent => false
+      }
+    Absent =>
+      match rb {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+// A SIGHTING A BOARD OWNS: this specimen was seen, in this frame, at these pixels. This is the
+// board-generic half of what the marking mints consume. It is keyed by SPECIMEN, not by designator or by
+// file name, because the question a mint asks is not "do these bytes exist somewhere in the repository"
+// but "does THIS board attribute this citation to THIS part" -- an overview frame carries dozens of
+// components, so a digest shared with a neighbour's reading says the bytes are real, not that these
+// pixels are this part's marking.
+type SpecimenSighting {
+  specimen: ComponentInstanceIdentity
+  sighting: PhotographCitation
+}
+
+// The roster: what a board attributes, as rows. A list rather than a keyed map because two specimens may
+// share one frame, which a map keyed by either half would have to invent a tiebreak for, and because a
+// roster is read in the order the bench recorded it.
+type BoardSightings {
+  rows: List<SpecimenSighting>
+}
+
+// Does this board attribute this citation to this specimen? Both halves are their own layers' authorities
+// -- `component_identity_eq` for the specimen, `same_boxed_frame` for the pixels -- and nothing here
+// compares a digest as text, or infers an attribution from a file name, a caption, or which part sits
+// nearest the middle of a crop. An attribution inferred from any of those would be the board claiming a
+// reading it was never given, which is the failure this whole layer was built to make unwritable.
+fn sighting_attributed(
+  roster: BoardSightings,
+  subject: ComponentInstanceIdentity,
+  citation: PhotographCitation
+) -> Bool {
+  match first_where(roster.rows, r =>
+    component_identity_eq(a: r.specimen, b: subject) && same_boxed_frame(a: r.sighting, b: citation)) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
