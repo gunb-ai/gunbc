@@ -3,7 +3,7 @@ module gunbc.live_deploy.belt_cadence
 import std.measure { Second, second, second_count }
 import std.integer { nat_to_int }
 import std.types { NonEmptyStr }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
   belt_attempt_obligation_order,
@@ -147,11 +147,25 @@ fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>
   }
 }
 
-// The receipt line for a provisional bet; empty when the bound rests on recorded samples only. Countable by prefix.
+// The receipt line for a provisional bet; empty when no entry is unsampled (the standing of the sample rows themselves is said by the derived line). Countable by prefix.
+// The standing of the figures a bound rests on is read, not dropped: a row that is not cited or receipted is a bet
+// (DESIGN 4d) and the receipt line says how many of the rows are.
+fn verify_uncited_sample_count(samples: List<EntryCompileSample>) -> Int {
+  length(filter(samples, s => match s.standing {
+    TranscribedUncited { read_obligation: _ } => true
+    CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }))
+}
+
+fn verify_sample_standing_clause() -> String {
+  join(["; ", to_string(value: verify_uncited_sample_count(samples: verify_entry_compile_samples)), " of ", to_string(value: length(verify_entry_compile_samples)), " sample rows are TranscribedUncited, so this bound rests on a bet, not a receipted observation"], "")
+}
+
 fn verify_run_bound_derived_line(bound: VerifyRunBound) -> String {
   match bound {
-    VerifyRunBounded { bound: b, entries } => join(["derived verify bound ", to_string(value: nat_to_int(n: second_count(s: b))), " s for ", to_string(value: entries), " entries (a receipt figure; the enforced kill limit is the unit's outer ", to_string(value: nat_to_int(n: second_count(s: verify_unit_outer_run_bound()))), " s)"], "")
-    VerifyRunProvisional { bound: b, entries, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } => join(["derived verify bound ", to_string(value: nat_to_int(n: second_count(s: b))), " s for ", to_string(value: entries), " entries (a receipt figure; the enforced kill limit is the unit's outer ", to_string(value: nat_to_int(n: second_count(s: verify_unit_outer_run_bound()))), " s)"], "")
+    VerifyRunBounded { bound: b, entries } => join(["derived verify bound ", to_string(value: nat_to_int(n: second_count(s: b))), " s for ", to_string(value: entries), " entries (a receipt figure; the enforced kill limit is the unit's outer ", to_string(value: nat_to_int(n: second_count(s: verify_unit_outer_run_bound()))), " s)", verify_sample_standing_clause()], "")
+    VerifyRunProvisional { bound: b, entries, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } => join(["derived verify bound ", to_string(value: nat_to_int(n: second_count(s: b))), " s for ", to_string(value: entries), " entries (a receipt figure; the enforced kill limit is the unit's outer ", to_string(value: nat_to_int(n: second_count(s: verify_unit_outer_run_bound()))), " s)", verify_sample_standing_clause()], "")
     _ => ""
   }
 }
