@@ -48,14 +48,32 @@ fn standard_location_reference(roster:BoardStandardLocationRoster?) -> BoardMoun
 
 // A HOLE THE BOARD IN HAND TOOK A FIT GAUGE AT. A row the vendor's figure implied
 // (HoleCorrespondenceInferred) becomes HolePhysicallyConfirmedPresent; every other row keeps its standing.
-// A gauged location the roster does not admit a standoff at (absent, directed empty, or undrawn) is the board
-// contradicting its reading, and the roster refuses rather than picking one of the two.
-fn confirm_holes_present_by_fit(roster:BoardStandardLocationRoster?,gauged:List<MountingLocationId>) -> BoardStandardLocationRoster? {
+// The two ways this can refuse are different faults with different repairs, so they are different arms:
+// the board's own roster refusing is an extdeps correspondence defect, while a gauge reported at a location
+// the roster admits no standoff at (absent, directed empty, or undrawn) is the fit record contradicting the
+// vendor's reading -- the observation or the roster is wrong, and neither is picked silently (review 91239).
+type FitConfirmedRoster
+ = FitConfirmedRosterReady {roster:BoardStandardLocationRoster}
+ | FitBaseRosterRefused
+ | FitContradictsRoster {location:MountingLocationId}
+fn confirm_holes_present_by_fit(roster:BoardStandardLocationRoster?,gauged:List<MountingLocationId>) -> FitConfirmedRoster {
  match roster {
- Absent=>Absent
- Present {value:r}=>if all(gauged,g=>count(filter(r.locations,x=>x.location==g && placement_admitted(standing:x.standing)))==1) {
- board_standard_location_roster(grid:r.grid,locations:map(r.locations,x=>if count(filter(gauged,g=>g==x.location))>0 {board_location_correspondence(location:x.location,standing:confirmed_present(standing:x.standing))} else {x}))
- } else {Absent}
+ Absent=>FitBaseRosterRefused
+ Present {value:r}=>match first(filter(gauged,g=>count(filter(r.locations,x=>x.location==g && placement_admitted(standing:x.standing)))!=1)) {
+ Present {value:l}=>FitContradictsRoster {location:l}
+ Absent=>match board_standard_location_roster(grid:r.grid,locations:map(r.locations,x=>if count(filter(gauged,g=>g==x.location))>0 {board_location_correspondence(location:x.location,standing:confirmed_present(standing:x.standing))} else {x})) {
+ Present {value:c}=>FitConfirmedRosterReady {roster:c}
+ Absent=>FitBaseRosterRefused
+ }
+ }
+ }
+}
+// The mounting reference a fit-confirmed roster yields, each refusal naming its own repair.
+fn fit_confirmed_location_reference(confirmation:FitConfirmedRoster) -> BoardMountingReference {
+ match confirmation {
+ FitConfirmedRosterReady {roster:r}=>StandardLocationReference {roster:r}
+ FitBaseRosterRefused=>standard_location_reference(roster:Absent)
+ FitContradictsRoster {location:l}=>MountingReferencePending {read_obligation:concat("A fit gauge is recorded as seating at location ",concat(standard_location_label(id:l)," where the board's roster admits no standoff (absent, directed empty, or undrawn). Recheck that gauge on the board, then correct either the fit record in product.printed_chassis.fit_observations or the correspondence in the board's extdeps module.")) as NonEmptyStr}
  }
 }
 fn confirmed_present(standing:BoardLocationStanding) -> BoardLocationStanding {

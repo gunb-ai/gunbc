@@ -1,5 +1,5 @@
 module test.claim.cassette_platform_projects_witness
-import std.types {Bool}
+import std.types {Bool,Int,String}
 import extdeps.boards.types {BoardStandardLocationRoster,board_standard_location_roster,BoardLocationStanding,HolePhysicallyConfirmedPresent,standoff_placement,StandoffAdmitted,StandoffProhibited}
 import extdeps.standards.motherboard_mounting_grid {MicroAtxMountingGrid,Atx22MountingGrid}
 import extdeps.standards.motherboard_mounting_location {LocC,LocF,LocJ,LocS}
@@ -10,7 +10,8 @@ import extdeps.portwell.aptsa_627211_b4 {collins_datasheet_mechanicals}
 import std.optional {Present,Absent}
 import product.printed_chassis.cassette_profile {board_grid_tiles,RetainPlatformPowerAssembly,IndependentPowerCassette}
 import product.printed_chassis.cassette_profiles {cassette_profiles,altra_profile,h11ssl_i_profile,gh200_p4261_profile,mt_jade_profile,mt_collins_profile}
-import product.printed_chassis.board_mechanical_reference {StandardLocationReference,ImageLocationReference,MountingReferencePending,confirm_holes_present_by_fit}
+import product.printed_chassis.board_mechanical_reference {StandardLocationReference,ImageLocationReference,MountingReferencePending,confirm_holes_present_by_fit,fit_confirmed_location_reference,FitConfirmedRoster,FitConfirmedRosterReady,FitBaseRosterRefused,FitContradictsRoster}
+import extdeps.standards.motherboard_mounting_location {MountingLocationId}
 import extdeps.standards.atx_2_2 {atx_board_width_along_rear_io_exact,atx_full_size_depth_exact}
 import product.printed_chassis.cassette_layout {layout_for,current_layout,LayoutKnown,LayoutNeedsBoardOutline}
 test fn unknown_board_refuses_and_collins_uses_its_own_provisional_outline() -> Bool {
@@ -55,8 +56,13 @@ test fn h11ssl_profile_reads_its_holes_against_atx_and_its_outline_is_full_atx()
 // .fit_observations altra_fit_gauge_set_fit): the seven holes the gauges were cut for are confirmed present,
 // J keeps the vendor's direction to leave it empty, S stays undrawn, and the confirmation changes no placement decision.
 // Reds: a gauge reported at a hole the vendor says to leave empty (J), or at one it does not draw (S), is a
-// contradiction and refuses; no report confirms nothing; one gauge confirms its own two holes only.
+// contradiction and refuses AS a contradiction naming that location, not as a roster defect, and the
+// mounting reference it yields points at the fit record; an absent roster refuses as the roster's fault; no report confirms nothing; one gauge confirms its own two holes only.
 fn confirmed(s:BoardLocationStanding) -> Bool {match s {HolePhysicallyConfirmedPresent=>true _=>false}}
+fn contradicts_at(c:FitConfirmedRoster,l:MountingLocationId) -> Bool {match c {FitContradictsRoster {location:x}=>x==l _=>false}}
+fn base_refused(c:FitConfirmedRoster) -> Bool {match c {FitBaseRosterRefused=>true _=>false}}
+fn ready_confirming(c:FitConfirmedRoster,n:Int) -> Bool {match c {FitConfirmedRosterReady {roster:r}=>count(filter(r.locations,x=>confirmed(s:x.standing)))==n _=>false}}
+fn names_fit_record(c:FitConfirmedRoster) -> Bool {match fit_confirmed_location_reference(confirmation:c) {MountingReferencePending {read_obligation:o}=>string_contains(s:o as String,pattern:"fit_observations") _=>false}}
 test fn altra_holes_the_fit_gauges_seated_are_confirmed_present_and_only_those() -> Bool {
  let roster=asrock_altrad8ud_standard_location_roster
  let profile=match altra_profile.mounting {
@@ -65,11 +71,13 @@ test fn altra_holes_the_fit_gauges_seated_are_confirmed_present_and_only_those()
   && count(filter(r.locations,c=>admits(s:c.standing)))==7
   && all(filter(r.locations,c=>c.location==LocJ),c=>!admits(s:c.standing) && !confirmed(s:c.standing))
  ImageLocationReference {reading:_}=>false MountingReferencePending {read_obligation:_}=>false}
- let red=refused(r:confirm_holes_present_by_fit(roster:roster,gauged:[LocJ]))
-  && refused(r:confirm_holes_present_by_fit(roster:roster,gauged:[LocS]))
-  && refused(r:confirm_holes_present_by_fit(roster:Absent,gauged:[]))
- let unreported=match confirm_holes_present_by_fit(roster:roster,gauged:[]) {Present {value:r}=>count(filter(r.locations,c=>confirmed(s:c.standing)))==0 Absent=>false}
- let one=match confirm_holes_present_by_fit(roster:roster,gauged:[LocF,LocC]) {Present {value:r}=>count(filter(r.locations,c=>confirmed(s:c.standing)))==2 Absent=>false}
+ let red=contradicts_at(c:confirm_holes_present_by_fit(roster:roster,gauged:[LocF,LocJ]),l:LocJ)
+  && contradicts_at(c:confirm_holes_present_by_fit(roster:roster,gauged:[LocS]),l:LocS)
+  && names_fit_record(c:confirm_holes_present_by_fit(roster:roster,gauged:[LocJ]))
+  && base_refused(c:confirm_holes_present_by_fit(roster:Absent,gauged:[LocF]))
+  && !names_fit_record(c:FitBaseRosterRefused)
+ let unreported=ready_confirming(c:confirm_holes_present_by_fit(roster:roster,gauged:[]),n:0)
+ let one=ready_confirming(c:confirm_holes_present_by_fit(roster:roster,gauged:[LocF,LocC]),n:2)
  profile && red && unreported && one
 }
 

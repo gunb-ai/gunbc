@@ -2,7 +2,7 @@ module product.printed_chassis.cassette_profiles
 import std.measure {micrometer_count}
 import std.types {List}
 import product.printed_chassis.cassette_profile {CassetteProfile,BoardOutline,BoardOutlineKnown,BoardOutlinePending,RetainPlatformPowerAssembly,IndependentPowerCassette,transplant_obligations,retained_platform_subsystems}
-import product.printed_chassis.board_mechanical_reference {standard_location_reference,confirm_holes_present_by_fit,ImageLocationReference,MountingReferencePending,jade_image_mount_reading}
+import product.printed_chassis.board_mechanical_reference {standard_location_reference,confirm_holes_present_by_fit,fit_confirmed_location_reference,ImageLocationReference,MountingReferencePending,jade_image_mount_reading}
 import extdeps.external_authority {CitedToAuthority}
 import extdeps.ocp.mt_jade.platform {mt_jade_motherboard_mechanical}
 import extdeps.ocp.mt_jade.subject {mt_jade_subject_authority_anchor}
@@ -24,7 +24,7 @@ fn altra_gauged_locations() -> List<MountingLocationId> {
 data altra_profile:CassetteProfile = CassetteProfile {
  id:"altrad8ud",requested_hardware:"ASRock Rack ALTRAD8UD-1L2T",
  outline:BoardOutlineKnown {width:asrock_altrad8ud_extent_along_rear_io,depth:asrock_altrad8ud_extent_depth,standing:CitedToAuthority {authority:extdeps_external_authority_anchor}},
- mounting:standard_location_reference(roster:confirm_holes_present_by_fit(roster:asrock_altrad8ud_standard_location_roster,gauged:altra_gauged_locations())),
+ mounting:fit_confirmed_location_reference(confirmation:confirm_holes_present_by_fit(roster:asrock_altrad8ud_standard_location_roster,gauged:altra_gauged_locations())),
  power:IndependentPowerCassette,retain:[],open:transplant_obligations
 }
 // The H11SSL-i (operator, 2026-11-04: one of the three boards the operator's own residence receives
