@@ -177,6 +177,7 @@ fn port_refusal_locus(at: Locus, port: Symbol, invariant: Symbol) -> Locus {
     InvariantPortLocus { anchor: _, invariant: _ } =>
       invariant_port_locus(port: port, invariant: invariant)
     NodeLocus { anchor: _ } => invariant_port_locus(port: port, invariant: invariant)
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => invariant_port_locus(port: port, invariant: invariant)
     DeclarationLocus { declaration: _ } => invariant_port_locus(port: port, invariant: invariant)
   }
 }
@@ -232,6 +233,19 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
+    }
+    // A JUDGMENT LOCUS IS A PLACE OF ITS OWN. Two of them are the same place when the declared-type
+    // position matches and the anchored nodes are the same type -- occurrence identity is not available
+    // here: this arm anchors a type node, not a resolved occurrence.
+    InhabitanceJudgmentLocus { position: pa, anchor: na } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: pb, anchor: nb } =>
+        (pa == pb) && node_equal_ignoring_provenance(a: na.at, b: nb.at)
     }
     NodeLocus { anchor: na } => match b {
       Textual { file: _, extent: _ } => false
@@ -239,6 +253,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     }
     SourcePortLocus { anchor: pa, file: fa, extent: ea } => match b {
       Textual { file: _, extent: _ } => false
@@ -247,6 +262,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
         (pa.at == pb.at) && (fa == fb) && extent_eq(a: ea, b: eb)
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     }
     InvariantPortLocus { anchor: pa, invariant: ia } => match b {
       Textual { file: _, extent: _ } => false
@@ -254,6 +270,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: pb, invariant: ib } => (pa.at == pb.at) && (ia == ib)
       DeclarationLocus { declaration: _ } => false
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     }
     DeclarationLocus { declaration: da } => match b {
       Textual { file: _, extent: _ } => false
@@ -261,6 +278,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: db } => da == db
+      InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     }
   }
 }

@@ -127,6 +127,16 @@ fn demand_facts_unbound_locus_from_diagnostics(d: NonEmptyDiagnostics) -> Option
               reference: demand_facts_shaped_reference_optional(node: a.at.node)
             })
         }
+      // the judgment arm anchors a type node directly, so it projects THAT node
+            InhabitanceJudgmentLocus { position: _, anchor: a } =>
+        match node_atom_identity_optional(node: a.at) {
+          Present { value: n } => optional_present(value: UnboundNamed { name: n })
+          Absent =>
+            optional_present(value: UnboundShaped {
+              kind: a.at.kind,
+              reference: demand_facts_shaped_reference_optional(node: a.at)
+            })
+        }
       Textual { file: _, extent: _ } => optional_absent()
       SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
       InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()

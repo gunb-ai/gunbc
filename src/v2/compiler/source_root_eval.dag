@@ -840,6 +840,9 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
     SourcePortLocus { anchor: _, file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
+    // a judgment locus anchors a TYPE node: it has no authored span of its own and no owner key to read
+    // a line off, which is the answer a plain NodeLocus gets when its owner key is absent
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => FileRefusalAtUnresolvedNode
     NodeLocus { anchor: a } =>
       match native_census_owner_key(node: a.at.node) {
         Absent => FileRefusalAtUnresolvedNode
