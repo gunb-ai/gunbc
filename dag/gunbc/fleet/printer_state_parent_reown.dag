@@ -1,0 +1,239 @@
+module gunbc.fleet.printer_state_parent_reown
+
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import std.optional { Present, Absent }
+import extdeps.access.posix { file_mode_octal }
+import extdeps.posix.identity { PosixOwnerNames, posix_owner_names_text }
+import gunbc.ensure {
+  EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible,
+  EnsurePlanAvailable, EnsurePlanUnavailable,
+}
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, declared_directory_mode }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan,
+  owned_directory_install_plan_of, owned_directory_satisfied,
+  owned_directory_owner_matches, owned_directory_path,
+}
+import gunbc.fleet.printer_workflow_artifact { printer_starts_directory, printer_state_group }
+import gunbc.host_state_root { HostStateTree }
+import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.host.host_effect_realize {
+  deploy_apply_directory_observe, run_argv_over_host_effect_transport, run_argv_transport_succeeded,
+}
+import gunbc.executor_privileged_operation { EnsureOwnedDirectory, executor_privileged_operation_elevated_command }
+
+// ONE DECLARED TRANSITION, OWNED BY THIS MODULE: the printer-starts PARENT moves from the identity it
+// carried when gunb-ai/gunbc#15908 closed the writable-parent hole to the identity that item DECLARED for
+// it (root:root, DirectoryOwnerAllEveryoneTraverse, 0755). This is the only place in the model that changes
+// a directory's OWNER, and it is a compare-and-set on the directory's identity, not an adoption: the pinned
+// prior is named first and a live directory that reads anything else is refused. That is deliberate and it
+// is what keeps gunbc.owned_directory's rule -- a present directory under a foreign owner never has a plan
+// (owned_directory_present_owner_is_foreign) -- intact everywhere else, including here: this leg never asks
+// the provider to adopt an owner, it decides one transition of its own, from a prior it states.
+//
+// WHY A CAS AND NOT A CONVERGE: converging an owner means "make it root:root whatever it is now", which over
+// a directory a person may have repurposed is the same mistake #15908 closed, run from the other side. The
+// CAS says: this transition is licensed ONLY while the directory still reads the identity the fix inherited.
+// Anything else -- another owner, another group, another mode, a symlink where the directory should be, a
+// state that cannot be read -- is a refusal naming what was found, and the caller stops.
+//
+// THE APPLY IS ALREADY GRANTED, AND VERIFIED AS SUFFICIENT, so this leg adds no sudoers row. It runs the
+// target's own declared install, `install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts`, which
+// srv1 already grants (provisioning/srv1/gunbc-ghrunner.sudoers). GNU install(1) DOES re-own and re-mode an
+// EXISTING named directory: src/install.c passes make_dir_parents a FALSE `preserve_existing` (coreutils
+// src/install.c, process_dir), and gnulib's lib/mkdir-p.c documents that flag as suppressing exactly the
+// ownership and permission modification of an already-existing DIR -- with -o and -g given, keep_owner is
+// false, so the existing final component goes through dirchownmod and is chowned and chmodded. And the mode
+// operand states the special bits because install narrows its mask to the bits the operand writes
+// (src/install.c, mode_adjust with CHMOD_MODE_BITS): a FIVE-digit operand (00755) states setgid and clears
+// it, where a four-digit one (0755) would leave it -- the difference this repository recorded from the host
+// in dag/test/claim/live_deploy/directory_mode_operand_witness.dag, which is why the grant spells 00755.
+// THE ONE HOLE install -d leaves is the symlink: it follows a final-component symlink and acts on what it
+// points at (probed against coreutils 9.7: the symlink stayed a symlink and its TARGET was re-moded). That is
+// exactly why the prior read below refuses a non-directory BEFORE any command is run.
+//
+// THE ORDER IT RUNS IN (operator-accepted, quick-newt-573 msg_6afc4c8c): #15908 lands, its sudoers deploys,
+// this leg runs IMMEDIATELY -- in the same maintenance window, before anything prints. If it refuses, the
+// pass stops and nothing prints; the refusal is the stop, not a retry hint.
+
+// WHO HELD IT, DERIVED AND NOT SPELLED: the members' own owner pair and the members' own mode arm. Before
+// #15908 the parent was declared through the very builder the members use (gunbc.fleet.printer_workflow_artifact
+// printer_state_directory), so the identity the live host carries IS that builder's identity, and naming it
+// any other way would put a second copy of the fleet account's name and a second copy of 2770 in the model.
+// The claim test.claim.printer_state_parent_reown_witness pins what that derivation must read as, so a
+// change to either declaration moves the prior loudly rather than silently.
+fn printer_state_parent_reown_prior() -> OwnedDirectoryReading {
+  OwnedDirectoryReading {
+    is_directory: true,
+    owner: PosixOwnerNames { user: printer_state_group(), group: printer_state_group() },
+    mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid),
+  }
+}
+
+// WHERE IT MOVES TO, and the ONLY state this transition may produce: the target #15908 declares for the
+// parent. Not a mode spelled here, not a re-decided owner -- the same target the printer pass converges.
+fn printer_state_parent_reown_target(tree: HostStateTree) -> OwnedDirectoryTarget {
+  printer_starts_directory(tree: tree)
+}
+
+// AN IDENTITY AS THE HOST NAMES IT: the same four fields the granted stat answers, so a refusal reads like
+// the host's own line about the path rather than like this module's opinion.
+fn printer_state_directory_identity_text(reading: OwnedDirectoryReading) -> String {
+  let kind = if reading.is_directory { "directory" } else { "not-a-directory" }
+  join([kind, posix_owner_names_text(names: reading.owner), file_mode_octal(mode: reading.mode)], "|")
+}
+
+fn printer_state_parent_reown_prior_text() -> String {
+  printer_state_directory_identity_text(reading: printer_state_parent_reown_prior())
+}
+
+// WHY THE TRANSITION DID NOT RUN, TYPED AND LOCATED. The wrapper names the path it refused at; each arm says
+// which read said what. There is no arm that means "try harder": every arm ends the pass.
+type PrinterStartsParentReownRefusal
+  = ReownPriorNotMatched { expected: String, observed: String }
+  | ReownPathAbsent { detail: String }
+  | ReownPathUnreadable { detail: String }
+  | ReownPathIsNotADirectory
+  | ReownTargetHasNoInstall { reason: String }
+  | ReownInstallRefused
+  | ReownReadbackAbsent { detail: String }
+  | ReownReadbackUnreadable { detail: String }
+  | ReownReadbackIsNotADirectory
+  | ReownReadbackNotTheTarget { expected: String, observed: String }
+
+// THE OUTCOME, IN THE SHAPE gunbc.std.durable_compare_and_set sets for a compare-and-set: a commit carrying
+// BOTH the prior it read and the state it read back, a precondition failure carrying expected AND observed,
+// and a separate arm for the machinery refusing (CasStoreRefused's counterpart).
+type PrinterStartsParentReown
+  = PrinterStartsParentReowned { path: String, before: OwnedDirectoryReading, after: OwnedDirectoryReading }
+  | PrinterStartsParentReownPreconditionFailed { path: String, cause: PrinterStartsParentReownRefusal }
+  | PrinterStartsParentReownRefused { path: String, cause: PrinterStartsParentReownRefusal }
+
+// THE COMPARE, one reading in and one judgment out. A reading is admissible ONLY when it is a real directory
+// -- stat reads the pathname, so a symlink at the path answers "symbolic link" and is refused here, before
+// any command could follow it -- whose owner pair equals the pinned prior's and whose mode octet equals the
+// pinned prior's. Absence and an unreadable state are refusals of their own: the provider CREATES a missing
+// parent with the declared identity, so this leg has nothing to compare against and says so.
+type PrinterStartsParentPriorMatch
+  = PriorMatches { reading: OwnedDirectoryReading }
+  | PriorRefuses { cause: PrinterStartsParentReownRefusal }
+
+fn printer_state_parent_prior_match(prior: OwnedDirectoryReading, observation: EnsureObservation<OwnedDirectoryReading>) -> PrinterStartsParentPriorMatch {
+  match observation {
+    EnsureObserved { evidence } =>
+      if !evidence.is_directory {
+        PriorRefuses { cause: ReownPathIsNotADirectory }
+      } else if owned_directory_owner_matches(want: prior.owner, got: evidence.owner) && file_mode_octal(mode: prior.mode) == file_mode_octal(mode: evidence.mode) {
+        PriorMatches { reading: evidence }
+      } else {
+        PriorRefuses { cause: ReownPriorNotMatched { expected: printer_state_directory_identity_text(reading: prior), observed: printer_state_directory_identity_text(reading: evidence) } }
+      }
+    EnsureAbsent { reason } => PriorRefuses { cause: ReownPathAbsent { detail: reason } }
+    EnsureInaccessible { reason } => PriorRefuses { cause: ReownPathUnreadable { detail: reason } }
+  }
+}
+
+// THE TRANSITION, driven over two ports so the machine below is the machine that runs in production AND the
+// machine a witness drives over a throwaway tree: `observe` reads one path's identity the way the provider
+// reads it (gunbc.owned_directory owned_directory_observe -- one observer, not a second one), and `apply`
+// runs the target's declared install argv and answers whether it ran. The provider's own ensure is driven
+// the same way; the authority, not the shape, differs between the two wirings.
+fn printer_state_parent_reown(
+  target: OwnedDirectoryTarget,
+  prior: OwnedDirectoryReading,
+  observe: fn(FilePath) -> EnsureObservation<OwnedDirectoryReading>,
+  apply: fn(OwnedDirectoryInstallPlan) -> Bool,
+) -> PrinterStartsParentReown {
+  let path = owned_directory_path(t: target)
+  match printer_state_parent_prior_match(prior: prior, observation: observe(path: path)) {
+    PriorRefuses { cause } => PrinterStartsParentReownPreconditionFailed { path: path as String, cause: cause }
+    PriorMatches { reading } => match owned_directory_install_plan_of(t: target) {
+      EnsurePlanUnavailable { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownTargetHasNoInstall { reason: reason } }
+      EnsurePlanAvailable { plan } =>
+        if !apply(plan: plan) {
+          PrinterStartsParentReownRefused { path: path as String, cause: ReownInstallRefused }
+        } else {
+          // THE READ-BACK IS ITS OWN READ, not the install's exit status: a second observation of the path,
+          // asked of the host after the command, tested against the DECLARED target by the provider's own
+          // satisfaction test. An install that succeeded and left some other identity here refuses.
+          let after = observe(path: path)
+          if owned_directory_satisfied(t: target, o: after) {
+            match after {
+              EnsureObserved { evidence } => PrinterStartsParentReowned { path: path as String, before: reading, after: evidence }
+              EnsureAbsent { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackAbsent { detail: reason } }
+              EnsureInaccessible { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackUnreadable { detail: reason } }
+            }
+          } else {
+            match after {
+              EnsureObserved { evidence } =>
+                if evidence.is_directory {
+                  PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackNotTheTarget { expected: printer_state_install_identity_text(plan: plan), observed: printer_state_directory_identity_text(reading: evidence) } }
+                } else {
+                  PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackIsNotADirectory }
+                }
+              EnsureAbsent { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackAbsent { detail: reason } }
+              EnsureInaccessible { reason } => PrinterStartsParentReownRefused { path: path as String, cause: ReownReadbackUnreadable { detail: reason } }
+            }
+          }
+        }
+    }
+  }
+}
+
+// THE TARGET AS IT WILL BE READ BACK, in the same identity text a refusal quotes: the plan the target lowers
+// to carries the declared owner pair and mode, which is the whole of what the read-back must equal.
+fn printer_state_install_identity_text(plan: OwnedDirectoryInstallPlan) -> String {
+  join(["directory", posix_owner_names_text(names: plan.owner), file_mode_octal(mode: plan.mode)], "|")
+}
+
+// THE REFUSAL THE PASS CARRIES OUT: located at the path, and naming the arm that fired.
+fn printer_state_parent_reown_refusal_text(path: String, cause: PrinterStartsParentReownRefusal) -> String {
+  join([
+    "the printer-starts parent re-own refused at ", path, ": ",
+    match cause {
+      ReownPriorNotMatched { expected, observed } => join(["the live identity is not the pinned prior; expected ", expected, ", read ", observed], "")
+      ReownPathAbsent { detail } => join(["there is no directory to re-own: ", detail], "")
+      ReownPathUnreadable { detail } => join(["its identity could not be read: ", detail], "")
+      ReownPathIsNotADirectory => "the path is not a directory, and install -d would follow it to whatever is there"
+      ReownTargetHasNoInstall { reason } => join(["the declared target has no install: ", reason], "")
+      ReownInstallRefused => "the declared install did not run"
+      ReownReadbackAbsent { detail } => join(["after the install the path is not there: ", detail], "")
+      ReownReadbackUnreadable { detail } => join(["after the install its identity could not be read: ", detail], "")
+      ReownReadbackIsNotADirectory => "after the install the path is not a directory"
+      ReownReadbackNotTheTarget { expected, observed } => join(["after the install the identity is not what the target declares; expected ", expected, ", read ", observed], "")
+    },
+  ], "")
+}
+
+// THE REAL ROUTE. The reads are the same privileged reads the provider makes for this path (its listing of
+// its parent and its own identity), and the apply is the target's declared install elevated through the one
+// projection that names it (gunbc.executor_privileged_operation executor_privileged_operation_elevated_command),
+// so the words this leg runs are exactly the words the host's sudoers already grants for this target -- no
+// grant of its own, and none needed.
+fn printer_state_parent_reown_on_host(tree: HostStateTree, transport: HostEffectTransport) -> PrinterStartsParentReown {
+  printer_state_parent_reown(
+    target: printer_state_parent_reown_target(tree: tree),
+    prior: printer_state_parent_reown_prior(),
+    observe: path => deploy_apply_directory_observe(path: path, transport: transport),
+    apply: plan => run_argv_transport_succeeded(outcome: run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory { path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode }), transport: transport)),
+  )
+}
+
+// WHAT THE PRINTER PASS DOES ABOUT ITS PARENT, in the shape the pass already carries: none means the pass may
+// go on, a Present reason stops it. THE LEG IS A COMPARE-AND-SET, NOT A CONVERGENCE LOOP, so it is entered
+// only when the parent is NOT already the declared identity: once the transition has committed, the provider
+// converges the parent like any other of the layout's targets and this leg does not run again on that host.
+// That is what lets the leg itself refuse everything that is not the pinned prior -- including the identity
+// it produced -- without turning every later pass into a false alarm.
+fn printer_state_parent_identity_leg_on_host(tree: HostStateTree, transport: HostEffectTransport) -> String? {
+  let target = printer_state_parent_reown_target(tree: tree)
+  if owned_directory_satisfied(t: target, o: deploy_apply_directory_observe(path: owned_directory_path(t: target), transport: transport)) {
+    none
+  } else {
+    match printer_state_parent_reown_on_host(tree: tree, transport: transport) {
+      PrinterStartsParentReowned { path: _, before: _, after: _ } => none
+      PrinterStartsParentReownPreconditionFailed { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
+      PrinterStartsParentReownRefused { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
+    }
+  }
+}

@@ -19,6 +19,7 @@ import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_federation { printer_lan_host_identity }
 import gunbc.host_state_root { HostStateTree }
 import gunbc.fleet.printer_workflow_artifact { print_run_directory, printer_state_group }
+import gunbc.fleet.printer_state_parent_reown { printer_state_parent_identity_leg_on_host }
 import gunbc.fleet.printer_state_layout { printer_state_directories, printer_state_move, PrinterStateMoved, PrinterStateMoveRefused }
 import gunbc.fleet.print_record_stores {
   print_request_store, PrintRequestStoreReady, PrintRequestStoreUnready, PrintRequestStore, print_request_read, print_request_record,
@@ -72,6 +73,15 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 // effect for the next job's process, so a pass that just added it refuses below on the unreadable root).
 fn ensure_printer_state_directories(tree: HostStateTree) -> String? {
   if !run_argv_transport_succeeded(outcome: run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: EnsureSupplementaryGroupMembership { login: srv1_runner_host_spec.job_user, group: printer_state_group() }), transport: LocalShell)) { return Present { value: concat("the job user could not be ensured in group ", printer_state_group() as String) } }
+  // THE PARENT'S IDENTITY IS DECIDED BEFORE ANY STATE ROOT IS TOUCHED. The provider never adopts a foreign
+  // owner, so a parent still reading the identity #15908 inherited -- its fleet account, group-writable
+  // setgid -- has no plan, and the fold below would stop on it. The one route licensed to change that
+  // identity is the declared compare-and-set in gunbc.fleet.printer_state_parent_reown: it runs here, ahead
+  // of every state-root effect and every read below, and its refusal ends this pass -- nothing prints.
+  match printer_state_parent_identity_leg_on_host(tree: tree, transport: LocalShell) {
+    Present { value: reason } => return Present { value: reason }
+    Absent => {}
+  }
   fold(printer_state_directories(tree: tree), init: none, f: (refused, d) => match refused {
     Present { value: r } => Present { value: r }
     Absent => {

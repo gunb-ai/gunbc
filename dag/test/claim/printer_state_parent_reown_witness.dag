@@ -1,0 +1,283 @@
+module test.claim.printer_state_parent_reown_witness
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.algebra { trim, join, string_contains }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.shell.exec
+import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.tools.gnu_coreutils { coreutils_install_binary_name, coreutils_install_directory_owned_arguments, coreutils_directory_mode_operand }
+import gunbc.ensure { EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible, EnsurePlanAvailable, EnsurePlanUnavailable }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact }
+import gunbc.generated_artifact_emit { artifact_generate, ArtifactGenerated, ArtifactGenerationRefused }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.host_state_root { host_state_tree }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly, declared_directory_mode }
+import gunbc.owned_directory {
+  OwnedDirectoryDeclared, OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited, ForeignOwnershipRefuses,
+  owned_directory_observe, owned_directory_install_plan_of, owned_directory_path,
+  owned_directory_stat_format, owned_directory_parent,
+}
+import gunbc.fleet.printer_state_parent_reown {
+  printer_state_parent_reown, printer_state_parent_reown_prior_text,
+  printer_state_parent_reown_target, printer_state_directory_identity_text,
+  PrinterStartsParentReowned, PrinterStartsParentReownPreconditionFailed, PrinterStartsParentReownRefused,
+}
+
+data real_execution_home_doc: String = "Inhabitance for gunbc.fleet.printer_state_parent_reown printer_state_parent_reown: the transition is driven over the provider's OWN observer (gunbc.owned_directory owned_directory_observe) and the project's OWN install spelling (extdeps.tools.gnu_coreutils coreutils_install_directory_owned_arguments), over a throwaway tree, on a real host, with real commands and real bytes read back afterwards; the production wiring and the privilege it runs under are pinned by the two claims at the end of this file. Local filesystem wet lane."
+
+// THE SCRATCH THE WITNESSES PLANT IN. The observing account owns it, which is why the identity pair these
+// witnesses declare is the observing account's own and not gunbc-fleet: an unprivileged principal cannot mint
+// a foreign owner, and DESIGN 3 is explicit that a witness supplies the observing account as the principal
+// that owns the thing (the owner pair the PRODUCTION transition names is pinned by
+// witness_the_production_transition_is_pinned_to_what_15908_declares below, and the grant that lets it change
+// an owner at all is pinned by witness_the_host_grants_exactly_the_words_the_leg_runs).
+fn scratch_directory() -> String? {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-printer-starts-reown.XXXXXX")
+  if !made.success { none } else { Present { value: trim(s: made.path as String) } }
+}
+
+fn observing_login() -> NonEmptyStr {
+  trim(s: shell.Id.UserName().stdout) as NonEmptyStr
+}
+
+// PLANT A DIRECTORY WITH A MODE, through the same coreutils verb the leg applies with. This is how a prior
+// gets into the world for these witnesses: install -d is what created the real parent too.
+fn plant_directory(path: String, mode_operand: String) -> Bool {
+  shell.Exec.RunArgv(program: "install", arguments: ["-d", "-m", mode_operand, "--", path]).exit_code == 0
+}
+
+// THE READS THE LEG RUNS, at the witness's own authority: the provider's single observer, over the stat and
+// listing words the privileged route runs. Not a stand-in reading -- the parse is the one that decides.
+fn listing_read(dir: FilePath) -> ObserverRead {
+  let ran = shell.Exec.RunArgv(program: "ls", arguments: ["-1A", "--", dir as String])
+  if ran.exit_code == 0 { ObserverReadOut { stdout: ran.stdout } } else { ObserverReadFailed { origin: ObserverExited { exit_code: ran.exit_code, stderr: ran.stderr } } }
+}
+
+fn identity_read(path: FilePath) -> ObserverRead {
+  let ran = shell.Exec.RunArgv(program: "stat", arguments: [owned_directory_stat_format, "--", path as String])
+  if ran.exit_code == 0 { ObserverReadOut { stdout: ran.stdout } } else { ObserverReadFailed { origin: ObserverExited { exit_code: ran.exit_code, stderr: ran.stderr } } }
+}
+
+fn observe_path(path: FilePath) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(path: path, list: dir => listing_read(dir: dir), stat: one => identity_read(path: one))
+}
+
+// WHAT THE PATH READS AS, in the model's own identity text, by a read taken OUTSIDE the transition: this is
+// how a witness says what the filesystem ended up holding.
+fn live_identity(path: String) -> String {
+  match observe_path(path: path as FilePath) {
+    EnsureObserved { evidence } => printer_state_directory_identity_text(reading: evidence)
+    EnsureAbsent { reason: _ } => "absent"
+    EnsureInaccessible { reason: _ } => "unreadable"
+  }
+}
+
+fn declared_target(root: String, owner: PosixOwnerNames, mode: DeclaredDirectoryMode) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "printer-starts" as NonEmptyStr,
+    path: concat(root, "/printer-starts") as FilePath,
+    owner: owner,
+    mode: mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+fn owner_pair(login: NonEmptyStr, group: NonEmptyStr) -> PosixOwnerNames {
+  PosixOwnerNames { user: login, group: group }
+}
+
+// THE APPLY, at the witness's own authority and in the project's own words: the install argv the target's
+// declared plan lowers to, un-elevated because the witness owns the tree it acts on.
+fn apply_declared_install(plan: OwnedDirectoryInstallPlan) -> Bool {
+  shell.Exec.RunArgv(program: coreutils_install_binary_name as NonEmptyStr, arguments: coreutils_install_directory_owned_arguments(mode: plan.mode, owner: plan.owner.user, group: plan.owner.group, path: plan.path as String)).exit_code == 0
+}
+
+// THE MATCHING PRIOR RE-OWNS, and the identity that comes back is the declared one. The prior planted here is
+// the identity the transition names: the observing account's directory, group-writable with setgid (2770).
+// The commitment carries BOTH sides, and the read back is a fresh command run after the install, not the
+// install's own answer -- here it is a read taken outside the machine entirely, and it agrees: the mode is
+// 755 and the setgid bit is gone.
+test fn witness_the_matching_prior_reowns_and_reads_back_the_declared_identity() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } =>
+      let path = concat(root, "/printer-starts")
+      if !plant_directory(path: path, mode_operand: "02770") { false } else {
+        let live = observe_path(path: path as FilePath)
+        match live {
+          EnsureObserved { evidence } =>
+            match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: evidence, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+              PrinterStartsParentReowned { path: at, before: before, after: after } =>
+                at == path
+                  && printer_state_directory_identity_text(reading: before) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
+                  && printer_state_directory_identity_text(reading: after) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "755"], "|")
+                  && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "755"], "|")
+              PrinterStartsParentReownPreconditionFailed { path: _, cause: _ } => false
+              PrinterStartsParentReownRefused { path: _, cause: _ } => false
+            }
+          EnsureAbsent { reason: _ } => false
+          EnsureInaccessible { reason: _ } => false
+        }
+      }
+  }
+}
+
+// A PRIOR THAT DIFFERS IN GROUP REFUSES: the live directory reads the observing account's group, and the
+// pinned prior this witness names does not. The target mode is deliberately one the host does NOT already
+// carry (700), so the conjunct that the mode is still 2770 afterwards is a real statement -- the install was
+// never run, and a machine that adopted the foreign group would have left 700 behind.
+test fn witness_a_prior_that_differs_in_group_refuses_and_nothing_is_applied() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } =>
+      let path = concat(root, "/printer-starts")
+      if !plant_directory(path: path, mode_operand: "02770") { false } else {
+        let live = observe_path(path: path as FilePath)
+        match live {
+          EnsureObserved { evidence } =>
+            let foreign_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: evidence.owner.user, group: "gunbc-fleet-reown-witness-absent" as NonEmptyStr), mode: evidence.mode }
+            match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerOnly), prior: foreign_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+              PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+                (at == path) && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
+              PrinterStartsParentReownRefused { path: _, cause: _ } => false
+            }
+          EnsureAbsent { reason: _ } => false
+          EnsureInaccessible { reason: _ } => false
+        }
+      }
+  }
+}
+
+// A PRIOR THAT DIFFERS IN MODE REFUSES EVEN WHEN THE LIVE MODE IS ALREADY WHAT THE TARGET DECLARES. This is
+// the conjunct a convergence loop would get wrong: the directory is 755, the target wants 755, and the
+// compare-and-set still refuses, because the only state it was licensed to leave is the one it was licensed
+// to act FROM. Deleting the prior comparison turns this witness green on a commit -- that is the control.
+test fn witness_a_prior_that_differs_in_mode_refuses_although_the_live_mode_is_already_the_target() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } =>
+      let path = concat(root, "/printer-starts")
+      if !plant_directory(path: path, mode_operand: "00755") { false } else {
+        match observe_path(path: path as FilePath) {
+          EnsureObserved { evidence } =>
+            let prior_at_another_mode = OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
+            match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: prior_at_another_mode, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+              PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "755"], "|")
+              PrinterStartsParentReownRefused { path: _, cause: _ } => false
+            }
+          EnsureAbsent { reason: _ } => false
+          EnsureInaccessible { reason: _ } => false
+        }
+      }
+  }
+}
+
+// A SYMLINK REFUSES, and what it protects is on the far side of it. install -d follows a final-component
+// symlink and acts on what it points at, so a leg that ran the verb without reading first would re-mode the
+// directory the link happens to name. The planted target keeps mode 2770 afterwards: the refusal came before
+// any command, which is the only order that leaves it alone.
+test fn witness_a_symlink_at_the_path_refuses_and_what_it_points_at_is_left_alone() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } =>
+      let held = concat(root, "/what-the-link-names")
+      let path = concat(root, "/printer-starts")
+      if !plant_directory(path: held, mode_operand: "02770") { false } else {
+        if shell.Exec.RunArgv(program: "ln", arguments: ["-s", held, path]).exit_code != 0 { false } else {
+          match observe_path(path: path as FilePath) {
+            EnsureObserved { evidence } =>
+              match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+                PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+                PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: held) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
+                PrinterStartsParentReownRefused { path: _, cause: _ } => false
+              }
+            EnsureAbsent { reason: _ } => false
+            EnsureInaccessible { reason: _ } => false
+          }
+        }
+      }
+  }
+}
+
+// AN UNREADABLE STATE REFUSES. The path's parent is a symlink to nowhere, so the provider's own listing of
+// that parent fails and its presence walk establishes nothing: the reading the leg is handed is
+// EnsureInaccessible with a real origin behind it, and no policy installs on a read that failed.
+test fn witness_an_unreadable_state_refuses() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } =>
+      let dangling = concat(root, "/parent-that-is-a-broken-link")
+      if shell.Exec.RunArgv(program: "ln", arguments: ["-s", concat(root, "/nowhere-exists"), dangling]).exit_code != 0 { false } else {
+        let path = concat(dangling, "/printer-starts")
+        let unreadable_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: observing_login(), group: observing_login()), mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
+        match printer_state_parent_reown(target: declared_target(root: dangling, owner: owner_pair(login: observing_login(), group: observing_login()), mode: DirectoryOwnerAllEveryoneTraverse), prior: unreadable_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+          PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+          PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path
+          PrinterStartsParentReownRefused { path: _, cause: _ } => false
+        }
+      }
+  }
+}
+
+// A MISSING PARENT DIRECTORY IS REFUSED, NOT CREATED. Absence is established here by a listing the witness
+// really read and that does not name the path -- the provider's own answer, not this module's guess -- and
+// the leg has nothing to compare against, so it refuses rather than reaching for a create. Creation is the
+// provider's, and it is licensed only for a path that is missing, which is the other half of why the CAS
+// gets to refuse everything that is not the prior.
+test fn witness_a_missing_directory_refuses_rather_than_creates() -> Bool {
+  match scratch_directory() {
+    Absent => false
+    Present { value: root } =>
+      let path = concat(root, "/printer-starts")
+      let absent_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: observing_login(), group: observing_login()), mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
+      match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: observing_login(), group: observing_login()), mode: DirectoryOwnerAllEveryoneTraverse), prior: absent_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+        PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+        PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: path) == "absent"
+        PrinterStartsParentReownRefused { path: _, cause: _ } => false
+      }
+  }
+}
+
+// THE PRODUCTION TRANSITION IS PINNED TO WHAT #15908 DECLARES, not to anything these witnesses would like.
+// The prior reads as the identity the fix inherited -- the fleet account's own pair, group-writable setgid --
+// and the target is the printer-starts parent of the REAL host tree at the identity that item declares:
+// root:root, 755. Change the fleet account, the members' mode arm, or the parent's declaration, and this
+// goes false instead of quietly moving the prior with it.
+test fn witness_the_production_transition_is_pinned_to_what_15908_declares() -> Bool {
+  let tree = host_state_tree()
+  let target = printer_state_parent_reown_target(tree: tree)
+  printer_state_parent_reown_prior_text() == "directory|gunbc-fleet|gunbc-fleet|2770"
+    && match owned_directory_install_plan_of(t: target) {
+      EnsurePlanUnavailable { reason: _ } => false
+      EnsurePlanAvailable { plan: plan } =>
+        (plan.path as String) == "/var/lib/gunbc/printer-starts"
+          && (plan.owner.user as String) == "root"
+          && (plan.owner.group as String) == "root"
+          && coreutils_directory_mode_operand(mode: plan.mode) == "00755"
+    }
+}
+
+// THE PRIVILEGED EFFECT IS THE GRANT, REACHED THE WAY EVERY GENERATED FILE IS REACHED. The words are derived
+// from the production target's own declared plan -- not copied into this file -- and every one of the three
+// commands the leg runs (its two reads and its install) is a line of srv1's rendered sudoers. Drop the
+// parent's install row from the grants, or change the mode spelling to four digits, and the containment that
+// matters here goes false.
+test fn witness_the_host_grants_exactly_the_words_the_leg_runs() -> Bool {
+  let tree = host_state_tree()
+  let target = printer_state_parent_reown_target(tree: tree)
+  let sudoers = match artifact_generate(a: RunnerHostSudoersArtifact { host: operator_host_srv1 }) {
+    ArtifactGenerated { content } => content
+    ArtifactGenerationRefused { reason: _ } => ""
+  }
+  match owned_directory_install_plan_of(t: target) {
+    EnsurePlanUnavailable { reason: _ } => false
+    EnsurePlanAvailable { plan: plan } =>
+      string_contains(s: sudoers, pattern: join(coreutils_install_directory_owned_arguments(mode: plan.mode, owner: plan.owner.user, group: plan.owner.group, path: plan.path as String), " "))
+        && string_contains(s: sudoers, pattern: join(["-c", owned_directory_stat_format, "--", owned_directory_path(t: target) as String], " "))
+        && string_contains(s: sudoers, pattern: join(["-1A", "--", owned_directory_parent(path: owned_directory_path(t: target)) as String], " "))
+  }
+}
