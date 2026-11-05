@@ -202,8 +202,14 @@ fn attempt_slots_cutover_run_ref() -> DeclarationRef {
 // the part that says whether the attempt ended by refusal or by completion -- and puts free text where a
 // named sum already exists (DESIGN 2: a String leaf hiding named parts is anemic modeling). The spelling
 // belongs at a presentation edge; there is none here, so the sum is carried as itself.
+//
+// THE GENERATION IS THE CAS CARRIER, NOT AN INT. std.durable_compare_and_set owns it -- CasSlotVersion
+// and attempt_lifecycle's AttemptSlotHeld both hand out a CasGeneration -- and this module used to drop
+// it to a bare Int at its own read boundary and rebuild it at the commit. A bare Int can be written from
+// anywhere and compared to anything, which is how a generation fence stops being a fence (DESIGN 3b: the
+// unit lives in the type). It is rendered as a number in exactly one place, the carry record below.
 type AttemptSlotsSlotReading
-  = SlotRead { generation: Int, state: AttemptState, payload: String }
+  = SlotRead { generation: CasGeneration, state: AttemptState, payload: String }
   | SlotAbsent
   | SlotUnreadable { detail: String }
 
@@ -413,7 +419,7 @@ fn attempt_slot_reading(store: SlotStore, reference: NonEmptyStr) -> AttemptSlot
     AttemptSlotUnreadable { detail: d } => SlotUnreadable { detail: d }
     AttemptSlotHeld { record: rec, generation: g } =>
       match attempt_slot_payload_bytes(store: store, reference: reference) {
-        SlotPayloadHeld { bytes: b } => SlotRead { generation: cas_generation_count(g: g), state: attempt_record_state(r: rec), payload: b }
+        SlotPayloadHeld { bytes: b } => SlotRead { generation: g, state: attempt_record_state(r: rec), payload: b }
         SlotPayloadAbsent => SlotUnreadable { detail: "the slot decoded as an attempt record but its bytes could not be read back" }
         SlotPayloadUnreadable { detail: d } => SlotUnreadable { detail: d }
       }
@@ -502,7 +508,7 @@ fn attempt_slots_census_entry(source: SlotStore, target: SlotStore, reference: N
 //     they are refusals OF THE CARRY, not outcomes about a reference.
 // ---------------------------------------------------------------------------------------------
 type AttemptSlotsCarryOutcome
-  = AttemptSlotsCarried { reference: NonEmptyStr, source_generation: Int, target_generation: Int }
+  = AttemptSlotsCarried { reference: NonEmptyStr, source_generation: CasGeneration, target_generation: CasGeneration }
   | AttemptSlotsCarryAlreadyCarried { reference: NonEmptyStr }
   | AttemptSlotsCarryRefused { reference: NonEmptyStr, detail: String }
 
@@ -627,7 +633,7 @@ fn attempt_slots_carry_one(source: SlotStore, target: SlotStore, reference: NonE
                 DerivedPayloadKeyNotSlotAddressable { key: k } => AttemptSlotsCarryRefused { reference: reference, detail: join(["the reference is not slot-addressable: ", k as String], "") }
                 DerivedPayloadAdmitted { verified: v } =>
                   match slot_commit(store: target, publication: DefaultAccessCreateOnly, verified: v) {
-                    CasCommitted { committed: c } => AttemptSlotsCarried { reference: reference, source_generation: cas_generation_count(g: source_generation), target_generation: cas_generation_count(g: c.generation) }
+                    CasCommitted { committed: c } => AttemptSlotsCarried { reference: reference, source_generation: source_generation, target_generation: c.generation }
                     CasPreconditionFailed { expected: _, observed: _ } =>
                       // Someone else wrote that reference between the read and the commit. The CAS is what
                       // makes that a fact rather than a corruption, and the same identity rule decides it
@@ -820,8 +826,8 @@ fn attempt_slots_carry_outcomes_json(carry: AttemptSlotsCarry) -> JsonValue {
       AttemptSlotsCarried { reference: k, source_generation: sg, target_generation: tg } => json_object(members: [
         json_kv(key: "reference", value: json_string(s: k)),
         json_kv(key: "outcome", value: json_string(s: "carried")),
-        json_kv(key: "source_generation", value: json_int(n: sg)),
-        json_kv(key: "target_generation", value: json_int(n: tg)),
+        json_kv(key: "source_generation", value: json_int(n: cas_generation_count(g: sg))),
+        json_kv(key: "target_generation", value: json_int(n: cas_generation_count(g: tg))),
       ])
       AttemptSlotsCarryAlreadyCarried { reference: k } => json_object(members: [
         json_kv(key: "reference", value: json_string(s: k)),

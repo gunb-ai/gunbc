@@ -2033,8 +2033,11 @@ fn carry_carried_arms(c: AttemptSlotsCarry) -> Int {
 
 // THE LIVE STORE HOLDS THIS REFERENCE AT EXACTLY THIS GENERATION, and at no other. The number is the
 // store's own, read back through the census the cutover computed -- never one the fixture typed in.
-fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: Int) -> Bool {
-  count(filter(census_entries(c: c), e => ((e.reference as String) == reference) && match e.target { SlotRead { generation: g, state: _, payload: _ } => g == generation  _ => false })) == 1
+// The generation is compared AS THE CARRIER the census reads (SlotRead.generation is a CasGeneration
+// since the fold), and the comparison goes through the carrier's own extractor -- the same style
+// std.durable_compare_and_set uses at its own fence, dag/std/durable_compare_and_set.dag:277.
+fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: CasGeneration) -> Bool {
+  count(filter(census_entries(c: c), e => ((e.reference as String) == reference) && match e.target { SlotRead { generation: g, state: _, payload: _ } => cas_generation_count(g: g) == cas_generation_count(g: generation)  _ => false })) == 1
 }
 
 // THE OLD ROOT HOLDS IT (readable or not) AND THE LIVE STORE DOES NOT: the refused reference is left
