@@ -556,9 +556,10 @@ service megarac.Media {
   // thing: not policy, but a fact ABOUT THE BOX, knowable only by reading the page that references it.
   // What bounds it is the model, not the caller: a page path is a repository-baked candidate row, and an
   // asset path must be one the observation DERIVED from the committed page bytes --
-  // ui_asset_path_is_admitted in gunbc.machine_intake.mtcollins1_ui_status_asset_observation refuses
-  // anything else, a caller-invented path included -- with a shape guard against walking out of the web
-  // root or becoming another origin.
+  // ui_asset_path_admission in gunbc.machine_intake.mtcollins1_ui_status_asset_observation refuses
+  // anything else, a caller-invented path included -- and the shape guard it calls,
+  // ui_asset_path_shape_refusal, is what rejects a path walking out of the web root or becoming
+  // another origin.
   //
   // BODY THEN STATUS, IN THE HOUSE SHAPE. The write-out is
   // extdeps.tools.curl.curl_http_code_after_newline_write_out_format spelled exactly as the configurations
