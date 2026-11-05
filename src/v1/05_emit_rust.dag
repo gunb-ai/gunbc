@@ -150,7 +150,8 @@ import v1.compiler.languages {
   TestConventions, ItemKeywords,
   test_conventions_for_target, visibility_for_target, KeywordVisibility,
   sharing_for_target,
-  is_string_like
+  is_string_like,
+  ServiceFieldTemplates
 }
 import v1.compiler.runtime_rust { rust_runtime_source, rust_runtime_cargo_features }
 import extdeps.rust.cargo { CargoFeature }
@@ -229,8 +230,9 @@ import v1.compiler.infer_items {
 }
 import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name,
-  service_endpoint_supply, service_operation_items, service_data_values,
-  EndpointOperationParameter, EndpointLiteral, EndpointModuleDataLiteral
+  service_endpoint_supply, service_endpoint_answer, service_operation_items, service_data_values,
+  ServiceEndpointSupply, EndpointOperationParameter, EndpointLiteral, EndpointModuleDataLiteral,
+  EndpointModuleExpression, EndpointParameterNameUnbound
 }
 import v1.compiler.infer {
   is_lambda_expr,
@@ -18163,16 +18165,24 @@ fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>,
 
 fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo, data_values: List<Node>, imported_data_values: List<Node>) -> String {
   let depth = 0
-  let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children, service_item: service_item, source_indices: env.source_indices, data_values: data_values, imported_data_values: imported_data_values)
+  // THE ENDPOINT IS ANSWERED ONCE PER SERVICE, HERE. What an `endpoint:` means depends only on
+  // the SERVICE -- its config block, its operations, its data and imports -- never on which
+  // operation is being emitted. This site used to pass the raw material (data_values,
+  // imported_data_values) down three levels, where every REST operation re-asked the question
+  // over the whole operation list: one fact answered n+1 times by one consumer, quadratic in the
+  // service's operation count (DESIGN 2 duplicated work, DESIGN 6: a proven cost-shape defect is
+  // always fixed, regardless of realized n). The answer is computed once and carried.
+  let endpoint_answer = service_endpoint_answer(service: service_item, operations: op_children, data_values: data_values, imported_data_values: imported_data_values, source_indices: env.source_indices)
+  let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children, service_item: service_item, source_indices: env.source_indices, endpoint_answer: endpoint_answer)
   let method_strs = op_children |> map(op_node =>
-    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item, emit_info: emit_info, data_values: data_values, imported_data_values: imported_data_values)
+    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item, emit_info: emit_info, endpoint_answer: endpoint_answer)
   )
   let all_methods = concat([new_method], method_strs)
   let methods_str = all_methods |> join(separator: "\n\n")
   concat("impl ", name, " {\n", make_indent(level: depth + 1),methods_str, "\n}")
 }
 
-fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>, service_item: Node, source_indices: Map<String, NewlineIndex>, data_values: List<Node>, imported_data_values: List<Node>) -> String {
+fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>, service_item: Node, source_indices: Map<String, NewlineIndex>, endpoint_answer: ServiceEndpointSupply) -> String {
   let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_indices: source_indices)
   let has_svc_auth = match service_config_auth_source(n: service_item, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
   let fs = if has_svc_auth { ServiceFieldSet { has_rest: fs.has_rest, has_shell: fs.has_shell, has_file: fs.has_file, has_auth: true } }
@@ -18181,7 +18191,6 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
   // config value with its own match and accept only a string literal, silently falling through
   // for anything else; `service_endpoint_supply` now answers the question the lens and the
   // interpreter also answer, so the three cannot disagree about one declaration.
-  let endpoint_answer = service_endpoint_answer(service: service_item, operations: op_children, data_values: data_values, imported_data_values: imported_data_values, source_indices: source_indices)
   let base_url_default = match endpoint_answer {
     // A literal endpoint is the constructor default, exactly as it has always been.
     EndpointLiteral { value: value } => value
@@ -18228,7 +18237,37 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
     // refusal to route, not a default to compile.
     _ => ""
   }
-  let ctors = service_field_ctors(fs: fs, t: language_spec(target: Rust).service_fields)
+  // THE REFUSAL IS CHOSEN WHERE THE FIELD ROW IS SELECTED, not by grepping the rendered
+  // constructor. An endpoint the authority cannot resolve to one reading never reaches the
+  // `base_url: "{0}"` template at all: the REST FIELD ROW ITSELF is built as the refusal --
+  // `base_url: compile_error!("EMIT REFUSED: ..."),` at field-value position, where
+  // `compile_error!` is a diverging expression, the struct literal stays well-formed, and rustc
+  // reports the typed EMIT REFUSED naming the service (the shape emit_auth_source_ctor gives an
+  // unrepresentable credential). Selection by output text -- searching rendered ctors for
+  // "base_url" -- could once have grabbed an unrelated row whose text happens to contain the
+  // name; the emitter knows which row IS the base_url field here, so it says so (DESIGN 5:
+  // construction where validation-by-string-match was).
+  let refuses_endpoint = match endpoint_answer {
+    EndpointModuleExpression => true
+    EndpointParameterNameUnbound => true
+    _ => false
+  }
+  let t = language_spec(target: Rust).service_fields
+  let t_eff = if refuses_endpoint {
+    ServiceFieldTemplates {
+      rest_decl: t.rest_decl,
+      auth_decl: t.auth_decl,
+      shell_decl: t.shell_decl,
+      file_decl: t.file_decl,
+      rest_ctor: concat("        base_url: ", emit_rust_item_refusal(item_text: name, reason: "service config `endpoint:` names a host this authority cannot resolve to exactly one reading (a computed expression, or a name only some rest operations bind as an input with no string-literal datum in scope); refusing to compile a host the author never wrote"), ",\n"),
+      auth_ctor: t.auth_ctor,
+      shell_ctor: t.shell_ctor,
+      file_ctor: t.file_ctor
+    }
+  } else {
+    t
+  }
+  let ctors = service_field_ctors(fs: fs, t: t_eff)
   let ctors = ctors |> map(c => apply_type_template1(template: c, arg0: base_url_default))
   let ctors = match service_config_auth_source(n: service_item, source_indices: source_indices) {
     Present { value: src } => ctors |> map(c =>
@@ -18237,26 +18276,6 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
     )
     Absent => ctors
   }
-  // THE REFUSE PASS, sibling of the auth pass above. An endpoint the authority cannot resolve to
-  // one reading does not fill the `base_url: "{0}"` template -- refusal TEXT pasted through that
-  // placeholder closes the template's quote and lands as bare words, malformed Rust whose failure
-  // says nothing about its cause (DESIGN 5: a typed, located diagnostic or nothing). The whole
-  // ctor LINE is replaced instead, with the refusal at field-value position: `compile_error!` is a
-  // diverging expression, the struct literal stays well-formed, and rustc reports the typed
-  // EMIT REFUSED naming the service. This is exactly the shape emit_auth_source_ctor gives an
-  // unrepresentable credential.
-  let refuses_endpoint = match endpoint_answer {
-    EndpointModuleExpression => true
-    EndpointParameterNameUnbound => true
-    _ => false
-  }
-  let ctors = if refuses_endpoint {
-    ctors |> map(c =>
-      if contains(c, "base_url") {
-        concat("        base_url: ", emit_rust_item_refusal(item_text: name, reason: "service config `endpoint:` names a host this authority cannot resolve to exactly one reading (a computed expression, or a name only some rest operations bind as an input with no string-literal datum in scope); refusing to compile a host the author never wrote"), ",\n")
-      } else { c }
-    )
-  } else { ctors }
   let inits = ctors |> join(separator: "")
   concat(
     "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
@@ -18298,7 +18317,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
   }
 }
 
-fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo, data_values: List<Node>, imported_data_values: List<Node>) -> String {
+fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo, endpoint_answer: ServiceEndpointSupply) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
     concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, fn_param_needs_static: false))
@@ -18317,7 +18336,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     _ => false
   }
   let ret_type = if is_rest { concat("std::rc::Rc<", rust_rest_result_path(), "<", output_type, ">>") } else { output_type }
-  let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env, emit_info: emit_info, data_values: data_values, imported_data_values: imported_data_values)
+  let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env, emit_info: emit_info, endpoint_answer: endpoint_answer)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
   let mock_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
   let dry_run_body = if is_rest { emit_rust_rest_answered_mock(mock_body: mock_body, output_type: output_type) } else { mock_body }
@@ -18416,9 +18435,9 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 // Target selection, and ONLY target selection. The transport was classified and
 // its meaning bound once, target-neutrally, by `bind_operation_transport`; this
 // function no longer asks what the operation IS, only how Rust spells it.
-fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, data_values: List<Node>, imported_data_values: List<Node>) -> String {
+fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, endpoint_answer: ServiceEndpointSupply) -> String {
   match bound {
-    RestBound { transport: t } => emit_rest_call(op_name: op_name, transport: t, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env, data_values: data_values, imported_data_values: imported_data_values)
+    RestBound { transport: t } => emit_rest_call(op_name: op_name, transport: t, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env, endpoint_answer: endpoint_answer)
     ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env, shared_types: shared_types, emit_info: emit_info)
     FileBound { verb: v, path_template: pt, result_fields: fs } =>
       emit_file_call(verb: v, path_template: pt, result_fields: fs, source_indices: source_indices)
@@ -18430,14 +18449,14 @@ fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<Str
   }
 }
 
-fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv, data_values: List<Node>, imported_data_values: List<Node>) -> String {
+fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv, endpoint_answer: ServiceEndpointSupply) -> String {
   let has_config_auth = match service_config_auth(n: service_item, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
   let has_basic_auth = match transport_auth_basic(t: transport, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
   if has_config_auth && has_basic_auth {
     "compile_error!(\"rest transport declares both config-level auth and auth_basic - one auth authority per operation (§3)\");"
   } else {
   let client_init = emit_rest_client_init(transport: transport, source_indices: source_indices)
-  let url_line = emit_rest_url_line(transport: transport, op_name: op_name, base: emit_rest_url_base(service_item: service_item, source_indices: source_indices, data_values: data_values, imported_data_values: imported_data_values), source_indices: source_indices)
+  let url_line = emit_rest_url_line(transport: transport, op_name: op_name, base: emit_rest_url_base(endpoint_answer: endpoint_answer), source_indices: source_indices)
   let http_method = emit_rest_http_method(transport: transport, source_indices: source_indices)
   let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method, source_indices: source_indices)
   let basic_auth_line = emit_rest_basic_auth_line(transport: transport, source_indices: source_indices)
@@ -18515,8 +18534,12 @@ fn emit_rest_http_method(transport: Node, source_indices: Map<String, NewlineInd
 // spelling keeps the struct field, which is what it has always been. The WHOLE operation list of
 // the service is passed, never the operation being rendered, so the emitter's answer for a
 // declaration cannot depend on which operation is being emitted.
-fn emit_rest_url_base(service_item: Node, source_indices: Map<String, NewlineIndex>, data_values: List<Node>, imported_data_values: List<Node>) -> String {
-  match service_endpoint_answer(service: service_item, operations: service_operation_items(service: service_item), data_values: data_values, imported_data_values: imported_data_values, source_indices: source_indices) {
+// THE URL BASE READS THE SETTLED ANSWER. It used to RE-ASK the whole endpoint question per
+// operation -- the service's full operation list filtered twice, for every REST operation, a
+// second time: quadratic. `emit_service_impl` answered it once per service (the answer cannot
+// depend on which operation is emitted) and this takes that value.
+fn emit_rest_url_base(endpoint_answer: ServiceEndpointSupply) -> String {
+  match endpoint_answer {
     EndpointOperationParameter { name: name, declared_type: _ } => emit_ident(name: name, target: Rust)
     _ => "self.base_url"
   }
