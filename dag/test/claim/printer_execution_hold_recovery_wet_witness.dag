@@ -37,14 +37,18 @@ import gunbc.fleet.printer_execution_hold {
   printer_hold_observation_escalation_id, printer_hold_release_request_at,
   PrinterHoldReleaseRequest, HoldReleaseNothingHeld, HoldReleaseCardFiled, HoldReleaseCardOnFile, HoldReleaseRefused,
   printer_hold_release_request, printer_hold_release_request_for_tree, printer_legacy_hold_release, LegacyHoldReleased, LegacyHoldReleaseRefused,
+  printer_hold_operator_grant, PrinterHoldOperatorGrantHeld, PrinterHoldOperatorGrantMissing, PrinterHoldGrantDenied, PrinterHoldGrantAnotherIntent, PrinterHoldGrantStillPending,
   printer_execution_hold_legacy_store, printer_execution_hold_legacy_state, LegacyHoldFenced, printer_execution_hold_fence_begin, HoldFenceBegun,
 }
 import gunbc.host_state_root { isolated_host_state_tree, HostStateTree }
 import gunbc.process_hold_identity { process_hold_text, self_process_identity, SelfIdentified, SelfUnidentified }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.auth.approval_broker { BrokerApproved, ExecutionObligation }
+import gunbc.auth.approval_gate { approval_instant_now }
+import gunbc.auth.approval_request_client { ApprovalPollStanding, PollUnreadable, approval_poll_standing, PollApproved, PollDenied, PollStillPending }
+import gunbc.auth.approval_request_submission { filed_status_of_slot }
 import gunbc.auth.approval_decision_store {
-  StoredApprovalRequest, StoreWrite, StoreWritten, approval_mac_key_id,
+  observe_escalation, StoredApprovalRequest, StoreWrite, StoreWritten, approval_mac_key_id,
   file_approval_request, commit_broker_decision, request_revision_of,
 }
 
@@ -64,6 +68,18 @@ data printer_recovery_witness_execute_by: Timestamp = "2999-01-01T00:00:00Z"
 // store_over(hold_root) mints the sealed store the production route takes.
 data execution_hold_member_suffix: String = "/printer-starts/execution-hold"
 
+// THE BROKER'S STATUS ANSWER, SUPPLIED AT THE BOUNDARY. Production reads the escalation standing over HTTP from
+// the broker (printer_hold_broker_standing); a hermetic witness cannot dial it, so it supplies the SAME standing
+// the broker's status route derives from the same store slot (observe_escalation -> filed_status_of_slot ->
+// approval_poll_standing, the very folds escalation_status runs) over its throwaway store. The pairing obligation
+// (the real route emits this shape) is the broker's own status witnesses and approval_status_wire's parse.
+fn standing_from_store(root: String, escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalPollStanding {
+  match approval_instant_now() {
+    Absent => PollUnreadable { detail: "witness clock unreadable" as NonEmptyStr }
+    Present { value: now } => approval_poll_standing(status: filed_status_of_slot(slot: observe_escalation(root: root as NonEmptyStr, escalation_id: escalation_id)), observed_at: now, expires_at: expires_at)
+  }
+}
+
 fn fresh_root() -> String {
   let tree = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_print_recovery.XXXXXX").path
   let member = concat(tree, execution_hold_member_suffix)
@@ -78,14 +94,14 @@ fn tree_of(hold_root: String) -> String {
 fn enter(hold_root: String, escalation_id: NonEmptyStr, use: fn(PrinterExecutionHold) -> ProcessExit, approvals_root: NonEmptyStr) -> ProcessExit {
   match printer_execution_hold_store(tree: isolated_host_state_tree(dir: tree_of(hold_root: hold_root) as NonEmptyStr)) {
     PrinterExecutionHoldStoreUnready { detail: d } => exit_failure(reason: d)
-    PrinterExecutionHoldStoreReady { store: store } => printer_hold_enter(store: store, escalation_id: escalation_id, use: use, approvals_root: approvals_root)
+    PrinterExecutionHoldStoreReady { store: store } => printer_hold_enter(store: store, escalation_id: escalation_id, use: use, standing_of: (e, x) => standing_from_store(root: approvals_root as String, escalation_id: e, expires_at: x))
   }
 }
 
 fn ask(hold_root: String, approvals_root: NonEmptyStr) -> PrinterHoldReleaseRequest {
   match printer_execution_hold_store(tree: isolated_host_state_tree(dir: tree_of(hold_root: hold_root) as NonEmptyStr)) {
     PrinterExecutionHoldStoreUnready { detail: d } => HoldReleaseRefused { reason: d as NonEmptyStr }
-    PrinterExecutionHoldStoreReady { store: store } => printer_hold_release_request_at(store: store, approvals_root: approvals_root)
+    PrinterExecutionHoldStoreReady { store: store } => printer_hold_release_request_at(store: store, standing_of: (e, x) => standing_from_store(root: approvals_root as String, escalation_id: e, expires_at: x))
   }
 }
 
@@ -512,7 +528,7 @@ test fn the_release_request_reaches_a_hold_that_still_lives_in_the_flat_layout()
   let planted = plant(root: flat_of(hold_root: hold_root), owner: legacy_hold_owner)
   let tree = tree_at(hold_root: hold_root)
   let old = match printer_hold_release_request(tree: tree) { HoldReleaseRefused { reason: r } => string_contains(s: r as String, pattern: "still holds the flat layout") _ => false }
-  let new = match printer_hold_release_request_for_tree(tree: tree, approvals_root: approvals_root as NonEmptyStr) {
+  let new = match printer_hold_release_request_for_tree(tree: tree, standing_of: (e, x) => standing_from_store(root: approvals_root as String, escalation_id: e, expires_at: x)) {
     HoldReleaseRefused { reason: r } => string_contains(s: r as String, pattern: "no card was filed") && !string_contains(s: r as String, pattern: "not ready")
     _ => false
   }
@@ -528,7 +544,7 @@ test fn the_flat_hold_is_released_only_on_an_approved_observation_and_never_from
   let flat = flat_of(hold_root: hold_root)
   let tree = tree_at(hold_root: hold_root)
   let unapproved = plant(root: flat, owner: legacy_hold_owner)
-    && match printer_legacy_hold_release(tree: tree, approvals_root: approvals_root as NonEmptyStr) {
+    && match printer_legacy_hold_release(tree: tree, standing_of: (e, x) => standing_from_store(root: approvals_root as String, escalation_id: e, expires_at: x)) {
       LegacyHoldReleased => false
       LegacyHoldReleaseRefused { cause: c } => string_contains(s: c, pattern: "UNOBSERVABLE") && held(root: flat)
     }
@@ -537,7 +553,7 @@ test fn the_flat_hold_is_released_only_on_an_approved_observation_and_never_from
     SelfUnidentified { cause: _ } => false
     SelfIdentified { process: me, pid_namespace: ns } =>
       plant(root: flat_of(hold_root: live_root), owner: concat("printer-start-live-witness", process_hold_text(p: me, pid_namespace: ns)) as DurableHoldOwnerRef)
-        && match printer_legacy_hold_release(tree: tree_at(hold_root: live_root), approvals_root: approvals_root as NonEmptyStr) {
+        && match printer_legacy_hold_release(tree: tree_at(hold_root: live_root), standing_of: (e, x) => standing_from_store(root: approvals_root as String, escalation_id: e, expires_at: x)) {
           LegacyHoldReleased => false
           LegacyHoldReleaseRefused { cause: c } => string_contains(s: c, pattern: "LIVE controller") && held(root: flat_of(hold_root: live_root))
         }
@@ -559,7 +575,7 @@ test fn an_approved_observation_releases_the_flat_hold_and_the_layout_fence_take
     && match observe_file_hold(root: flat as NonEmptyStr, key: printer_recovery_witness_slot) {
       HoldSlotHeld { generation: g, owner: h } =>
         legacy_approve(approvals_root: approvals_root, hold_root: hold_root, holder: h, generation: g)
-          && match printer_legacy_hold_release(tree: tree, approvals_root: approvals_root as NonEmptyStr) { LegacyHoldReleased => true LegacyHoldReleaseRefused { cause: _ } => false }
+          && match printer_legacy_hold_release(tree: tree, standing_of: (e, x) => standing_from_store(root: approvals_root as String, escalation_id: e, expires_at: x)) { LegacyHoldReleased => true LegacyHoldReleaseRefused { cause: _ } => false }
           && free(root: flat)
           && match printer_execution_hold_fence_begin(tree: tree) { HoldFenceBegun { fence: _ } => true _ => false }
           && match printer_execution_hold_legacy_state(tree: tree) { LegacyHoldFenced { generation: _ } => true _ => false }
@@ -568,4 +584,49 @@ test fn an_approved_observation_releases_the_flat_hold_and_the_layout_fence_take
   let removed1 = shell.Remove.RecursiveForce(path: tree_of(hold_root: hold_root))
   let removed2 = shell.Remove.RecursiveForce(path: approvals_root)
   verdict && removed1.success && removed2.success
+}
+
+// ── (5) WHAT THE PRINTER ROUTE ACTS ON IS THE BROKER'S STANDING, JUDGED AGAINST THIS HOLD ────────────────────
+// The printer job reads the broker's status route (never the operator-only store). A standing is released-on
+// only when it is an APPROVAL OVER EXACTLY THIS HOLD'S REVISION; a decision carrying another revision (a forged
+// or replayed answer for another hold/generation), a denial and a pending card each refuse by their own cause.
+// The standing is SUPPLIED at the function's boundary; its inhabitance (the real route emits this shape) is the
+// store-backed claims above, which run the same folds over the same slot.
+test fn the_broker_standing_releases_only_on_an_approval_over_this_exact_hold() -> Bool {
+  let hold_root = fresh_root()
+  let legacy = "d91310fe0000000000000000000000000000000000000000000000000000000" as DurableHoldOwnerRef
+  let verdict = plant(root: hold_root, owner: legacy)
+    && match observe_file_hold(root: hold_root as NonEmptyStr, key: printer_recovery_witness_slot) {
+      HoldSlotHeld { generation: g, owner: h } =>
+        match printer_execution_hold_store(tree: isolated_host_state_tree(dir: tree_of(hold_root: hold_root) as NonEmptyStr)) {
+          PrinterExecutionHoldStoreUnready { detail: _ } => false
+          PrinterExecutionHoldStoreReady { store: store } => {
+            let revision = printer_recovery_revision(hold_root: hold_root, holder: h, generation: g)
+            let approved_here = (e, x) => PollApproved { revision: revision, decided_by: "operator" as NonEmptyStr, decided_at: "2026-11-05T00:00:00Z" as Timestamp, execute_by: printer_recovery_witness_execute_by }
+            let approved_other = (e, x) => PollApproved { revision: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr, decided_by: "operator" as NonEmptyStr, decided_at: "2026-11-05T00:00:00Z" as Timestamp, execute_by: printer_recovery_witness_execute_by }
+            let denied = (e, x) => PollDenied { revision: revision, decided_by: "operator" as NonEmptyStr, decided_at: "2026-11-05T00:00:00Z" as Timestamp, reason: "no" as NonEmptyStr }
+            let pending = (e, x) => PollStillPending
+            let at = "2026-11-05T12:00:00Z" as Timestamp
+            (match printer_hold_operator_grant(store: store, standing_of: approved_here, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
+              PrinterHoldOperatorGrantHeld { decision: _ } => true
+              PrinterHoldOperatorGrantMissing { cause: _ } => false
+            })
+            && (match printer_hold_operator_grant(store: store, standing_of: approved_other, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
+              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantAnotherIntent { requested_revision: _, decided_revision: _ } } => true
+              _ => false
+            })
+            && (match printer_hold_operator_grant(store: store, standing_of: denied, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
+              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantDenied { reason: _ } } => true
+              _ => false
+            })
+            && (match printer_hold_operator_grant(store: store, standing_of: pending, hold_slot: printer_recovery_witness_slot, holder: h, generation: g, observed_at: at) {
+              PrinterHoldOperatorGrantMissing { cause: PrinterHoldGrantStillPending { escalation_id: _ } } => true
+              _ => false
+            })
+          }
+        }
+      _ => false
+    }
+  let removed1 = shell.Remove.RecursiveForce(path: hold_root)
+  verdict && removed1.success
 }
