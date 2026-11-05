@@ -415,6 +415,11 @@ pub fn run_required_regen_scoped(
     let receipt_path = workspace.join(receipt_rel);
     let stage0_src = workspace.join("src/v1/stage0/src");
     let run_started = Instant::now();
+    // WHAT THIS TREE MUST CONTAIN IS READ FROM THIS TREE. One read per regen run, threaded to every
+    // consumer below; the projection compiled into this binary is the commit this seed was BUILT
+    // from, which since #15733's base snapshot can be a different commit than the tree being
+    // regenerated. It is never consulted for expected content.
+    let roster = declared_hand_maintained_roster(&workspace)?;
 
     // ADMISSION, FIRST. Every normalize below needs the formatter, so an absent one is decidable
     // here, before any emit, digest or comparison is paid for; it used to surface at the first
@@ -427,7 +432,7 @@ pub fn run_required_regen_scoped(
     // the refusal arm; it is the one call that can fail, and it fails loudly rather than
     // widening to the population.
     let selected: BTreeSet<String> =
-        scope_selection(scope, &committed_generated_basenames(&stage0_src)?)?
+        scope_selection(scope, &committed_generated_basenames(&stage0_src, &roster)?)?
             .into_iter()
             .collect();
     eprintln!("{}", scope.line());
@@ -512,21 +517,22 @@ pub fn run_required_regen_scoped(
             basenames: Rc::new(selected.iter().cloned().collect()),
         },
     });
-    let (emitted, emitted_basenames) = match emit_generated_surface(&sources, &render_selection)? {
-        // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
-        // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
-        // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
-        // carries no tree; the host spelling of no tree and no verdict is a refusal of the run.
-        GeneratedSurfaceEmit::EmitRefused { reason } => {
-            return Err(format!(
-                "{reason} — no candidate tree produced, nothing to compare"
-            ));
-        }
-        GeneratedSurfaceEmit::Emitted {
-            emitted,
-            emitted_basenames,
-        } => (emitted, emitted_basenames),
-    };
+    let (emitted, emitted_basenames) =
+        match emit_generated_surface(&sources, &render_selection, &roster)? {
+            // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
+            // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
+            // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
+            // carries no tree; the host spelling of no tree and no verdict is a refusal of the run.
+            GeneratedSurfaceEmit::EmitRefused { reason } => {
+                return Err(format!(
+                    "{reason} — no candidate tree produced, nothing to compare"
+                ));
+            }
+            GeneratedSurfaceEmit::Emitted {
+                emitted,
+                emitted_basenames,
+            } => (emitted, emitted_basenames),
+        };
 
     if candidate_dir.exists() {
         fs::remove_dir_all(&candidate_dir)
@@ -539,7 +545,7 @@ pub fn run_required_regen_scoped(
         _ => Some(&selected),
     };
     write_emitted_tree(&formatter, &fresh_src, &emitted, restrict)?;
-    copy_hand_maintained_support(&stage0_src, &fresh_src)?;
+    copy_hand_maintained_support(&stage0_src, &fresh_src, &roster)?;
     v1_rt::trace_mark("regen.mirror_write.done".to_string());
     // Verified against what EMIT produced, not what is committed: the two populations are equal on
     // a clean tree and differ in precisely the case this ordering serves, so checking the committed
@@ -557,8 +563,14 @@ pub fn run_required_regen_scoped(
     v1_rt::trace_mark("regen.candidate_verify.done".to_string());
 
     v1_rt::trace_mark("regen.adjudicate.begin".to_string());
-    let adjudicated =
-        adjudicate_generated_surface(&formatter, &stage0_src, &emitted, &emitted_basenames, scope)?;
+    let adjudicated = adjudicate_generated_surface(
+        &formatter,
+        &stage0_src,
+        &emitted,
+        &emitted_basenames,
+        scope,
+        &roster,
+    )?;
     v1_rt::trace_mark("regen.adjudicate.done".to_string());
     let (committed_basenames, selected_basenames, sync) = match adjudicated {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
@@ -582,7 +594,7 @@ pub fn run_required_regen_scoped(
     };
 
     v1_rt::trace_mark("regen.hand_verify.begin".to_string());
-    let hand = verify_hand_maintained(&formatter, &emitted, &stage0_src, &candidate_dir)?;
+    let hand = verify_hand_maintained(&formatter, &emitted, &stage0_src, &candidate_dir, &roster)?;
     v1_rt::trace_mark("regen.hand_verify.done".to_string());
 
     v1_rt::trace_mark("regen.digest.begin".to_string());
@@ -624,6 +636,7 @@ pub fn run_required_regen_scoped(
         .map(|path| candidate_relative_emit_path(path))
         .collect::<Result<BTreeSet<_>, _>>()?;
     let candidate_manifest = produce_candidate_manifest(
+        &roster,
         &fresh_src,
         &selected_basenames,
         &emitted_artifact_paths,
@@ -871,6 +884,7 @@ fn scope_selection(
 fn emit_generated_surface(
     sources: &[(String, String)],
     selection: &Rc<RustModuleRenderSelection>,
+    roster: &HandMaintainedRoster,
 ) -> Result<GeneratedSurfaceEmit, String> {
     let emitted = compile_stage0(sources, selection)?;
     if emitted.is_empty() {
@@ -878,7 +892,7 @@ fn emit_generated_surface(
             reason: "refusal: emit produced zero files".to_string(),
         });
     }
-    let emitted_basenames = generated_basenames_from_emit(&emitted)?;
+    let emitted_basenames = generated_basenames_from_emit(&emitted, roster)?;
     Ok(GeneratedSurfaceEmit::Emitted {
         emitted,
         emitted_basenames,
@@ -891,9 +905,10 @@ fn adjudicate_generated_surface(
     emitted: &HashMap<String, String>,
     emitted_basenames: &[String],
     scope: &RegenEmissionScope,
+    roster: &HandMaintainedRoster,
 ) -> Result<GeneratedSurfaceAdjudicated, String> {
-    let committed = committed_generated_basenames(stage0_src)?;
-    let hand_dir_shadows = hand_maintained_dir_shadows(stage0_src)?;
+    let committed = committed_generated_basenames(stage0_src, roster)?;
+    let hand_dir_shadows = hand_maintained_dir_shadows(stage0_src, roster)?;
     // POPULATION IDENTITY IS NEVER SCOPED. Both rosters, whole, under every scope: this is the
     // join that finds a surface the emitter produces and the tree does not carry, and a mirror
     // the tree carries and the emitter no longer produces. It reads no bytes, so there is
@@ -926,13 +941,15 @@ fn measure_generated_surface(
     formatter: &ResolvedFormatter,
     sources: &[(String, String)],
     stage0_src: &Path,
+    roster: &HandMaintainedRoster,
 ) -> Result<GeneratedSurfaceMeasured, String> {
     let (emitted, emitted_basenames) = match emit_generated_surface(
         sources,
         &Rc::new(RustModuleRenderSelection::RenderEveryModule),
+        roster,
     )? {
         GeneratedSurfaceEmit::EmitRefused { reason } => {
-            return Ok(GeneratedSurfaceMeasured::Refused { reason })
+            return Ok(GeneratedSurfaceMeasured::Refused { reason });
         }
         GeneratedSurfaceEmit::Emitted {
             emitted,
@@ -948,6 +965,7 @@ fn measure_generated_surface(
         &emitted,
         &emitted_basenames,
         &RegenEmissionScope::WholePopulation,
+        roster,
     )? {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             Ok(GeneratedSurfaceMeasured::Refused { reason })
@@ -973,13 +991,14 @@ fn measure_generated_surface(
 pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     let workspace = workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");
+    let roster = declared_hand_maintained_roster(&workspace)?;
     // A THIRD ADMISSION SITE, FOUND BY THE PARAMETER. This entry serves the behavioural receipt,
     // three calls above the rustfmt spawn, so reading for "who spawns rustfmt" would not name it.
     // Threading the resolved formatter as an argument made the omission a compile error instead
     // of a fourth way to discover an absent formatter fifty minutes in.
     let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
     let sources = super::regen_input_sources(&workspace)?;
-    let emitted = match measure_generated_surface(&formatter, &sources, &stage0_src)? {
+    let emitted = match measure_generated_surface(&formatter, &sources, &stage0_src, &roster)? {
         GeneratedSurfaceMeasured::Refused { reason } => return Err(reason),
         GeneratedSurfaceMeasured::Measured { emitted, .. } => emitted,
     };
@@ -994,7 +1013,7 @@ pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     // the population census uses removes it.
     let mut out: HashMap<String, String> = HashMap::new();
     for (path, content) in emitted {
-        if !path.ends_with(".rs") || is_hand_maintained_path(&path) {
+        if !path.ends_with(".rs") || is_hand_maintained_path(&path, &roster) {
             continue;
         }
         let base = emit_path_basename(&path).to_string();
@@ -1196,6 +1215,167 @@ fn emitted_tree_packages(
     }))
 }
 
+/// WHAT A TREE MUST CONTAIN IS READ FROM THAT TREE, never from what this binary was
+/// compiled with.
+///
+/// `HAND_MAINTAINED_STAGE0_FILES` and `HAND_MAINTAINED_STAGE0_DIRS` are the generated
+/// projection of one authority — `v2.compiler.self_host.stage0_crate_layout`
+/// (`src/v2/compiler/self_host/stage0_crate_layout.dag`, whose
+/// `hand_maintained_stage0_filenames` / `hand_maintained_stage0_dirs` are the same rows) —
+/// frozen at the commit THIS binary was built from. Since #15733's round-1 base snapshot,
+/// the seed that regenerates a tree is built with BASE's stage0 population restored, so
+/// those consts can hold base's rows while the tree under the check is the head's. That is
+/// the same chimera class as the E0583 #15733 fixed, one level over: a base authority
+/// judged against a head tree. It fires on a legitimate deletion — PR #15560 deletes
+/// `behavioral_receipt_host.rs` together with its layout row and both regenerated
+/// projections, and the base-built seed refused to produce its own candidate (heal run
+/// 42030128122, `copy_hand_maintained_support`, "declared hand-maintained stage0 file names
+/// no file on disk"). Before #15733 that refusal was correct, because the seed that
+/// regenerated a tree was always built FROM that tree — it came in with `83ec17e01752`
+/// (#9096) to stop a corrupt row from being inert, and it still does that job here.
+///
+/// Same shape and policy as `emitted_tree_packages` above: read the subject workspace,
+/// resolve the entry with the interpreter, decode through the wire encoder, and REFUSE when
+/// the authority is missing or ill-shaped. There is deliberately no fallback to the
+/// compiled consts — a compiled-in projection may be the seed's program, never the expected
+/// content of the tree it is regenerating.
+#[derive(Debug, Clone)]
+pub struct HandMaintainedRoster {
+    files: BTreeSet<String>,
+    dirs: BTreeSet<String>,
+}
+
+impl HandMaintainedRoster {
+    /// Membership, asked of the tree's own authority.
+    pub fn contains_file(&self, basename: &str) -> bool {
+        self.files.contains(basename)
+    }
+
+    pub fn contains_dir(&self, name: &str) -> bool {
+        self.dirs.contains(name)
+    }
+
+    /// The declared rows, in stable order, for the copy loops and the population walls.
+    pub fn files(&self) -> impl Iterator<Item = &String> {
+        self.files.iter()
+    }
+
+    pub fn dirs(&self) -> impl Iterator<Item = &String> {
+        self.dirs.iter()
+    }
+
+    pub fn file_count(&self) -> usize {
+        self.files.len()
+    }
+
+    /// A roster stated by hand, for a caller that is not reading a workspace: the unit
+    /// tests of the CONSUMERS, which are testing what the consumers do with a roster, not
+    /// where it came from. The reader below is the only production constructor.
+    pub(crate) fn for_tests(files: &[&str], dirs: &[&str]) -> Self {
+        Self {
+            files: files.iter().map(|s| (*s).to_string()).collect(),
+            dirs: dirs.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+}
+
+thread_local! {
+    /// One resolve per process, keyed by the workspace it was read from. The regen path asks
+    /// from several entry points (`run_required_regen_scoped`, the emission-scope census, the
+    /// install boundary, the compared-row census), and resolving the authority costs the whole
+    /// front-end over its closure -- minutes, not milliseconds, on an authority this size. This
+    /// is NOT the shared entry memo (the one `emitted_tree_packages` deliberately avoids): the
+    /// key is the workspace, the value is one immutable roster, and nothing in the regen path
+    /// writes `src/v2/compiler/self_host/stage0_crate_layout.dag` -- the round that installs
+    /// BASE's bytes touches `src/v1/stage0/src` only, which is precisely why the head's own
+    /// authority stays the answer. A refusal is not cached: a later call re-reads.
+    static ROSTER_BY_WORKSPACE: std::cell::RefCell<HashMap<String, HandMaintainedRoster>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Read the hand-maintained roster out of the tree being regenerated. See
+/// `HandMaintainedRoster` for why this is the only acceptable source.
+fn declared_hand_maintained_roster(workspace: &Path) -> Result<HandMaintainedRoster, String> {
+    let key = workspace.to_string_lossy().into_owned();
+    if let Some(cached) = ROSTER_BY_WORKSPACE.with(|cache| cache.borrow().get(&key).cloned()) {
+        return Ok(cached);
+    }
+    let roster = read_declared_hand_maintained_roster(workspace)?;
+    ROSTER_BY_WORKSPACE.with(|cache| cache.borrow_mut().insert(key, roster.clone()));
+    Ok(roster)
+}
+
+fn read_declared_hand_maintained_roster(workspace: &Path) -> Result<HandMaintainedRoster, String> {
+    const LAYOUT_ENTRY_RELPATH: &str = "src/v2/compiler/self_host/stage0_crate_layout.dag";
+    // The same three roots the claim cells and the v2 closure use; the layout authority
+    // itself lives under src/v2 and imports std.* from dag/ and v2.* from src/v2.
+    let closure_roots: Vec<String> = ["dag", "src/v1", "src/v2"]
+        .iter()
+        .map(|root| workspace.join(root).to_string_lossy().into_owned())
+        .collect();
+    let layout_path = workspace.join(LAYOUT_ENTRY_RELPATH);
+    if !layout_path.is_file() {
+        return Err(format!(
+            "required-regen: the crate-layout authority is not in the tree being regenerated: \
+             {} is not a file. The hand-maintained roster is read from it, so without it the \
+             regen cannot say what this tree must contain — and it does not fall back to the \
+             rows compiled into this binary, which belong to the commit this seed was built \
+             from.",
+            layout_path.display()
+        ));
+    }
+    let entry_path_str = layout_path.to_string_lossy().into_owned();
+    use crate::v1_interpreter::{self, ExecutionMode};
+    let decode_rows = |fn_name: &str| -> Result<Vec<String>, String> {
+        // ITS OWN INDEX, RELEASED WITH THIS READ -- the same discipline `emitted_tree_packages`
+        // documents: the roots are read for this one entry and by nothing after it.
+        let index = super::build_multi_entry_index(&closure_roots);
+        let (graph, indices) = super::resolve_entry_with_index(&index, entry_path_str.as_str())
+            .map_err(|e| {
+                format!(
+                    "required-regen: cannot resolve the crate-layout authority {} to read the \
+                     hand-maintained roster: {}",
+                    LAYOUT_ENTRY_RELPATH, e
+                )
+            })?;
+        let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let value = v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(&ctx, fn_name, &[], false)
+        })
+        .map_err(|e| {
+            format!(
+                "required-regen: {}() of {} failed: {}",
+                fn_name, LAYOUT_ENTRY_RELPATH, e
+            )
+        })?;
+        // DECODE IS NOT HAND-WRITTEN: the same `Value` -> wire JSON -> serde path every
+        // generated-row consumer in this file uses, so the row shape cannot mean two things.
+        let wire = super::value_to_wire_json(&value, &ctx)
+            .map_err(|e| format!("required-regen: {} did not wire-encode: {}", fn_name, e))?;
+        serde_json::from_value::<Vec<String>>(wire).map_err(|e| {
+            format!(
+                "required-regen: {}() of {} did not decode as a list of file names: {}",
+                fn_name, LAYOUT_ENTRY_RELPATH, e
+            )
+        })
+    };
+    let files = decode_rows("hand_maintained_stage0_filenames")?;
+    let dirs = decode_rows("hand_maintained_stage0_dirs")?;
+    if files.is_empty() {
+        return Err(format!(
+            "required-regen: hand_maintained_stage0_filenames() of {} is empty. That is not an \
+             answer about what the tree must contain; it would make the hand-maintained \
+             verification and the copy loop inert, which is the invalid state #9096 refused \
+             for a single row.",
+            LAYOUT_ENTRY_RELPATH
+        ));
+    }
+    Ok(HandMaintainedRoster {
+        files: files.into_iter().collect(),
+        dirs: dirs.into_iter().collect(),
+    })
+}
+
 // ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
 //
 // `generated_basenames_from_emit` and `committed_generated_basenames` answer the same question
@@ -1271,14 +1451,14 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// `List<String>`, and the installer takes that type rather than `&[String]`. That
 /// projection is the next-rung trigger; this admission dissolves with it, while the RED below
 /// stays enrolled as the regression control the climb does not retire (DESIGN 4b(4)).
-fn admit_install_target(basename: &str) -> Result<(), String> {
+fn admit_install_target(basename: &str, roster: &HandMaintainedRoster) -> Result<(), String> {
     if basename.is_empty() || emit_path_basename(basename) != basename {
         return Err(format!(
             "InstallTargetNotABareBasename: {basename} is not a bare stage0 basename, so the \
              install destination is not inside the committed generated surface"
         ));
     }
-    if HAND_MAINTAINED_STAGE0_FILES.contains(&basename) {
+    if roster.contains_file(basename) {
         return Err(format!(
             "InstallTargetHandMaintained: {basename} is a hand-maintained stage0 mirror. An \
              emitted/committed divergence there is adjudicated by verify_hand_maintained, never \
@@ -1350,7 +1530,10 @@ fn admit_install_destination(stage0_src: &Path, basename: &str) -> Result<(), St
 /// silently replaced by the rendered keys: that fallback is exactly the widening this function
 /// exists to remove, and it would be invisible because the two agree whenever the selection is
 /// whole.
-fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Result<Vec<String>, String> {
+fn generated_basenames_from_emit(
+    emitted: &HashMap<String, String>,
+    roster: &HandMaintainedRoster,
+) -> Result<Vec<String>, String> {
     let manifest_key = format!("src/{}", emitted_population_manifest_basename());
     let manifest = emitted.get(&manifest_key).ok_or_else(|| {
         format!(
@@ -1370,7 +1553,7 @@ fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Result<Ve
         // `file_name()`, and declared paths carry a `src/` prefix. Comparing the two
         // key spaces made every file mismatch in both directions.
         if is_compared_generated_basename(emit_path_basename(path))
-            && !is_hand_maintained_path(path)
+            && !is_hand_maintained_path(path, roster)
         {
             names.insert(emit_path_basename(path).to_string());
         }
@@ -1402,7 +1585,10 @@ fn lookup_emitted<'a>(emitted: &'a HashMap<String, String>, basename: &str) -> O
         .or_else(|| emitted.get(basename))
 }
 
-fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, String> {
+fn committed_generated_basenames(
+    stage0_src: &Path,
+    roster: &HandMaintainedRoster,
+) -> Result<Vec<String>, String> {
     let mut names: BTreeSet<String> = BTreeSet::new();
     for entry in fs::read_dir(stage0_src)
         .map_err(|e| format!("read committed stage0 src {}: {e}", stage0_src.display()))?
@@ -1413,9 +1599,7 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
             continue;
         }
         let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if is_compared_generated_basename(basename)
-            && !HAND_MAINTAINED_STAGE0_FILES.contains(&basename)
-        {
+        if is_compared_generated_basename(basename) && !roster.contains_file(&basename) {
             names.insert(basename.to_string());
         }
     }
@@ -1448,9 +1632,12 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
 /// guard refuses such a module name (the nearest, `gunbc.stage0.stage0_rust_source_lifecycle_scaffold`
 /// `classified_residue_disjoint_holds` and the generated/hand disposition joins beside it, are
 /// scoped to top-level stage0 paths and cannot see a subdirectory file).
-fn hand_maintained_dir_shadows(stage0_src: &Path) -> Result<BTreeMap<String, Vec<String>>, String> {
+fn hand_maintained_dir_shadows(
+    stage0_src: &Path,
+    roster: &HandMaintainedRoster,
+) -> Result<BTreeMap<String, Vec<String>>, String> {
     let mut shadows = BTreeMap::new();
-    for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+    for dir_name in roster.dirs() {
         let dir = stage0_src.join(dir_name);
         if !dir.is_dir() {
             continue;
@@ -1642,8 +1829,8 @@ fn regen_refusal_outcome(
     })
 }
 
-fn is_hand_maintained_path(path: &str) -> bool {
-    HAND_MAINTAINED_STAGE0_FILES.contains(&emit_path_basename(path))
+fn is_hand_maintained_path(path: &str, roster: &HandMaintainedRoster) -> bool {
+    roster.contains_file(&emit_path_basename(path))
 }
 
 fn compare_generated_surfaces(
@@ -1687,22 +1874,23 @@ fn verify_hand_maintained(
     emitted: &HashMap<String, String>,
     stage0_src: &Path,
     work_dir: &Path,
+    roster: &HandMaintainedRoster,
 ) -> Result<HandVerifyReport, String> {
     let mut unverifiable = Vec::new();
     let mut declared_divergent = Vec::new();
     let mut undeclared_divergent = Vec::new();
     let mut dissolved_declarations = Vec::new();
     let mut unproduced_declarations = Vec::new();
-    for file_name in HAND_MAINTAINED_STAGE0_FILES {
+    for file_name in roster.files() {
         let candidate = emitted
             .get(&format!("src/{file_name}"))
-            .or_else(|| emitted.get(*file_name));
+            .or_else(|| emitted.get(file_name.as_str()));
         let Some(candidate) = candidate else {
             // Not in the emitted population. For 35 of the 36 entries (measured by execution
             // 2026-08-21) this is ordinary and there is nothing to compare. For a DECLARED row it
             // is a defect in the declaration, not the tree.
             if is_declared_divergent(file_name) {
-                unproduced_declarations.push((*file_name).to_string());
+                unproduced_declarations.push(file_name.clone());
             }
             continue;
         };
@@ -1816,8 +2004,12 @@ fn write_emitted_tree(
     Ok(())
 }
 
-fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<(), String> {
-    for file_name in HAND_MAINTAINED_STAGE0_FILES {
+fn copy_hand_maintained_support(
+    stage0_src: &Path,
+    dest_src: &Path,
+    roster: &HandMaintainedRoster,
+) -> Result<(), String> {
+    for file_name in roster.files() {
         let source = stage0_src.join(file_name);
         if source.exists() {
             fs::copy(&source, dest_src.join(file_name))
@@ -1825,14 +2017,17 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
         } else {
             return Err(format!(
                 "declared hand-maintained stage0 file names no file on disk: row {file_name:?} \
-                 resolves to {} which does not exist. The crate-layout authority \
-                 (v2.compiler.self_host.stage0_crate_layout) declares this row; either the row is \
-                 corrupt or the file was removed without retiring it.",
+                 resolves to {} which does not exist. The roster was read from the tree being \
+                 regenerated -- v2.compiler.self_host.stage0_crate_layout's \
+                 hand_maintained_stage0_filenames, as it stands in THIS tree -- so either the row \
+                 is corrupt here or the file was removed without retiring its row. It is not a \
+                 leftover of the commit this seed was built from: that projection is never read \
+                 for expected content.",
                 source.display()
             ));
         }
     }
-    for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+    for dir_name in roster.dirs() {
         let source = stage0_src.join(dir_name);
         if source.is_dir() {
             copy_dir_recursive(&source, &dest_src.join(dir_name))?;
@@ -3055,8 +3250,11 @@ mod tests {
     fn the_emitted_roster_is_whole_under_a_scope() {
         let whole = emit_fixture(None);
         let scoped = emit_fixture(beta_only());
-        let whole_roster = generated_basenames_from_emit(&whole).expect("whole roster");
-        let scoped_roster = generated_basenames_from_emit(&scoped).expect("scoped roster");
+        // The roster can only EXCLUDE hand-maintained basenames from the emitted population; an
+        // empty one keeps this test about the scope, which is what its name claims.
+        let roster = HandMaintainedRoster::for_tests(&[], &[]);
+        let whole_roster = generated_basenames_from_emit(&whole, &roster).expect("whole roster");
+        let scoped_roster = generated_basenames_from_emit(&scoped, &roster).expect("scoped roster");
         assert!(
             whole_roster.contains(&"fx_alpha.rs".to_string()),
             "positive control: the roster names every emitted mirror"
@@ -3145,6 +3343,9 @@ mod tests {
         );
     }
 
+    /// The loud direction, kept from #9096: a row the tree declares that names no file on
+    /// disk must still refuse, and locate the row. The roster is stated by hand here because
+    /// this test is about what the copy loop DOES with a roster.
     #[test]
     fn declared_hand_maintained_row_must_name_an_existing_path() {
         let root = temp_dir("declared-row-wall");
@@ -3152,36 +3353,190 @@ mod tests {
         let dest = root.join("dest");
         fs::create_dir_all(&src).expect("create src");
         fs::create_dir_all(&dest).expect("create dest");
-        for file_name in HAND_MAINTAINED_STAGE0_FILES {
+        let roster = HandMaintainedRoster::for_tests(
+            &[
+                "auth_hand_host.rs",
+                "claims_hand_host.rs",
+                "memory_hand_host.rs",
+            ],
+            &["v2/compiler", "v2/std"],
+        );
+        for file_name in roster.files() {
             fs::write(src.join(file_name), "// planted\n").expect("plant file");
         }
-        for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+        for dir_name in roster.dirs() {
             fs::create_dir_all(src.join(dir_name)).expect("plant dir");
         }
 
-        copy_hand_maintained_support(&src, &dest).expect("complete population is accepted");
+        copy_hand_maintained_support(&src, &dest, &roster)
+            .expect("complete population is accepted");
 
-        let victim = HAND_MAINTAINED_STAGE0_FILES
-            .first()
-            .expect("roster is non-empty");
-        fs::remove_file(src.join(victim)).expect("remove one declared file");
-        let err = copy_hand_maintained_support(&src, &dest)
+        let victim = roster.files().next().expect("roster is non-empty").clone();
+        fs::remove_file(src.join(&victim)).expect("remove one declared file");
+        let err = copy_hand_maintained_support(&src, &dest, &roster)
             .expect_err("a declared row naming no file must refuse");
         assert!(
-            err.contains("names no file on disk") && err.contains(victim),
+            err.contains("names no file on disk") && err.contains(&victim),
             "refusal must locate the row: {err}"
         );
 
-        let victim_dir = HAND_MAINTAINED_STAGE0_DIRS
-            .first()
-            .expect("dir roster is non-empty");
-        fs::write(src.join(victim), "// replanted\n").expect("restore file");
-        fs::remove_dir_all(src.join(victim_dir)).expect("remove one declared dir");
-        let err = copy_hand_maintained_support(&src, &dest)
+        let victim_dir = roster
+            .dirs()
+            .next()
+            .expect("dir roster is non-empty")
+            .clone();
+        fs::write(src.join(&victim), "// replanted\n").expect("restore file");
+        fs::remove_dir_all(src.join(&victim_dir)).expect("remove one declared dir");
+        let err = copy_hand_maintained_support(&src, &dest, &roster)
             .expect_err("a declared dir row naming no directory must refuse");
         assert!(
-            err.contains("names no directory on disk") && err.contains(victim_dir),
+            err.contains("names no directory on disk") && err.contains(&victim_dir),
             "refusal must locate the dir row: {err}"
+        );
+    }
+
+    /// RED AT THE RULE THIS REPLACES, in one function. PR #15560 deletes a hand-maintained
+    /// stage0 host together with its row in `v2.compiler.self_host.stage0_crate_layout` and
+    /// both regenerated projections; the seed that regenerates the tree is built from the base
+    /// snapshot (since #15733), so the projection compiled into it still named the deleted
+    /// file and `copy_hand_maintained_support` refused the candidate: heal run 42030128122,
+    /// "declared hand-maintained stage0 file names no file on disk: row
+    /// behavioral_receipt_host.rs". Below, the tree's own roster does NOT name that file and
+    /// the file is absent from disk -- the exact head. Reading the compiled projection (the
+    /// old rule) refuses; reading the tree (this rule) copies and succeeds. The name is
+    /// deliberately one the compiled projection really does contain, so the two answers differ
+    /// and the assertion cannot be satisfied by both.
+    #[test]
+    fn a_head_deleted_hand_maintained_file_is_not_a_missing_row() {
+        assert!(
+            HAND_MAINTAINED_STAGE0_FILES
+                .iter()
+                .any(|name| *name == "behavioral_receipt_host.rs"),
+            "this control is only a control while the compiled projection still names the file \
+             #15560 deletes; if the projection no longer names it, the fixture must pick another \
+             row the projection declares and the head deletes"
+        );
+        let root = temp_dir("head-deleted-hand-file");
+        let src = root.join("src");
+        let dest = root.join("dest");
+        fs::create_dir_all(&src).expect("create src");
+        fs::create_dir_all(&dest).expect("create dest");
+        let roster = HandMaintainedRoster::for_tests(
+            &["auth_hand_host.rs", "claims_hand_host.rs"],
+            &["v2/compiler"],
+        );
+        for file_name in roster.files() {
+            fs::write(src.join(file_name), "// planted\n").expect("plant file");
+        }
+        fs::create_dir_all(src.join("v2/compiler")).expect("plant dir");
+        assert!(
+            !src.join("behavioral_receipt_host.rs").exists(),
+            "the fixture is the head: the deleted file is gone from disk"
+        );
+
+        copy_hand_maintained_support(&src, &dest, &roster).expect(
+            "a file the head deleted is not a missing row: the tree's own roster is the answer",
+        );
+        assert!(
+            dest.join("auth_hand_host.rs").exists(),
+            "declared files are copied"
+        );
+        assert!(
+            !dest.join("behavioral_receipt_host.rs").exists(),
+            "the deleted file must not be resurrected into the candidate"
+        );
+    }
+
+    /// THE SILENT DIRECTION, and the one that can regress unseen: a hand-maintained host the
+    /// HEAD ADDS is absent from the projection compiled into this binary, so under the old rule
+    /// the flat generated-mirror walk classified it as generated and ranked it for repair --
+    /// no refusal, just a wrong answer, and an emitted/committed divergence there would have
+    /// been adjudicated by installing over the authored bytes. With the roster read from the
+    /// tree, the head's own declaration is what membership is asked of. The second assertion is
+    /// what makes this a control: it records that the compiled projection answers the other way.
+    #[test]
+    fn a_head_added_hand_maintained_file_is_hand_maintained() {
+        let added = "head_added_transport_hand_host.rs";
+        let roster = HandMaintainedRoster::for_tests(&["auth_hand_host.rs", added], &[]);
+        assert!(
+            is_hand_maintained_path(&format!("src/v1/stage0/src/{added}"), &roster),
+            "the tree's roster is what membership is asked of"
+        );
+        assert!(
+            !HAND_MAINTAINED_STAGE0_FILES
+                .iter()
+                .any(|name| *name == added),
+            "the compiled projection must still disagree for this to discriminate the two rules"
+        );
+        assert!(
+            is_hand_maintained_path("src/v1/stage0/src/auth_hand_host.rs", &roster),
+            "a row both agree on stays agreed"
+        );
+    }
+
+    /// The reader refuses rather than guessing, and it does not fall back to the projection
+    /// compiled into this binary: a workspace with no crate-layout authority has no answer
+    /// about what it must contain, and inventing one from the seed's own build commit is the
+    /// invalid state this whole change exists to remove.
+    #[test]
+    fn the_roster_reader_refuses_without_the_layout_authority() {
+        let root = temp_dir("roster-reader-no-authority");
+        fs::create_dir_all(root.join("dag")).expect("create dag root");
+        fs::create_dir_all(root.join("src/v1/stage0/src")).expect("create stage0 src");
+        let err = declared_hand_maintained_roster(&root)
+            .expect_err("no authority in the tree must refuse, never fall back");
+        assert!(
+            err.contains("crate-layout authority is not in the tree being regenerated")
+                && err.contains("src/v2/compiler/self_host/stage0_crate_layout.dag"),
+            "the refusal must name the authority and the tree it looked in: {err}"
+        );
+        assert!(
+            !err.contains(HAND_MAINTAINED_STAGE0_FILES[0]),
+            "a refusal that recites the compiled rows reads like a fallback to them: {err}"
+        );
+    }
+
+    /// The positive half, on the repository's own tree: the roster comes out of the authority as
+    /// declared, not as compiled in. Membership is asserted both ways -- a row the authority
+    /// declares and one it does not -- so a reader that quietly returned the compiled projection,
+    /// an empty set, or a stale constant fails here.
+    ///
+    /// RUNG, HONESTLY, and why it is `#[ignore]`d rather than run in the lane: this is the only
+    /// one of these tests that puts the authority in front of the FULL front-end -- parse,
+    /// import closure and type-check of `v2.compiler.self_host.stage0_crate_layout` (3,588 lines)
+    /// plus `std.types`, `std.disposition`, `v2.lens.common.construction_justification` and
+    /// `v2.std.text` -- which is minutes of interpreter work, not milliseconds. The CI set for
+    /// this change is the three discriminating controls (the deletion case, the addition case, the
+    /// refusal without an authority); this one is the rung ABOVE them, run by hand at the PR head
+    /// with its wall time recorded in the PR body, and re-run whenever the authority's shape
+    /// changes. It is not evidence the controls substitute for, and it is not silently skipped:
+    /// `cargo test -p v1-compiler --lib -- --ignored the_roster_reader` runs it.
+    #[test]
+    #[ignore = "full front-end over the 3,588-line crate-layout authority; run by hand, cost recorded in the PR body"]
+    fn the_roster_reader_reads_the_authority_of_the_tree_it_regenerates() {
+        let workspace = workspace_root();
+        let roster = declared_hand_maintained_roster(&workspace)
+            .expect("the repository's own tree declares its roster");
+        assert!(
+            roster.file_count() > 30,
+            "the authority declares dozens of rows"
+        );
+        assert!(
+            roster.contains_file("required_regen_host.rs"),
+            "this very host is declared hand-maintained by the authority it governs"
+        );
+        assert!(
+            roster.contains_file("behavioral_receipt_host.rs"),
+            "at this head the authority still declares the file #15560 deletes; that is the\
+             difference the deletion PR must make in the authority, not in the seed"
+        );
+        assert!(
+            !roster.contains_file("a_name_no_authority_declares.rs"),
+            "membership is not membership-by-default"
+        );
+        assert!(
+            roster.dirs().next().is_some(),
+            "the directory rows come through the same reader"
         );
     }
 
@@ -3622,7 +3977,7 @@ impl SupervisedSubjectModel {
                 return Err(format!(
                     "refusal: supervised_subject_verdict_refuses returned {}",
                     other.type_label_public()
-                ))
+                ));
             }
         };
         if !refuses {
@@ -3852,6 +4207,7 @@ fn candidate_manifest_aggregate(
 }
 
 fn produce_candidate_manifest(
+    roster: &HandMaintainedRoster,
     candidate_src: &Path,
     selected_basenames: &[String],
     emitted_artifact_paths: &BTreeSet<String>,
@@ -3860,10 +4216,7 @@ fn produce_candidate_manifest(
     candidate_tree_id: &str,
 ) -> Result<RegenCandidateManifest, String> {
     let selected = selected_basenames.iter().cloned().collect::<BTreeSet<_>>();
-    let bootstrap_mirrors = HAND_MAINTAINED_STAGE0_FILES
-        .iter()
-        .map(|name| (*name).to_string())
-        .collect::<BTreeSet<_>>();
+    let bootstrap_mirrors = roster.files().cloned().collect::<BTreeSet<_>>();
     let names =
         observe_complete_candidate_artifact_population(candidate_src, "manifest-production")?;
     let generation_id =
@@ -3871,11 +4224,11 @@ fn produce_candidate_manifest(
     let surfaces = names
         .iter()
         .map(|basename| {
-            let bootstrap_directory = HAND_MAINTAINED_STAGE0_DIRS
-                .iter()
+            let bootstrap_directory = roster
+                .dirs()
                 .find(|directory| {
                     basename
-                        .strip_prefix(**directory)
+                        .strip_prefix(directory.as_str())
                         .is_some_and(|suffix| suffix.starts_with('/'))
                 });
             let (declaring_module, role) = if bootstrap_mirrors.contains(basename)
@@ -4951,7 +5304,7 @@ fn resolve_base_mirror_authority(
                 "BootstrapBaseMirrorCommitUnresolved: {env} is UNSET while --base-mirror asked \
                  round 1 to bootstrap from the base mirror; the heal round step must bind it to \
                  the pull request's base commit"
-            ))
+            ));
         }
         Some(value) => value,
     };
@@ -5805,7 +6158,7 @@ fn partition_rebuild_actuation(
             return Err(format!(
                 "refusal: stage0_partition_rebuild_is_actuatable_today returned {} instead of Bool",
                 other.type_label_public()
-            ))
+            ));
         }
     };
     let package_closure = model_value_to_string_list(
@@ -5820,9 +6173,9 @@ fn partition_rebuild_actuation(
         ModelValue::Str(ref value) => value.to_string(),
         other => {
             return Err(format!(
-            "refusal: stage0_partition_rebuild_decision_line_today returned {} instead of String",
-            other.type_label_public()
-        ))
+                "refusal: stage0_partition_rebuild_decision_line_today returned {} instead of String",
+                other.type_label_public()
+            ));
         }
     };
     let release_scope_empty = match call("stage0_partition_rebuild_release_scope_empty_today")? {
@@ -5831,29 +6184,31 @@ fn partition_rebuild_actuation(
             return Err(format!(
                 "refusal: stage0_partition_rebuild_release_scope_empty_today returned {} instead of Bool",
                 other.type_label_public()
-            ))
+            ));
         }
     };
-    let partition_generation_move =
-        match call("stage0_partition_rebuild_is_partition_generation_move_today")? {
-            ModelValue::Bool(value) => value,
-            other => {
-                return Err(format!(
-                    "refusal: stage0_partition_rebuild_is_partition_generation_move_today returned {} instead of Bool",
-                    other.type_label_public()
-                ))
-            }
-        };
-    let whole_compiler_required =
-        match call("stage0_partition_rebuild_requires_whole_compiler_today")? {
-            ModelValue::Bool(value) => value,
-            other => {
-                return Err(format!(
-                    "refusal: stage0_partition_rebuild_requires_whole_compiler_today returned {} instead of Bool",
-                    other.type_label_public()
-                ))
-            }
-        };
+    let partition_generation_move = match call(
+        "stage0_partition_rebuild_is_partition_generation_move_today",
+    )? {
+        ModelValue::Bool(value) => value,
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_rebuild_is_partition_generation_move_today returned {} instead of Bool",
+                other.type_label_public()
+            ));
+        }
+    };
+    let whole_compiler_required = match call(
+        "stage0_partition_rebuild_requires_whole_compiler_today",
+    )? {
+        ModelValue::Bool(value) => value,
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_rebuild_requires_whole_compiler_today returned {} instead of Bool",
+                other.type_label_public()
+            ));
+        }
+    };
     Ok(PartitionRebuildActuation {
         actuatable,
         package_closure,
@@ -5905,8 +6260,12 @@ fn partition_move_explained_by_this_change(
     };
     let population = edited_population_from_diff(workspace, &diff_text);
     let (edges, modules) = regen_module_edges(workspace).map_err(unexplainable)?;
-    let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
-        .map_err(unexplainable)?;
+    let compared = compared_mirror_rows(
+        &workspace.join("src/v1/stage0/src"),
+        &modules,
+        &declared_hand_maintained_roster(&workspace)?,
+    )
+    .map_err(unexplainable)?;
     match rebuild_scope_decision_with(
         source_roots,
         "stage0_partition_move_explained_by_affected_inputs",
@@ -6700,7 +7059,7 @@ fn spawn_rebuilt_seed_regen_child(
             return Err(format!(
                 "wait for rebuilt seed {}: {detail}",
                 program.display()
-            ))
+            ));
         }
         GenerationEnding::Refused {
             refusal,
@@ -6914,7 +7273,7 @@ impl GenerationSupervisor {
             Err(failure) => {
                 return SupervisorStep::Refuse {
                     refusal: format!("{failure} [{} after {elapsed_s} s]", self.subject),
-                }
+                };
             }
         };
         let receipt =
@@ -7428,7 +7787,7 @@ fn convergence_plan_from_model(
             return Err(format!(
                 "refusal: generation progress projection returned {}",
                 other.type_label_public()
-            ))
+            ));
         }
     }
     let changed = drifted
@@ -7651,13 +8010,13 @@ fn convergence_plan_from_model(
         Value::Str(ref label) => {
             return Err(format!(
                 "affected-set bound and convergence stage population disagree: {label}"
-            ))
+            ));
         }
         other => {
             return Err(format!(
                 "refusal: affected bound admission returned {}",
                 other.type_label_public()
-            ))
+            ));
         }
     }
     let args = vec![
@@ -7711,13 +8070,13 @@ fn convergence_plan_from_model(
         Value::Str(ref value) => {
             return Err(format!(
                 "refusal: convergence kind projection returned unknown closed variant {value}"
-            ))
+            ));
         }
         other => {
             return Err(format!(
                 "refusal: convergence kind projection returned {}",
                 other.type_label_public()
-            ))
+            ));
         }
     };
     let paths = match v1_interpreter::with_active_context(&ctx, || {
@@ -7744,7 +8103,7 @@ fn convergence_plan_from_model(
             return Err(format!(
                 "refusal: convergence surface projection returned {}",
                 other.type_label_public()
-            ))
+            ));
         }
     };
     let closure_id = match v1_interpreter::with_active_context(&ctx, || {
@@ -7763,20 +8122,20 @@ fn convergence_plan_from_model(
                 return Err(format!(
                     "refusal: convergence closure projection member is {}",
                     other.type_label_public()
-                ))
+                ));
             }
         },
         Value::List(ref ids) => {
             return Err(format!(
                 "refusal: planned convergence stage has {} admitted closure identities",
                 ids.len()
-            ))
+            ));
         }
         other => {
             return Err(format!(
                 "refusal: convergence closure projection returned {}",
                 other.type_label_public()
-            ))
+            ));
         }
     };
     Ok((kind, paths, closure_id))
@@ -7886,12 +8245,13 @@ where
     Build: FnMut(&Path) -> Result<CargoBuildObservation, String>,
     SeedDigest: FnMut() -> Result<String, String>,
 {
+    let roster = declared_hand_maintained_roster(workspace)?;
     // THE FIRST THING THE INSTALL BOUNDARY DOES, over the WHOLE roster, before a digest is read
     // or a journal is written. A per-file check inside the copy loop would refuse the fourth
     // entry with three already installed -- a partial mutation whose only remedy is the
     // checkpoint restore, i.e. a widen dressed as a refusal.
     for basename in basenames {
-        admit_install_target(basename)?;
+        admit_install_target(basename, &roster)?;
         admit_install_destination(stage0_src, basename)?;
     }
     let changed_before = git_changed_stage0_paths(workspace)?
@@ -7915,7 +8275,7 @@ where
     // Snapshot the complete authoritative generated population once. A build is not expected to
     // mutate source, but if it does the unplanned-path refusal must still be able to restore the
     // checkpoint it claims to preserve. Planned new paths are added beside the committed roster.
-    let mut checkpoint_basenames = committed_generated_basenames(stage0_src)?;
+    let mut checkpoint_basenames = committed_generated_basenames(stage0_src, &roster)?;
     checkpoint_basenames.extend(basenames.iter().cloned());
     checkpoint_basenames.sort();
     checkpoint_basenames.dedup();
@@ -9756,7 +10116,10 @@ mod heal_round_one_base_mirror_tests {
             "the restore did not name the hand-maintained file it moved: {put_back_paths:?}"
         );
         assert!(
-            put_back_paths.rewritten.iter().all(|path| !path.ends_with("/build.rs")),
+            put_back_paths
+                .rewritten
+                .iter()
+                .all(|path| !path.ends_with("/build.rs")),
             "the restore named a path it never moved (its bytes were identical): {put_back_paths:?}"
         );
         // The journal covers exactly what the seed MOVED. A path whose base bytes already equal the
@@ -9772,7 +10135,11 @@ mod heal_round_one_base_mirror_tests {
             restored.paths_rewritten
         );
         assert_eq!(
-            (restored.paths_restored, restored.paths_rewritten, restored.paths_absent_at_base),
+            (
+                restored.paths_restored,
+                restored.paths_rewritten,
+                restored.paths_absent_at_base
+            ),
             (5, 4, 2),
             "the fixture's population moved: base carries 5 paths under {STAGE0_CRATE_REL}, the head \
              rewrites 4 of them (its build script is committed identically, so the seed must skip \
@@ -11462,8 +11829,9 @@ pub fn regen_reverse_closure_host(
 pub fn compared_mirror_rows(
     stage0_src: &Path,
     modules: &[String],
+    roster: &HandMaintainedRoster,
 ) -> Result<Vec<(String, String)>, String> {
-    let committed: BTreeSet<String> = committed_generated_basenames(stage0_src)?
+    let committed: BTreeSet<String> = committed_generated_basenames(stage0_src, roster)?
         .into_iter()
         .collect();
     Ok(modules
@@ -11699,7 +12067,7 @@ pub fn render_affected_set_bound(
             return Err(format!(
                 "refusal: regen_affected_set_bound_line returned {} where a String was expected",
                 other.type_label_public()
-            ))
+            ));
         }
     };
     let members: Vec<String> = match v1_interpreter::with_active_context(&ctx, || {
@@ -11726,7 +12094,7 @@ pub fn render_affected_set_bound(
             return Err(format!(
                 "refusal: regen_affected_set_members returned {} where a List was expected",
                 other.type_label_public()
-            ))
+            ));
         }
     };
     let arm = line
@@ -11755,8 +12123,14 @@ pub fn render_affected_set_bound(
                  regen_affected_set names {}; host-only {:?}, model-only {:?}",
                 host_mirrors.len(),
                 model_mirrors.len(),
-                host_mirrors.difference(&model_mirrors).take(8).collect::<Vec<_>>(),
-                model_mirrors.difference(&host_mirrors).take(8).collect::<Vec<_>>()
+                host_mirrors
+                    .difference(&model_mirrors)
+                    .take(8)
+                    .collect::<Vec<_>>(),
+                model_mirrors
+                    .difference(&host_mirrors)
+                    .take(8)
+                    .collect::<Vec<_>>()
             ));
         }
     }
@@ -11772,7 +12146,11 @@ pub fn affected_set_bound_for(
     unlocatable: &[String],
 ) -> Result<AffectedSetBound, String> {
     let (edges, modules) = regen_module_edges(workspace)?;
-    let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
+    let compared = compared_mirror_rows(
+        &workspace.join("src/v1/stage0/src"),
+        &modules,
+        &declared_hand_maintained_roster(&workspace)?,
+    )?;
     render_affected_set_bound(source_roots, edited, unlocatable, &edges, &compared)
 }
 
@@ -11945,13 +12323,16 @@ pub fn regen_emission_scope_for_diff(
                 "refusal: the affected-set bound answered an arm this round cannot consume: \
                  {other} ({}). Teach `regen_emission_scope_for_diff` the arm or fix the model.",
                 bound.line
-            ))
+            ));
         }
     };
     // LOCKSTEP, ON EVERY SCOPED ROUND, over the real committed roster this round will use. The
     // model's fold and the host's filter answer the same question, and a round runs only when
     // they answer it the same way.
-    let committed = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
+    let committed = committed_generated_basenames(
+        &workspace.join("src/v1/stage0/src"),
+        &declared_hand_maintained_roster(workspace)?,
+    )?;
     if !matches!(scope, RegenEmissionScope::Unlocatable { .. }) {
         let host: BTreeSet<String> = scope_selection(&scope, &committed)?.into_iter().collect();
         let model: BTreeSet<String> = render_scope_selection(source_roots, &scope, &committed)?
@@ -13467,10 +13848,13 @@ mod orchestrator_model_load_tests {
                             (ctx.sym("major_faults"), Value::Int(faults)),
                             (ctx.sym("user_cpu"), measure(ctx, cpu)),
                             (ctx.sym("envelope_events"), Value::Int(events)),
-                            (ctx.sym("pressure_body"), v1_interpreter::str_value(format!(
-                                "some avg10=0.00 avg60=0.00 avg300=0.00 total={}\nfull avg10=0.00 avg60=0.00 avg300=0.00 total={full}\n",
-                                full + 5
-                            ))),
+                            (
+                                ctx.sym("pressure_body"),
+                                v1_interpreter::str_value(format!(
+                                    "some avg10=0.00 avg60=0.00 avg300=0.00 total={}\nfull avg10=0.00 avg60=0.00 avg300=0.00 total={full}\n",
+                                    full + 5
+                                )),
+                            ),
                         ]),
                     }
                 };
