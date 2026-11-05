@@ -720,12 +720,16 @@ fn oidc_readback_refused_command(cause: String) -> String {
   concat(oidc_readback_refused_poison, cause)
 }
 
+data serve_grammar_refused_poison: String = "__GUNBC_SERVE_BINARY_GRAMMAR_REFUSED__ "
+
 fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?) -> Doc {
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: now_epoch) {
     LiveDeployServeUnitEmitted { file } =>
       doc_text(text: serialize_systemd_unit_file(file: file))
     LiveDeployServeUnitOidcReadbackRefused { cause } =>
       doc_text(text: concat(oidc_readback_refused_command(cause: cause as String), "\n"))
+    LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+      doc_text(text: join([serve_grammar_refused_poison, bp as String, ": ", r as String, "\n"], ""))
   }
 }
 

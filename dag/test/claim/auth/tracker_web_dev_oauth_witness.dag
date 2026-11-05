@@ -155,6 +155,7 @@ test fn lab_serve_unit_carries_oidc_env() -> Bool {
       LiveDeployServeUnitEmitted { file } =>
         string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
       LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+      LiveDeployServeUnitGrammarRefused { binary_path: _, reason: _ } => false
     }
 }
 
