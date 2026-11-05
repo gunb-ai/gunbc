@@ -186,11 +186,9 @@ fn printer_state_install_identity_text(plan: OwnedDirectoryInstallPlan) -> Strin
   join(["directory", posix_owner_names_text(names: plan.owner), file_mode_octal(mode: plan.mode)], "|")
 }
 
-// THE REFUSAL THE PASS CARRIES OUT: located at the path, and naming the arm that fired.
-fn printer_state_parent_reown_refusal_text(path: String, cause: PrinterStartsParentReownRefusal) -> String {
-  join([
-    "the printer-starts parent re-own refused at ", path, ": ",
-    match cause {
+// THE CAUSE, IN WORDS: each arm says which read said what, in the identity text the host itself answers in.
+fn printer_state_parent_reown_cause_text(cause: PrinterStartsParentReownRefusal) -> String {
+  match cause {
       ReownPriorNotMatched { expected, observed } => join(["the live identity is not the pinned prior; expected ", expected, ", read ", observed], "")
       ReownPathAbsent { detail } => join(["there is no directory to re-own: ", detail], "")
       ReownPathUnreadable { detail } => join(["its identity could not be read: ", detail], "")
@@ -201,8 +199,12 @@ fn printer_state_parent_reown_refusal_text(path: String, cause: PrinterStartsPar
       ReownReadbackUnreadable { detail } => join(["after the install its identity could not be read: ", detail], "")
       ReownReadbackIsNotADirectory => "after the install the path is not a directory"
       ReownReadbackNotTheTarget { expected, observed } => join(["after the install the identity is not what the target declares; expected ", expected, ", read ", observed], "")
-    },
-  ], "")
+    }
+}
+
+// THE REFUSAL THE PASS CARRIES OUT: located at the path, and naming the arm that fired.
+fn printer_state_parent_reown_refusal_text(path: String, cause: PrinterStartsParentReownRefusal) -> String {
+  concat("the printer-starts parent re-own refused at ", concat(path, concat(": ", printer_state_parent_reown_cause_text(cause: cause))))
 }
 
 // WHEN THE LEG RUNS AT ALL, as a decision the model makes rather than a branch buried in wiring. THE LEG IS A
