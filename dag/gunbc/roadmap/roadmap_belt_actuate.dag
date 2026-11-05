@@ -2615,7 +2615,7 @@ fn belt_spawn_route_for_decision(decision: ContinuationPlan, request: AttemptLau
     // never opens a fresh attempt -- that waits for the operator's CONTINUE, which arrives as a claim.
     // Under the pre-redesign code these outcomes were ContinuationEnded and spawned nothing; this gate
     // restores that property on the autonomous path while the operator's CONTINUE (a claim) does spawn.
-    NextAttempt { reason: _, from_branch } =>
+    NextAttempt { reason, from_branch } =>
       match request {
         LaunchAutonomous => SpawnRouteNone {
           step: "continuation-await-operator",
@@ -2751,9 +2751,36 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
-      recovery: belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
+      recovery:
+        // A REAPED WORKTREE CANNOT BE RESUMED IN PLACE. The Resume spawn (SpawnRouteResume) drives the worker
+        // into its own worktree directory and assumes it still exists; only the NextAttempt restore
+        // (DispatchWorkerContinuedFrom) re-adds the worktree from the branch head. So when the worktree is
+        // gone the prior session's recovery standing is NOT read as resumable -- the decision falls through to
+        // NextAttempt, which keeps the committed branch work by starting the new attempt from that head. When
+        // the worktree is still present, the recovery standing is read normally and a validated session resumes
+        // in place as before.
+        if belt_worktree_present(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
+          belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key)
+        } else {
+          SessionRecoveryNone
+        },
     } },
   )
+}
+
+// WHETHER AN ATTEMPT'S WORKTREE DIRECTORY STILL EXISTS -- a typed observation projected to a Bool, the
+// same belt_worktree_head_observe the capture read uses. A reaped worktree is Unobserved; the caller must
+// not route a reaped worktree into an in-place Resume (which assumes the directory exists) -- only the
+// NextAttempt restore re-adds it. This is the gate that keeps a reaped worktree from resuming into a
+// directory that no longer exists.
+fn belt_worktree_present(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> Bool {
+  match belt_worktree_head_observe(
+    instance: instance,
+    worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+  ) {
+    WorktreeHeadObserved { revision: _ } => true
+    WorktreeHeadUnobserved { reason: _ } => false
+  }
 }
 
 // THE PRIOR SESSION'S RECOVERY STANDING, read from its own event stream (the stream a harness worker
