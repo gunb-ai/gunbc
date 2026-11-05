@@ -1,0 +1,135 @@
+module gunbc.roadmap.roadmap_acceptance_inbox
+
+import std.types { Set }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapAcceptanceReceipt, replay_acceptance_history }
+import gunbc.roadmap.roadmap_status { line_ticket }
+import gunbc.roadmap.roadmap_acceptance_history_carrier {
+  RoadmapAcceptanceEventHistoryLoad,
+  RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+}
+import gunbc.roadmap.roadmap_authority {
+  declared_roadmap_nodes,
+  declared_roadmap_edges,
+  frontier_sets_projection,
+  FrontierSetsProjected,
+  FrontierSetsProjectionRefused,
+  roadmap_node_id_set,
+  roadmap_acceptance_event_history_load,
+}
+
+// THE ACCEPTANCE INBOX: which declared nodes are awaiting acceptance, and what each owes. A pure
+// projection over the ONE acceptance load (roadmap_authority roadmap_acceptance_event_history_load:
+// seed prefix plus runtime tail through roadmap_operator_close_history); it keeps no list of its
+// own and reads no carrier file.
+//
+// EVERY REFUSAL IS TYPED, NEVER AN EMPTY INBOX. An empty row list would assert that nothing awaits
+// acceptance, so a refused load, an unreplayable history, or a frontier refusal yields
+// AcceptanceInboxProjectionRefused (same discipline as roadmap_acceptance_receipts and
+// WithheldNodeIdsProjectionRefused). That includes a live receipt whose criteria_digest no longer
+// matches its node: frontier_sets_projection refuses on it (live-receipt-does-not-match-declared-node),
+// so a stale acceptance surfaces here as a refusal naming the node, never as a quiet row.
+//
+// THE ROW CARRIES THE NODE, NOT ITS TEXT. red_control, handback and the rest of the ticket are read
+// from the RoadmapNode (line_ticket) by whoever renders; copying them would be a second spelling.
+// There is no execution-evidence field: a receipt's evidence exists only for a node that was
+// accepted once, and that is the only reading carried (PriorReceiptRevoked).
+
+type InboxStatus
+  = InboxAwaiting
+  | InboxWithheld
+
+type ParentAcceptance
+  = ParentAccepted { parent: RoadmapNodeId }
+  | ParentWithheld { parent: RoadmapNodeId }
+  | ParentOpen { parent: RoadmapNodeId }
+
+type PriorReceiptReading
+  = NoReceiptEverRecorded
+  | PriorReceiptRevoked { receipt: RoadmapAcceptanceReceipt }
+
+type AcceptanceInboxRow {
+  node: RoadmapNode
+  status: InboxStatus
+  parents: List<ParentAcceptance>
+  prior: PriorReceiptReading
+}
+
+type AcceptanceInbox
+  = AcceptanceInboxProjected { rows: List<AcceptanceInboxRow> }
+  | AcceptanceInboxProjectionRefused { detail: String }
+
+fn node_has_ticket(rn: RoadmapNode) -> Bool {
+  match line_ticket(item: rn.line) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn inbox_parent_state(
+  parent: RoadmapNodeId,
+  accepted: Set<RoadmapNodeId>,
+  withheld: Set<RoadmapNodeId>,
+) -> ParentAcceptance {
+  if set_contains(accepted, parent) {
+    ParentAccepted { parent: parent }
+  } else {
+    if set_contains(withheld, parent) {
+      ParentWithheld { parent: parent }
+    } else {
+      ParentOpen { parent: parent }
+    }
+  }
+}
+
+// The latest revoked receipt for the node in the replayed state; none means never recorded.
+fn inbox_prior_reading(
+  revoked: List<RoadmapAcceptanceReceipt>,
+  node: RoadmapNodeId,
+) -> PriorReceiptReading {
+  fold(
+    revoked,
+    init: NoReceiptEverRecorded,
+    f: fn(acc, r) {
+      if r.node == node { PriorReceiptRevoked { receipt: r } } else { acc }
+    },
+  )
+}
+
+fn roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoad) -> AcceptanceInbox {
+  match frontier_sets_projection(history: history) {
+    FrontierSetsProjectionRefused { detail: detail } =>
+      AcceptanceInboxProjectionRefused { detail: detail }
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
+      match history {
+        RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+          AcceptanceInboxProjectionRefused { detail: detail }
+        RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+          match replay_acceptance_history(events: events) {
+            Absent =>
+              AcceptanceInboxProjectionRefused { detail: "acceptance-history-unreplayable" }
+            Present { value: state } => {
+              let accepted_set = roadmap_node_id_set(ids: accepted)
+              let withheld_set = roadmap_node_id_set(ids: withheld)
+              let edges = declared_roadmap_edges()
+              AcceptanceInboxProjected {
+                rows: declared_roadmap_nodes()
+                  |> filter(n => node_has_ticket(rn: n) && !set_contains(accepted_set, n.node))
+                  |> map(n => AcceptanceInboxRow {
+                    node: n,
+                    status: if set_contains(withheld_set, n.node) { InboxWithheld } else { InboxAwaiting },
+                    parents: edges
+                      |> filter(e => e.child == n.node)
+                      |> map(e => inbox_parent_state(parent: e.parent, accepted: accepted_set, withheld: withheld_set)),
+                    prior: inbox_prior_reading(revoked: state.revoked, node: n.node),
+                  }),
+              }
+            }
+          }
+      }
+  }
+}
+
+fn roadmap_acceptance_inbox_on_authority() -> AcceptanceInbox {
+  roadmap_acceptance_inbox(history: roadmap_acceptance_event_history_load())
+}
