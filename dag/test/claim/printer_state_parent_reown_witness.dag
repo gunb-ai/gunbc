@@ -24,6 +24,28 @@ import gunbc.fleet.printer_state_parent_reown {
   printer_state_parent_reown_target, printer_state_directory_identity_text,
   printer_state_parent_identity_leg_plan, ParentAlreadyAtTheDeclaredIdentity, ParentReownLegRuns,
   PrinterStartsParentReowned, PrinterStartsParentReownPreconditionFailed, PrinterStartsParentReownRefused,
+  PrinterStartsParentReownRefusal, ReownPriorNotMatched, ReownPathAbsent, ReownPathUnreadable,
+  ReownPathIsNotADirectory, ReownTargetHasNoInstall, ReownInstallRefused, ReownReadbackAbsent,
+  ReownReadbackUnreadable, ReownReadbackIsNotADirectory, ReownReadbackNotTheTarget,
+}
+
+// WHICH CAUSE REFUSED, named. The leg refuses with a typed cause, and a claim that only checks that the
+// CAS refused would still pass if the leg refused for the wrong reason -- which is the failure that matters
+// here, because the five refusing states are five different physical states and only one authority tells
+// them apart. The spellings are the variants of PrinterStartsParentReownRefusal, read off the module.
+fn reown_refusal_cause_name(cause: PrinterStartsParentReownRefusal) -> String {
+  match cause {
+    ReownPriorNotMatched { expected: _, observed: _ } => "prior-not-matched"
+    ReownPathAbsent { detail: _ } => "path-absent"
+    ReownPathUnreadable { detail: _ } => "path-unreadable"
+    ReownPathIsNotADirectory => "path-is-not-a-directory"
+    ReownTargetHasNoInstall { reason: _ } => "target-has-no-install"
+    ReownInstallRefused => "install-refused"
+    ReownReadbackAbsent { detail: _ } => "readback-absent"
+    ReownReadbackUnreadable { detail: _ } => "readback-unreadable"
+    ReownReadbackIsNotADirectory => "readback-is-not-a-directory"
+    ReownReadbackNotTheTarget { expected: _, observed: _ } => "readback-not-the-target"
+  }
 }
 
 data real_execution_home_doc: String = "Inhabitance for gunbc.fleet.printer_state_parent_reown printer_state_parent_reown: the transition is driven over the provider's OWN observer (gunbc.owned_directory owned_directory_observe) and the project's OWN install spelling (extdeps.tools.gnu_coreutils coreutils_install_directory_owned_arguments), over a throwaway tree, on a real host, with real commands and real bytes read back afterwards; the production wiring and the privilege it runs under are pinned by the two claims at the end of this file. Local filesystem wet lane."
@@ -57,7 +79,7 @@ fn listing_read(dir: FilePath) -> ObserverRead {
 }
 
 fn identity_read(path: FilePath) -> ObserverRead {
-  let ran = shell.Exec.RunArgv(program: "stat", arguments: [owned_directory_stat_format, "--", path as String])
+  let ran = shell.Exec.RunArgv(program: "stat", arguments: ["-c", owned_directory_stat_format, "--", path as String])
   if ran.exit_code == 0 { ObserverReadOut { stdout: ran.stdout } } else { ObserverReadFailed { origin: ObserverExited { exit_code: ran.exit_code, stderr: ran.stderr } } }
 }
 
@@ -143,7 +165,8 @@ test fn witness_a_prior_that_differs_in_group_refuses_and_nothing_is_applied() -
             match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerOnly), prior: foreign_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
               PrinterStartsParentReowned { path: _, before: _, after: _ } => false
               PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
-                (at == path) && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
+                (at == path) && reown_refusal_cause_name(cause: cause) == "prior-not-matched"
+                && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
               PrinterStartsParentReownRefused { path: _, cause: _ } => false
             }
           }
@@ -170,7 +193,9 @@ test fn witness_a_prior_that_differs_in_mode_refuses_although_the_live_mode_is_a
             let prior_at_another_mode = OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
             match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: prior_at_another_mode, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
               PrinterStartsParentReowned { path: _, before: _, after: _ } => false
-              PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "0755"], "|")
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+                (at == path) && reown_refusal_cause_name(cause: cause) == "prior-not-matched"
+                && live_identity(path: path) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "0755"], "|")
               PrinterStartsParentReownRefused { path: _, cause: _ } => false
             }
           }
@@ -198,7 +223,9 @@ test fn witness_a_symlink_at_the_path_refuses_and_what_it_points_at_is_left_alon
             EnsureObserved { evidence } =>
               match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: evidence.owner.user, group: evidence.owner.group), mode: DirectoryOwnerAllEveryoneTraverse), prior: OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
                 PrinterStartsParentReowned { path: _, before: _, after: _ } => false
-                PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: held) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
+                PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+                  (at == path) && reown_refusal_cause_name(cause: cause) == "path-is-not-a-directory"
+                  && live_identity(path: held) == join(["directory", join([evidence.owner.user as String, evidence.owner.group as String], ":"), "2770"], "|")
                 PrinterStartsParentReownRefused { path: _, cause: _ } => false
               }
             EnsureAbsent { reason: _ } => false
@@ -223,7 +250,8 @@ test fn witness_an_unreadable_state_refuses() -> Bool {
         let unreadable_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: observing_login(), group: observing_login()), mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
         match printer_state_parent_reown(target: declared_target(root: dangling, owner: owner_pair(login: observing_login(), group: observing_login()), mode: DirectoryOwnerAllEveryoneTraverse), prior: unreadable_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
           PrinterStartsParentReowned { path: _, before: _, after: _ } => false
-          PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path
+          PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+          (at == path) && reown_refusal_cause_name(cause: cause) == "path-unreadable"
           PrinterStartsParentReownRefused { path: _, cause: _ } => false
         }
       }
@@ -244,7 +272,9 @@ test fn witness_a_missing_directory_refuses_rather_than_creates() -> Bool {
       let absent_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: observing_login(), group: observing_login()), mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
       match printer_state_parent_reown(target: declared_target(root: root, owner: owner_pair(login: observing_login(), group: observing_login()), mode: DirectoryOwnerAllEveryoneTraverse), prior: absent_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
         PrinterStartsParentReowned { path: _, before: _, after: _ } => false
-        PrinterStartsParentReownPreconditionFailed { path: at, cause: _ } => at == path && live_identity(path: path) == "absent"
+        PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+          (at == path) && reown_refusal_cause_name(cause: cause) == "path-absent"
+          && live_identity(path: path) == "absent"
         PrinterStartsParentReownRefused { path: _, cause: _ } => false
       }
     }
