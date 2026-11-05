@@ -1,6 +1,6 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import gunbc.live_deploy.serve_binary { fixed_serve_binary_path, AdmittedFixedServeBinary, admit_fixed_serve_path, SeedBuiltAtRevision, SourceUndeclared }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path, AdmittedFixedServeBinary, admit_fixed_serve_path, AdmittedServeBinarySource, HostSeedInstall, SeedBuiltAtRevision, SourceUndeclared }
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port, Int }
 import std.optional { Present, Absent }
 import gunbc.auth.approval_device_crypto_client { device_crypto_readback_expectation }
@@ -1194,7 +1194,7 @@ test fn an_in_place_built_serve_binary_emits_the_same_grammar_at_its_own_path() 
 test fn the_host_seed_admission_still_emits_and_the_refusal_is_not_a_blanket() -> Bool {
   let emitted = live_deploy_serve_unit_emission(
     spec: spec_with_serve_binary(binary: admit_fixed_serve_path(
-      path: "/opt/gunbc/bin/gunbc" as NonEmptyStr, source: SeedBuiltAtRevision { revision: "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd" as NonEmptyStr })),
+      path: "/opt/gunbc/bin/gunbc" as NonEmptyStr, source: HostSeedInstall)),
     revision: live_revision(), now_epoch: claim_oidc_now_for(spec: live_spec()))
   match emitted {
     LiveDeployServeUnitEmitted { file } =>

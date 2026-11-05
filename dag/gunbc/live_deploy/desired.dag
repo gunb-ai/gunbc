@@ -130,9 +130,10 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     selected_identity: srv1_lab_selected_identity(),
     admitted_branch: dispatch_base_branch(instance: instance),
     // The lab's serve binary is BUILT IN PLACE from the instance's admitted revision
-    // (source_seed.serve_binary_origin == BuildInPlaceFromAdmittedRevision at
-    // roadmap_dashboard_instance.dag:1473) -- a seed build from this repository, so the seed CLI
-    // grammar is named, with the revision the build lane checks out.
+    // (source_seed.serve_binary_origin == BuildInPlaceFromAdmittedRevision, declared on the
+    // dashboard instance row in gunbc.roadmap.roadmap_dashboard_instance) -- a seed build
+    // from this repository, so the seed CLI grammar is named, with the revision the build
+    // lane checks out.
     serve_binary_source: SeedBuiltAtRevision { revision: instance.admitted_revision.ref_name as NonEmptyStr },
   }
 }
@@ -163,11 +164,11 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
     names: derived_deployment_names(instance: instance),
     selected_identity: srv2_deploy_selected_identity(),
     admitted_branch: production_admitted_branch,
-    // srv2's serve binary is the operator-declared cargo release path (srv2_deploy_serve_binary);
-    // NOTHING IN THE MODEL records how it came to exist -- no host seed install, no build lane.
-    // The honest name is undeclared, and the serve-unit emitter refuses it TYPED rather than
-    // assuming the seed grammar for a binary of unknown provenance (DESIGN section 5).
-    serve_binary_source: SourceUndeclared { reason: "srv2_deploy serve binary is srv2_deploy_serve_binary, an operator-declared cargo release path; the model records no build lane or host seed install behind it" },
+    // srv2's serve binary is srv2_deploy_serve_binary, declared as the CARGO RELEASE BUILD
+    // of the gunbc repository at srv2_deploy_repo_root (join of cargo_default_release_dir
+    // with that root) — a build of this repository, so it speaks the seed CLI grammar, at
+    // the revision this instance admits.
+    serve_binary_source: SeedBuiltAtRevision { revision: instance.admitted_revision.ref_name as NonEmptyStr },
   }
 }
 
