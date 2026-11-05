@@ -254,16 +254,13 @@ fn program_branch_arm(node: Node, slot: BranchSlot) -> Outcome<Node> {
 // refuses with its own reason, because calling a well-formed else-less Branch malformed would fuse two
 // causes the slot table separates (DESIGN 5). The interpreter has no statement sequence to continue into at
 // this point; that continuation is what the statement-form lowering will add.
-fn program_branch_else_arm(node: Node) -> Outcome<Node> {
+fn program_branch_else_selection(node: Node) -> Outcome<Optional<Node>> {
   match branch_slot_target(n: node, slot: BranchElseSlot) {
-    Present { value: arm } =>
-      Accepted { value: arm, diagnostics: None }
-    Absent =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: eval_diagnostic(reason: ^program_branch_else_less_rejected, node: node)
-        )
-      }
+    Present { value: arm } => Accepted { value: optional_present(value: arm), diagnostics: None }
+    // THE ELSE-LESS BRANCH SELECTS NOTHING on this path. Refusing here would end every false-condition
+    // run of the statement form -- a binder-absent Bind whose value is this Branch -- in a refusal, which
+    // is the common case. "No continuation" is the answer; the consumer decides what it means.
+    Absent => Accepted { value: optional_absent(), diagnostics: None }
   }
 }
 
@@ -275,12 +272,15 @@ fn program_choose_branch(
   node: Node,
   condition: RuntimeValue,
   _env: EvaluationEnvironment
-) -> Outcome<Node> {
+) -> Outcome<Optional<Node>> {
   if branch_positional_shape_admitted(n: node) {
     if program_runtime_bool_true(value: condition) {
-      program_branch_arm(node: node, slot: BranchThenSlot)
+      match program_branch_arm(node: node, slot: BranchThenSlot) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: optional_present(value: arm), diagnostics: d } => Accepted { value: optional_present(value: arm), diagnostics: d }
+      }
     } else if program_runtime_bool_false(value: condition) {
-      program_branch_else_arm(node: node)
+      program_branch_else_selection(node: node)
     } else {
       Rejected {
         diagnostics: diagnostics_singleton(

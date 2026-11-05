@@ -222,7 +222,7 @@ fn eval_call_primitive(
   }
 }
 
-fn eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+fn eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Optional<Node>> {
   Accepted { value: eval_add_subgraph(), diagnostics: None }
 }
 
