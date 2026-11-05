@@ -4,7 +4,7 @@ import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
 import std.list { distinct_by_key }
-import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
+import gunbc.runner.runner_slot_allocation { deploy_slot_identities }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
