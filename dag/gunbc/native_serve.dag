@@ -436,6 +436,17 @@ fn native_serve_handler_failed() -> ServeWireResponse {
   }
 }
 
+// The answer when the remaining deadline could not be installed as the connection's read bound: the main refuses to
+// read under a stale bound, answers this, and exits with native_serve_deadline_exit_code, as after a crossing.
+fn native_serve_deadline_uninstallable(contract: NativeServeContract, reason: String) -> ServeWireResponse {
+  ServeWireResponse {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    body: concat("the request's ", concat(to_string(value: millisecond_count(m: contract.request_deadline)), concat(" ms deadline could not be installed on its connection (", concat(reason, "); this process exits for its supervisor to restart it, so no read proceeded without the bound\n")))),
+    headers: [],
+  }
+}
+
 fn native_serve_deadline_refused(contract: NativeServeContract) -> ServeWireResponse {
   ServeWireResponse {
     status: 500,

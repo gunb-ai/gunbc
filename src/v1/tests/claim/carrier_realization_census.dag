@@ -555,3 +555,12 @@ test fn the_native_ingress_main_exits_after_a_deadline_and_keeps_no_stuck_worker
     && !string_contains(s: text, pattern: "stuck")
     && !string_contains(s: text, pattern: "WORKER_ABANDONED")
 }
+
+// THE BODY READ IS NEVER CONTINUED UNDER A STALE BOUND (side-chat review 5778387891): narrowing the connection's read
+// timeout to what is left of the deadline is checked, and a failure is the typed refusal and the same exit.
+test fn the_native_ingress_main_refuses_to_read_a_body_past_a_deadline_it_could_not_install() -> Bool {
+  let text = crc_ingress_main(startup: false)
+  string_contains(s: text, pattern: "if let Err(cause) = stream.set_read_timeout(Some(std::cmp::min(left, read_timeout))) { return Exchange::DeadlineUninstallable(cause.to_string()); }")
+    && string_contains(s: text, pattern: "Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&mut stream, &contract, reason),")
+    && !string_contains(s: text, pattern: "let _ = stream.set_read_timeout")
+}

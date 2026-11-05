@@ -73,11 +73,14 @@ data native_serve_probe_refusal_markers: List<String> = [
 ]
 
 // THE DEADLINE LAUNCHES, one request each: the CPU spin is bounded by its CPU limit (wall is looser),
-// the stall by its wall limit (CPU is looser). Both effective deadlines are therefore 500 ms.
+// the stall by its wall limit (CPU is looser), and the slow body never enters the handler: its head
+// declares ten body bytes and only two arrive, so the deadline crosses during the admitted body read
+// (side-chat review 5778387891). Every effective deadline is therefore 500 ms.
 fn native_serve_probe_deadline_launches() -> List<List<String>> {
   [
     native_serve_probe_launch(handler: native_serve_probe_handler, release_revision: native_serve_probe_release_revision(), cpu_limit_ms: native_serve_probe_deadline_ms, wall_limit_ms: native_serve_probe_loose_ms),
     native_serve_probe_launch(handler: native_serve_probe_handler, release_revision: native_serve_probe_release_revision(), cpu_limit_ms: native_serve_probe_loose_ms, wall_limit_ms: native_serve_probe_deadline_ms),
+    native_serve_probe_launch(handler: native_serve_probe_handler, release_revision: native_serve_probe_release_revision(), cpu_limit_ms: native_serve_probe_deadline_ms, wall_limit_ms: native_serve_probe_loose_ms),
   ]
 }
 
@@ -86,6 +89,7 @@ fn native_serve_probe_deadline_requests(silent_port: Int) -> List<String> {
   [
     "GET /spin HTTP/1.1\r\n\r\n",
     concat("POST /stall HTTP/1.1\r\nContent-Length: ", concat(to_string(value: string_length(s: port)), concat("\r\n\r\n", port))),
+    "POST /echo HTTP/1.1\r\nContent-Length: 10\r\n\r\nhi",
   ]
 }
 
@@ -93,6 +97,7 @@ fn native_serve_probe_deadline_requests(silent_port: Int) -> List<String> {
 data native_serve_probe_deadline_announcements: List<String> = [
   "declared_cpu_limit_ms=500 declared_wall_limit_ms=20000 effective_native_deadline_ms=500",
   "declared_cpu_limit_ms=20000 declared_wall_limit_ms=500 effective_native_deadline_ms=500",
+  "declared_cpu_limit_ms=500 declared_wall_limit_ms=20000 effective_native_deadline_ms=500",
 ]
 
 fn native_serve_probe_phases() -> List<NativeServePhase> {

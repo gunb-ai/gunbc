@@ -407,6 +407,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "revision-request-native".to_string(),
+            },
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/revision_request_fixture.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "native-serve".to_string(),
             },
             TargetProducer::NativeServeProgram {
@@ -419,7 +428,7 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
                 target: "native-serve-device-crypto".to_string(),
             },
             TargetProducer::NativeServeProgram {
-                entry: "dag/gunbc/auth/approval_device_crypto_serve.dag",
+                entry: "dag/gunbc/auth/approval_device_crypto_ingress.dag",
             },
         ),
         (

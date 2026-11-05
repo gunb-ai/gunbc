@@ -497,6 +497,8 @@ fn http_ingress_native_argv_from(argv: List<String>, declared: List<String>, acc
             match http_ingress_native_pair(word: word) {
               Absent => HttpIngressNativeArgvRefused { reason: concat("--arg expects name=value, got ", word) }
               Present { value: a } =>
+                // Membership as a filter count, not `contains`: the Rust emission realizes `contains` for its
+                // String overload only (gunbc.recurring_failure_mode a_kernel_function_name_realized_for_one_overload_only).
                 if (declared |> filter(n => n == a.name) |> count) == 0 {
                   HttpIngressNativeArgvRefused { reason: concat("the binding constructor declares no argument ", concat(a.name, concat("; ", http_ingress_native_usage(declared: declared)))) }
                 } else if (http_ingress_native_named(arguments: acc, name: a.name) |> count) > 0 {
