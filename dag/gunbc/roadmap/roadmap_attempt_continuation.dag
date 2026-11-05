@@ -33,7 +33,8 @@ module gunbc.roadmap.roadmap_attempt_continuation
 // exists -- and a lineage whose session is dead has no live attempt to fence, so the live-attempt
 // check IS the double-spawn guard. A session that died is resumed by the decision, not fenced out.
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, List }
+import std.algebra { length }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_resume_bound }
 import gunbc.roadmap.roadmap_submission {

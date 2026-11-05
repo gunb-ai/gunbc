@@ -94,7 +94,7 @@ test fn s3_claim_2_a_recovery_needed_prior_resumes_the_same_session() -> Bool {
 // refuses resume: the decision holds and names the unrecorded call.
 test fn s3_claim_3_an_interrupted_effect_is_recovery_needed_and_not_resumable() -> Bool {
   match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: interrupted_request(), rounds: 7))) }) {
-    AlreadyRunning { reason } => reason.contains("c2") && reason.contains("not resumable")
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("c2") && reason.contains("not resumable")
     _ => false
   }
 }
@@ -103,7 +103,7 @@ test fn s3_claim_3_an_interrupted_effect_is_recovery_needed_and_not_resumable() 
 // still ends the lineage; so does a refusal on a hosted-quota route, and one that explained itself.
 test fn s3_claim_4_nothing_handed_in_and_no_refusal_still_ends_the_lineage() -> Bool {
   (match continuation_plan(obs: Present { value: prior_with(recovery: SessionRecoveryNone) }) {
-    NextAttempt { reason: _ } => true
+    NextAttempt { reason: _, from_branch: _ } => true
     _ => false
   })
     && (match refusal_of(request: validated_request(), route_qualifies: false, body: "") { Absent => true Present { value: _ } => false })
@@ -117,7 +117,7 @@ test fn s3_claim_5_past_the_resume_bound_the_lineage_ends_with_every_cause() -> 
   let lines = concat(concat(concat(needed, resumed), concat(concat(needed, resumed), concat(needed, resumed))), needed)
   session_resume_bound == 3
     && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
-      NextAttempt { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
+      NextAttempt { reason, from_branch: _ } => reason.contains("every recorded cause") && reason.contains("bound of 3")
       _ => false
     })
     && (match continuation_plan(obs: Present { value: prior_with(recovery: session_recovery_of_events(lines: concat(concat(needed, resumed), concat(needed, resumed)) |> concat(needed))) }) {
