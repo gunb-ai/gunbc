@@ -6,7 +6,7 @@ import gunbc.fleet.printer_workflow_artifact {printer_starts_path,printer_starts
 import gunbc.host_state_root {HostStateTree}
 import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
 import gunbc.owned_directory {OwnedDirectoryTarget}
-import gunbc.durable_cas_file_store {listed_slot_store,SlotStoreListed,SlotStoreAbsent,SlotStoreRefused}
+import gunbc.durable_cas_file_store {listed_slot_store,SlotStoreListed,SlotStoreAbsent,SlotStoreRefused,slot_store_absent_detail}
 import std.process {ProcessExit,ExitSuccess,exit_failure,ExitFailure}
 import std.integer { int_to_decimal_string }
 import std.durable_compare_and_set {CasGeneration,cas_generation_count,CasStoreFailure,CasSlotObservationRefused,CasGenerationPublicationRefused,CasGenerationSpaceExhausted,cas_unreadable_slot_detail}
@@ -164,7 +164,7 @@ fn printer_execution_hold_store(tree:HostStateTree) -> PrinterExecutionHoldStore
 
 fn printer_execution_hold_member(tree:HostStateTree) -> PrinterExecutionHoldStoreReading {
   match listed_slot_store(member:printer_execution_hold_slots.member as String,root:printer_execution_hold_path(tree:tree)) {
-    SlotStoreAbsent {member:_,root:_}=>PrinterExecutionHoldStoreUnready {detail:"the store's own directory was never created -- admission answers absence, and an absent store is not an empty store"}
+    SlotStoreAbsent {member:m,root:r}=>PrinterExecutionHoldStoreUnready {detail:slot_store_absent_detail(member:m,root:r)}
     SlotStoreRefused {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
     SlotStoreListed {root:r}=>match observe_file_hold(root:r,key:hold_key) {
       HoldSlotHeld {generation:_,owner:o}=>if durable_hold_owner_equal(left:o,right:printer_execution_hold_fence.owner as DurableHoldOwnerRef) { PrinterExecutionHoldStoreUnready {detail:"the legacy hold was copied here but its hand-over has not completed; gunbc.fleet.printer_state_layout completes it"} } else { PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore {root:r}} }

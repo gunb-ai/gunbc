@@ -1369,9 +1369,9 @@ fn listed_slot_store(member: String, root: NonEmptyStr) -> SlotStoreAdmission {
   }
 }
 
-// The ONE rendering of an Absent admission for a caller whose refusal is a String: it names the store
-// and its root, as listed_slot_store's own Refused detail does, so two stores admitted in sequence
-// never refuse identically.
+// The ONE rendering of an Absent admission's detail, for every caller that carries the refusal as text
+// (a String error or a typed *StoreUnready { detail }): it names the store and its root, as
+// listed_slot_store's own Refused detail does, so two stores never refuse identically.
 fn slot_store_absent_detail(member: String, root: NonEmptyStr) -> String {
   join(["the ", member, " store's own directory was never created at ", root as String, " -- admission answers absence, and an absent store is not an empty store"], "")
 }
