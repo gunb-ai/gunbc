@@ -44,7 +44,7 @@ import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloo
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
-import std.algebra { list_head }
+import std.algebra { list_head, list_map, for_all }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
@@ -103,6 +103,7 @@ import gunbc.ci.repository_projection_drift_workflow {
 import gunbc.witness.repository_witness_workflow {
   RosterProgram, repository_witness_lane_refusal, expected_repository_witnesses_yml,
   repository_witnesses_yml_emission, yaml_emission_admitted, repository_witness_triggers,
+  enforced_rows_need_an_aggregate_refusal, lane_admission,
 }
 
 // WHAT THESE CLAIMS HOLD.

@@ -121,6 +121,11 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/seed_build_artifacts_regen.dag --function main_wet
+      - name: Open the round outcome record
+        run: |
+          set -e
+          'mkdir' '-p' '${{ runner.temp }}/heal-round-outcome'
+          'printf' 'round outcome opened; not closed\n' > '${{ runner.temp }}/heal-round-outcome/heal-round-outcome.txt'
       - name: Produce the sealed repair candidate
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -138,6 +143,21 @@ jobs:
           path: target/heal-repair-candidate
           if-no-files-found: error
           retention-days: 3
+      - name: Close the round outcome record
+        run: |
+          set -e
+          if '[' '-d' 'target/heal-repair-candidate' ']'; then 'find' 'target/heal-repair-candidate' '-maxdepth' '1' '-name' 'heal-repair-candidate-blob-*' > '${{ runner.temp }}/heal-round-outcome-blob-list'; else 'printf' > '${{ runner.temp }}/heal-round-outcome-blob-list'; fi
+          heal_round_outcome_blobs=$('wc' '-l' < '${{ runner.temp }}/heal-round-outcome-blob-list')
+          'printf' '%s\n' 'blobs='"$heal_round_outcome_blobs" > '${{ runner.temp }}/heal-round-outcome/heal-round-outcome.txt'
+        if: always()
+      - name: Upload the round outcome record
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: heal-round-outcome
+          path: ${{ runner.temp }}/heal-round-outcome
+          if-no-files-found: error
+          retention-days: 3
+        if: always()
   heal-fork-skipped:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
