@@ -131,24 +131,21 @@ data deploy_slot_identities: List<RunnerSlotIdentity> = [srv1_deploy_slot()]
 // so two 25 GiB fleet slots over-admit it by ~2.15 GiB of srv1's unreserved headroom. That is the cost
 // the ruling accepted. Keeping the
 // slot preserves an OBSERVED route, not guaranteed scheduling: srv1-01 is a shared CI slot.
-// THE EXIT IS A CLOSED SET OF CONDITIONS, ALL OF WHICH MUST HOLD (not prose, DESIGN 4c). The walls are the
-// three deploy_slot_tenancy walls (gunbc.ci.deploy_slot_tenancy: admission, isolation, confidentiality).
-type TransitionalExitCondition
-  = DeployWallsReadBackCurrent
-  | ConvergeJobObservedCompletedOnDeploySlot
-  | OperatorSignOff
-
+// THE EXIT IS NOT MODELED HERE (DESIGN 3c, a declared frontier): it is the deletion of this row, taken when
+// ALL of (1) the three deploy_slot_tenancy walls (gunbc.ci.deploy_slot_tenancy) read back current,
+// (2) a srv1-pinned converge job is observed completed on srv1-02, (3) the operator signs off. No fold
+// reads those readings today, so a typed condition list would be a row nothing consumes (review 91374);
+// the consumer is the later change that makes the deploy slot's standing observable, and until then the
+// exit is an operator act recorded in the ruling's provenance.
 type TransitionalCiSlot {
   identity: RunnerSlotIdentity
   ruling: DeclarationRef
-  exit_when_all: List<TransitionalExitCondition>
 }
 
 data transitional_ci_slots: List<TransitionalCiSlot> = [
   TransitionalCiSlot {
     identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
     ruling: srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves.reference,
-    exit_when_all: [DeployWallsReadBackCurrent, ConvergeJobObservedCompletedOnDeploySlot, OperatorSignOff],
   },
 ]
 

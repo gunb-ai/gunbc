@@ -796,9 +796,9 @@ test fn srv1_at_the_memory_width_keeps_the_deploy_slot_and_no_ci_slot_and_the_co
 // THE TRANSITIONAL ROW IS THE ONLY REASON srv1-01 IS COMMITTED, AND ITS IDENTITY (not a coincident prefix index) IS WHAT
 // COMMITS IT: every row identity is a committed member and the member count equals the width, so a row naming an
 // index the fleet prefix would not reach reds here (review 91367). Committed width minus the row count is the memory
-// width (the envelope admits no CI slot), and srv1-01 is in the committed identities. RED (to be executed by
-// emptying `transitional_ci_slots`): count 0, committed width 3, srv1-01 absent -- this claim reds on the first
-// conjunct.
+// width (the envelope admits no CI slot), and srv1-01 is in the committed identities. RED EXECUTED
+// 2026-11-05 by emptying `transitional_ci_slots`: 33 pass, 4 fail (this claim, the deploy count, the shakedown
+// membership, the memory-vs-committed claim).
 test fn srv1_01_is_committed_only_because_of_the_transitional_row() -> Bool {
   transitional_ci_slots.length() == 1
     && host_transitional_ci_slot_count(host: operator_host_srv1) == 1
