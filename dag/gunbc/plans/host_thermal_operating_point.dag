@@ -94,6 +94,7 @@ fn knowledge() -> List<MarkdownBlock> {
         t5(a: "limits", b: "regulator and outlet limits", c: "partial", d: "fleet trips 90 and 70 °C, both TranscribedUncited", e: "product.fleet_fan_policy::fleet_fan_guard"),
         t5(a: "heat made", b: "CPU power at 3.0 GHz all-core", c: "partial", d: "recorded 183 W, which is Ampere's usage power; TDP is 250 W", e: "extdeps.cpu.ampere::altra_max_m12830_catalog"),
         t5(a: "heat made", b: "DIMM power", c: "missing", d: "estimate 8 to 12 W per 64 GB stick under load, 60 to 100 W for eight", e: "extdeps.memory.samsung"),
+        t5(a: "heat made", b: "DIMM power rises with temperature", c: "missing", d: "cells leak faster when hot, so above 85 °C DDR4 must refresh twice as often (tREFI 7.8 to 3.9 us) and refresh energy doubles; periphery leakage also grows; a hot DIMM therefore makes more heat, a positive feedback bounded by the refresh share of its power. Whether the Altra controller switches refresh from the DIMM sensor or by a static setting is unknown", e: "extdeps.memory.samsung; controller behaviour in extdeps.cpu.ampere"),
         t5(a: "heat made", b: "board, regulator losses, NIC, fans", c: "missing", d: "estimate 50 to 80 W; only a 30 W witness placeholder exists", e: "product.node_power_envelope::NodeElectricalInputs"),
         t5(a: "heat made", b: "whole box, worst case", c: "estimate", d: "about 360 to 430 W into a 2U case", e: "derived"),
         t5(a: "heat removed", b: "CPU cooler capacity", c: "cited", d: "Dynatron W1 rated 250 W, equal to the CPU TDP: zero margin", e: "extdeps.cooling.dynatron"),
@@ -231,6 +232,16 @@ fn workstream_b() -> List<MarkdownBlock> {
       li(text: "B6. Project the chosen point into each controller family and the host OS, with operations typed by actuator group (finding H), applied in thermally safe order (cooling raised before heat admission), read back independently, persistence tested across reboot and BMC reset."),
       li(text: "B7. Qualify srv3/srv4 under sustained representative load: stabilized temperatures, throttling, memory errors and BMC event-log changes."),
       li(text: "B8. Repeat B3 to B7 for every identity whose section 6 standing is active or commissioning."),
+    ]),
+    h3(text: "Memory heat levers, by priority"),
+    p(text: "DDR4 RDIMMs have no voltage or clock curve to step down at run time (1.2 V fixed, data rate set at boot), so there is no GPU-style power limit. These are the levers B4 to B6 choose among, highest first. Each is a candidate actuator for the B5 selection, not a decision taken here."),
+    ol(items: [
+      li(text: "Air over the DIMMs. The incident readings (100 to 110 °C) are beyond the 95 °C extended range, so this is first: it lowers temperature directly and, through the refresh feedback in section 3, lowers power too. Facts come from B3 (air path, fan placement, shroud); the actuator is the chassis fan group driven by the hottest DIMM (B4)."),
+      li(text: "Memory traffic. DRAM power is mostly data moved times energy per bit, plus per-rank background. Runner width, concurrent memory-heavy jobs and NUMA-local placement change it with no hardware or firmware change; the overnight 12-runner cap is this lever applied by hand."),
+      li(text: "Controller bandwidth or thermal throttling. A closed-loop throttle from the DIMM sensor is the nearest thing to a power limit. Whether Ampere's firmware or the ASRock Rack BIOS exposes it on this board is unknown and must be read from their documentation before it is a candidate. It is a safety floor, not an operating point: it converts heat into lost throughput, memory-bound work first."),
+      li(text: "Population. Background and refresh power scale with ranks and dies; the 64 GB 3DS parts carry 8 logical ranks each. Fewer DIMMs, fewer ranks per DIMM, or one DIMM per channel cut it at a capacity and bandwidth cost. This is the hardware-change answer when B5 excludes every candidate."),
+      li(text: "Lower data rate. Set at boot; costs bandwidth on every job, so it ranks below the levers that act only when hot."),
+      li(text: "Power-down and self-refresh states. Save power only on idle ranks, so they do nothing under sustained load and are recorded here only so they are not mistaken for a remedy."),
     ]),
   ]
 }
