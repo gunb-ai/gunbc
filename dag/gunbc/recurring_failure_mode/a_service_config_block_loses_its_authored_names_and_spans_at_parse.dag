@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.a_service_config_block_loses_its_authored_names_and_spans_at_parse
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+// The class: a declaration's authored child block is dropped at parse and reappears
+// only as parser-MINTED initializer inits, so the field has one live spelling that no
+// author wrote and no span anywhere. A consumer that reads the minted name is correct
+// on every path it can see and silently wrong on the path it cannot. DESIGN section 3:
+// one field, two names, across the naming surfaces -- the mint is not a nickname the
+// author can see, so the fork is invisible from the source.
+data a_service_config_block_loses_its_authored_names_and_spans_at_parse: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_service_config_block_loses_its_authored_names_and_spans_at_parse" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "INVALID STATE. A `service` item's `config { ... }` block is parsed and then thrown away. v1.parser.parse_service_item builds ServiceDecl { children: r.operations, properties: concat([ns_prop], svc_props) }: the config block is not among them. What survives is a fixed set of initializer inits minted by v1.std.core.service_config_properties from the declaration's `init` list -- OccurrenceSynthetic, `name_span: no_span()`, named `svc_endpoint`, `svc_auth`, `svc_auth_input`, `svc_auth_source`, `svc_rate_limit` -- the minted spellings are written out one per field in v1.std.core.service_config_field_property_name. So no consumer can name a config field by the spelling the author wrote, and no consumer can locate one: its span is no_span(). The mint exists because the interpreter's `dispatch_rest` reads the endpoint through the operation's PARAMETER environment by that key, and the parser must therefore fabricate a value the interpreter can find.",
+
+    "HOW IT SURFACED, found 2026-11-05 in session/crisp-bee-97-service-endpoint-parameter-binding (#15896). An author binds the REST endpoint to an operation input -- `service svc { config { endpoint: request_url } operations { ... request_url: String ... } }` -- and declares a module-level value under the same name, which is the shape the SAME module already uses for the transport's `base_url` (read from the module scope). A seed-exact build refused it: `error: undefined variable 'request_url'`, while the identical module with the value renamed to `request_url` at module scope resolved. The two readings of one declaration had diverged: the type checker consulted only the MODULE scope, the interpreter consults the PARAMETER scope, and the emitter had no authority at all. Each reader was internally consistent; the field's real name was not visible to any of them.",
+
+    "WHY THE PAPERED-OVER VERSION IS WORSE THAN THE REFUSAL. The emitter before this cut silently substituted the transport `base_url`, then the literal placeholder `http://localhost`, for an endpoint it could not read -- a plausible URL fabricated for a host nobody configured (DESIGN section 5: a wrong answer is a loud error, never a warning). The type checker meanwhile refused a spelling the interpreter executes. Fixing only the two visible readers -- key a judgment table on the minted name and consult the module scope -- leaves the mint standing, so the next consumer of a config field meets the same fork and has to discover it the same way. That is why this row, and not only the local fix.",
+
+    "CROSS-SURFACE, to keep the next reader from re-deriving it: the interpreter does read the same minted property -- v1_interpreter.rs reads find_service_config_string(service, params, \"svc_endpoint\", default, param_env) -- so all three readers (checker, emitter, interpreter) consult the mint today, and none of them can see the authored spelling. That is what makes the fork invisible from the source rather than merely inconvenient.",
+
+    "NEXT RUNG, and who owns it. Owner: tidy-ant-251 (V2 -- Namespace & Reference Migration), under service lowering. Trigger: the first consumer that needs a config field's authored span. The rung: parse RETAINS the authored config block -- its field names and spans -- and consumers read the authored name; the minted `svc_*` inits then either go away or become a derived projection with one writer, instead of the only representation. Rung-reading condition: a config field resolves from its authored spelling, and a located diagnostic on a config field carries the authored span rather than the service's. NOT done in #15896, and not hidden there: that PR keeps the mint and keys the endpoint judgment on `svc_endpoint`, because at that head no authored child carries a span to judge -- the receipts above are the evidence, not an argument for the mint.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.std.core", decl_name: "service_config_properties", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.std.core", decl_name: "service_config_field_property_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.parse", decl_name: "parse_service_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "infer_service_config_properties", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_service", decl_name: "service_endpoint_supply", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.service_endpoint_supply_module_resolve", decl_name: "the_parameter_bound_endpoint_is_still_the_authored_variable_holds", field: WholeDeclaration },
+  ]
+}
