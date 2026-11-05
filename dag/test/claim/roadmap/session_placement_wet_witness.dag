@@ -1270,6 +1270,10 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       let carry_second = attempt_slots_carry(target: s.slots, moved: moved_row(dir: dir))
       let record_second = attempt_slots_cutover_record_mint(instance_id: "session-wet" as NonEmptyStr, census: census_second, carry: carry_second)
       let outcome_second = belt_attempt_slots_cutover_record_write(stores: s, record: record_second)
+      // The census the NEXT tick will see, taken after the second pass. The two censuses above are the
+      // inputs each pass read; this one is the state the second pass left behind, and it is the only one
+      // that can answer "did the second pass write anything".
+      let census_after_two = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
       let path = attempt_slots_cutover_record_path(stores: s, instance_id: "session-wet" as NonEmptyStr)
       let read_back = Filesystem.Read(path: path as FilePath)
       seeded
@@ -1296,24 +1300,32 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       // a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads stays green beside it.
       // The number is read out of the first carry's own outcome and back out of the store through the
       // census, never typed in by the fixture.
+      // PLACEMENT IS THE WHOLE POINT, AND IT WAS LEARNED THE HARD WAY: a first version asked the PRE-carry
+      // census whether it held that generation. It never can -- the target side does not exist until a
+      // carry writes it -- so the clause was UNSATISFIABLE and this row went red at 31b3fa305bbb on a
+      // fixture error rather than on the pass's behaviour. A clause that can never be true witnesses no
+      // more than one that is always true; both are the same defect seen from opposite ends.
       && (carry_carried_arms(c: carry_second) == 0)
+      && census_only_old_holds(c: census_first, reference: unit_a())
       && (match carry_report_of(c: carry_first) {
            Absent => false
            Present { value: report } => any(report.outcomes, o => match o {
              AttemptSlotsCarried { reference: r, source_generation: _, target_generation: g } =>
                ((r as String) == unit_a())
-               && census_target_held_at(c: census_first, reference: unit_a(), generation: g)
+               // the copy the first carry CLAIMS it wrote is in the store, at the generation it named
                && census_target_held_at(c: census_second, reference: unit_a(), generation: g)
+               // and it is STILL at that generation after the second pass: no new generation was written
+               && census_target_held_at(c: census_after_two, reference: unit_a(), generation: g)
              _ => false
            })
          })
-      // No slot was written by the second pass: both sides still bucket as identical bytes, with nothing
-      // unreadable and nothing newly only-in-the-old-root.
-      && (match census_counts(c: census_second) {
+      // No slot was written by the second pass: read the state IT left behind, and both sides still bucket
+      // as identical bytes, with nothing unreadable and nothing newly only-in-the-old-root.
+      && (match census_counts(c: census_after_two) {
            Present { value: k } => (k.total == 1) && (k.only_in_old == 0) && (k.in_both_identical == 1) && (k.in_both_different == 0) && (k.either_side_unreadable == 0)
            Absent => false
          })
-      && census_buckets_add_up(c: census_second)
+      && census_buckets_add_up(c: census_after_two)
       // The tick's standing on the second pass is Recorded, not Deferred or Refused; the record now on disk
       // is the SECOND pass's reading, and it renders as listed plus reported.
       && (match belt_slots_cutover_pass_outcome(outcome: outcome_second) { BeltPassRecorded => true  _ => false })
