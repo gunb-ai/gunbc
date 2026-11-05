@@ -761,7 +761,8 @@ fn fps_root_kind_namespace() -> Namespace {
       namespace_bodies: index.namespace_bodies,
       module_roots: index.module_roots,
       primitive_contracts: index.primitive_contracts,
-      realization_entries: index.realization_entries
+      realization_entries: index.realization_entries,
+      service_payloads: index.service_payloads
     },
     module_qn: base.module_qn,
     test_code: base.test_code,

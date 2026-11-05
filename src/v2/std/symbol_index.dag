@@ -74,7 +74,14 @@ type SymbolIndex {
   // Read by v2.compiler.infer: a callee that is a service operation with no entry here is
   // realization-unknown, never realizable.
   realization_entries: Map<QualifiedName, OperationRealization>
+  // THE PATHS THAT DECLARE A SERVICE'S OPERATIONS, read from the declaration's own mark (the service
+  // payload leaf carries v2.extdeps.languages.dag service_payload_identity), never from its Conj shape: a
+  // resource declaration lowers to the same shape and has no mirror. Written once per service by
+  // v2.compiler.symbol_index_fill; read by v2.compiler.infer.
+  service_payloads: Map<QualifiedName, ServicePayloadDeclared>
 }
+
+type ServicePayloadDeclared {}
 
 type OperationRealization
   = OperationRealizable
@@ -141,7 +148,8 @@ fn empty_symbol_index() -> SymbolIndex {
     namespace_bodies: empty_map(),
     module_roots: empty_map(),
     primitive_contracts: empty_map(),
-    realization_entries: empty_map()
+    realization_entries: empty_map(),
+    service_payloads: empty_map()
   }
 }
 
@@ -223,7 +231,8 @@ fn symbol_index_track_global_bare(
               namespace_bodies: index.namespace_bodies,
               module_roots: index.module_roots,
               primitive_contracts: index.primitive_contracts,
-              realization_entries: index.realization_entries
+              realization_entries: index.realization_entries,
+              service_payloads: index.service_payloads
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && node_same_occurrence(a: existing, b: resolved) {
@@ -246,7 +255,8 @@ fn symbol_index_track_global_bare(
                 namespace_bodies: index.namespace_bodies,
                 module_roots: index.module_roots,
                 primitive_contracts: index.primitive_contracts,
-                realization_entries: index.realization_entries
+                realization_entries: index.realization_entries,
+                service_payloads: index.service_payloads
               }
             }
           Absent =>
@@ -265,7 +275,8 @@ fn symbol_index_track_global_bare(
               namespace_bodies: index.namespace_bodies,
               module_roots: index.module_roots,
               primitive_contracts: index.primitive_contracts,
-              realization_entries: index.realization_entries
+              realization_entries: index.realization_entries,
+              service_payloads: index.service_payloads
             }
         }
         Rejected { diagnostics: _ } => index
@@ -299,7 +310,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
     primitive_contracts: index.primitive_contracts,
-    realization_entries: index.realization_entries
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -332,7 +344,8 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
     primitive_contracts: index.primitive_contracts,
-    realization_entries: index.realization_entries
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -366,7 +379,8 @@ fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: Quali
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
     primitive_contracts: index.primitive_contracts,
-    realization_entries: index.realization_entries
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -382,7 +396,8 @@ fn symbol_index_mark_namespace_body(index: SymbolIndex, qualified_path: Qualifie
     namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {}),
     module_roots: index.module_roots,
     primitive_contracts: index.primitive_contracts,
-    realization_entries: index.realization_entries
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -398,7 +413,8 @@ fn symbol_index_mark_module_root(index: SymbolIndex, qualified_path: QualifiedNa
     namespace_bodies: index.namespace_bodies,
     module_roots: map_insert(m: index.module_roots, key: qualified_path, value: ModuleRootDeclared {}),
     primitive_contracts: index.primitive_contracts,
-    realization_entries: index.realization_entries
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -471,7 +487,8 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
     primitive_contracts: index.primitive_contracts,
-    realization_entries: index.realization_entries
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -606,7 +623,8 @@ fn symbol_index_bind_at(
       namespace_bodies: index.namespace_bodies,
       module_roots: index.module_roots,
       primitive_contracts: index.primitive_contracts,
-      realization_entries: index.realization_entries
+      realization_entries: index.realization_entries,
+      service_payloads: index.service_payloads
     }
     if is_empty(xs: prior) {
       SymbolIndex {
@@ -620,7 +638,8 @@ fn symbol_index_bind_at(
         namespace_bodies: recorded.namespace_bodies,
         module_roots: recorded.module_roots,
         primitive_contracts: recorded.primitive_contracts,
-        realization_entries: recorded.realization_entries
+        realization_entries: recorded.realization_entries,
+        service_payloads: recorded.service_payloads
       }
     } else {
       recorded
@@ -1018,7 +1037,8 @@ fn symbol_index_mark_primitive_contract(index: SymbolIndex, qualified_path: Qual
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
     primitive_contracts: map_insert(m: index.primitive_contracts, key: qualified_path, value: PrimitiveContractDeclared {}),
-    realization_entries: index.realization_entries
+    realization_entries: index.realization_entries,
+    service_payloads: index.service_payloads
   }
 }
 
@@ -1038,7 +1058,8 @@ fn symbol_index_mark_operation_realization(index: SymbolIndex, qualified_path: Q
     namespace_bodies: index.namespace_bodies,
     module_roots: index.module_roots,
     primitive_contracts: index.primitive_contracts,
-    realization_entries: map_insert(m: index.realization_entries, key: qualified_path, value: realization)
+    realization_entries: map_insert(m: index.realization_entries, key: qualified_path, value: realization),
+    service_payloads: index.service_payloads
   }
 }
 
@@ -1046,4 +1067,25 @@ fn symbol_index_mark_operation_realization(index: SymbolIndex, qualified_path: Q
 // service operation and answers Absent here is realization-unknown, never realizable).
 fn symbol_index_operation_realization_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<OperationRealization> {
   map_lookup(m: index.realization_entries, key: qualified_path)
+}
+
+fn symbol_index_mark_service_payload(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots,
+    primitive_contracts: index.primitive_contracts,
+    realization_entries: index.realization_entries,
+    service_payloads: map_insert(m: index.service_payloads, key: qualified_path, value: ServicePayloadDeclared {})
+  }
+}
+
+fn symbol_index_declares_service_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  map_contains_key(m: index.service_payloads, key: qualified_path)
 }
