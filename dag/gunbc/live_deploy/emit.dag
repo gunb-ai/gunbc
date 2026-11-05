@@ -485,7 +485,7 @@ type LiveDeployServeGrammarVerdict
 fn live_deploy_serve_grammar_verdict(binary: AdmittedFixedServeBinary) -> LiveDeployServeGrammarVerdict {
   match binary.source {
     HostSeedInstall => LiveDeployServeGrammarAdmitted
-    SeedBuiltAtRevision { revision: _ } => LiveDeployServeGrammarAdmitted
+    SeedBuiltAtRevision => LiveDeployServeGrammarAdmitted
     SourceUndeclared { reason } => LiveDeployServeGrammarRefused { binary_path: binary.path, reason: reason }
   }
 }

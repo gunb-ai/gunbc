@@ -1158,7 +1158,7 @@ test fn an_undeclared_serve_binary_source_refuses_the_serve_unit_typed() -> Bool
 test fn an_in_place_built_serve_binary_emits_the_same_grammar_at_its_own_path() -> Bool {
   let built_path = "/opt/gunbc/builds/7c0ffee5a5/gunbc" as NonEmptyStr
   let spec = spec_with_serve_binary(base: live_spec(), binary: admit_fixed_serve_path(
-    path: built_path, source: SeedBuiltAtRevision { revision: "7c0ffee5a5" as NonEmptyStr }))
+    path: built_path, source: SeedBuiltAtRevision))
   let emitted = live_deploy_serve_unit_emission(
     spec: spec, revision: live_revision(), now_epoch: claim_oidc_now_for(spec: spec))
   match emitted {

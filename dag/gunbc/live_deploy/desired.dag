@@ -132,9 +132,9 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     // The lab's serve binary is BUILT IN PLACE from the instance's admitted revision
     // (source_seed.serve_binary_origin == BuildInPlaceFromAdmittedRevision, declared on the
     // dashboard instance row in gunbc.roadmap.roadmap_dashboard_instance) -- a seed build
-    // from this repository, so the seed CLI grammar is named, with the revision the build
-    // lane checks out.
-    serve_binary_source: SeedBuiltAtRevision { revision: instance.admitted_revision.ref_name as NonEmptyStr },
+    // from this repository, so the seed CLI grammar is named; the revision it was built at
+    // has its one home on the instance's admitted_revision, not on this record.
+    serve_binary_source: SeedBuiltAtRevision,
   }
 }
 

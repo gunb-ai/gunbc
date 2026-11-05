@@ -1116,7 +1116,7 @@ test fn the_serve_binary_collision_clause_reads_the_path_not_the_provenance() ->
   let twin_forced = spec_with_serve_binary(
     base: srv1_twin_spec(),
     binary: admit_fixed_serve_path(path: shared as NonEmptyStr,
-      source: SeedBuiltAtRevision { revision: "6c0d0ee22a7004333df9188f616cc86965113707" as NonEmptyStr }))
+      source: SeedBuiltAtRevision))
   match live.service.serve_binary {
     AdmittedFixedServeBinary { path: live_path, source: live_source } =>
       match twin_forced.service.serve_binary {
