@@ -75,7 +75,7 @@ fn fixture_transaction() -> OidcLoginTransaction {
 
 fn fixture_instance(directory: String) -> HostDashboardInstance {
   isolated_dashboard_instance(deployment: deployment_id(name: "auth-record-store-fixture" as NonEmptyStr), instance_id: "auth-record-store-fixture", layout: srv1_host_layout(), root: directory as FilePath,
-    serve_function: "unused", listen_port: 18747, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+    serve_function: "unused", listen_port: 18747, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, actuator_host: srv1_host_layout().host_identity)
 }
 
 fn with_temp_dir(scenario: fn(String) -> ProcessExit) -> ProcessExit {
