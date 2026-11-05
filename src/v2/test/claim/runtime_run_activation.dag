@@ -170,8 +170,8 @@ data rr_selector_refuses_site: Node = rr_branch(condition: rr_refusing_selector,
 // A selector that evaluates but is not a Bool, so the program interpretation's chooser refuses.
 data rr_chooser_refuses_site: Node = rr_branch(condition: program_literal_two(), then_arm: program_effect_io_roundtrip, else_arm: program_literal_two())
 
-// A Branch with two positional children: the derivation cannot classify it.
-data rr_malformed_site: Node = rr_node(behavior: Branch, children: [rr_positional(target: program_kw_true()), rr_positional(target: program_literal_two())])
+// A Branch with one positional child (a condition alone): the derivation cannot classify it. The two-positional else-less shape is admitted.
+data rr_malformed_site: Node = rr_node(behavior: Branch, children: [rr_positional(target: program_kw_true())])
 
 // The malformed site in the else arm (untaken), as the then arm (chosen), and under a Bind (delegated).
 data rr_untaken_malformed_site: Node = rr_branch(condition: program_kw_true(), then_arm: program_literal_two(), else_arm: rr_malformed_site)

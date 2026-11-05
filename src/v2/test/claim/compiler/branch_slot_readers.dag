@@ -482,10 +482,17 @@ fn bsr_infer_reason_is(root: Node, reason: Symbol) -> Bool {
   }
 }
 
-// The infer route types a Branch as a value: the condition and the then arm are read and the else arm is
-// missing, so the refusal names the else-less cause.
-test fn bsr_infer_refuses_an_else_less_branch_value_with_its_own_reason() -> Bool {
-  bsr_infer_reason_is(root: bsr_branch_two_positional_value(), reason: ^infer_branch_else_less_as_value)
+// Infer accepts an else-less Branch with GroundingNoValue facts (keen-heron-809 ruling 2c); the refusal
+// with its own reason lives at the value-demanding consumers, not at the Branch itself.
+fn bsr_infer_accepts(root: Node) -> Bool {
+  match infer_and_discharge(tree: bsr_resolved(root: root)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bsr_infer_accepts_an_else_less_branch_with_no_value_facts() -> Bool {
+  bsr_infer_accepts(root: bsr_branch_two_positional_value())
 }
 
 // Control: a one-positional Branch is malformed, and keeps the shape reason.
