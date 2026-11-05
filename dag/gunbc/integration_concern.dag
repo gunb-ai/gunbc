@@ -353,6 +353,62 @@ data duct_placement_chosen_by_hand: IntegrationConcern = IntegrationConcern {
   disposition: Open,
 }
 
+// EFFECT-JOIN CALLEE IDENTITY IN THE PRESENTATION WITNESS (filed on operator direction, 2026-11-05).
+// Surfaced by the #15856 closure campaign and REPRODUCED ON MAIN: the entry
+// test.claim.roadmap.roadmap_presentation_witness refuses at emit with four hard
+// "effect summary incomplete" diagnostics — calls whose callee identity is never established, so
+// their effects cannot be joined. The fix owner is the effect-declaration wiring at those callees,
+// not a caller-side workaround; recorded here instead of remembered.
+data presentation_witness_effect_join_callees: IntegrationConcern = IntegrationConcern {
+  identity: "presentation_witness_effect_join_callees",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_workflow_stage", decl_name: "workflow_segment_state_key"),
+    requirement: "a test claim that compiles or renders through workflow_segment_state_key and try_serialize_html_source has those calls' effects joined, so the entry test.claim.roadmap.roadmap_presentation_witness compiles at emit without an effect-summary refusal",
+    // The gap is established, not open: the origin/main baseline compile (cited artifact) settled
+    // attribution with the identical four diagnostics. What remains open is the FIX, and that
+    // reading lives in `question` below.
+    standing: RequirementEstablished {
+      by: CitesArtifact {
+        label: "origin/main baseline compile of the same entry (git archive of main, same gunbc binary): the identical 4 hard effect-summary diagnostics",
+        sha256: Sha256Digest { hex: "d97d6959031570dc2400e76946b59fe024be6488580dc8c776274bcd42a8d6af" as Sha256DigestHex },
+      },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_workflow_stage", decl_name: "workflow_segment_state_key"),
+    tail: [
+      decl_ref(module_path: "extdeps.languages.html", decl_name: "try_serialize_html_source"),
+      decl_ref(module_path: "test.claim.roadmap.roadmap_presentation_witness", decl_name: "witness_refused_and_completed_arms_carry_the_roster"),
+      decl_ref(module_path: "test.claim.roadmap.roadmap_presentation_witness", decl_name: "witness_issue_breadcrumb_renders_root_to_leaf_with_canonical_links"),
+      decl_ref(module_path: "test.claim.roadmap.roadmap_presentation_witness", decl_name: "witness_issue_breadcrumb_tree_nests_root_outermost_and_current_innermost"),
+      decl_ref(module_path: "test.claim.roadmap.roadmap_presentation_witness", decl_name: "witness_issue_breadcrumb_refusal_renders_no_partial_path"),
+    ],
+  },
+  question: "What establishes a callee's identity for the effect join, and why do these two callees — reached from claim code that names them plainly — never get it: a missing effect declaration at the callee, a visibility gap in the resolver's callee table, or claims resolved through a path that bypasses it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f6b50b0e9899b86219c6e92953799c781c656e9c",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_workflow_stage", decl_name: "workflow_segment_state_key") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.languages.html", decl_name: "try_serialize_html_source") },
+          CitesArtifact {
+            label: "closure-campaign compile log for test.claim.roadmap.roadmap_presentation_witness at the #15856 head: refused at emit, 4 hard effect-summary diagnostics",
+            sha256: Sha256Digest { hex: "cbfb6057d168549265580ba8b36fffd274e7ac02a2fbed9a8eadb263ae4c3a80" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "origin/main baseline compile of the same entry (git archive of main, same gunbc binary): the identical 4 hard effect-summary diagnostics",
+            sha256: Sha256Digest { hex: "d97d6959031570dc2400e76946b59fe024be6488580dc8c776274bcd42a8d6af" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "The #15856 scoped closure campaign compiled 31 approved entries one per gunbc compile at head f6b50b0e9899b86219c6e92953799c781c656e9c; 30 answered rc=0 and this one refused at emit with four hard diagnostics: one 'effect summary incomplete: call to workflow_segment_state_key ... has no established callee identity, so its effects cannot be joined' in witness_refused_and_completed_arms_carry_the_roster, and three for try_serialize_html_source in the issue-breadcrumb claims. Neither callee is touched by that PR. Attribution was settled by compiling a git archive of origin/main with the same binary: the identical four diagnostics, same functions and messages, line numbers offset by exactly the three lines the PR adds to the witness file (retired_blockers fields the new RoadmapBlockers shape requires). The gap is main's, seen while closing another work item; the two cited digests are the campaign log and the baseline log as produced (deterministic reproduction: gunbc compile of the entry on the cited revisions).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 // Every module the target-syntax ledger rows implicate, read from the ledger rather than restated, so
 // a row added there widens this concern's relevance with no edit here.
 data target_syntax_ledger_ref: DeclarationRef = decl_ref(module_path: "gunbc.target_syntax_transcription", decl_name: "target_syntax_debts")
@@ -695,7 +751,8 @@ data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationCon
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool]
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool]
+
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
 }
