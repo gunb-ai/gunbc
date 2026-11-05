@@ -1,0 +1,101 @@
+module test.claim.megarac_excerpt_arm_type_separation_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THIS PINS, AND ITS SCOPE. gunbc.machine_intake.megarac_media_row_reading gives the excerpt arm its own
+// type, MegaRacUiExcerptStatusLabel, so its datum cannot be passed where an operator-path
+// BmcMediaRowUiAttestation is required (ruling: PR-E row identity (B)). That separation is only a guard if the
+// front end REFUSES the substitution, and the recurring-failure-mode rows on application-argument inhabitance
+// record that it has not always done so
+// (gunbc.recurring_failure_mode nominal_isomorphic_record_admitted_at_sibling_declaration: refused at a
+// DIRECT slot, admitted at a generic formal). This witness is the executed question, not an assumed answer.
+//
+// ISOLATION IS THE SCOPE LIMIT. The fixture compiler (gunbc.instruments.multi_module_compile_fixture)
+// resolves only the supplied manifest, so the two types below are SHAPE-ALIKES of the real records, not the
+// records: the fields mirror the ones the operator-path consumers read (row_label, state_label) and the ones
+// the excerpt type carries (label, published_key). A green here says the compiler refuses a distinct
+// nominal record at a direct slot and refuses a field the type lacks; it does not say the real modules
+// compile. The real consumers' route is the inhabitance claim owed beside this (DESIGN 3: pairing
+// obligation), not something this isolated fixture can carry.
+//
+// NO RUNG IS CLAIMED HERE. Each RED below states the verdict it observed; if probe (a) comes back
+// FixtureCompileCompleted the separation is a distinct shape guarded only by field access (probe b), and
+// that is what the PR must say.
+data types_module: String = "module xa.types\ntype Attestation { row_label: String, state_label: String }\ntype ExcerptLabel { label: String, published_key: Int }\n"
+
+data consumer_module: String = "module xa.consumer\nimport xa.types { Attestation }\nfn needs_attestation(a: Attestation) -> String { a.state_label }\n"
+
+fn with_entry(entry: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("xa/types.dag", types_module),
+      fixture_source("xa/consumer.dag", consumer_module),
+      fixture_source("xa/entry.dag", entry),
+    ],
+    entry: "xa/entry.dag"
+  })
+}
+
+// POSITIVE CONTROL: the right type reaches the consumer.
+data entry_attestation_to_consumer: String = "module xa.entry\nimport xa.types { Attestation }\nimport xa.consumer { needs_attestation }\nfn go() -> String { needs_attestation(a: Attestation { row_label: \"CD/DVD 0\", state_label: \"Stopped - Device Ejected\" }) }\n"
+
+// PROBE (a): the excerpt datum where the attestation is required.
+data entry_excerpt_to_consumer: String = "module xa.entry\nimport xa.types { ExcerptLabel }\nimport xa.consumer { needs_attestation }\nfn go() -> String { needs_attestation(a: ExcerptLabel { label: \"Stopped\", published_key: 0 }) }\n"
+
+// POSITIVE CONTROL for (b): the excerpt type's own field reads.
+data entry_excerpt_reads_its_label: String = "module xa.entry\nimport xa.types { ExcerptLabel }\nfn go(e: ExcerptLabel) -> String { e.label }\n"
+
+// PROBE (b): the excerpt type read as an attestation (a field it does not declare).
+data entry_excerpt_reads_state_label: String = "module xa.entry\nimport xa.types { ExcerptLabel }\nfn go(e: ExcerptLabel) -> String { e.state_label }\n"
+
+fn completed_clean(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+  match outcome {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: ds, source_digest: _, compiler_digest: _ } =>
+      (fixture_blocking_rows(rows: ds) |> count) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+// A refusal counts only when the compiler judged a formed subject; an instrument refusal is not a verdict.
+fn compile_refused(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+  match outcome {
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: ds, source_digest: _, compiler_digest: _ } =>
+      (fixture_blocking_rows(rows: ds) |> count) > 0
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn the_attestation_reaches_its_own_consumer() -> Bool {
+  completed_clean(with_entry(entry_attestation_to_consumer))
+}
+
+test fn the_excerpt_type_reads_its_own_field() -> Bool {
+  completed_clean(with_entry(entry_excerpt_reads_its_label))
+}
+
+// PROBE (a). Red-by-design: expected REFUSED. If this test fails, the verdict is FixtureCompileCompleted and
+// the separation is not a refused path.
+test fn the_excerpt_datum_is_refused_where_the_attestation_is_required() -> Bool {
+  compile_refused(with_entry(entry_excerpt_to_consumer))
+}
+
+// PROBE (b). Expected REFUSED: the excerpt type has no state_label.
+test fn the_excerpt_type_cannot_be_read_as_an_attestation() -> Bool {
+  compile_refused(with_entry(entry_excerpt_reads_state_label))
+}
