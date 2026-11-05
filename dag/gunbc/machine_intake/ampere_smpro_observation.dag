@@ -319,14 +319,13 @@ fn smpro_control_refusal(o: SmproProbeOutcome) -> String? {
 // `read_count` is the SMpro value size because the value is what is read back; the written data is the
 // register address (8 bits) followed by the SMpro's own value-size byte, which
 // extdeps.ampere.smpro_register transcribes from smpro-core's read transfer as [reg, 0x02]. So
-// `value_size` and `read_count` are one datum, named apart: an 8-bit register address has no high byte
-// to send, and the last byte is the SMpro's, not a second copy of the read count.
+// the value size and the read count are one datum, stored once as `read_count` and printed at two
+// positions: an 8-bit register address has no high byte to send, and the last byte is the SMpro's value size.
 type SmproRequestWire {
   bus: NonEmptyStr
   slave: NonEmptyStr
   read_count: NonEmptyStr
   register: NonEmptyStr
-  value_size: NonEmptyStr
 }
 
 fn smpro_request_wire(bus: Int, slave: Int, reg: Int) -> SmproRequestWire? {
@@ -338,7 +337,7 @@ fn smpro_request_wire(bus: Int, slave: Int, reg: Int) -> SmproRequestWire? {
         Absent => none
         Present { value: c } => match ipmitool_raw_byte_text(n: reg) {
           Absent => none
-          Present { value: r } => Present { value: SmproRequestWire { bus: b as NonEmptyStr, slave: s as NonEmptyStr, read_count: c as NonEmptyStr, register: r as NonEmptyStr, value_size: c as NonEmptyStr } }
+          Present { value: r } => Present { value: SmproRequestWire { bus: b as NonEmptyStr, slave: s as NonEmptyStr, read_count: c as NonEmptyStr, register: r as NonEmptyStr } }
         }
       }
     }
@@ -346,10 +345,11 @@ fn smpro_request_wire(bus: Int, slave: Int, reg: Int) -> SmproRequestWire? {
 }
 
 // The five variable bytes in the order the command takes them: bus, slave, read count, then the two
-// data bytes the SMpro read wants — the register address and its value size. No byte here is derived
-// from another at print time; each is one field, so what the wire carries is what the model names.
+// data bytes the SMpro read wants — the register address and its value size. The value size IS the read
+// count (one stored field, so the two positions cannot disagree); it is named at this boundary only.
 fn smpro_request_text(w: SmproRequestWire) -> NonEmptyStr {
-  concat("raw 0x06 0x52 ", w.bus as String, " ", w.slave as String, " ", w.read_count as String, " ", w.register as String, " ", w.value_size as String) as NonEmptyStr
+  let value_size = w.read_count
+  concat("raw 0x06 0x52 ", w.bus as String, " ", w.slave as String, " ", w.read_count as String, " ", w.register as String, " ", value_size as String) as NonEmptyStr
 }
 
 fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second, cipher_suite: IpmiCipherSuite?) -> SmproProbeOutcome
