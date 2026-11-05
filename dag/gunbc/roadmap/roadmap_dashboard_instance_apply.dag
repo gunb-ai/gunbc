@@ -28,7 +28,7 @@ import extdeps.git {
 }
 import extdeps.tools.chmod { chmod_binary_path }
 import gunbc.live_deploy.serve_binary_build {
-  ServeBinaryRefusedHeadDriftBefore, serve_binary_previous_path, serve_binary_digest_verdict,
+  ServeBinaryRefusedHeadDriftBefore, serve_binary_previous_path, serve_binary_digest_check, serve_binary_digest_refusal, ServeBinaryDigestsAgree,
   ServeBinaryBuild, BuildFromGitCheckout, ServeBinaryBuildVerdict, ServeBinaryReadyToInstall, ServeBinaryBuilt,
   serve_binary_build_target_dir_under, serve_binary_head_argv, serve_binary_build_argv, serve_binary_stage_argv,
   serve_binary_keep_previous_argv, serve_binary_rename_argv, serve_binary_staged_path, serve_binary_built_path,
@@ -668,22 +668,26 @@ fn dashboard_rename_verified_serve_binary(instance: HostDashboardInstance, build
       renamed
     } else {
       let installed_sum = dashboard_target_digest(instance: instance, path: build.install_path)
-      let digest = serve_binary_digest_verdict(built_sha256: built_sum, installed_sha256: installed_sum)
-      if digest == ServeBinaryReadyToInstall {
-        renamed
-      } else if had_previous.success {
-        let restored = dashboard_target_exec(instance: instance, program: "/usr/bin/mv" as FilePath, args: ["-f", serve_binary_previous_path(build: build), build.install_path])
-        dashboard_exec_refused(detail: join([
-          serve_binary_refusal_detail(verdict: digest),
-          match restored.success { true => "; the previous binary was restored" false => "; RESTORING the previous binary FAILED, the refused binary is live" },
-        ], ""))
-      } else {
-        dashboard_exec_refused(detail: join([
-          serve_binary_refusal_detail(verdict: digest),
-          "; there was no previous binary to restore",
-        ], ""))
+      match serve_binary_digest_check(built_sha256: built_sum, installed_sha256: installed_sum) {
+        ServeBinaryDigestsAgree => renamed
+        refused => dashboard_restore_previous_after_refused_install(instance: instance, build: build, had_previous: had_previous.success, refusal: serve_binary_digest_refusal(outcome: refused))
       }
     }
+  }
+}
+
+fn dashboard_restore_previous_after_refused_install(instance: HostDashboardInstance, build: ServeBinaryBuild, had_previous: Bool, refusal: ServeBinaryBuildVerdict) -> DashboardExecResult {
+  if had_previous {
+    let restored = dashboard_target_exec(instance: instance, program: "/usr/bin/mv" as FilePath, args: ["-f", serve_binary_previous_path(build: build), build.install_path])
+    dashboard_exec_refused(detail: join([
+      serve_binary_refusal_detail(verdict: refusal),
+      match restored.success { true => "; the previous binary was restored" false => "; RESTORING the previous binary FAILED, the refused binary is live" },
+    ], ""))
+  } else {
+    dashboard_exec_refused(detail: join([
+      serve_binary_refusal_detail(verdict: refusal),
+      "; there was no previous binary to restore",
+    ], ""))
   }
 }
 

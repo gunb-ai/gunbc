@@ -129,22 +129,39 @@ fn serve_binary_pre_install_verdict(build: ServeBinaryBuild, head_before: String
 }
 
 // After the install: the installed bytes are the built bytes, and the binary names the admitted revision.
-// An empty digest is a failed read, never a value: two failed reads must not count as agreeing.
-fn serve_binary_digest_verdict(built_sha256: String, installed_sha256: String) -> ServeBinaryBuildVerdict {
+// The digest comparison has its own outcome: "ready to install" is the pre-install verdict's meaning and is
+// false after the rename. An empty digest is a failed read, never a value: two failed reads must not agree.
+type ServeBinaryDigestCheck
+  = ServeBinaryDigestsAgree
+  | ServeBinaryDigestUnread
+  | ServeBinaryDigestsDiffer
+
+fn serve_binary_digest_check(built_sha256: String, installed_sha256: String) -> ServeBinaryDigestCheck {
   if trim(s: built_sha256) == "" || trim(s: installed_sha256) == "" {
-    ServeBinaryRefusedDigestUnread
+    ServeBinaryDigestUnread
   } else if trim(s: built_sha256) != trim(s: installed_sha256) {
-    ServeBinaryRefusedInstalledDigestDiffers
+    ServeBinaryDigestsDiffer
   } else {
-    ServeBinaryReadyToInstall
+    ServeBinaryDigestsAgree
+  }
+}
+
+fn serve_binary_digest_refusal(outcome: ServeBinaryDigestCheck) -> ServeBinaryBuildVerdict {
+  match outcome {
+    ServeBinaryDigestUnread => ServeBinaryRefusedDigestUnread
+    _ => ServeBinaryRefusedInstalledDigestDiffers
   }
 }
 
 fn serve_binary_post_install_verdict(build: ServeBinaryBuild, built_sha256: String, installed_sha256: String, version_text: String) -> ServeBinaryBuildVerdict {
-  let digest = serve_binary_digest_verdict(built_sha256: built_sha256, installed_sha256: installed_sha256)
-  if digest != ServeBinaryReadyToInstall {
-    digest
-  } else if !string_contains(s: version_text, pattern: build.revision)
+  match serve_binary_digest_check(built_sha256: built_sha256, installed_sha256: installed_sha256) {
+    ServeBinaryDigestsAgree => serve_binary_version_verdict(build: build, version_text: version_text)
+    refused => serve_binary_digest_refusal(outcome: refused)
+  }
+}
+
+fn serve_binary_version_verdict(build: ServeBinaryBuild, version_text: String) -> ServeBinaryBuildVerdict {
+  if !string_contains(s: version_text, pattern: build.revision)
     || string_contains(s: version_text, pattern: join([build.revision, "-dirty"], "")) {
     ServeBinaryRefusedVersionDoesNotNameRevision { version_text: version_text }
   } else {
