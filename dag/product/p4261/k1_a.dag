@@ -413,7 +413,7 @@ data k1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: k1_converter_far, designator: "U2_P2", evidence: k1_converter_area_photo_1031 },
 ]
 
-data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
+data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation { ambiguous_designators: [],
   asset: p4261_k1_a,
   design: k1_design,
   revision: p4261_k1,
@@ -467,11 +467,21 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   measured: Present { value: k1_measured },
   input: Absent,
   unresolved: [
-    UnresolvedPart { designator: Present { value: "U4" }, marking: Absent, obligation: "the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage, so it takes several rails; consistent with an FPGA, a management SoC or a PCIe switch. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad. The E1's U4, read that way 2026-10-21, is Intel's Cyclone 10 GX 10CX085YF672E6G (e1 components); the K1's own stays unread", evidence: k1_listing },
-    UnresolvedPart { designator: Absent, marking: Absent, obligation: "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed. On the E1 (2026-10-21) the 2x5 is J68, populated, and the shrouded connector is J24, a keyed two-row five-position female receptacle beside U53 (e1 components)", evidence: k1_listing },
-    UnresolvedPart { designator: Absent, marking: Present { value: "2FA17 / RW186 (two), RW251" }, obligation: "three small BGAs beside U4: two-line marks in Micron's FBGA format, undecoded; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading", evidence: k1_listing },
-    UnresolvedPart { designator: Present { value: "U522" }, marking: Absent, obligation: "marking not legible in the listing close-up", evidence: k1_listing },
-    UnresolvedPart { designator: Absent, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: k1_listing },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "U4" },
+        marking: Absent, obligation: "the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage, so it takes several rails; consistent with an FPGA, a management SoC or a PCIe switch. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad. The E1's U4, read that way 2026-10-21, is Intel's Cyclone 10 GX 10CX085YF672E6G (e1 components); the K1's own stays unread", evidence: k1_listing },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Absent, obligation: "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed. On the E1 (2026-10-21) the 2x5 is J68, populated, and the shrouded connector is J24, a keyed two-row five-position female receptacle beside U53 (e1 components)", evidence: k1_listing },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Present { value: "2FA17 / RW186 (two), RW251" }, obligation: "three small BGAs beside U4: two-line marks in Micron's FBGA format, undecoded; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading", evidence: k1_listing },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "U522" },
+        marking: Absent, obligation: "marking not legible in the listing close-up", evidence: k1_listing },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: k1_listing },
   ],
   designator_readings: k1_designator_readings,
 }

@@ -1,0 +1,271 @@
+module test.claim.http_ingress_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.algebra { Cons, Empty }
+import extdeps.http.server { ServeWireResponse, ServeWireHeader }
+import gunbc.native_serve { NativeServeFrame, NativeServeFramed, NativeServeFrameRefused, NativeServeRequestHead, NativeServeHeaderField }
+import gunbc.http_ingress {
+  HttpIngressListener, HttpIngressTcp, HttpIngressUnixSocket,
+  HttpIngressListenerReading, HttpIngressListenerRead, HttpIngressListenerRefused,
+  http_ingress_listener_of, http_ingress_listener_text,
+  HttpIngressAdmission, HttpIngressBound, HttpIngressRefused, HttpIngressBinding, http_ingress_binding,
+  HttpIngressFactPlan, HttpIngressFactsPlanned, HttpIngressFactsRefused, http_ingress_fact_plan,
+  HttpIngressRequestFact, IngressFactRequestHeaders, http_ingress_fact_name,
+  http_ingress_frame, HttpIngressPreEvaluationRoute, http_ingress_pre_evaluation_routes,
+  HttpIngressArgument, HttpIngressTextArgument, HttpIngressHeadersArgument, http_ingress_arguments,
+  http_ingress_outgoing, http_ingress_wire_head, http_ingress_announcement, http_ingress_handler_identity,
+  http_ingress_binding_arguments, http_ingress_native_argv, HttpIngressNativeArgv, HttpIngressNativeArgvRead, HttpIngressNativeArgvRefused,
+  http_ingress_native_text_argument, http_ingress_native_int_argument, http_ingress_native_contract,
+}
+import gunbc.native_serve { NativeServeStart, NativeServeListen, NativeServeStartRefused, NativeServeContract }
+import std.compiler_entry { NativeIngressProgram, NativeIngressStartup }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { millisecond_count, second_count, second }
+
+// THE PARITY CLAIMS FOR THE INGRESS FOLDS. Each decision `gunbc serve`'s hand Rust used to make
+// (cli_run handle_serve, serve_handler_fact_plan, serve_read_request, serve_write_response,
+// serve_wire_fields; deleted with the verb) is now a fold, and each claim below poses the input the
+// Rust branch answered and asserts the fold's answer. The REAL route -- `gunbc run` realizing a
+// binding over a socket -- is exercised by the seed's falsifier host
+// (evaluation_budget_consequence_falsifier_host, through test.fixture.serve_seam_ingress) and by
+// cli_run::http_ingress_host's socket tests.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w_revision: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn w_bound(listener: String) -> HttpIngressBinding? {
+  match http_ingress_binding(handler_module: "test.fixture.serve_seam_probe", handler: "serve_seam_probe", listener: listener, release_revision: w_revision, cpu_limit_ms: 30000, wall_limit_ms: 120000) {
+    HttpIngressBound { binding: b } => Present { value: b }
+    HttpIngressRefused { reason: _ } => none
+  }
+}
+
+fn w_refusal(admission: HttpIngressAdmission) -> String {
+  match admission {
+    HttpIngressRefused { reason: r } => r
+    HttpIngressBound { binding: _ } => ""
+  }
+}
+
+fn w_plan_names(listener: String, declared: List<String>) -> String {
+  match w_bound(listener: listener) {
+    Absent => "<no binding>"
+    Present { value: b } =>
+      match http_ingress_fact_plan(b: b, declared: declared) {
+        HttpIngressFactsPlanned { facts: fs } => join(fs |> map(f => http_ingress_fact_name(f: f)), ",")
+        HttpIngressFactsRefused { reason: r } => concat("REFUSED: ", r)
+      }
+  }
+}
+
+// ── THE LISTENER'S TEXT ENCODING ROUND-TRIPS AND REFUSES WHAT IT CANNOT READ ──────────────────
+test fn a_tcp_listener_round_trips_through_its_text() -> Bool {
+  match http_ingress_listener_of(text: "tcp:0.0.0.0:8080") {
+    HttpIngressListenerRead { listener: l } => http_ingress_listener_text(listener: l) == "tcp:0.0.0.0:8080"
+    HttpIngressListenerRefused { reason: _ } => false
+  }
+}
+
+test fn a_unix_listener_round_trips_and_opens_the_socket_to_its_directory() -> Bool {
+  match http_ingress_listener_of(text: "unix:/run/gunbc/door.sock") {
+    HttpIngressListenerRead { listener: l } =>
+      http_ingress_listener_text(listener: l) == "unix:/run/gunbc/door.sock"
+        && match l {
+          HttpIngressUnixSocket { path: _, mode: m } => m == 438
+          HttpIngressTcp { host: _, port: _ } => false
+        }
+    HttpIngressListenerRefused { reason: _ } => false
+  }
+}
+
+fn w_listener_refused(t: String) -> Bool {
+  match http_ingress_listener_of(text: t) {
+    HttpIngressListenerRefused { reason: _ } => true
+    HttpIngressListenerRead { listener: _ } => false
+  }
+}
+
+test fn an_unreadable_listener_refuses_rather_than_defaulting() -> Bool {
+  w_listener_refused(t: "0.0.0.0:8080") && w_listener_refused(t: "tcp:host") && w_listener_refused(t: "tcp:host:99999") && w_listener_refused(t: "tcp::80") && w_listener_refused(t: "unix:")
+}
+
+// ── THE BINDING REFUSES BEFORE ANY LISTENER EXISTS ───────────────────────────────────────────
+test fn a_branch_name_is_not_a_release_revision() -> Bool {
+  starts_with(s: w_refusal(admission: http_ingress_binding(handler_module: "m", handler: "h", listener: "tcp:127.0.0.1:0", release_revision: "main", cpu_limit_ms: 1, wall_limit_ms: 1)), prefix: "release_revision must be exactly 40")
+}
+
+test fn a_budget_that_is_not_positive_refuses() -> Bool {
+  starts_with(s: w_refusal(admission: http_ingress_binding(handler_module: "m", handler: "h", listener: "tcp:127.0.0.1:0", release_revision: w_revision, cpu_limit_ms: 0, wall_limit_ms: 1)), prefix: "cpu_limit_ms must be a positive integer")
+    && starts_with(s: w_refusal(admission: http_ingress_binding(handler_module: "m", handler: "h", listener: "tcp:127.0.0.1:0", release_revision: w_revision, cpu_limit_ms: 1, wall_limit_ms: -5)), prefix: "wall_limit_ms must be a positive integer")
+}
+
+// ── THE HANDLER CONTRACT IS ITS DECLARED PARAMETERS ──────────────────────────────────────────
+// A TCP handler declaring the five standard parameters is handed exactly those five, never peer_user
+// (srv1 500, run 36584004074: a host-side list handed every handler a name only one declared).
+test fn a_tcp_handler_is_handed_exactly_its_declared_facts() -> Bool {
+  w_plan_names(listener: "tcp:127.0.0.1:0", declared: ["method", "path", "body", "tailscale_identity", "release_revision"])
+    == "method,path,body,tailscale_identity,release_revision"
+}
+
+test fn peer_user_refuses_behind_tcp_and_is_planned_behind_a_unix_socket() -> Bool {
+  w_plan_names(listener: "tcp:127.0.0.1:0", declared: ["method", "peer_user"]) == "REFUSED: handler declares `peer_user`, but only a unix-socket listener attests a peer"
+    && w_plan_names(listener: "unix:/tmp/d.sock", declared: ["method", "peer_user"]) == "method,peer_user"
+}
+
+test fn a_parameter_naming_no_fact_refuses_rather_than_being_left_unbound() -> Bool {
+  starts_with(s: w_plan_names(listener: "tcp:127.0.0.1:0", declared: ["cookie_header"]), prefix: "REFUSED: handler declares parameter `cookie_header`, which names no request fact")
+    && w_plan_names(listener: "tcp:127.0.0.1:0", declared: ["request_headers"]) == "request_headers"
+}
+
+// ── FRAMING, ROUTING AND ARGUMENTS ──────────────────────────────────────────────────────────
+fn w_framed_head(lines: List<String>) -> NativeServeRequestHead? {
+  match w_bound(listener: "tcp:127.0.0.1:0") {
+    Absent => none
+    Present { value: b } =>
+      match http_ingress_frame(b: b, request_line: "POST /x HTTP/1.1", header_lines: lines) {
+        NativeServeFramed { head: h, body_length: _ } => Present { value: h }
+        NativeServeFrameRefused { response: _ } => none
+      }
+  }
+}
+
+test fn a_duplicated_identity_header_is_a_bad_request() -> Bool {
+  match w_bound(listener: "tcp:127.0.0.1:0") {
+    Absent => false
+    Present { value: b } =>
+      match http_ingress_frame(b: b, request_line: "GET / HTTP/1.1", header_lines: ["Tailscale-User-Login: a@x", "tailscale-user-login: b@x"]) {
+        NativeServeFrameRefused { response: r } => r.status == 400
+        NativeServeFramed { head: _, body_length: _ } => false
+      }
+  }
+}
+
+fn w_headers_argument_text(a: HttpIngressArgument) -> String {
+  match a {
+    HttpIngressHeadersArgument { name: n, value: hs } => concat(n, concat(":", join(hs |> map(h => concat(h.name, concat("=", h.value))), ";")))
+    HttpIngressTextArgument { name: n, value: _ } => concat("text ", n)
+  }
+}
+
+test fn request_headers_reach_the_handler_lowercased_in_arrival_order() -> Bool {
+  match w_bound(listener: "tcp:127.0.0.1:0") {
+    Absent => false
+    Present { value: b } =>
+      match w_framed_head(lines: ["Content-Length: 0", "X-Trace: Abc"]) {
+        Absent => false
+        Present { value: head } =>
+          match http_ingress_arguments(b: b, facts: [IngressFactRequestHeaders], head: head, body: "", peer_user: "") |> first {
+            Present { value: a } => w_headers_argument_text(a: a) == "request_headers:content-length=0;x-trace=Abc"
+            Absent => false
+          }
+      }
+  }
+}
+
+// The table the host consults before evaluating anything holds exactly GET /livez, and its answer
+// names this process's release and bound address.
+test fn livez_is_the_one_pre_evaluation_route_and_names_the_release() -> Bool {
+  match w_bound(listener: "tcp:127.0.0.1:0") {
+    Absent => false
+    Present { value: b } =>
+      match http_ingress_pre_evaluation_routes(b: b, bound_host: "127.0.0.1", bound_port: 8080) {
+        Cons { head: r, tail: rest } =>
+          (rest |> count) == 0 && r.method == "GET" && r.target == "/livez" && r.response.status == 200
+            && string_contains(s: r.response.body, pattern: w_revision)
+            && string_contains(s: r.response.body, pattern: "\"bound_port\": 8080")
+        Empty => false
+      }
+  }
+}
+
+// ── WHAT LEAVES THE PROCESS ─────────────────────────────────────────────────────────────────
+test fn the_response_head_is_rendered_by_the_fold() -> Bool {
+  let o = http_ingress_outgoing(r: ServeWireResponse { status: 302, content_type_label: "text/plain", body: "moved", headers: [] })
+  http_ingress_wire_head(o: o, body_octets: 5) == "HTTP/1.1 302 \r\nContent-Type: text/plain\r\nContent-Length: 5\r\nConnection: close\r\n\r\n"
+}
+
+test fn a_status_outside_http_is_answered_500_not_written() -> Bool {
+  http_ingress_outgoing(r: ServeWireResponse { status: 42, content_type_label: "text/plain", body: "x", headers: [] }).status == 500
+}
+
+test fn the_announcement_names_the_bound_address_and_every_limit() -> Bool {
+  match w_bound(listener: "tcp:127.0.0.1:0") {
+    Absent => false
+    Present { value: b } =>
+      http_ingress_announcement(b: b, bound_host: "127.0.0.1", bound_port: 40713)
+        == concat("http-ingress listening on 127.0.0.1:40713 -> test.fixture.serve_seam_probe.serve_seam_probe() release_revision=", concat(w_revision, " head_limit_bytes=16384 body_limit_bytes=1048576 read_timeout_ms=10000 eval_budget_cpu_ms=30000 eval_budget_wall_ms=120000"))
+  }
+}
+
+// THE HOST CALLS THE HANDLER BY ITS MODULE-QUALIFIED IDENTITY, so another module's declaration of the
+// same bare name is never the one served (a binding naming handler `serve_seam_ingress` refuses at
+// startup: that name is declared in the binding module, not the handler module).
+test fn the_handler_is_identified_by_module_and_name() -> Bool {
+  match w_bound(listener: "tcp:127.0.0.1:0") {
+    Absent => false
+    Present { value: b } => http_ingress_handler_identity(b: b) == "test.fixture.serve_seam_probe.serve_seam_probe"
+  }
+}
+
+// ── THE NATIVE REALIZATION'S FOLDS (gunbc.plans.converged_ingress M2a) ─────────────────────────
+// The binding's arguments have one rendering, and the native argv grammar reads exactly that rendering
+// back: `--arg name=value` and nothing else. The selectors gunbc run takes before them choose a
+// constructor the native binary already is, so they refuse rather than being ignored.
+data w_declared: List<String> = ["handler", "listener", "release_revision", "cpu_limit_ms", "wall_limit_ms"]
+
+fn w_native_args(argv: List<String>) -> String {
+  match http_ingress_native_argv(argv: argv, declared: w_declared) {
+    HttpIngressNativeArgvRead { arguments: a } =>
+      concat(match http_ingress_native_text_argument(arguments: a, name: "listener") { Present { value: v } => v  Absent => "<none>" },
+        concat(" ", match http_ingress_native_int_argument(arguments: a, name: "cpu_limit_ms") { Present { value: n } => to_string(value: n)  Absent => "<none>" }))
+    HttpIngressNativeArgvRefused { reason: r } => concat("REFUSED: ", r)
+  }
+}
+
+data w_rendered: List<String> = http_ingress_binding_arguments(handler: "h", listener: HttpIngressTcp { host: "127.0.0.1", port: 0 }, release_revision: w_revision, cpu_limit_ms: Present { value: 250 }, wall_limit_ms: Present { value: 900 })
+
+test fn the_binding_arguments_render_once_and_read_back_natively() -> Bool {
+  join(w_rendered, " ") == concat("--arg handler=h --arg listener=tcp:127.0.0.1:0 --arg release_revision=", concat(w_revision, " --arg cpu_limit_ms=250 --arg wall_limit_ms=900"))
+    && w_native_args(argv: w_rendered) == "tcp:127.0.0.1:0 250"
+}
+
+test fn a_native_binding_refuses_every_selector_and_every_undeclared_word() -> Bool {
+  starts_with(s: w_native_args(argv: concat(["--entry", "dag/x.dag"], w_rendered)), prefix: "REFUSED: a native binding takes only --arg name=value")
+    && starts_with(s: w_native_args(argv: concat(w_rendered, ["--source-root", "dag"])), prefix: "REFUSED: a native binding takes only --arg name=value")
+    && starts_with(s: w_native_args(argv: concat(w_rendered, ["--arg", "verbose=1"])), prefix: "REFUSED: the binding constructor declares no argument verbose")
+    && starts_with(s: w_native_args(argv: concat(w_rendered, ["--arg", "cpu_limit_ms=1"])), prefix: "REFUSED: binding argument given twice: cpu_limit_ms")
+    && starts_with(s: w_native_args(argv: ["--arg", "handler=h"]), prefix: "REFUSED: missing binding argument(s) listener, release_revision, cpu_limit_ms, wall_limit_ms")
+    && w_native_args(argv: ["--arg", "handler=h", "--arg", "listener=tcp:1.2.3.4:5", "--arg", "release_revision=x", "--arg", "cpu_limit_ms=ten", "--arg", "wall_limit_ms=1"]) == "tcp:1.2.3.4:5 <none>"
+}
+
+fn w_program(handler: String) -> NativeIngressProgram {
+  NativeIngressProgram {
+    binding: DeclarationRef { module_path: "test.fixture.serve_seam_probe" as NonEmptyStr, decl_name: "ingress" as NonEmptyStr, field: WholeDeclaration },
+    handler: DeclarationRef { module_path: "test.fixture.serve_seam_probe" as NonEmptyStr, decl_name: handler as NonEmptyStr, field: WholeDeclaration },
+    startup: Present { value: NativeIngressStartup { fold: DeclarationRef { module_path: "m" as NonEmptyStr, decl_name: "boot" as NonEmptyStr, field: WholeDeclaration }, bound: second(count: 7) } },
+  }
+}
+
+fn w_native_contract(listener: String, cpu: Int, wall: Int, program_handler: String) -> String {
+  match http_ingress_native_contract(admission: http_ingress_binding(handler_module: "test.fixture.serve_seam_probe", handler: "serve_seam_probe", listener: listener, release_revision: w_revision, cpu_limit_ms: cpu, wall_limit_ms: wall), program: w_program(handler: program_handler)) {
+    NativeServeListen { contract: c } => join([c.host, ":", to_string(value: c.port), " deadline=", to_string(value: millisecond_count(m: c.request_deadline)), " startup=", to_string(value: second_count(s: c.startup_deadline)), " handler=", c.handler_identity], "")
+    NativeServeStartRefused { reason: r } => concat("REFUSED: ", r)
+  }
+}
+
+// The effective deadline is the minimum of the declared CPU and wall limits, whichever is smaller; the startup bound
+// is the descriptor's; the handler identity is the binding's.
+test fn the_native_contract_takes_the_smaller_budget_as_its_one_deadline() -> Bool {
+  w_native_contract(listener: "tcp:127.0.0.1:0", cpu: 500, wall: 20000, program_handler: "serve_seam_probe") == "127.0.0.1:0 deadline=500 startup=7 handler=test.fixture.serve_seam_probe.serve_seam_probe"
+    && w_native_contract(listener: "tcp:127.0.0.1:0", cpu: 20000, wall: 500, program_handler: "serve_seam_probe") == "127.0.0.1:0 deadline=500 startup=7 handler=test.fixture.serve_seam_probe.serve_seam_probe"
+}
+
+// The binding must name the handler this binary realizes, compared as declaration references; a unix listener is
+// outside the M2a subset; a refused binding stays refused.
+test fn the_native_contract_refuses_another_handler_a_unix_socket_and_a_refused_binding() -> Bool {
+  starts_with(s: w_native_contract(listener: "tcp:127.0.0.1:0", cpu: 1, wall: 1, program_handler: "serve_seam_twin"), prefix: "REFUSED: the binding names handler test.fixture.serve_seam_probe.serve_seam_probe but this binary realizes test.fixture.serve_seam_probe.serve_seam_twin")
+    && starts_with(s: w_native_contract(listener: "unix:/run/x.sock", cpu: 1, wall: 1, program_handler: "serve_seam_probe"), prefix: "REFUSED: the native realization binds TCP only")
+    && starts_with(s: w_native_contract(listener: "tcp:127.0.0.1:0", cpu: 0, wall: 1, program_handler: "serve_seam_probe"), prefix: "REFUSED: cpu_limit_ms must be a positive integer")
+}

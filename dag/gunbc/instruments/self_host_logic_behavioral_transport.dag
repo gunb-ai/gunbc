@@ -131,7 +131,7 @@ fn slb_repo_path(root: String, rel: String) -> String {
 // workspace root: "a fixture written elsewhere, such as /tmp, cannot be keyed into the module
 // graph -- write it under a source root and delete it afterwards". Without --entry the compile
 // is the WHOLE-CORPUS path, which a current compiler refuses against a memory budget
-// (WholeCorpusCompileBudgetBelowMeasuredDemand, measured rc=1 with zero files emitted on a
+// (WholeCorpusCompileBudgetBelowDeclaredDemand, measured rc=1 with zero files emitted on a
 // 7.0 GiB runner). So a /tmp scratch root left BOTH admission paths refusing, which is why this
 // receipt could not execute at all.
 //

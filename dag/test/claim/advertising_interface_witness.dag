@@ -18,7 +18,7 @@ import extdeps.advertising.meta_ads {
   meta_strategy_cost_cap,
 }
 import extdeps.advertising.types { AdPriceDetermination, AuctionDetermined, RateUnavailable }
-import std.types { list_length }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -28,7 +28,7 @@ data synthetic_unavailable_rate: AdPriceDetermination = RateUnavailable {
 }
 
 test fn w_google_billable_unit_catalog_is_total_and_wire_labeled() -> Bool {
-  (list_length(items: google_ads_billable_unit_catalog()) == 4)
+  (length(xs: google_ads_billable_unit_catalog()) == 4)
     && ((google_cpc_unit.unit_wire_label as String) == "CPC")
     && ((google_vcpm_unit.unit_wire_label as String) == "vCPM")
 }
@@ -42,22 +42,22 @@ test fn w_google_media_rate_is_auction_determined_with_mechanism_citation() -> B
 }
 
 test fn w_google_strategy_roster_is_the_verbatim_thirteen() -> Bool {
-  list_length(items: google_ads_bid_strategy_wire_labels) == 13
+  length(xs: google_ads_bid_strategy_wire_labels) == 13
 }
 
 test fn w_meta_billing_event_catalog_is_total_with_verbatim_wire_values() -> Bool {
-  (list_length(items: meta_billing_event_catalog()) == 11)
+  (length(xs: meta_billing_event_catalog()) == 11)
     && ((meta_bill_clicks.wire_value as String) == "CLICKS")
     && ((meta_bill_thruplay.wire_value as String) == "THRUPLAY")
 }
 
 test fn w_meta_bid_strategy_catalog_is_total_with_verbatim_wire_values() -> Bool {
-  (list_length(items: meta_bid_strategy_catalog()) == 4)
+  (length(xs: meta_bid_strategy_catalog()) == 4)
     && ((meta_strategy_cost_cap.wire_value as String) == "COST_CAP")
 }
 
 test fn w_meta_optimization_goal_axis_is_distinct_and_transcribed() -> Bool {
-  list_length(items: meta_optimization_goal_wire_values) == 33
+  length(xs: meta_optimization_goal_wire_values) == 33
 }
 
 test fn w_meta_media_rate_is_auction_determined() -> Bool {

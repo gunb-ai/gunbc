@@ -155,7 +155,7 @@ fn e1_with_j24(rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
       resistances: concat(filter(x.bench.resistances, o => !any(e1_j24_resistances, j => terminal_ref_equal(a: j.first, b: o.first) && terminal_ref_equal(a: j.second, b: o.second))), rs) },
     phases: x.phases, transitions: x.transitions, pole_closures: x.pole_closures,
   } }, Absent => Absent }
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
     j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
     management_io: b.management_io, components: b.components, measured: m, input: b.input, unresolved: b.unresolved, designator_readings: b.designator_readings,
@@ -221,7 +221,7 @@ fn reading_on_frame(designator: NonEmptyStr, citation: PhotographCitation) -> De
 // below is the fixture's and not the board's 60-odd marking rows arriving uninvited.
 fn e1_with_readings(readings: List<DesignatorReading>) -> CarrierLayoutObservation {
   let b = p4261_e1_layout
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
     j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
     management_io: b.management_io, components: [], measured: b.measured, input: b.input, unresolved: b.unresolved, designator_readings: readings,

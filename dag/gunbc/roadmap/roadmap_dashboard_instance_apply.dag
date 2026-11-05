@@ -2,12 +2,13 @@ module gunbc.roadmap.roadmap_dashboard_instance_apply
 
 import std.algebra { trim, is_empty }
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.filesystem.filesystem_io
+import std.optional { Present, Absent }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_bundle_verify_argv,
@@ -21,6 +22,7 @@ import extdeps.git {
   shape_git_status_porcelain_argv,
   shape_git_fetch_remote_argv,
   shape_git_reset_hard_argv,
+  shape_git_rev_parse_verify_quiet_argv,
   shape_git_rev_parse_argv,
   git_local_config_get_command, git_shared_repository_posture_readbacks,
 }
@@ -65,6 +67,9 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
   dashboard_target_run,
   dashboard_exec_result_of_ran,
   TargetExec,
+  DashboardTargetRan,
+  TargetRan,
+  TargetNotRun,
   DashboardPathObservation,
   PathObservedPresent,
   PathObservedAbsent,
@@ -81,12 +86,15 @@ import extdeps.languages.json.parse { json_text_parseable }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_converged_ref,
+  dashboard_provision_transport,
   prod_role_realization,
   dashboard_instance_health_identity_prefix,
   DashboardProvisionTransport,
   DashboardLocalProvision,
   DashboardSshProvision,
   DashboardSourceSeed,
+  DashboardSeededByConvergence,
   DashboardExistingRepo,
   DashboardGitBundle,
   HostDashboardInstance,
@@ -98,6 +106,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
   DashboardEnsureSourceRepo,
+  DashboardResetConvergedSourceRepo,
   DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
   DashboardInstanceObserved,
@@ -115,7 +124,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_environment_binding_executable,
   dashboard_instance_ownership_marker_path,
   dashboard_instance_checkout_branch,
-  dashboard_instance_controller_workdir,
+  dashboard_instance_apply_workdir,
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
@@ -139,6 +148,17 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
   dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
   dashboard_git_worker_subtree_walk_depth,
+  // These three are CALLED by this file (in the subtree grant readback below) and declared here in
+  // gunbc.roadmap.roadmap_dashboard_instance, but were never listed in this import. They resolved
+  // only by proximity to some other importer of the module in the entry's closure --
+  // residual_class_names.bare_name_resolved_by_proximity_standing_in_for_resolution (gunbc#15247) --
+  // and the effect checker refuses such a callee with 'no established callee identity', the failing
+  // set varying by which entry pulled the module in. Note dashboard_git_subtree_readback_is_granted
+  // two lines up is imported and is NOT this one: a near name standing in for the real one is
+  // exactly how this residual hides. Pattern: gunbc#15753, gunbc#15755.
+  dashboard_git_subtree_readback_is_granted_under,
+  dashboard_git_worker_subtree_granted_directory_mode,
+  dashboard_git_worker_subtree_writes_files_in_place,
 }
 import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_device_login_command }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
@@ -154,6 +174,7 @@ import gunbc.owned_directory {
   owned_directory_install_args,
   owned_directory_decide,
   owned_directory_ensure,
+  owned_directory_ensure_observed,
   owned_directory_outcome_converged,
   owned_directory_outcome_detail,
 }
@@ -389,7 +410,7 @@ fn dashboard_copy_to_target_atomically(
   remote_path: FilePath,
 ) -> DashboardExecResult {
   let next = dashboard_next_path(path: remote_path)
-  let copied = match instance.provision_transport {
+  let copied = match dashboard_provision_transport(instance: instance) {
     DashboardLocalProvision =>
       dashboard_local_exec(
         workdir: controller_workdir,
@@ -537,18 +558,30 @@ fn dashboard_stage_bundle(
 
 fn dashboard_ensure_serve_binary(
   instance: HostDashboardInstance,
-  controller_repo: FilePath,
+  apply_workdir: FilePath,
+  built_binary: Optional<FilePath>,
+  path: FilePath,
+) -> DashboardExecResult {
+  match built_binary {
+    Absent => dashboard_exec_refused(detail: "no serve binary build is declared for this instance (built_binary is Absent); declare the build before apply")
+    Present { value: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, built_binary: declared, path: path)
+  }
+}
+
+fn dashboard_ensure_declared_serve_binary(
+  instance: HostDashboardInstance,
+  apply_workdir: FilePath,
   built_binary: FilePath,
   path: FilePath,
 ) -> DashboardExecResult {
   let present = dashboard_local_exec(
-    workdir: controller_repo,
+    workdir: apply_workdir,
     program: instance.toolchain.path_test,
     args: ["-f", built_binary as String],
   )
   if !present.success {
     dashboard_exec_refused(detail: join([
-      "controller seed binary absent: ",
+      "declared serve binary artifact absent: ",
       built_binary as String,
       " — build it before apply; this step copies, it never builds",
     ], ""))
@@ -571,7 +604,7 @@ fn dashboard_ensure_serve_binary(
       } else {
         let copied = dashboard_copy_to_target_atomically(
           instance: instance,
-          controller_workdir: controller_repo,
+          controller_workdir: apply_workdir,
           local_path: built_binary,
           remote_path: path,
         )
@@ -619,6 +652,54 @@ fn dashboard_ensure_local_origin(
   ])
 }
 
+// THE CONVERGENCE-SEEDED SOURCE HAS NO ORIGIN: convergence (R3) wrote the admitted ref into this very repo, so
+// this op can only reset it. By construction it carries no origin, no clone arm and no fetch -- an absent or
+// dirty repo or an absent ref is a typed refusal, never a clone or a read of any ref outside repo_root.
+fn dashboard_reset_converged_source_repo(
+  instance: HostDashboardInstance,
+  repo: FilePath,
+  anchor_ref: NonEmptyStr,
+) -> DashboardExecResult {
+  let git_dir = concat(repo as String, "/.git") as FilePath
+  match dashboard_target_path_observe(instance: instance, flag: "-d", path: git_dir) {
+    PathObservationRefused { reason } => dashboard_exec_refused(detail: reason)
+    PathObservedAbsent => dashboard_exec_refused(detail: join([
+      "converged source repo absent: ", repo as String, " -- convergence creates it; this op never clones",
+    ], ""))
+    PathObservedPresent => {
+      let status = dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/git" as FilePath,
+        args: shape_git_status_porcelain_argv(repo: repo),
+      )
+      if !status.success {
+        status
+      } else if trim(status.stdout) != "" {
+        dashboard_exec_refused(detail: join(["owned source repo is dirty; refusing reset: ", repo as String, " status=", status.stdout], ""))
+      } else {
+        let anchor_verify = dashboard_target_run(
+          instance: instance,
+          program: "/usr/bin/git" as FilePath,
+          args: shape_git_rev_parse_verify_quiet_argv(repo: repo, ref_name: anchor_ref as GitRef),
+          mode: TargetExec,
+        )
+        match dashboard_source_repo_reset_admission(
+          repo: repo as String,
+          anchor_ref: anchor_ref as String,
+          verify: dashboard_anchor_verify_of_ran(ran: anchor_verify),
+        ) {
+          Present { value: detail } => dashboard_exec_refused(detail: detail)
+          Absent => dashboard_target_exec(
+            instance: instance,
+            program: "/usr/bin/git" as FilePath,
+            args: shape_git_reset_hard_argv(repo: repo, target: anchor_ref as GitRef),
+          )
+        }
+      }
+    }
+  }
+}
+
 fn dashboard_ensure_source_repo(
   instance: HostDashboardInstance,
   origin: FilePath,
@@ -656,25 +737,97 @@ fn dashboard_ensure_source_repo(
         ], ""),
       )
     } else {
-      dashboard_run_target_argvs(instance: instance, commands: [
-        DashboardArgv {
-          program: "/usr/bin/git" as FilePath,
-          args: shape_git_fetch_remote_argv(
-            repo: repo,
-            remote: "origin" as NonEmptyStr,
-          ),
-        },
-        DashboardArgv {
-          program: "/usr/bin/git" as FilePath,
-          args: shape_git_reset_hard_argv(
-            repo: repo,
-            target: anchor_ref as GitRef,
-          ),
-        },
-      ])
+      // R3 ORDERING GUARD (loyal-deer-449): the lab's anchor (remote '.') is NOT brought in by
+      // `git fetch origin` -- CONVERGENCE populates it, so the cutover order is convergence first,
+      // ensure-source-repo second. A reset target that does not exist in the owned repo is refused
+      // by NAME, typed; falling back to origin/main would reintroduce exactly the shared-ref meaning
+      // collapse R3 removes (§5: a typed, located refusal, never a fabricated default).
+      let anchor_verify = dashboard_target_run(
+        instance: instance,
+        program: "/usr/bin/git" as FilePath,
+        args: shape_git_rev_parse_verify_quiet_argv(repo: repo, ref_name: anchor_ref as GitRef),
+        mode: TargetExec,
+      )
+      match dashboard_source_repo_reset_admission(
+        repo: repo as String,
+        anchor_ref: anchor_ref as String,
+        verify: dashboard_anchor_verify_of_ran(ran: anchor_verify),
+      ) {
+        Present { value: detail } => dashboard_exec_refused(detail: detail)
+        Absent => dashboard_run_target_argvs(instance: instance, commands: [
+          DashboardArgv {
+            program: "/usr/bin/git" as FilePath,
+            args: shape_git_fetch_remote_argv(
+              repo: repo,
+              remote: "origin" as NonEmptyStr,
+            ),
+          },
+          DashboardArgv {
+            program: "/usr/bin/git" as FilePath,
+            args: shape_git_reset_hard_argv(
+              repo: repo,
+              target: anchor_ref as GitRef,
+            ),
+          },
+        ])
+      }
     }
   }
 }
+}
+
+// What `git rev-parse --verify --quiet <anchor>` MEANS on the target. The exit code is the only
+// witness that separates "the ref is absent" (exit 1, the case the guard exists for) from "the
+// command could not speak" (transport died, repo missing, permissions) -- collapsing both into one
+// Bool would tell the operator to run convergence when the real fault is elsewhere (§5: a typed,
+// located diagnostic; no fabricated cause).
+type DashboardAnchorVerification
+  = AnchorPresent
+  | AnchorAbsent
+  | AnchorUnverifiable { exit_code: Int, detail: String }
+
+fn dashboard_anchor_verify_of_ran(ran: DashboardTargetRan) -> DashboardAnchorVerification {
+  match ran {
+    TargetRan { exit_code: exit_code, success: _, stdout: _, stderr: stderr } =>
+      if exit_code == 0 {
+        AnchorPresent
+      } else if exit_code == 1 {
+        AnchorAbsent
+      } else {
+        AnchorUnverifiable { exit_code: exit_code, detail: stderr }
+      }
+    TargetNotRun { reason } => AnchorUnverifiable { exit_code: -1, detail: reason }
+  }
+}
+
+// The reset admission as a PURE decision (witnessable without host IO): an anchor ref the owned repo
+// does not carry refuses the reset by NAME, stating the cutover order; an anchor the verify command
+// could not report refuses with the command's OWN failure passed through, never the absent-ref text;
+// a present anchor lets it run.
+fn dashboard_source_repo_reset_admission(
+  repo: String,
+  anchor_ref: String,
+  verify: DashboardAnchorVerification,
+) -> Optional<String> {
+  match verify {
+    AnchorPresent => Absent
+    AnchorAbsent => Present {
+      value: join([
+        "admitted anchor ref `", anchor_ref, "` does not exist in the owned repo ", repo,
+        "; convergence must populate it before any provision apply runs ensure-source-repo",
+        " (R3 cutover order); refusing rather than resetting to a missing ref or falling back",
+        " to a shared default",
+      ], ""),
+    }
+    AnchorUnverifiable { exit_code: exit_code, detail: detail } => Present {
+      value: join([
+        "could not verify anchor ref `", anchor_ref, "` in the owned repo ", repo,
+        ": rev-parse failed with exit ", to_string(value: exit_code),
+        " (not the absent-ref exit 1), so the fault is not the cutover order: ", detail,
+        "; refusing to reset without a witnessed anchor",
+      ], ""),
+    }
+  }
 }
 
 data dashboard_health_loopback_host: String = "127.0.0.1"
@@ -755,10 +908,10 @@ fn dashboard_apply_provision_op(
         staged_bundle: staged_bundle,
         temp_bundle: temp_bundle,
       )
-    DashboardEnsureServeBinary { controller_repo, built_binary, path } =>
+    DashboardEnsureServeBinary { apply_workdir, built_binary, path } =>
       dashboard_ensure_serve_binary(
         instance: instance,
-        controller_repo: controller_repo,
+        apply_workdir: apply_workdir,
         built_binary: built_binary,
         path: path,
       )
@@ -783,6 +936,8 @@ fn dashboard_apply_provision_op(
         repo: repo,
         anchor_ref: anchor_ref,
       )
+    DashboardResetConvergedSourceRepo { repo, anchor_ref } =>
+      dashboard_reset_converged_source_repo(instance: instance, repo: repo, anchor_ref: anchor_ref)
     DashboardVerifyProviderRuntime { executable, state_root } => {
       let result = dashboard_target_exec(
         instance: instance,
@@ -1210,10 +1365,10 @@ fn dashboard_apply_plan(
 // owned install. The decision, the plan, presence and the readback classification are the provider's,
 // shared with the live_deploy transaction. No exit status or diagnostic text is interpreted here.
 fn dashboard_observer_read(instance: HostDashboardInstance, program: FilePath, args: List<String>) -> ObserverRead {
-  match instance.provision_transport {
+  match dashboard_provision_transport(instance: instance) {
     DashboardLocalProvision => {
       let r = gunbc.WitnessBin.Run(
-        workdir: dashboard_instance_controller_workdir(instance: instance),
+        workdir: dashboard_instance_apply_workdir(instance: instance),
         bin_path: program,
         args: args,
         expect: OutcomeIsData,
@@ -1270,7 +1425,7 @@ fn dashboard_apply_owned_directories(instance: HostDashboardInstance) -> Dashboa
       if !acc.running {
         acc
       } else {
-        let outcome = owned_directory_ensure(
+        let outcome = owned_directory_ensure_observed(
           policy: dashboard_directory_policy(instance: instance),
           target: target,
           observe: p => dashboard_owned_directory_observe(instance: instance, path: p),
@@ -1607,6 +1762,7 @@ fn dashboard_instance_observe(
   )
   let bundle_present = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => true
     DashboardGitBundle {
       controller_repo: _,
       staged_bundle,
@@ -2024,6 +2180,20 @@ fn dashboard_instance_apply_preflight(
             step: "source-seed",
             detail: "isolated instance apply requires a modeled Git-bundle seed",
           )
+        DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => {
+          let source = dashboard_convergence_source_preflight_decision(
+            instance: instance,
+            ref_read: dashboard_target_exec(
+              instance: instance,
+              program: "/usr/bin/git" as FilePath,
+              args: shape_git_rev_parse_argv(
+                repo: instance.repo_root,
+                target: dashboard_instance_converged_ref(instance: instance) as GitRef,
+              ),
+            ),
+          )
+          dashboard_apply_preflight_with_source(instance: instance, source: source)
+        }
         DashboardGitBundle {
           controller_repo,
           staged_bundle: _,
@@ -2059,65 +2229,108 @@ fn dashboard_instance_apply_preflight(
               ),
             ),
           )
-          match source {
-            DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
-              source
-            DashboardApplyPreflightBootstrapPending {
-              instance_id: _,
-              source_revision: _,
-              state_root: _,
-              remediation: _,
-            } =>
-              source
-            DashboardApplyPreflightReady {
-              instance_id: _,
-              source_revision,
-            } => {
-              match dashboard_survey_target_executables(instance: instance) {
-                ExecutableSurveyRefused { path: unobserved, reason } =>
-                  dashboard_apply_preflight_refused(
-                    instance: instance,
-                    step: "target-dependencies",
-                    detail: join([
-                      "required executable could not be observed at ",
-                      unobserved as String,
-                      ": ",
-                      reason,
-                    ], ""),
-                  )
-                ExecutablesSurveyed { missing } =>
-              if count(missing) > 0 {
-                dashboard_apply_preflight_refused(
-                  instance: instance,
-                  step: "target-dependencies",
-                  detail: join([
-                    "required executable paths absent: ",
-                    join(map(missing, p => p as String), ", "),
-                  ], ""),
-                )
-              } else {
-                let observed = dashboard_instance_observe(
-                  instance: instance,
-                  production_untouched: true,
-                  desired_source_revision: source_revision,
-                )
-                match dashboard_instance_reconcile(instance: instance, observed: observed) {
-                  DashboardInstanceRefused { reason } =>
-                    dashboard_apply_preflight_refused(
-                      instance: instance,
-                      step: "initial-reconcile",
-                      detail: reason as String,
-                    )
-                  DashboardInstanceConverged => dashboard_apply_preflight_after_reconcile(instance: instance, observed: observed, source_revision: source_revision)
-                  DashboardInstanceApply { plan: _ } => dashboard_apply_preflight_after_reconcile(instance: instance, observed: observed, source_revision: source_revision)
-                }
-              }
-              }
-            }
-          }
+          dashboard_apply_preflight_with_source(instance: instance, source: source)
         }
       }
       }
+    }
+  }
+}
+
+// THE CONTINUATION AFTER A SOURCE DECISION, shared by every seed arm: a refused or pending source stops
+// the line; a ready one proceeds to the executable survey and the initial reconcile.
+fn dashboard_apply_preflight_with_source(
+  instance: HostDashboardInstance,
+  source: DashboardApplyPreflightResult,
+) -> DashboardApplyPreflightResult {
+match source {
+    DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
+      source
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } =>
+      source
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision,
+    } => {
+      match dashboard_survey_target_executables(instance: instance) {
+        ExecutableSurveyRefused { path: unobserved, reason } =>
+          dashboard_apply_preflight_refused(
+            instance: instance,
+            step: "target-dependencies",
+            detail: join([
+              "required executable could not be observed at ",
+              unobserved as String,
+              ": ",
+              reason,
+            ], ""),
+          )
+        ExecutablesSurveyed { missing } =>
+      if count(missing) > 0 {
+        dashboard_apply_preflight_refused(
+          instance: instance,
+          step: "target-dependencies",
+          detail: join([
+            "required executable paths absent: ",
+            join(map(missing, p => p as String), ", "),
+          ], ""),
+        )
+      } else {
+        let observed = dashboard_instance_observe(
+          instance: instance,
+          production_untouched: true,
+          desired_source_revision: source_revision,
+        )
+        match dashboard_instance_reconcile(instance: instance, observed: observed) {
+          DashboardInstanceRefused { reason } =>
+            dashboard_apply_preflight_refused(
+              instance: instance,
+              step: "initial-reconcile",
+              detail: reason as String,
+            )
+          DashboardInstanceConverged => dashboard_apply_preflight_after_reconcile(instance: instance, observed: observed, source_revision: source_revision)
+          DashboardInstanceApply { plan: _ } => dashboard_apply_preflight_after_reconcile(instance: instance, observed: observed, source_revision: source_revision)
+        }
+      }
+      }
+    }
+  }
+}
+
+// THE CONVERGENCE-SEEDED SOURCE DECISION. The only source read is the admitted ref in the INSTANCE's own
+// repository (where convergence writes it); there is no controller repository, so there is no
+// controller-source-* step. An absent ref -- or an absent repository, which makes the read fail the same
+// way -- refuses by name at admitted-source-ref; nothing falls back to another ref or a clone.
+fn dashboard_convergence_source_preflight_decision(
+  instance: HostDashboardInstance,
+  ref_read: DashboardExecResult,
+) -> DashboardApplyPreflightResult {
+  if !ref_read.success {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "admitted-source-ref",
+      detail: join([
+        "the admitted revision ref is not readable in the instance repository ",
+        instance.repo_root as String,
+        " (repository absent, or convergence has not populated the ref): ",
+        ref_read.stderr,
+        ref_read.stdout,
+      ], ""),
+    )
+  } else if trim(ref_read.stdout) == "" {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "admitted-source-ref",
+      detail: "the admitted revision ref resolved successfully but returned an empty revision",
+    )
+  } else {
+    DashboardApplyPreflightReady {
+      instance_id: instance.instance_id,
+      source_revision: trim(ref_read.stdout) as CommitSha,
     }
   }
 }
@@ -2438,13 +2651,14 @@ fn dashboard_bootstrap_only_ops(
 ) -> List<DashboardInstanceProvisionOp> {
   dashboard_instance_provision_plan(instance: instance)
     |> filter(op => match op {
-      DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path: _ } => true
+      DashboardEnsureServeBinary { apply_workdir: _, built_binary: _, path: _ } => true
       DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => false
       DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => false
       DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => false
       DashboardEnsureOwnershipMarker { path: _, instance_id: _ } => false
       DashboardEnsureLocalOrigin { bundle: _, origin: _, source_ref: _, publish_ref: _ } => false
       DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
+      DashboardResetConvergedSourceRepo { repo: _, anchor_ref: _ } => false
       DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
       DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
       // Both git repository steps belong to the ACTUATING plan, not to the credential-free bootstrap:
