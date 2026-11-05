@@ -38,6 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nipw_stub_sources() -> List<FixtureSource> {
   [
+    fixture_source("std/optional.dag", "module std.optional\ntype Optional<T> = Absent | Present \{ value: T \}\n"),
     fixture_source("std/decl_ref.dag", "module std.decl_ref\ntype DeclField = WholeDeclaration | NamedField \{ field_name: String \}\ntype DeclarationRef \{ module_path: String, decl_name: String, field: DeclField \}\n"),
     fixture_source("std/compiler_entry.dag", "module std.compiler_entry\nimport std.decl_ref \{ DeclarationRef \}\ntype CompilerEntryDriver = NativeCliDriver | NativeClaimDriver | NativeIngressDriver \{ program: DeclarationRef \}\ntype NativeIngressStartup \{ fold: DeclarationRef, bound: Int \}\ntype NativeIngressProgram \{ binding: DeclarationRef, handler: DeclarationRef, startup: NativeIngressStartup? \}\n"),
     fixture_source("extdeps/http/server.dag", "module extdeps.http.server\ntype ServeWireResponse \{ status: Int, body: String \}\n"),
@@ -56,11 +57,11 @@ fn nipw_ref(module_path: String, decl_name: String) -> String {
 // extra. Each part is a parameter so a claim changes exactly the part it is about.
 fn nipw_module(module_path: String, imports: String, descriptor: String, driver_program: String, ingress: String, handler: String, extra: String) -> String {
   concat("module ", concat(module_path, concat("\n",
-  concat("import std.decl_ref \{ DeclarationRef, WholeDeclaration, NamedField \}\nimport std.compiler_entry \{ CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram, NativeIngressStartup \}\nimport extdeps.http.server \{ ServeWireResponse \}\nimport gunbc.http_ingress \{ HttpIngressAdmission, HttpIngressRefused \}\nimport gunbc.native_serve \{ NativeServeStartup, NativeServeStartupPassed \}\n",
+  concat("import std.decl_ref \{ DeclarationRef, WholeDeclaration, NamedField \}\nimport std.compiler_entry \{ CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram, NativeIngressStartup \}\nimport extdeps.http.server \{ ServeWireResponse \}\nimport gunbc.http_ingress \{ HttpIngressAdmission, HttpIngressRefused \}\nimport gunbc.native_serve \{ NativeServeStartup, NativeServeStartupPassed \}\nimport std.optional \{ Present, Absent \}\n",
   concat(imports,
   concat(descriptor,
   concat("data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver \{ program: ", concat(driver_program, concat(" \}\n",
-  concat(ingress, concat(handler, extra))))))))))
+  concat(ingress, concat(handler, extra)))))))))))
 }
 
 fn nipw_descriptor(module_path: String, binding: String, handler: String, startup: String) -> String {
