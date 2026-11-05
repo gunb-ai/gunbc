@@ -1326,19 +1326,41 @@ fn read_declared_hand_maintained_roster(workspace: &Path) -> Result<HandMaintain
     }
     let entry_path_str = layout_path.to_string_lossy().into_owned();
     use crate::v1_interpreter::{self, ExecutionMode};
+    // ONE INDEX, ONE RESOLVE, ONE CONTEXT FOR BOTH ROWS. The two row functions live in the same
+    // module and share their entire closure, so building the front-end per function read the same
+    // corpus twice for one answer -- the duplicate this file exists to catch, in its own author's
+    // hand. The same discipline `emitted_tree_packages` documents, applied once instead of twice.
+    //
+    // THE ROUND'S ALREADY-BUILT POOL IS CARRIED, not re-produced, per DESIGN's order on produced
+    // values: this process's route returns the index it already owns for exactly these roots
+    // (`try_process_shared_index`), so a regen round that has walked, parsed and typed the corpus
+    // once pays nothing more here. What that route REFUSES is a SECOND resident pool over
+    // different roots -- and its own comment names the sanctioned answer: a reader of another pool
+    // owns its index. So only that refusal reaches for a private `build_multi_entry_index`; any
+    // other failure of that route is a failure to read the corpus, and is reported as one rather
+    // than being paid for a second time.
+    let index = match super::entry_resolve::try_process_shared_index(&closure_roots) {
+        Ok(shared) => shared,
+        Err(cause) if cause.contains("SharedIndexSecondResidentPool") => {
+            std::rc::Rc::new(super::build_multi_entry_index(&closure_roots))
+        }
+        Err(cause) => {
+            return Err(format!(
+                "required-regen: the corpus behind the crate-layout authority could not be \
+                 reached for the hand-maintained roster: {cause}"
+            ));
+        }
+    };
+    let (graph, indices) = super::resolve_entry_with_index(&index, entry_path_str.as_str())
+        .map_err(|e| {
+            format!(
+                "required-regen: cannot resolve the crate-layout authority {} to read the \
+                 hand-maintained roster: {}",
+                LAYOUT_ENTRY_RELPATH, e
+            )
+        })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let decode_rows = |fn_name: &str| -> Result<Vec<String>, String> {
-        // ITS OWN INDEX, RELEASED WITH THIS READ -- the same discipline `emitted_tree_packages`
-        // documents: the roots are read for this one entry and by nothing after it.
-        let index = super::build_multi_entry_index(&closure_roots);
-        let (graph, indices) = super::resolve_entry_with_index(&index, entry_path_str.as_str())
-            .map_err(|e| {
-                format!(
-                    "required-regen: cannot resolve the crate-layout authority {} to read the \
-                     hand-maintained roster: {}",
-                    LAYOUT_ENTRY_RELPATH, e
-                )
-            })?;
-        let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
         let value = v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::run_in_context_with_args(&ctx, fn_name, &[], false)
         })
@@ -3515,8 +3537,10 @@ mod tests {
     #[ignore = "full front-end over the 3,588-line crate-layout authority; run by hand, cost recorded in the PR body"]
     fn the_roster_reader_reads_the_authority_of_the_tree_it_regenerates() {
         let workspace = workspace_root();
+        let read_started = std::time::Instant::now();
         let roster = declared_hand_maintained_roster(&workspace)
             .expect("the repository's own tree declares its roster");
+        let read_wall = read_started.elapsed();
         assert!(
             roster.file_count() > 30,
             "the authority declares dozens of rows"
@@ -3537,6 +3561,36 @@ mod tests {
         assert!(
             roster.dirs().next().is_some(),
             "the directory rows come through the same reader"
+        );
+        // THE PRODUCED POOL IS CARRIED, NOT RE-PRODUCED. The reader takes the process-shared
+        // index for these roots, so after one read the corpus behind them is resident on this
+        // thread and asking for it again is a cache hit -- what a regen round that already
+        // walked, parsed and typed the corpus pays for this read. The bound is not a budget:
+        // it asserts "hit", and a cold walk+parse+typecheck of this corpus is orders of
+        // magnitude above it (the read's own wall, printed with --nocapture for the record).
+        let roots: Vec<String> = ["dag", "src/v1", "src/v2"]
+            .iter()
+            .map(|root| workspace.join(root).to_string_lossy().into_owned())
+            .collect();
+        let asked = std::time::Instant::now();
+        let carried = crate::cli_run::entry_resolve::try_process_shared_index(&roots)
+            .expect("the corpus the reader read is resident for these roots");
+        let hit_wall = asked.elapsed();
+        let cold = crate::cli_run::entry_resolve::try_process_shared_index(&roots)
+            .expect("same pool, second ask");
+        assert!(
+            std::rc::Rc::ptr_eq(&carried, &cold),
+            "both asks reach the one resident pool, not two builds of it"
+        );
+        println!(
+            "roster read wall = {read_wall:?}; resident-pool ask = {hit_wall:?} \
+             (files={}, dirs={})",
+            roster.file_count(),
+            roster.dirs().count()
+        );
+        assert!(
+            hit_wall < std::time::Duration::from_secs(2),
+            "asking for the already-produced pool must not re-produce it (took {hit_wall:?})"
         );
     }
 
