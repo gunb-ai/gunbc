@@ -3986,12 +3986,42 @@ fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: Str
 // table does not name (a kernel type, an extensional container, an alias) is read from its own shape; one that resolves to
 // nothing refuses rather than comparing by the target.
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
-  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
-  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1) {
+  let si = scope.type_env.source_indices
+  let applied = equality_reference_applies_arguments(peeled: peeled)
+  let parameter_names = rt.params |> map(p => authored_name_at(source_indices: si, node: p))
+  // The declaration's own parameters are read as type variables in ITS body (declaration_substitution_basis, the corpus's one
+  // authority for "this leaf is a parameter"), never looked up by spelling in the use-site scope where the name means nothing.
+  let basis = if applied && (parameter_names |> count) > 0 { declaration_substitution_basis(n: rt, env: scope.type_env, generic_names: parameter_names) } else { rt }
+  let w = equality_resolved_declaration_structure_core(rt: basis, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
+  if w.refusal != none || !applied || equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: peeled.children, scope: scope, depth: depth + 1) {
     w
   } else {
     equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
   }
+}
+
+// AN ARGUMENT IS JUDGED WHERE ITS PARAMETER OCCURS. Walking the body with each parameter bound to its argument means an argument
+// matters exactly when the body mentions its parameter: a phantom parameter (Measure's Q and S, std.measure) imposes no equality
+// obligation and its argument is never judged. A parameter with no matching argument position refuses (an unjudged argument is
+// never admitted); an argument beyond the parameters likewise.
+fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<String>, arguments: List<Node>, scope: InferScope, depth: Int) -> Bool {
+  match parameter_names |> first {
+    Absent => (arguments |> count) == 0
+    Present { value: pn } =>
+      match arguments |> first {
+        Absent => false
+        Present { value: a } =>
+          (!equality_type_variable_occurs(n: basis, id: pn) || equality_argument_by_target(n: a, scope: scope, depth: depth))
+            && equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names |> skip(1), arguments: arguments |> skip(1), scope: scope, depth: depth)
+      }
+  }
+}
+
+fn equality_type_variable_occurs(n: Node, id: String) -> Bool {
+  (match n.inferred {
+    Present { value: TypeVariable { id: v } } => v == id
+    _ => false
+  }) || (n.children |> any(ch => equality_type_variable_occurs(n: ch, id: id)))
 }
 
 // WHETHER AN APPLIED ARGUMENT COMPARES BY THE TARGET, read from the table and the argument's own shape in O(argument),
