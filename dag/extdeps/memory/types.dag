@@ -1,6 +1,6 @@
 module extdeps.memory.types
 
-import std.measure { ByteSize, BitWidth, Milliampere, Millivolt, Milliwatt, byte_size_count, bit_width, bit_width_count, byte_size }
+import std.measure { ByteSize, BitWidth, Milliampere, Millivolt, Milliwatt, Permille, byte_size_count, bit_width, bit_width_count, byte_size }
 import std.nat { Nat }
 import std.types { Bool, Int, NonEmptyStr }
 import extdeps.vendor { Vendor }
@@ -133,12 +133,12 @@ fn dram_module_class_eq(a: DramModuleClass, b: DramModuleClass) -> Bool {
 // class. An Option would have made forgetting it representable and re-opened that door
 // (DESIGN 5 -- prefer the shape in which the bad state cannot be written).
 //
-// rank_count STAYS ONE FIELD, and that is a deliberate finding rather than an omission. Both
-// of its consumers are correct for a stacked part when it carries the module's LOGICAL rank
-// organization: dram_module_required_die_density divides capacity by (data chips x ranks) to
-// get PER-DIE density, which is the figure JEDEC's monolithic ceiling actually bounds, and
-// devices_per_stick multiplies chips-per-rank by ranks to get a DIE count, which is what a
-// stacked package contains. Neither wanted a package count. A management controller's own
+// rank_count STAYS ONE FIELD, and that is a deliberate finding rather than an omission. It carries
+// the module's LOGICAL rank organization: dram_module_required_die_density divides capacity by
+// (data chips x ranks) to get PER-DIE density, which is the figure JEDEC's monolithic ceiling
+// actually bounds, and chips-per-rank times ranks is a DIE count. Power is not computed from a
+// per-die constant: product.node_power_envelope derives it from per-die currents and a class bound.
+// A management controller's own
 // reported rank number is a DIFFERENT fact -- an observation of one host's slot, not a
 // property of the part -- and belongs in the observing layer, never authored back here
 // (DESIGN 3, external upstream decomposition).
@@ -228,7 +228,7 @@ type HostMemoryPopulation {
 // read and write, IDD5B burst refresh. Module power is those currents times the supply voltage,
 // weighted by how long the traffic keeps each state (the method in Micron TN-40-07). The profile is
 // PER DIE; the module's die count and active-rank die count come from the catalog row, never
-// restated here. refresh_duty_permille is tRFC over tREFI for the die, a datasheet figure.
+// restated here. refresh_duty is tRFC over tREFI for the die, a datasheet figure.
 // buffer_overhead is the register and data-buffer draw of an RDIMM/LRDIMM that the die currents do
 // not include, or zero for a part with none.
 type DramCurrentProfile {
@@ -238,7 +238,7 @@ type DramCurrentProfile {
   idd4r: Milliampere
   idd4w: Milliampere
   idd5b: Milliampere
-  refresh_duty_permille: Nat
+  refresh_duty: Permille
   buffer_overhead: Milliwatt
 }
 

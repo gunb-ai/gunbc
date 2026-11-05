@@ -4,7 +4,7 @@ import std.types { String, List }
 import std.algebra { FreeSemigroup }
 import std.optional { Absent, Present }
 import std.measure { Gram, gram, ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
-import extdeps.external_authority { ExternalAuthority, FactCitation, CitedToAuthority }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedToAuthority, TranscribedUncited }
 import std.decl_ref { decl_field_ref, decl_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.publication { HeldSpecificationSupersessionStanding, NewerRevisionPubliclyServed, HeldRevisionIsCurrentPublicCopy }
@@ -21,6 +21,7 @@ import extdeps.ampere.altra_ssif_patch { altra_ssif_patch_authority }
 // inside an import block, so it is not a position the parser is known to accept.
 import extdeps.cpu.types {
   CpuUsagePower,
+  cpu_tdp_unread_standing,
   ProcessorCoolingMount,
   SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SoCFamily,
   soc_family_eq,
@@ -279,6 +280,7 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
   tdp_watts: watt(250),
+  tdp_standing: CitedToAuthority { authority: ampere_altra_max_rev_a1_datasheet_authority },
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,
@@ -293,9 +295,10 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
 // basis is the datasheet's usage-power condition and is carried by name so nobody reads 183 W as a
 // bound. WHAT IS NOT YET READ: the exact workload text of the usage-power footnote.
 data altra_max_m12830_usage_power: CpuUsagePower = CpuUsagePower {
+  subject: altra_max_m12830_catalog,
   watts: watt(183),
   workload_basis: "Ampere-listed usage power for the M128-30 at 3.0 GHz all-core; footnote workload text to be transcribed from the Rev A1 datasheet" as NonEmptyStr,
-  standing: CitedToAuthority { authority: ampere_altra_max_rev_a1_datasheet_authority },
+  standing: TranscribedUncited { read_obligation: "the Rev A1 datasheet usage-power footnote: the workload text and clock that 183 W was measured under; the watt figure and its basis are one fact and stay uncited until that text is read" as NonEmptyStr },
 }
 
 data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
@@ -308,6 +311,7 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
   tdp_watts: watt(124),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,
@@ -362,6 +366,7 @@ data altra_q8030_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
   tdp_watts: watt(161),
+  tdp_standing: cpu_tdp_unread_standing,
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,

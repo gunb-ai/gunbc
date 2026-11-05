@@ -6,6 +6,7 @@ import std.measure { Watt, measure_le }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.host_identity { HostIdentity }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
+import extdeps.external_authority { CitedFigureStanding }
 import extdeps.cpu.types { CpuModelCatalogRow, ProcessorCoolingMount, cooling_mount_eq }
 
 // A CPU cooler is the heat-pickup realization of an installed processor. WHICH cooler is
@@ -14,6 +15,9 @@ import extdeps.cpu.types { CpuModelCatalogRow, ProcessorCoolingMount, cooling_mo
 // this module owns only the second. The cooler row, the processor row, and the baseboard model
 // are consumed from their existing extdeps authorities — no cooling, CPU, or board fact is
 // restated here.
+//
+// The compatible verdict carries the STANDING of the processor design-power figure it compared (DESIGN
+// 4d): a pass on a TranscribedUncited TDP is a pass on a bet, and the reading says so.
 //
 // The verdict this module reaches is deliberately narrow, and its name says so:
 // CoolingCatalogCompatible is a CATALOG preflight, never a thermal outcome. The catalog can
@@ -51,6 +55,7 @@ type CoolingCatalogVerdict
   = CoolingCatalogCompatible {
       host: HostIdentity
       cooler_asset: PhysicalAssetIdentity
+      design_power_standing: CitedFigureStanding
     }
   | CoolingCatalogRefused {
       host: HostIdentity
@@ -156,6 +161,7 @@ fn cooling_catalog_verdict(
     CoolingCatalogCompatible {
       host: realization.host,
       cooler_asset: realization.cooler_asset,
+      design_power_standing: realization.processor.tdp_standing,
     }
   }
 }
@@ -202,7 +208,7 @@ fn cooling_catalog_verdict_admits_qualification(
   verdict: CoolingCatalogVerdict,
 ) -> Bool {
   match verdict {
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } => true
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } => true
     CoolingCatalogRefused { host: _, cause: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
@@ -219,7 +225,7 @@ fn cooling_catalog_verdict_admits_qualification(
 
 fn cooling_catalog_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
   match verdict {
-    CoolingCatalogCompatible { host: _, cooler_asset: _ } =>
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } =>
       "installed cooling is catalog-compatible"
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } =>
       "more than one installed cooling realization is modeled for this host: a host carries at most one heat-pickup realization, so this is an inventory error and must refuse rather than resolve by list order"
