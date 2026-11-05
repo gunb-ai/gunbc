@@ -601,7 +601,7 @@ type HarnessTurnOutcome
   | TurnStepBudgetExhausted { steps_taken: Int }
   | TurnTransportRefused { detail: String }
   | TurnResponseUnreadable { cause: String }
-  | TurnBackendRefusedUnexplained { cause: String, resumable: Bool, steps_taken: Int }
+  | TurnBackendRefusedUnexplained { cause: String, steps_taken: Int }
   | TurnResumeRefused { cause: String }
   | TurnRequestUnwritable { path: String, detail: String }
   | TurnContextWindowExhausted { input_tokens: Int, budget: Int, steps_taken: Int }
@@ -623,7 +623,7 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnStepBudgetExhausted { steps_taken: _ } => "step-budget-exhausted"
     TurnTransportRefused { detail: _ } => "transport-refused"
     TurnResponseUnreadable { cause: _ } => "response-unreadable"
-    TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => "backend-refused-unexplained"
+    TurnBackendRefusedUnexplained { cause: _, steps_taken: _ } => "backend-refused-unexplained"
     TurnResumeRefused { cause: _ } => "resume-refused"
     TurnRequestUnwritable { path: _, detail: _ } => "request-unwritable"
     TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } =>
@@ -708,7 +708,7 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
-    TurnBackendRefusedUnexplained { cause: c, resumable: _, steps_taken: _ } => c
+    TurnBackendRefusedUnexplained { cause: c, steps_taken: _ } => c
     TurnResumeRefused { cause: c } => c
     TurnRequestUnwritable { path: p, detail: d } =>
       join(["could not write the request body to ", p, ": ", d], "")
@@ -1692,7 +1692,7 @@ fn harness_turn_after_post(
                 match harness_write_events(config: config, events: failed) {
                   HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
                   HarnessEventsWritten =>
-                    TurnBackendRefusedUnexplained { cause: cause, resumable: session_validation_resumable(v: validation), steps_taken: steps_taken }
+                    TurnBackendRefusedUnexplained { cause: cause, steps_taken: steps_taken }
                 }
               }
               Absent => {
@@ -2245,7 +2245,7 @@ fn harness_outcome_artifact_path(outcome: HarnessTurnOutcome) -> String? {
     TurnStepBudgetExhausted { steps_taken: _ } => none
     TurnTransportRefused { detail: _ } => none
     TurnResponseUnreadable { cause: _ } => none
-    TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => none
+    TurnBackendRefusedUnexplained { cause: _, steps_taken: _ } => none
     TurnResumeRefused { cause: _ } => none
     TurnRequestUnwritable { path: _, detail: _ } => none
     TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } => none
