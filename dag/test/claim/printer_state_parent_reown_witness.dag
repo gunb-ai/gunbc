@@ -20,8 +20,9 @@ import gunbc.owned_directory {
   owned_directory_stat_format, owned_directory_parent,
 }
 import gunbc.fleet.printer_state_parent_reown {
-  printer_state_parent_reown, printer_state_parent_reown_prior_text,
+  printer_state_parent_reown, printer_state_parent_reown_prior, printer_state_parent_reown_prior_text,
   printer_state_parent_reown_target, printer_state_directory_identity_text,
+  printer_state_parent_identity_leg_plan, ParentAlreadyAtTheDeclaredIdentity, ParentReownLegRuns,
   PrinterStartsParentReowned, PrinterStartsParentReownPreconditionFailed, PrinterStartsParentReownRefused,
 }
 
@@ -280,4 +281,29 @@ test fn witness_the_host_grants_exactly_the_words_the_leg_runs() -> Bool {
         && string_contains(s: sudoers, pattern: join(["-c", owned_directory_stat_format, "--", owned_directory_path(t: target) as String], " "))
         && string_contains(s: sudoers, pattern: join(["-1A", "--", owned_directory_parent(path: owned_directory_path(t: target)) as String], " "))
   }
+}
+
+// WHICH SIDE OF THE LEG THE PASS LANDS ON, for the identities the real host can carry. The branch is a
+// decision the module MAKES (printer_state_parent_identity_leg_plan), not a test buried in wiring, so the
+// route is claimed rather than trusted: a parent that already reads the identity #15908 declares needs no
+// transition -- which is exactly what lets the compare-and-set refuse its own output without stopping every
+// later printer pass -- while the prior it was licensed to act from, another owner, an unreadable state and
+// an absent path all enter the leg, where each is either committed as the one licensed transition or refused
+// by name. Delete the leg from the pass and the prior row of this claim is the one that goes false.
+fn leg_runs(observation: EnsureObservation<OwnedDirectoryReading>) -> Bool {
+  match printer_state_parent_identity_leg_plan(target: printer_state_parent_reown_target(tree: host_state_tree()), observation: observation) {
+    ParentAlreadyAtTheDeclaredIdentity => false
+    ParentReownLegRuns => true
+  }
+}
+
+test fn witness_the_pass_runs_the_leg_for_every_state_but_the_declared_identity() -> Bool {
+  let already_declared = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let the_pinned_prior = EnsureObserved { evidence: printer_state_parent_reown_prior() }
+  let a_symlink_there = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: false, owner: PosixOwnerNames { user: "gunbc-fleet" as NonEmptyStr, group: "gunbc-fleet" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) } }
+  !leg_runs(already_declared)
+    && leg_runs(the_pinned_prior)
+    && leg_runs(a_symlink_there)
+    && leg_runs(EnsureAbsent { reason: "the witness listing did not name the path" })
+    && leg_runs(EnsureInaccessible { reason: "the witness listing of its parent failed" })
 }

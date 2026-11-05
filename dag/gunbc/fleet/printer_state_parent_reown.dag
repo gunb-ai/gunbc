@@ -205,32 +205,36 @@ fn printer_state_parent_reown_refusal_text(path: String, cause: PrinterStartsPar
   ], "")
 }
 
-// THE REAL ROUTE. The reads are the same privileged reads the provider makes for this path (its listing of
-// its parent and its own identity), and the apply is the target's declared install elevated through the one
-// projection that names it (gunbc.executor_privileged_operation executor_privileged_operation_elevated_command),
-// so the words this leg runs are exactly the words the host's sudoers already grants for this target -- no
-// grant of its own, and none needed.
-fn printer_state_parent_reown_on_host(tree: HostStateTree, transport: HostEffectTransport) -> PrinterStartsParentReown {
-  printer_state_parent_reown(
-    target: printer_state_parent_reown_target(tree: tree),
-    prior: printer_state_parent_reown_prior(),
-    observe: path => deploy_apply_directory_observe(path: path, transport: transport),
-    apply: plan => run_argv_transport_succeeded(outcome: run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory { path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode }), transport: transport)),
-  )
+// WHEN THE LEG RUNS AT ALL, as a decision the model makes rather than a branch buried in wiring. THE LEG IS A
+// COMPARE-AND-SET, NOT A CONVERGENCE LOOP, so the pass enters it only when the parent does NOT already read
+// the declared identity: once the transition has committed, the provider converges the parent like any other
+// target of the layout and the leg never runs again on that host. That is what lets the leg itself refuse
+// everything that is not the pinned prior -- including the identity it just produced -- without turning every
+// later printer pass into a false alarm. A parent that is absent, unreadable, or held by someone else all
+// enter the leg, where each is refused by name or committed as the one licensed transition.
+type PrinterStateParentIdentityLeg
+  = ParentAlreadyAtTheDeclaredIdentity
+  | ParentReownLegRuns
+
+fn printer_state_parent_identity_leg_plan(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> PrinterStateParentIdentityLeg {
+  if owned_directory_satisfied(t: target, o: observation) { ParentAlreadyAtTheDeclaredIdentity } else { ParentReownLegRuns }
 }
 
 // WHAT THE PRINTER PASS DOES ABOUT ITS PARENT, in the shape the pass already carries: none means the pass may
-// go on, a Present reason stops it. THE LEG IS A COMPARE-AND-SET, NOT A CONVERGENCE LOOP, so it is entered
-// only when the parent is NOT already the declared identity: once the transition has committed, the provider
-// converges the parent like any other of the layout's targets and this leg does not run again on that host.
-// That is what lets the leg itself refuse everything that is not the pinned prior -- including the identity
-// it produced -- without turning every later pass into a false alarm.
+// go on, a Present reason stops it. The reads are the same privileged reads the provider makes for this path,
+// and the apply is the target's declared install elevated through the one projection that names it, so the
+// words this leg runs are exactly the words the host's sudoers already grants for this target -- no grant of
+// its own, and none needed.
 fn printer_state_parent_identity_leg_on_host(tree: HostStateTree, transport: HostEffectTransport) -> String? {
   let target = printer_state_parent_reown_target(tree: tree)
-  if owned_directory_satisfied(t: target, o: deploy_apply_directory_observe(path: owned_directory_path(t: target), transport: transport)) {
-    none
-  } else {
-    match printer_state_parent_reown_on_host(tree: tree, transport: transport) {
+  match printer_state_parent_identity_leg_plan(target: target, observation: deploy_apply_directory_observe(path: owned_directory_path(t: target), transport: transport)) {
+    ParentAlreadyAtTheDeclaredIdentity => none
+    ParentReownLegRuns => match printer_state_parent_reown(
+      target: target,
+      prior: printer_state_parent_reown_prior(),
+      observe: path => deploy_apply_directory_observe(path: path, transport: transport),
+      apply: plan => run_argv_transport_succeeded(outcome: run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory { path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode }), transport: transport)),
+    ) {
       PrinterStartsParentReowned { path: _, before: _, after: _ } => none
       PrinterStartsParentReownPreconditionFailed { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
       PrinterStartsParentReownRefused { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }
