@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.a_running_unit_masked_loses_its_drop_ins_at_the_next_reload
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+data a_running_unit_masked_loses_its_drop_ins_at_the_next_reload: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_running_unit_masked_loses_its_drop_ins_at_the_next_reload" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
+  receipts: [
+    "INVALID STATE: a systemd unit that is still RUNNING is masked. `systemctl mask` reloads the manager, and a unit whose file is masked (-> /dev/null) loads none of its drop-ins, so at that reload, and at any later one, the live unit loses every property its drop-ins carried: the runner slot's memory caps (template drop-ins on srv1, per-slot system.control set-property drop-ins on srv4) and its Slice=. Its processes leave system-actions\\x2drunner.slice for a cgroup with no memory.max on its path.",
+    "HARM: a required v2-bootstrap job on such a slot runs with no memory envelope; the envelope gate refuses it (MemoryEnvelopeAbsent at start, MemoryReceiptUnreadable when its unit's memory.events vanished mid-job), so the required check goes red on main and on every PR whose job lands there. Fail-closed, no wrong answer, but merges stall repo-wide.",
+    "RECEIPT 2026-11-04, srv4, fleet-converge run 41861708547 (runner_host_file_converge at main 08d2cc56, gunbc#15819's slot-tree fold): the fold drained every out-of-date slot through drain_and_mask_runner_slot_over, which masks a busy unit and leaves it running (DrainWaitForJob). Twelve busy slots were masked at 16:22Z; witnesses runs 41861662327 and 41865951805 on main and 41866118627 on gunbc#15618 refused on srv4-01/02/08/12/15. Reported by quick-newt-573, loyal-deer-449 and silent-bee-845; loyal-deer-449 restored the units by unmask and restart.",
+    "THE FALSE PREMISE IT RESTED ON, stated in gunbc.runner.runner_slot_actuation before this row: 'The mask comes first and is safe at any time: it only stops the unit being started again.' Masking is safe only on an inactive unit.",
+    "REPAIR (slot-tree fold): gunbc.runner.runner_slot_actuation SlotDrainAdmission NeverMaskARunningUnit, used by gunbc.runner.runner_host_file_converge converge_runner_slot_tree: an idle unit is stopped BEFORE it is masked, and a busy or stopping unit gets no leg at all and stays pending, unmasked, for a later run. Witness: test.claim.runner.runner_slot_actuation_witness never_mask_a_running_unit_leaves_a_busy_slot_untouched_and_stops_an_idle_one_before_masking.",
+    "OPEN, SAME CLASS, NOT REPAIRED HERE: the cap bracket (gunbc.runner.runner_host_cap_bracket) closes admission with MaskWhileRunning and waits out busy slots while they are masked, which is this invalid state for the length of the wait; runner_slot_actuation's default slot_drain_plan and the withdraw route answer the same. Its admission design depends on mask-while-running, so the repair belongs with the bracket's owner; the trigger is a drain primitive that closes admission on a running unit without unloading its drop-ins (for example a runtime drop-in carrying a start condition the next start fails, which leaves the running unit's other drop-ins loaded).",
+  ],
+  evidence: [],
+}
