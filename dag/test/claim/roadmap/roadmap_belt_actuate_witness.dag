@@ -232,7 +232,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchCensusRow,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision, launch_gate_landed,
-  launch_identity_exemplar, launch_refusal_exemplars,
+  launch_identity_exemplar, launch_refusal_exemplars, launch_refusal_reason,
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapAccepted, GapDependencies, GapContract, readiness_gap_label }
@@ -267,7 +267,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_addressing }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, DispatchWorkerFirst, DispatchWorkerContinuedFrom, dispatch_worker_run_start_ref, DispatchSpawnReady, DispatchSpawnRefused }
-import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance, srv2_preview_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
 import gunbc.compute.compute_seat_ensure { SeatDischargeSkipped }
