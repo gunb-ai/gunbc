@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # lively-tern-72 slot-watchdog fixture. Usage: lt72_watchdog_fixture.sh <mode> <gunbc-bin> <checkout> [envelope=2G] [seconds=420] [memory.high=envelope; "infinity" for the drift-peak shape]
+# modes: livelockedge = livelock but fills until current is within 256 KiB of max (64 KiB steps)
 # modes: livelock  (run-4 shape: anon to the cap, then CPU-bound text refaulting)      EXPECT: verb kills job tree, exit!=0 receipt; Worker gone, Listener alive, memory.current ~ listener baseline
 #        cpusteady (anon 60% of cap, 100% user CPU)                                   EXPECT: LIVES to the deadline
 #        burst     (alloc 95% of cap 8 s, free, then CPU work)                         EXPECT: LIVES
@@ -18,20 +19,29 @@ sync; for F in "$OUT"/bin/py-job "$OUT"/lib/*; do [ -f "$F" ] && python3 -c 'imp
 ls -l "$OUT/bin" "$OUT/lib" >"$OUT/copies.txt"
 CAPB=$(numfmt --from=iec "$ENV"); UNIT=lt72-slot-$MODE-$$
 case $MODE in
-livelock) PY='
-import os,json,re,ast,mmap
-cap=int(os.environ["CAP"]); cg="/sys/fs/cgroup"+open("/proc/self/cgroup").read().split("::")[1].strip()
-def ev():
-    d=dict(l.split() for l in open(cg+"/memory.events")); return int(d["high"])+int(d["max"])
-ch=[]
-while ev()==0: ch.append(bytearray(b"\x01")*(256<<10))
+livelock|livelockedge) PY='
+import os,json,re,ast
+cap=int(os.environ["CAP"]); EDGE=os.environ["EDGE"]=="1"
+cg="/sys/fs/cgroup"+open("/proc/self/cgroup").read().split("::")[1].strip()
+cur=lambda: int(open(cg+"/memory.current").read())
+chunks=[]
+def mx():
+    for l in open(cg+"/memory.events"):
+        k,v=l.split()
+        if k=="max": return int(v)
+if EDGE:
+    sz=64<<10
+    while mx()==0 and cur()<cap-(256<<10): chunks.append(bytearray(b"\x01")*sz)
+else:
+    sz=256<<10
+    while mx()==0 and len(chunks) < (cap>>18)+256: chunks.append(bytearray(b"\x01")*sz)
+print("held",len(chunks),cur(),flush=True)
 src="def f(a,b):\n    return [a*i+b for i in range(100)]\n"*40
-i=0
+x=0; i=0
 while True:
-    m=mmap.mmap(-1,2<<20)
-    for o in range(0,2<<20,4096): m[o]=1
-    m.close()
-    json.dumps({"k":list(range(200))}); re.compile("(a|b)+c%d"%(i%97)); ast.parse(src); i+=1';;
+    buf=bytearray(2<<20); buf[::4096]=b"\x01"*len(buf[::4096]); del buf
+    json.dumps({"k":list(range(200))}); re.compile("(a|b)+c%d"%(i%97)); ast.parse(src); i+=1
+    x=(x*1103515245+12345)&0xffffffff';;
 cpusteady) PY='
 import os
 h=bytearray(b"\x01")*int(int(os.environ["CAP"])*0.6); x=0
@@ -53,7 +63,7 @@ while True:
 *) echo bad mode; exit 2;; esac
 # slot: Listener + Worker tree (Worker spawns a child shell that spawns the workload, so the tree is >1 deep)
 systemd-run --user --unit="$UNIT" --collect -p MemoryMax="$ENV" -p MemoryHigh="$HIGH" -p MemorySwapMax=0 -p KillMode=control-group \
-  -E CAP="$CAPB" -E OUT="$OUT" -E PY="$PY" -E LD_LIBRARY_PATH="$OUT/lib" bash -c "$OUT/bin/Runner.Listener 100000 & echo \$! >$OUT/listener.pid; exec $OUT/bin/Runner.Worker -c 'import os,subprocess; subprocess.run([\"bash\",\"-c\",\"$OUT/bin/py-job -c \\\"\$PY\\\"\"])'" >"$OUT/launch.txt" 2>&1
+  -E EDGE="$([ "$MODE" = livelockedge ] && echo 1 || echo 0)" -E CAP="$CAPB" -E OUT="$OUT" -E PY="$PY" -E LD_LIBRARY_PATH="$OUT/lib" bash -c "$OUT/bin/Runner.Listener 100000 & echo \$! >$OUT/listener.pid; exec $OUT/bin/Runner.Worker -c 'import os,subprocess; subprocess.run([\"bash\",\"-c\",\"$OUT/bin/py-job -c \\\"\$PY\\\"\"])'" >"$OUT/launch.txt" 2>&1
 sleep 2
 CG=/sys/fs/cgroup$(systemctl --user show "$UNIT" -p ControlGroup --value); echo "$CG" >"$OUT/cgroup.txt"
 LPID=$(cat "$OUT/listener.pid"); echo "listener pid $LPID" >>"$OUT/cgroup.txt"
@@ -66,7 +76,7 @@ sleep 3; BASE=$(cat "$CG/memory.current"); echo "baseline_with_worker_at_3s $BAS
     sleep 5
   done ) & SAMP=$!
 # PRECONDITION (livelock only): the stall must be established before the verb starts, else a non-livelock reads as "watchdog did nothing"
-if [ "$MODE" = livelock ]; then
+if [ "$MODE" = livelock ] || [ "$MODE" = livelockedge ]; then
   evsum() { awk '$1=="high"||$1=="max"{s+=$2} END{print s}' "$CG/memory.events"; }
   E0=$(evsum); U0=$(awk '/user_usec/{print $2}' "$CG/cpu.stat"); sleep 20
   E1=$(evsum); U1=$(awk '/user_usec/{print $2}' "$CG/cpu.stat")
