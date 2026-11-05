@@ -1241,7 +1241,10 @@ fn serve_close_pr_readback(repo: String, pr_number: Int) -> OperatorPrReadback {
       match json_object_unique_member(v: v, key: "state") {
         JsonMemberFound { value: st } => PrRoster { rows: [ OperatorPrRow {
           number: pr_number,
-          state: serve_close_member_nonempty(v: v, key: "state"),
+          state: match serve_close_member_nonempty(v: v, key: "state") {
+            Absent => none
+            Present { value: w } => Present { value: github_pull_request_view_state(word: w) }
+          },
           merged_at: serve_close_member_nonempty(v: v, key: "mergedAt"),
           head_sha: serve_close_member_nonempty(v: v, key: "headRefOid"),
         } ] }

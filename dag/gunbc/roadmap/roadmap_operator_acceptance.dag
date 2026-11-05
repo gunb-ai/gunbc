@@ -41,6 +41,7 @@ import std.optional { Present, Absent, Optional }
 import std.content_hash { serialize_content_hash, Fnv1a64 }
 import std.decimal { decimal_digit_char }
 import extdeps.units.iso8601_calendar { iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_two_digits }
+import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown, github_pull_request_view_state_text }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log {
   PartitionReadOk, PartitionReadRefused, EventAppended, EventAppendStale, EventAppendRefused,
@@ -267,7 +268,9 @@ type OperatorPrRow {
   // member, JSON null, empty text — into Absent at the reader, so downstream there is no empty
   // string standing beside a present value, and the durable NonEmptyStr facts are only ever
   // built by matching Present. Construction, not validation, makes the bad case unwritable.
-  state: NonEmptyStr?
+  // The decoded upstream word (extdeps.github.pulls.PullRequestViewState) — the state names
+  // GitHub actually returns are an upstream fact and live there, not in a hand-written list here.
+  state: PullRequestViewState?
   merged_at: NonEmptyStr?
   head_sha: NonEmptyStr?
 }
@@ -444,30 +447,32 @@ fn roadmap_operator_close_pr_gate(inputs: OperatorCloseInputs, readback: Operato
   }
 }
 
-// Merged is what GitHub says, read back: a state word AND a merged_at AND a head sha, each by
-// matching Present — never a non-empty string that stands in for one. Two carrier conventions are
-// admitted because both are real at the boundary: the gh CLI reports "MERGED" directly, the REST
-// form reports "closed" and proves merge with a mergedAt. Closed without a merged_at is a
-// closed-unmerged PR — Absent there refuses it. An open PR is refused by its word.
+// Merged is what GitHub says, read back — the decoded upstream state (extdeps.github.pulls)
+// AND a merged_at AND a head sha, each by matching Present. The two carrier conventions are the
+// upstream's own (the gh CLI view says MERGED; the REST pull object says closed and proves merge
+// with mergedAt), so both constructors admit; an unknown word, an open PR, or a closed PR without
+// a merged_at all refuse. No hand-written state-word list lives on this side of the boundary.
 fn roadmap_operator_pr_is_merged(row: OperatorPrRow) -> Bool {
   match row.state {
     Absent => false
-    Present { value: st } =>
+    Present { value: PullRequestViewMerged } =>
       match row.merged_at {
         Absent => false
-        Present { value: _ } =>
-          match row.head_sha {
-            Absent => false
-            Present { value: _ } => st == "MERGED" || st == "merged" || st == "CLOSED" || st == "closed"
-          }
+        Present { value: _ } => match row.head_sha { Absent => false Present { value: _ } => true }
       }
+    Present { value: PullRequestViewClosed } =>
+      match row.merged_at {
+        Absent => false
+        Present { value: _ } => match row.head_sha { Absent => false Present { value: _ } => true }
+      }
+    Present { value: _ } => false
   }
 }
 
-// The state word as the refusal names it; an absent word reads "none" to the operator.
+// The state as the refusal names it, rendered by the upstream model; an absent word reads "none".
 fn roadmap_operator_pr_state_text(row: OperatorPrRow) -> NonEmptyStr {
   match row.state {
-    Present { value: st } => st
+    Present { value: st } => github_pull_request_view_state_text(state: st)
     Absent => "none" as NonEmptyStr
   }
 }

@@ -32,6 +32,7 @@ import std.integer { nat_to_int }
 import std.optional { Present, Absent, Optional }
 import std.algebra { empty_map, map_insert, string_contains }
 import extdeps.shell
+import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown }
 import extdeps.ietf.http_semantics { HttpMethod, POST }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, text_plain_utf8 }
 import extdeps.uri_path { PathParamBinding }
@@ -135,7 +136,7 @@ fn wet(fn_with: fn(FabricStorageBinding) -> Bool) -> Bool {
 fn merged_readback(number: Int) -> OperatorPrReadback {
   PrRoster { rows: [ OperatorPrRow {
     number: number,
-    state: ("MERGED" as NonEmptyStr),
+    state: Present { value: PullRequestViewMerged },
     merged_at: ("2026-11-03T04:15:00Z" as NonEmptyStr),
     head_sha: ("0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
   } ] }
@@ -351,7 +352,7 @@ test fn an_unreadable_github_refuses_the_close_fail_closed() -> Bool {
 test fn an_unmerged_pr_and_an_absent_pr_refuse_carrying_their_facts() -> Bool {
   wet(fn_with: fn(store) {
     let unmerged = PrRoster { rows: [ OperatorPrRow {
-      number: 14189, state: ("CLOSED" as NonEmptyStr), merged_at: none, head_sha: none,
+      number: 14189, state: Present { value: PullRequestViewClosed }, merged_at: none, head_sha: none,
     } ] }
     let a = match roadmap_operator_close(
       path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
