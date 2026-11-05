@@ -1532,6 +1532,25 @@ fn assignment_confirmation_profile(assignee: PrincipalRef, profiles: List<Princi
   }
 }
 
+// THE LAUNCH-OUTCOME RENDERER for a fabric work request, exercised at the response seam by the serve
+// witnesses. It renders a BeltSpawnOutcome (spawned / pending / admitted-refusal) into the body that
+// names the session or locates the wait in the launch's typed vocabulary; the assignment RECORD is the
+// caller's, and an admission refusal here never claims to undo it ("the assignment stands", never
+// "assignment failed"). ASSIGN itself no longer launches (it is ownership-only); this renderer backs
+// the dispatch/launch response path that the fabric request reaches.
+fn serve_fabric_assignment_response(node_id: String, assignee_display: String, event_id: String, outcome: BeltSpawnOutcome) -> ServeHttpResponse {
+  match outcome {
+    Spawned { node_id: _, session_name, provider: _, launch: _ } =>
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
+    SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry } =>
+      serve_text_response(status: 202, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: launch pending at spool entry ", entry, "\n"], ""))
+    SpawnNotAdmitted { node_id: _, refusal } =>
+      serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
+  }
+}
+
 // Comment commands use the same strict URL-encoded codec as native and enhanced assignment.
 // Every form has a stable operation identity, explicit expected revision, and session CSRF.
 // A retry returns the original event and comment ordinal, even after intervening events;
