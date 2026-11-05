@@ -759,7 +759,7 @@ test fn a_twin_apply_writes_neither_productions_tree_sync_env_nor_its_serve_unit
     && !has_word(words: env, w: prod.names.tree_sync_env_path as String)
     && unit != []
     && !has_word(words: unit, w: deployment_systemd_unit_path(names: prod.names) as String)
-    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: join(["--arg handler=", lab_spec().service.serve_function as String], ""))
+    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: join([" --arg handler=", lab_spec().service.serve_function as String, " "], ""))
 }
 
 // PRODUCTION WRITES ITS OWN TREE-SYNC ENVIRONMENT AND RUNS ITS OWN HANDLER (was
@@ -768,7 +768,7 @@ test fn the_production_apply_writes_its_own_tree_sync_env_and_names_its_own_hand
   let spec = deployment_spec_srv1()
   let legs = full_legs(spec: spec)
   has_word(words: words_at(legs: legs, step: "tree-sync-env"), w: spec.names.tree_sync_env_path as String)
-    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: join(["--arg handler=", spec.service.serve_function as String], ""))
+    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: join([" --arg handler=", spec.service.serve_function as String, " "], ""))
 }
 
 // THE TREE-SYNC ENVIRONMENT NAMES THE APPLY'S SOURCE ROOT (the residual of
