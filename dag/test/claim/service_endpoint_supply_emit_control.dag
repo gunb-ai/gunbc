@@ -106,10 +106,18 @@ test fn the_imported_datum_endpoint_emits_the_struct_field_as_the_base_holds() -
 // reading, and the chain used to answer it with a fabricated host. The item now refuses through the
 // file's own refusal vehicle, and neither the placeholder nor the provider's text may appear.
 test fn the_unimported_endpoint_name_refuses_the_item_instead_of_fabricating_a_host_holds() -> Bool {
+  // The refusal must arrive at FIELD-VALUE POSITION, replacing the whole ctor line -- the shape
+  // `emit_auth_source_ctor` gives an unrepresentable credential. An earlier cut of this arm pasted
+  // the refusal text through the `base_url: "{0}"` placeholder instead: the emitted line began
+  // `base_url: "compile_error!`, the template's quote closed inside the refusal, and rustc died on
+  // a lexer error that named nothing about the cause. A cell that only greps for the refusal text
+  // is green on that malformed output, so this cell PINS BOTH SIDES: the include demands the
+  // well-formed `base_url: compile_error!(...)` field value, and the forbids reject the template
+  // wrap (and the two fabricated hosts it used to carry).
   compile_dag_rust_emit_check(
     unimported_name_endpoint_source,
     "src/test_claim_service_endpoint_supply_unimported.rs",
-    ["compile_error!(\"EMIT REFUSED: service config"],
-    ["http://localhost", "never.imported.example"]
+    ["base_url: compile_error!(\"EMIT REFUSED: service config"],
+    ["http://localhost", "never.imported.example", "\"compile_error!("]
   )
 }

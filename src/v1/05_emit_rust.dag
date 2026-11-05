@@ -18181,7 +18181,8 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
   // config value with its own match and accept only a string literal, silently falling through
   // for anything else; `service_endpoint_supply` now answers the question the lens and the
   // interpreter also answer, so the three cannot disagree about one declaration.
-  let base_url_default = match service_endpoint_answer(service: service_item, operations: op_children, data_values: data_values, imported_data_values: imported_data_values, source_indices: source_indices) {
+  let endpoint_answer = service_endpoint_answer(service: service_item, operations: op_children, data_values: data_values, imported_data_values: imported_data_values, source_indices: source_indices)
+  let base_url_default = match endpoint_answer {
     // A literal endpoint is the constructor default, exactly as it has always been.
     EndpointLiteral { value: value } => value
     // A parameter-bound endpoint means no method reads this field at all: every rest operation
@@ -18225,9 +18226,7 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
     // unrepresentable credential. The interpreter may still evaluate such an expression at run
     // time; the emitted constructor declines to guess it, and that asymmetry is an emission
     // refusal to route, not a default to compile.
-    _ => if fs.has_rest {
-      emit_rust_item_refusal(item_text: name, reason: "service config `endpoint:` names a host this authority cannot resolve to exactly one reading (a computed expression, or a name only some rest operations bind as an input with no string-literal datum in scope); refusing to compile a host the author never wrote")
-    } else { "" }
+    _ => ""
   }
   let ctors = service_field_ctors(fs: fs, t: language_spec(target: Rust).service_fields)
   let ctors = ctors |> map(c => apply_type_template1(template: c, arg0: base_url_default))
@@ -18238,6 +18237,26 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
     )
     Absent => ctors
   }
+  // THE REFUSE PASS, sibling of the auth pass above. An endpoint the authority cannot resolve to
+  // one reading does not fill the `base_url: "{0}"` template -- refusal TEXT pasted through that
+  // placeholder closes the template's quote and lands as bare words, malformed Rust whose failure
+  // says nothing about its cause (DESIGN 5: a typed, located diagnostic or nothing). The whole
+  // ctor LINE is replaced instead, with the refusal at field-value position: `compile_error!` is a
+  // diverging expression, the struct literal stays well-formed, and rustc reports the typed
+  // EMIT REFUSED naming the service. This is exactly the shape emit_auth_source_ctor gives an
+  // unrepresentable credential.
+  let refuses_endpoint = match endpoint_answer {
+    EndpointModuleExpression => true
+    EndpointParameterNameUnbound => true
+    _ => false
+  }
+  let ctors = if refuses_endpoint {
+    ctors |> map(c =>
+      if contains(c, "base_url") {
+        concat("        base_url: ", emit_rust_item_refusal(item_text: name, reason: "service config `endpoint:` names a host this authority cannot resolve to exactly one reading (a computed expression, or a name only some rest operations bind as an input with no string-literal datum in scope); refusing to compile a host the author never wrote"), ",\n")
+      } else { c }
+    )
+  } else { ctors }
   let inits = ctors |> join(separator: "")
   concat(
     "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
