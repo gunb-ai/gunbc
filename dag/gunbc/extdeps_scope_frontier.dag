@@ -213,6 +213,7 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/memory/renesas_tse2004gb2b0.dag",
   "dag/extdeps/firmware/ami_aptio_status_codes.dag",
   "dag/extdeps/firmware/supermicro_ami_aptio_v_post_codes_guide.dag",
   "dag/extdeps/qwen/qwen3_8_flash_next.dag",
@@ -675,6 +676,7 @@ data scope_carrier_paths: List<String> = [
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
+  "dag/extdeps/cited_field.dag",
   "dag/extdeps/external_authority.dag",
   "dag/extdeps/uri.dag",
   "dag/extdeps/publication.dag",

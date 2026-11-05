@@ -2,7 +2,7 @@ module product.host_health
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Celsius, celsius, celsius_count }
-import extdeps.cited_temperature { CelsiusLimit, LimitStated, LimitUnstated }
+import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
 import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachWindow }
 import product.fan_tach_health {
@@ -167,12 +167,12 @@ type TemperatureWindow {
   worst_bmc_standing: BmcThresholdStanding
 }
 
-// A LIMIT CARRIES WHO SAYS SO (the carrier is extdeps.cited_temperature CelsiusLimit, the one authority). There is deliberately no fleet-wide default: a limit is a fact about
+// A LIMIT CARRIES WHO SAYS SO (the carrier is extdeps.cited_field RowField<Celsius>, the one evidence authority). There is deliberately no fleet-wide default: a limit is a fact about
 // a component grade and a sensor's meaning, and until that fact is grounded the honest answer is
 // that the limit is unestablished -- which can never produce a green.
 type TemperatureExpectation {
   sensor: NonEmptyStr
-  limit: CelsiusLimit
+  limit: RowField<Celsius>
 }
 
 // WHICH SENSORS A HOST SHOULD EXPOSE IS ITSELF A FACT THAT CAN BE MISSING. A host whose sensor
@@ -502,17 +502,17 @@ fn judge_temperature(expectation: TemperatureExpectation, windows: List<Temperat
         Present { value: first } => {
           let maximum = fold(readings, init: first, f: (acc, r) => if r > acc { r } else { acc })
           match expectation.limit {
-            LimitUnstated { read_obligation: _ } => SignalVerdict {
+            NeedsReading { read_obligation: _ } => SignalVerdict {
               deviations: bmc,
               unknowns: [ThermalLimitUnestablished { sensor: w.sensor }],
               refusal: none,
               judged: 1,
             }
-            LimitStated { figure } => SignalVerdict {
+            FromCitedFigure { value: limit_value, standing: _ } => SignalVerdict {
               deviations: flat_map([
                 bmc,
-                if maximum > celsius_count(figure.value) {
-                  [TemperatureLimitExceeded { sensor: w.sensor, maximum: celsius(maximum), critical: figure.value }]
+                if maximum > celsius_count(limit_value) {
+                  [TemperatureLimitExceeded { sensor: w.sensor, maximum: celsius(maximum), critical: limit_value }]
                 } else { [] },
               ], group => group),
               unknowns: [],
