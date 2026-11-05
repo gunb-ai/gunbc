@@ -391,6 +391,13 @@ import gunbc.roadmap.roadmap_session_placement {
   session_reviewer_placement_begin_launch, SessionReviewerLaunchAdmitted, SessionReviewerLaunchRefused, session_reviewer_placement_abandon,
   session_reviewer_placement_settle_pass, session_worker_unit_lifecycle_for_instance,
 }
+import gunbc.roadmap.roadmap_session_placement { SessionStoresResolution, SessionPlacementUnreadable }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { WorkerAttemptSlots, ReviewerAttemptSlots }
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
+  AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
+  AttemptSlotsCutoverRecordUnwritten, AttemptSlotsCutoverStoresUnresolved, AttemptSlotsCutoverNotRun,
+}
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
@@ -1548,6 +1555,74 @@ fn belt_attempt_worktree_restore_for_instance(instance: HostDashboardInstance, n
             }
           }
       }
+  }
+}
+
+// THE ATTEMPT-SLOT CUTOVER PASS. A frontier row in the cutover module pointed at this name and is retired
+// by the change that lands the name -- the route exists, so a row tracking its absence would be a lie.
+// One slot root moved
+// under a live instance (gunb-ai/gunbc#14633) while a slot in it was still launching, and the settle pass
+// enumerates only the instance's CURRENT store, so that slot is invisible to every settle pass forever --
+// a lease no pass can reach keeps its charge (srv1's 2026-10-14 lease, 22 GiB, is that case). This pass is
+// the one modeled route that carries such a slot back into the store the settle pass reads.
+//
+// IT IS BOUND BEFORE THE SETTLEMENT BINDING IN THE TICK, so a carry lands in time for the same tick's
+// settlement to see what it carried. The ordering is not load-bearing for correctness: the carry is
+// idempotent (create-only under ExpectSlotAbsent), so a slot that missed one tick's settlement is settled
+// by the next.
+//
+// THE ANSWER IS RECORDED, NOT LOGGED. The census and the carry are written as a record in the instance's
+// records directory -- the same home session_placement_record_write uses -- because "what the pass read" is
+// the evidence an operator needs before anything retires the old root, and because a pass whose reading
+// nothing can re-read is a pass nobody can audit. A record write that fails does NOT stop the settle pass:
+// settlement releases holds on the strength of the slot CAS and the holder evidence, and blocking it
+// because a second record could not be written would keep a lease held to protect a note. What the failure
+// does stop is any clean reading of THIS pass: the tick receipt carries the unwritten arm as a refusal, so
+// the status route shows that the pass ran and its evidence did not land, instead of showing a clean pass.
+//
+// IT NEVER RELEASES ANYTHING. A census is not a release trigger (the guard written into
+// gunbc.compute.attempt_lifecycle.attempt_slot_keys, repeated in gunbc.roadmap.roadmap_session_placement):
+// releases go through the settle pass's fenced CAS on the lease reference and the generation read from the
+// slot. This pass only moves a slot from a root no pass reads into the root that they do. A reference whose
+// charge was already returned -- by an operator release, say -- is not this pass's business: the carry is a
+// file operation, and the settle pass that follows answers its release with ComputeNothingToRelease, which
+// gunbc.compute.host_capacity says is not a ledger failure.
+fn belt_attempt_slots_cutover_pass(instance: HostDashboardInstance) -> AttemptSlotsCutoverPassOutcome {
+  match session_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail: d } => AttemptSlotsCutoverStoresUnresolved { detail: d }
+    SessionStoresResolved { stores } =>
+      match stores.slots {
+        WorkerAttemptSlots(target) =>
+          belt_attempt_slots_cutover_record_write(
+            stores: stores,
+            record: attempt_slots_cutover_pass_for_instance(instance_id: instance.instance_id, target: target),
+          )
+        ReviewerAttemptSlots(_) =>
+          AttemptSlotsCutoverStoresUnresolved { detail: "the placement stores resolved to the reviewer lane; the attempt-slot cutover moves only the worker lane's store, so it is not run on these stores" }
+      }
+  }
+}
+
+// The write, in the belt, because this is where the host effect lives: the cutover module owns the path,
+// the shape and the meaning, and mints no filesystem effect of its own. Same write route as a placement
+// record (Filesystem.Write with .success / .error). The record value is carried through BOTH arms -- a
+// failed write loses the file, never the reading.
+fn belt_attempt_slots_cutover_record_write(stores: SessionPlacementStores, record: AttemptSlotsCutoverPassRecord) -> AttemptSlotsCutoverPassOutcome {
+  let path = attempt_slots_cutover_record_path(stores: stores, instance_id: record.instance_id)
+  let w = Filesystem.Write(path: path, content: serialize_json(v: attempt_slots_cutover_record_json(record: record)))
+  if w.success { AttemptSlotsCutoverRecorded { path: path, record: record } } else { AttemptSlotsCutoverRecordUnwritten { path: path, error: w.error, record: record } }
+}
+
+// The tick's standing for this pass, in the shape the receipt already carries for every other pass.
+// Recorded is Recorded; an unwritten record and an unresolved store are Refused with the reason, because "I
+// ran and my evidence did not land" must not read as "I ran cleanly"; NotRun is Deferred, which is what a
+// withheld tick owes a reader.
+fn belt_slots_cutover_pass_outcome(outcome: AttemptSlotsCutoverPassOutcome) -> BeltPassOutcome {
+  match outcome {
+    AttemptSlotsCutoverRecorded { path: _, record: _ } => BeltPassRecorded
+    AttemptSlotsCutoverRecordUnwritten { path: p, error: e, record: _ } => BeltPassRefused { reason: join(["attempt-slot cutover record could not be written at ", p, ": ", e], "") }
+    AttemptSlotsCutoverStoresUnresolved { detail: d } => BeltPassRefused { reason: join(["attempt-slot cutover pass refused: the instance's placement stores are unresolved: ", d], "") }
+    AttemptSlotsCutoverNotRun { reason: r } => BeltPassDeferred { reason: join(["attempt-slot cutover pass did not run: ", r], "") }
   }
 }
 
@@ -3766,6 +3841,7 @@ type BeltTickReceipt {
   teardown_pass: BeltPassOutcome,
   seat_discharge_pass: BeltPassOutcome,
   discovery_pass: BeltPassOutcome,
+  slots_cutover_pass: BeltPassOutcome,
 }
 
 type BeltTickReceiptRead
@@ -3792,7 +3868,9 @@ type BeltTickReceiptRead
 // longer reports those passes. It reports the passes it still runs -- spawn and teardown -- and the
 // discovery pass that hands outstanding obligations to their units. What each attempt's obligations
 // did is that attempt's own receipt (belt_attempt_obligation_receipt_path).
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v8"
+// v9 adds slots_cutover_pass. A receipt written under v8 has no such member, so it decodes as unreadable
+// rather than as a receipt whose cutover standing is unknown.
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v9"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND HAS NEVER BEEN WRITTEN ON ANY INSTANCE. The path was
 // <instance_root>/belt-last-tick.json; every instance_root on srv1 is root:root 0755 while the belt
@@ -3931,7 +4009,10 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
 }
 
 fn belt_tick_receipt_decode_passes(doc: JsonValue, observed_at: String) -> BeltTickReceiptRead {
-  match belt_pass_outcome_from_member(doc: doc, key: "spawn_pass") {
+  match belt_pass_outcome_from_member(doc: doc, key: "slots_cutover_pass") {
+    BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
+    BeltPassOutcomeDecoded { outcome: slots_cutover_pass } =>
+      match belt_pass_outcome_from_member(doc: doc, key: "spawn_pass") {
     BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
     BeltPassOutcomeDecoded { outcome: spawn_pass } =>
       match belt_pass_outcome_from_member(doc: doc, key: "teardown_pass") {
@@ -3957,12 +4038,14 @@ fn belt_tick_receipt_decode_passes(doc: JsonValue, observed_at: String) -> BeltT
                         teardown_pass: teardown_pass,
                         seat_discharge_pass: seat_discharge_pass,
                         discovery_pass: discovery_pass,
+                        slots_cutover_pass: slots_cutover_pass,
                       })
                   }
               }
           }
          }
       }
+    }
   }
 }
 
@@ -4092,7 +4175,8 @@ fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
     belt_pass_outcome_key(o: receipt.spawn_pass), "|",
     belt_pass_outcome_key(o: receipt.teardown_pass), "|",
     belt_pass_outcome_key(o: receipt.seat_discharge_pass), "|",
-    belt_pass_outcome_key(o: receipt.discovery_pass),
+    belt_pass_outcome_key(o: receipt.discovery_pass), "|",
+    belt_pass_outcome_key(o: receipt.slots_cutover_pass),
   ], "")
 }
 
@@ -4175,6 +4259,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
     json_kv(key: "teardown_pass", value: belt_pass_outcome_json(o: receipt.teardown_pass)),
     json_kv(key: "seat_discharge_pass", value: belt_pass_outcome_json(o: receipt.seat_discharge_pass)),
     json_kv(key: "discovery_pass", value: belt_pass_outcome_json(o: receipt.discovery_pass)),
+    json_kv(key: "slots_cutover_pass", value: belt_pass_outcome_json(o: receipt.slots_cutover_pass)),
   ])
 }
 
@@ -4315,6 +4400,7 @@ type BeltTickResult {
   teardown_outcomes: List<BeltTeardownOutcome>,
   discovery: BeltDiscovery,
   seat_discharge: SeatDischargePass,
+  slots_cutover: AttemptSlotsCutoverPassOutcome,
 }
 
 fn belt_tick_empty_reconcile(state: SpawnMode) -> BeltReconcile {
@@ -4604,6 +4690,9 @@ fn belt_tick_for_instance(
       ObserveRefused { reason: _ } => []
     },
   )
+  // THE CUTOVER PASS IS BOUND FIRST, so a carry reaches the store this same tick's settlement enumerates,
+  // and its answer reaches the receipt whether or not the record landed.
+  let slots_cutover = belt_attempt_slots_cutover_pass(instance: instance)
   let spawn_outcomes = belt_tick_spawn_after_settlement(
     instance: instance,
     settled: belt_session_settlement_pass(instance: instance),
@@ -4621,6 +4710,7 @@ fn belt_tick_for_instance(
         teardown_outcomes: teardown_outcomes,
         seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
+        slots_cutover: slots_cutover,
       }
     TickPassesRun =>
       BeltTickResult {
@@ -4631,6 +4721,7 @@ fn belt_tick_for_instance(
         teardown_outcomes: teardown_outcomes,
         seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
+        slots_cutover: slots_cutover,
       }
   }
 }
@@ -4869,6 +4960,7 @@ fn belt_run_once_in(
         teardown_outcomes: [],
         seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
+        slots_cutover: AttemptSlotsCutoverNotRun { reason: "the roadmap authority projection refused, so this tick runs no actuation pass" },
       }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
       belt_tick_for_instance(
@@ -14587,6 +14679,10 @@ fn belt_tick_receipt_from_result(
     discovery_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_discovery_pass_outcome(discovery: result.discovery)
+    }),
+    slots_cutover_pass: (match result.wholesale {
+      TickPassesWithheld { refusal } => BeltPassRefused { reason: join(["attempt-slot cutover pass withheld: ", launch_refusal_reason(r: refusal)], "") }
+      TickPassesRun => belt_slots_cutover_pass_outcome(outcome: result.slots_cutover)
     }),
   }
 }

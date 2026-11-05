@@ -12,6 +12,12 @@ import gunbc.roadmap.roadmap_belt_actuate { belt_settlement_spawn_gate }
 import gunbc.roadmap.roadmap_belt_actuate { belt_lineage_standing, belt_lineage_standing_of_decision, AttemptsObserved, AttemptsRefused }
 import gunbc.roadmap.roadmap_attempt_worktree_claim { LineageUnknown, LineageEnded, LineageNotEnded }
 import gunbc.roadmap.roadmap_launch_admission { LaunchNoPlacementGrant }
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCutoverNotRun, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverStoresUnresolved,
+  AttemptSlotsCutoverPassRecord, AttemptSlotsCensusSourceProvenAbsent, AttemptSlotsCarrySourceProvenAbsent,
+  attempt_slots_cutover_record_mint,
+}
+import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import std.optional { Present }
@@ -19,8 +25,9 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
   attempt_process_for_node, BeltAttemptPanesObserved,
-  belt_seat_discharge_pass_outcome_from,
-  belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout, belt_covered_claims_all_passed,
+    belt_seat_discharge_pass_outcome_from, belt_tick_receipt_json_value, belt_tick_receipt_identity_text,
+    belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout,
+    belt_covered_claims_all_passed,
 }
 import gunbc.roadmap.roadmap_execution_contract { GunbcClaimValidation, CargoFmtValidation }
 import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
@@ -1415,6 +1422,7 @@ test fn observe_refused_spawn_does_not_zero_the_discovery_pass() -> Bool {
     teardown_outcomes: [],
     seat_discharge: SeatDischargeSkipped { why: "witness" },
     discovery: BeltDiscovered { owed: 1, enqueues: [BeltObligationStarted { unit: "gunbc-obligation-attempt-n-k.service" as NonEmptyStr }] },
+    slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
   }
   let receipt = belt_tick_receipt_from_result(
     result: result,
@@ -1435,6 +1443,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       teardown_outcomes: [],
       seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: "the attempts ledger is unobservable" },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1451,6 +1460,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
         BeltObligationHeld { unit: "gunbc-obligation-attempt-a-1.service" as NonEmptyStr },
         BeltObligationEnqueueRefused { unit: "gunbc-obligation-attempt-b-2.service" as NonEmptyStr, reason: "systemd-run exited 1" },
       ] },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1499,6 +1509,7 @@ test fn verification_presentation_reads_the_attempts_own_verify_step() -> Bool {
     teardown_pass: BeltPassRecorded,
     seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRefused { reason: "the attempts ledger is unobservable" },
+    slots_cutover_pass: BeltPassDeferred { reason: "witness tick: the cutover pass did not run" },
   }
   let blocked = belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-own-node"),
@@ -1591,6 +1602,7 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
     "\"seat_discharge_pass\":{\"outcome\":\"recorded\"},",
+    "\"slots_cutover_pass\":{\"outcome\":\"recorded\"},",
     "\"discovery_pass\":{\"outcome\":\"refused\"}}",
   ], "")
   match belt_tick_receipt_decode(raw: raw) {
@@ -2414,6 +2426,7 @@ fn all_passes_refused_with(receipt: BeltTickReceipt, pattern: String) -> Bool {
   pass_refused_with(o: receipt.spawn_pass, pattern: pattern)
     && pass_refused_with(o: receipt.teardown_pass, pattern: pattern)
     && pass_refused_with(o: receipt.discovery_pass, pattern: pattern)
+    && pass_refused_with(o: receipt.slots_cutover_pass, pattern: pattern)
 }
 
 test fn transition_halted_tick_refuses_every_pass() -> Bool {
@@ -2427,6 +2440,7 @@ test fn transition_halted_tick_refuses_every_pass() -> Bool {
       teardown_outcomes: [],
       seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "the tick's passes are withheld: deployment transition in force on this host" },
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2444,6 +2458,7 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
       teardown_outcomes: [],
       seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 0, enqueues: [] },
+      slots_cutover: AttemptSlotsCutoverNotRun { reason: "witness tick: the cutover pass is not what this row is about" },
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -3326,6 +3341,86 @@ test fn witness_settlement_gate_refused_refuses_the_acquisition_with_the_settlem
       _ => false
     }
   }
+}
+
+// A TICK RECEIPT THAT DOES NOT NAME THE ATTEMPT-SLOT CUTOVER PASS IS UNREADABLE, NOT A RECEIPT WHERE THE
+// PASS DID NOT HAPPEN. The member is read first and a missing one is a refusal, so a writer cannot omit the
+// pass it did not run: the v9 schema and this decode are one authority over "this tick ran the cutover pass
+// and here is its outcome", and a v8 receipt (no such member) decodes as unreadable for the same reason.
+test fn a_belt_tick_receipt_without_the_cutover_member_is_unreadable() -> Bool {
+  let raw = join([
+    "{\"schema\":\"", belt_tick_receipt_schema, "\",",
+    "\"observed_at\":\"2026-08-02T02:00:00Z\",",
+    "\"spawn_pass\":{\"outcome\":\"recorded\"},",
+    "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"seat_discharge_pass\":{\"outcome\":\"recorded\"},",
+    "\"discovery_pass\":{\"outcome\":\"recorded\"}}",
+  ], "")
+  match belt_tick_receipt_decode(raw: raw) {
+    BeltTickReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "slots_cutover_pass is missing")
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptAbsent => false
+  }
+}
+
+// THE CUTOVER PASS MEMBER DISTINGUISHES THE OUTCOMES IT CAN HAVE, AND SURVIVES THE RECEIPT'S OWN JSON. A
+// pass that ran and wrote its record is Recorded; a pass whose instance has no capacity binding is Refused
+// with the reason the placement stores route gave, not Deferred and not silent; the member round-trips
+// through belt_tick_receipt_json_value and belt_tick_receipt_decode; and the identity text moves when the
+// member moves, so a receipt cannot claim a different cutover outcome than the one it was cut from.
+test fn the_cutover_pass_member_distinguishes_recorded_from_stores_unresolved() -> Bool {
+  let old_root = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/session-attempts"
+  let record = attempt_slots_cutover_record_mint(
+    instance_id: "srv1-live" as NonEmptyStr,
+    census: AttemptSlotsCensusSourceProvenAbsent { old_root: old_root as NonEmptyStr },
+    carry: AttemptSlotsCarrySourceProvenAbsent { old_root: old_root as NonEmptyStr },
+  )
+  let ran = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      wholesale: TickPassesRun,
+      host_refusal: Absent,
+      reconcile: belt_tick_empty_reconcile(state: ManualReady),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
+      discovery: BeltDiscovered { owed: 0, enqueues: [] },
+      slots_cutover: AttemptSlotsCutoverRecorded {
+        path: "/var/lib/gunbc/instances/srv1-live/records/attempt-slots-cutover-srv1-live.json",
+        record: record,
+      },
+    },
+    observed_at: "2026-08-30T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
+  )
+  let unresolved = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      wholesale: TickPassesRun,
+      host_refusal: Absent,
+      reconcile: belt_tick_empty_reconcile(state: ManualReady),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
+      discovery: BeltDiscovered { owed: 0, enqueues: [] },
+      slots_cutover: AttemptSlotsCutoverStoresUnresolved { detail: "the instance has no declared capacity binding" },
+    },
+    observed_at: "2026-08-30T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
+  )
+  (match ran.slots_cutover_pass { BeltPassRecorded => true  _ => false })
+    && (match unresolved.slots_cutover_pass {
+      BeltPassRefused { reason: r } => string_contains(s: r, pattern: "no declared capacity binding")
+      _ => false
+    })
+    && string_contains(s: serialize_json(v: belt_tick_receipt_json_value(receipt: ran)), pattern: "\"slots_cutover_pass\": {\"outcome\": \"recorded\"}")
+    && (match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: unresolved))) {
+      BeltTickReceiptPresent { receipt: back } =>
+        match back.slots_cutover_pass {
+          BeltPassRefused { reason: r } => string_contains(s: r, pattern: "no declared capacity binding")
+          _ => false
+        }
+      _ => false
+    })
+    && (belt_tick_receipt_identity_text(receipt: ran) != belt_tick_receipt_identity_text(receipt: unresolved))
 }
 
 // ONE ENTRY IS ONE RUN, EACH CLAIM ITS OWN VERDICT. Three claims of entry e plus one of entry g and a non-claim
