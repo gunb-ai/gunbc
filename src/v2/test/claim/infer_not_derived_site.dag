@@ -172,3 +172,148 @@ test fn nds_a_mutated_row_count_is_refused() -> Bool {
       ) == false
   }
 }
+
+// ===================== THE EQUALITY PATH'S ROW LOOKUP: A MISS IS A SITE =====================
+//
+// QUESTION ANSWERED: does any v2 equality path read a lookup miss as an admit?
+// (gunbc.recurring_failure_mode lookup_miss_read_as_positive_classification, the equality instance.)
+//
+// THE ONE ARM THAT CAN. v2/compiler/infer.dag infer_operation_value_type's EqualityComparison arm asks
+// the operand type's carrier for its Equivalence row through infer_algebra_field_result_type. A row is
+// carried -> the comparison's type is the field's DECLARED codomain, read from the structure. A row is
+// NOT carried -> the arm does not refuse and does not answer Bool by assumption: it accepts the program
+// and leaves the comparison node on the grounding frontier with site ComparisonNotDerived --
+// "unmodelled, not incomparable", the same counted mechanism that keeps `Bool == Bool` legal while the
+// carrier is unmodelled. That is an ACCOUNTED miss, not a silent admit; but until this section the site
+// appeared nowhere under src/v2/test, so nothing separated "the arm records the miss" from "the arm
+// admits" -- the exact gap that lets the failure mode return with a green tree.
+//
+// THE PAIR VARIES ONLY THE ROW. Both fixtures are the same `a == b` over two operands of one declared
+// type; the Int carrier carries its Equivalence row in v2.extdeps.languages.dag
+// dag_algebra_inhabitance_decls, the Bool carrier does not. So the claims below cannot pass because of
+// anything but the row's presence.
+//
+// WHAT EACH CLAIM PINS, and the red that shows it can fail:
+//   * row carried, no site            -- red if the arm stops consulting the row (it would then mark
+//                                        every comparison not-derived)
+//   * row absent, site exactly once   -- red if the arm silently admits (no fact at all) or marks the
+//                                        node twice
+//   * the frontier TOTAL moves by one -- red if the miss admits without being counted, or if the
+//                                        comparison drags unaccounted nodes in beside it
+//   * the site's census row           -- red if the per-site rows disagree with the facts on the tree
+//   * no comparison, no site, delta 0  -- the cheap weaker control: the site belongs to this construct
+//                                        and nothing else in the fixture shape
+// The red run drives the row-carried fixture through the row-absent claim; see the PR's witness script.
+
+data nds_eq_row_carried_source: String =
+  "module v2.test.nds_eq_row_carried\n\nfn k(a: Int, b: Int) -> Bool {\n  a == b\n}\n"
+
+data nds_eq_row_absent_source: String =
+  "module v2.test.nds_eq_row_absent\n\nfn k(a: Bool, b: Bool) -> Bool {\n  a == b\n}\n"
+
+data nds_eq_no_comparison_source: String =
+  "module v2.test.nds_eq_no_comparison\n\nfn k(a: Bool, b: Bool) -> Bool {\n  true\n}\n"
+
+fn nds_eq_prepared(source: String, id: Symbol, module: Symbol, file: String) -> Optional<NativeTestPreparedModule> {
+  nds_prepared(read: nds_read(source: source, id: id, file: file), module: [^v2, ^test, module])
+}
+
+fn nds_eq_row_carried_prepared() -> Optional<NativeTestPreparedModule> {
+  nds_eq_prepared(source: nds_eq_row_carried_source, id: ^nds_eq_row_carried_read, module: ^nds_eq_row_carried,
+    file: "src/v2/test/fixture/nds/eq_row_carried.dag")
+}
+
+fn nds_eq_row_absent_prepared() -> Optional<NativeTestPreparedModule> {
+  nds_eq_prepared(source: nds_eq_row_absent_source, id: ^nds_eq_row_absent_read, module: ^nds_eq_row_absent,
+    file: "src/v2/test/fixture/nds/eq_row_absent.dag")
+}
+
+fn nds_eq_no_comparison_prepared() -> Optional<NativeTestPreparedModule> {
+  nds_eq_prepared(source: nds_eq_no_comparison_source, id: ^nds_eq_no_comparison_read, module: ^nds_eq_no_comparison,
+    file: "src/v2/test/fixture/nds/eq_no_comparison.dag")
+}
+
+fn nds_eq_comparison_sites(prepared: Optional<NativeTestPreparedModule>) -> Int {
+  nds_occurrences(sites: nds_sites(prepared: prepared), site: ComparisonNotDerived)
+}
+
+// ACCEPTED AND DERIVED: the comparison whose carrier CARRIES the Equivalence row is accepted (the
+// `Absent => false` is what keeps a refused fixture from reading as no-site) and leaves no node with
+// the comparison site.
+test fn nds_eq_row_carried_comparison_is_accepted_without_the_comparison_site() -> Bool {
+  match nds_eq_row_carried_prepared() {
+    Absent => false
+    Present { value: p } => nds_eq_comparison_sites(prepared: Present { value: p }) == 0
+  }
+}
+
+// ACCEPTED AND ACCOUNTED: the comparison whose carrier has NO row is accepted and carries the site
+// exactly once. The count, not `contains`, is what separates "recorded" from "admitted twice".
+test fn nds_eq_row_absent_comparison_carries_the_comparison_site_exactly_once() -> Bool {
+  match nds_eq_row_absent_prepared() {
+    Absent => false
+    Present { value: p } => nds_eq_comparison_sites(prepared: Present { value: p }) == 1
+  }
+}
+
+fn nds_eq_frontier_grounding_total(prepared: Optional<NativeTestPreparedModule>) -> Int {
+  match prepared {
+    Absent => -1
+    Present { value: p } => native_infer_accepted_frontier(tree: p.inferred, diagnostics: None).grounding_not_derived
+  }
+}
+
+// THE FRONTIER TOTAL MOVES BY EXACTLY ONE. Both fixtures declare the same `fn k(a: T, b: T) -> Bool`
+// shape and differ only in the type and in the body's expression, so the comparison is the only thing
+// that can move the total -- and it moves it by the one node it leaves behind. A miss read as an admit
+// moves the total by zero; an unaccounted node beside it moves it by two. Both are refused here.
+test fn nds_eq_row_absent_comparison_moves_the_frontier_total_by_exactly_one() -> Bool {
+  match nds_eq_row_absent_prepared() {
+    Absent => false
+    Present { value: absent_row } =>
+      match nds_eq_no_comparison_prepared() {
+        Absent => false
+        Present { value: no_comparison } =>
+          nds_eq_frontier_grounding_total(prepared: Present { value: absent_row })
+            - nds_eq_frontier_grounding_total(prepared: Present { value: no_comparison }) == 1
+      }
+  }
+}
+
+// The same delta read on the row-carried fixture: a derived comparison adds nothing to the frontier.
+test fn nds_eq_row_carried_comparison_leaves_the_frontier_total_where_the_no_comparison_fixture_has_it() -> Bool {
+  match nds_eq_row_carried_prepared() {
+    Absent => false
+    Present { value: row_carried } =>
+      match nds_eq_no_comparison_prepared() {
+        Absent => false
+        Present { value: no_comparison } =>
+          nds_eq_frontier_grounding_total(prepared: Present { value: row_carried })
+            == nds_eq_frontier_grounding_total(prepared: Present { value: no_comparison })
+      }
+  }
+}
+
+// THE WEAKER CONTROL, KEPT BECAUSE IT IS CHEAP: the site belongs to the comparison construct, not to
+// the fixture shape. Same module, same signature, no `==`.
+test fn nds_eq_no_comparison_fixture_carries_no_comparison_site() -> Bool {
+  match nds_eq_no_comparison_prepared() {
+    Absent => false
+    Present { value: p } => nds_eq_comparison_sites(prepared: Present { value: p }) == 0
+  }
+}
+
+// THE CENSUS AGREES WITH THE TREE: the per-site row for ComparisonNotDerived counts exactly the facts
+// nds_eq_comparison_sites counted, on the fixture that has one.
+test fn nds_eq_row_absent_comparison_row_count_is_its_occurrence_count() -> Bool {
+  match nds_eq_row_absent_prepared() {
+    Absent => false
+    Present { value: p } =>
+      nds_eq_comparison_sites(prepared: Present { value: p }) == 1
+        && nds_row_matches(
+          rows: native_infer_not_derived_site_counts(tree: p.inferred),
+          sites: nds_sites(prepared: Present { value: p }),
+          site: ComparisonNotDerived
+        )
+  }
+}
