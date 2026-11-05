@@ -63,3 +63,8 @@ test fn the_pairing_check_goes_red_when_a_leg_argv_is_missing_from_the_grant() -
     _ => false
   }
 }
+
+// Review 91357: the bootstrap principal's rendered grant is exactly the declared exception and nothing else.
+test fn the_bootstrap_principal_holds_only_the_five_declared_lab_operations() -> Bool {
+  count(split(s: srv1_sudoers(), delimiter: "briansrls ALL=(root)")) == 6
+}
