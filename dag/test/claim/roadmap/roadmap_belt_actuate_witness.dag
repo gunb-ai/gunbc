@@ -18,9 +18,9 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
   attempt_process_for_node, BeltAttemptPanesObserved,
-  belt_seat_discharge_pass_outcome_from, belt_tick_receipt_json_value, belt_tick_receipt_identity_text,
-  belt_seat_discharge_pass_outcome_from,
-  belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout, belt_covered_claims_all_passed,
+    belt_seat_discharge_pass_outcome_from, belt_tick_receipt_json_value, belt_tick_receipt_identity_text,
+    belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout,
+    belt_covered_claims_all_passed,
 }
 import gunbc.roadmap.roadmap_execution_contract { GunbcClaimValidation, CargoFmtValidation }
 import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
@@ -3708,6 +3708,8 @@ test fn the_cutover_pass_member_distinguishes_recorded_from_stores_unresolved() 
       _ => false
     })
     && (belt_tick_receipt_identity_text(receipt: ran) != belt_tick_receipt_identity_text(receipt: unresolved))
+}
+
 // ONE ENTRY IS ONE RUN, EACH CLAIM ITS OWN VERDICT. Three claims of entry e plus one of entry g and a non-claim
 // collapse to three units (first claim of e, g, the non-claim); the e unit covers all three e claims. In a
 // claim_batch document where `a` passes, `b` fails and `c` printed no line, only `a` passed: b's FAIL cannot
