@@ -114,6 +114,14 @@ type PixelRegion {
 // TWO BOXES ARE THE SAME BOX when all four edges agree, in the same frame's pixels. It sits beside the
 // type so nobody re-derives it inside a join: a check that compared two of the four would let a
 // differently-sized box pass as the same label, which is the failure this relation exists to prevent.
+// A cast is hoisted out of every labelled-argument position, by this one-line function rather than
+// written inline. `f(x: v as T)` parses `as T` as a SECOND named argument called `as`: the call is
+// accepted by every stage up to runtime, where whatever the argument is forwarded to refuses it
+// ("calling 'unicode_scalar_unfold': no parameter named 'as'"). Filed as a compiler defect; until
+// it is fixed, the coercion has to be written where no parser can mistake it for an argument.
+fn as_text(t: NonEmptyStr) -> String {
+  t as String
+}
 fn pixel_region_eq(a: PixelRegion, b: PixelRegion) -> Bool {
   a.left == b.left && a.top == b.top && a.width == b.width && a.height == b.height
 }
@@ -178,9 +186,9 @@ fn same_sighting(a: PhotographCitation, b: PhotographCitation) -> Bool {
       match b {
         InStore { content: _, region: _ } => false
         BytesNotInStore { taken_on: tb, locator: lb, obligation: ob } =>
-          string_eq(a: ta as String, b: tb as String)
-            && string_eq(a: la as String, b: lb as String)
-            && string_eq(a: oa as String, b: ob as String)
+          string_eq(a: as_text(t: ta), b: as_text(t: tb))
+            && string_eq(a: as_text(t: la), b: as_text(t: lb))
+            && string_eq(a: as_text(t: oa), b: as_text(t: ob))
       }
   }
 }

@@ -96,6 +96,8 @@ import product.electrical.identification {
   content_spans,
   glyph_text_eq,
   PrintedLogo,
+  BodyFeature,
+  ReadingCircumstance,
   InstalledComponent,
   MarkingReading,
 }
@@ -369,9 +371,11 @@ test fn the_fsv_rows_say_exactly_what_the_receipts_say() -> Bool {
 fn prints_glyphs(designator: NonEmptyStr, want: NonEmptyStr) -> Bool {
   match e1_marking_at(designator) {
     Absent => false
+    // `sole_glyph_span` hands back the span's TEXT (`type MarkingGlyphs = NonEmptyStr`), not the record: the
+    // sighting it carried is not what this check is about.
     Present { value: reading } => match sole_glyph_span(c: reading.content) {
       Absent => false
-      Present { value: g } => glyph_text_eq(a: g.text, b: want)
+      Present { value: glyphs } => glyph_text_eq(a: glyphs, b: want)
     }
   }
 }
@@ -382,10 +386,14 @@ fn carries_onsemi_logo(designator: NonEmptyStr) -> Bool {
     Present { value: reading } => {
       let spans = content_spans(c: reading.content)
       count(glyph_spans_in(spans: spans)) == 1
+        // All four arms named: a Coproduct match in this language takes no wildcard, and naming them also
+        // shows that only a PrintedLogo can be the mark -- a body feature or an aside does not make a maker.
         && count(filter(spans, s => match s {
              PrintedLogo { span, whose, sighting: _ } =>
                glyph_text_eq(a: span, b: "ON logo") && glyph_text_eq(a: whose, b: "onsemi -- the ON mark")
-             _ => false
+             Glyphs { span: _, sighting: _ } => false
+             BodyFeature { span: _, noted: _, sighting: _ } => false
+             ReadingCircumstance { span: _, noted: _, sighting: _ } => false
            })) == 1
     }
   }

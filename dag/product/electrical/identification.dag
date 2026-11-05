@@ -175,8 +175,16 @@ type GlyphReduction
   | ReductionUnavailable { why: NonEmptyStr }
 
 // A scalar from a one-character host string, because the language has no character literals.
+// A cast is hoisted out of every labelled-argument position, by this one-line function rather than
+// written inline. `f(x: v as T)` parses `as T` as a SECOND named argument called `as`: the call is
+// accepted by every stage up to runtime, where whatever the argument is forwarded to refuses it
+// ("calling 'unicode_scalar_unfold': no parameter named 'as'"). Filed as a compiler defect; until
+// it is fixed, the coercion has to be written where no parser can mistake it for an argument.
+fn as_text(t: NonEmptyStr) -> String {
+  t as String
+}
 fn scalar_of(one: NonEmptyStr) -> Char? {
-  match string_head(s: one as String) {
+  match string_head(s: as_text(t: one)) {
     CharFound { value: c } => Present { value: c }
     CharAbsent => Absent
   }
@@ -376,7 +384,7 @@ fn any_glyph_unread(spans: List<GlyphSpan>) -> Bool {
   match spans {
     Empty => false
     Cons { head: s, tail: rest } =>
-      string_any_char_in(s: s.text as String, alphabet: "?") || any_glyph_unread(spans: rest)
+      string_any_char_in(s: as_text(t: s.text), alphabet: "?") || any_glyph_unread(spans: rest)
   }
 }
 
@@ -448,11 +456,11 @@ fn reading_disputes(relied: MarkingReading, other: MarkingReading) -> List<NonEm
     []
   } else {
     match reduced_content(c: relied.content) {
-      ReductionUnavailable { why } => [disputed_pair(left: "(reduction unavailable)", right: why as String)]
+      ReductionUnavailable { why } => [disputed_pair(left: "(reduction unavailable)", right: as_text(t: why))]
       Reduced { lines: relied_lines } =>
         match reduced_content(c: other.content) {
           ReductionUnavailable { why } => [
-            disputed_pair(left: "(reduction unavailable)", right: why as String)
+            disputed_pair(left: "(reduction unavailable)", right: as_text(t: why))
           ]
           Reduced { lines: other_lines } =>
             line_disputes(relied_lines: relied_lines, other_lines: other_lines)
@@ -547,7 +555,7 @@ fn same_evidence(a: EvidenceRef, b: EvidenceRef) -> Bool {
     OperatorStatement { stated_on: sa, verbatim: va } =>
       match b {
         OperatorStatement { stated_on: sb, verbatim: vb } =>
-          string_eq(a: sa as String, b: sb as String) && string_eq(a: va as String, b: vb as String)
+          string_eq(a: as_text(t: sa), b: as_text(t: sb)) && string_eq(a: as_text(t: va), b: as_text(t: vb))
         OperatorPhotograph { citation: _ } => false
         SellerListingPhotograph { listing: _, read_on: _ } => false
       }
@@ -560,7 +568,7 @@ fn same_evidence(a: EvidenceRef, b: EvidenceRef) -> Bool {
     SellerListingPhotograph { listing: la, read_on: ra } =>
       match b {
         SellerListingPhotograph { listing: lb, read_on: rb } =>
-          string_eq(a: la as String, b: lb as String) && string_eq(a: ra as String, b: rb as String)
+          string_eq(a: as_text(t: la), b: as_text(t: lb)) && string_eq(a: as_text(t: ra), b: as_text(t: rb))
         OperatorStatement { stated_on: _, verbatim: _ } => false
         OperatorPhotograph { citation: _ } => false
       }
