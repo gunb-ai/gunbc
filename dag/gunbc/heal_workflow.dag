@@ -286,7 +286,7 @@ data heal_round_outcome_blob_list_file: String = "${{ runner.temp }}/" + heal_ro
 // its record. A seed that carried the field would make an unclosed record read as a closed one, and a
 // round killed between the seed and its finalisation would be reported as a clean tree. The trailing
 // backslash-n is what printf in the emitted script turns into a newline (v2.test.claim.bash_program_fold
-::bash_program_fold_sample_set_e_golden spells its own line ends the same way).
+// ::bash_program_fold_sample_set_e_golden spells its own line ends the same way).
 data heal_round_outcome_seed_line: String = heal_round_outcome_not_closed_marker as String + "\\n"
 
 // COUNTED IN THE ROUND'S OWN SHELL, NOT IN THE WORKFLOW EXPRESSION LANGUAGE: a count is arithmetic over
