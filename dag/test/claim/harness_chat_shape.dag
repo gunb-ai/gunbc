@@ -1,6 +1,7 @@
 module test.claim.harness_chat_shape
 
-import std.types { list_length, Bool, String, Int, List, NonEmptyStr }
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.algebra { length }
 import std.measure { TokenCount, token_count_value }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.llm.anthropic_messages_api { ToolUse, EndTurn, MaxTokens }
@@ -35,7 +36,7 @@ test fn a_chat_completion_decodes_to_thinking_text_and_tool_use() -> Bool {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: fixture_completion()) {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason, usage } =>
-      list_length(items: blocks) == 3
+      length(xs: blocks) == 3
         && (match blocks.first() { Present { value: WireThinkingBlock { thinking: r } } => r.contains("wants files")  _ => false })
         && (match blocks.last() { Present { value: WireToolUseBlock { id, name, input: _ } } => id == "chatcmpl-tool-1" && name == "run_command"  _ => false })
         && (match stop_reason { ToolUse => true  _ => false })
@@ -91,13 +92,13 @@ test fn chat_tool_results_are_tool_messages_then_the_notice() -> Bool {
     steps_remaining: 7,
     checkpointed: false,
   )
-  list_length(items: msgs) == 2
+  length(xs: msgs) == 2
     && (match msgs.first() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"tool\"") && serialize_json(v: m).contains("chatcmpl-tool-1")  Absent => false })
     && (match msgs.last() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"user\"") && serialize_json(v: m).contains("7")  Absent => false })
 }
 
 test fn the_messages_shape_still_sends_one_user_message_of_results() -> Bool {
-  list_length(items: harness_tool_result_messages_json(
+  length(xs: harness_tool_result_messages_json(
     shape: AnthropicMessagesShape,
     results: [HarnessToolResult { tool_use_id: "t1", text: "x", is_error: false }],
     steps_remaining: 7,
@@ -282,7 +283,7 @@ test fn a_well_formed_messages_response_still_decodes_with_its_input_and_counts(
   match harness_decode_response(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"run_command\",\"input\":{\"command\":\"ls\"}}],\"usage\":{\"input_tokens\":11,\"output_tokens\":22}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage } =>
-      list_length(items: blocks) == 1
+      length(xs: blocks) == 1
         && (match blocks.first() {
               Present { value: WireToolUseBlock { id, name, input } } =>
                 id == "t1" && name == "run_command" && serialize_json(v: input).contains("ls")
@@ -298,7 +299,7 @@ test fn a_well_formed_messages_response_still_decodes_with_its_input_and_counts(
 test fn an_unmodelled_block_kind_is_skipped_not_refused() -> Bool {
   match harness_decode_response(body: "{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"server_tool_use\",\"id\":\"s1\"},{\"type\":\"text\",\"text\":\"hi\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
-    HarnessResponseParsed { blocks, stop_reason: _, usage: _ } => list_length(items: blocks) == 1
+    HarnessResponseParsed { blocks, stop_reason: _, usage: _ } => length(xs: blocks) == 1
   }
 }
 
@@ -320,7 +321,7 @@ test fn a_null_content_beside_tool_calls_still_decodes_the_calls() -> Bool {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \\\"ls\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
-      list_length(items: blocks) == 1
+      length(xs: blocks) == 1
         && (match blocks.first() {
               Present { value: WireToolUseBlock { id, name, input } } =>
                 id == "c1" && name == "run_command" && serialize_json(v: input).contains("ls")
@@ -333,7 +334,7 @@ test fn a_null_reasoning_field_decodes_rather_than_refusing() -> Bool {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"reasoning_content\":null,\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
-      list_length(items: blocks) == 1
+      length(xs: blocks) == 1
         && (match blocks.first() { Present { value: WireTextBlock { text: t } } => t == "done"  _ => false })
   }
 }
@@ -406,7 +407,7 @@ test fn an_unmodelled_block_between_two_others_vanishes_without_reordering() -> 
   match harness_decode_response(body: "{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"first\"},{\"type\":\"server_tool_use\",\"id\":\"s1\"},{\"type\":\"text\",\"text\":\"second\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
-      list_length(items: blocks) == 2
+      length(xs: blocks) == 2
         && (match blocks.first() { Present { value: WireTextBlock { text: t } } => t == "first"  _ => false })
         && (match blocks.last() { Present { value: WireTextBlock { text: t } } => t == "second"  _ => false })
   }
