@@ -760,3 +760,15 @@ test fn plain_non_function_alias_operand_stays_admitted() -> Bool {
 test fn local_generic_plain_alias_operand_stays_admitted() -> Bool {
   eq_admitted(source: local_generic_plain_alias_eq_green_source)
 }
+
+// A FIELD WHOSE TYPE IS ITS OWN TYPE PARAMETER, READ THROUGH AN APPLICATION, READS THE ARGUMENT. `item` is a
+// childless field node that carries its type as Resolved{rt} with rt the parameter's leaf. The old
+// substitute_generics_apply took the childless node for a bare name, missed `item` in { T := Pair }, and returned the
+// field unchanged, so rt stayed the parameter and `w.item.n` read a field of T, which has none: a typed error that
+// resolved_type collapses to the nameless error type. With the fix the substitution reaches rt and the read is Int.
+// This is the RED at the old rule; the claim is green only when no blocking diagnostic remains.
+data field_of_own_param_through_application_source: String = "module field_param_probe\ntype Pair {\n  n: Int\n}\ntype Wrap<T> {\n  item: T\n}\nfn read(w: Wrap<Pair>) -> Int { w.item.n }\n"
+
+test fn field_typed_by_its_own_parameter_reads_the_argument_through_an_application() -> Bool {
+  eq_admitted(source: field_of_own_param_through_application_source)
+}
