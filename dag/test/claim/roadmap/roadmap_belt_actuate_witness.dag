@@ -196,7 +196,7 @@ import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   continuation_plan,
-  WorktreeStanding, WorktreeHere, BranchStanding, BranchLive,
+  WorktreeHere, BranchLive,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionBlocked, submission_digest,

@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, AlreadyComplete, Refuse,
   continuation_plan,
-  WorktreeStanding, WorktreeHere, WorktreeAbsent,
+  WorktreeHere, WorktreeAbsent,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }

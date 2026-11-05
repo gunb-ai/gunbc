@@ -14,7 +14,7 @@ import gunbc.harness.harness_session_recovery {
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation, ContinuationPlan, Resume, NextAttempt, AlreadyRunning, Refuse, continuation_plan,
-  WorktreeStanding, WorktreeHere, BranchStanding, BranchLive,
+  WorktreeHere, BranchLive,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 
