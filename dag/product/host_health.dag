@@ -3,6 +3,7 @@ module product.host_health
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Celsius, celsius, celsius_count }
 import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
+import extdeps.external_authority { TranscribedUncited }
 import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachWindow }
 import product.fan_tach_health {
@@ -508,16 +509,26 @@ fn judge_temperature(expectation: TemperatureExpectation, windows: List<Temperat
               refusal: none,
               judged: 1,
             }
-            FromCitedFigure { value: limit_value, standing: _ } => SignalVerdict {
-              deviations: flat_map([
-                bmc,
-                if maximum > celsius_count(limit_value) {
-                  [TemperatureLimitExceeded { sensor: w.sensor, maximum: celsius(maximum), critical: limit_value }]
-                } else { [] },
-              ], group => group),
-              unknowns: [],
-              refusal: none,
-              judged: 1,
+            FromCitedFigure { value: limit_value, standing: standing } => match standing {
+              // A figure transcribed without its source is a bet (DESIGN 4d): it is never a wall, so
+              // neither a divergence nor a green can rest on it.
+              TranscribedUncited { read_obligation: _ } => SignalVerdict {
+                deviations: bmc,
+                unknowns: [ThermalLimitUnestablished { sensor: w.sensor }],
+                refusal: none,
+                judged: 1,
+              }
+              _ => SignalVerdict {
+                deviations: flat_map([
+                  bmc,
+                  if maximum > celsius_count(limit_value) {
+                    [TemperatureLimitExceeded { sensor: w.sensor, maximum: celsius(maximum), critical: limit_value }]
+                  } else { [] },
+                ], group => group),
+                unknowns: [],
+                refusal: none,
+                judged: 1,
+              }
             }
           }
         }
