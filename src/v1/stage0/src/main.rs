@@ -409,16 +409,6 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         )
     }
 
-    fn measure_root_demand(
-        &self,
-        source_roots: Vec<String>,
-        repository: String,
-        receipt: String,
-        measurement_child: bool,
-    ) -> ! {
-        cli_run::measure_root_demand(source_roots, repository, receipt, measurement_child)
-    }
-
     fn invoke_bound_target_producer(&self, target: String) -> ! {
         retained_dispatch(RetainedCommands::Test { target }, self.dry_run)
     }

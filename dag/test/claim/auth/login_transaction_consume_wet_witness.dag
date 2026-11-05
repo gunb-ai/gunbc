@@ -26,7 +26,7 @@ fn browser_transaction() -> OidcLoginTransaction {
 
 fn consume_instance(directory: String) -> HostDashboardInstance {
   isolated_dashboard_instance(deployment: deployment_id(name: "login-consume-fixture" as NonEmptyStr), instance_id: "login-consume-fixture", layout: srv1_host_layout(), root: directory as FilePath,
-    serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+    serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, actuator_host: srv1_host_layout().host_identity)
 }
 
 // The store the claims run against, minted the production way. A mint that refuses is the claim's own failure,

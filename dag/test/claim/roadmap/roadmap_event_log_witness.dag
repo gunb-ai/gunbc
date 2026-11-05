@@ -112,6 +112,7 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
           Progress { note: _ } => false
           Blocked { reason: _ } => false
           HandedBack { reason: _ } => false
+          Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
           CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
           CommentEdited { comment: _, body: _ } => false
@@ -140,6 +141,7 @@ test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
           Progress { note: _ } => false
           Blocked { reason: _ } => false
           HandedBack { reason: _ } => false
+          Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
           CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
           CommentEdited { comment: _, body: _ } => false

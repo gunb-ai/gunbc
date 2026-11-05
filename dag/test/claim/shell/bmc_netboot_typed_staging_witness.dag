@@ -1,7 +1,7 @@
 module test.claim.shell.bmc_netboot_typed_staging_witness
 
-import std.types { Bool, String, Int, List, NonEmptyStr, list_length }
-import std.algebra { list_append }
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.algebra { list_append, length }
 import std.process { ProcessExit }
 import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
 import gunbc.bmc.bmc_netboot_serve {
@@ -133,7 +133,7 @@ test fn whole_provision_stages_ready_with_the_serve_launch_derived_from_the_plan
   let ops = staging_ops(staging: staged)
   let launch = prepared_launch_fields(ops: ops)
   staging_ready(staging: staged)
-    && list_length(items: ops) == 9
+    && length(xs: ops) == 9
     && count(filter(ops, op => is_make_dir(d: op.disposition))) == 1
     && count(filter(ops, op => is_put(d: op.disposition))) == 7
     && count(filter(ops, op => is_launch_serve(d: op.disposition))) == 1
@@ -175,7 +175,7 @@ test fn staged_names_that_are_not_relative_refuse_the_whole_staging() -> Bool {
     && !staging_ready(staging: empty_seg)
     && !staging_ready(staging: dot_seg)
     && !staging_ready(staging: dot_name)
-    && list_length(items: staging_ops(staging: absolute)) == 0
+    && length(xs: staging_ops(staging: absolute)) == 0
     && string_contains(s: staging_reason(staging: absolute), pattern: "relative path under the serve root")
 }
 
@@ -207,7 +207,7 @@ test fn put_from_uri_refuses_the_staging_before_anything_prepares() -> Bool {
     BmcNetbootPutFromUri { name: "later.iso", source: plan.bulk_iso_url },
   ])
   !staging_ready(staging: mixed)
-    && list_length(items: staging_ops(staging: mixed)) == 0
+    && length(xs: staging_ops(staging: mixed)) == 0
     && string_contains(s: staging_reason(staging: mixed), pattern: "no realized transport")
 }
 

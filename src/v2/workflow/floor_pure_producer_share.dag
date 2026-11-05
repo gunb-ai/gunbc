@@ -1009,12 +1009,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.dependency_demand_census",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "production_lowering_of_the_same_fns_still_refuses_at_the_clause_holds", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.infer_fold_member_instance",
     claims: [
       SingleClaimFillDebtClaim { claim: "fmi_fold_member_undeclared_field_refuses", standing: ActiveFillDebt },

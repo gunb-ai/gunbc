@@ -30,6 +30,7 @@ import gunbc.machine_intake.host_interface_inventory {
   host_controller_dedicated_interface,
   host_operating_system_interface,
 }
+import std.algebra { length }
 
 // WHY A CIDR CANNOT BE JUDGED, as a closed sum. The last arm is a capability limit of
 // ipv4_same_network (it answers only some prefixes), not malformed data, so S3 can tell them apart.
@@ -70,7 +71,7 @@ type HostSegmentAnchors {
 
 fn judge_address_in_segment(address: Ipv4Address, segment: NetworkSegment) -> SegmentJudgment {
   let parts = split(s: segment.cidr as String, delimiter: "/")
-  if list_length(items: parts) != 2 {
+  if length(xs: parts) != 2 {
     SegmentUnjudged { cidr: segment.cidr, cause: CidrNotNetworkAndPrefix }
   } else {
     match parts |> get(0) {
@@ -109,9 +110,9 @@ fn anchor_lan_to_segment(host: HostIdentity, function: ObservedEthernetFunction,
       })
       // FAIL CLOSED: one segment this fold cannot judge may be the one the address is on, so no anchor
       // is produced while any candidate is unjudged, however many others matched.
-      if list_length(items: unjudged) > 0 {
+      if length(xs: unjudged) > 0 {
         InterfaceUnanchored { refusal: SegmentsUnjudged { host: host, function: function, unjudged: unjudged } }
-      } else if list_length(items: inside) > 1 {
+      } else if length(xs: inside) > 1 {
         InterfaceUnanchored { refusal: AddressOnSeveralSegments { host: host, function: function, segments: inside } }
       } else {
         match first(inside) {

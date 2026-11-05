@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_required_build_cell
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.content_hash {
   ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
   compare_content_hash, content_hash_of_value, content_hash_from_structural_digest,
@@ -506,7 +507,7 @@ fn lifetime_sample_field_content_hash(fields: List<String>, n: Int) -> ContentHa
 
 fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCellLifetimeSampleDecode {
   let fields = split(s: wire, delimiter: "\n")
-  if list_length(items: fields) != 7 {
+  if length(xs: fields) != 7 {
     RequiredBuildCellLifetimeSampleUndecodable
   } else {
     match fields.skip(n: 1).first() {

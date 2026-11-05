@@ -1,7 +1,8 @@
 module extdeps.bmc.redfish_virtual_media
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Bool, List, NonEmptyStr, String, list_length }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.content_hash { ContentHash }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -226,7 +227,7 @@ type RedfishProbeReceiptCoherence
   | ProbeReceiptFloorWithoutProtocols { progress: RedfishVirtualMediaProbe }
 
 fn redfish_probe_receipt_coherence(receipt: RedfishVirtualMediaProbeReceipt) -> RedfishProbeReceiptCoherence {
-  let has_protocols = list_length(items: receipt.admitted_protocols) > 0
+  let has_protocols = length(xs: receipt.admitted_protocols) > 0
   match redfish_probe_floor_standing(progress: receipt.progress) {
     ProbeFloorReached =>
       if has_protocols {

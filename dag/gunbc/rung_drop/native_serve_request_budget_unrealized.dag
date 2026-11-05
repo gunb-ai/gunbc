@@ -30,6 +30,22 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // discriminating evidence stays enrolled there (DESIGN 4b meta-obligation 4): /spin is refused a
 // typed 500 at the deadline, a later /hello on the same process is answered 200, and past the
 // stuck-worker ceiling the process refuses 503 and exits 75.
+//
+// THE ENROLLED EVIDENCE CHANGED SHAPE ON 2026-11-04, AND THE CHANGE IS STATED HERE, NOT LEFT TO BE
+// FOUND (gunbc.plans.converged_ingress M2a; operator decision exit-after-timeout over a killable child
+// per request). The abandoned-worker model this row retired on let a timed-out compiled computation
+// keep running and keep spending CPU after its client was answered, so the declared CPU limit was not
+// enforced. The native door now has ONE effective deadline, min(cpu_limit, wall_limit), armed when the
+// request head is complete; a request that crosses it is answered with the typed 500 and the process
+// then exits 75, so the computation ends with it. What a later request meets is therefore the
+// RESTARTED process (systemd Restart=on-failure), not the same one: the guarantee this row records --
+// a non-returning request is refused with a typed 500 and cannot block later requests -- holds, and
+// its sufficiency evidence moves from "a later request on the same process is answered" to "the exact
+// process that crossed the deadline exits, so nothing is left running for it". The probe carries that
+// evidence (gunbc.native_serve_probe deadline launches: a CPU spin and a low-CPU stall, each observed
+// to answer the typed 500 and exit 75), and a panicked worker is still replaced in-process (the panic
+// cases, then a /hello answered on the same process). The window between the exit and the restart is
+// unanswered (connection refused), which is the stated cost of the decision.
 
 data native_serve_request_budget_unrealized: RungDrop = RungDrop {
   identity: "native_serve_request_budget_unrealized" as NonEmptyStr,

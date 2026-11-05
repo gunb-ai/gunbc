@@ -1,6 +1,7 @@
 module gunbc.runner.runner_width_transition
 
-import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.types { Bool, List, String, NonEmptyStr, Int }
+import std.algebra { length }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, committed_unit_names_at }
@@ -243,7 +244,7 @@ fn transition_population_agreement_over(
       let unexpected = observed_surplus
         |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
         |> filter(u => !any(required, r => (r as String) == (u as String)))
-      if list_length(items: unexpected) == 0 {
+      if length(xs: unexpected) == 0 {
         TransitionPopulationAgrees
       } else {
         TransitionPopulationDisagrees { unexpected: unexpected }
