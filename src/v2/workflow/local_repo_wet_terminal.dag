@@ -4089,6 +4089,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "the_supplied_plan_reaches_only_the_claim_root",
       expectation: ExpectedToHold {}
     },
+    // THE LOCAL DISCRIMINATOR FOR THE srv2 LOCUS FAULT (stern's S1 at 114bcf31, 2026-11-05: nine
+    // root-launch legs died because the drain's GUNBC_WORKSPACE_ROOT named a copied source tree with no
+    // .gunbc-tree-receipt). It assembles the drain's own argv words through `wet_image_serve_argv` -- the
+    // builder the drain and the served-image probe share -- and asserts they name the installed locus
+    // through production's accessors and never the source copy. It needs no sudo, no systemd and no
+    // install, so it runs in the author's container: the class is caught before an srv2 run, not after.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_drain_names_the_installed_locus_and_not_the_source_copy" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_drain_names_the_installed_locus_and_not_the_source_copy",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_supplied_root_carries_the_attempt_unit_spool_tree" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",

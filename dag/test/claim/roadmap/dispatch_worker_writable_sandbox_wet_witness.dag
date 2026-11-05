@@ -10,7 +10,7 @@ import gunbc.roadmap.dispatch_worker_unit_confinement {
   dispatch_worker_credstore_path, DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
 }
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
-import std.algebra { length }
+import std.algebra { length, list_at_optional }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem { path_parent_directory }
@@ -52,6 +52,9 @@ import extdeps.tools.coreutils_stat { coreutils_stat_path_ownership, PathOwnersh
 // OPERATION"): the root side of the launcher is a sudo'd invocation of the production CLI, never a
 // hand-spelled "sudo " prefix inside a string.
 import extdeps.sudo.elevation { sudo_elevate_command }
+// THE ENV PROGRAM THE DRAIN'S WORDS BEGIN WITH, read from its own authority (the same
+// `env_prefixed_argv` that `gunbc_entry_run_argv` composes) rather than spelled as a literal.
+import extdeps.tools.env { env_absolute_program }
 import gunbc.executor_privileged_operation { gunbc_entry_run_argv }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator { attempt_state_prepare_argvs_for_instance }
@@ -77,6 +80,11 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_refused_instance, witness_unnameable_principal,
   witness_supplied_credstore_dir, witness_supplied_credential_source, witness_supplied_credential_is_confined,
   wet_ok, wet_out, wet_argv_ok, wet_argv_out,
+  witness_claim_helper_locus, witness_locus_dir_text, witness_locus_dag_dir,
+  witness_locus_receipt_path, witness_locus_binary_path, witness_locus_source_roots,
+  witness_release_stage_dir, witness_release_stage_member, witness_stage_release_binary,
+  witness_guest_tree_revision, witness_locus_install, witness_locus_install_converged,
+  witness_locus_install_refusal_cause, witness_sudo_elevation_available,
 }
 import extdeps.tools.stat { stat_mode_command }
 import extdeps.tools.gnu_coreutils {
@@ -90,6 +98,7 @@ import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 // printenv argv path beside it was a parallel authority and is deleted (review 90936).
 import extdeps.shell
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartRequest,
   AttemptSystemUnitStartDerived, AttemptSystemUnitStartUnderivable,
@@ -97,7 +106,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_facts_for_request, attempt_system_unit_start_admitted,
   attempt_system_unit_plan_from_facts, attempt_system_unit_systemd_run_command,
   attempt_system_unit_properties, attempt_system_unit_launch_named_argument,
-  attempt_system_unit_request_path,
+  attempt_system_unit_request_path, attempt_system_unit_launcher_locus,
   attempt_unit_entry_outcome, AttemptUnitEntrySkipped, AttemptUnitEntryHandled, AttemptUnitEntryUnmovable,
   attempt_system_unit_enqueue_start, attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
   AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied, AttemptSystemUnitEnqueueRefused,
@@ -383,6 +392,90 @@ fn wet_plant_guest_runtime(instance: HostDashboardInstance) -> Bool {
   wet_plant_guest_sources(instance: instance) && wet_plant_guest_binary(instance: instance)
 }
 
+// WHETHER THE CLAIM HAS A LOCUS TO RUN THE IMAGE FROM, and if not, why. srv2's S1 at `114bcf31` lost
+// nine legs to a `false` with no cause anywhere: the drain ran against the copied source tree and the
+// CLI refused it for want of `.gunbc-tree-receipt`, but the claim could only say it had failed. The
+// refusal text is what makes this class readable from one log line, and the reason it is a value and
+// not a `wet_stage` side effect is that three different arms have to branch on it.
+type WetLocusState
+  = WetLocusReady { revision: String, dir: String }
+  | WetLocusRefused { cause: String }
+
+// PREPARE THE LOCUS THE DRAIN AND THE PROBE RUN FROM: stage the operator-named image where production's
+// install fold reads binaries, read the guest tree's own revision out of git, and hand both to the fold
+// (the fixture's `witness_locus_install`, which refuses rather than fabricating when either is missing).
+// Every leg that asks the image to serve anything calls this first: on a host with the elevation the
+// fold needs it converges, and on a host without it the leg refuses with `witness_sudo_elevation_available`'s
+// answer as the cause, which is a refusal with a reason and not a pass.
+fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
+  let named = wet_environment_value(name: wet_served_binary_env_var)
+  if named == "" {
+    WetLocusRefused {
+      cause: "GUNBC_WET_SERVE_BINARY is unset, so there is no image to stage into a locus",
+    }
+  } else if !witness_stage_release_binary(instance: instance, image: named) {
+    WetLocusRefused {
+      cause: join(["the release stage could not be written at ", witness_release_stage_member(instance: instance)], ""),
+    }
+  } else {
+    let revision = witness_guest_tree_revision(instance: instance)
+    let verdict = witness_locus_install(instance: instance, revision_text: revision)
+    if !witness_locus_install_converged(verdict: verdict) {
+      WetLocusRefused { cause: witness_locus_install_refusal_cause(verdict: verdict) }
+    } else if !wet_locus_reads_as_installed(instance: instance, revision_text: revision) {
+      // The fold said it converged; the filesystem still gets the last word, because the question the
+      // drain will be asked is the filesystem's, not the fold's.
+      WetLocusRefused {
+        cause: join(
+          [
+            "the install fold converged but the locus does not read as one: ",
+            witness_locus_receipt_path(instance: instance, revision_text: revision),
+            " or the locus dag dir is absent",
+          ],
+          "",
+        ),
+      }
+    } else {
+      WetLocusReady {
+        revision: revision,
+        dir: witness_locus_dir_text(instance: instance, revision_text: revision),
+      }
+    }
+  }
+}
+
+// THE TWO QUESTIONS THE READER WILL ASK, ASKED HERE FIRST (src/v1/stage0/src/cli_run.rs:611 wants a
+// `dag` directory and a regular receipt file, and the drain execs the member by name). Asking before the
+// drain runs is what keeps a half-installed locus from becoming a 245-second leg whose failure says
+// nothing about why.
+fn wet_locus_reads_as_installed(instance: HostDashboardInstance, revision_text: String) -> Bool {
+  wet_path_exists(path: witness_locus_dag_dir(instance: instance, revision_text: revision_text))
+    && wet_path_exists(path: witness_locus_receipt_path(instance: instance, revision_text: revision_text))
+    && wet_path_is_executable(path: witness_locus_binary_path(instance: instance, revision_text: revision_text))
+}
+
+// THE GATE, WITH ITS STAGE NAME. One call per leg records whether the locus converged or which arm
+// refused, so a run log names the arm instead of leaving it to be inferred from the leg that failed;
+// the value handed back is the revision, which is all a leg needs since every locus path is an accessor
+// over it. `Absent` means do not proceed: the same `false` the legs already carried, with the cause
+// written down before the leg stops.
+fn wet_locus_gate(instance: HostDashboardInstance, label: String) -> Optional<String> {
+  match wet_locus_prepare(instance: instance) {
+    WetLocusReady { revision: revision, dir: _ } =>
+      if wet_stage(stage: join(["claim-locus-installed:", label], ""), ok: true) {
+        Present { value: revision }
+      } else {
+        Absent
+      }
+    WetLocusRefused { cause: cause } =>
+      if wet_stage(stage: join(["claim-locus-refused:", label, ":", cause], ""), ok: false) {
+        Present { value: "" }
+      } else {
+        Absent
+      }
+  }
+}
+
 // THE IMAGE HAS TO ANSWER, NOT JUST EXIST. srv2 (stern, 2026-11-04, at 15be89fa and again at
 // fa64a4b9) planted the BATCH RUNNER as the instance gunbc -- `GUNBC_WET_SERVE_BINARY` was pointed at
 // claim_batch -- and all nine root-launch legs died inside the drain on `claim_batch: unknown
@@ -405,12 +498,18 @@ data wet_served_probe_success_fn: NonEmptyStr = "served_probe_succeeds"
 data wet_served_probe_refusal_fn: NonEmptyStr = "served_probe_refuses"
 data wet_served_probe_refusal_marker: NonEmptyStr = "served probe refuses by design"
 
-fn wet_served_probe_entry(instance: HostDashboardInstance) -> String {
-  join([instance.repo_root as String, "/", wet_served_probe_module_relative as String], "")
+// TRUE ONLY IF THE PLANTED IMAGE SERVES THE ROUTE, BOTH WAYS ROUND.
+// THE CLAIM-LEVEL FORM OF THE SAME ASK: install the claim's locus, then put the drain's question to the
+// image UNDER THAT LOCUS. Used by the served-image claim itself and by the launcher legs, which reach a
+// manager through `attempt_system_unit_enqueue_start_wait` rather than through `wet_worker_unit_start`
+// and so would otherwise never be asked at all. A refusal here means the claim has no route to speak of
+// -- a red verdict, not a skip, because the route is what these claims are about.
+fn wet_served_image_answers_under_locus(instance: HostDashboardInstance) -> Bool {
+  let revision_text = wet_locus_gate_text(instance: instance, label: "served-image")
+  revision_text != "" && wet_served_image_answers_the_route(instance: instance, revision_text: revision_text)
 }
 
-// TRUE ONLY IF THE PLANTED IMAGE SERVES THE ROUTE, BOTH WAYS ROUND.
-fn wet_served_image_answers_the_route(instance: HostDashboardInstance) -> Bool {
+fn wet_served_image_answers_the_route(instance: HostDashboardInstance, revision_text: String) -> Bool {
   // THE DIRECTORY IS PART OF THE ROUTE. The CLI keys its module graph by a path RELATIVE to its
   // process workspace root and refuses -- by panic, exit 101 -- an entry outside it
   // (cli_run.rs `repo_relative_path_normalized`: "path ... is not under process workspace root").
@@ -425,11 +524,11 @@ fn wet_served_image_answers_the_route(instance: HostDashboardInstance) -> Bool {
   // 125 with env's own message; nothing here fabricates a working directory.
   let ok_run = shell.Exec.RunArgvOutcome(
     program: wet_served_probe_env_program,
-    arguments: wet_served_probe_argv(instance: instance, function: wet_served_probe_success_fn),
+    arguments: wet_served_probe_argv(instance: instance, revision_text: revision_text, function: wet_served_probe_success_fn),
   )
   let refuse_run = shell.Exec.RunArgvOutcome(
     program: wet_served_probe_env_program,
-    arguments: wet_served_probe_argv(instance: instance, function: wet_served_probe_refusal_fn),
+    arguments: wet_served_probe_argv(instance: instance, revision_text: revision_text, function: wet_served_probe_refusal_fn),
   )
   match ok_run.outcome {
     ShellSpawnRefused { program: _, cause: _ } => false
@@ -451,14 +550,24 @@ data wet_served_probe_env_program: NonEmptyStr = "/usr/bin/env"
 // inside a unit because this is the pre-launch read: the claim asks the IMAGE before it asks a
 // manager. The words stay in `wet_served_run_tail`, so the probe and the unit's ExecStart cannot
 // drift apart.
-fn wet_served_probe_argv(instance: HostDashboardInstance, function: NonEmptyStr) -> List<String> {
+// THE PROBE'S WORDS: the drain's, run as the claim's own principal. `-C <repo_root>` first (the
+// WorkingDirectory systemd gives the unit's side), then `wet_image_serve_argv` verbatim -- so the env
+// prefix `GUNBC_WORKSPACE_ROOT=<locus>`, the locus member as the program, both locus `--source-root`
+// values and the locus-copied entry are the SAME words the drain elevates. srv2's S1 at 114bcf31 passed
+// `the_planted_serve_binary_is_the_image_the_operator_named` while every leg serving through the image
+// died, because the probe ran from the source cwd without the env the units serve under: an image that
+// could not serve a locus looked fine. Sharing one builder is what makes that impossible now.
+fn wet_served_probe_argv(instance: HostDashboardInstance, revision_text: String, function: NonEmptyStr) -> List<String> {
   concat(
-    ["-C", instance.repo_root as String, instance.serve_binary as String],
-    wet_served_run_tail(
-      entry: wet_served_probe_entry(instance: instance),
-      function: function as String,
-      extra_args: [],
-      repo_root: instance.repo_root as String,
+    ["-C", instance.repo_root as String],
+    map(
+      wet_image_serve_argv(
+        instance: instance,
+        revision_text: revision_text,
+        entry_relative: wet_served_probe_module_relative,
+        function: function,
+      ),
+      word => word as String,
     ),
   )
 }
@@ -1126,8 +1235,31 @@ fn wet_root_side_cli(
 // property set for the containment assertion; the launch itself takes the properties from inside
 // attempt_system_unit_systemd_run_command, so this is not a second fold the unit is built from.
 fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>, root: NonEmptyStr) -> WetRootLaunch {
+  // THE LOCUS FIRST, THEN THE IMAGE, THEN THE MANAGER. The order is not cosmetic: the served-image probe
+  // asks the image the very question the drain will ask, and after this PR that question is asked UNDER
+  // THE LOCUS (same env, same workspace root), so it can only be asked once the locus exists. On a host
+  // with no elevation the gate refuses here with its cause on the trail, which is the same posture the
+  // root-launcher refusal above already takes -- a typed "needs elevation" stop, never a silent skip.
+  let revision_text = wet_locus_gate_text(instance: instance, label: unit_key)
   if !wet_root_launcher_is_available() {
     WetRootLaunchRefused { cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it" }
+  } else if revision_text == "" {
+    // THE LOCUS IS A PREREQUISITE, NOT A DETAIL THE DRAIN DISCOVERS. srv2's S1 at 114bcf31 learned this
+    // the expensive way: with no installed locus the drain's GUNBC_WORKSPACE_ROOT named a copied tree,
+    // the CLI refused it, and nine legs reported a failed drain instead of the one fact that mattered.
+    // `wet_locus_gate` has already written the cause to the trail -- elevation, staging, the fold's own
+    // step, or a fold that converged without leaving what the reader asks for -- so this arm only stops.
+    WetRootLaunchRefused {
+      cause: join(
+        [
+          "the claim-local release locus is not installed for ",
+          unit_key,
+          "; the cause is on the trail as claim-locus-refused:",
+          unit_key,
+        ],
+        "",
+      ),
+    }
   } else if !wet_stage(
     // THE IMAGE IS ASKED BEFORE ANYTHING REACHES A MANAGER. On the srv2 run of fa64a4b9 the batch
     // runner had been planted as the instance gunbc, so nine legs enqueued a unit, ran the elevated
@@ -1136,7 +1268,7 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
     // runs (measured: a couple of seconds) and turns that into a refusal with a named cause before a
     // transient unit exists, which is also before anything could leave a root-owned file behind.
     stage: join(["served-image-answers-the-route:", unit_key], ""),
-    ok: wet_served_image_answers_the_route(instance: instance),
+    ok: wet_served_image_answers_the_route(instance: instance, revision_text: revision_text),
   ) {
     WetRootLaunchRefused {
       cause: "the planted image does not answer the served route -- it is not the gunbc CLI the row names; see the served-probe pair in the witness",
@@ -1192,8 +1324,21 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
 // argument through production's own admission (attempt_system_unit_launch_named_argument), and the
 // elevation through the sudo module. After it, the queue's answer files — written by a root process —
 // are handed back to the claim's own principal so the unprivileged read-backs and cleanup still work.
-fn wet_root_drain_elevated(instance: HostDashboardInstance, root: NonEmptyStr, unit_key: String, entry_name: String) -> Bool {
-  if !wet_stage(stage: join(["root-launcher-available:", unit_key], ""), ok: wet_root_launcher_is_available()) {
+fn wet_root_drain_elevated(
+  instance: HostDashboardInstance,
+  root: NonEmptyStr,
+  unit_key: String,
+  entry_name: String,
+) -> Bool {
+  // THE REVISION, RE-READ HERE RATHER THAN PASSED DOWN FROM NINE CLAIMS. The fold is idempotent, so a
+  // second gate call costs a readback and not a second install, and it keeps the drain from being
+  // callable with a revision some other conjunct remembered -- which is the drift srv2's S1 at 114bcf31
+  // caught in the other direction. An empty text means the locus is not there: this leg says false and
+  // the trail already carries the cause under claim-locus-refused.
+  let revision_text = wet_locus_gate_text(instance: instance, label: join(["drain:", unit_key], ""))
+  if revision_text == "" {
+    false
+  } else if !wet_stage(stage: join(["root-launcher-available:", unit_key], ""), ok: wet_root_launcher_is_available()) {
     false
   } else if !wet_stage(
     stage: join(["spool-tree-prepared:", unit_key], ""),
@@ -1217,14 +1362,15 @@ fn wet_root_drain_elevated(instance: HostDashboardInstance, root: NonEmptyStr, u
     // Six arguments, two words each (name + value), with no embedded separator: anything else is a
     // value the word policy had to quote, and this route cannot carry it.
     if length(xs: words) == 12 {
-        let command = gunbc_entry_run_argv(
-          workspace_root: instance.repo_root,
-          binary: instance.serve_binary,
-          source_roots: [
-            join([instance.repo_root as String, "/dag"], "") as NonEmptyStr,
-            join([instance.repo_root as String, "/src/v2"], "") as NonEmptyStr,
-          ],
-          entry: wet_witness_entry(instance: instance) as NonEmptyStr,
+        // THE LOCUS, NOT THE SOURCE COPY. srv2's S1 at 114bcf31 (stern, 2026-11-05) is what this line
+        // replaced: the drain asked for `instance.repo_root`, a copied tree with no receipt, and the
+        // real CLI refused it at cli_run.rs:611 -- `names no release locus: missing member
+        // .gunbc-tree-receipt` -- before any sandbox conjunct ran. The words now come from
+        // `wet_image_serve_argv`, the same builder the served-image probe uses.
+        let command = wet_image_serve_argv(
+          instance: instance,
+          revision_text: revision_text,
+          entry_relative: wet_witness_entry_relative,
           function: "wet_root_side_cli" as NonEmptyStr,
         )
         // gunbc_entry_run_argv hands back the WHOLE argv (binary first, then the workspace env prefix),
@@ -1500,8 +1646,75 @@ fn sandbox_touch_cli(path: String) -> ProcessExit {
   }
 }
 
+// THE WITNESS FILE, RELATIVE TO WHICHEVER TREE IT IS READ FROM. One row, two roots: the unit's inner
+// side runs it out of the copied source tree (GUNBC_WORKSPACE_ROOT is unset there, so the CLI walks to
+// the .git ancestor and the tree is its own root -- src/v1/stage0/src/cli_run.rs:562 says "WHEN UNSET
+// nothing changes"), and the drain runs it out of the INSTALLED LOCUS, where the same env is set
+// explicitly and the entry has to sit under the root the env names. Two literals for the same file is
+// how a drain and an inner side drift apart.
+data wet_witness_entry_relative: NonEmptyStr =
+  "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"
+
 fn wet_witness_entry(instance: HostDashboardInstance) -> String {
-  join([instance.repo_root as String, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], "")
+  join([instance.repo_root as String, "/", wet_witness_entry_relative as String], "")
+}
+
+// THE SAME FILE, INSIDE THE LOCUS THE DRAIN NAMES. `repo_relative_path_normalized` refuses an entry
+// outside the process workspace root, so a drain that sets GUNBC_WORKSPACE_ROOT to the locus and hands
+// over a source-tree entry panics 101 before it drains anything.
+fn wet_witness_entry_in_locus(instance: HostDashboardInstance, revision_text: String) -> String {
+  join(
+    [
+      witness_locus_dir_text(instance: instance, revision_text: revision_text),
+      "/",
+      wet_witness_entry_relative as String,
+    ],
+    "",
+  )
+}
+
+// THE GATE AS ONE STRING, for legs whose verdict is a chain of `&&`s rather than a match: the revision
+// on success, "" when the leg must not run. The empty string is never an unexplained stop --
+// `wet_locus_gate` has already put the cause in the stage trail, which is where stern reads it.
+fn wet_locus_gate_text(instance: HostDashboardInstance, label: String) -> String {
+  match wet_locus_gate(instance: instance, label: label) {
+    Present { value: revision } => revision
+    Absent => ""
+  }
+}
+
+// THE ONE ARGV THE IMAGE IS ASKED TO SERVE WITH. The elevated drain and the unprivileged served-image
+// probe both get their words from here, and neither passes a path the other invented: workspace root,
+// binary, both `--source-root` values and the entry come from the fixture's locus accessors, which are
+// production's `helper_locus_dir` over the row. This is precisely what srv2's S1 at `114bcf31` caught:
+// the drain named `instance.repo_root` -- a copied tree with no receipt -- and the CLI refused it at
+// `cli_run.rs:611` before a single sandbox conjunct ran, while nothing in the witness could see that
+// the drain and the probe had drifted into two different routes. Elevation is NOT part of this builder:
+// the drain wraps these words in `sudo_elevate_command`, the probe runs them as itself, and that is the
+// whole difference between them.
+fn wet_image_serve_argv(
+  instance: HostDashboardInstance,
+  revision_text: String,
+  entry_relative: NonEmptyStr,
+  function: NonEmptyStr,
+) -> List<NonEmptyStr> {
+  gunbc_entry_run_argv(
+    workspace_root: witness_locus_dir_text(instance: instance, revision_text: revision_text) as NonEmptyStr,
+    binary: witness_locus_binary_path(instance: instance, revision_text: revision_text) as NonEmptyStr,
+    source_roots: map(
+      witness_locus_source_roots(instance: instance, revision_text: revision_text),
+      s => s as NonEmptyStr,
+    ),
+    entry: join(
+      [
+        witness_locus_dir_text(instance: instance, revision_text: revision_text),
+        "/",
+        entry_relative as String,
+      ],
+      "",
+    ) as NonEmptyStr,
+    function: function,
+  )
 }
 
 // THE SERVED-ROUTE ARGV, ONCE. One builder owns the flag words the instance gunbc takes on its served
@@ -1670,7 +1883,7 @@ test fn the_planted_serve_binary_is_the_image_the_operator_named() -> Bool {
     && wet_plant_guest_sources(instance: inst)
     && wet_stage(
       stage: "served-image-answers-the-route",
-      ok: wet_served_image_answers_the_route(instance: inst),
+      ok: wet_served_image_answers_under_locus(instance: inst),
     )
   wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
@@ -1747,7 +1960,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
         // to be asked here as well or the nine legs keep discovering the wrong image from the inside
         // of a launched unit. A leg that cannot run its guest is not a sandbox verdict.
         stage: join(["served-image-answers-the-route:", unit_key], ""),
-        ok: wet_served_image_answers_the_route(instance: instance),
+        ok: wet_served_image_answers_under_locus(instance: instance),
       ) {
         SandboxTouchUnrunnable
       } else if !prepare_launcher_probe(instance: instance, unit_key: unit_key) {
@@ -2680,6 +2893,106 @@ test fn the_supplied_plan_reaches_only_the_claim_root() -> Bool {
     ),
     root: root,
   )
+}
+
+
+// THE WORD AT POSITION `i`, for claims that assert on an assembled argv by position. The corpus has no
+// indexing operator and each witness that needs one defines its own (dag/test/claim/
+// runner/deploy_slot_account_witness.dag:290 is one); this is that helper, scoped to the words these
+// claims read.
+fn wet_word_at(words: List<String>, index: Int) -> String {
+  match list_at_optional(xs: words, index: index) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+test fn the_drain_names_the_installed_locus_and_not_the_source_copy() -> Bool {
+  // THE LOCAL DISCRIMINATOR FOR THE FAULT srv2 CAUGHT, WITH NO ELEVATION ANYWHERE IN IT. On 2026-11-05
+  // stern's S1 at 114bcf31 lost nine root-launch legs because the elevated drain named
+  // `instance.repo_root` -- a copied tree with no `.gunbc-tree-receipt` -- as GUNBC_WORKSPACE_ROOT, and
+  // the real CLI answered `names no release locus: missing member .gunbc-tree-receipt`
+  // (src/v1/stage0/src/cli_run.rs:611). Nothing in this file could see it, because those words were only
+  // ever assembled inside a leg that had already required sudo. This claim assembles the SAME words --
+  // `wet_image_serve_argv`, the one builder the drain and the served-image probe share -- and asks what
+  // they name, with no sudo, no manager and no install. A mutant that puts `repo_root` back into the
+  // builder turns it RED in the author's container, which is the whole point of it existing.
+  let root = wet_claim_root(tag: "drain-argv" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  // A SHAPE, NOT A DEPLOYMENT. Any 40-hex names a revision for the purposes of these words, and what is
+  // claimed is that the shape holds for whichever one a leg reads out of git; the same convention the
+  // pure install witness already uses (dag/test/claim/workspace_executor_install_witness.dag:25).
+  let revision = "0123456789abcdef0123456789abcdef01234567"
+  let words = map(
+    wet_image_serve_argv(
+      instance: inst,
+      revision_text: revision,
+      entry_relative: wet_witness_entry_relative,
+      function: "wet_root_side_cli" as NonEmptyStr,
+    ),
+    word => word as String,
+  )
+  let locus = witness_locus_dir_text(instance: inst, revision_text: revision)
+  let repo = inst.repo_root as String
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
+    // 1. PREFIXED THE WAY PRODUCTION PREFIXES: `env_prefixed_argv`'s own env program first, then the
+    // binding spelled from production's own env-name row, then the program it runs.
+    && wet_stage(
+      stage: "drain-argv-is-env-prefixed",
+      ok: wet_word_at(words: words, index: 0) == env_absolute_program().invocation as String
+        && wet_word_at(words: words, index: 1)
+          == join([gunbc_workspace_root_env_name, "=", locus], "")
+        && wet_word_at(words: words, index: 2)
+          == witness_locus_binary_path(instance: inst, revision_text: revision),
+    )
+    // 2. THE BINARY IS THE LOCUS MEMBER AND NOT THE ROW's SERVE BINARY. `attempt_system_unit_launch_gunbc_argv_at`
+    // passes the locus member; the srv2 drain did not, and every leg that failed was downstream of that
+    // one word. The serve binary stays what the UNIT execs (attempt_system_unit_launch.dag:276 admits on
+    // it); the drain is a different route and names a different file.
+    && wet_stage(
+      stage: "drain-argv-binary-is-the-locus-member",
+      ok: contains(xs: words, item: witness_locus_binary_path(instance: inst, revision_text: revision))
+        && !contains(xs: words, item: inst.serve_binary as String),
+    )
+    // 3. BOTH SOURCE ROOTS ARE THE LOCUS'S, from `release_locus_tree_subdirs` joined under it -- the
+    // list production's argv builder joins, not two strings this claim typed.
+    && wet_stage(
+      stage: "drain-argv-source-roots-are-the-locus",
+      ok: length(xs: witness_locus_source_roots(instance: inst, revision_text: revision)) == 2
+        && all(
+          xs: witness_locus_source_roots(instance: inst, revision_text: revision),
+          predicate: root_word => contains(xs: words, item: root_word),
+        )
+        && contains(xs: words, item: "--source-root"),
+    )
+    // 4. AND NO WORD IS THE SOURCE COPY -- not the root, not its dag, not its src/v2, not a path that
+    // merely starts under it. This is the conjunct the srv2 run would have failed on its own.
+    && wet_stage(
+      stage: "drain-argv-names-no-source-copy",
+      ok: !contains(xs: words, item: repo)
+        && !contains(xs: words, item: join([repo, "/dag"], ""))
+        && !contains(xs: words, item: join([repo, "/src/v2"], ""))
+        && !any(
+          xs: words,
+          predicate: word => starts_with(s: word, prefix: join([repo, "/"], "")),
+        ),
+    )
+    // 5. THE LOCUS IS PRODUCTION'S SHAPE, READ FROM PRODUCTION'S ACCESSOR: under the claim's instance
+    // root (never the live lab root -- that is `wet_claim_is_confined`'s job), revision-qualified
+    // through production's `helper_locus_dir` (`base + "/" + revision`, release_locus.dag:112 -- the
+    // step stem lives in the HelperLocus row, not in the path), and the row's step stem IS the live
+    // launcher's, so this is the attempt-unit helper locus's shape and not some directory with a
+    // receipt in it.
+    && wet_stage(
+      stage: "drain-argv-locus-is-a-production-helper-locus",
+      ok: starts_with(s: locus, prefix: join([inst.instance_root as String, "/"], ""))
+        && starts_with(s: locus, prefix: join([witness_claim_helper_locus(instance: inst).base, "/"], ""))
+        && string_contains(s: locus, pattern: revision)
+        && witness_claim_helper_locus(instance: inst).step_stem
+          == attempt_system_unit_launcher_locus(instance: inst).step_stem
+        && locus != repo,
+    )
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
 }
 
 test fn the_supplied_root_carries_the_attempt_unit_spool_tree() -> Bool {
