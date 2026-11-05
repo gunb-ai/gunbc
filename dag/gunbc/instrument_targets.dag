@@ -3,8 +3,8 @@ module gunbc.instrument_targets
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
 import gunbc.native_serve_probe_plan {
-  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
-  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
+  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit,
+  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_deadline_exit,
 }
 import gunbc.target_binding {
   TargetBinding,
@@ -279,7 +279,7 @@ fn native_app_attest_entry() -> String {
 // drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, which names this label as the
 // route that still runs them; run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`.
-// THE NATIVE SERVE DOOR: std.compiler_entry NativeServeDriver exercised end to end. The seed emits
+// THE NATIVE SERVE DOOR: std.compiler_entry NativeIngressDriver exercised end to end. The seed emits
 // and builds the fixture service gunbc.instruments.native_serve_fixture, starts it on a loopback
 // port the OS chooses, sends gunbc.native_serve_probe's requests over real TCP and lets that module
 // judge the answers -- handler routes, the handler's own refusal, the door's 400 refusals, /livez
@@ -310,16 +310,16 @@ fn native_serve_binding() -> TargetBinding {
 }
 
 // THE FIXTURE'S PROBE DECLARES ALL THREE PHASES: its reader judges the peer-bound REST routes, the
-// refused launch and the stuck-ceiling exit, and the host runs exactly what this row says.
+// refused launches and the deadline exits, and the host runs exactly what this row says.
 fn native_serve_fixture_probe() -> NativeServeProbe {
   NativeServeProbe {
     reader: "dag/gunbc/native_serve_probe.dag"
-    phases: [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit]
+    phases: [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit]
   }
 }
 
-// THE DEVICE-CRYPTO VERIFIER SIDECAR: std.compiler_entry NativeServeDriver over
-// gunbc.auth.approval_device_crypto_serve, the natively emitted realization of the approval
+// THE DEVICE-CRYPTO VERIFIER SIDECAR: std.compiler_entry NativeIngressDriver over its binding
+// gunbc.auth.approval_device_crypto_ingress (handler gunbc.auth.approval_device_crypto_serve), the natively emitted realization of the approval
 // broker's device verifiers (gunbc.auth.approval_device_crypto_realization). The seed emits and
 // builds the service, starts it on a loopback port, sends the requests of
 // gunbc.instruments.native_serve_device_crypto_probe over real TCP and lets that module judge: the
@@ -332,7 +332,7 @@ fn native_serve_device_crypto_label() -> Label {
 }
 
 fn native_serve_device_crypto_entry() -> String {
-  "dag/gunbc/auth/approval_device_crypto_serve.dag"
+  "dag/gunbc/auth/approval_device_crypto_ingress.dag"
 }
 
 fn native_serve_device_crypto_binding() -> TargetBinding {
@@ -345,9 +345,9 @@ fn native_serve_device_crypto_binding() -> TargetBinding {
   }
 }
 
-// THE STARTUP-FOLD CONTROL: std.compiler_entry NativeServeDriver over
+// THE STARTUP-FOLD CONTROL: std.compiler_entry NativeIngressDriver over
 // gunbc.instruments.native_serve_startup_refusal_fixture, whose startup fold (gunbc.native_serve
-// native_serve_startup_entry_function) refuses exactly when dropping each single obligation of
+// NativeServeStartup, named by its program descriptor) refuses exactly when dropping each single obligation of
 // gunbc.auth.approval_device_crypto_realization device_crypto_obligations made the handler receipt refuse. The seed
 // emits and builds it and launches it once with a valid revision; gunbc.instruments.native_serve_startup_refusal_probe
 // holds when the process exited by itself with the startup exit code, never bound, and named every dropped evidence. It
@@ -1604,9 +1604,9 @@ fn native_serve_probe_runs_refused_launch(entry: String) -> Bool {
   }
 }
 
-fn native_serve_probe_runs_stuck_ceiling_exit(entry: String) -> Bool {
+fn native_serve_probe_runs_deadline_exit(entry: String) -> Bool {
   match native_serve_probe_for_entry(entry: entry) {
     Absent => false
-    Present { value: p } => native_serve_declares_stuck_ceiling_exit(probe: p)
+    Present { value: p } => native_serve_declares_deadline_exit(probe: p)
   }
 }
