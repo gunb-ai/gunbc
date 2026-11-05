@@ -114,12 +114,11 @@ type PixelRegion {
 // TWO BOXES ARE THE SAME BOX when all four edges agree, in the same frame's pixels. It sits beside the
 // type so nobody re-derives it inside a join: a check that compared two of the four would let a
 // differently-sized box pass as the same label, which is the failure this relation exists to prevent.
-// A cast is hoisted out of every labelled-argument position, by this one-line function rather than
-// written inline. `f(x: v as T)` parses `as T` as a SECOND named argument called `as`: the call is
-// accepted by every stage up to runtime, where whatever the argument is forwarded to refuses it
-// ("calling 'unicode_scalar_unfold': no parameter named 'as'"). Filed as a compiler defect; until
-// it is fixed, the coercion has to be written where no parser can mistake it for an argument.
-fn as_text(t: NonEmptyStr) -> String {
+// The text of a stored photograph's field, for COMPARISON only. Its result is always bound to a name before
+// it is passed, which is what carried this module's witness past a refusal that only arrives at runtime. The
+// trigger behind that is NOT characterized -- the account, with the counterexamples that killed the tidy
+// explanation, is on the same helper in product.electrical.identification. Do not restate a rule from here.
+fn shown_photo_text(t: NonEmptyStr) -> String {
   t as String
 }
 fn pixel_region_eq(a: PixelRegion, b: PixelRegion) -> Bool {
@@ -185,10 +184,17 @@ fn same_sighting(a: PhotographCitation, b: PhotographCitation) -> Bool {
     BytesNotInStore { taken_on: ta, locator: la, obligation: oa } =>
       match b {
         InStore { content: _, region: _ } => false
-        BytesNotInStore { taken_on: tb, locator: lb, obligation: ob } =>
-          string_eq(a: as_text(t: ta), b: as_text(t: tb))
-            && string_eq(a: as_text(t: la), b: as_text(t: lb))
-            && string_eq(a: as_text(t: oa), b: as_text(t: ob))
+        BytesNotInStore { taken_on: tb, locator: lb, obligation: ob } => {
+          let taken_a = shown_photo_text(t: ta)
+          let taken_b = shown_photo_text(t: tb)
+          let here_a = shown_photo_text(t: la)
+          let here_b = shown_photo_text(t: lb)
+          let owed_a = shown_photo_text(t: oa)
+          let owed_b = shown_photo_text(t: ob)
+          string_eq(a: taken_a, b: taken_b)
+            && string_eq(a: here_a, b: here_b)
+            && string_eq(a: owed_a, b: owed_b)
+        }
       }
   }
 }

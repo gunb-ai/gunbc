@@ -10,7 +10,7 @@ import v2.std.text {
   CharFound,
   CharResult,
   char_eq,
-  string_any_char_in,
+  string_contains_char,
   string_eq,
   string_head,
   string_join
@@ -174,17 +174,53 @@ type GlyphReduction
   = Reduced { lines: List<ReducedLine> }
   | ReductionUnavailable { why: NonEmptyStr }
 
-// A scalar from a one-character host string, because the language has no character literals.
-// A cast is hoisted out of every labelled-argument position, by this one-line function rather than
-// written inline. `f(x: v as T)` parses `as T` as a SECOND named argument called `as`: the call is
-// accepted by every stage up to runtime, where whatever the argument is forwarded to refuses it
-// ("calling 'unicode_scalar_unfold': no parameter named 'as'"). Filed as a compiler defect; until
-// it is fixed, the coercion has to be written where no parser can mistake it for an argument.
-fn as_text(t: NonEmptyStr) -> String {
+// The text of a transcribed string, for COMPARISON only: identity never goes through text, and the prose
+// that leaves this module is built by std's own fold.
+//
+// WHY THIS HELPER'S RESULT IS ALWAYS BOUND TO A NAME BEFORE IT IS PASSED.
+//
+// A seed defect substitutes an ARGUMENT'S SOURCE TEXT into the callee's parameter list. It is invisible to
+// tokenize, parse, resolve and typecheck and dies at eval (about step 88) with, for example:
+//
+//   call contract mismatch calling 'unicode_scalar_unfold': no parameter named 'host' (declared: [s])
+//
+// where the name is whatever source text stood in the caller's argument position -- so the word moves when
+// the argument is renamed. 'unicode_scalar_unfold' (src/v2/std/integer.dag:1119, one parameter `s`) is
+// simply the first inner call that checks its labels, so it is where every shape surfaces.
+//
+// Measured, in .scratch/probes/faithful/, each row a separate claim_batch run at this tree:
+//   PASS  non-recursive, literal argument                           into string_any_char_in
+//   PASS  non-recursive, bound name (coerced) + literal alphabet   into string_any_char_in   (f7)
+//   PASS  non-recursive, bound name + destructured Char             into string_contains_char (f2, f9)
+//   PASS  non-recursive, call expression as the argument            into string_eq             (f1)
+//   FAIL  non-recursive, bound name in the `alphabet:` label         into string_any_char_in   (f3)
+//   FAIL  RECURSIVE,   bound name                                    into string_contains_char (f10)
+//   FAIL  RECURSIVE,   bound name (coerced)                          into string_contains_char (f8)
+//   FAIL  RECURSIVE,   bound name (coerced)                          into string_eq             (f11)
+//
+// So the two shapes this module keeps away from these calls are: a bound name reached from a RECURSIVE frame,
+// and a bound name in `alphabet:`. Recursion is the switch, not the callee -- f8, f10 and f11 are the same
+// function handed three different predicates, and the same function without the recursive arm (f9) is green.
+// The smallest repro is twelve lines, .scratch/probes/faithful/f8.dag.
+//
+// It is NOT a cast, NOT an identifier spelled like the keyword `as`, and NOT a member access: each of those
+// was eliminated by measured shapes (five, seven and one respectively, kept with this work's receipts in the
+// private atlas branch), and `reduced_marking` below has carried a cast inside a labelled argument for
+// months. Renaming this helper moved the word inside the error message and changed nothing else.
+//
+// What this note does NOT claim: that the boundary above is complete. It is drawn where it was measured.
+// `span_carries_mark` below exists because of this defect -- it is the leaf the recursive walk is not
+// allowed to be -- and an earlier revision of this comment justified these bindings with probe rows that
+// never called the failing function at all.
+//
+// The defect is filed for the follow-up list with its repro; the bindings are a workaround, not a cure.
+fn shown_text(t: NonEmptyStr) -> String {
   t as String
 }
+
 fn scalar_of(one: NonEmptyStr) -> Char? {
-  match string_head(s: as_text(t: one)) {
+  let one_text = shown_text(t: one)
+  match string_head(s: one_text) {
     CharFound { value: c } => Present { value: c }
     CharAbsent => Absent
   }
@@ -381,10 +417,41 @@ fn read_no_glyphs(c: MarkingContent) -> Bool {
 }
 
 fn any_glyph_unread(spans: List<GlyphSpan>) -> Bool {
+  match scalar_of(one: "?") {
+    // Losing the mark's scalar costs the reading its SILENCE EXEMPTION rather than granting it: the reading
+    // is then compared like any other, so a mint can fail but cannot be won by an unrun comparison. The
+    // direction is deliberate, and is the one reduced_marking already takes when a separator has no scalar.
+    Absent => false
+    Present { value: mark } => any_span_carries_mark(spans: spans, mark: mark)
+  }
+}
+
+// The unread mark is compared as a CHARACTER, obtained once from the one-character string the contract
+// defines -- the way reduced_marking obtains "/" and " ". It is never compared as an alphabet. std's
+// string_any_char_in is `!(for_all(xs: s, predicate: fn(c) { !(string_contains_char(s: alphabet, c: c)) }))`,
+// and that predicate CAPTURES `alphabet`: its first labelled argument is the outer call's SECOND parameter.
+// Handing that call an identifier in the `s:` position puts the identifier's own spelling into the nested
+// call's parameter slot, and nothing says so until execution deep inside the capture -- four tests of the
+// marking witness died with "calling 'unicode_scalar_unfold': no parameter named 'glyphs' (declared: [s])"
+// after tokenize, parse, resolve and typecheck had all passed. A literal there is fine, and so is a call:
+// only an identifier leaks, which is why each of the two shapes that looked like the trigger was green on
+// its own. string_contains_char passes `xs: s` -- the first parameter, no capture -- and the same bound
+// identifier through it ran green (variant f2, kept with this work's receipts in the private atlas branch).
+// So the mark is a Char here, obtained once, and the test is membership.
+// The leaf is its own function on purpose, and this split is load-bearing rather than tidiness. The label leak
+// described above needs BOTH halves in one function: f8 (recursive arm + bound coercion + the capturing
+// predicate) is red while f2 (the same binding in a function that does not recurse) and f9 (the same arm
+// without the recursive tail) are both green. So the coercion is bound in a function that never calls itself,
+// and the walk below binds nothing at all.
+fn span_carries_mark(s: GlyphSpan, mark: Char) -> Bool {
+  let host = shown_text(t: s.text)
+  string_contains_char(s: host, c: mark)
+}
+
+fn any_span_carries_mark(spans: List<GlyphSpan>, mark: Char) -> Bool {
   match spans {
     Empty => false
-    Cons { head: s, tail: rest } =>
-      string_any_char_in(s: as_text(t: s.text), alphabet: "?") || any_glyph_unread(spans: rest)
+    Cons { head: s, tail: rest } => span_carries_mark(s: s, mark: mark) || any_span_carries_mark(spans: rest, mark: mark)
   }
 }
 
@@ -456,12 +523,18 @@ fn reading_disputes(relied: MarkingReading, other: MarkingReading) -> List<NonEm
     []
   } else {
     match reduced_content(c: relied.content) {
-      ReductionUnavailable { why } => [disputed_pair(left: "(reduction unavailable)", right: as_text(t: why))]
+      ReductionUnavailable { why } => {
+        let un = shown_text(t: why)
+        [disputed_pair(left: "(reduction unavailable)", right: un)]
+      }
       Reduced { lines: relied_lines } =>
         match reduced_content(c: other.content) {
-          ReductionUnavailable { why } => [
-            disputed_pair(left: "(reduction unavailable)", right: as_text(t: why))
-          ]
+          ReductionUnavailable { why } => {
+            let un = shown_text(t: why)
+            [
+              disputed_pair(left: "(reduction unavailable)", right: un)
+            ]
+          }
           Reduced { lines: other_lines } =>
             line_disputes(relied_lines: relied_lines, other_lines: other_lines)
         }
@@ -554,8 +627,13 @@ fn same_evidence(a: EvidenceRef, b: EvidenceRef) -> Bool {
   match a {
     OperatorStatement { stated_on: sa, verbatim: va } =>
       match b {
-        OperatorStatement { stated_on: sb, verbatim: vb } =>
-          string_eq(a: as_text(t: sa), b: as_text(t: sb)) && string_eq(a: as_text(t: va), b: as_text(t: vb))
+        OperatorStatement { stated_on: sb, verbatim: vb } => {
+          let said_a = shown_text(t: sa)
+          let said_b = shown_text(t: sb)
+          let on_a = shown_text(t: va)
+          let on_b = shown_text(t: vb)
+          string_eq(a: said_a, b: said_b) && string_eq(a: on_a, b: on_b)
+        }
         OperatorPhotograph { citation: _ } => false
         SellerListingPhotograph { listing: _, read_on: _ } => false
       }
@@ -567,8 +645,13 @@ fn same_evidence(a: EvidenceRef, b: EvidenceRef) -> Bool {
       }
     SellerListingPhotograph { listing: la, read_on: ra } =>
       match b {
-        SellerListingPhotograph { listing: lb, read_on: rb } =>
-          string_eq(a: as_text(t: la), b: as_text(t: lb)) && string_eq(a: as_text(t: ra), b: as_text(t: rb))
+        SellerListingPhotograph { listing: lb, read_on: rb } => {
+          let left = shown_text(t: la)
+          let right = shown_text(t: lb)
+          let from_a = shown_text(t: ra)
+          let from_b = shown_text(t: rb)
+          string_eq(a: left, b: right) && string_eq(a: from_a, b: from_b)
+        }
         OperatorStatement { stated_on: _, verbatim: _ } => false
         OperatorPhotograph { citation: _ } => false
       }
@@ -1038,16 +1121,20 @@ fn glyph_text_eq(a: MarkingGlyphs, b: MarkingGlyphs) -> Bool {
   same_chars(l: unicode_scalar_unfold(s: left), r: unicode_scalar_unfold(s: right))
 }
 
-// Is this the whole transcription, exactly one span and nothing beside it? Used where a control accepts a
-// specific recorded transcription and must refuse if anything else was also written down.
-fn sole_glyph_span(c: MarkingContent) -> MarkingGlyphs? {
-  match c {
-    Transcribed { first, rest } =>
+// The reading's single span of GLYPHS, when the glyph channel holds exactly one. Spans in the other channels
+// are not counted against it: letters plus the maker's logo is still one span of glyphs. Asking instead for
+// "exactly one span of any kind" is the wrong question and was caught by the store witness -- it made the four
+// FSV20100V rows look unread, because their ON logo sits in `rest` beside the glyphs. What must be unique is
+// the glyph channel, since two spans of glyphs in one reading is the duplicate-channel claim that control 7
+// refuses; where each span was sighted is a separate question, asked of each span where it matters.
+fn sole_glyph_text(c: MarkingContent) -> MarkingGlyphs? {
+  match glyph_spans_in(spans: content_spans(c)) {
+    Empty => Absent
+    Cons { head: only, tail: rest } =>
       match rest {
-        Empty => Present { value: first.text }
+        Empty => Present { value: only.text }
         Cons { head: _, tail: _ } => Absent
       }
-    LookedNothingReadable { circumstances: _ } => Absent
   }
 }
 

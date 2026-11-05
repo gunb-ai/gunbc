@@ -91,7 +91,7 @@ import product.electrical.identification {
   marking_text,
   // The channels, not the rendering: these four rows are checked on what was read as letters and what was
   // recorded as the maker's mark, so the witness projects the spans instead of comparing a rendered string.
-  sole_glyph_span,
+  sole_glyph_text,
   glyph_spans_in,
   content_spans,
   glyph_text_eq,
@@ -360,20 +360,42 @@ test fn the_fsv_rows_box_the_bodies_their_receipts_named() -> Bool {
 // on the channels -- the sole glyph span, and the one logo beside it -- and not on the rendering. Pinning the
 // rendering would re-assert the pre-rev-6 single-line text, in which "ON logo" sat inside the glyphs, and that
 // was a misclassification: those words are the bench naming a mark, not glyphs printed on the part.
-test fn the_fsv_rows_say_exactly_what_the_receipts_say() -> Bool {
+// Three properties, three verdicts. This was one conjunction, and when it failed it named nothing: the
+// lookup, the letters and the logo are different things that can break for different reasons, and a control
+// that cannot say which of three it is cannot direct anyone to the fix.
+
+// (1) The join landed. `e1_marking_at` only answers for a row identified BY its marking, so this says the
+// device code we read actually became the vendor's printed mark -- not a candidate beside it.
+test fn the_four_fsv_rows_are_identified_by_their_marking() -> Bool {
+  count(filter(["D2_P1", "D8_P1", "D2_P5", "D8_P5"], d => match e1_marking_at(designator: d) {
+    Absent => true
+    Present { value: _ } => false
+  })) == 0
+}
+
+// (2) The letters are what the receipts transcribed, in the order the bench read them, per pair.
+test fn the_fsv_p1_pair_prints_the_device_code_then_the_package_code() -> Bool {
   count(filter(["D2_P1", "D8_P1"], d => !prints_glyphs(designator: d, want: "FSV20100V / JC03"))) == 0
-    && count(filter(["D2_P5", "D8_P5"], d => !prints_glyphs(designator: d, want: "JC03 FSV20100V"))) == 0
-    // The logo is recorded on all four, and it is the maker's mark and nothing else: one PrintedLogo span,
-    // attributed to onsemi, and exactly one span of glyphs -- so the identification rests on the letters.
-    && count(filter(["D2_P1", "D8_P1", "D2_P5", "D8_P5"], d => !carries_onsemi_logo(designator: d))) == 0
+}
+
+test fn the_fsv_p5_pair_prints_the_package_code_then_the_device_code() -> Bool {
+  count(filter(["D2_P5", "D8_P5"], d => !prints_glyphs(designator: d, want: "JC03 FSV20100V"))) == 0
+}
+
+// (3) The maker's mark is recorded on all four as the maker's mark and nothing else: exactly one PrintedLogo
+// attributed to onsemi, and exactly one span of glyphs -- which is what makes the identification rest on
+// the letters rather than on a logo nobody described.
+test fn all_four_fsv_rows_carry_the_onsemi_logo_beside_one_span_of_glyphs() -> Bool {
+  count(filter(["D2_P1", "D8_P1", "D2_P5", "D8_P5"], d => !carries_onsemi_logo(designator: d))) == 0
 }
 
 fn prints_glyphs(designator: NonEmptyStr, want: NonEmptyStr) -> Bool {
   match e1_marking_at(designator) {
     Absent => false
-    // `sole_glyph_span` hands back the span's TEXT (`type MarkingGlyphs = NonEmptyStr`), not the record: the
-    // sighting it carried is not what this check is about.
-    Present { value: reading } => match sole_glyph_span(c: reading.content) {
+    // The channel-aware accessor: these rows record a logo beside the letters, so "exactly one span of any
+    // kind" would call them unread. It hands back the span's TEXT (`type MarkingGlyphs = NonEmptyStr`) rather
+    // than the record, because the sighting it carried is not what this check is about.
+    Present { value: reading } => match sole_glyph_text(c: reading.content) {
       Absent => false
       Present { value: glyphs } => glyph_text_eq(a: glyphs, b: want)
     }
@@ -391,8 +413,8 @@ fn carries_onsemi_logo(designator: NonEmptyStr) -> Bool {
         && count(filter(spans, s => match s {
              PrintedLogo { span, whose, sighting: _ } =>
                glyph_text_eq(a: span, b: "ON logo") && glyph_text_eq(a: whose, b: "onsemi -- the ON mark")
-             Glyphs { span: _, sighting: _ } => false
-             BodyFeature { span: _, noted: _, sighting: _ } => false
+             Glyphs { span: _ } => false
+             BodyFeature { span: _, described: _, sighting: _ } => false
              ReadingCircumstance { span: _, noted: _, sighting: _ } => false
            })) == 1
     }
