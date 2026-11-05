@@ -25,7 +25,7 @@ import extdeps.openrouter.openrouter {
 import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread }
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
-  session_validation_resumable, session_event_recovery_needed, session_cause_text,
+  session_event_recovery_needed, session_cause_text,
   SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events, session_conversation_from_request,
   session_conversation_messages, session_validation_interrupted_ids, session_event_resumed, session_resume_bound,
 }
@@ -2055,21 +2055,25 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
               Present { value: conversation } => {
                 let messages = session_conversation_messages(conversation: conversation)
                 let validation = session_messages_validation(messages: messages)
-                if !session_validation_resumable(v: validation) {
-                  TurnResumeRefused { cause: join(["the refused round's conversation is not a validated state (unrecorded calls: ", join(session_validation_interrupted_ids(v: validation), ", "), ")"], "") }
-                } else {
-                  let resumed = concat(split(s: prior.content, delimiter: "\n") |> filter(l => trim(l) != ""), [session_event_resumed(ordinal: made + 1, round: round, cause: join(causes, " | "))])
-                  match harness_write_events(config: config, events: resumed) {
-                    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-                    HarnessEventsWritten =>
-                      harness_turn_loop(
-                        config: config,
-                        messages: messages,
-                        steps_remaining: step_budget - (round - 1),
-                        steps_taken: round - 1,
-                        events: resumed,
-                        repairs_used: 0,
-                      )
+                match validation {
+                  SessionInterrupted { unrecorded_call_ids: ids } =>
+                    TurnResumeRefused { cause: join(["the refused round's conversation stopped with tool calls that have no recorded result (", join(ids, ", "), ")"], "") }
+                  SessionUnresumable { cause: why } =>
+                    TurnResumeRefused { cause: join(["the refused round's conversation is not a validated state: ", why], "") }
+                  SessionValidated => {
+                    let resumed = concat(split(s: prior.content, delimiter: "\n") |> filter(l => trim(l) != ""), [session_event_resumed(ordinal: made + 1, round: round, cause: join(causes, " | "))])
+                    match harness_write_events(config: config, events: resumed) {
+                      HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                      HarnessEventsWritten =>
+                        harness_turn_loop(
+                          config: config,
+                          messages: messages,
+                          steps_remaining: step_budget - (round - 1),
+                          steps_taken: round - 1,
+                          events: resumed,
+                          repairs_used: 0,
+                        )
+                    }
                   }
                 }
               }

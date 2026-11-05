@@ -266,14 +266,6 @@ fn session_messages_validation(messages: List<JsonValue>) -> SessionValidation {
   }
 }
 
-fn session_validation_resumable(v: SessionValidation) -> Bool {
-  match v {
-    SessionValidated => true
-    SessionInterrupted { unrecorded_call_ids: _ } => false
-    SessionUnresumable { cause: _ } => false
-  }
-}
-
 fn session_validation_interrupted_ids(v: SessionValidation) -> List<String> {
   match v {
     SessionValidated => [] as List<String>
@@ -346,7 +338,6 @@ fn session_event_recovery_needed(round: Int, refusal: UnexplainedEngineRefusal, 
     json_kv(key: "request_id", value: json_string(s: session_request_id_text(refusal: refusal))),
     json_kv(key: "bytes_sent", value: json_string(s: refusal.bytes_sent)),
     json_kv(key: "cause", value: json_string(s: session_cause_text(round: round, refusal: refusal))),
-    json_kv(key: "resumable", value: json_bool(b: session_validation_resumable(v: validation))),
     json_kv(key: "interrupted_calls", value: json_array(elements: session_validation_interrupted_ids(v: validation) |> map(id => json_string(s: id)))),
   ]))
 }
