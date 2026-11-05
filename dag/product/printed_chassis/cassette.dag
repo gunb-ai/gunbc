@@ -56,18 +56,20 @@ data joint_clearance: Micrometer = micrometer(count: 250)
 // which the assembly witness refuses. The clamp sits in the lap farthest from the tray centre, where it is
 // reachable and clear of the window. r06 placed every lap 36 mm in from its seam's ends; no r06 seam meets
 // a window, so that inset was never tested against one, and with the window the right-hand seam has 40 mm.
-data lap_seam_length: Int = 28000
-data lap_edge_inset: Int = 8000
-data lap_min_gap: Int = 5000
+data lap_seam_length: Micrometer = micrometer(count: 28000)
+data lap_edge_inset: Micrometer = micrometer(count: 8000)
+data lap_min_gap: Micrometer = micrometer(count: 5000)
 // Laps, clamps and vents keep this far from the socket window's edge.
-data seat_window_clearance: Int = 4000
+data seat_window_clearance: Micrometer = micrometer(count: 4000)
 // A vent keeps this much wall between itself and a post.
-data vent_post_clearance: Int = 3000
+data vent_post_clearance: Micrometer = micrometer(count: 3000)
+// feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier. Lap, clamp and
+// span positions are signed tray coordinates in micrometres, as rear_plate_z is.
 type LapJoint {id:String,donor:String,receiver:String,along_x:Bool,cross:Int,laps:List<Int>,clamp_x:Int,clamp_z:Int}
 type SeamSpan {lo:Int,hi:Int,lo_at_window:Bool,hi_at_window:Bool}
 fn absolute(v:Int) -> Int {if v<0 {0-v} else {v}}
 fn window_keepout(w:SeatWindow) -> SeatWindow {
- let k=seat_window_clearance
+ let k=um(m: seat_window_clearance)
  SeatWindow {x0:w.x0-k,x1:w.x1+k,z0:w.z0-k,z1:w.z1+k}
 }
 fn span_without(s:SeamSpan,a:Int,b:Int) -> List<SeamSpan> {
@@ -83,10 +85,12 @@ fn seam_spans(full:SeamSpan,along_x:Bool,cross:Int) -> List<SeamSpan> {
  })
 }
 fn span_laps(s:SeamSpan) -> List<Int> {
- let half=lap_seam_length/2
- let a=s.lo+(if s.lo_at_window {0} else {lap_edge_inset})+half
- let b=s.hi-(if s.hi_at_window {0} else {lap_edge_inset})-half
- if b-a>=lap_seam_length+lap_min_gap {[a,b]} else {if b>=a {[(a+b)/2]} else {[]}}
+ let len=um(m: lap_seam_length)
+ let inset=um(m: lap_edge_inset)
+ let half=len/2
+ let a=s.lo+(if s.lo_at_window {0} else {inset})+half
+ let b=s.hi-(if s.hi_at_window {0} else {inset})-half
+ if b-a>=len+um(m: lap_min_gap) {[a,b]} else {if b>=a {[(a+b)/2]} else {[]}}
 }
 fn seam_joint(id:String,donor:String,receiver:String,along_x:Bool,cross:Int,full:SeamSpan) -> LapJoint {
  let laps=flat_map(seam_spans(full:full,along_x:along_x,cross:cross),sp=>span_laps(s:sp))
@@ -105,13 +109,13 @@ fn lap_joints() -> List<LapJoint> {
 }
 fn lap_features(j:LapJoint,receiver:Bool,cx:Int,cz:Int) -> List<Primitive> {
  let clearance=if receiver {micrometer_count(m: joint_clearance) as Int} else {0}
- map(j.laps,p=>block(w:(if j.along_x {micrometer_count(m: lap_along_joint_um) as Int} else {lap_seam_length})+2*clearance,h:4000+2*clearance,d:(if j.along_x {lap_seam_length} else {micrometer_count(m: lap_along_joint_um) as Int})+2*clearance,x:(if j.along_x {j.cross} else {p})-cx,y:2000,z:(if j.along_x {p} else {j.cross})-cz))
+ map(j.laps,p=>block(w:(if j.along_x {micrometer_count(m: lap_along_joint_um) as Int} else {um(m: lap_seam_length)})+2*clearance,h:4000+2*clearance,d:(if j.along_x {um(m: lap_seam_length)} else {micrometer_count(m: lap_along_joint_um) as Int})+2*clearance,x:(if j.along_x {j.cross} else {p})-cx,y:2000,z:(if j.along_x {p} else {j.cross})-cz))
 }
 // A vent slot is a stadium along Z: its centreline runs lo..hi at tray x `x`, radius r. It is split around
 // each post (the post's radius plus vent_post_clearance) and the socket window's keep-out, so a vent never
 // cuts a post's footing and never leaves a sliver at the window's edge.
 fn vent_spans(x:Int,r:Int,lo:Int,hi:Int) -> List<SeamSpan> {
- let keep=micrometer_count(m: seat_post_diameter) as Int/2+vent_post_clearance
+ let keep=micrometer_count(m: seat_post_diameter) as Int/2+um(m: vent_post_clearance)
  let posts=fold(seat_posts(),init:[SeamSpan {lo:lo,hi:hi,lo_at_window:false,hi_at_window:false}],f:fn(acc,p){
   if absolute(v:p.x-x)<keep+r {flat_map(acc,s=>span_without(s:s,a:p.z-keep-r,b:p.z+keep+r))} else {acc}
  })

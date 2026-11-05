@@ -31,7 +31,7 @@ test fn no_post_meets_the_window_and_the_nub_clears_a_standard_hole() -> Bool {
 // Every seam keeps at least one lap and its clamp, and none of them lands in the window's keep-out.
 fn lap_clear(j:LapJoint,w:SeatWindow) -> Bool {
  let k=window_keepout(w:w)
- let h=lap_seam_length/2
+ let h=micrometer_count(m:lap_seam_length) as Int/2
  all(j.laps,p=>if j.along_x {p+h<=k.z0 || p-h>=k.z1} else {p+h<=k.x0 || p-h>=k.x1})
 }
 test fn every_seam_keeps_a_lap_and_a_clamp_clear_of_the_window() -> Bool {

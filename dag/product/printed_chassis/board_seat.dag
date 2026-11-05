@@ -27,6 +27,8 @@ import product.printed_chassis.board_mechanical_reference {StandardLocationRefer
 // does not slip off; gravity holds it down. Lifting forces (unplugging the front power and SlimSAS
 // connectors) are met by holding the board, not by the tray.
 
+// feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier. Posts and the
+// window are signed tray coordinates in micrometres (the tray's origin is its centre), as cassette.dag's are.
 type SeatPost {x:Int,z:Int}
 type SeatWindow {x0:Int,x1:Int,z0:Int,z1:Int}
 type BoardSeat = BoardSeatReady {posts:List<SeatPost>,window:SeatWindow} | BoardSeatRefused {cause:NonEmptyStr}
