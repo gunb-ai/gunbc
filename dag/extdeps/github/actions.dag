@@ -432,12 +432,6 @@ type Step
 
 type ShellType = Bash | Sh | Pwsh | Python | Cmd
 
-type ArtifactOp
-  = Upload { name: String, path: String, retention_days: Int?, if_no_files_found: MissingFilesBehavior }
-  | Download { name: String, path: String? }
-
-type MissingFilesBehavior = Warn | ErrorOut | Ignore
-
 
 data max_job_timeout_minutes: Int = 360
 

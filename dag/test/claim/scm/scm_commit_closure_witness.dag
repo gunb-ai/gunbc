@@ -12,8 +12,8 @@ module test.claim.scm.scm_commit_closure_witness
 // the returned identity is THE MISSING OBJECT'S OWN, which is what makes it fetchable rather than
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
-import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
-import std.algebra { non_empty_to_list, empty_map }
+import std.types { Bool, Int, String, List, NonEmptyStr }
+import std.algebra { non_empty_to_list, empty_map, length }
 import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Instantiation, Positional, TypeNode, node_synthetic, NotADeclaration }
 import gunbc.scm.object_store {
   ObjectId,
@@ -291,7 +291,7 @@ test fn two_uncontained_children_are_named_in_order() -> Bool {
   }
   let missing = unresolved_identities(closure: CommitClosure { store: grafted, root: built.root })
   (store_object_count(store: grafted) == 1)
-    && (list_length(items: missing) == 2)
+    && (length(xs: missing) == 2)
     && first_missing_is(missing: missing, expected: built.first)
     && names_exactly(missing: missing, expected: built.second)
 }
@@ -301,7 +301,7 @@ test fn two_uncontained_children_are_named_in_order() -> Bool {
 test fn a_complete_closure_names_nothing_missing() -> Bool {
   let full = build_full_store()
   let closure = CommitClosure { store: full.store, root: full.root }
-  (list_length(items: unresolved_identities(closure: closure)) == 0)
+  (length(xs: unresolved_identities(closure: closure)) == 0)
     && closure_is_complete(closure: closure)
     && (store_object_count(store: full.store) == 2)
 }
@@ -318,7 +318,7 @@ test fn a_grafted_root_names_exactly_the_child_it_lacks() -> Bool {
   let closure = CommitClosure { store: grafted, root: full.root }
   let missing = unresolved_identities(closure: closure)
   (store_object_count(store: grafted) == 1)
-    && (list_length(items: missing) == 1)
+    && (length(xs: missing) == 1)
     && names_exactly(missing: missing, expected: full.child)
     && !closure_is_complete(closure: closure)
 }
@@ -334,7 +334,7 @@ test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
   let full = build_full_store()
   let closure = CommitClosure { store: empty_store(), root: full.root }
   let missing = unresolved_identities(closure: closure)
-  (list_length(items: missing) == 1)
+  (length(xs: missing) == 1)
     && names_exactly(missing: missing, expected: node_target_locator(target: full.root))
     && !closure_is_complete(closure: closure)
 }
@@ -373,7 +373,7 @@ test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
     ClosureCompleteSoNothingToAdmit => false
     ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: a } =>
-      (list_length(items: non_empty_to_list(xs: admitted_unresolved(admitted: a))) == 1)
+      (length(xs: non_empty_to_list(xs: admitted_unresolved(admitted: a))) == 1)
         && names_exactly(missing: non_empty_to_list(xs: admitted_unresolved(admitted: a)), expected: full.child)
   }
 }
@@ -1098,9 +1098,9 @@ test fn the_complete_writer_refuses_a_wrong_kind_closure_and_names_it() -> Bool 
             source_occupied: ids,
             manifest_occupied: manifests,
           } =>
-            (list_length(items: ids) == 1)
+            (length(xs: ids) == 1)
               && names_exactly(missing: ids, expected: fx.child)
-              && (list_length(items: manifests) == 0)
+              && (length(xs: manifests) == 0)
           ClosureDocIncompleteWithoutAdmission { identity: _ } => false
         }
     }
@@ -1230,7 +1230,7 @@ test fn an_unrelated_manifest_does_not_enter_the_closure_or_refuse_it() -> Bool 
       WellKinded { admitted: image, unresolved: _ } =>
         match well_kinded_nodes(admitted: image) {
           nodes =>
-            (list_length(items: nodes) == 2)
+            (length(xs: nodes) == 2)
               && nodes_hold(nodes: nodes, identity: node_target_locator(target: fx.root))
               && !nodes_hold(nodes: nodes, identity: fx.manifest)
         }
@@ -1301,11 +1301,11 @@ test fn a_manifest_at_a_required_node_refuses_as_a_manifest() -> Bool {
     ) {
       WellKinded { admitted: _, unresolved: _ } => false
       NotWellKinded { source_occupied: sources, manifest_occupied: manifests } =>
-        (list_length(items: manifests) == 1)
+        (length(xs: manifests) == 1)
           && names_exactly(missing: manifests, expected: fx.child)
-          && (list_length(items: sources) == 0)
+          && (length(xs: sources) == 0)
     }
-    && (list_length(
+    && (length(
       items: unresolved_identities(closure: CommitClosure { store: fx.store, root: fx.root })
     ) == 0)
 }
@@ -1333,7 +1333,7 @@ test fn the_admitted_arm_and_the_partial_admission_report_one_unresolved_populat
         ClosureCompleteSoNothingToAdmit => false
         ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
         PartialClosureAdmitted { admitted: a } =>
-          list_length(items: unresolved) > 0
+          length(xs: unresolved) > 0
             && (unresolved == non_empty_to_list(xs: admitted_unresolved(admitted: a)))
       }
   }
@@ -1363,8 +1363,8 @@ test fn both_admission_routes_derive_the_same_population() -> Bool {
             partial_nodes =>
               match well_kinded_nodes(admitted: ordinary) {
                 ordinary_nodes =>
-                  (list_length(items: partial_nodes) == 1)
-                    && (list_length(items: ordinary_nodes) == 1)
+                  (length(xs: partial_nodes) == 1)
+                    && (length(xs: ordinary_nodes) == 1)
                     && nodes_hold(
                       nodes: partial_nodes,
                       identity: node_target_locator(target: full.root),

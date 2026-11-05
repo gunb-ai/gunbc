@@ -1,6 +1,7 @@
 module test.claim.floor.floor_phase_attribution_witness
 
-import std.types { Bool, String, Int, list_length }
+import std.types { Bool, String, Int }
+import std.algebra { length }
 import std.measure { byte_size_count }
 import gunbc.floor.floor_demand {
   FloorBeatReading, FloorPhaseHeldSet, floor_phase_attribution, FloorPhasesAttributed, FloorPhaseSeamUnknown, FloorPhaseReadingNegative,
@@ -41,7 +42,7 @@ test fn a_seam_beat_opens_a_phase_and_its_watchdog_beats_set_its_peak() -> Bool 
     reading(beat: 2, opens: true, seam: "prepare-closure-resolve", anon: 20),
   ]) {
     FloorPhasesAttributed { phases: ps } =>
-      list_length(items: ps) == 2
+      length(xs: ps) == 2
         && match ps[0] {
           Present { value: first } =>
             held_bytes_are(p: first, entry: 10, peak: 30)

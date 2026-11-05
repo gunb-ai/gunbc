@@ -1,6 +1,6 @@
 module test.claim.cloudflare_boot_origin_witness
 
-import std.types { Bool, NonEmptyStr, String, list_length }
+import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

@@ -1,6 +1,7 @@
 module gunbc.claude_setup_token_enrollment
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.algebra { length }
 import std.measure { CharacterCount, character_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -447,7 +448,7 @@ fn admit_enrollment_placement(
   sdk_runtime: ClaudeEnrollmentRuntimeBinding,
 ) -> ClaudeEnrollmentPlacementAdmission {
   let missing = missing_operator_choice_axes(choices: choices)
-  if list_length(items: missing) > 0 {
+  if length(xs: missing) > 0 {
     EnrollmentPlacementRefusedUnbound { missing_axes: missing }
   } else {
     let account_label = match choices.account_label {
@@ -848,7 +849,7 @@ fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
   } else {
     AuthenticationRefreshFailed { reason: auth_failure_reason as String }
   }
-  let limits_observed = list_length(items: observed_native_limit_keys) > 0
+  let limits_observed = length(xs: observed_native_limit_keys) > 0
   let entitlement = if limits_observed {
     EntitlementObservedAvailable
   } else {
