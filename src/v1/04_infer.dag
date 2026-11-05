@@ -4402,6 +4402,13 @@ fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
 // holder then refuses at its authored comparison, located) instead of joining a body that cannot
 // resolve. Admission and synthesis share this module's import list, so the same answer admits or
 // skips both doors; nothing widens.
+// INTERIM, named: this makes the holder's import set the authority over whether its type has a
+// derived ==, which is an accident of imports, not of equality (the symbol_index/node asymmetry is
+// that accident). The compiler's own construction should bind these helpers by declaring identity,
+// like the derived equality itself binds `==`. Recorded as integration concern
+// equality_synthesis_helper_binding_is_import_authority; trigger: "synthesized equality binds
+// helpers by declaring identity" — when that lands, delete this gate and exercise it through
+// self_host_equality_admission_witness.
 fn equality_helper_visible(imp: Node, source_indices: Map<String, NewlineIndex>, helper: EqualitySynthHelper) -> Bool {
   import_module_path_at(imp: imp, source_indices: source_indices) == helper.module_path &&
     (import_is_all(n: imp) || ((import_specific_names_at(n: imp, source_indices: source_indices) |> filter(nm => nm == helper.fn_name)) |> count) > 0)
