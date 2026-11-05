@@ -795,10 +795,28 @@ test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
 // reader following the name lands somewhere else; a digest typed from memory resolves nowhere, which is
 // the failure this whole test exists to catch, and a name typed from memory is the same mistake quieter.
 fn frame_is_held(s: LabelSighting) -> Bool {
-  match photograph_in_store(store: e1_photographs, content: s.digest) {
-    Present { value: p } =>
-      string_eq(a: p.store.file_name as String, b: s.file_name as String)
-    Absent { } => false
+  match s.citation {
+    InStore { content: content, region: _ } =>
+      match photograph_in_store(store: e1_photographs, content: content) {
+        Present { value: p } =>
+          string_eq(a: p.store.file_name as String, b: s.file_name as String)
+        Absent { } => false
+      }
+    // No bytes, no frame. The store cannot hold what was never supplied, and this function IS the claim
+    // that it does, so the arm that says the bytes are missing is refused rather than excused.
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
+}
+
+// Whether a sighting says WHERE on the frame the label sits. A sighting with no region says only that
+// somebody looked at the whole board, which is enough to hold a frame and not enough to have read a
+// label off it: the difference between 'nobody read it' and 'nobody looked'. It is a region test on the
+// citation now that the sighting carries one, and it is written once because two tables ask it.
+fn sighting_states_a_region(s: LabelSighting) -> Bool {
+  match s.citation {
+    InStore { content: _, region: Present { value: _ } } => true
+    InStore { content: _, region: Absent { } } => false
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
   }
 }
 
@@ -812,16 +830,16 @@ type BoardReadingTable =
   | DesignatorReadings { }
   | UnresolvedRows { }
 
-// One board citation against one sighting the authority names. The rule itself is `same_boxed_frame`'s,
-// in the store layer; this is only the projection that makes a receipts sighting comparable with a
-// citation, and it belongs here because `LabelSighting` is E1's type, declared in E1's receipts module.
-// It is written once so both reading tables answer to one rule. The projection is total on purpose: a
-// sighting always carries a digest, so it always expresses an `InStore` citation, and it is
-// `same_boxed_frame` that refuses what cannot join -- an absent box on either side, or a board citation
-// whose bytes were never supplied. A spoken "it says J3" is the shape that arm exists to refuse: a name
-// with no image behind it is exactly what an identity must not be able to lean on.
+// One board citation against one sighting the authority names. The rule is `same_boxed_frame`'s, in the
+// store layer; what is E1's own is the types being compared, since `LabelSighting` is declared in E1's
+// receipts module. It is written once so both reading tables answer to one rule, and it is a single call
+// now that a sighting carries a citation rather than a digest with a loose box beside it -- the two sides
+// are the same shape, so there is nothing to project. It refuses on its own terms: a sighting with no
+// region says only that somebody looked at the board, and a board citation whose bytes were never
+// supplied says less than that. A spoken "it says J3" is the shape that last arm exists to refuse -- a
+// name with no image behind it is exactly what an identity must not be able to lean on.
 fn cites_this_label(citation: PhotographCitation, s: LabelSighting) -> Bool {
-  same_boxed_frame(a: citation, b: InStore { content: s.digest, region: s.box })
+  same_boxed_frame(a: citation, b: s.citation)
 }
 
 // Some board row that names this designator has to point at one of the very same bytes inside the same
@@ -871,10 +889,7 @@ fn authority_is_checkable(name: NonEmptyStr, authority: DesignatorAuthority,
       && frames.all(s => frame_is_held(s))
       // A read that states every character has to say where on at least one image it read them: a claim
       // with no box anywhere is somebody's impression of a label, not a read of it.
-      && any(frames, s => match s.box {
-           Present { value: _ } => true
-           Absent { } => false
-         })
+      && any(frames, s => sighting_states_a_region(s))
       // and a board row that names this designator points at the same pixels
       && board_reads_those_frames(name: name, frames: frames, on_the_board: on_the_board)
   }
