@@ -797,11 +797,13 @@ test fn w_the_decoded_window_rehashes_to_the_digest_on_the_same_line() -> Bool {
               // empty list would still hash, and the claim would pass on a corrupted print.
               Present { value: decoded } => {
                 let rehashed = sha256_hex_of_text(text: utf8_decode_bytes(payload: octets_bytes(o: qualified_octet_members(q: decoded))))
-            // The digest the run printed for the excerpt must be the digest of the octets the printed
-            // window decodes to. This is what lets a reader trust the committed bytes later.
-            match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of(concat("excerpt_sha256=", rehashed))) {
-              Absent => false
-              Present { value: _ } => true
+                // The digest the run printed for the excerpt must be the digest of the octets the printed
+                // window decodes to. This is what lets a reader trust the committed bytes later.
+                match ui_octets_index_of(hay: ui_octets_of(line), needle: ui_octets_of(concat("excerpt_sha256=", rehashed))) {
+                  Absent => false
+                  Present { value: _ } => true
+                }
+              }
             }
           }
         }
