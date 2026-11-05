@@ -13,13 +13,20 @@ import std.process { ProcessExit }
 // so nothing here asserts an absolute count or a diagnostic CLASS name: each row measures the DELTA
 // against the stats-only baseline module, which differs from the lawful module only in which arms the
 // operand carries.
+//
+// The forged module therefore IMPORTS EVERY NAME IT CONSTRUCTS, NamedUnitSetting included (it is an arm
+// of the SystemdRunProperty sum, declared at dag/extdeps/systemd/systemd_run.dag). If it did not, the
+// red side would carry an unresolved-name diagnostic beside the type refusal, and because the assertion
+// is a delta of at least one, the row would PASS EVEN IF THE DOOR REFUSED NOTHING: the unresolved name
+// alone would supply the delta. A negative control whose red can be satisfied by an unrelated error
+// witnesses nothing, so the import is part of the control's correctness, not decoration.
 
 
 data forged_raw_property_source: String = "module probe_forged_raw_unit_property
 import gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout, NoPathVirtualization }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import extdeps.systemd { MemoryMax }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting }
 import std.types { String, FilePath }
 import std.measure { kibibyte }
 fn forged(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {
