@@ -14,6 +14,7 @@ import std.algebra { trim, skip, list_append }
 import std.durable_compare_and_set { cas_generation_count }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
+import extdeps.systemd.service_exec { ServiceResultSuccess }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
@@ -596,7 +597,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_put_worker_exited, attempt_exit_record_put_vendor_pane_death,
   AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
   VendorPaneDeath, VendorPaneExited, VendorPaneSignaled,
-  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+  AttemptExitRecord, attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   attempt_exit_spool_stage_dir, attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
 }
 import gunbc.durable_handoff_host {
@@ -15503,8 +15504,8 @@ fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String
       match observe(record.node_id, record.attempt_key) {
         AttemptUnitActive => [] as List<BeltExitDrainEntry>
         AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
-        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
-        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
+        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, owes_discharge: belt_exit_record_ended_unsettled(record: record), move: move)
+        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, owes_discharge: belt_exit_record_ended_unsettled(record: record), move: move)
       }
   }
 }
@@ -15514,9 +15515,18 @@ fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String
 // obligation. Before this, a killed obligation's exit was routed as a rescue that answered nothing, so a seat the
 // obligation held was never visited (srv1, 2026-11-04: charged for four hours). No age, no doubt: an active or
 // unreadable unit returns before this point and owes nothing.
-fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+// A run that settled (service result success) held no seat past its own settle, so its consume starts nothing;
+// any other end (killed, timed out, failed, signaled) may have left the seat it held charged, and owes the pass.
+fn belt_exit_record_ended_unsettled(record: AttemptExitRecord) -> Bool {
+  match record.result {
+    ServiceResultSuccess => false
+    _ => true
+  }
+}
+
+fn belt_exit_obligation_entry_consume_at(root: String, entry: String, owes_discharge: Bool, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match move(root, entry, AttemptExitInbox, AttemptExitDone) {
-    Absent => [BeltExitObligationEnded { entry: entry }]
+    Absent => if owes_discharge { [BeltExitObligationEnded { entry: entry }] } else { [] as List<BeltExitDrainEntry> }
     Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitDone }, cause: why }]
   }
 }
