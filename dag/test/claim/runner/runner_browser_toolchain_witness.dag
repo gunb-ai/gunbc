@@ -1,7 +1,8 @@
 module test.claim.runner.runner_browser_toolchain_witness
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, List, list_length }
+import std.types { String, NonEmptyStr, List }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import extdeps.github.actions { SelfHosted }
@@ -57,7 +58,7 @@ test fn the_pool_is_exactly_the_rostered_hosts_that_register_the_floor_labels() 
   match runner_browser_toolchain_pool() {
     BrowserToolchainPoolUndefined { cause: _ } => false
     BrowserToolchainPoolDerived { hosts: pool } =>
-      list_length(floor_labels()) > 0
+      length(floor_labels()) > 0
         && fold(fleet_runner_host_deploys, init: true, f: (acc, d) => {
           let covering = match runner_declared_registration_labels(host: (d.host_label as String) as HostIdentity) {
             RegistrationLabelsResolved { labels: ls } => covers(have: ls, want: floor_labels())
@@ -66,7 +67,7 @@ test fn the_pool_is_exactly_the_rostered_hosts_that_register_the_floor_labels() 
           let member = fold(pool, init: false, f: (m, p) => m || (p.host_label as String) == (d.host_label as String))
           acc && (covering == member)
         })
-        && list_length(pool) > 0
+        && length(pool) > 0
   }
 }
 
@@ -175,7 +176,7 @@ test fn a_missing_host_library_refuses_naming_the_binary_the_soname_and_its_pack
     HostLibrariesMissing { binary: b, missing: ms } => {
       let text = library_readback_text(l: HostLibrariesMissing { binary: b, missing: ms })
       (b as String) == (witness_binary as String)
-        && list_length(ms) == 3
+        && length(ms) == 3
         && string_contains(s: text, pattern: witness_binary as String)
         && string_contains(s: text, pattern: "libglib-2.0.so.0 (package libglib2.0-0t64)")
         && string_contains(s: text, pattern: "libnss3.so (package libnss3)")
@@ -353,7 +354,7 @@ test fn the_probe_page_is_emitted_by_the_html_serializer() -> Bool {
 // FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install
 // chromium` places, plus the runtime its engines floor requires.
 test fn the_toolchain_places_five_pinned_archives() -> Bool {
-  list_length(runner_browser_toolchain_archives) == 5
+  length(runner_browser_toolchain_archives) == 5
 }
 
 // NO RUNS-ON MAY SELECT THE EVIDENCE-GRANTED LABEL WHILE THE POOL READS DECLARED LABELS (DESIGN 4c: the claim is
@@ -369,7 +370,7 @@ test fn a_runs_on_naming_the_user_session_label_has_no_declared_pool() -> Bool {
     BrowserToolchainPoolDerived { hosts: _ } => false
   }
     && match runner_browser_toolchain_pool_for_spec(deploys: fleet_runner_host_deploys, spec: SelfHosted { labels: floor_labels() }) {
-      BrowserToolchainPoolDerived { hosts: hs } => list_length(hs) > 0
+      BrowserToolchainPoolDerived { hosts: hs } => length(hs) > 0
       BrowserToolchainPoolUndefined { cause: _ } => false
     }
 }

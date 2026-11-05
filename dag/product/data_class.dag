@@ -3,8 +3,6 @@ module product.data_class
 import std.types { Bool, List, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_in_list }
 import std.content_hash { ContentHash, content_hash_of_value }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision, PermittedJurisdictionsUnread }
 import product.data_category {
   PersonalIdentity, BuildOutput,
@@ -511,34 +509,3 @@ fn admitted_seed<C, T>(
   }
 }
 
-// DECLARED FRONTIERS (DESIGN 3c): consumers that land in a named later change, each with the
-// trigger that retires its row, so nothing here is dangling silently. Enrolled in
-// gunbc.census_closure_frontier census_closure_frontier_row_groups so gunbc.dissolution_census
-// folds them like every sibling frontier group (review 65204).
-data data_class_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: source_and_build_input_ref(),
-    reason: "the fabric's job INPUT bytes have no ingest boundary in this tree yet: product.fabric.work WorkContract.inputs is an ArtifactManifestRef and no M0 module stages input bytes for a job, so there is no function at which a customer's source could be classified as it is read. The output half landed (gunbc.fabric.fabric_m0_origin_commit job_output_bytes); the input half is a category with a marker and no mint",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the M0 module that fetches a job's input manifest members from the durable origin into the job's working tree. TRIGGER: that module's staging function returns Classified<SourceAndBuildInput, _> for each staged member through an admit_callers-sealed classify_source_and_build_input mint added to product.data_class, and the job's compute step takes the classified members. SUFFICIENT FOR deleting this row. NOT satisfied by a witness minting the value, nor by classifying the readback of an OUTPUT, which is a BuildOutput"),
-  ),
-  frontier_row_decl(
-    ref: metering_telemetry_ref(),
-    reason: "the metering usage receipt (gunbc#11177 HardwareThreadMinute usage receipt, open at this writing) is the named first producer for MeteringTelemetry and the Telemetry sink's first consumer; it is not on main, so neither a classify_metering_telemetry mint nor a Telemetry admission has a production caller here",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc.runner.runner_usage_receipt's receipt producer, once gunbc#11177 lands. TRIGGER: that producer returns Classified<MeteringTelemetry, _> through a sealed mint and the telemetry emission takes a DataEffectPermit from admit_data_effect for a Telemetry sink. SUFFICIENT FOR deleting this row. NOT satisfied by the receipt type merging without its emission taking the permit"),
-  ),
-  frontier_row_decl(
-    ref: ci_secret_ref(),
-    reason: "CiSecret, JobLog, SupportCommunication, AbuseAndSanctionsRecord and ExecutionReceipt are markers with no boundary and no sink in this tree (JobLog is imported by the enrolled log-channel probe as a phantom Sink<JobLog> argument, which typechecks and executes nothing): their consumers are the private description rows of gunbc-private strategy.data_map that cite them by DeclarationRef, which this tree cannot see. In public they are declared identities with no mint, no witness and no permit -- the honest state of a category that exists in policy before it exists in code",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the first ingest boundary for each -- a CI secret entering a job's environment (CiSecret), a job's stdout/stderr entering the log channel (JobLog), a support message entering the operator's tooling (SupportCommunication), a screening result entering provider admission (AbuseAndSanctionsRecord), a run record entering the receipt store (ExecutionReceipt -- added with the marker itself, whose private consumer is strategy.data_map category_execution_receipts; the BuildOutput mint beside it covers the WORK PRODUCT and deliberately not the RECORD OF THE RUN, which is the whole reason the two are separate markers). TRIGGER, per marker: an admit_callers-sealed classify_<category> mint in product.data_class with a production boundary as its admitted caller. SUFFICIENT FOR deleting that marker from this row; the row deletes when every marker named in it has a mint. NOT satisfied by the private citation alone"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.instruments.fabric_m0_origin_object_probe", decl_name: "canary_ending_under"),
-    reason: "the canary's PUT is reachable only under a data-handling map with rows, and the public map is empty by design, so from this tree canary_ending refuses CategoryUnmapped and the PUT-reaching entry canary_ending_under has no caller here: its consumer is a run under the private map",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a gunbc-private entry that calls canary_ending_under with the map minted by strategy.data_map data_handling_map_rows and its posture. TRIGGER: that entry exists and its recipe is recorded beside the canary's. SUFFICIENT FOR deleting this row. NOT satisfied by a public row admitting BuildOutput, which would be policy authored in the tree forbidden to author it"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "product.data_class", decl_name: "redact"),
-    reason: "the erasure exit is exercised by test.claim.fabric.data_class_admission_witness and has no production caller: nothing in this tree renders a classified value into a log line, a job ending or a sheet, which is where a Redacted<C> stands in for the payload",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the first production renderer that carries a projection holding a Classified value into text -- gunbc.principal_projection's consumer rendering a principal, or the fabric job ending rendering its committed outputs. TRIGGER: that renderer calls redact and renders the Redacted<C> where it would otherwise have rendered the payload. SUFFICIENT FOR deleting this row"),
-  ),
-]

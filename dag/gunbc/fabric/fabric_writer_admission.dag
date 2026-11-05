@@ -1,0 +1,46 @@
+module gunbc.fabric.fabric_writer_admission
+
+import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.auth.request_api_key { RequestApiKeyUser }
+import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
+import std.fabric_storage { FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested }
+import gunbc.fabric.fabric_storage_wire { FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorApiKeyUser, DoorUnattested }
+
+// Admission consumes supplied roster values. Producing observed/live rosters is
+// a separate fact in fabric_writer_roster and is not a dependency of this fold.
+// Production doors and interface witnesses use this single policy authority.
+type FabricDoorWriterAdmission
+  = FabricDoorWriterAdmitted { principal: NonEmptyStr }
+  | FabricDoorWriterRefused { refusal: FabricWriterRefusal }
+
+
+// The API-key verifier supplies a sealed stable user, not an invented proxy or
+// kernel peer. Its only HTTP consumer is the request submission/readback door.
+fn fabric_door_principal_from_api_key(verified: RequestApiKeyUser) -> FabricDoorPrincipal {
+  DoorApiKeyUser { verified: verified }
+}
+
+fn listed(roster: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
+  any(roster, r => (r as String) == (name as String))
+}
+
+// The comparison is exact, as extdeps.tailscale.identity requires of any identity match.
+fn fabric_door_writer_admission_over(logins: List<NonEmptyStr>, locals: List<NonEmptyStr>, principal: FabricDoorPrincipal) -> FabricDoorWriterAdmission {
+  match principal {
+    DoorApiKeyUser { verified: user } => if listed(roster: logins, name: user.user) {
+      FabricDoorWriterAdmitted { principal: user.user }
+    } else { FabricDoorWriterRefused { refusal: WriterLoginUnrostered { login: user.user } } }
+    DoorUnattested => FabricDoorWriterRefused { refusal: WriterPeerUnattested }
+    DoorLocalPeer { user: u } =>
+      if listed(roster: locals, name: u) { FabricDoorWriterAdmitted { principal: u } }
+      else { FabricDoorWriterRefused { refusal: WriterPeerUnrostered { account: u } } }
+    DoorProxied { identity: i } =>
+      match i {
+        TailnetIdentityAbsent => FabricDoorWriterRefused { refusal: WriterLoginAbsent }
+        TailnetUser { login: l } =>
+          if listed(roster: logins, name: l) { FabricDoorWriterAdmitted { principal: l } }
+          else { FabricDoorWriterRefused { refusal: WriterLoginUnrostered { login: l } } }
+      }
+  }
+}
+

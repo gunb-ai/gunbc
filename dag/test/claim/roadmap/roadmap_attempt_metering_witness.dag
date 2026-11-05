@@ -24,6 +24,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
   metered_role_seat_owner, metering_record_from_usage, metering_record_inadmissible, metering_token_total, metering_seat_time_total,
   attempt_metering_json, metering_observe_from_text,
 }
+import std.algebra { length }
 
 // PLANTED FIXTURES, answers computed by hand. Attempt node-x-a7 launched a worker and one reviewer
 // (criterion r1-c1 at head h1). The worker's stream: two rounds (in 10+20, out 100+200), then
@@ -364,7 +365,7 @@ fn open_launches(entries: List<RosterEntryText>) -> List<MeteredRole> {
 test fn two_concurrent_admissions_both_survive() -> Bool {
   let auditor = MeteredAuditor { head: "h1" as NonEmptyStr }
   let ls = open_launches(entries: [entry(role: reviewer_role()), entry(role: auditor)])
-  list_length(items: ls) == 3
+  length(xs: ls) == 3
     && any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: reviewer_role()))
     && any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: auditor))
 }
@@ -388,7 +389,7 @@ test fn a_complete_record_on_an_open_roster_is_provisional() -> Bool {
 test fn a_sealed_roster_with_complete_rows_is_final() -> Bool {
   match metering_roster_seal_decode(node_id: "node-x", attempt_key: "7", raw: metering_roster_seal_json(node_id: "node-x", attempt_key: "7", launches: roster())) {
     RosterSealed { launches: ls, digest: d } =>
-      list_length(items: ls) == 2 && observe_under(record: record_of(roles: complete_usage()), roster_state: RosterSealed { launches: ls, digest: d }) == "observed"
+      length(xs: ls) == 2 && observe_under(record: record_of(roles: complete_usage()), roster_state: RosterSealed { launches: ls, digest: d }) == "observed"
     _ => false
   }
 }
@@ -421,7 +422,7 @@ test fn an_admission_racing_the_seal_lands_in_it_or_refuses() -> Bool {
   let sealed_first = metering_roster_seal_json(node_id: "node-x", attempt_key: "7", launches: open_launches(entries: [entry(role: reviewer_role())]))
   let refused_after_marker = (match metering_admission_after_entry(closing: OptionalFileContent { content: "closed" }) { RosterAdmissionRefused { cause: _ } => true RosterAdmitted => false })
     && (match metering_roster_seal_decode(node_id: "node-x", attempt_key: "7", raw: sealed_first) {
-      RosterSealed { launches: ls, digest: _ } => list_length(items: ls) == 2 && !any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: auditor))
+      RosterSealed { launches: ls, digest: _ } => length(xs: ls) == 2 && !any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: auditor))
       _ => false
     })
   landed && refused_after_marker

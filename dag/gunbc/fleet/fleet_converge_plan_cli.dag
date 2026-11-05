@@ -49,7 +49,7 @@ import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.durable_compare_and_set { cas_generation_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -634,7 +634,7 @@ fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
         UnitStandingRefused { reason: why } => [why as String]
         UnitStandingRead { standing: _ } => []
       })
-      if list_length(items: refusals) > 0 {
+      if length(xs: refusals) > 0 {
         UnitStandingsUnobserved { reason: join(refusals, "; ") as NonEmptyStr }
       } else {
         UnitStandingsObserved {

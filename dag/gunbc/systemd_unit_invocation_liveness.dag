@@ -2,8 +2,7 @@ module gunbc.systemd_unit_invocation_liveness
 
 import std.types { String, NonEmptyStr, Int, Bool, EpochSecs, Seconds }
 import std.optional { Present, Absent }
-import std.algebra { trim, list_at_optional }
-import std.types { list_length }
+import std.algebra { trim, list_at_optional, length }
 import std.durable_exclusive_hold {
   DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
 }
@@ -122,7 +121,7 @@ fn unit_run_wire(run: UnitRunIdentity) -> String {
 
 fn unit_run_of_wire(wire: String) -> UnitRunIdentity? {
   let parts = split(s: wire, delimiter: "|")
-  if list_length(items: parts) != 4 { none }
+  if length(xs: parts) != 4 { none }
   else { match list_at_optional(xs: parts, index: 0) {
     Absent => none
     Present { value: m } => match unit_run_manager_of_wire(text: m) {
