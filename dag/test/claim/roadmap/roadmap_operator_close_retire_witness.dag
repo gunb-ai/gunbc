@@ -46,7 +46,7 @@ import test.claim.fabric.fabric_storage_fixture {
     FabricWetScenarioReady,
     FabricWetScenarioUnready,    fabric_wet_scenario,
     FabricWetScenarioReady,    fabric_wet_scenario,}
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageBindingRefused }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageBindingRefused, FabricStorageBindingUnplaced }
 import extdeps.shell
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, CarrierClosed }
 import gunbc.roadmap.roadmap_issue_command { IssueCommand, RetireNode, IssueCommandSubject, issue_command_apply }
@@ -583,10 +583,10 @@ test fn a_closed_nodes_lineage_is_terminal_to_the_belt_and_unreadable_fails_clos
       path: roadmap_acceptance_event_history_carrier_repo_path, store: store,
       inputs: close_inputs("node-terminal", "op-terminal"), readback: merged_readback(14189), standing: ready_standing())
     let e1 = match a { CloseWritten { event_id: _ } => claim("the close landed", true) _ => claim("the close refused", false) }
-    match belt_node_lineage_terminal_read(instance: instance, node_id: "node-terminal", store: store) {
+    match belt_node_lineage_terminal_read(instance: instance, node_id: "node-terminal", history: roadmap_operator_close_history(store: store)) {
       LineageTerminal { why: _ } => {
         let e2 = claim("the closed node's lineage reads terminal", true)
-        let unreadable = belt_node_lineage_terminal_read(instance: instance, node_id: "node-terminal", store: FabricStorageBindingRefused { detail: "placement refused" as NonEmptyStr })
+        let unreadable = belt_node_lineage_terminal_read(instance: instance, node_id: "node-terminal", history: roadmap_operator_close_history(store: FabricStorageBindingRefused { detail: "placement refused" as NonEmptyStr }))
         let e3 = match unreadable {
           LineageTerminalUnreadable { reason: _ } => claim("an unreadable history fails closed — it never guesses open", true)
           _ => claim("the unreadable history answered something else", false)
@@ -629,7 +629,7 @@ test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
         reason: "ended by the operator" as NonEmptyStr },
       recorded_at: "2026-11-04T08:00:00Z") {
       CarrierClosed { result: EventAppended { id: _ }, close: _ } =>
-        match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt") {
+        match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt", history: roadmap_operator_close_history(store: FabricStorageBindingUnplaced)) {
           LineageTerminal { why: w } => claim("the retired node reads terminal, and the read names retirement", string_contains(s: w, pattern: "retired"))
           LineageOpen => claim("a retired node read open to the belt", false)
           LineageTerminalUnreadable { reason: r } => claim("the retired lane read unreadable: " + (r as String), false)
