@@ -1,7 +1,9 @@
 module gunbc.runner.runner_slot_allocation
 
 import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
-import std.types { Int, String, List, Bool, NonEmptyStr }
+import std.types { Int, String, List, Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.design_ruling { srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves }
 import std.algebra { take_prefix }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -129,22 +131,33 @@ data deploy_slot_identities: List<RunnerSlotIdentity> = [srv1_deploy_slot()]
 // so two 25 GiB fleet slots over-admit it by ~2.15 GiB of srv1's unreserved headroom. That is the cost
 // the ruling accepted. Keeping the
 // slot preserves an OBSERVED route, not guaranteed scheduling: srv1-01 is a shared CI slot.
+// THE EXIT IS A CLOSED SET OF CONDITIONS, ALL OF WHICH MUST HOLD (not prose, DESIGN 4c). The walls are the
+// three deploy_slot_tenancy walls (gunbc.ci.deploy_slot_tenancy: admission, isolation, confidentiality).
+type TransitionalExitCondition
+  = DeployWallsReadBackCurrent
+  | ConvergeJobObservedCompletedOnDeploySlot
+  | OperatorSignOff
+
 type TransitionalCiSlot {
   identity: RunnerSlotIdentity
-  ruling: NonEmptyStr
-  exit_when: NonEmptyStr
+  ruling: DeclarationRef
+  exit_when_all: List<TransitionalExitCondition>
 }
 
 data transitional_ci_slots: List<TransitionalCiSlot> = [
   TransitionalCiSlot {
     identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
-    ruling: "operator 2026-11-05, option (a): keep one srv1 CI slot (srv1-01) until the deploy slot srv1-02 is in service (merry-fox-82 msg_07ba9a54)" as NonEmptyStr,
-    exit_when: "all of: srv1-02's three deploy_slot_tenancy walls read back CURRENT (admission, isolation, confidentiality); a srv1-pinned fleet-converge job observed assigned to and completed on srv1-02; operator sign-off. Then delete this row and the next converge withdraws srv1-01" as NonEmptyStr,
+    ruling: srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves.reference,
+    exit_when_all: [DeployWallsReadBackCurrent, ConvergeJobObservedCompletedOnDeploySlot, OperatorSignOff],
   },
 ]
 
+fn host_transitional_ci_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  map(filter(transitional_ci_slots, t => (t.identity.host as String) == (host as String)), t => t.identity)
+}
+
 fn host_transitional_ci_slot_count(host: HostIdentity) -> Int {
-  filter(transitional_ci_slots, t => (t.identity.host as String) == (host as String)).length()
+  host_transitional_ci_slot_identities(host: host).length()
 }
 
 data authored_microvm_slots: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot(), srv1_revision_job_slot()]
@@ -1830,17 +1843,19 @@ fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
   let fleet_count = committed - authored.length()
   let deploy = host_deploy_slot_identities(host: host)
   let deploy_kept = take_prefix(deploy, fleet_count)
+  let transitional = host_transitional_ci_slot_identities(host: host)
+  let transitional_kept = take_prefix(transitional, fleet_count - deploy_kept.length())
   let ci_kept = take_prefix(
     filter(
       map(nat_range_inclusive(lo: 1, hi: committed), i => RunnerSlotIdentity { host: host, slot_index: i }),
-      id => !identity_in_list(identity: id, members: authored) && !identity_in_list(identity: id, members: deploy)
+      id => !identity_in_list(identity: id, members: authored) && !identity_in_list(identity: id, members: deploy) && !identity_in_list(identity: id, members: transitional)
     ),
-    fleet_count - deploy_kept.length()
+    fleet_count - deploy_kept.length() - transitional_kept.length()
   )
   map(
     filter(
       map(nat_range_inclusive(lo: 1, hi: committed), i => RunnerSlotIdentity { host: host, slot_index: i }),
-      id => identity_in_list(identity: id, members: deploy_kept) || identity_in_list(identity: id, members: ci_kept)
+      id => identity_in_list(identity: id, members: deploy_kept) || identity_in_list(identity: id, members: transitional_kept) || identity_in_list(identity: id, members: ci_kept)
     ),
     id => id.slot_index
   )
