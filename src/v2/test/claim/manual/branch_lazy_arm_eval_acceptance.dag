@@ -316,11 +316,11 @@ fn lazy_arm_runtime_bool_false(value: RuntimeValue) -> Bool {
   }
 }
 
-fn lazy_arm_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
+fn lazy_arm_nth_child_target(node: Node, wanted: Int) -> Outcome<Optional<Node>> {
   match list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        Edge { label: _, target: arm } => outcome_accepted(value: arm)
+        Edge { label: _, target: arm } => outcome_accepted(value: optional_present(value: arm))
       }
     Absent => outcome_rejected(d: lazy_arm_diagnostic(n: node))
   }
