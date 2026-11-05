@@ -632,7 +632,16 @@ fn wet_stage_of<T>(stage: String, ok: Bool, value: T) -> T {
 // passwordless root path can never turn a unit that was never started into a green claim.
 fn wet_root_launcher_is_available() -> Bool {
   let probe = sudo_elevate_command(command: ["/usr/bin/true"])
-  shell.Exec.RunArgv(program: probe.program.invocation as String, arguments: probe.arguments).exit_code == 0
+  // THE OUTCOME, NOT THE EXIT CODE. shell.Exec.RunArgv RAISES when the program cannot be spawned, and
+  // a raised claim neither refuses with a cause nor reaches its own cleanup -- srv2 was left holding
+  // /tmp/gunbc-sandbox-* trees by exactly that shape (the unsandboxed control raised out of a missing
+  // systemd-run at 5a4dd7e3). A host with no sudo is the manager's "needs a root launcher" REFUSAL, so
+  // the typed outcome is what this reads: no process, no answer, refusal -- never an error.
+  let read = shell.Exec.RunArgvOutcome(program: probe.program.invocation as String, arguments: probe.arguments)
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited => read.exit_code == 0
+  }
 }
 
 // WHICH CONJUNCT FAILED, recorded where a CI log can show it. A claim that returns only `false` is
@@ -993,7 +1002,14 @@ fn wet_retire_user_unit(root: NonEmptyStr, label: String) -> Bool {
 // so removing it sometimes needs the same elevation the writing needed.
 fn wet_rm_elevated(root: NonEmptyStr) -> Bool {
   let rm = sudo_elevate_command(command: ["/bin/rm", "-rf", root as String])
-  shell.Exec.RunArgv(program: rm.program.invocation as String, arguments: rm.arguments).exit_code == 0
+  // Same reason as the launcher read above, and it matters most HERE: cleanup is the last thing a
+  // failing leg does, and a raise would skip the `claim-root-gone` readback along with the removal.
+  // A host without sudo simply has no elevated route, and the readback then reddens the claim.
+  let read = shell.Exec.RunArgvOutcome(program: rm.program.invocation as String, arguments: rm.arguments)
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited => read.exit_code == 0
+  }
 }
 
 // One call for every launch claim's tail: the verdict is bound first, the claim root is then taken
@@ -1267,12 +1283,23 @@ fn unsandboxed_sibling_write_ok(root: NonEmptyStr, label: String, path: String) 
     ],
   ) {
     SystemdSummaryPrintingWaitRefused { cause: _ } => false
-    SystemdSummaryPrintingWaitReady { wait: wait } =>
-      shell.Exec.RunArgv(
-        program: "systemd-run",
-        arguments: systemd_run_command_argument_words(command: wait.command),
-      ).exit_code == 0
+    SystemdSummaryPrintingWaitReady { wait: wait } => wet_systemd_run_control_ran(
+      words: systemd_run_command_argument_words(command: wait.command),
+      label: label,
+    )
     }
+  }
+}
+
+// The control cell asks the USER manager to run the sibling write, because its whole point is a writer
+// the unit's hardening does NOT apply to. Where the host has no systemd-run there is no control cell at
+// all: that is the cell failing with a cause, not the claim raising -- a raised claim skips its own root
+// cleanup, which is how srv2 collected leftover roots (see wet_root_launcher_is_available).
+fn wet_systemd_run_control_ran(words: List<String>, label: String) -> Bool {
+  let read = shell.Exec.RunArgvOutcome(program: "systemd-run", arguments: words)
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => wet_stage(stage: join(["control-systemd-run-could-not-spawn:", label], ""), ok: false)
+    ShellExited => read.exit_code == 0
   }
 }
 
@@ -1511,20 +1538,21 @@ fn launcher_touch_inner_argv(instance: HostDashboardInstance, path: String) -> L
 }
 
 fn sudo_n_true_cli() -> ProcessExit {
-  let r = shell.Exec.RunArgv(program: "/usr/bin/sudo", arguments: ["-n", "true"])
-  if r.exit_code == 0 {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "sudo -n true refused")
+  let r = shell.Exec.RunArgvOutcome(program: "/usr/bin/sudo", arguments: ["-n", "true"])
+  // Two different no-answers, and the leg must say which: sudo refused the command (the sandbox's
+  // doing, the thing under test) versus sudo could not be spawned at all (the host has no root
+  // launcher). Collapsing them would let an unprovisioned host read as a confinement PASS.
+  match r.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => exit_failure(reason: "needs a root launcher: sudo could not be spawned in this unit")
+    ShellExited => if r.exit_code == 0 { ExitSuccess } else { exit_failure(reason: "sudo -n true refused") }
   }
 }
 
 fn sudo_n_touch_cli(path: String) -> ProcessExit {
-  let r = shell.Exec.RunArgv(program: "/usr/bin/sudo", arguments: ["-n", "/usr/bin/touch", "--", path])
-  if r.exit_code == 0 {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "sudo -n touch refused")
+  let r = shell.Exec.RunArgvOutcome(program: "/usr/bin/sudo", arguments: ["-n", "/usr/bin/touch", "--", path])
+  match r.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => exit_failure(reason: "needs a root launcher: sudo could not be spawned in this unit")
+    ShellExited => if r.exit_code == 0 { ExitSuccess } else { exit_failure(reason: "sudo -n touch refused") }
   }
 }
 
