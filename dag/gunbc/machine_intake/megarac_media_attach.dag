@@ -14,7 +14,15 @@ import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_un
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.host.bmc_release_capability_catalog { megarac_committed_hpm_check_identity }
-import gunbc.machine_intake.megarac_media_row_reading { boot_run_41573858366_end_media_row }
+import gunbc.machine_intake.megarac_media_row_reading {
+  BmcMediaRowUiAttestation,
+  attestation_and_read_name_the_same_row,
+  attestation_labels_a_stopped_and_ejected_row,
+  boot_run_41573858366_end_media_row,
+  megarac_ejected_ui_word,
+  megarac_stopped_ui_word,
+  mtcollins1_cd_row_ui_attestation_status_zero,
+}
 import gunbc.machine_intake.mount_establishment {
   MediaImageAbsentFromListing,
   MediaImageListed,
@@ -1533,12 +1541,46 @@ type MegaRacRedirectionUnread
   // inference -- but it refuses with its own cause so the operator is told which row, which code, and what
   // reading would settle it, instead of being told the catalogue does not name it.
   | RedirectionUnreadInferred { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+  // AN OPERATOR DID READ THE PAGE FOR THIS ROW AND ITS WORDS DO NOT ESTABLISH IT, so the row is still not
+  // admitted -- but the cause is theirs, not the catalogue's, and it is not silently demoted to "code not
+  // named". The arm carries WHICH reading failed, not merely that one did: the operator is told whether the
+  // page's words were the wrong ones or the page they read was a different row, which is the difference
+  // between going back to the console and going back to the right row on it.
+  | RedirectionUnreadAttestationRefused {
+    firmware: BmcFirmwareReleaseIdentity,
+    wire: Int,
+    finding: MegaRacAttestationFinding,
+  }
+
+// WHAT THE READING SAID, as distinct from what the row was read as: the two ways a human reading of the
+// controller's own page can fail to establish this row, each with its own words for the boot diagnostic.
+type MegaRacAttestationFinding =
+  | AttestationStateCellSays { state_label: NonEmptyStr }
+  | AttestationReadOfAnotherRow
+
+fn megarac_attestation_finding_text(finding: MegaRacAttestationFinding) -> String {
+  match finding {
+    AttestationStateCellSays { state_label: said } =>
+      concat(
+        "the state cell read ",
+        said as String,
+        ", which does not carry both of the vendor's words for a row that is not presenting (",
+        megarac_stopped_ui_word,
+        " and ",
+        megarac_ejected_ui_word,
+        ")",
+      )
+    AttestationReadOfAnotherRow =>
+      "the reading named a row other than the one that names no medium, so it establishes that row and not this one"
+  }
+}
 
 fn redirection_unread_wire(unread: MegaRacRedirectionUnread) -> Int {
   match unread {
     RedirectionUnreadFirmware { firmware: _, wire: w } => w
     RedirectionUnreadCode { firmware: _, wire: w } => w
     RedirectionUnreadInferred { firmware: _, wire: w } => w
+    RedirectionUnreadAttestationRefused { firmware: _, wire: w, finding: _ } => w
   }
 }
 
@@ -1558,6 +1600,19 @@ fn redirection_unread_text(unread: MegaRacRedirectionUnread) -> String {
           ", a code this release's catalogue does not name and whose meaning is INFERRED here (0.32 reads ",
           to_string(w),
           " as stopped, the row carries the no-session marker and names no medium) -- a lane does not boot on an inference; an operator's reading of the controller's own UI for this row would establish it",
+        ],
+        "",
+      )
+    RedirectionUnreadAttestationRefused { firmware: f, wire: w, finding: finding } =>
+      join(
+        [
+          "redirection_status ",
+          to_string(w),
+          " on firmware ",
+          f.raw_version,
+          " -- an operator read the controller's UI for this row and what they recorded does NOT establish it: ",
+          megarac_attestation_finding_text(finding: finding),
+          ", so it stays refused",
         ],
         "",
       )
@@ -1597,6 +1652,9 @@ fn unread_code_on_the_evidenced_release(unread: MegaRacRedirectionUnread) -> Boo
     // THE EXCEPTION THAT ALLOWS A STOP ON AN UNREAD CODE IS FOR CODES THE EXECUTED RUNS GROUNDED, and a
     // meaning guessed from another release is not one of them however well the build is evidenced.
     RedirectionUnreadInferred { firmware: _, wire: _ } => false
+    // THE SAME CLOSURE, ONE STEP FURTHER FROM EVIDENCE: an attestation that failed to establish the row is
+    // not a grounded code either, and the stop exception is for codes the executed runs grounded.
+    RedirectionUnreadAttestationRefused { firmware: _, wire: _, finding: _ } => false
   }
 }
 
@@ -1711,6 +1769,16 @@ fn megarac_media_row_names_no_medium(name: String) -> Bool {
 // and every lane that meets the guess refuses it.
 type MegaRacStatusZeroRowInference
   = MegaRacStatusZeroRowGuessedNotPresenting { firmware: BmcFirmwareReleaseIdentity, wire: Int, session_index: Int }
+  // THE RESEMBLANCE BECAME A STATE, because a dated human reading of the controller's own page says so:
+  // the same row shape, and an attestation whose words name it Stopped AND Ejected and whose medium is
+  // absent exactly as the read's is. This is the only arm of the three that admits a row. It carries the
+  // attestation because the fold's answer must say what established it; the lane drops it at the match
+  // below, since ConfigurationRowIdle is bare and idle is the same answer the vendor's table already
+  // returns for code 16 -- so the reading is named here and by the claim that pins it, not in what the
+  // boot lane receives. Nothing reaches this arm while
+  // gunbc.machine_intake.megarac_media_row_reading mtcollins1_cd_row_ui_attestation_status_zero is `none`,
+  // which is the state of the corpus today.
+  | MegaRacStatusZeroRowAttestedNotPresenting { firmware: BmcFirmwareReleaseIdentity, wire: Int, session_index: Int, attestation: BmcMediaRowUiAttestation }
   | MegaRacStatusZeroRowNotGuessed { reason: MegaRacStatusZeroRowRefusal }
 
 // WHY NOTHING WAS INFERRED -- one typed cause per separation, each pinned RED in the witness: a code that is
@@ -1725,6 +1793,14 @@ type MegaRacStatusZeroRowRefusal
   | ZeroRowIsNotTheReadIndex { media_index: Int }
   | ZeroRowNamesAMedium { name: NonEmptyStr }
   | ZeroRowReleaseWasNeverReadThatWay { firmware: BmcFirmwareReleaseIdentity }
+  // AN ATTESTATION WAS OFFERED AND DOES NOT ESTABLISH THIS ROW -- kept as its own cause rather than folded
+  // into "no attestation", because an operator went and read the page and the answer must say what failed:
+  // either the state cell does not carry both of the words the fold requires (in which case the finding is
+  // REPORTED, and nobody bends attestation_labels_a_stopped_and_ejected_row to fit it), or the page they
+  // read was a different row -- typically the one naming a medium, which is code 16's row and cannot
+  // corroborate a row that names none.
+  | ZeroRowAttestationDoesNotSayStoppedAndEjected { state_label: NonEmptyStr }
+  | ZeroRowAttestationNamesAnotherRow
 
 // THE GUARD IS THE EVIDENCE. The guess is drawn only on the whole shape of the row that was read -- the
 // release the controller reports, code 0, the CD/DVD row type, the image-list index, the no-session marker,
@@ -1739,6 +1815,7 @@ fn megarac_status_zero_row_inference(
   media_index: Int?,
   session_index: Int?,
   image_name: NonEmptyStr?,
+  attestation: BmcMediaRowUiAttestation?,
 ) -> MegaRacStatusZeroRowInference {
   if !bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) {
     MegaRacStatusZeroRowNotGuessed { reason: ZeroRowReleaseWasNeverReadThatWay { firmware: firmware } }
@@ -1761,7 +1838,19 @@ fn megarac_status_zero_row_inference(
               } else {
                 match image_name {
                   Present { value: named } => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowNamesAMedium { name: named } }
-                  Absent => MegaRacStatusZeroRowGuessedNotPresenting { firmware: firmware, wire: wire, session_index: index }
+                  Absent => match attestation {
+                    // NOBODY HAS READ THE PAGE FOR THIS ROW. The bet stands and no lane acts on it -- this is
+                    // the state of the corpus today (the datum is `none`), and the witness pins it so a
+                    // promotion can never arrive ahead of its attestation.
+                    Absent => MegaRacStatusZeroRowGuessedNotPresenting { firmware: firmware, wire: wire, session_index: index }
+                    Present { value: a } => if !attestation_labels_a_stopped_and_ejected_row(attestation: a) {
+                      MegaRacStatusZeroRowNotGuessed { reason: ZeroRowAttestationDoesNotSayStoppedAndEjected { state_label: a.state_label } }
+                    } else if !attestation_and_read_name_the_same_row(attestation: a, read: boot_run_41573858366_end_media_row) {
+                      MegaRacStatusZeroRowNotGuessed { reason: ZeroRowAttestationNamesAnotherRow }
+                    } else {
+                      MegaRacStatusZeroRowAttestedNotPresenting { firmware: firmware, wire: wire, session_index: index, attestation: a }
+                    }
+                  }
                 }
               }
           }
@@ -1848,8 +1937,32 @@ fn configuration_row_reading(
                                 media_index: media_index,
                                 session_index: session_index,
                                 image_name: named_medium,
+                                attestation: mtcollins1_cd_row_ui_attestation_status_zero,
                               ) {
+                              // THE ONE ARM THAT ADMITS: an attested reading of this very row, whose words are
+                              // the vendor's for a row that is not presenting. Idle here is what the code-16
+                              // row already gets from the vendor's own table, so no new permission is created
+                              // -- only the same permission with its authority named.
+                              MegaRacStatusZeroRowAttestedNotPresenting { firmware: _, wire: _, session_index: _, attestation: _ } => ConfigurationRowIdle
                               MegaRacStatusZeroRowGuessedNotPresenting { firmware: g, wire: gw, session_index: _ } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadInferred { firmware: g, wire: gw } }
+                              MegaRacStatusZeroRowNotGuessed {
+                                reason: ZeroRowAttestationDoesNotSayStoppedAndEjected { state_label: said },
+                              } => ConfigurationRowUncatalogued {
+                              image_name: name,
+                              unread: RedirectionUnreadAttestationRefused {
+                                firmware: f,
+                                wire: w,
+                                finding: AttestationStateCellSays { state_label: said },
+                              },
+                            }
+                              MegaRacStatusZeroRowNotGuessed { reason: ZeroRowAttestationNamesAnotherRow } => ConfigurationRowUncatalogued {
+                              image_name: name,
+                              unread: RedirectionUnreadAttestationRefused {
+                                firmware: f,
+                                wire: w,
+                                finding: AttestationReadOfAnotherRow,
+                              },
+                            }
                               MegaRacStatusZeroRowNotGuessed { reason: _ } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } }
                             }
                             }
