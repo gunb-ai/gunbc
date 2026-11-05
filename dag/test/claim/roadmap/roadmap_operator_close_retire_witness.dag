@@ -32,7 +32,7 @@ import std.integer { nat_to_int }
 import std.optional { Present, Absent, Optional }
 import std.algebra { empty_map, map_insert, string_contains }
 import extdeps.shell
-import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_date_checked }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown }
 import extdeps.ietf.http_semantics { HttpMethod, POST }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, text_plain_utf8 }
@@ -383,22 +383,8 @@ test fn an_unmerged_pr_and_an_absent_pr_refuse_carrying_their_facts() -> Bool {
       }
       _ => claim("an absent PR was closed", false)
     }
-    // An invalid calendar day is UNWRITABLE, not validated: the only hand-authoring door is the
-    // calendar authority's checked constructor, and it refuses month 13 and a non-leap Feb 29.
-    // (Review 90949: the old shape check over text is deleted — the date reaches the gate as an
-    // Iso8601CivilDate, derived from the clock or built checked; text exists only at the write.)
-    let c = match iso8601_civil_date_checked(year: 2026, month: 13, day: 1) {
-      Absent => match iso8601_civil_date_checked(year: 2026, month: 2, day: 29) {
-        Absent => match iso8601_civil_date_checked(year: 2024, month: 2, day: 29) {
-          Present { value: d } => claim("month 13 and a non-leap Feb 29 cannot be constructed; leap Feb 2024 can", d.day == 29)
-          Absent => claim("leap Feb 29 2024 was refused", false)
-        }
-        Present { value: _ } => claim("Feb 29 2026 (non-leap) was constructed", false)
-      }
-      Present { value: _ } => claim("month 13 was constructed", false)
-    }
     let d = claim("nothing was written by the refused closes", tail_count(store) == 0)
-    a && b && c && d
+    a && b && d
   })
 }
 
@@ -694,20 +680,20 @@ test fn the_close_route_refuses_anonymously_and_without_the_token() -> Bool {
   e1 && e2
 }
 
-test fn the_close_route_names_an_unknown_node_before_github_can_answer() -> Bool {
+test fn the_close_route_names_an_unknown_node_and_refuses_an_unreadable_lane() -> Bool {
   let unknown = serve_issue_close_response_over(
     instance: srv2_preview_dashboard_instance(), plan: fn() { plan_with_nodes(["operator-node"]) },
     request: close_request_as_operator(body: close_body_ready, node_id: "not-a-node"), params: node_param("not-a-node"), read: fn(_repo, n) { merged_readback(n) })
   let e1 = claim("the unknown node is named: " + unknown.body, unknown.status == 404)
-  // An empty lane is no review standing either — and it outranks the GitHub question: the node is
-  // refused as unknown even while a (failed) readback was attempted. The unreadable-GitHub refusal
-  // itself, for a node that DOES stand ready for review, is witnessed by
-  // an_unreadable_github_refuses_the_close_fail_closed at the gate.
-  let github_down = serve_issue_close_response_over(
+  // The lane question fails CLOSED at the serve edge too: a node lane that cannot be read (here,
+  // an instance whose carrier root does not exist — the snapshot list itself fails) is refused
+  // 503 with the located reason, never treated as empty-and-open and never appended blind (the
+  // manager's condition three, one layer up from an_unreadable_github_refuses_the_close_fail_closed).
+  let lane_unreadable = serve_issue_close_response_over(
     instance: srv2_preview_dashboard_instance(), plan: fn() { plan_with_nodes(["operator-node"]) },
     request: close_request_as_operator(body: close_body_ready, node_id: "operator-node"), params: node_param("operator-node"), read: fn(_repo, _n) { PrReadbackUnavailable { cause: "witness: github unavailable" as NonEmptyStr } })
-  let e2 = claim("the empty lane refuses as unknown before any GitHub reading counts: " + github_down.body,
-    github_down.status == 404 && string_contains(s: github_down.body, pattern: "unknown node"))
+  let e2 = claim("an unreadable lane refuses fail-closed, not blind: " + lane_unreadable.body,
+    lane_unreadable.status == 503 && string_contains(s: lane_unreadable.body, pattern: "lane unavailable"))
   e1 && e2
 }
 

@@ -521,9 +521,9 @@ fn roadmap_operator_close_receipt(inputs: OperatorCloseInputs) -> RoadmapAccepta
 // carrier's form); the receipt needs real red-control and handback evidence — empty witness fields
 // are refused here, with the field named, rather than minting an admissible-looking nothing.
 fn roadmap_operator_close_record(inputs: OperatorCloseInputs) -> OperatorCloseRefusal? {
-  // The date needs NO check: OperatorCloseInputs.accepted_on is an Iso8601CivilDate the caller
-  // obtained from the calendar authority (derived from the clock, or built through
-  // iso8601_civil_date_checked) — a wrong state is unwritable, not validated (§5). The
+  // The date needs NO check: OperatorCloseInputs.accepted_on is an Iso8601CivilDate derived from
+  // the clock through the shared calendar law (extdeps.units.iso8601_calendar) — there is no
+  // hand-authored door, so a wrong state is unwritable, not validated (§5). The
   // witness_module/witness_fn/first_artifact emptiness branches were deleted for the same reason:
   // NonEmptyStr already holds that constraint, so a check restating it is a second representation
   // (§2/§3). What is actually unchecked below is the receipt LINE — a String — so it is checked.
