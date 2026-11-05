@@ -61,7 +61,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_dashboard_deploy_selected_inputs, fleet_converge_microvm_controller_install_selected_inputs,
   fleet_converge_approval_broker_dark_install_selected_inputs,
   fleet_converge_approval_ntfy_retire_job, fleet_converge_approval_ntfy_retire_selected_inputs,
-  fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation,, fleet_converge_mode_job_id
+  fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation, fleet_converge_mode_job_id
 }
 
 // THE GENERATOR AND THE AUTHORITY SPEAK THE SAME WIRE AND THE SAME JOB NAME: the dispatch vocabulary

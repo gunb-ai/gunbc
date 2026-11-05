@@ -37,7 +37,7 @@ import extdeps.shadow.account_deletion {
 import extdeps.posix.getent { getent_key_not_found_exit }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_approved_scopes, approval_ntfy_retire_root_scopes, srv1_root_removal_action,
-  srv1_root_removal_scope_at,, srv1_root_account_remove_action, srv1_root_group_remove_action
+  srv1_root_removal_scope_at, srv1_root_account_remove_action, srv1_root_group_remove_action
 }
 
 // ── The approval the run asks for ──────────────────────────────────────────────────────────────
