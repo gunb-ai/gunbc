@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_launch_deployment_receipt
 import std.optional { Absent, Optional, Present }
+import std.algebra { list_head }
 
 
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, LaunchEnvironment }

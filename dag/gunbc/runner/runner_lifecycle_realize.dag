@@ -8,7 +8,7 @@ import gunbc.host.host_effect {
   HostEffectTransport,
   ShellEffectApplied,
   LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun,
-  ActivateRunnerSlot, DrainAndMaskRunnerSlot,
+  ActivateRunnerSlot, DrainAndMaskRunnerSlot, ObserveRunnerLocalState, ObserveGitHubRunnerRegistration,
 }
 import std.realization_reconcile { Reconciliation, NotConverged, Converged }
 import gunbc.runner.runner_unit { runner_slot_unit_name }
@@ -18,9 +18,14 @@ import gunbc.runner.runner_slot_actuation {
   drain_and_mask_runner_slot_over,
   slot_actuation_settled,
   slot_actuation_outcome_wire,
+  SlotLocalObservation,
+  observe_runner_slot_local_state_over,
+  slot_local_observation_settled,
+  slot_local_observation_wire,
 }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.runner.runner_lifecycle { RunnerSlotIdentity }
+import gunbc.fleet.fleet_runner_connectivity { RosterReadUnavailable, observe_slot_registrations, slot_registration_observation_wire, slot_registration_observation_settled }
 import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
 import std.types { NonEmptyStr, String }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -157,14 +162,45 @@ fn runner_lifecycle_realize_replace_runner_incarnation(
   runner_lifecycle_realize_scaffold(effect_label: "ReplaceRunnerIncarnation", intent: intent)
 }
 
+fn runner_slot_local_observation_reconciliation(
+  intent: HostEffectIntent,
+  o: SlotLocalObservation,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if slot_local_observation_settled(o: o) {
+    Converged { evidence: ShellEffectApplied { exit_code: 0, stdout: slot_local_observation_wire(o: o), stderr: "" }, applied: intent }
+  } else {
+    NotConverged { reason: concat("host_effect_apply: ", slot_local_observation_wire(o: o)), applied: intent }
+  }
+}
+
 fn runner_lifecycle_realize_observe_runner_local_state(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  runner_lifecycle_realize_scaffold(effect_label: "ObserveRunnerLocalState", intent: intent)
+  match intent.effect {
+    ObserveRunnerLocalState { slot: slot } =>
+      match intent.transport {
+        FleetSsh { target: t, context: c } =>
+          runner_slot_local_observation_reconciliation(intent: intent, o: observe_runner_slot_local_state_over(target: t, context: c, unit: runner_slot_unit_name(slot: slot)))
+        LocalShell => runner_slot_actuation_wrong_transport(effect_label: "ObserveRunnerLocalState", intent: intent)
+        SshShell { ssh_host: _ } => runner_slot_actuation_wrong_transport(effect_label: "ObserveRunnerLocalState", intent: intent)
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => runner_slot_actuation_wrong_transport(effect_label: "ObserveRunnerLocalState", intent: intent)
+      }
+    _ => NotConverged { reason: "host_effect_apply: observe-local-state realization reached with a different effect", applied: intent }
+  }
 }
 
 fn runner_lifecycle_realize_observe_github_runner_registration(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  runner_lifecycle_realize_scaffold(effect_label: "ObserveGitHubRunnerRegistration", intent: intent)
+  match intent.effect {
+    ObserveGitHubRunnerRegistration { slot: slot, organization: _ } => {
+      let o = observe_slot_registrations(slot: slot, roster: RosterReadUnavailable { reason: "this realization holds no admitted token; the roster is read by runner_connectivity_observe_wet" })
+      if slot_registration_observation_settled(o: o) {
+        Converged { evidence: ShellEffectApplied { exit_code: 0, stdout: slot_registration_observation_wire(o: o), stderr: "" }, applied: intent }
+      } else {
+        NotConverged { reason: concat("host_effect_apply: ", slot_registration_observation_wire(o: o)), applied: intent }
+      }
+    }
+    _ => NotConverged { reason: "host_effect_apply: observe-registration realization reached with a different effect", applied: intent }
+  }
 }
