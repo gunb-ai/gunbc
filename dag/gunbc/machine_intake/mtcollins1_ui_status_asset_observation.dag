@@ -123,10 +123,6 @@ data megarac_ui_cd_row_marker_token: NonEmptyStr = "media_type" as NonEmptyStr
 data megarac_ui_status_branch_window_octets: ByteSize = byte_size(count: 4096)
 
 data megarac_ui_asset_path_suffix: NonEmptyStr = ".js" as NonEmptyStr
-// Printed on every row whose path bytes appear, so the row states the rule under which they appear
-// rather than leaving a reader to infer it from the guard: the path came from the committed page, it
-// carries no query or fragment, and every octet of it is inside the published character set below.
-data megarac_ui_path_publication_policy: NonEmptyStr = "from-committed-page,no-query-or-fragment,ascii-letter-digit-dot-slash-dash-underscore" as NonEmptyStr
 
 // ---------------------------------------------------------------------------------------------
 // PATH ADMISSION. The asset path arrives as data because it is a fact about the box read from the
@@ -892,31 +888,27 @@ fn ui_page_line(reading: MegaRacUiPageReading) -> NonEmptyStr {
 }
 
 fn ui_asset_line(attempt: MegaRacUiAssetAttempt) -> NonEmptyStr {
-  // ASKING AND PUBLISHING ARE TWO DIFFERENT PERMISSIONS. The shape guard decides what we may request;
-  // this decides what the receipt prints. A committed page can name a reference that carries a session
-  // value -- `src="/ui/app.js?session_token=SECRET"` -- and the guard refuses it, but a refusal that
-  // prints the reference prints the secret into an evidence file, twice: once in the row's own subject
-  // and once in the refusal sentence. So a refused path publishes its category, its length and its
-  // sha256, all three still checkable against the page bytes without reproducing them; an admitted path
-  // publishes its bytes only inside the character set the policy names, and a path outside that set is
-  // still fetched and still reported -- by length and digest instead of by bytes.
+  // ASKING AND PUBLISHING ARE TWO DIFFERENT PERMISSIONS, AND NEITHER ONE PUBLISHES THE PATH. The shape
+  // guard decides what we may REQUEST; this decides what the receipt PRINTS, and what it prints about a
+  // reference is its byte length, its sha256, and the admission disposition that fired -- never its
+  // bytes, whatever the character set. The first version of this row kept a published character set and
+  // printed the path inside it. That set was wrong, not merely loose: every octet of `/ui/
+  // session_token_aB3xQ7pZr0.js` is an octet the vendor's own names are built from, and the guard admits
+  // the shape (web-root-relative, no query, no fragment, no authority, `.js`). No charset that admits a
+  // vendor script name can exclude a token, because a token is spelled in exactly the characters a
+  // vendor script name uses. So the reference is identified by arithmetic and a hash: a reader holding
+  // the committed page bytes can confirm which reference a row is about, and the receipt cannot carry a
+  // session value in either direction -- admitted or refused.
   let path_octets = ui_octets_of(attempt.path)
-  let subject = match attempt.path_refusal {
-    Present { value: cause } => join([
-      "asset_refused category=", ui_asset_path_refusal_category(cause),
-      " ref_length=", megarac_ui_count_text(count(path_octets)),
-      " ref_sha256=", sha256_hex_of_text(text: attempt.path),
-    ], "")
-    Absent => if ui_octets_are_publishable_path_octets(path_octets, 0) {
-      join(["asset ", attempt.path, " path_policy=", megarac_ui_path_publication_policy], "")
-    } else {
-      join([
-        "asset_path_withheld reason=outside_the_published_path_charset",
-        " ref_length=", megarac_ui_count_text(count(path_octets)),
-        " ref_sha256=", sha256_hex_of_text(text: attempt.path),
-      ], "")
-    }
+  let disposition = match attempt.path_refusal {
+    Present { value: cause } => ui_asset_path_refusal_category(cause),
+    Absent => "admitted" as NonEmptyStr,
   }
+  let subject = join([
+    "asset_ref length=", megarac_ui_count_text(count(path_octets)),
+    " sha256=", sha256_hex_of_text(text: attempt.path),
+    " disposition=", disposition as String,
+  ], "")
   let detail = match attempt.excerpt {
     ExcerptFound {
       asset_path: _, served_release: served, read_release: _, asset_sha256: asset_sha256,
@@ -973,27 +965,6 @@ fn ui_asset_path_refusal_category(cause: MegaRacUiAssetPathRefusal) -> NonEmptyS
       AssetPathNotFromTheCommittedPage { path: _ } => "not_from_committed_page"
     },
   ], "") as NonEmptyStr
-}
-
-// The published character set: ASCII letters, digits, and `.`, `/`, `-`, `_`. Everything the vendor's
-// own script references are built from, and nothing that can carry a credential assignment, a query, or
-// whitespace. This is a PUBLICATION bound, not an admission bound: a path outside it is still fetched
-// when the page named it and the guard admits its shape, and the finding is still recorded, under its
-// length and digest. Turning it into a fetch refusal would cost a second read of the controller to learn
-// a fact the first receipt could have printed, which is the mistake this module already refused once.
-fn ui_octet_is_publishable_path_octet(code: Int) -> Bool {
-  (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code == 46 || code == 47 || code == 45 || code == 95
-}
-
-fn ui_octets_are_publishable_path_octets(octets: List<Int>, at: Int) -> Bool {
-  if at >= count(octets) {
-    true
-  } else {
-    match octets |> get(at) {
-      null => true
-      code => ui_octet_is_publishable_path_octet(code) && ui_octets_are_publishable_path_octets(octets, at + 1)
-    }
-  }
 }
 
 fn megarac_ui_refusal_text(cause: MegaRacUiStatusExcerptRefusal) -> NonEmptyStr {

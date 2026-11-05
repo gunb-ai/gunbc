@@ -1104,7 +1104,8 @@ test fn w_the_marker_sits_between_the_status_read_and_the_zero_key() -> Bool {
 // page bytes by length and digest. What it must not do is reprint the rejected reference, because the
 // reference is where the secret was. The digest check below is what makes the withheld handle real: the
 // row carries sha256(path), so anyone holding the page bytes can confirm which reference this row
-// refused without the receipt ever holding the bytes.
+// refused without the receipt ever holding the bytes. The disposition token is asserted with its VALUE,
+// not just its key: a row that said "disposition=" and named nothing would be useless to a reader.
 test fn w_a_refused_reference_publishes_its_category_and_digest_never_its_bytes() -> Bool {
   let secret_path = concat("/ui/source.min.js?session_token=", witness_injected_credential)
   match ui_asset_path_shape_refusal(secret_path) {
@@ -1118,21 +1119,23 @@ test fn w_a_refused_reference_publishes_its_category_and_digest_never_its_bytes(
       })
       !string_contains(s: line, pattern: "aB3xQ7pZr0") &&
         !string_contains(s: line, pattern: "session_token") &&
-        string_contains(s: line, pattern: "query_or_fragment") &&
-        string_contains(s: line, pattern: "ref_length=") &&
+        string_contains(s: line, pattern: "disposition=query_or_fragment") &&
+        string_contains(s: line, pattern: join(["length=", to_string(value: count(ui_octets_of(secret_path)))], "")) &&
         string_contains(s: line, pattern: sha256_hex_of_text(text: secret_path))
     }
   }
 }
 
-// The other half of the same separation: a path the guard ADMITS -- no query character, ends in .js, so
-// its shape is fine -- can still carry a credential assignment in a path segment. Admission and
-// publication are different permissions, so this row is withheld by the published character set while
-// the fetch still happens: the finding is recorded, the bytes are not. The guard's own verdict is
-// asserted first, so if someone later narrows the guard this claim goes red for the wrong reason and
-// says so: the point here is publication, not admission.
-test fn w_an_admitted_path_carrying_a_credential_shape_is_recorded_without_its_bytes() -> Bool {
-  let risky_path = concat(concat("/ui/session_token=", witness_injected_credential), ".js")
+// THE DISCRIMINATING CASE FOR PUBLICATION, AND THE ONE THE CHARACTER SET COULD NOT CATCH. A vendor page
+// can name a script whose OWN NAME carries a session value: `/ui/session_token_aB3xQ7pZr0.js`. The shape
+// guard admits it -- web-root-relative, no parent traversal, no query, no fragment, no colon or
+// authority, `.js` suffix -- and every octet of that name is an octet the vendor's real script names are
+// built from. A published character set that admits vendor scripts therefore admits this too: the only
+// rule that does not leak is one that prints no path bytes at all, in either direction. The guard's own
+// verdict is asserted first, so if someone later narrows the guard this claim goes red for the right
+// reason and says which.
+test fn w_an_admitted_path_whose_name_is_a_credential_is_published_as_length_digest_disposition_only() -> Bool {
+  let risky_path = "/ui/session_token_aB3xQ7pZr0.js"
   match ui_asset_path_shape_refusal(risky_path) {
     Present { value: _ } => false
     Absent => {
@@ -1143,27 +1146,77 @@ test fn w_an_admitted_path_carrying_a_credential_shape_is_recorded_without_its_b
         excerpt: ExcerptRefused { cause: StatusBranchNotForMediaRows { property_name_present: false } },
       })
       !string_contains(s: line, pattern: "aB3xQ7pZr0") &&
-        string_contains(s: line, pattern: "asset_path_withheld") &&
-        string_contains(s: line, pattern: "ref_sha256=") &&
+        !string_contains(s: line, pattern: "session_token") &&
+        !string_contains(s: line, pattern: risky_path) &&
+        string_contains(s: line, pattern: "disposition=admitted") &&
+        string_contains(s: line, pattern: join(["length=", to_string(value: count(ui_octets_of(risky_path)))], "")) &&
         string_contains(s: line, pattern: sha256_hex_of_text(text: risky_path))
     }
   }
 }
 
-// A path inside the published set appears in full, and the row names the rule it appeared under instead
-// of leaving a reader to reconstruct it from the guard.
-test fn w_an_admitted_publishable_path_is_printed_with_the_policy_it_was_printed_under() -> Bool {
+// The ordinary path is held to the same rule: a plain vendor name prints as length, digest and
+// disposition, and the line begins with the reference handle rather than with the path itself. A reader
+// who has the committed page bytes can still name the asset exactly -- the digest is the handle.
+test fn w_a_plain_vendor_path_is_also_published_as_length_digest_and_disposition() -> Bool {
   let line = ui_asset_line(attempt: MegaRacUiAssetAttempt {
-    path: witness_asset_path(),
+    path: witness_asset_path() as String,
     path_refusal: none,
     http_status: 200,
     excerpt: ExcerptRefused { cause: StatusBranchNotForMediaRows { property_name_present: false } },
   })
-  match ui_octets_index_of(ui_octets_of(line), ui_octets_of("asset /ui/")) {
+  match ui_octets_index_of(ui_octets_of(line), ui_octets_of("asset_ref length=")) {
     Absent => false
     Present { value: at } => at == 0 &&
-      string_contains(s: line, pattern: "path_policy=") &&
-      string_contains(s: line, pattern: "no-query-or-fragment")
+      !string_contains(s: line, pattern: "/ui/source.min.js") &&
+      string_contains(s: line, pattern: "disposition=admitted") &&
+      string_contains(s: line, pattern: sha256_hex_of_text(text: witness_asset_path() as String))
+  }
+}
+
+// THE FULL ROUTE, NOT JUST THE PRINTER. The credential-bearing name enters as committed PAGE BYTES, is
+// extracted by the reference reader, is admitted by the admission fold (that verdict is asserted, so a
+// silent narrowing cannot turn this into a test of nothing), is fetched under, and is rendered through
+// the same line builders the wet entry uses and through ui_receipt_text itself. The session value must
+// be absent from the WHOLE receipt while the handle -- length, digest, disposition -- is present: that
+// is the difference between a receipt that identifies a reference and one that carries it.
+test fn w_an_alphanumeric_credential_in_an_admissible_script_name_never_reaches_the_receipt() -> Bool {
+  let risky_path = "/ui/session_token_aB3xQ7pZr0.js"
+  let page_body = concat("<html><head><script src=\"", concat(risky_path, "\"></script></head><body>ready</body></html>\n200"))
+  let http = ui_http_of(get_body: page_body, get_succeeded: true)
+  let reading = ui_page_reading_of(candidate: mtcollins1_ui_page_web_root, response: http)
+  match ui_first_page_reading(readings: [reading], at: 0) {
+    Absent => false
+    Present { value: page } => match ui_asset_path_admission(path: risky_path, derived: page.asset_refs) {
+      RefusedUiAssetPath { path: _, cause: _ } => false
+      AdmittedUiAssetPath { path: admitted } => {
+        let attempt = MegaRacUiAssetAttempt {
+          path: admitted as String,
+          path_refusal: none,
+          http_status: 200,
+          excerpt: megarac_ui_status_excerpt_of_asset(
+            asset_text: witness_asset(head: "r();", gap: 3),
+            asset_path: admitted,
+            served_release: witness_release(),
+            read_release: witness_release(),
+            http_status: 200,
+            transport_ok: true,
+          ),
+        }
+        let outcome = MegaRacUiRunOutcome {
+          lines: [ui_page_line(reading: page), ui_asset_line(attempt: attempt)],
+          attempts: [attempt],
+          session_closed: true,
+        }
+        let receipt = ui_receipt_text(outcome: outcome, credential_env: "mtcollins1_fan_password_file" as NonEmptyStr)
+        !string_contains(s: receipt, pattern: "aB3xQ7pZr0") &&
+          !string_contains(s: receipt, pattern: "session_token") &&
+          !string_contains(s: receipt, pattern: risky_path) &&
+          string_contains(s: receipt, pattern: "disposition=admitted") &&
+          string_contains(s: receipt, pattern: sha256_hex_of_text(text: risky_path)) &&
+          string_contains(s: receipt, pattern: "window_hex=")
+      }
+    }
   }
 }
 
