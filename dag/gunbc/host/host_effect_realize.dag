@@ -6750,28 +6750,32 @@ fn tree_metadata_disagreement(expected: List<TreeMetadataEntry>, observed: List<
   tree_metadata_merge_disagreement(expected: expected_lines, observed: observed_lines, i: 0, j: 0)
 }
 
-fn tree_metadata_merge_disagreement(expected: List<String>, observed: List<String>, i: Int, j: Int) -> Optional<String> {
-  if i >= count(expected) {
-    if j >= count(observed) { none } else { Present { value: join(["unexpected installed entry ", observed[j]], "") } }
-  } else if j >= count(observed) {
-    Present { value: join(["missing entry ", expected[i]], "") }
-  } else {
-    let e = expected[i]
-    let o = observed[j]
-    match tree_path_compare(a: tree_metadata_line_path(line: e), b: tree_metadata_line_path(line: o)) {
-      Equal => if e == o {
-        tree_metadata_merge_disagreement(expected: expected, observed: observed, i: i + 1, j: j + 1)
-      } else {
-        Present { value: join(["missing entry ", e, " (the installed line at this path is ", o, ")"], "") }
+fn tree_metadata_merge_disagreement(expected: List<String>, observed: List<String>) -> Optional<String> {
+  match expected {
+    Empty => match observed {
+      Empty => none
+      Cons { head: o, tail: _os } => Present { value: join(["unexpected installed entry ", o], "") }
+    }
+    Cons { head: e, tail: es } => match observed {
+      Empty => Present { value: join(["missing entry ", e], "") }
+      Cons { head: o, tail: os } => match tree_path_compare(a: tree_metadata_line_path(line: e), b: tree_metadata_line_path(line: o)) {
+        Equal => if e == o {
+          tree_metadata_merge_disagreement(expected: es, observed: os)
+        } else {
+          Present { value: join(["missing entry ", e, " (the installed line at this path is ", o, ")"], "") }
+        }
+        Less => Present { value: join(["missing entry ", e], "") }
+        Greater => Present { value: join(["unexpected installed entry ", o], "") }
       }
-      Less => Present { value: join(["missing entry ", e], "") }
-      Greater => Present { value: join(["unexpected installed entry ", o], "") }
     }
   }
 }
 
+// The path is the first field; a canonical line's path is never the empty string (the grammar
+// refuses an unnamed root), so the empty-string sentinel in the fold cannot alias a real path.
 fn tree_metadata_line_path(line: String) -> String {
-  split(s: line, delimiter: "|")[0]
+  let parts = split(s: line, delimiter: "|")
+  fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { acc })
 }
 
 type TreeMetadataObservation
