@@ -638,7 +638,7 @@ fn aai_inhabits_by_carrier(o: DeclaredTypeObligation) -> Bool {
 
 fn aai_refused(o: DeclaredTypeObligation) -> Bool {
   match declared_type_inhabitance(obligation: o) {
-    InhabitanceRefused { find_witness_reason: _ } => true
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => true
     _ => false
   }
 }

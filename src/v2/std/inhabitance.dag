@@ -3,9 +3,11 @@ module v2.std.inhabitance
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { Bool, List }
 import v2.std.diagnostic {
+  DeclaredTypePosition, PositionBinderDefault, PositionDirectCallArgument, PositionLetAnnotation, PositionMatchCoverage, PositionRecordField, PositionDeclaredReturn, inhabitance_judgment_locus,
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  CorrectionNotModeled,
   None,
   Outcome,
   Rejected,
@@ -41,7 +43,19 @@ import v2.std.node { positional_child_target_nodes,
 import std.algebra { Cons, Empty, list_append, list_snoc_item, empty_map, list_at_optional, map_insert, map_lookup, collection_count_shape }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
-import std.nat { Succ, Zero }
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  ComparisonAlgebraMalformed,
+  ComparisonAlgebraNotTheSourceFacts,
+  ComparisonArgumentCountDiffers,
+  ComparisonArgumentsDiffer,
+  ComparisonCandidateMalformed,
+  ComparisonHolds,
+  ComparisonRootsDiffer,
+  ComparisonSourceFactsMalformed,
+  ExactStructuralComparison,
+  exact_structural_comparison
+}
+import std.nat { Nat, Succ, Zero }
 
 import v2.std.arrow_signature {
   ArrowParameterOrderAbsent,
@@ -111,18 +125,6 @@ fn type_variable_instance_lookup(
   })
 }
 
-// A match's arms against its scrutinee's coproduct: `declared` is the scrutinee's declared
-// coproduct and `produced` is the arms' covered carrier, so the one relation decides coverage --
-// exhaustive exactly when the arms structurally equal the whole coproduct
-// (gunbc.recurring_failure_mode native_infer_accepts_only_bool_and_int_match_scrutinees).
-type DeclaredTypePosition
-  = PositionDirectCallArgument
-  | PositionDeclaredReturn
-  | PositionRecordField { record: Node }
-  | PositionLetAnnotation { bound: Node }
-  | PositionBinderDefault { default: Node }
-  | PositionMatchCoverage { match_node: Node, scrutinee: Node }
-
 // type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
 // the only atoms in `declared` that name no type, and so the only thing that keeps an
 // Instantiation from being decided structurally.
@@ -147,9 +149,38 @@ type InhabitanceUndecidableReason
   | UndecidableArgumentTypeNotDerived
   | UndecidableWherePredicateSubjectUnmodelled
 
+// THE VERDICT ON ONE DECLARED/PRODUCED POSITION, read with a type-variable census in hand. This is the
+// three-valued judgement that lets a variable undecide ONLY its own position: a sibling that is concrete
+// and refuses still DISAGREES, and a pair whose every position AGREES (each variable sits over the very
+// same variable, each concrete sibling matches) is decided rather than left undecided. UNDECIDED is the
+// only verdict that can carry the pair into InhabitanceUndecidable. Mirrors v1's
+// application_arguments_inhabitance accumulator (#15441: a refused argument outranks an undecided one,
+// which outranks an inhabited one); v1 is not imported -- this is the v2 inhabitance relation's own fold.
+// The refusal itself stays a single authority (DESIGN.md §3): a disagreeing position falls to the concrete
+// comparison, not to a new reason invented here.
+type PositionVerdict
+  = PositionAgree
+  | PositionDisagree
+  | PositionUndecided
+
 type InhabitanceVerdict
   = Inhabits { homomorphism: HomomorphismWitness }
-  | InhabitanceRefused { find_witness_reason: Symbol }
+  // `find_witness_reason` is the DECISION that refused: which arm of the one structural comparison
+  // answered no, or one of v2.std.find_witness's own decisions (the preservation rule is not realized,
+  // the candidate set is ambiguous). It is deliberately not the POSITION: the position is its own field
+  // on the obligation, its own field on this verdict, and its own slot on the diagnostic
+  // (Locus::InhabitanceJudgmentLocus, read through v2.std.diagnostic's diagnostic_inhabitance_position),
+  // and naming a
+  // refusal by position is what let one symbol stand for nine different mechanisms. See
+  // v2.std.exact_structural_equality_zip_fold_predicate.
+  // `refusal_class` is set once, by the decision that produced `find_witness_reason` -- never re-derived
+  // from the symbol afterwards, so there is one authority for which class a refusal is (keen-heron-809's
+  // condition on this PR).
+  // `position` is the judgment site, its OWN field: the reason says what answered no, the position says
+  // where, and neither is inferred from the other (keen-heron-809's ruling on this PR, which deleted the
+  // position-named reason symbols for exactly that reason). It carries the argument ordinal path of the
+  // decision that refused, so a nested mismatch says which argument it was decided at.
+  | InhabitanceRefused { find_witness_reason: Symbol, refusal_class: InhabitanceRefusalClass, position: DeclaredTypePosition }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
 // Five producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
@@ -159,12 +190,14 @@ type InhabitanceVerdict
 // hand the obligation to declared_type_inhabitance. A record field's position carries
 // the construct's resolved constructor reference, so its refusal names the record as well as the
 // field (the obligation's parameter_identity) and the two types.
+// A position is built where the judgment is ASKED, so it starts at the position itself; the ordinal path
+// is written later, by the refusal that knows which argument answered no (inhabitance_position_with_argument_path).
 fn position_direct_call_argument() -> DeclaredTypePosition {
-  PositionDirectCallArgument
+  PositionDirectCallArgument { argument_ordinal_path: [] }
 }
 
 fn position_declared_return() -> DeclaredTypePosition {
-  PositionDeclaredReturn
+  PositionDeclaredReturn { argument_ordinal_path: [] }
 }
 
 fn position_record_field(record: Node) -> DeclaredTypePosition {
@@ -190,18 +223,10 @@ fn position_binder_default(default: Node) -> DeclaredTypePosition {
   PositionBinderDefault { default: default }
 }
 
-fn inhabitance_no_candidate_binder_default_reason() -> Symbol {
-  ^infer_reason_default_does_not_inhabit_binder_type
-}
-
-fn inhabitance_no_candidate_match_coverage_reason() -> Symbol {
-  ^infer_reason_match_arms_do_not_cover_scrutinee
-}
-
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
   match position {
-    PositionDirectCallArgument => ^position_direct_call_argument
-    PositionDeclaredReturn => ^position_declared_return
+    PositionDirectCallArgument { argument_ordinal_path: _ } => ^position_direct_call_argument
+    PositionDeclaredReturn { argument_ordinal_path: _ } => ^position_declared_return
     PositionRecordField { record: _ } => ^position_record_field
     PositionLetAnnotation { bound: _ } => ^position_let_annotation
     PositionBinderDefault { default: _ } => ^position_binder_default
@@ -252,17 +277,6 @@ fn inhabitance_node_undecidable_reason(
   }
 }
 
-fn inhabitance_pair_undecidable_reason_declared_then_produced(
-  declared: Node,
-  produced: Node,
-  type_variables: List<Symbol>
-) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
-    Present { value: reason } => optional_present(value: reason)
-    Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
-  }
-}
-
 // THE NOMINAL HEAD OF A TYPE: the declaration an Instantiation applies (its first positional target), or
 // the node itself. Absent when the head is not a declaration reference (a type variable, a kernel atom).
 fn inhabitance_declaration_head(t: Node) -> Optional<QualifiedName> {
@@ -304,42 +318,127 @@ fn inhabitance_concrete_pair_disagrees(declared: Node, produced: Node) -> Bool {
   }
 }
 
-// THREE-VALUED PER POSITION: a type variable undecides only ITS OWN POSITION, never its siblings. A pair
-// DISAGREES when some position that mentions no variable is concretely refused, or two distinct nominal
-// heads meet; a position that mentions a variable and agrees in head is read argument by argument. A
-// disagreeing sibling wins over an undecided position (`Map<K, String>` at `Map<K, Int>` refuses on V
-// whatever K is); where no sibling disagrees the pair stays undecided, because the variable's position
-// may still disagree once instantiated.
-fn inhabitance_positions_disagree(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
-  if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+// THREE-VALUED PER POSITION: a type variable undecides only ITS OWN POSITION, never its siblings. A
+// position DISAGREES when two distinct nominal heads meet, or a position that mentions no variable is
+// concretely refused by the same find_witness fold declared_type_inhabitance_exact runs. A position that
+// mentions a variable is read argument by argument, and a bare variable sitting over the very same
+// variable AGREES (whatever it later instantiates to, both sides get the same type). A DISAGREEING
+// SIBLING WINS OVER AN UNDECIDED POSITION (`Map<K, String>` at `Map<K, Int>` refuses on the value position
+// whatever K is); a pair with no disagreement and no undecided position is AGREED (`Map<K, Int>` at
+// `Map<K, Int>` inhabits whatever K is), so it is not left undecided. Only a position that genuinely
+// cannot be read -- a variable over a different variable or over a concrete type, an arity that runs out,
+// a head that is not a declaration reference -- is UNDECIDED, and only UNDECIDED carries the pair to
+// InhabitanceUndecidable.
+fn inhabitance_position_verdict(
+  declared: Node,
+  produced: Node,
+  type_variables: List<Symbol>
+) -> PositionVerdict {
+  if inhabitance_declaration_heads_differ(declared: declared, produced: produced) {
+    PositionDisagree
+  } else if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
     || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
-    if inhabitance_declaration_heads_differ(declared: declared, produced: produced) {
-      true
-    } else {
-      match declaration_denotation_of_type(t: declared) {
-        Absent => false
-        Present { value: dd } =>
-          match declaration_denotation_of_type(t: produced) {
-            Absent => false
-            Present { value: pd } =>
-              inhabitance_argument_lists_disagree(declared: dd.type_arguments, produced: pd.type_arguments, type_variables: type_variables)
-          }
-      }
+    // A variable is on at least one side. Two distinct heads already refused above; here the heads agree
+    // (or one side has no nominal head). Read the two sides by their decomposition.
+    match declaration_denotation_of_type(t: declared) {
+      Absent =>
+        match declaration_denotation_of_type(t: produced) {
+          // Both sides are bare (an atom, or a connective that is not a declaration reference). If they are
+          // the same atom they are the same variable -- agree; otherwise the variable's own position cannot
+          // be read, so it stays undecided.
+          Absent => inhabitance_bare_atom_verdict(declared: declared, produced: produced)
+          // Bare against a decomposition: cannot be read, so the position is undecided.
+          Present { value: _ } => PositionUndecided
+        }
+      Present { value: dd } =>
+        match declaration_denotation_of_type(t: produced) {
+          Absent => PositionUndecided
+          Present { value: pd } =>
+            inhabitance_argument_list_verdict(
+              declared: dd.type_arguments, produced: pd.type_arguments, type_variables: type_variables
+            )
+        }
     }
   } else {
-    inhabitance_concrete_pair_disagrees(declared: declared, produced: produced)
+    // Neither side mentions a variable: the position is concrete and the structural comparison decides it.
+    if inhabitance_concrete_pair_disagrees(declared: declared, produced: produced) {
+      PositionDisagree
+    } else {
+      PositionAgree
+    }
   }
 }
 
-fn inhabitance_argument_lists_disagree(declared: List<Node>, produced: List<Node>, type_variables: List<Symbol>) -> Bool {
+// THE ATOM IDENTITY of a node, when its connective is a bare Atom. Absent otherwise (an instantiation, or a
+// non-type node). Used to ask whether two bare sides are the same variable.
+fn inhabitance_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => Absent
+  }
+}
+
+// TWO BARE SIDES THAT BOTH CARRY A VARIABLE: AGREES only when the two identity symbols are EQUAL, which in
+// v2 means the SAME BINDER, not the same spelling. A type variable is identified by its Atom identity
+// symbol, and distinct binders are MINTED DISTINCT -- v2.std.anonymous_binder fresh_type_variable and
+// fresh_constructor_use_variable embed an origin prefix and the use node's occurrence id into the lexeme
+// (e.g. `<constructor-use@N:L>`), so a callee's `T` and a caller's separately-scoped `T` reach inhabitance
+// as two different symbols and this comparison does NOT agree them. (That spelling-vs-binder hazard is
+// gunbc.recurring_failure_mode type_variable_identified_by_spelling_in_v2; the comparison is on the whole
+// minted identity, never the extracted label, which is why it sits on the safe side of it -- the same basis
+// inhabitance_node_mentions_type_variable already uses.) A different symbol is a variable over a different
+// binder, or a variable over a concrete type -- undecided, never a refusal for the wrong reason.
+fn inhabitance_bare_atom_verdict(declared: Node, produced: Node) -> PositionVerdict {
+  match inhabitance_atom_identity(n: declared) {
+    Absent => PositionUndecided
+    Present { value: di } =>
+      match inhabitance_atom_identity(n: produced) {
+        Absent => PositionUndecided
+        Present { value: pi } =>
+          if di == pi {
+            PositionAgree
+          } else {
+            PositionUndecided
+          }
+      }
+  }
+}
+
+// A DISAGREEING CHILD OUTRANKS AN UNDECIDED CHILD, which outranks an agreed one. This is the one place the
+// precedence lives, so a refusal can never be masked by an undecided sibling further along the list.
+fn inhabitance_verdict_combine(left: PositionVerdict, right: PositionVerdict) -> PositionVerdict {
+  if left == PositionDisagree || right == PositionDisagree {
+    PositionDisagree
+  } else if left == PositionUndecided || right == PositionUndecided {
+    PositionUndecided
+  } else {
+    PositionAgree
+  }
+}
+
+// ZIP the argument lists. Equal length: fold the position verdicts with the precedence above. Unequal
+// length is not read here -- the exact structural comparison owns arity (its argument_count_differs arm),
+// so a length mismatch is left UNDECIDED to fall through to that one authority rather than inventing a
+// second refusal.
+fn inhabitance_argument_list_verdict(
+  declared: List<Node>,
+  produced: List<Node>,
+  type_variables: List<Symbol>
+) -> PositionVerdict {
   match declared {
-    Empty => false
+    Empty =>
+      match produced {
+        Empty => PositionAgree
+        Cons { head: _, tail: _ } => PositionUndecided
+      }
     Cons { head: d, tail: dt } =>
       match produced {
-        Empty => false
+        Empty => PositionUndecided
         Cons { head: p, tail: pt } =>
-          inhabitance_positions_disagree(declared: d, produced: p, type_variables: type_variables)
-            || inhabitance_argument_lists_disagree(declared: dt, produced: pt, type_variables: type_variables)
+          inhabitance_verdict_combine(
+            left: inhabitance_position_verdict(declared: d, produced: p, type_variables: type_variables),
+            right: inhabitance_argument_list_verdict(declared: dt, produced: pt, type_variables: type_variables)
+          )
       }
   }
 }
@@ -349,11 +448,14 @@ fn inhabitance_pair_undecidable_reason(
   produced: Node,
   type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  if inhabitance_declaration_heads_differ(declared: declared, produced: produced)
-    || inhabitance_positions_disagree(declared: declared, produced: produced, type_variables: type_variables) {
-    Absent
-  } else {
-    inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+  // Only an UNDECIDED position carries the pair to InhabitanceUndecidable. An AGREED pair (every variable
+  // over the same variable, every concrete sibling matching) and a DISAGREEING pair (some concrete sibling
+  // refuses) both fall to the concrete comparison below the caller, which accepts the first and refuses the
+  // second through the exact structural arms -- the disagreement never becomes a second refusal authority.
+  match inhabitance_position_verdict(declared: declared, produced: produced, type_variables: type_variables) {
+    PositionUndecided => optional_present(value: UndecidableGenericFormal)
+    PositionAgree => Absent
+    PositionDisagree => Absent
   }
 }
 
@@ -453,13 +555,13 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
     produced: obligation.produced,
     type_variables: obligation.type_variables
   ) {
-    InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason() }
+    InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
   } else {
     match inhabitance_optional_layer_judgement(declared: obligation.declared, produced: obligation.produced) {
       OptionalLayerDepthMismatch =>
-        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
       OptionalLayerWrapperMalformed =>
-        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason() }
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
       OptionalLayerInhabitanceHolds => declared_type_inhabitance_optional(obligation: obligation)
     }
   }
@@ -568,7 +670,7 @@ fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> Inh
           match type_node_occupancy_child(n: declared_payload) {
             Present { value: _ } =>
               match type_node_occupancy_child(n: produced_payload) {
-                Absent => InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
+                Absent => InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason(), refusal_class: RefusalStructuralMismatch, position: obligation.position }
                 Present { value: _ } =>
                   declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: produced_payload, carrier: Absent))
               }
@@ -588,8 +690,8 @@ fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> Inh
 // only there does a mention stay UndecidableGenericFormal.
 fn inhabitance_judged_type_variables(obligation: DeclaredTypeObligation) -> List<Symbol> {
   match obligation.position {
-    PositionDirectCallArgument => obligation.type_variables
-    PositionDeclaredReturn => inhabitance_rigid_type_variables(obligation: obligation)
+    PositionDirectCallArgument { argument_ordinal_path: _ } => obligation.type_variables
+    PositionDeclaredReturn { argument_ordinal_path: _ } => inhabitance_rigid_type_variables(obligation: obligation)
     PositionRecordField { record: _ } => inhabitance_rigid_type_variables(obligation: obligation)
     PositionLetAnnotation { bound: _ } => inhabitance_rigid_type_variables(obligation: obligation)
     PositionBinderDefault { default: _ } => inhabitance_rigid_type_variables(obligation: obligation)
@@ -668,7 +770,10 @@ fn declared_type_inhabitance_exact(obligation: DeclaredTypeObligation) -> Inhabi
         Rejected { diagnostics: r } =>
           declared_type_inhabitance_declared_carrier(
             obligation: obligation,
-            exact_refusal: InhabitanceRefused { find_witness_reason: diagnostics_fatal_reason(d: r) }
+            exact_refusal: declared_type_inhabitance_refusal(
+              obligation: obligation,
+              find_witness_reason: diagnostics_fatal_reason(d: r)
+            )
           )
       }
   }
@@ -712,29 +817,13 @@ fn declared_type_inhabitance_declared_carrier(
   }
 }
 
-fn inhabitance_no_candidate_application_reason() -> Symbol {
-  ^application_argument_does_not_inhabit
-}
-
-fn inhabitance_no_candidate_return_reason() -> Symbol {
-  ^arrow_body_does_not_inhabit_declared_return
-}
-
-fn inhabitance_no_candidate_record_field_reason() -> Symbol {
-  ^record_field_value_does_not_inhabit
-}
-
-fn inhabitance_no_candidate_let_annotation_reason() -> Symbol {
-  ^infer_reason_bound_value_does_not_inhabit_annotation
-}
-
 // WHAT A POSITION ADDS TO ITS REFUSAL BEYOND THE SITE, THE FORMAL AND THE TWO TYPES. A record field
 // names the record it is a field of; an argument and a declared return are already named by the
 // site they are located at.
 fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Edge> {
   match position {
-    PositionDirectCallArgument => []
-    PositionDeclaredReturn => []
+    PositionDirectCallArgument { argument_ordinal_path: _ } => []
+    PositionDeclaredReturn { argument_ordinal_path: _ } => []
     PositionRecordField { record: record } => [Edge { label: Authored { name: ^inhabitance_record }, target: record, declaration: NotADeclaration }]
     PositionLetAnnotation { bound: bound } => [Edge { label: Authored { name: ^inhabitance_bound_value }, target: bound, declaration: NotADeclaration }]
     PositionBinderDefault { default: default } => [Edge { label: Authored { name: ^inhabitance_default_value }, target: default, declaration: NotADeclaration }]
@@ -742,25 +831,154 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
   }
 }
 
-fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
-  match position {
-    PositionDirectCallArgument => inhabitance_no_candidate_application_reason()
-    PositionDeclaredReturn => inhabitance_no_candidate_return_reason()
-    PositionRecordField { record: _ } => inhabitance_no_candidate_record_field_reason()
-    PositionLetAnnotation { bound: _ } => inhabitance_no_candidate_let_annotation_reason()
-    PositionBinderDefault { default: _ } => inhabitance_no_candidate_binder_default_reason()
-    PositionMatchCoverage { match_node: _, scrutinee: _ } => inhabitance_no_candidate_match_coverage_reason()
+// WHY THE REFUSAL IS NAMED BY WHAT DECIDED IT. v2.std.find_witness folds a Bool, so on refusal it can
+// only report "no candidate matched"; the old code renamed that by the POSITION it was asked at, which
+// told a reader where the question was asked and nothing about which question answered no. Nine
+// gunbc.recurring_failure_mode rows then cited `arrow_body_does_not_inhabit_declared_return` for nine
+// different mechanisms, and no row could say which shape refused for which reason. The decision comes
+// from the same two nodes the fold just compared, through the one verdict in
+// v2.std.exact_structural_equality_zip_fold_predicate, so there is one decision and not two. The class of
+// the refusal travels with the reason it produced: nothing re-derives it from the symbol later.
+fn declared_type_inhabitance_refusal(
+  obligation: DeclaredTypeObligation,
+  find_witness_reason: Symbol
+) -> InhabitanceVerdict {
+  let refusal_decision = declared_type_inhabitance_refusal_decision(obligation: obligation, find_witness_reason: find_witness_reason)
+  InhabitanceRefused {
+    find_witness_reason: refusal_decision.reason,
+    refusal_class: refusal_decision.refusal_class,
+    // the site the obligation names, with the path the decision came through written into it
+    position: inhabitance_position_with_argument_path(position: obligation.position, argument_ordinal_path: refusal_decision.argument_ordinal_path)
   }
 }
 
-fn inhabitance_application_refusal_reason(
-  position: DeclaredTypePosition,
+// The decision for a refusal of the exact comparison: when the fold itself declined for a reason of its
+// own (a preservation rule that is not realized, an ambiguous candidate set, an invalid witness) that
+// reason carries its own class; when the fold found no candidate the structural verdict says which
+// question answered no and which class that question is.
+fn declared_type_inhabitance_refusal_decision(
+  obligation: DeclaredTypeObligation,
   find_witness_reason: Symbol
-) -> Symbol {
+) -> InhabitanceStructuralDecision {
   if find_witness_reason == ^find_witness_reason_no_candidate {
-    inhabitance_no_candidate_reason(position: position)
+    inhabitance_structural_decision(comparison: exact_structural_comparison(source_facts: obligation.produced, algebra: obligation.produced, candidate: obligation.declared))
   } else {
-    find_witness_reason
+    InhabitanceStructuralDecision { refusal_class: RefusalWitnessSearchDecision, reason: find_witness_reason, argument_ordinal_path: [] }
+  }
+}
+
+// WHICH CLASS A REFUSAL BELONGS TO, decided exhaustively over every arm the verdict can have
+// (keen-heron-809's condition on this PR). A closed set of symbols plus a default would let the next arm
+// anyone adds inherit "does not inhabit" silently; this match has no default, so adding an arm to
+// ExactStructuralComparison breaks the build until its class is named.
+type InhabitanceRefusalClass
+  = RefusalStructuralMismatch
+  | RefusalComparisonCouldNotRun
+  | RefusalWitnessSearchDecision
+
+// `argument_ordinal_path` is the path the answering arm carries: [] when the arm was decided at this
+// pair, or at a refusal that never compared a pair at all (the could-not-run family, and a fold's own
+// decision), where there is no position to name.
+type InhabitanceStructuralDecision { refusal_class: InhabitanceRefusalClass, reason: Symbol, argument_ordinal_path: List<Nat> }
+
+// A nested pair's decision, reported at the pair that contains it: the mechanism and the arm are the
+// nested one's, and the path grows by the ordinal of the argument it came through. This is the ONLY way a
+// containment level touches a decision, and it never changes which arm answered no -- the level above does
+// not get to relabel a roots-differ as its own `arguments_differ` symptom (keen-heron-809: `Foo<A>` versus
+// `Foo<B>` is roots_differ at [0], propagated, not flattened).
+fn inhabitance_decision_through_argument(
+  decision: InhabitanceStructuralDecision,
+  ordinal: Nat
+) -> InhabitanceStructuralDecision {
+  InhabitanceStructuralDecision {
+    refusal_class: decision.refusal_class,
+    reason: decision.reason,
+    argument_ordinal_path: list_snoc_item(xs: decision.argument_ordinal_path, item: ordinal)
+  }
+}
+
+// The position the refusal names: the obligation's site with the decision's path written into the arms
+// that can nest. The four node-carrying arms pass through unchanged -- their position IS a node, and an
+// argument ordinal of a type is not a fact about a record field, a binding, a default or an arm cover.
+fn inhabitance_position_with_argument_path(
+  position: DeclaredTypePosition,
+  argument_ordinal_path: List<Nat>
+) -> DeclaredTypePosition {
+  match position {
+    PositionDirectCallArgument { argument_ordinal_path: _ } => PositionDirectCallArgument { argument_ordinal_path: argument_ordinal_path }
+    PositionDeclaredReturn { argument_ordinal_path: _ } => PositionDeclaredReturn { argument_ordinal_path: argument_ordinal_path }
+    PositionRecordField { record: record } => PositionRecordField { record: record }
+    PositionLetAnnotation { bound: bound } => PositionLetAnnotation { bound: bound }
+    PositionBinderDefault { default: default } => PositionBinderDefault { default: default }
+    PositionMatchCoverage { match_node: match_node, scrutinee: scrutinee } => PositionMatchCoverage { match_node: match_node, scrutinee: scrutinee }
+  }
+}
+
+fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> InhabitanceStructuralDecision {
+  match comparison {
+    // THE COMPARISON-COULD-NOT-RUN FAMILY: these arms do not answer the inhabitance question. They say the
+    // structural comparison produced no verdict on the pair -- an input was not a well-formed node, the
+    // algebra was not the source facts, or the fold declined while the two sides agreed, which is an
+    // internal defect. An upstream or internal defect, and never a claim that the value's type is wrong.
+    ComparisonHolds =>
+      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_witness_absent_under_holding_comparison, argument_ordinal_path: [] }
+    ComparisonSourceFactsMalformed =>
+      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_source_facts_malformed, argument_ordinal_path: [] }
+    ComparisonAlgebraMalformed =>
+      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_algebra_malformed, argument_ordinal_path: [] }
+    ComparisonCandidateMalformed =>
+      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_candidate_malformed, argument_ordinal_path: [] }
+    ComparisonAlgebraNotTheSourceFacts =>
+      InhabitanceStructuralDecision { refusal_class: RefusalComparisonCouldNotRun, reason: ^inhabitance_comparison_algebra_not_source_facts, argument_ordinal_path: [] }
+    // THE MISMATCH FAMILY: the only arms that answer the inhabitance question. The comparison ran and the
+    // produced type does not inhabit the declared one, which is a type error at the obligation.
+    // the path travels with the arm that answered no, so a decision never loses where it was decided
+    ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path } =>
+      InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_roots_differ, argument_ordinal_path: argument_ordinal_path }
+    ComparisonArgumentCountDiffers { source_arity: _, candidate_arity: _, argument_ordinal_path: argument_ordinal_path } =>
+      InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_argument_count_differs, argument_ordinal_path: argument_ordinal_path }
+    ComparisonArgumentsDiffer { argument_ordinal_path: argument_ordinal_path } =>
+      InhabitanceStructuralDecision { refusal_class: RefusalStructuralMismatch, reason: ^inhabitance_structural_arguments_differ, argument_ordinal_path: argument_ordinal_path }
+  }
+}
+
+// THE DIAGNOSTIC SHARED BY REFUSALS THAT DO NOT ANSWER THE INHABITANCE QUESTION. No suggested node: the
+// value's type is not what is wrong, so there is no edit at this site that would make it inhabit. For a
+// comparison-could-not-run refusal the fix lives in whatever produced the unreadable input; for a reason
+// whose class no decision named, the honest answer is that this site does not know what kind of refusal it
+// is, and it must not borrow a type-error diagnostic to look like one.
+fn inhabitance_refusal_without_suggestion_diagnostic(
+  obligation: DeclaredTypeObligation,
+  find_witness_reason: Symbol,
+  // the judgment position of this refusal, already carrying the argument ordinal path of the decision
+  // that refused: it travels with the verdict, so the diagnostic never re-derives it
+  position: DeclaredTypePosition
+) -> Diagnostic {
+  Diagnostic {
+    reason: find_witness_reason,
+    at: inhabitance_judgment_locus(position: position, node: obligation.application),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
+// THE DIAGNOSTIC CLASS, chosen in std beside the reasons rather than at the reporting site (criterion: the
+// decision lives in inhabitance). A structural mismatch, or a refusal whose own decision already named what
+// it declined, keeps application_argument_does_not_inhabit_diagnostic -- its suggested node is the evidence
+// of the shape difference, and claims read its ^inhabitance_produced_type edge. Everything else is refused
+// without a suggestion, so a reader is never sent to fix a type error the compiler never showed.
+fn inhabitance_refusal_diagnostic(
+  obligation: DeclaredTypeObligation,
+  refusal_class: InhabitanceRefusalClass,
+  find_witness_reason: Symbol,
+  // the judgment position of this refusal, already carrying the argument ordinal path of the decision that
+  // refused; it is written into the diagnostic's own slot, so a reader of a refusal about a nested
+  // argument sees that argument and not only the outer position
+  position: DeclaredTypePosition
+) -> Diagnostic {
+  match refusal_class {
+    RefusalStructuralMismatch => application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
+    RefusalWitnessSearchDecision => application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
+    RefusalComparisonCouldNotRun => inhabitance_refusal_without_suggestion_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason, position: position)
   }
 }
 
@@ -852,14 +1070,14 @@ fn application_positional_arity_mismatch_diagnostic(
 
 fn application_argument_does_not_inhabit_diagnostic(
   obligation: DeclaredTypeObligation,
-  find_witness_reason: Symbol
+  find_witness_reason: Symbol,
+  // the judgment position of this refusal, already carrying the argument ordinal path of the decision
+  // that refused: it travels with the verdict, so the diagnostic never re-derives it
+  position: DeclaredTypePosition
 ) -> Diagnostic {
   Diagnostic {
-    reason: inhabitance_application_refusal_reason(
-      position: obligation.position,
-      find_witness_reason: find_witness_reason
-    ),
-    at: node_locus(node: obligation.application),
+    reason: find_witness_reason,
+    at: inhabitance_judgment_locus(position: position, node: obligation.application),
     correction: Suggested {
       node: Node {
         kind: TypeNode { connective: Conj },

@@ -1,25 +1,167 @@
 module v2.std.exact_structural_equality_zip_fold_predicate
 
-import v2.std.node { Node, node_equal_ignoring_provenance, well_formed }
+import std.nat { Nat, Succ, Zero }
+import std.types { List }
+import std.algebra { length, list_snoc_item, zip_map }
+import v2.std.node { Edge, Node, node_equal_ignoring_provenance, well_formed }
+
+// WHY THE EXACT STRUCTURAL COMPARISON REFUSED IS PART OF THE ANSWER. This predicate is what
+// v2.std.find_witness folds, and a Bool answered five different questions with one word: a malformed
+// source fact, a malformed algebra, a malformed candidate, a root that differs, or an argument that
+// differs. Downstream, a refusal that only says "no candidate matched" gets named after the POSITION it
+// was asked at, so every shape that failed here shares one cause whatever question answered no
+// (gunbc.recurring_failure_mode `declared_type_wall_keyed_on_the_value_being_a_kernel` and its sibling
+// rows name the same cause for different mechanisms). Each conjunct is now an arm of a verdict, decided
+// once here, and the Bool the fold asks for is DERIVED from that verdict -- never the reverse, so the
+// fold and the reason cannot disagree about which question was asked.
+//
+// THE VERDICT'S ARMS FALL INTO TWO REFUSAL CLASSES, and the class is chosen in v2.std.inhabitance, not
+// here (ruling by keen-heron-809 on this PR). `ComparisonRootsDiffer`,
+// `ComparisonArgumentCountDiffers` and `ComparisonArgumentsDiffer` are the arms that ANSWER the
+// inhabitance question: the comparison ran and the produced type does not inhabit the declared one. The
+// rest -- `ComparisonSourceFactsMalformed`, `ComparisonAlgebraMalformed`,
+// `ComparisonCandidateMalformed`, `ComparisonAlgebraNotTheSourceFacts`, and `ComparisonHolds` reached
+// while the witness fold still refused -- say the comparison did not produce a verdict on this pair: an
+// upstream or internal defect. Those refuse under a different diagnostic class, so a reader is never sent
+// to fix a type error the compiler never showed. `inhabitance_structural_decision_reason` in
+// v2.std.inhabitance maps each arm to its refusal symbol and `inhabitance_refusal_diagnostic` gives each
+// family its own class.
+
+type ExactStructuralComparison
+  = ComparisonHolds
+  | ComparisonSourceFactsMalformed
+  | ComparisonAlgebraMalformed
+  | ComparisonCandidateMalformed
+  | ComparisonAlgebraNotTheSourceFacts
+  | ComparisonRootsDiffer { argument_ordinal_path: List<Nat> }
+  | ComparisonArgumentCountDiffers { source_arity: Int, candidate_arity: Int, argument_ordinal_path: List<Nat> }
+  | ComparisonArgumentsDiffer { argument_ordinal_path: List<Nat> }
+
+// WHERE IN THE CANDIDATE THE ANSWER WAS DECIDED, on the three arms that answer the inhabitance question.
+// The path runs from the pair this comparison was asked about down to the pair the arm was decided at,
+// OUTERMOST ARGUMENT FIRST: [] is this pair itself, [0] is argument 0 of it, [0, 1] is argument 1 of
+// argument 0. It is produced in the same branch that decides the arm, by the single descent below, so no
+// consumer re-derives it -- `Foo<A>` versus `Foo<B>` is decided as
+// `ComparisonRootsDiffer { argument_ordinal_path: [0] }` at the argument pair, and the outer level
+// propagates THAT arm instead of flattening it to `ComparisonArgumentsDiffer` (ruling by keen-heron-809
+// on this PR). The malformed and algebra-mismatch arms carry no path: they refuse before any pair is
+// compared, so there is no position to name.
+
+// One scan step: the verdict held so far and the ordinal of the child pair under examination. This corpus
+// has no face that zips a list with its positions, and minting one was refused (tidy-ant-251), so the
+// counter is carried in the accumulator from std.nat's own constructors.
+type ExactStructuralScan {
+  verdict: ExactStructuralComparison
+  ordinal: Nat
+}
+
+// A child pair of two nodes at the same position, the unit the descent decides.
+type ExactStructuralChildPair {
+  source: Edge
+  candidate: Edge
+}
 
 fn exact_structural_equality_zip_fold(source_facts: Node, candidate: Node) -> Bool {
   node_equal_ignoring_provenance(a: source_facts, b: candidate)
 }
+
+// THE ONE DECISION. The arms follow the shape of `node_equal_ignoring_provenance` -- same root, then the
+// labeled children zipped -- so the arms are exhaustive over a refusal rather than a sample of it: with
+// the roots equal and the child counts equal, an unequal pair can only differ in a child edge, which is
+// `ComparisonArgumentsDiffer`. Malformed operands are reported before any comparison: a node that is
+// not well-formed does not get an opinion about which part of it differs.
+fn exact_structural_comparison(
+  source_facts: Node,
+  algebra: Node,
+  candidate: Node
+) -> ExactStructuralComparison {
+  if !well_formed(n: source_facts) {
+    ComparisonSourceFactsMalformed
+  } else if !well_formed(n: algebra) {
+    ComparisonAlgebraMalformed
+  } else if !well_formed(n: candidate) {
+    ComparisonCandidateMalformed
+  } else if !exact_structural_equality_zip_fold(source_facts: algebra, candidate: source_facts) {
+    ComparisonAlgebraNotTheSourceFacts
+  } else {
+    exact_structural_shape(source_facts: source_facts, candidate: candidate, argument_ordinal_path: [])
+  }
+}
+
+// ONE DESCENT, the whole cost of the verdict. Roots first, then arity, then the child pairs in order: the
+// first pair that does not hold is decided AT ITS OWN LEVEL and its arm carries the path to it, so the arm
+// says the mechanism and the path says where. Once a verdict is held the scan stops comparing -- it still
+// walks the remaining pairs to advance the ordinal, but does no comparison work on them. This NEVER calls
+// the whole-tree `exact_structural_equality_zip_fold` per level: a whole-tree equality test at every level
+// and then a recursion into the differing child is quadratic in depth times size, the cost keen-heron-809
+// put on this PR. The pair-wise identity tested here is the same one that Bool tests -- equal label, then
+// equal targets, `declaration` ignored -- so the verdict and the Bool the witness fold uses cannot
+// disagree about which pair holds. All pairs holding IS the pair holding; no arm is invented for the case
+// the scan cannot reach.
+fn exact_structural_shape(
+  source_facts: Node,
+  candidate: Node,
+  argument_ordinal_path: List<Nat>
+) -> ExactStructuralComparison {
+  if source_facts.kind != candidate.kind {
+    ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
+  } else if count(source_facts.children) != count(candidate.children) {
+    ComparisonArgumentCountDiffers {
+      source_arity: count(source_facts.children),
+      candidate_arity: count(candidate.children),
+      argument_ordinal_path: argument_ordinal_path
+    }
+  } else {
+    let scan = fold(
+      zip_map(
+        a: source_facts.children,
+        b: candidate.children,
+        f: fn(source_edge, candidate_edge) { ExactStructuralChildPair { source: source_edge, candidate: candidate_edge } }
+      ),
+      init: ExactStructuralScan { verdict: ComparisonHolds, ordinal: Zero },
+      f: fn(acc, pair) {
+        match acc.verdict {
+          ComparisonHolds => ExactStructuralScan {
+            verdict: exact_structural_child_pair(
+              pair: pair,
+              // the path grows at the tail as the descent goes deeper, which is what outermost-first means
+              argument_ordinal_path: list_snoc_item(xs: argument_ordinal_path, item: acc.ordinal)
+            ),
+            ordinal: Succ { prev: acc.ordinal }
+          }
+          _ => ExactStructuralScan { verdict: acc.verdict, ordinal: Succ { prev: acc.ordinal } }
+        }
+      }
+    )
+    scan.verdict
+  }
+}
+
+// ONE CHILD PAIR. Different labels at the same position IS the mechanism, and no descent into targets can
+// say that, so this is the route to `ComparisonArgumentsDiffer` that names a position. Same label and equal
+// targets: this pair holds. Same label, unequal targets: the descent continues into the targets, and the
+// arm reported is the one the targets decide -- the innermost mechanism, not the outer symptom.
+fn exact_structural_child_pair(
+  pair: ExactStructuralChildPair,
+  argument_ordinal_path: List<Nat>
+) -> ExactStructuralComparison {
+  if pair.source.label != pair.candidate.label {
+    ComparisonArgumentsDiffer { argument_ordinal_path: argument_ordinal_path }
+  } else if node_equal_ignoring_provenance(a: pair.source.target, b: pair.candidate.target) {
+    ComparisonHolds
+  } else {
+    // the algebra of a nested pair is its own source facts, the same identity the entry check enforces
+    exact_structural_shape(source_facts: pair.source.target, candidate: pair.candidate.target, argument_ordinal_path: argument_ordinal_path)
+  }
+}
+
 fn exact_structural_equality_zip_fold_preservation_holds(
   source_facts: Node,
   candidate: Node,
   algebra: Node,
 ) -> Bool {
-  well_formed(n: source_facts)
-    && well_formed(n: algebra)
-    && well_formed(n: candidate)
-
-    && exact_structural_equality_zip_fold(
-      source_facts: algebra,
-      candidate: source_facts
-    )
-    && exact_structural_equality_zip_fold(
-      source_facts: source_facts,
-      candidate: candidate
-    )
+  match exact_structural_comparison(source_facts: source_facts, algebra: algebra, candidate: candidate) {
+    ComparisonHolds => true
+    _ => false
+  }
 }

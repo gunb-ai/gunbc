@@ -156,7 +156,7 @@ test fn fse_bare_generic_at_its_applied_self_refuses_holds() -> Bool {
     application: fse_ref(dotted: "p.Box"),
     type_variables: []
   }) {
-    InhabitanceRefused { find_witness_reason: _ } => true
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => true
     _ => false
   }
 }
