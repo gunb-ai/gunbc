@@ -4034,7 +4034,7 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
                     if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
                       equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
                     } else {
-                      false
+                      equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: authored_name_at(source_indices: source_indices, node: peeled), at_operand_root: false) == none
                     }
                 }
               }

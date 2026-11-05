@@ -646,6 +646,36 @@ test fn an_imported_generic_applied_to_a_plain_cell_stays_admitted() -> Bool {
   }
 }
 
+// A NULLARY DECLARED TYPE APPLIED AS AN ARGUMENT STAYS ADMITTED (gunbc#15175, heal run 41981909434 on extdeps.vendor):
+// Vendor<Hardware> compares in dag/extdeps/cpu/types.dag with Hardware declared as `type Hardware` in another module. The table
+// names only declarations with members, so the argument fell to the end of equality_argument_by_target and answered "not by the
+// target", refusing a comparison whose argument is a phantom brand. An opaque head carries no member the walk can judge and admits
+// at the leaf rung (equality_exposure_refusal), so an applied argument reads the same exposure. The control keeps the function-member
+// refusal of an applied argument (an_imported_generic_applied_to_a_function_member_cell_refuses) in force.
+data dk_phantom_source: String = "module dk.phantom\ntype DkPhantom\n"
+
+data dk_s10_source: String = "module dk.s10\nimport dk.box { DkBox }\nimport dk.phantom { DkPhantom }\nfn s10_same(x: DkBox<DkPhantom>, y: DkBox<DkPhantom>) -> Bool { x == y }\n"
+
+fn dk_s10_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("dk/box.dag", dk_box_source),
+      fixture_source("dk/phantom.dag", dk_phantom_source),
+      fixture_source("dk/s10.dag", dk_s10_source)
+    ],
+    entry: "dk/s10.dag"
+  })
+}
+
+test fn an_imported_generic_applied_to_a_nullary_declared_type_stays_admitted() -> Bool {
+  match dk_s10_run() {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
 // ============================================================================
 // ALIAS OPERANDS OF == ARE JUDGED BY THEIR EXPANSION (srdk26 a4/a5; this change).
 //
