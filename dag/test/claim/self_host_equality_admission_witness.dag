@@ -284,3 +284,54 @@ data generic_member_eq_green_source: String = "module eq_probe_generic_member\nt
 test fn generic_parameter_member_equality_stays_admitted() -> Bool {
   eq_admitted(source: generic_member_eq_green_source)
 }
+
+// ============================================================================
+// ALIAS OPERANDS OF == ARE JUDGED BY THEIR EXPANSION (srdk26 a4/a5; this change).
+//
+// The equality admission wall must judge an alias operand by the structure it names,
+// not by the alias shell. Before the fix, `expand_nominal_alias_rhs_by_name` returned
+// the ungrounded NoConnective leaf for a same-module nominal alias (TypeBinding.resolved
+// is the ungrounded leaf; the target lives on TypeBinding.alias_rhs), so `== ` on an
+// alias-to-record-with-a-function-member was ADMITTED with the member never judged --
+// the exposure_refusal branch let the shell through. The fix grounds a nominal alias
+// from binding.alias_rhs via resolve_node_bounded, so the walk sees the record's fn
+// member and refuses, exactly as it does for the concrete record (BASE).
+//
+// The reds assert the wall refuses with subject == the ALIAS name (OpsAlias), the sharp
+// discriminator: it is 0 before the fix and 1 after, and it proves the ALIAS operand --
+// not some other leaf -- is what got judged. a5 is the same defect reached one level in
+// (a record HOLDING the alias), proving the grounding composes through the structural
+// walk, not just at the top operand.
+//
+// The greens are the admissions the fix must NOT widen into: a plain (non-function)
+// alias-to-record, and a local generic alias to a plain-cell instantiation. Both stay
+// admitted; they were green before and must stay green.
+//
+// a1/a3 (IMPORTED generic alias, and a local generic alias to a fn-bearing cell) are NOT
+// asserted here: they need the applied-args-on-re-entry arm landing in #15175 and were
+// measured unchanged (a3: 0 rows; a1: 42 rows, none of class EqualityOnFunctionMember)
+// both before and after this fix. They are reported as a separate follow-up boundary,
+// not claimed as this change's behaviour.
+data alias_fn_record_eq_red_source: String = "module eq_probe_alias_fn_record\ntype Ops {\n  step: fn(Int) -> Int\n}\ntype OpsAlias = Ops\nfn same(a: OpsAlias, b: OpsAlias) -> Bool { a == b }\n"
+
+data alias_holder_of_alias_eq_red_source: String = "module eq_probe_alias_holder\ntype Ops {\n  step: fn(Int) -> Int\n}\ntype OpsAlias = Ops\ntype Holder {\n  ops: OpsAlias\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+
+data plain_alias_eq_green_source: String = "module eq_probe_alias_plain\ntype Cell {\n  value: Int\n}\ntype CellAlias = Cell\nfn same(a: CellAlias, b: CellAlias) -> Bool { a == b }\n"
+
+data local_generic_plain_alias_eq_green_source: String = "module eq_probe_alias_local_generic_plain\ntype Cell<T> {\n  value: T\n}\ntype CellInt = Cell<Int>\nfn same(a: CellInt, b: CellInt) -> Bool { a == b }\n"
+
+test fn alias_operand_of_equality_refuses_by_expansion() -> Bool {
+  eq_blocking_count_at_subject(source: alias_fn_record_eq_red_source, wanted: "EqualityOnFunctionMember", subject: "OpsAlias") >= 1
+}
+
+test fn alias_held_by_record_operand_refuses_by_expansion() -> Bool {
+  eq_blocking_count_at_subject(source: alias_holder_of_alias_eq_red_source, wanted: "EqualityOnFunctionMember", subject: "OpsAlias") >= 1
+}
+
+test fn plain_non_function_alias_operand_stays_admitted() -> Bool {
+  eq_admitted(source: plain_alias_eq_green_source)
+}
+
+test fn local_generic_plain_alias_operand_stays_admitted() -> Bool {
+  eq_admitted(source: local_generic_plain_alias_eq_green_source)
+}

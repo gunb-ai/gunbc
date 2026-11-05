@@ -34,11 +34,14 @@ type AssemblyPart {
   print_plane: PrintPlane, notes: String,
 }
 type InterfaceStatus = Proposed | OriginalPlateFitOnly | Unresolved
-type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | ProtectedDcBranch | BondingHardwarePending | FanSelfTappingScrew | FrictionFitPlug | FrictionFitSleeve | LocatingSleeveNoRetention | M3IntoCardInsert
+type FastenerKind = M3PanelClamp | M4FanThroughBolt | M4SocketThroughBolt | PrintedRetainingPin | BoardSupportPending | ProtectedDcBranch | BondingHardwarePending | FanSelfTappingScrew | FrictionFitPlug | FrictionFitSleeve | LocatingSleeveNoRetention | M3IntoCardInsert | M5FanScrewIntoBlowerLug
 
 type MechanicalInterface {
   id: String, members: List<String>, fastener: FastenerKind, quantity: Int,
   status: InterfaceStatus, requirement: String,
+  // The purchased or metal members of this interface that INTENTIONALLY interpenetrate its printed members
+  // (a screw tapping into a lug). Every other printed-vs-purchased/metal overlap refuses in the CAD check.
+  intended_overlap: List<String>,
 }
 fn local(x: Int, y: Int, z: Int) -> Point3 { point3(frame: coordinate_frame_identity(occurrence: 5100), x: x, y: y, z: z) }
 fn placed(x: Int, y: Int, z: Int) -> Point3 { point3(frame: coordinate_frame_identity(occurrence: 5101), x: x, y: y, z: z) }
@@ -93,6 +96,10 @@ fn print_plane_pose(plane: PrintPlane) -> String {
 fn part(id: String, name: String, kind: PartKind, scope: PartScope, adds: List<Primitive>, cuts: List<Primitive>, x: Int,y: Int,z: Int, ex: Int,ey: Int,ez: Int, plane: PrintPlane, notes: String) -> AssemblyPart {
   AssemblyPart { id: id,name: name,kind: kind,scope: scope,adds: adds,cuts: cuts,at: placed(x: x,y: y,z: z),explode: placed(x: ex,y: ey,z: ez),print_plane: plane,notes: notes }
 }
+// The interface, declaring which of its members are meant to overlap a printed member.
+fn tapping_into(i: MechanicalInterface, members: List<String>) -> MechanicalInterface {
+  MechanicalInterface { id: i.id,members: i.members,fastener: i.fastener,quantity: i.quantity,status: i.status,requirement: i.requirement,intended_overlap: members }
+}
 fn mechanical_interface(id: String,members: List<String>,fastener: FastenerKind,quantity: Int,status: InterfaceStatus,requirement: String) -> MechanicalInterface {
-  MechanicalInterface { id: id,members: members,fastener: fastener,quantity: quantity,status: status,requirement: requirement }
+  MechanicalInterface { id: id,members: members,fastener: fastener,quantity: quantity,status: status,requirement: requirement,intended_overlap: [] }
 }

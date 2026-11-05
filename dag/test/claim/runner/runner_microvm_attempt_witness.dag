@@ -17,6 +17,13 @@ import gunbc.runner.runner_microvm_attempt {
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt,
   runner_microvm_attempt_jail_base,
 }
+import extdeps.systemd.systemd_run { NamedUnitSetting, EmptyCapabilityBoundingSet, LoadCredentialSetting }
+import gunbc.runner.runner_microvm_slot_controller { attempt_mint_binding }
+import gunbc.runner.runner_group_restriction_observation {
+  microvm_shakedown_runner_group_name, microvm_shakedown_selected_workflow,
+}
+import gunbc.runner.runner_jit_mint_binding { JitMintBinding }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubjectProven }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -87,7 +94,46 @@ test fn the_vmm_is_placed_in_the_cells_own_slice() -> Bool {
     MicroVmAttemptAccepted { attempt: at } =>
       match bind_owned_attempt(attempt: at, owned: true) {
         VmBoundToOwnedCell { attempt: a, rootfs_path: _, vm_config_path: _, unit_name: _, slice_property: sp } =>
-          (sp.value as String) == fabric_cell_slice_name(slot: a.slot)
+          match sp {
+            NamedUnitSetting { property: _, value } => (value as String) == fabric_cell_slice_name(slot: a.slot)
+            EmptyCapabilityBoundingSet => false
+            LoadCredentialSetting { identifier: _, source: _ } => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE ATTEMPT MINT, GREEN BY EXECUTION (prod gap 1 sweep). attempt_mint_binding was admitted to
+// exactly one production caller and executed by no claim -- and its own closure had broken: it
+// imported the guest-artifact helpers through gunbc.runner.runner_guest_image, which only imports
+// them itself, so the callee edge for runner_guest_kernel_artifact recorded an identity that names
+// no registry row and the module refused to resolve ("effect summary incomplete"). The fix imports
+// those two names from their origin module (gunbc.runner.microvm_guest_artifacts) and adds the
+// missing microvm_shakedown_selected_workflow import. This claim is the receipt and the consumer:
+// it drives the REAL mint on a sealed fixture binding (built by bind_owned_attempt, never
+// assembled here) and pins the lane the mint must bind -- the shakedown group, the selected
+// workflow, and the subject derived from the binding's own attempt. A mint bound to any other lane
+// is a runner registered outside every limit the cell carries.
+test fn attempt_mint_binding_binds_the_shakedown_lane() -> Bool {
+  match attempt(i: 9, id: "mint") {
+    MicroVmAttemptAccepted { attempt: a } =>
+      match bind_owned_attempt(attempt: a, owned: true) {
+        VmBoundToOwnedCell { attempt: ba, rootfs_path: rp, vm_config_path: vp, unit_name: un, slice_property: sp } =>
+          match attempt_mint_binding(
+            binding: VmBoundToOwnedCell { attempt: ba, rootfs_path: rp, vm_config_path: vp, unit_name: un, slice_property: sp },
+          ) {
+            JitMintBinding { subject, runner_group_name, selected_workflow, signer: _ } =>
+              (runner_group_name as String) == (microvm_shakedown_runner_group_name as String)
+                && (selected_workflow as String) == (microvm_shakedown_selected_workflow() as String)
+                && match subject {
+                  JitRegistrationSubjectProven { subject: s } =>
+                    (s.workflow as String) == (microvm_shakedown_selected_workflow() as String)
+                      && string_contains(s: s.name.value as String, pattern: "mint")
+                  _ => false
+                }
+          }
         _ => false
       }
     _ => false

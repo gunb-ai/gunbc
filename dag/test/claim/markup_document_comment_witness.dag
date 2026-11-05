@@ -118,7 +118,7 @@ import gunbc.auth.approval_broker_marker {
   approval_broker_marker_comment, BrokerMarkerComment, MarkerCommentRendered, MarkerCommentRefused,
 }
 import std.types { List, Bool, String, NonEmptyStr }
-import std.algebra { Empty, FreeSemigroup }
+import std.algebra { Empty, FreeSemigroup, length }
 
 // A medium that spells comments the way JSX does, so the HTML delimiters cannot be hiding in the
 // serializer. Declared here rather than imported from extdeps.languages.react_jsx so the two media
@@ -620,7 +620,7 @@ test fn witness_marker_token_never_closes_its_comment() -> Bool {
 }
 
 test fn witness_marker_corpus_is_not_empty() -> Bool {
-  list_length(items: marker_token_corpus()) > 0
+  length(xs: marker_token_corpus()) > 0
 }
 
 fn marker_token_corpus() -> List<String> {

@@ -1,0 +1,28 @@
+module test.claim.ci.fleet_converge_upload_absence_witness
+
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_receipt_upload_step }
+
+fn upload_no_files_word(step: Step) -> String {
+  match step {
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Present { value: with } => with |> fold(init: "absent", f: (acc, k) => if k.key == "if-no-files-found" {
+          match k.value { YamlString { value: v } => v  _ => "not-a-string" }
+        } else { acc })
+        Absent => "absent"
+      }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => "not-an-upload"
+  }
+}
+
+// THE MT. COLLINS BOOT RECEIPTS FAIL CLOSED (the first row the policy flips). Its producer,
+// gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_conclude, writes mtcollins1_boot_receipt_path or fails
+// the step, and the boot step itself runs only on an observed fan phase whose refusal already exits 1. So an
+// upload that finds nothing means a boot step that passed without its receipt, and the real row now says error.
+test fn the_mtcollins1_boot_receipt_upload_refuses_a_missing_receipt() -> Bool {
+  upload_no_files_word(step: fleet_converge_mtcollins1_boot_receipt_upload_step()) == "error"
+}

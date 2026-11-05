@@ -321,7 +321,7 @@ fn harness_fabric_router_reasoning_kwargs(level: HarnessReasoningLevel) -> Harne
 }
 
 // THE WINDOW THE ROUTER CAN PROMISE is the smallest max_model_len among its upstream rows, because any
-// upstream may answer (gunbc.serving.router_dev_policy router_dev_first_party_upstreams: the Strata iq3_s
+// upstream may answer (gunbc.serving.router_dev_policy router_dev_first_party: the Strata iq3_s
 // rows at 229376; the vLLM rows are 262144). The rows carry Int and TokenCount takes Nat with no checked
 // conversion between them, so the figure is stated here as a declared floor, a ceiling and not a
 // measurement; a router upstream with a smaller window makes the answer too large, and that is this

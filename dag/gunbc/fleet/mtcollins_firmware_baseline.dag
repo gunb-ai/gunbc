@@ -1,7 +1,7 @@
 module gunbc.fleet.mtcollins_firmware_baseline
 
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
 import std.pareto { AxisReading, ParetoEntry, SelectionAxis, HigherIsBetter }
@@ -28,6 +28,7 @@ import extdeps.ampere.mt_collins_firmware_release {
   mt_collins_vendor_upgrade_order,
   BiosScpPair, InteropRequirement,
 }
+import std.algebra { length }
 
 // ── WHICH FIRMWARE BASELINE mtcollins1 SHOULD RUN: a §3d selection, ahead of the convergence ──────
 //
@@ -122,7 +123,7 @@ fn baseline_target_refusal(b: FirmwareBaseline) -> BaselineAdmissionRefusal? {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match list_length(filter(b.releases, r => (r.target == t))) {
+        match length(filter(b.releases, r => (r.target == t))) {
           0 => Present { value: BaselineMissingTarget { target: t } }
           1 => Absent
           _ => Present { value: BaselineDuplicateTarget { target: t } }

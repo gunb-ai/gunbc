@@ -147,28 +147,47 @@ fn filesystem_entry_presence_of_path(path: String) -> FilesystemEntryPresence {
     FilesystemPathUndecomposable { cause: cause } =>
       FilesystemEntrySubjectRefused { directory: "", name: "", cause: cause }
     FilesystemPathDecomposed { directory: directory, name: name } => {
-      let listing = Filesystem.List(path: directory)
-      let presence = filesystem_entry_presence(
-        listing: filesystem_listing_observation(
-          directory: directory,
-          success: listing.success,
-          entries: listing.entries,
-          error: listing.error,
-        ),
-        name: name,
-      )
+      let presence = filesystem_entry_presence_in_directory(directory: directory, name: name)
       match presence {
         FilesystemEntryPresenceIndeterminate { cause: _ } =>
-          match filesystem_entry_presence_of_path(path: directory) {
-            FilesystemEntryAbsent(established) => FilesystemEntryAbsent(established)
-            FilesystemEntryListed { directory: _, name: _ } => presence
-            FilesystemEntryPresenceIndeterminate { cause: _ } => presence
-            FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => presence
-          }
+          filesystem_entry_presence_ancestor_absence(path: directory, indeterminate: presence)
         FilesystemEntryAbsent(_) => presence
         FilesystemEntryListed { directory: _, name: _ } => presence
         FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => presence
       }
     }
+  }
+}
+
+// ONE LISTING OF ONE DIRECTORY folded through filesystem_entry_presence.
+fn filesystem_entry_presence_in_directory(directory: String, name: String) -> FilesystemEntryPresence {
+  let listing = Filesystem.List(path: directory)
+  filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: directory,
+      success: listing.success,
+      entries: listing.entries,
+      error: listing.error,
+    ),
+    name: name,
+  )
+}
+
+// THE CLIMB, IN TAIL POSITION. An entry whose own parent listing was indeterminate is absent exactly
+// when the nearest ancestor with a determinate answer is itself absent; any other determinate
+// ancestor (listed, refused, undecomposable) leaves the original indeterminate reading standing.
+// The caller's reading rides as `indeterminate`, so the climb is a loop the Rust realization lowers
+// rather than non-tail async recursion.
+fn filesystem_entry_presence_ancestor_absence(path: String, indeterminate: FilesystemEntryPresence) -> FilesystemEntryPresence {
+  match filesystem_path_decomposition(path: path) {
+    FilesystemPathUndecomposable { cause: _ } => indeterminate
+    FilesystemPathDecomposed { directory: directory, name: name } =>
+      match filesystem_entry_presence_in_directory(directory: directory, name: name) {
+        FilesystemEntryPresenceIndeterminate { cause: _ } =>
+          filesystem_entry_presence_ancestor_absence(path: directory, indeterminate: indeterminate)
+        FilesystemEntryAbsent(established) => FilesystemEntryAbsent(established)
+        FilesystemEntryListed { directory: _, name: _ } => indeterminate
+        FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => indeterminate
+      }
   }
 }
