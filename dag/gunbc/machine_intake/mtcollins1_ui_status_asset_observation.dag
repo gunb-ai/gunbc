@@ -703,7 +703,7 @@ fn megarac_ui_window_receipt(
     ExcerptRefused { cause: StatusBranchTooFarApart { gap: byte_size(count: gap), bound: megarac_ui_status_branch_window_octets } }
   } else if !ui_octets_are_ascii(octets: window_octets) {
     ExcerptRefused { cause: ExcerptCarriesNonAsciiOctet { window_start: byte_size(count: window_start) } }
-  } else match marker_found {
+  } else if match marker_found {
     Absent => ExcerptRefused { cause: CdRowMarkerAbsent { context_start: byte_size(count: context_start), context_length: byte_size(count: context_length) } }
     Present { value: marker_index } => {
     let window_text = ui_octets_text(window_octets)
